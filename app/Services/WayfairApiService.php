@@ -2244,11 +2244,13 @@ XML;
     }
 
     /**
+     * @param  array{sku?: string, title?: string}  $context
      * @return array{id: string, name: string, category: string, definition: string, path: string}|null
      */
-    public function resolveListingClass(string $name): ?array
+    public function resolveListingClass(string $name, array $context = []): ?array
     {
         $name = trim($name);
+        $sku = trim((string) ($context['sku'] ?? ''));
         if ($name === '') {
             return null;
         }
@@ -2282,8 +2284,32 @@ XML;
                 }
             }
         }
+        if ($id === '' && $sku !== '') {
+            $hit = $this->lookupCatalogClassForSkus([$sku]);
+            if (is_array($hit) && (int) ($hit['class_id'] ?? 0) > 0) {
+                $id = (string) $hit['class_id'];
+                if ($known === null) {
+                    $hitName = trim((string) ($hit['class_name'] ?? ''));
+                    $known = ($hitName !== '' ? WayfairPartnerClassCatalog::findByName($hitName) : null)
+                        ?: WayfairPartnerClassCatalog::present([
+                            'id' => $id,
+                            'name' => $hitName !== '' ? $hitName : $name,
+                            'category' => 'Your catalog',
+                            'definition' => '',
+                        ]);
+                }
+            }
+        }
         if ($id === '') {
             $id = $this->discoverClassIdByName($name);
+        }
+        if ($id === '') {
+            foreach (WayfairPartnerClassCatalog::candidateIds($name) as $candidate) {
+                if ($this->productAdditionClassExists((int) $candidate)) {
+                    $id = (string) $candidate;
+                    break;
+                }
+            }
         }
         if ($known === null && $id === '') {
             return null;

@@ -1917,10 +1917,11 @@ class ListingManagerController extends Controller
     {
         $name = trim((string) $request->input('name', ''));
         $typedId = trim((string) $request->input('id', ''));
+        $sku = trim((string) $request->input('sku', ''));
         $svc = app(WayfairApiService::class);
         $row = $typedId !== '' && preg_match('/^\d{2,}$/', $typedId)
             ? $svc->resolveListingClass($typedId)
-            : $svc->resolveListingClass($name);
+            : $svc->resolveListingClass($name, ['sku' => $sku]);
 
         if ($row === null) {
             return response()->json([

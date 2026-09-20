@@ -206,6 +206,29 @@ class WayfairPartnerClassCatalog
     }
 
     /**
+     * Fallback IDs to try when taxonomyCategories is denied.
+     *
+     * @return list<string>
+     */
+    public static function candidateIds(string $name): array
+    {
+        $key = mb_strtolower(trim($name));
+        $map = [
+            'light stands & tripods' => ['416547'],
+            'photography lighting' => ['416547'],
+            'lighting accessories' => ['416547'],
+            'speaker stands' => ['431590'],
+            'floor lamps' => ['416504'],
+            'tv stands & entertainment centers' => ['1868409'],
+            'tv mounts' => ['442'],
+            'bar carts' => ['61472'],
+            'bookcases' => ['38'],
+        ];
+
+        return $map[$key] ?? [];
+    }
+
+    /**
      * @param  array{id: string, name: string, category: string, definition: string}  $row
      * @return array{id: string, name: string, category: string, definition: string, path: string}
      */
@@ -271,8 +294,8 @@ TXT;
             ['', 'Hospitality Carts', 'Accommodations', ''],
             ['', 'Refrigerators', 'Appliances', ''],
             ['', 'Microwaves', 'Appliances', ''],
-            ['', 'Speaker Stands', 'AV/TV', 'CLASS OVERVIEW: Select this class for speaker stands and speaker pedestals that hold bookshelf or satellite speakers. These are typically stationary stands designed for home audio. DO NOT CLASSIFY TV stands, lighting stands, or microphone stands here.'],
-            ['', 'TV Stands & Entertainment Centers', 'AV/TV', 'CLASS OVERVIEW: Select this class for TV stands, entertainment centers, and media consoles that hold a television and related components. DO NOT CLASSIFY rolling AV carts (Carts & Stands) or wall-mounted TV mounts (CLID 442) here.'],
+            ['431590', 'Speaker Stands', 'AV/TV', 'CLASS OVERVIEW: Select this class for speaker stands and speaker pedestals that hold bookshelf or satellite speakers. These are typically stationary stands designed for home audio. DO NOT CLASSIFY TV stands, lighting stands, or microphone stands here.'],
+            ['1868409', 'TV Stands & Entertainment Centers', 'AV/TV', 'CLASS OVERVIEW: Select this class for TV stands, entertainment centers, and media consoles that hold a television and related components. DO NOT CLASSIFY rolling AV carts (Carts & Stands) or wall-mounted TV mounts (CLID 442) here.'],
             ['', 'Audio Towers', 'AV/TV', 'CLASS OVERVIEW: Select this class for floor-standing audio towers and speaker towers. DO NOT CLASSIFY speaker stands, sound bars, or TV stands here.'],
             ['442', 'TV Mounts', 'AV/TV', 'CLASS OVERVIEW: Select this class for wall-mounted or floor-standing TV mounts and brackets. DO NOT CLASSIFY TV stands or rolling AV carts here.'],
             ['', 'Baby Activity Centers', 'Baby Gear', ''],
@@ -312,11 +335,11 @@ TXT;
             ['', 'Kids Beds', 'Kids', ''],
             ['', 'Kitchen Islands', 'Kitchen', ''],
             ['226', 'Residential Serving Carts', 'Kitchen', 'CLASS OVERVIEW: Select this class for residential kitchen serving carts and kitchen utility carts. DO NOT CLASSIFY commercial utility carts here — use Carts & Stands.'],
-            ['', 'Floor Lamps', 'Lighting', 'CLASS OVERVIEW: Select this class for finished floor lamps sold as lighting fixtures. DO NOT CLASSIFY photography light stands, tripods, or lamp replacement parts here.'],
+            ['416504', 'Floor Lamps', 'Lighting', 'CLASS OVERVIEW: Select this class for finished floor lamps sold as lighting fixtures. DO NOT CLASSIFY photography light stands, tripods, or lamp replacement parts here.'],
             ['', 'Table Lamps', 'Lighting', 'CLASS OVERVIEW: Select this class for finished table lamps. DO NOT CLASSIFY photography lighting or light stands here.'],
-            ['', 'Lighting Accessories', 'Lighting', 'CLASS OVERVIEW: Select this class for lighting accessories such as shades, finials, and replacement parts. DO NOT CLASSIFY complete lamps or photography light stands here.'],
-            ['', 'Photography Lighting', 'Lighting', 'CLASS OVERVIEW: Select this class for photography and video lighting kits, softboxes, and studio lights. Related stands may belong with lighting stands or tripods when the primary purpose is to hold lights.'],
-            ['', 'Light Stands & Tripods', 'Lighting', 'CLASS OVERVIEW: Select this class for lighting stands, light stand tripods, and adjustable lighting support stands used with photography or video lights. DO NOT CLASSIFY speaker stands, music stands, or finished floor lamps here.'],
+            ['416547', 'Lighting Accessories', 'Lighting', 'CLASS OVERVIEW: Select this class for lighting accessories such as shades, finials, and replacement parts. DO NOT CLASSIFY complete lamps or photography light stands here.'],
+            ['416547', 'Photography Lighting', 'Lighting', 'CLASS OVERVIEW: Select this class for photography and video lighting kits, softboxes, and studio lights. Related stands may belong with lighting stands or tripods when the primary purpose is to hold lights.'],
+            ['416547', 'Light Stands & Tripods', 'Lighting', 'CLASS OVERVIEW: Select this class for lighting stands, light stand tripods, and adjustable lighting support stands used with photography or video lights. DO NOT CLASSIFY speaker stands, music stands, or finished floor lamps here.'],
             ['', 'Ceiling Lighting', 'Lighting', ''],
             ['', 'Suitcases', 'Luggage', ''],
             ['', 'Mattresses', 'Mattress', ''],

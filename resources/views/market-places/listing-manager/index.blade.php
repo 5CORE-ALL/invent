@@ -3047,10 +3047,12 @@
             loadWayfairQuestions(id, collectWayfairAnswers());
         }
         if (!id && name && !(opts && opts.resolved)) {
+            $('#lc-wayfair-questions').html('<div class="text-muted small">Loading Wayfair product form…</div>');
+            const sku = String($('#lc-sku').val() || (currentDraft && currentDraft.sku) || '').trim();
             $.ajax({
                 url: "{{ route('listing.manager.wayfair.resolve-class') }}",
                 method: 'GET',
-                data: { name },
+                data: { name, sku },
                 dataType: 'json',
                 timeout: 25000,
                 success: function (res) {
@@ -3059,14 +3061,14 @@
                     } else if (!(opts && opts.retry)) {
                         applyWayfairClass(row, { resolved: false, retry: true });
                     } else {
-                        toast('Could not load this Wayfair class yet. Select it again.', 'error');
+                        $('#lc-wayfair-questions').html('<div class="text-muted small">Class selected. Fill Color, origin, package, title, images, and price.</div>');
                     }
                 },
                 error: function () {
                     if (!(opts && opts.retry)) {
                         applyWayfairClass(row, { resolved: false, retry: true });
                     } else {
-                        toast('Could not load this Wayfair class yet. Select it again.', 'error');
+                        $('#lc-wayfair-questions').html('<div class="text-muted small">Class selected. Fill Color, origin, package, title, images, and price.</div>');
                     }
                 }
             });
