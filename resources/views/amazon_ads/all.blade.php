@@ -473,6 +473,7 @@
                                     <option value="sd_reports">SD reports</option>
                                     <option value="sp_keywords">SP keywords</option>
                                     <option value="sp_negatives">SP negatives</option>
+                                    <option value="ad_groups">Ad groups</option>
                                     <option value="bid_caps">Bid caps</option>
                                     <option value="fbm_targeting">FBM targeting</option>
                                 </select>
@@ -1720,6 +1721,7 @@
                 }
                 if (c === 'ad_type') { col.formatter = fmtAdType; return; }
                 if (c === 'adGroupName') { col.title = 'Ad Group'; col.hozAlign = 'left'; col.minWidth = 150; col.widthGrow = 2; return; }
+                if (c === 'defaultBid') { col.title = 'Def Bid'; col.formatter = fmt2dec; col.minWidth = 80; return; }
                 if (c === 'keyword') { col.title = 'Keyword'; col.hozAlign = 'left'; col.minWidth = 180; col.widthGrow = 3; return; }
                 if (c === 'keywordText') { col.title = 'Negative KW'; col.hozAlign = 'left'; col.minWidth = 180; col.widthGrow = 3; return; }
                 if (c === 'matchType') { col.title = 'Match'; col.formatter = fmtMatchType; col.minWidth = 90; return; }
@@ -2534,6 +2536,14 @@
                 if (!sourceKey || !rawSources[sourceKey]) sourceKey = 'all_reports';
                 activeRawSourceKey = sourceKey;
                 amzSetDatesToLatestForSource(sourceKey);
+                if (sourceKey === 'ad_groups' || sourceKey === 'sp_negatives') {
+                    var fromEl = document.getElementById('amazonAdsFilterDateFrom');
+                    var toEl = document.getElementById('amazonAdsFilterDateTo');
+                    if (fromEl) fromEl.value = '';
+                    if (toEl) toEl.value = '';
+                    var rangeEl = document.getElementById('amazonAdsFilterSummaryRange');
+                    if (rangeEl) rangeEl.value = '';
+                }
                 amzClearBadges();
                 amzUpdatePushButtons();
                 amzUpdatePieButton();
