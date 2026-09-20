@@ -2583,11 +2583,6 @@ class AmazonAdsController extends Controller
         $to = self::normalizeDateInput((string) $request->input('date_to'));
 
         if (! $hasReportRange) {
-            // Entity pulls (ad groups / negatives) are snapshots, not daily reports.
-            // Do not treat created_at as the Amazon Ads calendar or the grid goes empty.
-            if (in_array($table, ['amazon_ads_ad_groups', 'amazon_sp_negative_keywords'], true)) {
-                return;
-            }
             $dateCol = null;
             if (in_array('date', $cols, true)) {
                 $dateCol = 'date';
