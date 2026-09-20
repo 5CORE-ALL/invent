@@ -247,6 +247,35 @@
             font-size: .82rem; border-bottom: 1px solid #f3f4f6; color: #1f2937;
         }
         .lc-cat-item:hover { background: #eff6ff; color: var(--lc-blue); }
+        .wf-picker { border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; overflow: hidden; }
+        .wf-picker-search { display: flex; align-items: center; gap: .6rem; padding: .7rem .9rem; border-bottom: 1px solid #e5e7eb; }
+        .wf-picker-search i { color: #9ca3af; }
+        .wf-picker-search input { border: 0; box-shadow: none; padding: 0; font-size: .9rem; }
+        .wf-picker-search input:focus { box-shadow: none; }
+        .wf-picker-selected { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; padding: .65rem .9rem; border-bottom: 1px solid #eef2f7; font-size: .8rem; color: #6b7280; min-height: 46px; }
+        .wf-chip {
+            display: inline-flex; align-items: center; gap: .4rem; background: #f3f4f6; color: #111827;
+            border: 1px solid #e5e7eb; border-radius: 999px; padding: .2rem .55rem .2rem .7rem; font-weight: 600; font-size: .78rem;
+        }
+        .wf-chip button { border: 0; background: transparent; color: #6b7280; line-height: 1; padding: 0; font-size: .85rem; }
+        .wf-picker-grid { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.15fr) minmax(240px, 1.25fr); min-height: 360px; }
+        @media (max-width: 900px) { .wf-picker-grid { grid-template-columns: 1fr; } }
+        .wf-picker-col { border-right: 1px solid #eef2f7; display: flex; flex-direction: column; min-height: 360px; }
+        .wf-picker-col:last-child { border-right: 0; }
+        .wf-picker-col-h { font-weight: 700; font-size: .92rem; padding: .7rem .85rem; border-bottom: 1px solid #eef2f7; }
+        .wf-picker-col-h span { font-weight: 600; color: #6b7280; }
+        .wf-picker-list { overflow: auto; max-height: 420px; }
+        .wf-row {
+            width: 100%; display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+            border: 0; background: #f8fafc; color: #111827; text-align: left; padding: .62rem .85rem;
+            border-bottom: 1px solid #fff; font-size: .82rem;
+        }
+        .wf-row:hover { background: #eef2ff; }
+        .wf-row.is-active { background: #f3e8ff; color: #3b0764; font-weight: 600; }
+        .wf-radio { width: 16px; height: 16px; flex: 0 0 16px; accent-color: #6d28d9; }
+        .wf-def { padding: .85rem; overflow: auto; max-height: 420px; color: #374151; font-size: .8rem; line-height: 1.45; white-space: pre-wrap; }
+        .wf-def-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #6b7280; min-height: 280px; padding: 1.5rem; }
+        .wf-def-empty i { font-size: 2.4rem; color: #7c3aed; margin-bottom: .75rem; }
         .lc-primary-path { color: var(--lc-blue); font-weight: 600; font-size: .9rem; }
         .lc-policy-row { display: grid; grid-template-columns: 160px 1fr auto; gap: .65rem; align-items: center; margin-bottom: .75rem; }
         .lc-location-row { display: grid; grid-template-columns: 160px 1fr 1fr 1fr; gap: .65rem; align-items: center; }
@@ -881,6 +910,43 @@
                     </div>
                     <select class="form-select mb-3 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
                     <p class="lc-help" id="lc-category-help">Search and select a marketplace category.</p>
+
+                    <div class="lc-wayfair-only d-none mb-3" id="lc-wayfair-class-picker">
+                        <div class="mb-2 d-none" id="wf-class-id-fallback">
+                            <label class="form-label" for="lc-wayfair-class-id">Class ID <span class="lc-req">*</span></label>
+                            <input type="text" id="lc-wayfair-class-id" class="form-control" placeholder="Numeric class ID from Partner Home" inputmode="numeric">
+                            <p class="lc-help mb-0 mt-1">This class name is selected. Type the numeric class ID shown in Partner Home to publish.</p>
+                        </div>
+                        <div class="wf-picker">
+                            <div class="wf-picker-search">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="lc-wayfair-class-search" class="form-control" placeholder="Search categories or product classes" autocomplete="off">
+                            </div>
+                            <div class="wf-picker-selected">
+                                <span>Selected (<span id="wf-selected-count">0</span>):</span>
+                                <div id="wf-selected-chips"></div>
+                            </div>
+                            <div class="wf-picker-grid">
+                                <div class="wf-picker-col">
+                                    <div class="wf-picker-col-h">Categories <span id="wf-cat-count">(0)</span></div>
+                                    <div class="wf-picker-list" id="wf-categories"></div>
+                                </div>
+                                <div class="wf-picker-col">
+                                    <div class="wf-picker-col-h">Classes</div>
+                                    <div class="wf-picker-list" id="wf-classes"></div>
+                                </div>
+                                <div class="wf-picker-col">
+                                    <div class="wf-picker-col-h">Class Definition</div>
+                                    <div class="wf-def" id="wf-definition">
+                                        <div class="wf-def-empty">
+                                            <i class="fas fa-couch"></i>
+                                            <div>Choose a product class from the list to see its definition and example images.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <div class="lc-amazon-only d-none mb-3">
                         <label class="form-label">Amazon Product Type <span class="lc-req">*</span></label>
@@ -2767,6 +2833,81 @@
         }
     }
 
+    let wayfairPickerState = { groups: [], classes: [], selectedGroup: '' };
+
+    function wayfairEmptyDefinition() {
+        return '<div class="wf-def-empty"><i class="fas fa-couch"></i><div>Choose a product class from the list to see its definition and example images.</div></div>';
+    }
+
+    function renderWayfairSelectedChip() {
+        const id = String($('#lc-category-id').val() || '').trim();
+        const name = String($('#lc-category-path-input').val() || '').replace(/\s+\(\d+\)$/, '').trim();
+        if (!name && !id) {
+            $('#wf-selected-count').text('0');
+            $('#wf-selected-chips').html('');
+            return;
+        }
+        $('#wf-selected-count').text('1');
+        $('#wf-selected-chips').html(
+            '<span class="wf-chip">' + escapeHtml(name || ('Class ' + id)) +
+            ' <button type="button" id="wf-clear-class" aria-label="Clear class">&times;</button></span>'
+        );
+    }
+
+    function renderWayfairClassPicker(res) {
+        const groups = Array.isArray(res.groups) ? res.groups : [];
+        const classes = Array.isArray(res.classes) ? res.classes : (res.categories || []);
+        wayfairPickerState.groups = groups;
+        wayfairPickerState.classes = classes;
+        const selectedId = String($('#lc-category-id').val() || '').trim();
+        const selectedName = String($('#lc-category-path-input').val() || '').replace(/\s+\(\d+\)$/, '').trim().toLowerCase();
+        $('#wf-cat-count').text('(' + groups.length + ')');
+        $('#wf-categories').html(groups.map(g => {
+            const active = wayfairPickerState.selectedGroup && g.name === wayfairPickerState.selectedGroup ? ' is-active' : '';
+            return '<button type="button" class="wf-row wf-group-row' + active + '" data-group="' + escapeHtml(g.name) + '">' +
+                escapeHtml(g.name) + '</button>';
+        }).join(''));
+        if (!classes.length) {
+            $('#wf-classes').html('<div class="text-muted small p-3">No matching classes.</div>');
+        } else {
+            $('#wf-classes').html(classes.map(r => {
+                const id = String(r.id || '');
+                const name = String(r.name || r.path || '');
+                const active = (id && id === selectedId) || (!id && name.toLowerCase() === selectedName) ? ' is-active' : '';
+                const checked = active ? ' checked' : '';
+                return '<button type="button" class="wf-row wf-class-row' + active + '" data-id="' + escapeHtml(id) +
+                    '" data-name="' + escapeHtml(name) + '">' +
+                    '<span>' + escapeHtml(name) + '</span>' +
+                    '<input type="radio" class="wf-radio" tabindex="-1"' + checked + '></button>';
+            }).join(''));
+        }
+        const selected = classes.find(r => (String(r.id || '') && String(r.id) === selectedId) || String(r.name || '').toLowerCase() === selectedName);
+        if (selected && selected.definition) {
+            $('#wf-definition').text(selected.definition);
+        } else if (!$('#wf-definition').text().trim()) {
+            $('#wf-definition').html(wayfairEmptyDefinition());
+        }
+        renderWayfairSelectedChip();
+    }
+
+    function applyWayfairClass(row) {
+        const id = String((row && row.id) || '').trim();
+        const name = String((row && row.name) || '').trim();
+        const path = String((row && row.path) || name).trim();
+        $('#lc-category-id').val(id);
+        $('#lc-category-path-input').val(path);
+        $('#lc-category-id-visible').val(id);
+        $('#lc-category-path-visible').val(path);
+        if (row && row.definition) {
+            $('#wf-definition').text(row.definition);
+        }
+        $('#wf-class-id-fallback').toggleClass('d-none', !(name && !id));
+        $('#lc-wayfair-class-id').val(id);
+        renderWayfairSelectedChip();
+        dirty = true;
+        refreshEditorUi(currentDraft);
+    }
+
     function searchCategories(q) {
         const $box = $('#lc-category-results');
         const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
@@ -2792,14 +2933,17 @@
             $box.html('<div class="text-muted small p-3">Type a keyword such as speaker or stand to load Newegg Seller Portal subcategories.</div>');
             return;
         }
-        if (family === 'wayfair' && (!q || q.length < 2) && !title) {
-            $box.html('<div class="text-muted small p-3">Type a keyword such as lighting stand or guitar stand to load Wayfair classes.</div>');
-            return;
+        if (family === 'wayfair') {
+            q = String($('#lc-wayfair-class-search').val() || q || '').trim();
         }
         const searchingLabel = family === 'tiktok'
             ? 'Searching TikTok Shop categories…'
             : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : (family === 'temu' ? 'Searching Temu categories…' : (family === 'newegg' ? 'Searching Newegg subcategories…' : (family === 'faire' ? 'Searching Faire product types…' : (family === 'wayfair' ? 'Searching Wayfair classes…' : 'Searching…'))))));
-        $box.html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
+        if (family === 'wayfair') {
+            $('#wf-classes').html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
+        } else {
+            $box.html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
+        }
         const desc = String(getDescriptionValue() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
         if (window._lcCatXhr && window._lcCatXhr.abort) {
             window._lcCatXhr.abort();
@@ -2807,12 +2951,16 @@
         window._lcCatXhr = $.ajax({
             url: "{{ route('listing.manager.ebay.categories') }}",
             method: family === 'tiktok' ? 'POST' : 'GET',
-            data: { q, channel, title, description: desc },
+            data: { q, channel, title, description: desc, group: family === 'wayfair' ? (wayfairPickerState.selectedGroup || '') : '' },
             dataType: 'json',
             timeout: 25000,
             success: function (res) {
                 if (family === 'reverb' && Array.isArray(res.conditions)) {
                     fillReverbConditions(res.conditions, 'Brand New');
+                }
+                if (family === 'wayfair') {
+                    renderWayfairClassPicker(res || {});
+                    return;
                 }
                 const rows = res.categories || [];
                 if (!rows.length) {
@@ -2869,6 +3017,7 @@
         $('.lc-temu-only').toggleClass('d-none', !ed.temu);
         $('.lc-reverb-only').toggleClass('d-none', !ed.reverb);
         $('.lc-faire-only').toggleClass('d-none', !ed.faire);
+        $('.lc-wayfair-only').toggleClass('d-none', !ed.wayfair);
         $('.lc-amazon-only').each(function () {
             const share = $(this).hasClass('lc-wayfair-share');
             $(this).toggleClass('d-none', !(ed.amazon || (share && ed.wayfair)));
@@ -2878,9 +3027,9 @@
         $('#lc-attr-help').text(ed.wayfair && !ed.amazon
             ? 'Color and country of origin are sent with the Wayfair class questions. Color is taken from the SKU when possible.'
             : 'Amazon will reject the listing without these. Color is taken from the SKU when possible.');
-        $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg || ed.wayfair));
-        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg || ed.faire || ed.wayfair));
-        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg || ed.faire || ed.wayfair));
+        $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg));
+        $('.lc-mp-category-search').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg || ed.faire) && !ed.wayfair));
+        $('.lc-mp-category-selected').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg || ed.faire) && !ed.wayfair));
         $('.lc-category-star').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.newegg || ed.faire || ed.wayfair));
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon || ed.wayfair));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
@@ -3042,7 +3191,11 @@
             const family = (draft.editor && draft.editor.family) || '';
             if ((family === 'tiktok' || family === 'reverb') && !String($('#lc-category-id').val() || '').trim()) {
                 searchCategories(family === 'reverb' ? String($('#lc-title').val() || '').trim() : '');
-            } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg' || family === 'faire' || family === 'wayfair') {
+            } else if (family === 'wayfair') {
+                $('#wf-definition').html(wayfairEmptyDefinition());
+                renderWayfairSelectedChip();
+                searchCategories(String($('#lc-wayfair-class-search').val() || '').trim());
+            } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg' || family === 'faire') {
                 const amazonQ = String($('#lc-category-search').val() || $('#lc-amazon-product-type').val() || $('#lc-title').val() || '').trim();
                 searchCategories(family === 'amazon' ? amazonQ : String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());
             }
@@ -4077,8 +4230,10 @@
             $(this).addClass('active');
             $('#lmListingEditorModal .lc-pane').removeClass('active');
             $(`#lmListingEditorModal .lc-pane[data-pane="${pane}"]`).addClass('active');
-            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb || currentDraft.editor.amazon || currentDraft.editor.temu || currentDraft.editor.newegg)) {
-                const q = String($('#lc-category-search').val() || (currentDraft.editor.amazon ? ($('#lc-amazon-product-type').val() || $('#lc-title').val() || '') : ((currentDraft.editor.temu || currentDraft.editor.newegg) ? ($('#lc-title').val() || '') : '')) || '').trim();
+            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb || currentDraft.editor.amazon || currentDraft.editor.temu || currentDraft.editor.newegg || currentDraft.editor.wayfair)) {
+                const q = currentDraft.editor.wayfair
+                    ? String($('#lc-wayfair-class-search').val() || '').trim()
+                    : String($('#lc-category-search').val() || (currentDraft.editor.amazon ? ($('#lc-amazon-product-type').val() || $('#lc-title').val() || '') : ((currentDraft.editor.temu || currentDraft.editor.newegg) ? ($('#lc-title').val() || '') : '')) || '').trim();
                 searchCategories(q);
             }
         });
@@ -4339,10 +4494,41 @@
             dirty = true;
             refreshEditorUi(currentDraft);
         });
-        $('#lc-category-search, #lc-amazon-product-type').on('input', function () {
+        $('#lc-category-search, #lc-amazon-product-type, #lc-wayfair-class-search').on('input', function () {
             const q = String($(this).val() || '').trim();
+            if (this.id === 'lc-wayfair-class-search') {
+                wayfairPickerState.selectedGroup = '';
+            }
             clearTimeout(categoryTimer);
             categoryTimer = setTimeout(() => searchCategories(q), 350);
+        });
+        $('#wf-categories').on('click', '.wf-group-row', function () {
+            const group = String($(this).data('group') || '');
+            wayfairPickerState.selectedGroup = wayfairPickerState.selectedGroup === group ? '' : group;
+            searchCategories(String($('#lc-wayfair-class-search').val() || '').trim());
+        });
+        $('#wf-classes').on('click', '.wf-class-row', function () {
+            const id = String($(this).data('id') || '');
+            const name = String($(this).data('name') || '');
+            const row = (wayfairPickerState.classes || []).find(r => (id && String(r.id || '') === id) || String(r.name || '') === name) || {
+                id, name, path: name, definition: ''
+            };
+            applyWayfairClass(row);
+            $('#wf-classes .wf-class-row').removeClass('is-active').find('.wf-radio').prop('checked', false);
+            $(this).addClass('is-active').find('.wf-radio').prop('checked', true);
+            toast('Wayfair class selected.', 'success');
+        });
+        $('#lc-wayfair-class-id').on('input', function () {
+            const id = String($(this).val() || '').trim();
+            $('#lc-category-id').val(id);
+            $('#lc-category-id-visible').val(id);
+            dirty = true;
+            refreshEditorUi(currentDraft);
+        });
+        $('#wf-selected-chips').on('click', '#wf-clear-class', function () {
+            applyWayfairClass({ id: '', name: '', path: '', definition: '' });
+            $('#wf-definition').html(wayfairEmptyDefinition());
+            $('#wf-classes .wf-class-row').removeClass('is-active').find('.wf-radio').prop('checked', false);
         });
         $('#lc-category-results').on('click', '.lc-cat-item', function () {
             const id = String($(this).data('id') || '');
