@@ -3120,9 +3120,17 @@
         if (family === 'wayfair') {
             q = String($('#lc-wayfair-class-search').val() || q || '').trim();
         }
-        const searchingLabel = family === 'tiktok'
-            ? 'Searching TikTok Shop categories…'
-            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : (family === 'temu' ? 'Searching Temu categories…' : (family === 'newegg' ? 'Searching Newegg subcategories…' : (family === 'faire' ? 'Searching Faire product types…' : (family === 'wayfair' ? 'Searching Wayfair classes…' : (family === 'mirakl' ? 'Searching marketplace categories…' : 'Searching…'))))))));
+        const searchingLabels = {
+            tiktok: 'Searching TikTok Shop categories…',
+            reverb: 'Searching Reverb categories…',
+            amazon: 'Searching Amazon product types…',
+            temu: 'Searching Temu categories…',
+            newegg: 'Searching Newegg subcategories…',
+            faire: 'Searching Faire product types…',
+            wayfair: 'Searching Wayfair classes…',
+            mirakl: 'Searching marketplace categories…',
+        };
+        const searchingLabel = searchingLabels[family] || 'Searching…';
         if (family === 'wayfair') {
             $('#wf-classes').html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
         } else {
