@@ -2162,6 +2162,7 @@
                                 <select id="filter-status" class="form-select form-select-sm">
                                     <option value="">Status All</option>
                                     <option value="Todo">Todo</option>
+                                    <option value="Working">Working</option>
                                     <option value="Done">Done</option>
                                     <option value="Need Help">Need Help</option>
                                     <option value="Need Approval">Need Approval</option>
@@ -4479,7 +4480,7 @@
                                         data-current-status="${value}"
                                         style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 8.8px; border-radius: 16px; padding: 4.8px 9.6px; white-space: nowrap;">
                                     <option value="Todo" ${value === 'Todo' ? 'selected' : ''}>Todo</option>
-                                    ${value === 'Working' ? '<option value="Working" selected>Working</option>' : ''}
+                                    <option value="Working" ${value === 'Working' ? 'selected' : ''}>Working</option>
                                     ${value === 'Archived' ? '<option value="Archived" selected>Archived</option>' : ''}
                                     <option value="Done" ${value === 'Done' ? 'selected' : ''}>Done</option>
                                     <option value="Need Help" ${value === 'Need Help' ? 'selected' : ''}>Need Help</option>
