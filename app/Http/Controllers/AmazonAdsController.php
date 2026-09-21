@@ -239,14 +239,14 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // Targets: live keyword + product-target count, immediately after SBID.
+        // Targets and N Target sit immediately after SBID. Counts come from synced report tables.
         if (in_array('sbid', $ordered, true)
             && in_array('campaign_id', $ordered, true)
             && in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'targets'));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'targets' && $c !== 'nTargets'));
             $idxSbidTargets = array_search('sbid', $ordered, true);
             if ($idxSbidTargets !== false) {
-                array_splice($ordered, $idxSbidTargets + 1, 0, ['targets']);
+                array_splice($ordered, $idxSbidTargets + 1, 0, ['targets', 'nTargets']);
             }
         }
 
@@ -3081,19 +3081,70 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Distinct negative keywords on each campaign from the synced SP negative-keyword list.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, int>
+     */
+    private static function negativeTargetCountsForCampaigns(array $campaignIds): array
+    {
+        $ids = [];
+        foreach ($campaignIds as $id) {
+            $s = trim((string) $id);
+            if ($s !== '') {
+                $ids[$s] = true;
+            }
+        }
+        $ids = array_keys($ids);
+        if ($ids === [] || ! Schema::hasTable('amazon_sp_negative_keywords')) {
+            return array_fill_keys($ids, 0);
+        }
+        $cols = Schema::getColumnListing('amazon_sp_negative_keywords');
+        if (! in_array('campaign_id', $cols, true) || ! in_array('keyword_id', $cols, true)) {
+            return array_fill_keys($ids, 0);
+        }
+
+        $map = array_fill_keys($ids, 0);
+        $hasState = in_array('state', $cols, true);
+        foreach (array_chunk($ids, 500) as $chunk) {
+            $q = DB::table('amazon_sp_negative_keywords')
+                ->select('campaign_id', DB::raw('COUNT(DISTINCT keyword_id) AS c'))
+                ->whereIn('campaign_id', $chunk)
+                ->whereNotNull('keyword_id')
+                ->where('keyword_id', '!=', '');
+            if ($hasState) {
+                $q->where(function ($w) {
+                    $w->whereNull('state')->orWhereRaw("UPPER(state) <> 'ARCHIVED'");
+                });
+            }
+            foreach ($q->groupBy('campaign_id')->get() as $row) {
+                $map[trim((string) $row->campaign_id)] = (int) $row->c;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
-    private static function attachTargetCountsToRows(array $rows, string $table): array
+    private static function attachTargetCountsToRows(array $rows, string $table, bool $withTargets, bool $withNegatives): array
     {
         $ids = [];
         foreach ($rows as $row) {
             $ids[] = $row['campaign_id'] ?? '';
         }
-        $counts = self::targetCountsForCampaigns($table, $ids);
+        $counts = $withTargets ? self::targetCountsForCampaigns($table, $ids) : [];
+        $negatives = $withNegatives ? self::negativeTargetCountsForCampaigns($ids) : [];
         foreach ($rows as $i => $row) {
             $cid = trim((string) ($row['campaign_id'] ?? ''));
-            $rows[$i]['targets'] = ($cid !== '' && array_key_exists($cid, $counts)) ? $counts[$cid] : null;
+            if ($withTargets) {
+                $rows[$i]['targets'] = ($cid !== '' && array_key_exists($cid, $counts)) ? $counts[$cid] : null;
+            }
+            if ($withNegatives) {
+                $rows[$i]['nTargets'] = ($cid !== '' && array_key_exists($cid, $negatives)) ? $negatives[$cid] : 0;
+            }
         }
 
         return $rows;
@@ -3236,7 +3287,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Filter by ACOS color band (same first-match BGT color rules as the ACOS% column).
+     * Filter by LT ACOS band (same first-match ranges as BGT Vs ACOS).
      * Request value is `band:{index}`, a 0-based index, or a band label / hex color.
      */
     private static function applyAcosColorFilter(Builder $query, string $table, Request $request): void
@@ -3247,8 +3298,7 @@ class AmazonAdsController extends Controller
         }
 
         $dbColumns = Schema::getColumnListing($table);
-        $acosExpr = self::sqlExpressionForAcosSort($table, $dbColumns);
-        if ($acosExpr === null) {
+        if (! in_array('campaign_id', $dbColumns, true)) {
             return;
         }
 
@@ -3262,16 +3312,52 @@ class AmazonAdsController extends Controller
             return;
         }
 
-        $sql = 'CASE';
-        $bindings = [];
-        foreach ($bands as $i => $band) {
-            $sql .= ' WHEN ('.$acosExpr.') >= ? AND ('.$acosExpr.') <= ? THEN '.$i;
-            $bindings[] = (float) ($band['acos_from'] ?? 0);
-            $bindings[] = (float) ($band['acos_to'] ?? 9999);
+        $hasAd = in_array('ad_type', $dbColumns, true);
+        $select = ['campaign_id'];
+        if ($hasAd) {
+            $select[] = 'ad_type';
         }
-        $sql .= ' ELSE -1 END';
-        $bindings[] = $idx;
-        $query->whereRaw('('.$sql.') = ?', $bindings);
+        $pairs = $query->clone()->reorder()->select($select)->distinct()->get();
+        $map = self::prefetchLifetimeAcosForPageRows($table, $dbColumns, $pairs);
+        $keep = [];
+        foreach ($pairs as $row) {
+            $cid = trim((string) ($row->campaign_id ?? ''));
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAd ? trim((string) ($row->ad_type ?? '')) : '';
+            $acos = $map[$cid."\0".$ad] ?? null;
+            if ($acos === null || self::firstAcosBandIndex((float) $acos, $bands) !== $idx) {
+                continue;
+            }
+            $keep[$cid] = $cid;
+        }
+        if ($keep === []) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+        $query->where(function (Builder $w) use ($keep) {
+            foreach (array_chunk(array_values($keep), 500) as $chunk) {
+                $w->orWhereIn('campaign_id', $chunk);
+            }
+        });
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $bands
+     */
+    private static function firstAcosBandIndex(float $acos, array $bands): int
+    {
+        foreach ($bands as $i => $band) {
+            $from = (float) ($band['acos_from'] ?? 0);
+            $to = (float) ($band['acos_to'] ?? 9999);
+            if ($acos >= $from && $acos <= $to) {
+                return (int) $i;
+            }
+        }
+
+        return -1;
     }
 
     /**
@@ -5098,7 +5184,10 @@ class AmazonAdsController extends Controller
                 $arr['ACOS'] = $acosPct;
             }
             if (in_array('sbgt', $columns, true) || in_array('bgtAcos', $columns, true)) {
-                $arr['bgtAcos'] = self::computedSbgtFromReportRow($acosCalcRow, $dbColumns, $acosPct);
+                $ltForBgt = (isset($arr['ltAcos']) && is_numeric($arr['ltAcos'])) ? (float) $arr['ltAcos'] : null;
+                $arr['bgtAcos'] = $ltForBgt === null
+                    ? null
+                    : AmazonAcosSbgtRule::sbgtFromAcosL30($ltForBgt);
             }
             if (in_array('sbgt', $columns, true)) {
                 $arr['sbgt'] = self::summedSbgtFromParts(
@@ -5170,8 +5259,13 @@ class AmazonAdsController extends Controller
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
             $data = self::attachLiveSyncStatusesToRows($data, $table);
         }
-        if (in_array('targets', $columns, true)) {
-            $data = self::attachTargetCountsToRows($data, $table);
+        if (in_array('targets', $columns, true) || in_array('nTargets', $columns, true)) {
+            $data = self::attachTargetCountsToRows(
+                $data,
+                $table,
+                in_array('targets', $columns, true),
+                in_array('nTargets', $columns, true)
+            );
         }
 
         $payload = [
