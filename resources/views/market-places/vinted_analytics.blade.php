@@ -772,6 +772,43 @@
                     }
                 },
                 {
+                    title: "SPRICE",
+                    field: "SPRICE",
+                    sorter: "number",
+                    hozAlign: "center",
+                    width: 88,
+                    headerTooltip: "S PRC. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP. No ship in SGROI/SGPFT.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                        let value = dpRowSprice(d);
+                        if (!(value > 0)) return '<span class="text-muted">–</span>';
+                        const live = parseFloat(d.price) || 0;
+                        const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
+                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
+                        const status = String(d.SPRICE_STATUS || '');
+                        let bg = '';
+                        if (status === 'pushed') bg = 'background-color:#fff3cd;';
+                        else if (status === 'applied') bg = 'background-color:#d4edda;';
+                        else if (status === 'error') bg = 'background-color:#f8d7da;';
+                        else if (d.has_custom_sprice) bg = 'background-color:#e7f1ff;';
+                        const formatted = '$' + value.toFixed(2);
+                        const priceHtml = overLmp
+                            ? '<span style="color:#dc3545;font-weight:600;' + bg + 'padding:2px 6px;border-radius:3px;">' + formatted + '</span>'
+                            : '<span style="font-weight:600;' + bg + 'padding:2px 6px;border-radius:3px;">' + formatted + '</span>';
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                            : '';
+                        const redTri = overLmp
+                            ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;"></i>')
+                            : '';
+                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                            + priceHtml + blueTri + redTri + '</span>';
+                    }
+                },
+                {
                     title: "GROI",
                     field: "groi",
                     sorter: "number",
@@ -839,36 +876,6 @@
                         return '<span style="font-weight:600;color:#6f42c1;">$' + meta.sprc.toFixed(2) + '</span>';
                     },
                     width: 78
-                },
-                {
-                    title: "Sprice",
-                    field: "sprice",
-                    sorter: "number",
-                    hozAlign: "right",
-                    headerTooltip: "S PRC. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP. No ship in SGROI/SGPFT.",
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
-                        let value = dpRowSprice(d);
-                        if (!(value > 0)) return '<span class="text-muted">–</span>';
-                        const live = parseFloat(d.price) || 0;
-                        const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
-                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                        const formatted = '$' + value.toFixed(2);
-                        const priceHtml = overLmp
-                            ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
-                            : '<span style="font-weight:600;">' + formatted + '</span>';
-                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
-                            : '';
-                        const redTri = overLmp
-                            ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;"></i>')
-                            : '';
-                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + priceHtml + blueTri + redTri + '</span>';
-                    }
                 },
                 {
                     title: "SGROI",
