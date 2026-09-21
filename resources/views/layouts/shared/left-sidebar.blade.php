@@ -81,6 +81,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="{{ route('feedback.index') }}" class="{{ request()->routeIs('feedback.*') ? 'active' : '' }}">
+                                <i class="ri-feedback-line me-2"></i>Feedback
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('chat.index') }}" class="{{ request()->routeIs('chat.*') ? 'active' : '' }}">
                                 <i class="ri-chat-3-line me-2"></i>Slack
                             </a>

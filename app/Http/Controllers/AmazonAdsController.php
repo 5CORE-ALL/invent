@@ -81,7 +81,7 @@ class AmazonAdsController extends Controller
      */
     private const PHP_SORT_DISPLAY_COLUMNS = [
         'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt',
-        'U7%', 'U2%', 'U1%', 'CPC3', 'CPC2',
+        'U7%', 'U2%', 'U1%', 'CPC3', 'CPCAvg', 'CPC2',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'pageCvr', 'viewsL30', 'viewsL7',
         'ACOS',
@@ -181,7 +181,7 @@ class AmazonAdsController extends Controller
     /**
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
-     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` then `activeAgain` follow Stat; `bgtAcos` then `bgtViews` then `bgtCvr` then `bgtPrc` then `bgtReviews` then `bgtDil` then `sbgt` follow `bgt` when the table has campaign budget.
+     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` follows Stat; `activeAgain` is the last column; `bgtAcos` then `bgtViews` then `bgtCvr` then `bgtPrc` then `bgtReviews` then `bgtDil` then `sbgt` follow `bgt` when the table has campaign budget.
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -264,13 +264,13 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // Rule Status + Active Again immediately after Stat (SP/SB campaign reports only).
+        // Rule Status immediately after Stat. Active Again is appended at the end.
         if (($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports')
             && in_array('campaignStatus', $ordered, true)) {
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'ruleStatus' && $c !== 'activeAgain'));
             $idxStatForRule = array_search('campaignStatus', $ordered, true);
             if ($idxStatForRule !== false) {
-                array_splice($ordered, $idxStatForRule + 1, 0, ['ruleStatus', 'activeAgain']);
+                array_splice($ordered, $idxStatForRule + 1, 0, ['ruleStatus']);
             }
         }
 
@@ -326,7 +326,7 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // CPC 3 / 2 / 1 after L1 spend: SP uses `costPerClick`; SB CPC1 uses L1 summary cost ÷ clicks; CPC2/CPC3 use daily row lookups.
+        // CPC 3 / Avg / 2 / 1 after L1 spend. CPC Avg is lifetime cost ÷ clicks from daily API rows. SP uses `costPerClick`; SB CPC1 uses L1 summary cost ÷ clicks; CPC2/CPC3 use daily row lookups.
         $canCpcBlock = in_array('campaign_id', $ordered, true)
             && in_array('report_date_range', $ordered, true)
             && (
@@ -339,13 +339,14 @@ class AmazonAdsController extends Controller
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'costPerClick'));
             $idxL1 = array_search('L1spend', $ordered, true);
             if ($idxL1 !== false) {
-                array_splice($ordered, $idxL1 + 1, 0, ['CPC3', 'CPC2', 'costPerClick']);
+                array_splice($ordered, $idxL1 + 1, 0, ['CPC3', 'CPCAvg', 'CPC2', 'costPerClick']);
             } else {
                 $idxU1Fallback = array_search('U1%', $ordered, true);
                 if ($idxU1Fallback !== false) {
-                    array_splice($ordered, $idxU1Fallback + 1, 0, ['CPC3', 'CPC2', 'costPerClick']);
+                    array_splice($ordered, $idxU1Fallback + 1, 0, ['CPC3', 'CPCAvg', 'CPC2', 'costPerClick']);
                 } else {
                     $ordered[] = 'CPC3';
+                    $ordered[] = 'CPCAvg';
                     $ordered[] = 'CPC2';
                     $ordered[] = 'costPerClick';
                 }
@@ -460,12 +461,26 @@ class AmazonAdsController extends Controller
                 array_splice($filtered, $idxL1Sb + 1, 0, ['L1cost', 'L1clicks']);
             }
 
-            return $filtered;
+            return self::withActiveAgainLast($filtered);
         }
 
         if ($table === 'amazon_sp_campaign_reports') {
-            return self::withSkuMetricColumnsAfterCampaignName($ordered);
+            return self::withActiveAgainLast(self::withSkuMetricColumnsAfterCampaignName($ordered));
         }
+
+        return $ordered;
+    }
+
+    /**
+     * Active Again is the last grid column (green dot; full text on hover).
+     *
+     * @param  list<string>  $ordered
+     * @return list<string>
+     */
+    private static function withActiveAgainLast(array $ordered): array
+    {
+        $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'activeAgain'));
+        $ordered[] = 'activeAgain';
 
         return $ordered;
     }
@@ -1993,6 +2008,84 @@ class AmazonAdsController extends Controller
         $cpc = $cost / $c;
 
         return is_finite($cpc) && $cpc > 0 ? round($cpc, 4) : null;
+    }
+
+    /**
+     * Lifetime average CPC for the visible page: total cost ÷ total clicks on daily API rows
+     * (`report_date_range` YYYY-MM-DD). Same Amazon report data as CPC1/CPC2/CPC3.
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  iterable<int, object>  $pageRows
+     * @return array<string, float|null>
+     */
+    private static function prefetchLifetimeAvgCpcForPageRows(string $table, array $dbColumns, iterable $pageRows): array
+    {
+        if (! in_array('campaign_id', $dbColumns, true) || ! in_array('report_date_range', $dbColumns, true)) {
+            return [];
+        }
+        $costCol = in_array('cost', $dbColumns, true) ? 'cost' : (in_array('spend', $dbColumns, true) ? 'spend' : null);
+        $hasClicks = in_array('clicks', $dbColumns, true);
+        $hasCpc = in_array('costPerClick', $dbColumns, true);
+        $useWeighted = $costCol !== null && $hasClicks;
+        if (! $useWeighted && ! $hasCpc) {
+            return [];
+        }
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+        $cids = [];
+        foreach ($pageRows as $row) {
+            $rowArr = (array) $row;
+            $cid = isset($rowArr['campaign_id']) ? trim((string) $rowArr['campaign_id']) : '';
+            if ($cid !== '') {
+                $cids[$cid] = true;
+            }
+        }
+        $cidList = array_keys($cids);
+        if ($cidList === []) {
+            return [];
+        }
+
+        $select = ['campaign_id'];
+        if ($hasAdType) {
+            $select[] = 'ad_type';
+        }
+        if ($useWeighted) {
+            $select[] = DB::raw('SUM(`'.$costCol.'`) as life_cost');
+            $select[] = DB::raw('SUM(`clicks`) as life_clicks');
+        } else {
+            $select[] = DB::raw('AVG(CASE WHEN `costPerClick` > 0 THEN `costPerClick` END) as life_cpc');
+        }
+
+        $q = DB::table($table)
+            ->select($select)
+            ->whereIn('campaign_id', $cidList)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+        $q->groupBy($hasAdType ? ['campaign_id', 'ad_type'] : ['campaign_id']);
+
+        $map = [];
+        foreach ($q->get() as $fr) {
+            $r = (array) $fr;
+            $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($r['ad_type'] ?? '')) : '';
+            $cpc = null;
+            if ($useWeighted) {
+                $clicks = (float) ($r['life_clicks'] ?? 0);
+                $cost = (float) ($r['life_cost'] ?? 0);
+                if ($clicks > 0 && $cost > 0) {
+                    $n = $cost / $clicks;
+                    $cpc = is_finite($n) && $n > 0 ? round($n, 4) : null;
+                }
+            } else {
+                $n = (float) ($r['life_cpc'] ?? 0);
+                $cpc = is_finite($n) && $n > 0 ? round($n, 4) : null;
+            }
+            $map[$cid."\0".$ad] = $cpc;
+        }
+
+        return $map;
     }
 
     /**
@@ -4101,6 +4194,7 @@ class AmazonAdsController extends Controller
 
         $hasCpc2 = in_array('CPC2', $columns, true);
         $hasCpc3 = in_array('CPC3', $columns, true);
+        $hasCpcAvg = in_array('CPCAvg', $columns, true);
         $needRuleStatus = in_array('ruleStatus', $columns, true);
         $needActiveAgain = in_array('activeAgain', $columns, true);
         $needSkuMetrics = $needRuleStatus || $needActiveAgain || in_array('sbgt', $columns, true)
@@ -4181,6 +4275,9 @@ class AmazonAdsController extends Controller
         $cpcDayCache = ($hasCpc2 || $hasCpc3)
             ? self::prefetchCostPerClickForPageRows($table, $dbColumns, $rows, $hasCpc2, $hasCpc3)
             : [];
+        $cpcAvgMap = $hasCpcAvg
+            ? self::prefetchLifetimeAvgCpcForPageRows($table, $dbColumns, $rows)
+            : [];
         $data = [];
         foreach ($rows as $row) {
             $rowArr = (array) $row;
@@ -4238,6 +4335,12 @@ class AmazonAdsController extends Controller
                 } else {
                     $arr['CPC3'] = null;
                 }
+            }
+            if ($hasCpcAvg) {
+                $adKeyAvg = in_array('ad_type', $dbColumns, true) ? trim((string) ($adTypeStr ?? '')) : '';
+                $arr['CPCAvg'] = ($cid !== '' && array_key_exists($cid."\0".$adKeyAvg, $cpcAvgMap))
+                    ? $cpcAvgMap[$cid."\0".$adKeyAvg]
+                    : null;
             }
             if ($hasCpc2) {
                 $day2 = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, $table, 1);

@@ -68,6 +68,7 @@
     @include('partials.tat-nudge-modal')
     @include('partials.follow-up-nudge-modal')
     @include('partials.daily-closeout-modals')
+    @include('partials.department-feedback-modal')
     @auth
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')

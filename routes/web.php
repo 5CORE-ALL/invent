@@ -301,6 +301,7 @@ use App\Http\Controllers\PurchaseMaster\QcMastersController;
 use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
 use App\Http\Controllers\AnnouncementController;
+use App\Http\Controllers\DepartmentFeedbackController;
 use App\Http\Controllers\PurchaseMaster\ScopeOfImprovementController;
 use App\Http\Controllers\PurchaseMaster\DarController as DarReportController;
 use App\Http\Controllers\DailyCloseoutController;
@@ -3509,6 +3510,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/announcements/ai', 'ai')->name('announcements.ai');
         Route::post('/announcements/update/{id}', 'update')->name('announcements.update');
         Route::post('/announcements/delete/{id}', 'destroy')->name('announcements.delete');
+    });
+
+    Route::controller(DepartmentFeedbackController::class)->group(function () {
+        Route::get('/feedback', 'index')->name('feedback.index');
+        Route::post('/feedback', 'store')->name('feedback.store');
+        Route::post('/feedback/skip', 'skip')->name('feedback.skip');
     });
 
     // Scope of Improvement

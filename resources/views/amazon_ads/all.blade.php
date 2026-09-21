@@ -110,28 +110,108 @@
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[aria-sort="desc"] .tabulator-col-sorter {
             opacity: 1;
         }
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
-            padding-right: 12px;
+        /* Vertical column titles. Campaign name, checkbox, and task stay horizontal. */
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col {
+            height: 118px !important;
+            min-height: 118px;
+            vertical-align: bottom;
+            overflow: visible;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            height: 118px !important;
+            min-height: 118px;
+            padding: 0 0 14px !important;
+            display: flex !important;
+            align-items: flex-end;
+            justify-content: center;
+            box-sizing: border-box;
         }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
-            writing-mode: horizontal-tb !important; text-orientation: mixed !important;
-            transform: none !important; white-space: normal !important;
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            white-space: nowrap !important;
+            width: 100%;
         }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
-            writing-mode: horizontal-tb !important; text-orientation: mixed !important; transform: none !important;
-            white-space: normal !important; height: auto !important; min-height: 0 !important;             display: block;
-            align-items: unset; justify-content: unset; font-size: 12.5px; font-weight: 600; line-height: 1.25;
-            padding: 5px 2px; text-align: center;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap !important;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.15;
+            padding: 4px 0;
+            text-align: center;
+            overflow: visible;
+            text-overflow: clip;
         }
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content { height: auto !important; min-height: 34px; padding: 0; }
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col { height: auto !important; min-height: 34px; vertical-align: middle; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0 !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            position: absolute !important;
+            top: auto !important;
+            bottom: 2px !important;
+            left: 50% !important;
+            right: auto !important;
+            width: auto !important;
+            height: auto !important;
+            transform: translateX(-50%);
+            justify-content: center;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignName"] .tabulator-col-title,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__sel"] .tabulator-col-title,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__task"] .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            height: auto !important;
+            min-height: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap !important;
+            padding: 5px 3px;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignName"] .tabulator-col-content,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__sel"] .tabulator-col-content,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__task"] .tabulator-col-content {
+            align-items: center;
+            padding-bottom: 0 !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignName"] .tabulator-col-sorter {
+            top: 0 !important;
+            bottom: 0 !important;
+            left: auto !important;
+            right: 4px !important;
+            transform: none !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignName"].tabulator-sortable .tabulator-col-title {
+            padding-right: 14px !important;
+        }
+        /* BGT / bid headers: label stays vertical, sync counts stay horizontal */
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="bgt"] .tabulator-col-title,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="last_sbid"] .tabulator-col-title,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="sbid"] .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            height: 100% !important;
+            display: flex !important;
+            align-items: center;
+            justify-content: flex-end;
+            white-space: normal !important;
+            padding: 2px 0 !important;
+        }
         #amz-ads-raw-wrap .tabulator .tabulator-row { min-height: 32px; }
         #amz-ads-raw-wrap .tabulator .tabulator-row .tabulator-cell { padding: 3px 2px !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder { padding-left: 2px !important; padding-right: 2px !important; }
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignStatus"] .tabulator-col-title { white-space: nowrap !important; }
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="ruleStatus"] .tabulator-col-title { white-space: nowrap !important; }
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="activeAgain"] .tabulator-col-title { white-space: nowrap !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell .amz-raw-status-cell { white-space: nowrap; }
         #amz-ads-raw-wrap .amz-sync-cell {
             display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap;
@@ -141,12 +221,43 @@
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
         }
         .amz-sync-dot.is-green { background: #16a34a; }
+        .amz-active-again-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #16a34a;
+            box-shadow: 0 0 0 1px rgba(22, 163, 74, 0.28);
+            vertical-align: middle;
+            cursor: default;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="activeAgain"] .tabulator-col-content {
+            align-items: center;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="activeAgain"] .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            height: auto !important;
+            min-height: 0 !important;
+        }
         .amz-sync-dot.is-yellow { background: #f59e0b; }
         .amz-sync-dot.is-red { background: #dc2626; }
         .amz-sync-head {
-            display: flex; flex-direction: column; align-items: center; gap: 3px; line-height: 1.15;
+            display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+            gap: 4px; line-height: 1.15; height: 100%; width: 100%;
         }
-        .amz-sync-head-title { font-weight: 700; }
+        .amz-sync-head-title {
+            font-weight: 700;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
         .amz-sync-head-badges { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
         .amz-sync-badge {
             display: inline-flex; align-items: center; gap: 4px;
@@ -1123,7 +1234,7 @@
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value'];
             var NON_ORDERABLE_COLUMNS = [];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -1586,16 +1697,12 @@
                 var v = cell.getValue();
                 var raw = (v === null || v === undefined) ? '' : String(v).trim();
                 var row = cell.getRow ? cell.getRow().getData() : {};
-                var reason = (row && row.activeAgainReason) ? String(row.activeAgainReason).trim() : '';
-                var tipRaw = (row && row.activeAgainTip) ? String(row.activeAgainTip) : (reason || raw || '—');
+                var tipRaw = (row && row.activeAgainTip) ? String(row.activeAgainTip).trim() : '';
                 if (raw === '') {
-                    return '<span class="amz-raw-status-cell text-muted" title="' + amzEsc(tipRaw || '—') + '">—</span>';
+                    return '<span class="amz-raw-status-cell text-muted" title="Not turned back on">—</span>';
                 }
-                var reasonHtml = reason
-                    ? '<span style="display:block;font-size:11px;font-weight:400;color:#64748b;white-space:normal;line-height:1.25;">' + amzEsc(reason) + '</span>'
-                    : '';
-                return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="display:block;color:#16a34a;font-weight:500;line-height:1.2;">'
-                     + amzEsc(raw) + reasonHtml + '</span>';
+                var full = tipRaw ? (raw + ' — ' + tipRaw) : raw;
+                return '<span class="amz-active-again-dot" title="' + amzEsc(full) + '" aria-label="' + amzEsc(full) + '"></span>';
             }
             function fmtAdType(cell) {
                 var v = cell.getValue();
@@ -1737,12 +1844,14 @@
                 if (c === 'campaignStatus') { col.title = 'Stat'; col.formatter = fmtCampaignStatus; col.width = 48; col.minWidth = 44; return; }
                 if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — red = pause when Dil% ≥ threshold. Only PARENT campaigns auto-activate again.'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
                 if (c === 'activeAgain') {
-                    col.title = 'Active Again';
-                    col.headerTooltip = 'Turned back on after a Pause Rule match. Status and original pause reason.';
+                    col.title = '';
+                    col.headerTooltip = 'Active Again — turned back on after a Pause Rule match. Hover a green dot for the full reason.';
+                    col.titleFormatter = function () {
+                        return '<span class="amz-active-again-dot" title="Active Again"></span>';
+                    };
                     col.formatter = fmtActiveAgain;
-                    col.width = 200;
-                    col.minWidth = 160;
-                    col.variableHeight = true;
+                    col.width = 36;
+                    col.minWidth = 36;
                     return;
                 }
                 if (c === 'ad_type') { col.formatter = fmtAdType; return; }
@@ -1829,7 +1938,6 @@
                 }
                 if (c === 'bgtReviews') {
                     col.title = 'Bgt Reviews';
-                    col.titleFormatter = function () { return 'Bgt<br>Reviews'; };
                     col.headerTooltip = 'Suggested budget from BGT Vs REVIEWS — campaign star rating slabs';
                     col.formatter = fmtBgtReviews;
                     col.width = 68;
@@ -1881,6 +1989,14 @@
                 if (c === 'L1clicks') { col.title = 'L1Clk'; col.formatter = fmtDashInt; return; }
                 if (c === 'U7%' || c === 'U2%' || c === 'U1%') { col.formatter = fmtUtilPercent; return; }
                 if (c === 'CPC3') { col.title = 'CPC3'; col.formatter = fmt2dec; return; }
+                if (c === 'CPCAvg') {
+                    col.title = 'CPC Avg';
+                    col.headerTooltip = 'Lifetime average CPC from Amazon Ads daily reports — total cost ÷ total clicks.';
+                    col.formatter = fmt2dec;
+                    col.width = 68;
+                    col.minWidth = 60;
+                    return;
+                }
                 if (c === 'CPC2') { col.title = 'CPC2'; col.formatter = fmt2dec; return; }
                 if (c === 'costPerClick') { col.title = 'CPC1'; col.formatter = fmt2dec; return; }
                 if (c === 'sales30d') { col.title = 'SL 30'; col.formatter = fmtDashRounded; return; }
@@ -1924,6 +2040,13 @@
                 }
                 if (nameIdx !== -1) {
                     for (var fj = 0; fj <= nameIdx; fj++) defs[fj].frozen = true;
+                }
+                var againIdx = -1;
+                for (var ak = 0; ak < defs.length; ak++) {
+                    if (defs[ak].field === 'activeAgain') { againIdx = ak; break; }
+                }
+                if (againIdx !== -1 && againIdx !== defs.length - 1) {
+                    defs.push(defs.splice(againIdx, 1)[0]);
                 }
                 return defs;
             }
@@ -2263,7 +2386,7 @@
             function amzClassifyColumn(field, title) {
                 var f = String(field || '');
                 var t = String(title || field || '').toLowerCase();
-                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPC2|costPerClick)$/i.test(f)
+                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick)$/i.test(f)
                     || /\b(acos|cvr|click|impr|sold|spend|spl30|cpc|sales|u7|u2|u1)\b/i.test(t)) {
                     return 'ads';
                 }
