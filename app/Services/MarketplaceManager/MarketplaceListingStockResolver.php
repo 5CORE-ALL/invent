@@ -920,19 +920,27 @@ final class MarketplaceListingStockResolver
      * listings columns show); local fills SKUs the live cache omitted.
      * Live `--`/null inventory is NOT filled from local — that is a mismatch
      * against in-stock Shopify (Shein Pending, empty eBay qty, etc.).
+     * AliExpress product-list cache often has inventory=null for linked SKUs
+     * (SKU comes from aliexpress_metric with stock hardcoded null). Treat that
+     * as unknown and keep local AE qty, or those SKUs all look like 0 vs Shopify.
      *
      * @param  array<int, array{sku?: string, inventory?: int|null}>|null  $liveRows
      * @param  array<string, int>  $localMap
      * @return array<string, int>
      */
-    public static function classifyStockMapFromLiveOrLocal(?array $liveRows, array $localMap): array
-    {
+    public static function classifyStockMapFromLiveOrLocal(
+        ?array $liveRows,
+        array $localMap,
+        bool $treatMissingLiveInventoryAsZero = true
+    ): array {
         $merged = self::mergeLocalAndLiveStockMaps(
             $localMap,
             self::stockMapFromLiveListingRows($liveRows)
         );
-        foreach (self::nullInventoryKeysFromLiveListingRows($liveRows) as $key) {
-            $merged[$key] = 0;
+        if ($treatMissingLiveInventoryAsZero) {
+            foreach (self::nullInventoryKeysFromLiveListingRows($liveRows) as $key) {
+                $merged[$key] = 0;
+            }
         }
 
         return $merged;

@@ -200,7 +200,8 @@ class AliexpressSyncController extends Controller
         // Live cache often omits inventory for offline/inactive — fill gaps from local map.
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),
-            $this->aliexpressStockMapForSkus($allLinkedVerified)
+            $this->aliexpressStockMapForSkus($allLinkedVerified),
+            false
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'aliexpress');
         $counts = $classified['counts'] ?? $emptyCounts;
@@ -843,7 +844,8 @@ class AliexpressSyncController extends Controller
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),
-            $this->aliexpressStockMapForSkus($verified)
+            $this->aliexpressStockMapForSkus($verified),
+            false
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'aliexpress');
         $mismatchQty = $classified['mismatch'] ?? [];

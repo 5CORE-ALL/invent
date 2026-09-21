@@ -174,11 +174,25 @@ final class AliexpressLiveListingsService
 
                     $title = $this->extractSubject($item);
                     $price = $this->extractListPrice($item);
+                    $listRows = $api->extractSkuRowsFromListItem($item, false);
+                    $listStockBySku = [];
+                    $productStock = null;
+                    foreach ($listRows as $listRow) {
+                        if (! is_array($listRow) || ! array_key_exists('stock', $listRow) || $listRow['stock'] === null) {
+                            continue;
+                        }
+                        $listSku = trim((string) ($listRow['sku'] ?? ''));
+                        $listQty = (int) $listRow['stock'];
+                        if ($listSku === '' || $listSku === $productId) {
+                            $productStock = $listQty;
+                            continue;
+                        }
+                        $listStockBySku[strtoupper($listSku)] = $listQty;
+                    }
                     $metricRows = $metricByProduct[$productId] ?? [];
 
                     if ($metricRows === []) {
-                        $rows = $api->extractSkuRowsFromListItem($item, false);
-                        foreach ($rows as $row) {
+                        foreach ($listRows as $row) {
                             $sku = trim((string) ($row['sku'] ?? ''));
                             if ($sku === '' || $sku === $productId) {
                                 continue;
@@ -187,8 +201,16 @@ final class AliexpressLiveListingsService
                                 'sku' => $sku,
                                 'product_name' => $row['product_name'] ?? $title,
                                 'price' => $row['price'] ?? $price,
-                                'stock' => $row['stock'] ?? null,
+                                'stock' => $row['stock'] ?? $productStock,
                             ];
+                        }
+                    } else {
+                        foreach ($metricRows as $idx => $row) {
+                            if (($row['stock'] ?? null) !== null) {
+                                continue;
+                            }
+                            $skuKey = strtoupper(trim((string) ($row['sku'] ?? '')));
+                            $metricRows[$idx]['stock'] = $listStockBySku[$skuKey] ?? $productStock;
                         }
                     }
 

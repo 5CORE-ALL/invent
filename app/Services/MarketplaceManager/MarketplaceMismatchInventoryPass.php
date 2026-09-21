@@ -450,9 +450,12 @@ final class MarketplaceMismatchInventoryPass
 
         $local = MarketplaceListingStockResolver::stockMapForSkus($resolverChannel, $skus);
 
+        $treatMissingLiveInventoryAsZero = ! in_array($channel, ['aliexpress'], true);
+
         return MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $this->peekLiveRows($channel),
-            $local
+            $local,
+            $treatMissingLiveInventoryAsZero
         );
     }
 
