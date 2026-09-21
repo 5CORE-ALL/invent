@@ -1,0 +1,18 @@
+---
+description: CPC and metric history charts on Amazon Ads must match the Active Channel chart
+globs: resources/views/amazon_ads/**/*.blade.php
+alwaysApply: false
+---
+
+# Amazon Ads history charts
+
+History charts opened from a dot on `/amazon-ads/all` (CPC Avg, LT CVR, LT ACOS, and any later metric history) use the Active Channel chart, not a plain Highcharts line.
+
+Match `#adBreakdownChartModal` in `resources/views/channels/all-marketplace-master.blade.php`:
+
+- Full-width modal, info header, Chart.js line
+- Range select: 7, 30 (default), 31, 32, 35, 60, 90, Lifetime
+- Gray line, green when the value improves and red when it worsens (CPC down is green)
+- Rotated value labels, dashed median line
+- Right panel: Highest, Median, Lowest
+- Title form: `{name} - {metric} (Rolling {range})`

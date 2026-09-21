@@ -455,6 +455,195 @@ class AmazonAdsService
     }
 
     /**
+     * Enabled + paused keywords and product targets on each campaign.
+     * SP uses targeting clauses and keywords. SB/SD use their list endpoints.
+     * A campaign present in $campaignIds with no entities is 0.
+     *
+     * @param  'sp'|'sb'|'sd'  $adProduct
+     * @param  list<string>  $campaignIds
+     * @return array<string, int>
+     */
+    public function countTargetsForCampaigns(string $adProduct, array $campaignIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $campaignIds
+        ), static fn (string $id) => $id !== '')));
+        $counts = array_fill_keys($ids, 0);
+        if ($counts === []) {
+            return [];
+        }
+
+        $errors = 0;
+        $seen = [];
+        $lists = match ($adProduct) {
+            'sb' => [
+                fn () => $this->listSbKeywordsByCampaignIds($ids),
+                fn () => $this->listSbTargetsByCampaignIds($ids),
+            ],
+            'sd' => [
+                fn () => $this->listSdTargetsByCampaignIds($ids),
+            ],
+            default => [
+                fn () => $this->listKeywordsByCampaignIds($ids),
+                fn () => $this->listTargetsByCampaignIds($ids),
+            ],
+        };
+
+        foreach ($lists as $load) {
+            try {
+                foreach ($load() as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $cid = trim((string) ($row['campaignId'] ?? $row['campaign_id'] ?? ''));
+                    if ($cid === '' || ! array_key_exists($cid, $counts)) {
+                        continue;
+                    }
+                    $entityId = trim((string) ($row['keywordId'] ?? $row['targetId'] ?? $row['keyword_id'] ?? $row['target_id'] ?? ''));
+                    $dedupe = $cid.'|'.($entityId !== '' ? $entityId : md5((string) json_encode($row)));
+                    if (isset($seen[$dedupe])) {
+                        continue;
+                    }
+                    $seen[$dedupe] = true;
+                    $counts[$cid]++;
+                }
+            } catch (\Throwable $e) {
+                $errors++;
+                \Illuminate\Support\Facades\Log::warning('Amazon Ads target count list failed', [
+                    'ad_product' => $adProduct,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($errors > 0) {
+            throw new RuntimeException('Amazon Ads target count failed for '.$adProduct);
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listSbKeywordsByCampaignIds(array $campaignIds): array
+    {
+        return $this->listPagedGetByCampaignIds(
+            '/sb/keywords',
+            'application/vnd.sbkeyword.v3.2+json',
+            ['keywords'],
+            $campaignIds,
+            'enabled,paused'
+        );
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listSbTargetsByCampaignIds(array $campaignIds): array
+    {
+        return $this->listPagedGetByCampaignIds(
+            '/sb/targets',
+            'application/vnd.sblisttargetsresponse.v3.2+json',
+            ['targets'],
+            $campaignIds,
+            'enabled,paused'
+        );
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listSdTargetsByCampaignIds(array $campaignIds): array
+    {
+        return $this->listPagedGetByCampaignIds(
+            '/sd/targets',
+            'application/json',
+            ['targets'],
+            $campaignIds,
+            'enabled,paused'
+        );
+    }
+
+    /**
+     * GET list endpoints that page with startIndex/count and filter by campaignIdFilter.
+     *
+     * @param  list<string>  $listKeys
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    protected function listPagedGetByCampaignIds(
+        string $path,
+        string $accept,
+        array $listKeys,
+        array $campaignIds,
+        string $stateFilter
+    ): array {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $campaignIds
+        ), static fn (string $id) => $id !== '')));
+        if ($ids === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (array_chunk($ids, 10) as $chunk) {
+            $start = 0;
+            $pages = 0;
+            $seenPage = [];
+            do {
+                $pages++;
+                $response = $this->get($path, [
+                    'campaignIdFilter' => implode(',', $chunk),
+                    'stateFilter' => $stateFilter,
+                    'startIndex' => $start,
+                    'count' => 100,
+                ], [
+                    'Accept' => $accept,
+                ]);
+                $batch = [];
+                if (array_is_list($response)) {
+                    $batch = $response;
+                } else {
+                    foreach ($listKeys as $key) {
+                        if (isset($response[$key]) && is_array($response[$key])) {
+                            $batch = $response[$key];
+                            break;
+                        }
+                    }
+                }
+                $n = 0;
+                $newOnPage = 0;
+                foreach ($batch as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $entityId = trim((string) ($row['keywordId'] ?? $row['targetId'] ?? $row['keyword_id'] ?? $row['target_id'] ?? ''));
+                    $mark = $entityId !== '' ? $entityId : md5((string) json_encode($row));
+                    $n++;
+                    if (isset($seenPage[$mark])) {
+                        continue;
+                    }
+                    $seenPage[$mark] = true;
+                    $out[] = $row;
+                    $newOnPage++;
+                }
+                if ($newOnPage === 0) {
+                    break;
+                }
+                $start += $n;
+            } while ($n === 100 && $pages < 40);
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<string>  $campaignIds
      * @param  list<string>  $listKeys
      * @return list<array<string, mixed>>
