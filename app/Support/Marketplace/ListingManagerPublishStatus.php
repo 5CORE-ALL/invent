@@ -100,6 +100,34 @@ class ListingManagerPublishStatus
     }
 
     /**
+     * These channels keep stale local metric rows (SKU-as-ID / fuzzy aliases).
+     * Listing Manager Active must mean "published from this app", not "found in cache".
+     */
+    public static function requiresAppPublishForActive(string $channelName): bool
+    {
+        $key = ListingChannelCounts::normalize($channelName);
+
+        return in_array($key, [
+            'topdawg',
+            'shein',
+            'aliexpress',
+            'newegg',
+            'neweggb2c',
+            'neweggb2b',
+            'macys',
+            'macy',
+            'bestbuy',
+            'bestbuyusa',
+            'purchasingpower',
+        ], true);
+    }
+
+    public static function wasPublishedFromListingManager(?string $notes): bool
+    {
+        return is_string($notes) && stripos($notes, 'via Listing Manager') !== false;
+    }
+
+    /**
      * Live Seller Central listing check (cached). listed only when Amazon returns an ASIN.
      *
      * @return array{checked: bool, found: bool, seller_sku?: string, asin?: string, status?: string|null, title?: string|null, quantity?: int|null, message?: string}
@@ -278,6 +306,7 @@ class ListingManagerPublishStatus
         $isNewegg = $family === 'newegg';
         $isFaire = $family === 'faire';
         $isWayfair = $family === 'wayfair';
+        $isMirakl = $family === 'mirakl';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -326,6 +355,13 @@ class ListingManagerPublishStatus
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
             if ($categoryId === '' || ! preg_match('/^\d+$/', $categoryId)) {
                 $tabErrors['category'][] = 'Newegg subcategory is required. Search Seller Portal categories and select a leaf.';
+            }
+        }
+
+        if ($isMirakl) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+            if ($categoryId === '') {
+                $tabErrors['category'][] = 'Mirakl category is required. Search and select a category, or type the category code.';
             }
         }
 
@@ -449,7 +485,7 @@ class ListingManagerPublishStatus
                 'identifiers' => 'Product Identifiers',
                 'title_description' => 'Title & Description',
                 'pricing' => ($isEbay ? 'Pricing' : 'Price & Stock'),
-                'category' => $isAmazon ? 'Product Type' : ($isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : ($isNewegg ? 'Newegg Category' : ($isReverb ? 'Reverb Details' : 'Category')))),
+                'category' => $isAmazon ? 'Product Type' : ($isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : ($isNewegg ? 'Newegg Category' : ($isReverb ? 'Reverb Details' : ($isMirakl ? 'Category' : 'Category'))))),
                 'business_policies' => $family === 'ebay' ? 'Business Policies' : ($isReverb ? 'Shipping & Package' : 'Warehouse & Package'),
                 'auto_relist' => 'Auto Relist',
                 'logistics' => $isAmazon ? 'Packaging' : ($isTiktok ? 'Warehouse & Package' : ($isReverb ? 'Shipping & Package' : 'Package')),

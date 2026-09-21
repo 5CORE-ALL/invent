@@ -1304,7 +1304,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small mb-3">Choose which listing APIs appear when you add drafts. Only marketplaces with a listing API are listed: Amazon, eBay, Temu, TikTok, Reverb, Faire, Wayfair, AliExpress, Shein, Newegg, and TopDawg.</p>
+                <p class="text-muted small mb-3">Choose which listing APIs appear when you add drafts. Only marketplaces with a listing API are listed: Amazon, eBay, Temu, TikTok, Reverb, Faire, Wayfair, AliExpress, Shein, Newegg, TopDawg, Macy's, Best Buy, and Purchasing Power.</p>
                 <div class="lm-channel-list" id="lm-manage-channel-list"></div>
             </div>
             <div class="modal-footer">
@@ -2733,6 +2733,8 @@
         const isTiktok = /tiktok/.test(channel);
         const isTemu = /temu/.test(channel);
         const isNewegg = ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'newegg') || /newegg/.test(channel);
+        const isMirakl = ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'mirakl')
+            || /macy|best ?buy|purchasing/.test(channel);
         const isReverb = ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'reverb') || /reverb/.test(channel);
         if (isReverb) {
             if (!d.primary_category_id) errors.category.push('Category');
@@ -2763,6 +2765,9 @@
         }
         if (isNewegg) {
             if (!d.primary_category_id || !/^\d+$/.test(String(d.primary_category_id))) errors.category.push('Category');
+        }
+        if (isMirakl && !String(d.primary_category_id || '').trim()) {
+            errors.category.push('Category');
         }
         const isFaire = ((currentDraft && currentDraft.editor && currentDraft.editor.faire) || ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'faire') || /faire/.test(channel));
         if (isFaire && !d.primary_category_id) errors.category.push('Product Type');
@@ -3088,7 +3093,7 @@
         const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
         const channel = (currentDraft && currentDraft.channel) || '';
         const title = String($('#lc-title').val() || (currentDraft && currentDraft.title) || '').trim();
-        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && family !== 'newegg' && family !== 'faire' && family !== 'wayfair' && (!q || q.length < 2)) {
+        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && family !== 'newegg' && family !== 'faire' && family !== 'wayfair' && family !== 'mirakl' && (!q || q.length < 2)) {
             $box.html('<div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>');
             return;
         }
@@ -3108,12 +3113,16 @@
             $box.html('<div class="text-muted small p-3">Type a keyword such as speaker or stand to load Newegg Seller Portal subcategories.</div>');
             return;
         }
+        if (family === 'mirakl' && (!q || q.length < 2) && !title) {
+            $box.html('<div class="text-muted small p-3">Type a keyword to search this marketplace category, or type a category code.</div>');
+            return;
+        }
         if (family === 'wayfair') {
             q = String($('#lc-wayfair-class-search').val() || q || '').trim();
         }
         const searchingLabel = family === 'tiktok'
             ? 'Searching TikTok Shop categories…'
-            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : (family === 'temu' ? 'Searching Temu categories…' : (family === 'newegg' ? 'Searching Newegg subcategories…' : (family === 'faire' ? 'Searching Faire product types…' : (family === 'wayfair' ? 'Searching Wayfair classes…' : 'Searching…'))))));
+            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : (family === 'temu' ? 'Searching Temu categories…' : (family === 'newegg' ? 'Searching Newegg subcategories…' : (family === 'faire' ? 'Searching Faire product types…' : (family === 'wayfair' ? 'Searching Wayfair classes…' : (family === 'mirakl' ? 'Searching marketplace categories…' : 'Searching…'))))))));
         if (family === 'wayfair') {
             $('#wf-classes').html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
         } else {

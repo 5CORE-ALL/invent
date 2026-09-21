@@ -131,6 +131,9 @@ class ListingManagerPublishDispatcher
             'shein',
             'newegg', 'neweggb2c', 'neweggb2b',
             'topdawg',
+            'macys', 'macy',
+            'bestbuy', 'bestbuyusa',
+            'purchasingpower',
         ];
     }
 

@@ -129,7 +129,11 @@ class ListingManagerProductPublisher
         $key = self::marketplaceKeyFromChannel($channelName) ?? '';
         $live = ListingManagerPublishStatus::check($channelName, $sku);
         $draft = $this->findDraft($channelId, $sku);
-        $isLive = ($live['listed'] ?? false) || ($draft && $draft->status === 'listed');
+        $appOnly = ListingManagerPublishStatus::requiresAppPublishForActive($channelName);
+        $draftListedFromApp = $draft
+            && $draft->status === 'listed'
+            && (! $appOnly || ListingManagerPublishStatus::wasPublishedFromListingManager($draft->notes));
+        $isLive = $draftListedFromApp || ((! $appOnly) && ($live['listed'] ?? false));
         if (! $isLive && self::marketplaceKeyFromChannel($channelName) === 'amazon') {
             $asin = ListingManagerPublishStatus::amazonAsinForSku($sku);
             if ($asin !== null) {
@@ -364,6 +368,7 @@ class ListingManagerProductPublisher
             'walmart' => 'walmart',
             'wayfair' => 'wayfair',
             'bestbuy' => 'bestbuy',
+            'bestbuyusa' => 'bestbuy',
             'macy' => 'macy',
             'macys' => 'macy',
             'doba' => 'doba',

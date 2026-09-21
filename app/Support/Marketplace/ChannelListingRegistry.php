@@ -434,6 +434,7 @@ class ChannelListingRegistry
             'tiktok2' => 'tiktokshop2',
             'shopify' => 'shopifyb2c',
             'bestbuy' => 'bestbuyusa',
+            'macy' => 'macys',
             'temutwo' => 'temu2',
             'facebookmarketplace' => 'fbmarketplace',
             'shopifyb2b' => 'shopifywholesale',

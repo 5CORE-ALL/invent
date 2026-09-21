@@ -347,22 +347,28 @@ class ListingManagerController extends Controller
                 continue;
             }
             $live = ListingManagerPublishStatus::check($channelName, $sku);
-            if (($d['status'] ?? '') === 'listed' || ($live['listed'] ?? false)) {
-                $listedOn[] = [
-                    'channel' => $d['channel'] ?? '',
-                    'channel_id' => $d['channel_id'] ?? null,
-                    'logo' => $d['channel_logo'] ?? null,
-                    'product_name' => $d['title'] ?? $title,
-                    'qty' => $d['quantity'] ?? null,
-                    'price' => $d['price'] ?? null,
-                    'status' => 'ACTIVE',
-                    'external_url' => ! empty($d['external_listing_id']) && stripos((string) $d['channel'], 'ebay') !== false
-                        ? 'https://www.ebay.com/itm/'.$d['external_listing_id']
-                        : ($d['listing_page_url'] ?? null),
-                    'listing_id' => $d['external_listing_id'] ?? ($live['listing_id'] ?? null),
-                    'draft_id' => $d['id'] ?? null,
-                ];
+            $draftListed = ($d['status'] ?? '') === 'listed';
+            if (ListingManagerPublishStatus::requiresAppPublishForActive($channelName)) {
+                if (! ($draftListed && ListingManagerPublishStatus::wasPublishedFromListingManager($d['notes'] ?? null))) {
+                    continue;
+                }
+            } elseif (! ($draftListed || ($live['listed'] ?? false))) {
+                continue;
             }
+            $listedOn[] = [
+                'channel' => $d['channel'] ?? '',
+                'channel_id' => $d['channel_id'] ?? null,
+                'logo' => $d['channel_logo'] ?? null,
+                'product_name' => $d['title'] ?? $title,
+                'qty' => $d['quantity'] ?? null,
+                'price' => $d['price'] ?? null,
+                'status' => 'ACTIVE',
+                'external_url' => ! empty($d['external_listing_id']) && stripos((string) $d['channel'], 'ebay') !== false
+                    ? 'https://www.ebay.com/itm/'.$d['external_listing_id']
+                    : ($d['listing_page_url'] ?? null),
+                'listing_id' => $d['external_listing_id'] ?? ($live['listing_id'] ?? null),
+                'draft_id' => $d['id'] ?? null,
+            ];
         }
 
         $enabledChannels = [];
@@ -377,7 +383,9 @@ class ListingManagerController extends Controller
                 if ($already) {
                     continue;
                 }
-                $live = ListingManagerPublishStatus::check($name, $sku);
+                $live = ListingManagerPublishStatus::requiresAppPublishForActive($name)
+                    ? ['listed' => false]
+                    : ListingManagerPublishStatus::check($name, $sku);
                 if ($live['listed'] ?? false) {
                     $listedOn[] = [
                         'channel' => $name,
@@ -1306,7 +1314,10 @@ class ListingManagerController extends Controller
         } else {
             foreach ($allActive as $c) {
                 $key = ListingChannelCounts::normalize((string) $c->channel);
-                if (in_array($key, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true)) {
+                if (in_array($key, [
+                    'amazon', 'amazonfba', 'amz', 'amzfbm',
+                    'macys', 'macy', 'bestbuy', 'bestbuyusa', 'purchasingpower',
+                ], true)) {
                     $enabledIds[] = (int) $c->id;
                 }
             }
@@ -1875,6 +1886,13 @@ class ListingManagerController extends Controller
             $key = ListingChannelCounts::normalize($channel);
             $platform = in_array($key, ['neweggb2b', 'newegg-b2b', 'newegg_b2b'], true) ? 'b2b' : 'b2c';
             $result = app(NeweggApiService::class)->searchListingCategories($q, $title, $platform);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
+        if ($family === 'mirakl') {
+            $result = app(\App\Services\MarketplaceManager\MiraklListingPublishService::class)
+                ->searchListingCategories($q, $channel, $title);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }
@@ -2633,8 +2651,10 @@ class ListingManagerController extends Controller
             }
             $result = ListingManagerPublishStatus::check($channelName, (string) $draft->seller_sku);
             $draft->publish_checked_at = now();
+            $requiresAppPublish = ListingManagerPublishStatus::requiresAppPublishForActive($channelName);
+            $publishedFromApp = ListingManagerPublishStatus::wasPublishedFromListingManager($draft->notes);
 
-            if ($result['listed']) {
+            if ($result['listed'] && ! $requiresAppPublish) {
                 $draft->status = 'listed';
                 $draft->external_listing_id = $result['listing_id'];
                 if ($isAmazon && trim((string) $result['listing_id']) !== '') {
@@ -2643,6 +2663,13 @@ class ListingManagerController extends Controller
                 $draft->listed_at = $draft->listed_at ?: now();
                 $draft->notes = trim((string) $draft->notes . "\nLive on {$channelName} via {$result['source']}.");
                 $listed++;
+            } elseif ($result['listed'] && $requiresAppPublish && $publishedFromApp) {
+                $draft->status = 'listed';
+                if (trim((string) ($result['listing_id'] ?? '')) !== '') {
+                    $draft->external_listing_id = $result['listing_id'];
+                }
+                $draft->listed_at = $draft->listed_at ?: now();
+                $listed++;
             } else {
                 if ($draft->status === 'listed' && $isAmazon && ($result['source'] ?? '') === 'amazon_listings_api') {
                     $draft->status = 'ready';
@@ -2650,6 +2677,19 @@ class ListingManagerController extends Controller
                     $draft->external_listing_id = null;
                     $draft->asin = null;
                     $draft->notes = trim((string) $draft->notes."\nMoved back to Drafts: Amazon Seller Central does not have this SKU.");
+                } elseif ($draft->status === 'listed' && $requiresAppPublish && ! $publishedFromApp) {
+                    $ready = ListingManagerPublishStatus::readiness(
+                        $draft->title,
+                        $draft->price,
+                        $draft->quantity,
+                        is_array($draft->listing_details) ? $draft->listing_details : [],
+                        'draft',
+                        $channelName
+                    );
+                    $draft->status = $ready['ready'] ? 'ready' : 'draft';
+                    $draft->listed_at = null;
+                    $draft->external_listing_id = null;
+                    $draft->notes = trim((string) $draft->notes."\nMoved back to Drafts: not published from Listing Manager.");
                 } elseif ($draft->status === 'listed') {
                     // keep listed if we had an id before unless explicitly cleared
                 } else {
@@ -2975,6 +3015,33 @@ class ListingManagerController extends Controller
         $d->save();
     }
 
+    private function demoteUnpublishedLocalMetricDraft(ListingManagerChannelDraft $d): void
+    {
+        $channelName = (string) ($d->channel->channel ?? '');
+        if (! ListingManagerPublishStatus::requiresAppPublishForActive($channelName)) {
+            return;
+        }
+        if ($d->status !== 'listed') {
+            return;
+        }
+        if (ListingManagerPublishStatus::wasPublishedFromListingManager($d->notes)) {
+            return;
+        }
+        $ready = ListingManagerPublishStatus::readiness(
+            $d->title,
+            $d->price,
+            $d->quantity,
+            is_array($d->listing_details) ? $d->listing_details : [],
+            'draft',
+            $channelName
+        );
+        $d->status = $ready['ready'] ? 'ready' : 'draft';
+        $d->listed_at = null;
+        $d->external_listing_id = null;
+        $d->notes = trim((string) $d->notes."\nMoved back to Drafts: not published from Listing Manager.");
+        $d->save();
+    }
+
     /**
      * Ebay 1 / 3 drafts must not keep Ebay 2 business-policy IDs.
      *
@@ -3099,6 +3166,7 @@ class ListingManagerController extends Controller
     private function serializeDraft(ListingManagerChannelDraft $d, bool $full = false): array
     {
         $this->demoteUnverifiedAmazonDraft($d);
+        $this->demoteUnpublishedLocalMetricDraft($d);
         $channelName = (string) ($d->channel->channel ?? '');
         $details = $this->ensureIdentifierDefaults(
             ListingManagerPublishStatus::normalizeDetails(
