@@ -229,7 +229,7 @@ class PlsController extends Controller
             $inventory = $shopify ? (int) ($shopify->inv ?? 0) : 0;
             $ovl30 = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
-            // Sales data from pls_products (price, L30 for MC L30 column, L60)
+            // Sales data from pls_products (price, PLS L30, PLS L60)
             $price = $plsProduct ? floatval($plsProduct->price) : 0;
             $plsL30 = $plsProduct ? intval($plsProduct->p_l30) : 0;
             $l60 = $plsProduct ? intval($plsProduct->p_l60) : 0;
@@ -272,7 +272,6 @@ class PlsController extends Controller
             $row['inventory'] = $inventory;
             $row['pls_inventory'] = $plsInventory;  // PLS marketplace inventory
             $row['l30'] = $ovl30;  // OV L30 - Our Velocity from Shopify
-            $row['l60'] = $l60;    // PLS L60 from marketplace
             $row['pls_l30'] = $plsL30;  // PLS marketplace L30 sold
             $row['pls_l60'] = $l60;     // PLS marketplace L60 sold
             

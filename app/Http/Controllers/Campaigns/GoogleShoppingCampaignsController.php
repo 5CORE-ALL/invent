@@ -895,8 +895,10 @@ class GoogleShoppingCampaignsController extends Controller
                 ->values()
                 ->all();
             $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
+            $negCounts = $this->negativeTargetCountsForPage($pageCampaignIds);
             foreach ($pageRows as $i => $arr) {
                 $this->attachSbgtTrend($arr, $prevSbgtMap);
+                $this->attachNegativeTargetCount($arr, $negCounts);
                 if (! $verifyId) {
                     $arr['id_mismatch'] = false;
                     $arr['id_alert_title'] = '';
@@ -931,10 +933,12 @@ class GoogleShoppingCampaignsController extends Controller
             ->values()
             ->all();
         $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
+        $negCounts = $this->negativeTargetCountsForPage($pageCampaignIds);
 
-        $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver, $bgtResolver) {
+        $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $negCounts, $invResolver, $bgtResolver) {
             $arr = $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
             $this->attachSbgtTrend($arr, $prevSbgtMap);
+            $this->attachNegativeTargetCount($arr, $negCounts);
             $arr['id_mismatch'] = false;
             $arr['id_alert_title'] = '';
 
@@ -3089,12 +3093,74 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_prc_price',
             'ovl30',
             'sbid',
+            'n_targets',
             'video_audit_filled',
             'video_audit_ai_filled',
             'video_audit_pct',
             'id_mismatch',
             'id_alert_title',
         ];
+    }
+
+    /**
+     * Negative-keyword counts for the current page. Shopping only — the count is the
+     * synced Google Ads list (`app:fetch-google-ads-negative-keywords`), campaign plus ad group.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, int>
+     */
+    private function negativeTargetCountsForPage(array $campaignIds): array
+    {
+        if ($this->channelKey() !== 'shopping') {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($campaignIds as $id) {
+            $s = trim((string) $id);
+            if ($s !== '') {
+                $ids[$s] = true;
+            }
+        }
+        $ids = array_keys($ids);
+        if ($ids === [] || ! Schema::hasTable('google_ads_negative_keywords')) {
+            return array_fill_keys($ids, 0);
+        }
+
+        $map = array_fill_keys($ids, 0);
+        foreach (array_chunk($ids, 500) as $chunk) {
+            $rows = DB::table('google_ads_negative_keywords')
+                ->select('campaign_id', DB::raw('COUNT(*) AS c'))
+                ->whereIn('campaign_id', $chunk)
+                ->whereIn('level', [
+                    GoogleAdsNegativeKeyword::LEVEL_CAMPAIGN,
+                    GoogleAdsNegativeKeyword::LEVEL_AD_GROUP,
+                ])
+                ->where(function ($w) {
+                    $w->whereNull('status')
+                        ->orWhereRaw("UPPER(status) NOT IN ('REMOVED', 'ARCHIVED')");
+                })
+                ->groupBy('campaign_id')
+                ->get();
+            foreach ($rows as $row) {
+                $map[trim((string) $row->campaign_id)] = (int) $row->c;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<string, mixed>  $arr
+     * @param  array<string, int>  $counts
+     */
+    private function attachNegativeTargetCount(array &$arr, array $counts): void
+    {
+        if ($this->channelKey() !== 'shopping') {
+            return;
+        }
+        $cid = trim((string) ($arr['campaign_id'] ?? ''));
+        $arr['n_targets'] = $cid !== '' ? (int) ($counts[$cid] ?? 0) : 0;
     }
 
     /**

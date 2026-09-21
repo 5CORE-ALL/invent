@@ -12,6 +12,7 @@ use App\Models\FacebookMarketplaceSale;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
 use App\Services\EbayChannelMetricsService;
+use App\Services\ReverbDaySales;
 use App\Services\TemuShopifySalesService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -585,24 +586,11 @@ class ChannelTodaySalesService
 
     private function reverb(string $ymd): ?float
     {
-        if (! Schema::hasTable('reverb_daily_data')) {
+        if (! Schema::hasTable('reverb_daily_data') && ! Schema::hasTable('reverb_order_metrics')) {
             return null;
         }
 
-        return round((float) DB::table('reverb_daily_data')
-            ->whereDate('order_date', $ymd)
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-            ->where(function ($q) {
-                $q->where(function ($q2) {
-                    $q2->whereNotNull('sku')->where('sku', '!=', '');
-                })->orWhere(function ($q2) {
-                    $q2->whereNotNull('display_sku')->where('display_sku', '!=', '');
-                });
-            })
-            ->whereNotNull('order_number')->where('order_number', '!=', '')
-            ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
-            ->value('revenue'), 2);
+        return app(ReverbDaySales::class)->sumForDate($ymd);
     }
 
     private function newegg(Carbon $start, Carbon $end): ?float

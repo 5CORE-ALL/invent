@@ -9,17 +9,17 @@
     $channelPromoPart = $channelPromoPart ?? 'all';
     $channelPromoChannel = $channelPromoChannel ?? 'ebay1';
     $channelPromoHideCvrCpn = !empty($channelPromoHideCvrCpn)
-        || in_array($channelPromoChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg', 'mercari_wship', 'mercari_woship'], true);
+        || in_array($channelPromoChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg', 'pls', 'mercari_wship', 'mercari_woship'], true);
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'mercari_wship', 'mercari_woship', 'depop', 'vinted', 'instagram'], true);
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'mercari_wship', 'mercari_woship', 'depop', 'vinted', 'instagram'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
     $channelPromoZeroSoldMinRoi = $channelPromoChannel === 'shopify_b2c';
     $channelPromoZeroSoldSoldLabel = $channelPromoChannel === 'shopify_b2c' ? 'B2C L30' : 'L30';
-    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'depop', 'vinted', 'instagram'], true);
+    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'depop', 'vinted', 'instagram'], true);
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'fb_marketplace'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);

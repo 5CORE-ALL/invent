@@ -8241,10 +8241,18 @@ class CvrMasterController extends Controller
     private function pushToShopifyB2C($sku, $price)
     {
         try {
-            // Get variant_id from shopify_skus — use normalized SKU match (spaces / NBSP) like mapByProductSkus
-            $byNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku([$sku]);
-            $k = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            $shopifyRecord = ($k !== '' && isset($byNorm[$k])) ? $byNorm[$k] : ShopifySku::where('sku', $sku)->first();
+            // Normalized match (case / NBSP / hyphen). Exact whereIn used to omit variant_id,
+            // so a real listing (e.g. "MR 6.5 BLT R 4oHM") looked like it had no variant.
+            $shopifyRecord = ShopifySku::firstForProductSku($sku);
+            if (! $shopifyRecord) {
+                $shopifyRecord = ShopifySku::where('sku', $sku)->first();
+            }
+            if ($shopifyRecord && trim((string) ($shopifyRecord->variant_id ?? '')) === '') {
+                $fromCatalog = ShopifySku::mainCatalogVariantId($sku);
+                if ($fromCatalog) {
+                    $shopifyRecord->variant_id = $fromCatalog;
+                }
+            }
             
             if (!$shopifyRecord) {
                 $this->savePricePushStatus($sku, 'shopifyb2c', 'error', $price);

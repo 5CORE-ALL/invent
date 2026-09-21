@@ -2023,6 +2023,16 @@
                         if (!isFinite(n)) return '—';
                         return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     };
+                    /** Same bands as Amazon Ads Targets: 0 = red M, under 50 red, 50–100 green, over 100 purple. */
+                    var nTargetFormatter = function(c) {
+                        var v = c.getValue();
+                        if (v === null || v === undefined || v === '') return '—';
+                        var n = parseInt(v, 10);
+                        if (!isFinite(n)) return '—';
+                        if (n === 0) return '<span class="fw-semibold" style="color:#dc3545">M</span>';
+                        var color = n < 50 ? '#dc3545' : (n > 100 ? '#6f42c1' : '#198754');
+                        return '<span class="fw-semibold" style="color:' + color + '">' + n.toLocaleString() + '</span>';
+                    };
                     var campaignStatusFormatter = function(c) {
                         var v = c.getValue();
                         var s = v === null || v === undefined ? '' : String(v).trim();
@@ -2290,6 +2300,14 @@
                             col.title = 'Click';
                             col.formatter = intLocaleFormatter;
                             col.minWidth = Math.max(col.minWidth || 0, 57);
+                        }
+                        if (col.field === 'n_targets') {
+                            col.title = 'N Target';
+                            col.formatter = nTargetFormatter;
+                            col.headerTooltip = 'Negative keyword count from Google Ads (campaign + ad group). 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
+                            col.headerSort = false;
+                            col.width = 52;
+                            col.minWidth = 44;
                         }
                     });
                     // Action column (synthetic — no data field). Red alert when

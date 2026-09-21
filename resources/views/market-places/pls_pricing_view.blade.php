@@ -846,18 +846,6 @@
                     width: 70
                 },
                 {
-                    title: "MC L30",
-                    field: "l60",
-                    hozAlign: "center",
-                    width: 50,
-                    sorter: "number",
-                    visible: true,
-                    formatter: function(cell) {
-                        const v = parseInt(cell.getValue() || 0);
-                        return `<span style="font-weight:600;">${v}</span>`;
-                    }
-                },
-                {
                     title: "Parent",
                     field: "parent",
                     headerFilter: "input",
