@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
 use App\Services\MarketplaceManager\MiraklListingPublishService;
+use App\Services\MarketplaceManager\TopDawgListingPublishService;
 use App\Support\Marketplace\ListingManagerEditorProfile;
 use PHPUnit\Framework\TestCase;
 
@@ -76,11 +77,37 @@ class ListingManagerPublishDispatcherTest extends TestCase
         }
     }
 
-    public function test_topdawg_editor_has_no_category_tab(): void
+    public function test_topdawg_editor_has_category_tab(): void
     {
         $profile = ListingManagerEditorProfile::forChannel('TopDawg');
         $this->assertSame('topdawg', $profile['family']);
         $tabIds = array_map(static fn ($tab) => $tab['id'], $profile['tabs']);
-        $this->assertNotContains('category', $tabIds);
+        $this->assertContains('category', $tabIds);
+        $this->assertTrue($profile['topdawg']);
+    }
+
+    public function test_topdawg_category_search_and_resolve(): void
+    {
+        $all = TopDawgListingPublishService::searchListingCategories('');
+        $this->assertTrue($all['success']);
+        $this->assertNotEmpty($all['categories']);
+
+        $mics = TopDawgListingPublishService::searchListingCategories('microphone');
+        $this->assertNotEmpty($mics['categories']);
+        $foundMic = false;
+        foreach ($mics['categories'] as $row) {
+            if (str_contains(strtolower((string) ($row['path'] ?? '')), 'microphone')) {
+                $foundMic = true;
+                break;
+            }
+        }
+        $this->assertTrue($foundMic);
+
+        $resolved = TopDawgListingPublishService::resolveCategory('Electronics|Music|Light Stands', 'Electronics > Music > Light Stands');
+        $this->assertSame([
+            'dept' => 'Electronics',
+            'section' => 'Music',
+            'category' => 'Light Stands',
+        ], $resolved);
     }
 }

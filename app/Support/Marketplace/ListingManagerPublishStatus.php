@@ -307,6 +307,7 @@ class ListingManagerPublishStatus
         $isFaire = $family === 'faire';
         $isWayfair = $family === 'wayfair';
         $isMirakl = $family === 'mirakl';
+        $isTopdawg = $family === 'topdawg';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -362,6 +363,14 @@ class ListingManagerPublishStatus
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
             if ($categoryId === '') {
                 $tabErrors['category'][] = 'Mirakl category is required. Search and select a category, or type the category code.';
+            }
+        }
+
+        if ($isTopdawg) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+            $categoryName = trim((string) ($details['primary_category_path'] ?? $details['category_name'] ?? ''));
+            if ($categoryId === '' && $categoryName === '') {
+                $tabErrors['category'][] = 'TopDawg category is required. Search and select a department / section / category.';
             }
         }
 
