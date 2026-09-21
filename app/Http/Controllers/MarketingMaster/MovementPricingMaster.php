@@ -802,7 +802,7 @@ class MovementPricingMaster extends Controller
         $sku = $request->input('sku');
         $price = $request->input('price');
 
-        $variantId = ShopifySku::where('sku', $sku)->value('variant_id');
+        $variantId = ShopifySku::variantIdForProductSku($sku);
 
         if (!$variantId) {
             return response()->json([

@@ -490,13 +490,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('reverb:daily --days=60')
+        // Must run through the Pacific selling day. The IST 09:00–20:00 window
+        // is overnight Pacific and stops around 07:30 PT, so orders placed
+        // after that never reached reverb_daily_data until the next night.
+        $schedule->command('reverb:daily --days=60')
             ->everyTwoHours()
-            ->timezone('Asia/Kolkata')
+            ->timezone('America/Los_Angeles')
             ->name('reverb-daily')
             ->withoutOverlapping(90)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
         $ist($schedule->command('reverb:collect-metrics')
             ->dailyAt('10:05')

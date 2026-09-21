@@ -12,8 +12,10 @@ use App\Models\BestbuyUSADataView;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\DobaDataView;
 use App\Models\DobaMetric;
+use App\Http\Controllers\MarketPlace\FaireController;
 use App\Models\FaireDataView;
 use App\Models\FaireMetric;
+use App\Models\FaireProductSheet;
 use App\Models\FBMarketplaceDataView;
 use App\Models\FbMarketplacePriceSoldData;
 use App\Models\MarketplacePercentage;
@@ -314,11 +316,13 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        $sold = $this->channel === 'shein'
-            ? (float) ($row['al30'] ?? $row['ov_l30'] ?? 0)
-            : (array_key_exists('temu_l30', $row)
-                ? (float) $row['temu_l30']
-                : (float) ($row['ov_l30'] ?? 0));
+        $sold = $this->channel === 'faire'
+            ? (float) ($row['al30'] ?? 0)
+            : ($this->channel === 'shein'
+                ? (float) ($row['al30'] ?? $row['ov_l30'] ?? 0)
+                : (array_key_exists('temu_l30', $row)
+                    ? (float) $row['temu_l30']
+                    : (float) ($row['ov_l30'] ?? 0)));
         $dil = (float) ($row['dil'] ?? 0);
         $groi = null;
 
@@ -342,7 +346,7 @@ class DilRuleSpriceApplyService
             $views = (float) ($row['views'] ?? 0);
             if (empty($cfg['cvr_adj_requires_views']) || $views > 0) {
                 $cvr = (float) ($row['cvr'] ?? 0);
-                $groi = $this->channel === 'shein'
+                $groi = ($this->channel === 'shein' || $this->channel === 'faire')
                     ? AmazonDilGroiRule::adjustGroiForCvrLevel($groi, $cvr, $cvrAdj)
                     : AmazonDilGroiRule::adjustGroiForCvrArrow(
                         $groi,
@@ -359,7 +363,10 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, (float) ($row['lmp'] ?? 0), $lp, $ship, $margin);
+        // Faire has no LMP cap. Capping here was rewriting the Dil price so SNROI missed the slab.
+        $sprice = $this->channel === 'faire'
+            ? round($raw, 2)
+            : AmazonDilGroiRule::capSpriceToLmp($raw, (float) ($row['lmp'] ?? 0), $lp, $ship, $margin);
 
         if (! empty($cfg['amz_floor'])) {
             $amz = (float) ($row['amz_price'] ?? 0);
@@ -595,7 +602,10 @@ class DilRuleSpriceApplyService
             $l30Overlay = $this->temuOrdersL30BySku($skus, $this->channel === 'temu2');
         } elseif ($this->channel === 'shein') {
             $l30Overlay = $this->sheinL30BySku($skus);
+        } elseif ($this->channel === 'faire') {
+            $l30Overlay = $this->faireL30BySku();
         }
+        $faireViewsBySku = $this->channel === 'faire' ? $this->faireViewsBySku() : [];
 
         $draft = [];
         foreach ($skus as $sku) {
@@ -615,6 +625,9 @@ class DilRuleSpriceApplyService
             } elseif ($this->channel === 'shein') {
                 $ov = (float) ($shopify->quantity ?? 0);
                 $al30 = (float) ($l30Overlay[$sku] ?? 0);
+            } elseif ($this->channel === 'faire') {
+                $ov = (float) ($shopify->quantity ?? 0);
+                $al30 = (float) ($l30Overlay[$sku] ?? 0);
             } elseif ($this->channel === 'temu' || $this->channel === 'temu2') {
                 // Dil = Shopify OV L30, same as /temu1-data. Do not use temu_metrics sales.
                 $ov = (float) ($shopify->quantity ?? 0);
@@ -627,7 +640,9 @@ class DilRuleSpriceApplyService
             }
 
             $views = 0.0;
-            if ($viewsCol !== null && isset($metric->{$viewsCol})) {
+            if ($this->channel === 'faire') {
+                $views = (float) ($faireViewsBySku[$sku] ?? 0);
+            } elseif ($viewsCol !== null && isset($metric->{$viewsCol})) {
                 $views = (float) $metric->{$viewsCol};
             }
 
@@ -654,7 +669,7 @@ class DilRuleSpriceApplyService
                 'cvr' => $views > 0
                     ? round(((($this->channel === 'temu' || $this->channel === 'temu2')
                         ? (float) ($l30Overlay[$sku] ?? 0)
-                        : ($this->channel === 'shein' ? $al30 : $ov)) / $views) * 100, 2)
+                        : (($this->channel === 'shein' || $this->channel === 'faire') ? $al30 : $ov)) / $views) * 100, 2)
                     : 0.0,
                 'lmp' => $aeLmpBySku[$sku] ?? ($lmpBySku[$sku] ?? 0.0),
                 'std_price' => $stdBySku[$sku] ?? 0.0,
@@ -666,7 +681,7 @@ class DilRuleSpriceApplyService
 
         $dilByKey = $this->listingDilByKey($draft);
         foreach ($draft as $i => $row) {
-            if ($this->channel === 'aliexpress' || $this->channel === 'shein') {
+            if ($this->channel === 'aliexpress' || $this->channel === 'shein' || $this->channel === 'faire') {
                 $draft[$i]['dil'] = $row['inv'] > 0
                     ? round(($row['ov_l30'] / $row['inv']) * 100, 2)
                     : 0.0;
@@ -939,6 +954,57 @@ class DilRuleSpriceApplyService
             return $out;
         } catch (Throwable $e) {
             Log::warning('[DilRuleSpriceApply] shein L30 overlay failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Faire AL30 from faire_order_metrics — same window as /faire-pricing.
+     *
+     * @return array<string, float>
+     */
+    protected function faireL30BySku(): array
+    {
+        try {
+            $out = [];
+            foreach (FaireController::queryFaireL30SalesBySku() as $row) {
+                $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                if ($sku === '') {
+                    continue;
+                }
+                $out[$sku] = (float) ($row->al30 ?? 0);
+            }
+
+            return $out;
+        } catch (Throwable $e) {
+            Log::warning('[DilRuleSpriceApply] faire L30 overlay failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    protected function faireViewsBySku(): array
+    {
+        if (! Schema::hasTable('faire_products_sheets')) {
+            return [];
+        }
+        try {
+            $out = [];
+            foreach (FaireProductSheet::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'views']) as $row) {
+                $sku = strtoupper(trim((string) $row->sku));
+                if ($sku === '') {
+                    continue;
+                }
+                $out[$sku] = (float) ($row->views ?? 0);
+            }
+
+            return $out;
+        } catch (Throwable $e) {
+            Log::warning('[DilRuleSpriceApply] faire views overlay failed', ['error' => $e->getMessage()]);
 
             return [];
         }
@@ -1277,6 +1343,7 @@ class DilRuleSpriceApplyService
                 'price' => 'price',
                 'exclude_ship' => true,
                 'cvr_adj' => true,
+                'cvr_adj_requires_views' => true,
             ],
             'shein' => [
                 'metric' => SheinMetric::class,

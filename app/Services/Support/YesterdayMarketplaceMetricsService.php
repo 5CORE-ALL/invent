@@ -20,6 +20,7 @@ use App\Models\Temu2Order;
 use App\Models\TemuOrder;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
+use App\Services\ReverbDaySales;
 use App\Services\TemuShopifySalesService;
 use App\Support\ProductMasterShipBb;
 use App\Support\ProductMasterTemuShip;
@@ -1126,34 +1127,18 @@ class YesterdayMarketplaceMetricsService
      */
     private function reverb(string $date): array
     {
-        if (! Schema::hasTable('reverb_daily_data')) {
+        if (! Schema::hasTable('reverb_daily_data') && ! Schema::hasTable('reverb_order_metrics')) {
             return $this->salesOnly(0.0);
         }
 
         // Use the requested calendar day. Remapping every row to UTC yesterday
         // copied one Reverb total onto consecutive /all-marketplace-master points.
         [$from, $to] = $this->windowYmdBounds($date);
-        $row = DB::table('reverb_daily_data')
-            ->whereDate('order_date', '>=', $from)
-            ->whereDate('order_date', '<=', $to)
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-            ->where(function ($q) {
-                $q->where(function ($q2) {
-                    $q2->whereNotNull('sku')->where('sku', '!=', '');
-                })->orWhere(function ($q2) {
-                    $q2->whereNotNull('display_sku')->where('display_sku', '!=', '');
-                });
-            })
-            ->whereNotNull('order_number')->where('order_number', '!=', '')
-            ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
-            ->selectRaw('COALESCE(SUM(quantity), 0) as qty')
-            ->selectRaw('COUNT(DISTINCT order_number) as orders')
-            ->first();
+        $totals = app(ReverbDaySales::class)->totalsBetween($from, $to);
 
-        $m = $this->salesOnly((float) ($row->revenue ?? 0));
-        $m['qty'] = (int) ($row->qty ?? 0);
-        $m['orders'] = (int) ($row->orders ?? 0);
+        $m = $this->salesOnly($totals['sales']);
+        $m['qty'] = $totals['qty'];
+        $m['orders'] = $totals['orders'];
 
         return $m;
     }

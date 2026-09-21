@@ -368,6 +368,12 @@ class ChannelPushedPricePullService
                 $row = ShopifySku::firstForProductSku($sku);
                 $variantId = $row ? trim((string) ($row->variant_id ?? '')) : '';
                 if ($variantId === '') {
+                    $variantId = (string) (ShopifySku::mainCatalogVariantId($sku) ?? '');
+                    if ($row && $variantId !== '') {
+                        $row->variant_id = $variantId;
+                    }
+                }
+                if ($variantId === '') {
                     $out[] = [
                         'success' => false,
                         'sku' => $sku,

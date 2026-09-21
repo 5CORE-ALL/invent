@@ -313,7 +313,7 @@
                             <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table
                             (Down = down-arrow CVR and CVR &lt; threshold; Up = up-arrow CVR and CVR &gt; threshold;
                             horizontal / opposite arrows are excluded)
-                            @if($ebaySprcDilChannel === 'shein')
+                            @if(in_array($ebaySprcDilChannel, ['shein', 'faire'], true))
                             — only when the SKU has <strong>views</strong>
                             @endif
                             : apply that Adj {{ $ebaySprcDilTargetLabel }} to the Target {{ $ebaySprcDilTargetLabel }} (Count updates as you edit).
@@ -374,7 +374,7 @@
                             <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table
                             (Down = down-arrow CVR and CVR &lt; threshold; Up = up-arrow CVR and CVR &gt; threshold;
                             horizontal / opposite arrows are excluded)
-                            @if($ebaySprcDilChannel === 'shein')
+                            @if(in_array($ebaySprcDilChannel, ['shein', 'faire'], true))
                             — only when the SKU has <strong>views</strong>
                             @endif
                             : apply that Adj {{ $ebaySprcDilTargetLabel }} to the Dil slab Target {{ $ebaySprcDilTargetLabel }}
@@ -429,7 +429,7 @@
 @elseif(!empty($ebaySprcDilExcludeShip))
                         <li>
                             <strong>When</strong> S PRC is calculated:
-                            <code>S PRC = (LP × (1 + GROI%/100)) / margin</code> (Ship not used).
+                            <code>S PRC = (LP × (1 + {{ $ebaySprcDilTargetLabel }}%/100)) / margin</code> (Ship not used).
                         </li>
 @endif
                         <li>
@@ -972,7 +972,7 @@
                 || (d.cvr_45 != null && d.cvr_45 !== '')));
             // Shopify B2C / B2B have no L60 CVR. Do not treat CVR>0 as Up vs a missing 0% L60.
             // Down / Up follow the editable CVR overlay thresholds (default <7% / >10%).
-            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b() || ebayDgIsNewegg() || ebayDgIsShein()) && !hasCvr60) {
+            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b() || ebayDgIsNewegg() || ebayDgIsShein() || ebayDgIsFaire()) && !hasCvr60) {
                 const cfg = ebayCvrGroiAdjNow();
                 if (cvr < cfg.down_lt) return 'down';
                 if (cvr > cfg.up_gt) return 'up';
@@ -1005,7 +1005,7 @@
         }
         function ebayDilGroiCvrAdj(d) {
             if (!EBAY_DIL_GROI_CVR_ADJ) return 0;
-            if ((ebayDgIsShein() || ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && !(ebayDgViews(d) > 0)) return 0;
+            if ((ebayDgIsShein() || ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b() || ebayDgIsFaire()) && !(ebayDgViews(d) > 0)) return 0;
             if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && ebayDgIsZeroSold(d)) return 0;
             const cvr = ebayDgCvr30(d);
             const cfg = ebayCvrGroiAdjNow();
@@ -1029,8 +1029,8 @@
                 if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
                 return !(Number(d && d.temu_l30) > 0);
             }
-            // AliExpress / Shein: 0 Sold is AL30 (channel orders), not Shopify OV L30 / Dil.
-            if (ebayDgIsAliexpress() || ebayDgIsShein()) {
+            // AliExpress / Shein / Faire: 0 Sold is AL30 (channel orders), not Shopify OV L30 / Dil.
+            if (ebayDgIsAliexpress() || ebayDgIsShein() || ebayDgIsFaire()) {
                 if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
                 return !(Number(d && (d.al30 != null ? d.al30 : d.AL30)) > 0);
             }
@@ -1981,7 +1981,9 @@
             } else if (typeof window.updateSummary === 'function') {
                 try { window.updateSummary(); } catch (e) { /* ignore */ }
             }
-            if (typeof window.chPromoQueueReloadSpricePush === 'function') {
+            // Shopify B2C pushes only after the background S PRC apply finishes (same as Amazon).
+            if (!(typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
+                && typeof window.chPromoQueueReloadSpricePush === 'function') {
                 try { window.chPromoQueueReloadSpricePush({ delay: 150 }); } catch (e) { /* ignore */ }
             }
         }
@@ -2157,6 +2159,10 @@
                     return;
                 }
                 ebayDgAutoApplyWaits = 0;
+                if (ebayDgIsShopifyB2c() && typeof window.chPromoScheduleB2cRuleSpriceThenPush === 'function') {
+                    window.chPromoScheduleB2cRuleSpriceThenPush({ delay: 200 });
+                    return;
+                }
                 // Always persist the Dil S PRC cell $ to the channel table.
                 // Push listing price only when this page already allows reload push.
                 const persist = opts.persist !== false;
@@ -2356,7 +2362,7 @@
             }
 
             if (opts.push === true && livePushOn && fills.length) {
-                if ((ebayDgIsShopifyB2b() || ebayDgIsEbay123()) && typeof scanAndQueueChannelPushSprice === 'function') {
+                if ((ebayDgIsShopifyB2b() || ebayDgIsShopifyB2c() || ebayDgIsEbay123()) && typeof scanAndQueueChannelPushSprice === 'function') {
                     const tbl = (typeof chPromoSafeTable === 'function')
                         ? chPromoSafeTable()
                         : ((typeof table !== 'undefined') ? table : null);
@@ -2567,6 +2573,7 @@
                 }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
                 renderEbayDilGroiModalTable();
+                window._ebayDilRulesLoaded = true;
                 redrawEbaySprcDilColumn();
                 ebayScheduleSprcDilAutoApply({ persist: true, delay: 400 });
                 $('#ebay-dil-groi-status').text(
@@ -2577,6 +2584,7 @@
                             : 'Using first-time defaults (0.1–5 → 50 … 20–25 → 70, +5 each). Then Save and Apply.')
                 );
             } catch (e) {
+                window._ebayDilRulesLoaded = true;
                 renderEbayDilGroiModalTable();
                 const reason = (e && e.responseJSON && e.responseJSON.message)
                     || (e && e.status ? ('HTTP ' + e.status) : 'network error');

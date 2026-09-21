@@ -890,8 +890,11 @@
         }
         function neHasBlueTriangle(data) {
             if (!data || !data.sku) return false;
-            if (!(parseFloat(data.INV) > 0)) return false;
-            if (neShowAmzLabel(data)) return false;
+            // Row payload uses `inv` (Shopify stock). `INV` is only a leftover alias.
+            const inv = parseFloat(data.inv != null ? data.inv : data.INV);
+            if (!(inv > 0)) return false;
+            // Amz label means the shown S PRC was raised to A Price. Still push when
+            // that shown price does not match the live Newegg price.
             const sprice = neRowSpriceForAlert(data);
             const price = parseFloat(data.price) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);

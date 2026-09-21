@@ -9,17 +9,17 @@
     $channelPromoPart = $channelPromoPart ?? 'all';
     $channelPromoChannel = $channelPromoChannel ?? 'ebay1';
     $channelPromoHideCvrCpn = !empty($channelPromoHideCvrCpn)
-        || in_array($channelPromoChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg', 'mercari_wship', 'mercari_woship'], true);
+        || in_array($channelPromoChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg', 'pls', 'mercari_wship', 'mercari_woship'], true);
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'mercari_wship', 'mercari_woship', 'depop', 'vinted', 'instagram'], true);
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'mercari_wship', 'mercari_woship', 'depop', 'vinted', 'instagram'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
     $channelPromoZeroSoldMinRoi = $channelPromoChannel === 'shopify_b2c';
     $channelPromoZeroSoldSoldLabel = $channelPromoChannel === 'shopify_b2c' ? 'B2C L30' : 'L30';
-    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'depop', 'vinted', 'instagram'], true);
+    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'depop', 'vinted', 'instagram'], true);
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'fb_marketplace'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
@@ -9954,12 +9954,143 @@
             }, extra));
         }
         let chPromoAllEbayRulesBusy = false;
+        let chPromoB2cApplyTimer = null;
+        let chPromoB2cApplyRunning = false;
+        let chPromoB2cApplyAgain = false;
+        let chPromoB2cApplyWaits = 0;
         function chPromoUsesAmazonStyleRuleApply() {
             return chPromoIsEbayChannel() || CHANNEL_PROMO_CHANNEL === 'shopify_b2c';
         }
-        /** eBay / Shopify B2C page load: sync Dil/CVR slabs. Do not refill S PRC or push the catalog. */
+        /** Live Dil S PRC for Shopify B2C, including the Amz floor. Ignores stored SPRICE. */
+        function chPromoB2cLiveSprice(d) {
+            if (!d) return 0;
+            let raw = 0;
+            if (typeof ebayDilGroiMetaForRow === 'function') {
+                const meta = ebayDilGroiMetaForRow(d);
+                if (meta && (meta.rawSprc > 0 || meta.sprc > 0)) {
+                    raw = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
+                }
+            }
+            if (!(raw > 0) && typeof ebaySprcDilForRow === 'function') {
+                raw = Number(ebaySprcDilForRow(d)) || 0;
+            }
+            if (!(raw > 0)) return 0;
+            const price = (typeof chPromoFinalSpriceToSave === 'function')
+                ? Number(chPromoFinalSpriceToSave(d, raw))
+                : raw;
+            return price > 0 ? chPromoRound2(price) : 0;
+        }
+        function chPromoCollectB2cRuleSpriceJobs() {
+            const jobs = [];
+            const seen = {};
+            function consider(d) {
+                if (!d) return;
+                if (typeof isShopifyB2cParentRow === 'function' && isShopifyB2cParentRow(d)) return;
+                const sku = (typeof chPromoSku === 'function')
+                    ? chPromoSku(d)
+                    : String(d['(Child) sku'] || d.sku || '').trim();
+                const key = String(sku || '').toUpperCase();
+                if (!sku || seen[key] || key.indexOf('PARENT') !== -1) return;
+                if (!(parseFloat(d.INV != null ? d.INV : d.inv) > 0)) return;
+                const price = chPromoB2cLiveSprice(d);
+                if (!(price > 0)) return;
+                const stored = chPromoRound2(d.SPRICE != null ? d.SPRICE : d.sprice);
+                const amzSugg = (typeof shopifyB2cShowAmzLabel === 'function')
+                    ? !!shopifyB2cShowAmzLabel(d)
+                    : false;
+                const storedFlag = (typeof shopifyB2cIsAmzSuggApplied === 'function')
+                    ? !!shopifyB2cIsAmzSuggApplied(d)
+                    : false;
+                if (Math.abs(stored - price) < 0.005 && storedFlag === amzSugg) return;
+                seen[key] = true;
+                jobs.push({ sku: sku, sprice: price, amz_sugg: amzSugg ? 1 : 0 });
+            }
+            if (typeof ebaySprcDilEachCatalogRow === 'function') {
+                ebaySprcDilEachCatalogRow(function(row, d) { consider(d); });
+            }
+            return jobs;
+        }
+        async function chPromoB2cSaveChunks(updates) {
+            const size = 150;
+            for (let i = 0; i < updates.length; i += size) {
+                await saveChannelSpriceBatch(updates.slice(i, i + size), {
+                    skip_push: true,
+                    queue_push: false,
+                });
+            }
+        }
+        function chPromoB2cStartAutopush() {
+            if (typeof chPromoPageReloadPushAllowed === 'function' && !chPromoPageReloadPushAllowed()) return;
+            const scan = (typeof scanAndQueueChannelPushSprice === 'function')
+                ? scanAndQueueChannelPushSprice
+                : (window.scanAndQueueChannelPushSprice || null);
+            if (typeof scan !== 'function') return;
+            scan(chPromoSafeTable(), { catalog: true, once: false, silent: false });
+        }
+        /** Same as Amazon: save the live rule S PRC in the background, then start Push on reload. */
+        async function chPromoRunB2cRuleSpriceThenPush() {
+            if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return;
+            if (chPromoB2cApplyRunning) {
+                chPromoB2cApplyAgain = true;
+                return;
+            }
+            chPromoB2cApplyRunning = true;
+            try {
+                const jobs = chPromoCollectB2cRuleSpriceJobs();
+                if (jobs.length) {
+                    await chPromoB2cSaveChunks(jobs);
+                    if (typeof ebayDgRefreshVisibleRows === 'function') {
+                        try { ebayDgRefreshVisibleRows(); } catch (e) { /* ignore */ }
+                    }
+                }
+                chPromoB2cStartAutopush();
+            } catch (e) {
+                chPromoToast('error', 'S PRC apply failed — push not started');
+            } finally {
+                chPromoB2cApplyRunning = false;
+                if (chPromoB2cApplyAgain) {
+                    chPromoB2cApplyAgain = false;
+                    chPromoScheduleB2cRuleSpriceThenPush({ delay: 400 });
+                }
+            }
+        }
+        function chPromoScheduleB2cRuleSpriceThenPush(opts) {
+            if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return;
+            opts = opts || {};
+            const delay = opts.delay != null ? opts.delay : 500;
+            clearTimeout(chPromoB2cApplyTimer);
+            chPromoB2cApplyTimer = setTimeout(function() {
+                if (!chPromoEbaySpriceSlabsReady() || !window._ebayDilRulesLoaded) {
+                    if (chPromoB2cApplyWaits++ < 40) {
+                        chPromoScheduleB2cRuleSpriceThenPush({ delay: 400 });
+                    }
+                    return;
+                }
+                const tbl = chPromoSafeTable();
+                const n = tbl && typeof tbl.getDataCount === 'function' ? tbl.getDataCount() : 0;
+                let extraN = 0;
+                try {
+                    extraN = Array.isArray(window.allTableData) ? window.allTableData.length : 0;
+                } catch (e) { extraN = 0; }
+                if (!(n > 0) && !(extraN > 0)) {
+                    if (chPromoB2cApplyWaits++ < 40) {
+                        chPromoScheduleB2cRuleSpriceThenPush({ delay: 400 });
+                    }
+                    return;
+                }
+                chPromoB2cApplyWaits = 0;
+                chPromoRunB2cRuleSpriceThenPush();
+            }, delay);
+        }
+        window.chPromoScheduleB2cRuleSpriceThenPush = chPromoScheduleB2cRuleSpriceThenPush;
+        window.chPromoB2cRuleApplyRunning = function() { return chPromoB2cApplyRunning; };
+        /** eBay page load: sync Dil/CVR slabs only. Shopify B2C calculates S PRC in the background, then pushes. */
         async function chPromoRunAllEbayRulesOnLoad() {
             if (!chPromoUsesAmazonStyleRuleApply() || chPromoAllEbayRulesBusy) return;
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
+                chPromoScheduleB2cRuleSpriceThenPush({ delay: 400 });
+                return;
+            }
             chPromoAllEbayRulesBusy = true;
             try {
                 if (typeof chPromoSyncEbayPrmtColumnFromSlabs === 'function') {

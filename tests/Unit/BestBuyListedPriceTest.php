@@ -124,6 +124,42 @@ class BestBuyListedPriceTest extends TestCase
         );
     }
 
+    public function test_one_off_price_push_does_not_hide_the_offer_batch(): void
+    {
+        $freshAfter = BestBuyPricingController::freshAfterFromUpdateBuckets([
+            ['started' => Carbon::parse('2026-09-21 15:26:07'), 'count' => 1],
+            ['started' => Carbon::parse('2026-09-21 15:24:11'), 'count' => 1],
+            ['started' => Carbon::parse('2026-09-21 15:16:02'), 'count' => 2],
+            ['started' => Carbon::parse('2026-09-21 15:02:01'), 'count' => 412],
+            ['started' => Carbon::parse('2026-09-21 15:01:19'), 'count' => 841],
+            ['started' => Carbon::parse('2026-09-21 07:34:10'), 'count' => 5],
+        ]);
+
+        $this->assertNotNull($freshAfter);
+        $this->assertTrue($freshAfter->lt(Carbon::parse('2026-09-21 15:01:19')));
+
+        $listed = new BestbuyUsaProduct();
+        $listed->price = 24.92;
+        $listed->stock = 4;
+        $listed->listing_status = 'active';
+        $listed->updated_at = Carbon::parse('2026-09-21 15:01:19');
+
+        $this->assertTrue(BestBuyPricingController::productIsLiveOffer($listed, $freshAfter));
+        $out = BestBuyPricingController::resolveListedPrice(
+            $listed,
+            BestBuyPricingController::productIsLiveOffer($listed, $freshAfter)
+        );
+        $this->assertEqualsWithDelta(24.92, $out['price'], 0.001);
+
+        $leftover = new BestbuyUsaProduct();
+        $leftover->price = 93.99;
+        $leftover->stock = 24;
+        $leftover->listing_status = 'active';
+        $leftover->updated_at = Carbon::parse('2026-09-12 16:49:53');
+
+        $this->assertFalse(BestBuyPricingController::productIsLiveOffer($leftover, $freshAfter));
+    }
+
     public function test_listing_inactive_flag(): void
     {
         $this->assertTrue(BestBuyPricingController::isListingMarkedInactive((object) [

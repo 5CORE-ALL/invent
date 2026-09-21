@@ -406,6 +406,9 @@
                             if (CH_PUSH_SPRICE_CHANNEL === 'aliexpress' && typeof window.aeApplyPushPatchToSku === 'function') {
                                 window.aeApplyPushPatchToSku(t.sku, result.patch);
                             }
+                            if (CH_PUSH_SPRICE_CHANNEL === 'shein' && typeof window.sheinApplyPushPatchToSku === 'function') {
+                                window.sheinApplyPushPatchToSku(t.sku, result.patch);
+                            }
                             if (CH_PUSH_SPRICE_IS_MACYS && result.kind === 'price'
                                 && typeof global.macysApplyLivePriceToRow === 'function') {
                                 const livePrice = Number((result.patch && (result.patch['MC Price'] || result.patch.price))
@@ -853,6 +856,11 @@
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (item.data || {});
                 if (typeof window.aeApplyPushPatchToSku === 'function' && CH_PUSH_SPRICE_CHANNEL === 'aliexpress') {
                     window.aeApplyPushPatchToSku(item.sku, patch);
+                    chPushClientPatchDatasets(item.sku, patch);
+                    return;
+                }
+                if (typeof window.sheinApplyPushPatchToSku === 'function' && CH_PUSH_SPRICE_CHANNEL === 'shein') {
+                    window.sheinApplyPushPatchToSku(item.sku, patch);
                     chPushClientPatchDatasets(item.sku, patch);
                     return;
                 }

@@ -511,15 +511,13 @@ class ReverbApiService
         }
 
         $ids = [];
-        $product = ReverbProduct::query()
-            ->whereNotNull('reverb_listing_id')
-            ->where('reverb_listing_id', '!=', '')
-            ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower($normalizedSku)])
-            ->first();
-        if ($product && $product->reverb_listing_id) {
-            $ids[] = trim((string) $product->reverb_listing_id);
+        $storedId = $this->storedReverbListingId($normalizedSku);
+        if ($storedId !== null) {
+            $ids[] = $storedId;
         }
 
+        // Filtered ?sku= lookup is enough when it hits. Full catalog paging is only
+        // the fallback inside fetchListingIdsFromReverbApiBySku (spacing variants).
         foreach ($this->fetchListingIdsFromReverbApiBySku($normalizedSku) as $id) {
             $ids[] = $id;
         }
@@ -528,9 +526,61 @@ class ReverbApiService
     }
 
     /**
+     * Listing id already stored on reverb_products. Price push uses this and
+     * does not page through my/listings.
+     */
+    private function storedReverbListingId(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        try {
+            if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'reverb_listing_id')) {
+                return null;
+            }
+
+            $collapsed = preg_replace('/\s+/u', ' ', $sku) ?? $sku;
+            $candidates = array_values(array_unique(array_filter([
+                $sku,
+                $collapsed,
+                strtoupper($sku),
+                strtoupper($collapsed),
+                strtolower($sku),
+                strtolower($collapsed),
+            ], fn ($value) => is_string($value) && $value !== '')));
+
+            $product = ReverbProduct::query()
+                ->whereNotNull('reverb_listing_id')
+                ->where('reverb_listing_id', '!=', '')
+                ->where(function ($query) use ($candidates, $sku) {
+                    $query->whereIn('sku', $candidates)
+                        ->orWhereRaw('LOWER(TRIM(sku)) = ?', [strtolower($sku)]);
+                })
+                ->first(['reverb_listing_id']);
+        } catch (\Throwable $e) {
+            Log::warning('Reverb stored listing id lookup failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (! $product) {
+            return null;
+        }
+
+        $id = trim((string) ($product->reverb_listing_id ?? ''));
+
+        return $id !== '' ? $id : null;
+    }
+
+    /**
      * @return list<string>
      */
-    private function fetchListingIdsFromReverbApiBySku(string $sku): array
+    private function fetchListingIdsFromReverbApiBySku(string $sku, bool $stopAtFirst = false): array
     {
         $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
         $token = self::getReverbBearerToken();
@@ -546,7 +596,7 @@ class ReverbApiService
                 'per_page' => 50,
             ]);
             $filteredRes = Http::withoutVerifying()
-                ->timeout(60)
+                ->timeout(20)
                 ->withHeaders([
                     'Authorization' => 'Bearer '.$token,
                     'Accept' => 'application/hal+json',
@@ -555,22 +605,20 @@ class ReverbApiService
                 ->get($filteredUrl);
 
             if ($filteredRes->successful()) {
-                foreach ($filteredRes->json()['listings'] ?? [] as $item) {
-                    $listingSku = isset($item['sku']) ? trim((string) $item['sku']) : '';
-                    if (! self::reverbListingSkuMatches($listingSku, $sku)) {
-                        continue;
-                    }
-                    $id = $item['id'] ?? null;
-                    if ($id !== null && trim((string) $id) !== '') {
-                        $ids[] = trim((string) $id);
-                    }
-                }
+                $ids = $this->matchingListingIdsFromPayload($filteredRes->json(), $sku);
             }
 
-            $url = $apiBase.'/my/listings?state=all&per_page=50';
-            while ($url) {
+            // A hit on ?sku= is the listing. Do not walk every page of my/listings.
+            if ($ids !== []) {
+                return array_values(array_unique($ids));
+            }
+
+            $url = $apiBase.'/my/listings?state=all&per_page=100';
+            $pages = 0;
+            while ($url && $pages < 200) {
+                $pages++;
                 $response = Http::withoutVerifying()
-                    ->timeout(60)
+                    ->timeout(20)
                     ->withHeaders([
                         'Authorization' => 'Bearer '.$token,
                         'Accept' => 'application/hal+json',
@@ -583,15 +631,12 @@ class ReverbApiService
                 }
 
                 $data = $response->json();
-                foreach ($data['listings'] ?? [] as $item) {
-                    $listingSku = isset($item['sku']) ? trim((string) $item['sku']) : '';
-                    if (! self::reverbListingSkuMatches($listingSku, $sku)) {
-                        continue;
-                    }
-                    $id = $item['id'] ?? null;
-                    if ($id !== null && trim((string) $id) !== '') {
-                        $ids[] = trim((string) $id);
-                    }
+                foreach ($this->matchingListingIdsFromPayload($data, $sku) as $id) {
+                    $ids[] = $id;
+                }
+
+                if ($stopAtFirst && $ids !== []) {
+                    break;
                 }
 
                 $url = isset($data['_links']['next']['href']) ? trim($data['_links']['next']['href']) : null;
@@ -607,27 +652,57 @@ class ReverbApiService
     }
 
     /**
+     * @param  mixed  $data
+     * @return list<string>
+     */
+    private function matchingListingIdsFromPayload($data, string $sku): array
+    {
+        if (! is_array($data)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($data['listings'] ?? [] as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $listingSku = isset($item['sku']) ? trim((string) $item['sku']) : '';
+            if (! self::reverbListingSkuMatches($listingSku, $sku)) {
+                continue;
+            }
+            $id = $item['id'] ?? null;
+            if ($id !== null && trim((string) $id) !== '') {
+                $ids[] = trim((string) $id);
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
      * Get Reverb listing ID for a SKU.
-     * First checks reverb_products.reverb_listing_id; if not found, paginates through API my/listings.
+     * Uses reverb_products.reverb_listing_id. API lookup only when that id is missing
+     * (or $refresh after a 404). ?sku= is one request; full my/listings paging stops at the first hit.
      *
      * @return string|null Listing ID or null if not found
      */
-    public function getListingIdBySku(string $sku): ?string
+    public function getListingIdBySku(string $sku, bool $refresh = false): ?string
     {
         $normalizedSku = trim($sku);
         if ($normalizedSku === '') {
             return null;
         }
 
-        $listingIds = $this->getAllListingIdsBySku($normalizedSku);
-        if ($listingIds === []) {
-            return null;
+        if (! $refresh) {
+            $storedId = $this->storedReverbListingId($normalizedSku);
+            if ($storedId !== null) {
+                return $storedId;
+            }
         }
 
-        if (count($listingIds) === 1) {
-            $this->persistReverbListingId($normalizedSku, $listingIds[0]);
-
-            return $listingIds[0];
+        $listingIds = $this->fetchListingIdsFromReverbApiBySku($normalizedSku, true);
+        if ($listingIds === []) {
+            return null;
         }
 
         $primaryId = $listingIds[count($listingIds) - 1];
@@ -738,6 +813,15 @@ class ReverbApiService
         try {
             // Same retry/refresh path as updateTitle: 401 refreshes token, 429/503 honour Retry-After.
             $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+
+            // Stored id can point at a removed listing. Resolve once, then PUT that id.
+            if ($response->status() === 404) {
+                $freshId = $this->getListingIdBySku($sku, true);
+                if ($freshId !== null && $freshId !== $listingId) {
+                    $listingId = $freshId;
+                    $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+                }
+            }
 
             if ($response->successful()) {
                 Log::info('Reverb price updated successfully', [

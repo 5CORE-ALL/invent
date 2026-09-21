@@ -91,27 +91,46 @@ class ShopifySku extends Model
         return $ca !== '' && $ca === $cb;
     }
 
+    private static function rowHasVariantId(self $row): bool
+    {
+        return trim((string) ($row->variant_id ?? '')) !== '';
+    }
+
     /**
      * @param  array<int, string>  $productSkus
-     * @return array<string, self> normalized key => row (first wins)
+     * @return array<string, self> normalized key => row (row with a variant id wins over a blank stub)
      */
     public static function buildShopifySkuLookupByNormalizedSku(array $productSkus, bool $scanMissing = true): array
     {
         $shopifyByNorm = [];
         $indexRow = static function ($row) use (&$shopifyByNorm): void {
             $k = self::normalizeSkuForShopifyLookup($row->sku);
-            if ($k !== '' && ! isset($shopifyByNorm[$k])) {
-                $shopifyByNorm[$k] = $row;
+            if ($k !== '') {
+                $existing = $shopifyByNorm[$k] ?? null;
+                if ($existing === null || (! self::rowHasVariantId($existing) && self::rowHasVariantId($row))) {
+                    $shopifyByNorm[$k] = $row;
+                }
             }
             $c = self::compactSkuForLookup($row->sku);
-            if ($c !== '' && ! isset($shopifyByNorm['c:'.$c])) {
-                $shopifyByNorm['c:'.$c] = $row;
+            if ($c !== '') {
+                $ck = 'c:'.$c;
+                $existing = $shopifyByNorm[$ck] ?? null;
+                if ($existing === null || (! self::rowHasVariantId($existing) && self::rowHasVariantId($row))) {
+                    $shopifyByNorm[$ck] = $row;
+                }
             }
+        };
+        $resolved = static function (string $k, string $c) use (&$shopifyByNorm): bool {
+            if ($k !== '' && isset($shopifyByNorm[$k]) && self::rowHasVariantId($shopifyByNorm[$k])) {
+                return true;
+            }
+
+            return $c !== '' && isset($shopifyByNorm['c:'.$c]) && self::rowHasVariantId($shopifyByNorm['c:'.$c]);
         };
 
         if ($productSkus !== []) {
             foreach (self::query()->whereIn('sku', $productSkus)->get([
-                'id', 'sku', 'inv', 'quantity', 'shopify_l30', 'price', 'b2c_price', 'image_src',
+                'id', 'sku', 'variant_id', 'inv', 'quantity', 'shopify_l30', 'price', 'b2c_price', 'image_src',
             ]) as $row) {
                 $indexRow($row);
             }
@@ -121,9 +140,7 @@ class ShopifySku extends Model
         foreach ($productSkus as $pmSku) {
             $k = self::normalizeSkuForShopifyLookup((string) $pmSku);
             $c = self::compactSkuForLookup((string) $pmSku);
-            $found = ($k !== '' && isset($shopifyByNorm[$k]))
-                || ($c !== '' && isset($shopifyByNorm['c:'.$c]));
-            if (! $found) {
+            if (! $resolved($k, $c)) {
                 if ($k !== '') {
                     $missingFlip[$k] = true;
                 }
@@ -151,10 +168,10 @@ class ShopifySku extends Model
                         continue;
                     }
                     $indexRow($row);
-                    if ($k !== '') {
+                    if ($k !== '' && isset($shopifyByNorm[$k]) && self::rowHasVariantId($shopifyByNorm[$k])) {
                         unset($missingFlip[$k]);
                     }
-                    if ($c !== '') {
+                    if ($c !== '' && isset($shopifyByNorm['c:'.$c]) && self::rowHasVariantId($shopifyByNorm['c:'.$c])) {
                         unset($missingFlip['c:'.$c]);
                     }
                 }
@@ -206,5 +223,48 @@ class ShopifySku extends Model
         $c = self::compactSkuForLookup((string) $sku);
 
         return ($c !== '' && isset($map['c:'.$c])) ? $map['c:'.$c] : null;
+    }
+
+    /**
+     * Main-store catalog variant when shopify_skus has no id for this listing.
+     */
+    public static function mainCatalogVariantId(?string $sku): ?string
+    {
+        $wantN = self::normalizeSkuForShopifyLookup($sku);
+        $wantC = self::compactSkuForLookup($sku);
+        if (($wantN === '' && $wantC === '') || ! \Illuminate\Support\Facades\Schema::hasTable('shopify_catalog_variants')) {
+            return null;
+        }
+
+        $compactHit = null;
+        foreach (\Illuminate\Support\Facades\DB::table('shopify_catalog_variants')
+            ->where('store', 'main')
+            ->whereNotNull('shopify_variant_id')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'shopify_variant_id']) as $row) {
+            $vid = trim((string) ($row->shopify_variant_id ?? ''));
+            if ($vid === '') {
+                continue;
+            }
+            if ($wantN !== '' && self::normalizeSkuForShopifyLookup((string) $row->sku) === $wantN) {
+                return $vid;
+            }
+            if ($compactHit === null && $wantC !== '' && self::compactSkuForLookup((string) $row->sku) === $wantC) {
+                $compactHit = $vid;
+            }
+        }
+
+        return $compactHit;
+    }
+
+    public static function variantIdForProductSku(?string $sku): ?string
+    {
+        $row = self::firstForProductSku($sku);
+        $vid = trim((string) ($row->variant_id ?? ''));
+        if ($vid !== '') {
+            return $vid;
+        }
+
+        return self::mainCatalogVariantId($sku);
     }
 }

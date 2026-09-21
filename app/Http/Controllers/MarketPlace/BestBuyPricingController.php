@@ -520,12 +520,55 @@ class BestBuyPricingController extends Controller
 
     public static function latestMcmFreshAfter(): ?Carbon
     {
-        $last = BestbuyUsaProduct::query()->max('updated_at');
-        if (! $last) {
+        $buckets = BestbuyUsaProduct::query()
+            ->whereNotNull('updated_at')
+            ->selectRaw('MIN(updated_at) as started, COUNT(*) as c')
+            ->groupByRaw('DATE_FORMAT(updated_at, "%Y-%m-%d %H:%i")')
+            ->orderByDesc('started')
+            ->limit(80)
+            ->get()
+            ->map(static function ($row) {
+                return [
+                    'started' => Carbon::parse($row->started),
+                    'count' => (int) $row->c,
+                ];
+            })
+            ->all();
+
+        return self::freshAfterFromUpdateBuckets($buckets);
+    }
+
+    /**
+     * Cutoff for the latest OF21/OF51 write. A later one-row price push must
+     * not move this forward and hide the rest of the catalog.
+     *
+     * @param  list<array{started: \Carbon\Carbon, count: int}>  $buckets  newest first
+     */
+    public static function freshAfterFromUpdateBuckets(array $buckets): ?Carbon
+    {
+        if ($buckets === []) {
             return null;
         }
 
-        return Carbon::parse($last)->subMinutes(15);
+        $batchStart = null;
+        $prev = null;
+        foreach ($buckets as $bucket) {
+            $started = $bucket['started'];
+            $count = (int) $bucket['count'];
+            if ($prev !== null && abs($prev->diffInMinutes($started)) > 20 && $batchStart !== null) {
+                break;
+            }
+            if ($count >= 10) {
+                $batchStart = $started;
+            }
+            $prev = $started;
+        }
+
+        if ($batchStart === null) {
+            return $buckets[0]['started']->copy()->subMinutes(15);
+        }
+
+        return $batchStart->copy()->subMinute();
     }
 
     public static function normalizeOfferSku(string $value): string

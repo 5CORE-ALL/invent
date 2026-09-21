@@ -134,6 +134,7 @@ use App\Models\AmazonListingStatus;
 use App\Models\EbayListingStatus;
 use App\Models\TemuListingStatus;
 use App\Services\EbayChannelMetricsService;
+use App\Services\ReverbDaySales;
 use App\Services\LmpSkuGroupService;
 use App\Services\SheinApiService;
 use App\Services\SheinShopifySalesService;
@@ -8894,11 +8895,7 @@ class ChannelMasterController extends Controller
      */
     private function computeReverbYSalesLikeAmazon(): ?float
     {
-        if (! Schema::hasTable('reverb_daily_data')) {
-            return null;
-        }
-
-        if (! DB::table('reverb_daily_data')->whereNotNull('order_date')->exists()) {
+        if (! Schema::hasTable('reverb_daily_data') && ! Schema::hasTable('reverb_order_metrics')) {
             return null;
         }
 
@@ -8908,28 +8905,16 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * One calendar day's Reverb GMV (amount, else product_subtotal). Gap days are $0.
+     * One calendar day's Reverb GMV. Includes live reverb_order_metrics rows
+     * that reverb:daily has not copied into reverb_daily_data yet.
      */
     private function sumReverbRevenueForDate(string $ymd): float
     {
-        if ($ymd === '' || ! Schema::hasTable('reverb_daily_data')) {
+        if ($ymd === '') {
             return 0.0;
         }
 
-        return round((float) DB::table('reverb_daily_data')
-            ->whereDate('order_date', $ymd)
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-            ->where(function ($q) {
-                $q->where(function ($q2) {
-                    $q2->whereNotNull('sku')->where('sku', '!=', '');
-                })->orWhere(function ($q2) {
-                    $q2->whereNotNull('display_sku')->where('display_sku', '!=', '');
-                });
-            })
-            ->whereNotNull('order_number')->where('order_number', '!=', '')
-            ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
-            ->value('revenue'), 2);
+        return app(ReverbDaySales::class)->sumForDate($ymd);
     }
 
     /**
@@ -9451,31 +9436,18 @@ class ChannelMasterController extends Controller
      */
     private function computeReverbL7SalesLikeAmazon(): ?float
     {
-        if (! Schema::hasTable('reverb_daily_data')) {
-            return null;
-        }
-
-        if (! DB::table('reverb_daily_data')->whereNotNull('order_date')->exists()) {
+        if (! Schema::hasTable('reverb_daily_data') && ! Schema::hasTable('reverb_order_metrics')) {
             return null;
         }
 
         [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
             Carbon::now('America/Los_Angeles')
         );
-        $end = $l7EndPacific->toDateString();
-        $start = $l7StartPacific->toDateString();
 
-        $sum = (float) DB::table('reverb_daily_data')
-            ->whereDate('order_date', '>=', $start)
-            ->whereDate('order_date', '<=', $end)
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
-            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-            ->whereNotNull('sku')->where('sku', '!=', '')
-            ->whereNotNull('order_number')->where('order_number', '!=', '')
-            ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+        return app(ReverbDaySales::class)->totalsBetween(
+            $l7StartPacific->toDateString(),
+            $l7EndPacific->toDateString()
+        )['sales'];
     }
 
     private function computeMercariL7SalesLikeAmazon(bool $withShip): ?float

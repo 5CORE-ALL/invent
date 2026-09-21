@@ -45,7 +45,27 @@
             padding-left: 0.5rem !important;
             background-position: right 0.35rem center !important;
         }
-        #pls-filter-bar { gap: 8px 10px !important; }
+        #pls-filter-bar {
+            gap: 8px 10px !important;
+            position: relative;
+            z-index: 30;
+        }
+        #pls-filter-bar .dropdown,
+        #pls-filter-bar .btn-group {
+            position: relative;
+        }
+        #pls-filter-bar .dropdown.show,
+        #pls-filter-bar .btn-group.show {
+            z-index: 40;
+        }
+        #pls-filter-bar .dropdown-menu {
+            z-index: 41;
+        }
+        #pls-table-wrapper,
+        #pls-table-wrapper .tabulator {
+            position: relative;
+            z-index: 1;
+        }
         #summary-stats {
             order: -1;
             padding: 0.5rem 0.7rem !important;
@@ -226,9 +246,6 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
                             style="color: black; font-weight: bold;">Prc: $0.00</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'pls'])
-                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter Missing L (INV&gt;0, not listed on PLS)">M L: 0</span>
                         <span class="badge fs-6 p-2" id="pls-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
@@ -322,7 +339,6 @@
     // Badge filter toggles (same pattern as /ebay-tabulator-view)
     let zeroSoldFilterActive = false;
     let moreSoldFilterActive = false;
-    let missingLFilterActive = false;
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
@@ -330,12 +346,22 @@
     function plsIsParentRow(d) {
         return !!(d && (d.is_parent || d.is_parent_summary || (d.parent && String(d.parent).toUpperCase().indexOf('PARENT') === 0 && String(d.sku || '').toUpperCase().indexOf('PARENT') !== -1)));
     }
-    function plsRowSpriceForAlert(data) {
+    /** Same as Amazon analytics: live Sprc Dil, then saved S PRC. Shown even when it equals Price. */
+    function plsVisibleSprice(data) {
+        if (!data || plsIsParentRow(data)) return 0;
+        if (typeof ebaySprcDilForRow === 'function') {
+            const dil = Number(ebaySprcDilForRow(data)) || 0;
+            if (dil > 0) return dil;
+        }
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
             if (saved > 0) return saved;
         }
-        return parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
+        const stored = parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
+        return stored > 0 ? stored : 0;
+    }
+    function plsRowSpriceForAlert(data) {
+        return plsVisibleSprice(data);
     }
     function plsHasBlueTriangle(data) {
         if (plsIsParentRow(data)) return false;
@@ -350,11 +376,6 @@
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: blueTriangleFilterActive ? '2px' : ''
         });
-    }
-
-    /** M L — INV>0 and marked Missing (not listed on PLS). */
-    function isPlsMissingL(row) {
-        return (row.missing || '') === 'M' && (parseInt(row.inventory) || 0) > 0;
     }
 
     function showToast(message, type = 'info') {
@@ -520,7 +541,6 @@
                     const soldQty = parseInt(data.pls_l30) || 0;
                     if (!(soldQty > 0 && inv > 0)) return false;
                 }
-                if (missingLFilterActive && !isPlsMissingL(data)) return false;
                 if (priceGtLmpFilterActive && window.PriceGtLmpBadge && !PriceGtLmpBadge.hasRedTriangle(data, 'price')) return false;
                 if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(data, 'price')) return false;
                 if (blueTriangleFilterActive && !plsHasBlueTriangle(data)) return false;
@@ -689,6 +709,7 @@
                     headerSort: false,
                     width: 70
                 },
+                ParentExpand.columnDef(),
                 {
                     title: "SKU",
                     field: "sku",
@@ -846,18 +867,6 @@
                     width: 70
                 },
                 {
-                    title: "MC L30",
-                    field: "l60",
-                    hozAlign: "center",
-                    width: 50,
-                    sorter: "number",
-                    visible: true,
-                    formatter: function(cell) {
-                        const v = parseInt(cell.getValue() || 0);
-                        return `<span style="font-weight:600;">${v}</span>`;
-                    }
-                },
-                {
                     title: "Parent",
                     field: "parent",
                     headerFilter: "input",
@@ -873,7 +882,6 @@
                         return aVal.localeCompare(bVal);
                     }
                 },
-                ParentExpand.columnDef(),
                 {
                     title: "PLS L60",
                     field: "pls_l60",
@@ -887,19 +895,24 @@
                     }
                 },
                 {
-                    title: "Missing",
-                    field: "missing",
+                    title: "GROI%",
+                    field: "roi_pct",
                     hozAlign: "center",
-                    sorter: "string",
-                    width: 80,
-                    visible: true,
+                    sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        if (value === 'M') {
-                            return '<span style="color: #dc3545; font-weight: bold;" title="Not found in pls_products or INV>0 but no price">M</span>';
-                        }
-                        return '';
-                    }
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 60
                 },
                 {
                     title: "GPFT%",
@@ -911,13 +924,34 @@
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
                         let color = '';
-                        
+
                         if (percent < 10) color = '#a00211';
                         else if (percent >= 10 && percent < 15) color = '#ffc107';
                         else if (percent >= 15 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent < 30) color = '#28a745';
                         else color = '#20c997';
-                        
+
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 60
+                },
+                {
+                    title: "NROI%",
+                    field: "nroi_pct",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "NROI% = GROI%. PLS has no ads. (Price × PLS% − Ship − LP) / LP × 100.",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 60
@@ -932,33 +966,13 @@
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
                         let color = '';
-                        
+
                         if (percent < 10) color = '#a00211';
                         else if (percent >= 10 && percent < 15) color = '#ffc107';
                         else if (percent >= 15 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent < 30) color = '#28a745';
                         else color = '#20c997';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 60
-                },
-                {
-                    title: "GROI%",
-                    field: "roi_pct",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
-                        
+
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 60
@@ -1006,10 +1020,7 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (plsIsParentRow(rowData)) return '';
-                        let value = (typeof chPromoTableSprice === 'function')
-                            ? Number(chPromoTableSprice(rowData)) || 0
-                            : parseFloat(cell.getValue() || 0);
-                        if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
+                        const value = plsVisibleSprice(rowData);
                         if (!(value > 0)) return '';
                         const live = parseFloat(rowData.price) || 0;
                         const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
@@ -1289,11 +1300,6 @@
                 }
             });
 
-            let missingLCount = 0;
-            allData.forEach(row => {
-                if (isPlsMissingL(row)) missingLCount++;
-            });
-
             const avgPrice = weightedL30 > 0 ? totalWeightedPrice / weightedL30 : 0;
             const avgGpft = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
             const avgGroi = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
@@ -1306,7 +1312,6 @@
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
             $('#groi-percent-badge').text('GROI: ' + Math.round(avgGroi) + '%');
-            $('#missing-l-count-badge').text('M L: ' + missingLCount.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#pls-price-gt-lmp-badge', table.getData(), 'pls', 'price');
                 if (window.PriceLt80LmpBadge) {
@@ -1436,13 +1441,6 @@
         $('#more-sold-count-badge').on('click', function() {
             moreSoldFilterActive = !moreSoldFilterActive;
             zeroSoldFilterActive = false;
-            applyFilters();
-        });
-
-        $('#missing-l-count-badge').on('click', function() {
-            missingLFilterActive = !missingLFilterActive;
-            $(this).toggleClass('bg-secondary', !missingLFilterActive)
-                   .toggleClass('bg-danger', missingLFilterActive);
             applyFilters();
         });
 
