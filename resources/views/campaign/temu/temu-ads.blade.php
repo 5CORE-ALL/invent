@@ -1105,10 +1105,19 @@
             }
 
             function adsRowsForView() {
-                if (currentRowType() === 'sku') {
-                    return (allAdsRows || []).filter(isSkuAdsRow);
+                const type = currentRowType();
+                const list = allAdsRows || [];
+                if (type === 'sku') {
+                    return list.filter(isSkuAdsRow).map(function (r) {
+                        if (r && r._children) delete r._children;
+                        return r;
+                    });
                 }
-                return nestAdsRows(allAdsRows);
+                const nested = nestAdsRows(list);
+                if (type === 'parent') {
+                    return nested.filter(isParentAdsRow);
+                }
+                return nested;
             }
 
             function expandAllAdsParents() {
@@ -1120,7 +1129,10 @@
 
             function applyRowTypeView() {
                 if (!table) return;
-                table.replaceData(adsRowsForView());
+                if (typeof table.setPage === 'function') table.setPage(1);
+                const rows = adsRowsForView();
+                if (typeof table.clearData === 'function') table.clearData();
+                table.setData(rows);
             }
 
             function nestAdsRows(rows) {
