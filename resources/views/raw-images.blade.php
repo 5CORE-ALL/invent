@@ -1024,17 +1024,29 @@
             return raw;
         }
 
-        function hero2EbayPushCellHtml(row) {
+        function hero2HasImage(row) {
+            return rawImageSourceImages(row, 'manual').length > 0
+                || rawImageSourceImages(row, 'ai').length > 0;
+        }
+
+        function hero2HistoryCellHtml(row) {
+            if (!hero2HasImage(row)) {
+                return '<span class="text-muted" title="No Hero Image 2 to push">—</span>';
+            }
             const pushes = hero2EbayPushes(row);
-            return '<div class="ri-ebay-stamps">' + hero2EbayAccounts.map(function (a) {
+            const stamps = hero2EbayAccounts.reduce(function (html, a) {
                 const p = pushes[a.id];
-                if (p && p.pushed_at) {
-                    let title = a.label + ' updated ' + (p.pushed_at_label || '');
-                    if (p.variation_value) title += ' — ' + p.variation_value;
-                    return '<span class="ri-ebay-stamp is-pushed ri-ebay-stamp-' + a.id + '" title="' + escapeHtml(title) + '">' + a.short + '</span>';
+                if (!p || !p.pushed_at) {
+                    return html;
                 }
-                return '<span class="ri-ebay-stamp" title="' + escapeHtml(a.label) + ' not pushed yet">' + a.short + '</span>';
-            }).join('') + '</div>';
+                let title = a.label + ' updated ' + (p.pushed_at_label || '');
+                if (p.variation_value) title += ' — ' + p.variation_value;
+                return html + '<span class="ri-ebay-stamp is-pushed ri-ebay-stamp-' + a.id + '" title="' + escapeHtml(title) + '">' + a.short + '</span>';
+            }, '');
+            if (!stamps) {
+                return '<span class="text-muted" title="Hero Image 2 not pushed to eBay yet">—</span>';
+            }
+            return '<div class="ri-ebay-stamps">' + stamps + '</div>';
         }
 
         function renderHero2EbayPushStatus(row) {
@@ -1066,10 +1078,15 @@
         }
 
         function applyHero2PushStamp(sku, account, stamp) {
-            if (!stamp || !account) return;
+            if (!account) return;
+            const next = stamp && typeof stamp === 'object' ? Object.assign({}, stamp) : {};
+            if (!next.pushed_at) {
+                next.pushed_at = new Date().toISOString();
+                next.pushed_at_label = next.pushed_at_label || 'just now';
+            }
             const item = findDataItemBySku(sku);
             const current = Object.assign({}, hero2EbayPushes(item || {}));
-            current[account] = stamp;
+            current[account] = next;
             patchRowsBySku(sku, { hero2_ebay_pushes: current });
             if (document.getElementById('modalSku') && skuKey(document.getElementById('modalSku').value) === skuKey(sku)) {
                 renderHero2EbayPushStatus(findDataItemBySku(sku));
@@ -1666,13 +1683,14 @@
                         }
                     },
                     ...(rawImagesIsHero2 ? [{
-                        title: 'eBay Push',
+                        title: 'History',
+                        headerTooltip: 'History: EB1 / EB2 / EB3 only after this SKU’s Hero Image 2 was pushed to that eBay account. Dash means no image or not pushed.',
                         field: 'hero2_ebay_pushes',
                         width: 118,
                         hozAlign: 'center',
                         headerSort: false,
                         formatter: function (cell) {
-                            return hero2EbayPushCellHtml(cell.getData());
+                            return hero2HistoryCellHtml(cell.getData());
                         }
                     }] : [])
                 ]
@@ -3026,9 +3044,7 @@
                 }
                 setUploadErr('');
                 setUploadMsg(result.data.message || ('Pushed ' + sku + ' to ' + label + '.'));
-                if (result.data.stamp) {
-                    applyHero2PushStamp(sku, account, result.data.stamp);
-                }
+                applyHero2PushStamp(sku, account, result.data.stamp || { account: account });
             })
             .catch(function (err) {
                 setUploadMsg('');

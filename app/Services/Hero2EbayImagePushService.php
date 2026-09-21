@@ -221,6 +221,22 @@ class Hero2EbayImagePushService
         return $out;
     }
 
+    public function forgetStampsForSku(string $sku): void
+    {
+        $sku = $this->normalizeSku($sku);
+        if ($sku === '' || ! Schema::hasTable('hero2_ebay_pushes')) {
+            return;
+        }
+
+        Hero2EbayPush::query()
+            ->where(function ($q) use ($sku) {
+                $q->where('sku', $sku)
+                    ->orWhere('sku', strtoupper($sku))
+                    ->orWhere('sku', strtolower($sku));
+            })
+            ->delete();
+    }
+
     public function firstHero2Url(string $sku): string
     {
         $sku = $this->normalizeSku($sku);
