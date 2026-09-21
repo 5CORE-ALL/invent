@@ -23,6 +23,8 @@ class ComplianceMasterBadgeCalculator implements PageBadgeCalculator
         'bluetooth',
         'logo',
         'graph',
+        'tsp',
+        'batch',
     ];
 
     public static function pageName(): string

@@ -949,6 +949,8 @@
             'bluetooth' => 'Bluetooth',
             'logo' => 'Logo',
             'graph' => 'Graph',
+            'tsp' => 'TSP',
+            'batch' => 'Batch',
         ];
         $__cmFilterIds = [
             'battery' => 'filterBattery',
@@ -960,6 +962,8 @@
             'bluetooth' => 'filterBluetooth',
             'logo' => 'filterLogo',
             'graph' => 'filterGraph',
+            'tsp' => 'filterTsp',
+            'batch' => 'filterBatch',
         ];
     @endphp
 
@@ -978,11 +982,11 @@
                         <div class="cm-toolbar-actions">
                             <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#importModal" title="Import Excel" aria-label="Import Excel">
                                 <i class="bi bi-upload"></i>
-                            </button>
+                        </button>
                             <button type="button" class="btn btn-sm btn-success" id="downloadExcel" title="Download Excel" aria-label="Download Excel">
                                 <i class="bi bi-download"></i>
-                            </button>
-                        </div>
+                        </button>
+                    </div>
                         <div id="cm-summary-stats">
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="any" data-kpi-key="badge:compliance-master|missing_any" data-kpi-label="Compliance-M" data-kpi-value="0" title="Show SKUs with any REQ compliance field"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Compliance-M <span id="cm-summary-any">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="battery" data-kpi-key="badge:compliance-master|missing_battery" data-kpi-label="Battery" data-kpi-value="0" title="Show rows with Battery REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Battery <span id="cm-summary-battery">(0)</span></button>
@@ -994,6 +998,8 @@
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="bluetooth" data-kpi-key="badge:compliance-master|missing_bluetooth" data-kpi-label="Bluetooth" data-kpi-value="0" title="Show rows with Bluetooth REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Bluetooth <span id="cm-summary-bluetooth">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="logo" data-kpi-key="badge:compliance-master|missing_logo" data-kpi-label="Logo" data-kpi-value="0" title="Show rows with Logo REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Logo <span id="cm-summary-logo">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="graph" data-kpi-key="badge:compliance-master|missing_graph" data-kpi-label="Graph" data-kpi-value="0" title="Show rows with Graph REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Graph <span id="cm-summary-graph">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="tsp" data-kpi-key="badge:compliance-master|missing_tsp" data-kpi-label="TSP" data-kpi-value="0" title="Show rows with TSP REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>TSP <span id="cm-summary-tsp">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="batch" data-kpi-key="badge:compliance-master|missing_batch" data-kpi-label="Batch" data-kpi-value="0" title="Show rows with Batch REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Batch <span id="cm-summary-batch">(0)</span></button>
                         </div>
                     </div>
                 </div>
@@ -1030,31 +1036,31 @@
                                     <option value="90">L90</option>
                                 </select>
                                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                        </div>
+                                </div>
+                                                        </div>
                         <div class="modal-body py-2 px-3">
                             <div class="d-flex justify-content-between align-items-center mb-2 small">
                                 <span id="cmKpiChartSub" class="text-muted"></span>
                                 <span id="cmKpiChartTone" class="badge bg-secondary">—</span>
-                            </div>
+                                                    </div>
                             <div id="cmKpiChartLoading" class="text-center py-3" style="display:none;">
                                 <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                            </div>
+                                                        </div>
                             <div id="cmKpiChartNoData" class="text-center py-3 text-muted small" style="display:none;">
                                 No history yet — dots will color after a few daily snapshots.
-                            </div>
+                                                        </div>
                             <div id="cmKpiChartWrap" style="display:none;height:280px;">
                                 <canvas id="cmKpiChartCanvas"></canvas>
-                            </div>
+                                                    </div>
                             <div class="d-flex justify-content-around small mt-2" id="cmKpiChartStats" style="display:none;">
                                 <div class="text-center"><div class="text-muted" style="font-size:10px;">Highest</div><div id="cmKpiHi" class="fw-bold">—</div></div>
                                 <div class="text-center"><div class="text-muted" style="font-size:10px;">Median</div><div id="cmKpiMed" class="fw-bold">—</div></div>
                                 <div class="text-center"><div class="text-muted" style="font-size:10px;">Lowest</div><div id="cmKpiLo" class="fw-bold">—</div></div>
-                            </div>
+                                                </div>
+                                            </div>
+                                    </div>
                         </div>
                     </div>
-                </div>
-            </div>
 
             <!-- Import Modal -->
             <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
@@ -1195,7 +1201,7 @@
             let complianceAutoSaveInFlight = false;
             let complianceAutoSaveQueued = false;
 
-            const COMPLIANCE_BULK_FIELD_KEYS = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'];
+            const COMPLIANCE_BULK_FIELD_KEYS = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'];
             let cmSummaryBadgeFilter = null;
 
             // Get CSRF token from meta tag
@@ -2207,7 +2213,9 @@
                 blanket: 'Blanket',
                 bluetooth: 'Bluetooth',
                 logo: 'Logo',
-                graph: 'Graph'
+                graph: 'Graph',
+                tsp: 'TSP',
+                batch: 'Batch'
             };
 
             const CM_FILTER_IDS = {
@@ -2219,7 +2227,9 @@
                 blanket: 'filterBlanket',
                 bluetooth: 'filterBluetooth',
                 logo: 'filterLogo',
-                graph: 'filterGraph'
+                graph: 'filterGraph',
+                tsp: 'filterTsp',
+                batch: 'filterBatch'
             };
 
             function cmPassAllHeaderFilter() {
@@ -2470,7 +2480,7 @@
                     const replaced = complianceTable.replaceData(d);
                     if (replaced && typeof replaced.then === 'function') {
                         replaced.then(function() { updateCounts(); }).catch(function() { updateCounts(); });
-                    } else {
+                            } else {
                         updateCounts();
                     }
                 }
@@ -2489,6 +2499,8 @@
                 let bluetoothMissingCount = 0;
                 let logoMissingCount = 0;
                 let graphMissingCount = 0;
+                let tspMissingCount = 0;
+                let batchMissingCount = 0;
 
                 filteredData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
@@ -2506,8 +2518,10 @@
                     if (isReqFilterMatchForItem(item, 'bluetooth')) bluetoothMissingCount++;
                     if (isReqFilterMatchForItem(item, 'logo')) logoMissingCount++;
                     if (isReqFilterMatchForItem(item, 'graph')) graphMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'tsp')) tspMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'batch')) batchMissingCount++;
                 });
-
+                
                 const setText = function(id, text) {
                     document.querySelectorAll('[data-cm-count="' + id + '"]').forEach(function(node) {
                         node.textContent = text;
@@ -2526,6 +2540,8 @@
                 setText('bluetoothMissingCount', `(${bluetoothMissingCount})`);
                 setText('logoMissingCount', `(${logoMissingCount})`);
                 setText('graphMissingCount', `(${graphMissingCount})`);
+                setText('tspMissingCount', `(${tspMissingCount})`);
+                setText('batchMissingCount', `(${batchMissingCount})`);
 
                 let summaryAny = 0;
                 let summaryBattery = 0;
@@ -2537,6 +2553,8 @@
                 let summaryBluetooth = 0;
                 let summaryLogo = 0;
                 let summaryGraph = 0;
+                let summaryTsp = 0;
+                let summaryBatch = 0;
                 (Array.isArray(tableData) ? tableData : []).forEach(item => {
                     if (rowHasAnyReqCompliance(item)) summaryAny++;
                     if (isReqFilterMatchForItem(item, 'battery')) summaryBattery++;
@@ -2548,6 +2566,8 @@
                     if (isReqFilterMatchForItem(item, 'bluetooth')) summaryBluetooth++;
                     if (isReqFilterMatchForItem(item, 'logo')) summaryLogo++;
                     if (isReqFilterMatchForItem(item, 'graph')) summaryGraph++;
+                    if (isReqFilterMatchForItem(item, 'tsp')) summaryTsp++;
+                    if (isReqFilterMatchForItem(item, 'batch')) summaryBatch++;
                 });
 
                 const sp = (id, val) => {
@@ -2573,6 +2593,8 @@
                 sp('cm-summary-bluetooth', summaryBluetooth);
                 sp('cm-summary-logo', summaryLogo);
                 sp('cm-summary-graph', summaryGraph);
+                sp('cm-summary-tsp', summaryTsp);
+                sp('cm-summary-batch', summaryBatch);
                 syncComplianceSidebarBadge(summaryAny);
                 persistComplianceKpiSnapshot();
             }
@@ -2596,7 +2618,9 @@
                     blanket: 'Show rows with Blanket REQ',
                     bluetooth: 'Show rows with Bluetooth REQ',
                     logo: 'Show rows with Logo REQ',
-                    graph: 'Show rows with Graph REQ'
+                    graph: 'Show rows with Graph REQ',
+                    tsp: 'Show rows with TSP REQ',
+                    batch: 'Show rows with Batch REQ'
                 };
                 document.querySelectorAll('#cm-summary-stats .cm-summary-badge').forEach(function(badge) {
                     const key = badge.getAttribute('data-cm-filter');
@@ -2886,16 +2910,16 @@
                     const supplierSearchEl = document.getElementById('supplierSearch');
                     const supplierSearch = supplierSearchEl ? supplierSearchEl.value.toLowerCase() : '';
                     if (supplierSearch && !(item.supplier || '').toLowerCase().includes(supplierSearch)) {
-                        return false;
+                            return false;
                     }
 
                     const filterSupplierEmailEl = document.getElementById('filterSupplierEmail');
                     const filterSupplierEmail = filterSupplierEmailEl ? filterSupplierEmailEl.value : 'all';
                     if (filterSupplierEmail === 'has' && !String(item.supplier_email || '').trim()) {
-                        return false;
-                    }
+                            return false;
+                        }
                     if (filterSupplierEmail === 'missing' && String(item.supplier_email || '').trim()) {
-                        return false;
+                            return false;
                     }
 
                     // Compliance field filters (Battery / Wireless / …)
@@ -2908,7 +2932,9 @@
                         blanket: 'filterBlanket',
                         bluetooth: 'filterBluetooth',
                         logo: 'filterLogo',
-                        graph: 'filterGraph'
+                        graph: 'filterGraph',
+                        tsp: 'filterTsp',
+                        batch: 'filterBatch'
                     };
                     for (const key of Object.keys(fieldFilterMap)) {
                         const el = document.getElementById(fieldFilterMap[key]);
@@ -2982,7 +3008,7 @@
 
             function runComplianceExcelExport(btn) {
                     // Columns to export (excluding Image and Action)
-                    const columns = ["Parent", "SKU", "INV", "Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph"];
+                    const columns = ["Parent", "SKU", "INV", "Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph", "TSP", "Batch"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -3027,11 +3053,17 @@
                         },
                         "Graph": {
                             key: "graph"
+                        },
+                        "TSP": {
+                            key: "tsp"
+                        },
+                        "Batch": {
+                            key: "batch"
                         }
                     };
 
                     const complianceFieldKeysForExport = new Set([
-                        'battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'
+                        'battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'
                     ]);
 
                     // Mirror complianceFieldCellHtml() as plain text for Excel export so the
@@ -3118,7 +3150,7 @@
                                 // Adjust width based on column type
                                 if (["Parent", "SKU"].includes(col)) {
                                     return { wch: 20 }; // Wider for text columns
-                                } else if (["Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph"].includes(col)) {
+                                } else if (["Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph", "TSP", "Batch"].includes(col)) {
                                     return { wch: 15 };
                                 } else {
                                     return { wch: 10 }; // Default width for numeric columns
@@ -3204,23 +3236,23 @@
                 const modalTitle = document.getElementById('addComplianceModalLabel');
                 const skuSelect = document.getElementById('addComplianceSku');
 
-                const skuStr = String(editSku || '').trim();
-                if (!skuStr) {
-                    showToast('warning', 'Could not determine SKU to edit.');
-                    return;
-                }
-                if (skuStr.toUpperCase().includes('PARENT')) {
-                    showToast('warning', 'Parent summary rows cannot be edited here.');
-                    return;
-                }
-                const item = findComplianceRowBySku(skuStr);
-                if (!item) {
-                    showToast('warning', 'Row not found. Try refreshing the page.');
-                    return;
-                }
-                complianceFormMode = 'edit';
-                complianceEditSku = skuStr;
-                modalTitle.textContent = 'Edit Compliance Data';
+                    const skuStr = String(editSku || '').trim();
+                    if (!skuStr) {
+                        showToast('warning', 'Could not determine SKU to edit.');
+                        return;
+                    }
+                    if (skuStr.toUpperCase().includes('PARENT')) {
+                        showToast('warning', 'Parent summary rows cannot be edited here.');
+                        return;
+                    }
+                    const item = findComplianceRowBySku(skuStr);
+                    if (!item) {
+                        showToast('warning', 'Row not found. Try refreshing the page.');
+                        return;
+                    }
+                    complianceFormMode = 'edit';
+                    complianceEditSku = skuStr;
+                    modalTitle.textContent = 'Edit Compliance Data';
 
                 complianceFormHydrating = true;
                 document.getElementById('addComplianceForm').reset();
@@ -3229,7 +3261,7 @@
                 if (siblingsCb) siblingsCb.checked = false;
                 setComplianceAutosaveStatus('');
                 if (skuSelect) skuSelect.value = skuStr;
-                setAddComplianceFormFromItem(item);
+                    setAddComplianceFormFromItem(item);
 
                 complianceFormHydrating = false;
                 updateComplianceSiblingsHint();
@@ -3375,10 +3407,10 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data
                     const sampleData = [
-                        ['SKU', 'Battery', 'Wireless', 'Electric', 'GCC', 'RoHS', 'Blanket', 'Bluetooth', 'Logo', 'Graph'],
-                        ['SKU001', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
-                        ['SKU002', 'REQ', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A'],
-                        ['SKU003', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'REQ']
+                        ['SKU', 'Battery', 'Wireless', 'Electric', 'GCC', 'RoHS', 'Blanket', 'Bluetooth', 'Logo', 'Graph', 'TSP', 'Batch'],
+                        ['SKU001', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
+                        ['SKU002', 'REQ', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
+                        ['SKU003', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'REQ', 'N/A', 'N/A']
                     ];
 
                     // Create workbook
@@ -3396,7 +3428,9 @@
                         { wch: 12 }, // Blanket
                         { wch: 12 }, // Bluetooth
                         { wch: 12 }, // Logo
-                        { wch: 12 }  // Graph
+                        { wch: 12 }, // Graph
+                        { wch: 12 }, // TSP
+                        { wch: 12 }  // Batch
                     ];
 
                     // Style header row
