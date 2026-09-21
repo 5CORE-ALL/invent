@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\Schema;
 
 class DepartmentFeedback extends Model
 {
+    public const TABLE = 'department_feedbacks';
+
+    protected $table = self::TABLE;
+
     /**
      * One department per weekday. The popup for that department opens once on its day.
      *
@@ -124,9 +128,14 @@ class DepartmentFeedback extends Model
      *
      * @return array<string, mixed>|null
      */
+    public static function tableReady(): bool
+    {
+        return Schema::hasTable(self::TABLE);
+    }
+
     public static function promptFor(int $userId): ?array
     {
-        if ($userId < 1 || ! Schema::hasTable('department_feedbacks')) {
+        if ($userId < 1 || ! self::tableReady()) {
             return null;
         }
 
@@ -134,11 +143,15 @@ class DepartmentFeedback extends Model
         $meta = self::DEPARTMENTS[$key];
         $weekStart = self::weekStart();
 
-        $already = self::query()
-            ->where('user_id', $userId)
-            ->where('department', $key)
-            ->where('week_start', $weekStart->toDateString())
-            ->exists();
+        try {
+            $already = self::query()
+                ->where('user_id', $userId)
+                ->where('department', $key)
+                ->where('week_start', $weekStart->toDateString())
+                ->exists();
+        } catch (\Throwable) {
+            return null;
+        }
 
         if ($already) {
             return null;

@@ -4,9 +4,14 @@
 --}}
 @auth
 @php
-    $dfbPrompt = request()->routeIs('feedback.index')
-        ? null
-        : \App\Models\DepartmentFeedback::promptFor((int) auth()->id());
+    $dfbPrompt = null;
+    try {
+        $dfbPrompt = request()->routeIs('feedback.index')
+            ? null
+            : \App\Models\DepartmentFeedback::promptFor((int) auth()->id());
+    } catch (\Throwable $e) {
+        $dfbPrompt = null;
+    }
 @endphp
 @if($dfbPrompt)
 <style>
