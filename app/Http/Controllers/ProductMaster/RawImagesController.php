@@ -339,6 +339,9 @@ class RawImagesController extends Controller
         $wasAi = $image->isAiGenerated();
         $image->delete();
         self::forgetMissingSidebarCountCache($kind);
+        if ($kind === ProductRawImage::KIND_HERO_2 && $this->imagesForSku($sku, $kind, false) === [] && $this->imagesForSku($sku, $kind, true) === []) {
+            app(Hero2EbayImagePushService::class)->forgetStampsForSku($sku);
+        }
 
         return response()->json([
             'success' => true,
