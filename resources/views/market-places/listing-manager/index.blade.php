@@ -925,11 +925,8 @@
                     <p class="lc-help" id="lc-category-help">Search and select a marketplace category.</p>
 
                     <div class="lc-wayfair-only d-none mb-3" id="lc-wayfair-class-picker">
-                        <div class="mb-2 d-none" id="wf-class-id-fallback">
-                            <label class="form-label" for="lc-wayfair-class-id">Class ID <span class="lc-req">*</span></label>
-                            <input type="text" id="lc-wayfair-class-id" class="form-control" placeholder="Numeric class ID from Partner Home" inputmode="numeric">
-                            <p class="lc-help mb-0 mt-1">This class name is selected. Type the numeric class ID shown in Partner Home to publish.</p>
-                        </div>
+                        <input type="hidden" id="lc-wayfair-class-id">
+                        <p class="lc-help d-none mb-2" id="wf-class-id-help"></p>
                         <div class="wf-picker">
                             <div class="wf-picker-search">
                                 <i class="fas fa-search"></i>
@@ -2494,7 +2491,7 @@
     }
 
     function loadWayfairQuestions(classId, saved) {
-        const id = parseInt(classId, 10) || 0;
+        const id = isUsableWayfairClassId(classId) ? (parseInt(classId, 10) || 0) : 0;
         const $box = $('#lc-wayfair-questions');
         if (id <= 0) {
             wayfairRequiredIds = [];
@@ -2989,8 +2986,9 @@
             return;
         }
         $('#wf-selected-count').text('1');
+        const chip = name || ('Class ' + id);
         $('#wf-selected-chips').html(
-            '<span class="wf-chip">' + escapeHtml(name || ('Class ' + id)) +
+            '<span class="wf-chip">' + escapeHtml(chip) +
             ' <button type="button" id="wf-clear-class" aria-label="Clear class">&times;</button></span>'
         );
     }
@@ -3031,10 +3029,16 @@
         renderWayfairSelectedChip();
     }
 
-    function applyWayfairClass(row) {
-        const id = String((row && row.id) || '').trim();
+    function isUsableWayfairClassId(id) {
+        const raw = String(id || '').trim();
+        const browse = ['416547', '431590', '416504', '1868409', '1780385', '1773657', '414585'];
+        return /^\d{2,}$/.test(raw) && browse.indexOf(raw) < 0;
+    }
+
+    function applyWayfairClass(row, opts) {
+        const id = isUsableWayfairClassId((row && row.id) || '') ? String(row.id).trim() : '';
         const name = String((row && row.name) || '').trim();
-        const path = String((row && row.path) || name).trim();
+        const path = String((row && row.path) || (id ? (name + ' (' + id + ')') : name)).trim();
         $('#lc-category-id').val(id);
         $('#lc-category-path-input').val(path);
         $('#lc-category-id-visible').val(id);
@@ -3042,10 +3046,39 @@
         if (row && row.definition) {
             $('#wf-definition').text(row.definition);
         }
-        $('#wf-class-id-fallback').toggleClass('d-none', !(name && !id));
         $('#lc-wayfair-class-id').val(id);
+        $('#wf-class-id-help').addClass('d-none').text('');
         renderWayfairSelectedChip();
-        loadWayfairQuestions(id, collectWayfairAnswers());
+        if (id) {
+            loadWayfairQuestions(id, collectWayfairAnswers());
+        }
+        if (!id && name && !(opts && opts.resolved)) {
+            $('#lc-wayfair-questions').html('<div class="text-muted small">Loading Wayfair product form…</div>');
+            const sku = String($('#lc-sku').val() || (currentDraft && currentDraft.sku) || '').trim();
+            $.ajax({
+                url: "{{ route('listing.manager.wayfair.resolve-class') }}",
+                method: 'GET',
+                data: { name, sku },
+                dataType: 'json',
+                timeout: 25000,
+                success: function (res) {
+                    if (res && res.id) {
+                        applyWayfairClass(Object.assign({}, row, res), { resolved: true });
+                    } else if (!(opts && opts.retry)) {
+                        applyWayfairClass(row, { resolved: false, retry: true });
+                    } else {
+                        $('#lc-wayfair-questions').html('<div class="text-muted small">Class selected. Fill Color, origin, package, title, images, and price.</div>');
+                    }
+                },
+                error: function () {
+                    if (!(opts && opts.retry)) {
+                        applyWayfairClass(row, { resolved: false, retry: true });
+                    } else {
+                        $('#lc-wayfair-questions').html('<div class="text-muted small">Class selected. Fill Color, origin, package, title, images, and price.</div>');
+                    }
+                }
+            });
+        }
         dirty = true;
         refreshEditorUi(currentDraft);
     }
@@ -3176,10 +3209,10 @@
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon || ed.wayfair));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
         $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.faire ? 'Faire Product Type' : (ed.wayfair ? 'Wayfair Class' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : 'Category')))))));
-        $('#lc-category-id-visible').attr('placeholder', ed.wayfair ? 'Numeric class ID from Partner Home' : (ed.category_placeholder || 'Category ID'));
-        $('#lc-category-manual-id-label').html((ed.wayfair ? 'Class ID' : 'Category ID') + ' <span class="lc-req">*</span>');
-        $('#lc-category-manual-path-label').text(ed.wayfair ? 'Class name' : 'Category path / name');
-        $('#lc-category-path-visible').attr('placeholder', ed.wayfair ? 'Optional class name' : 'Optional category name');
+        $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
+        $('#lc-category-manual-id-label').html('Category ID <span class="lc-req">*</span>');
+        $('#lc-category-manual-path-label').text('Category path / name');
+        $('#lc-category-path-visible').attr('placeholder', 'Optional category name');
         $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
         $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
         $('#lc-policies-title').text(
@@ -3339,10 +3372,24 @@
             if ((family === 'tiktok' || family === 'reverb') && !String($('#lc-category-id').val() || '').trim()) {
                 searchCategories(family === 'reverb' ? String($('#lc-title').val() || '').trim() : '');
             } else if (family === 'wayfair') {
+                const savedName = String($('#lc-category-path-input').val() || '').replace(/\s+\(\d+\)$/, '').trim();
+                let savedId = String($('#lc-category-id').val() || '').trim();
+                if (!isUsableWayfairClassId(savedId)) {
+                    savedId = '';
+                    $('#lc-category-id').val('');
+                    $('#lc-category-id-visible').val('');
+                    $('#lc-wayfair-class-id').val('');
+                }
                 $('#wf-definition').html(wayfairEmptyDefinition());
-                renderWayfairSelectedChip();
+                if (savedName || savedId) {
+                    applyWayfairClass({ id: savedId, name: savedName, path: savedName, definition: '' });
+                } else {
+                    renderWayfairSelectedChip();
+                }
                 searchCategories(String($('#lc-wayfair-class-search').val() || '').trim());
-                loadWayfairQuestions($('#lc-category-id').val(), d.wayfair_answers || {});
+                if (savedId) {
+                    loadWayfairQuestions(savedId, d.wayfair_answers || {});
+                }
             } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg' || family === 'faire') {
                 const amazonQ = String($('#lc-category-search').val() || $('#lc-amazon-product-type').val() || $('#lc-title').val() || '').trim();
                 searchCategories(family === 'amazon' ? amazonQ : String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());

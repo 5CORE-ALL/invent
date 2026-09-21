@@ -54,4 +54,28 @@ class WayfairPartnerClassCatalogTest extends TestCase
         $this->assertContains('Microphone Stands', $names);
         $this->assertNotContains('Nightstands', $names);
     }
+
+    #[Test]
+    public function it_fills_missing_class_ids_from_a_name_map(): void
+    {
+        $result = WayfairPartnerClassCatalog::search('stands', '', [
+            'carts & stands' => '18521',
+        ]);
+        $row = collect($result['classes'])->firstWhere('name', 'Carts & Stands');
+
+        $this->assertNotNull($row);
+        $this->assertSame('18521', $row['id']);
+        $this->assertStringContainsString('18521', $row['path']);
+    }
+
+    #[Test]
+    public function it_does_not_use_storefront_browse_ids_as_class_ids(): void
+    {
+        $row = WayfairPartnerClassCatalog::findByName('Light Stands & Tripods');
+
+        $this->assertNotNull($row);
+        $this->assertSame('', $row['id']);
+        $this->assertFalse(WayfairPartnerClassCatalog::isUsableClassId('416547'));
+        $this->assertTrue(WayfairPartnerClassCatalog::isUsableClassId('38'));
+    }
 }

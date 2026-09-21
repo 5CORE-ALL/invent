@@ -97,14 +97,15 @@ class WayfairPartnerClassCatalog
     }
 
     /**
+     * @param  array<string, string>  $ids
      * @return array{groups: list<array{name: string, count: int}>, classes: list<array{id: string, name: string, category: string, definition: string, path: string}>}
      */
-    public static function search(string $query = '', string $group = ''): array
+    public static function search(string $query = '', string $group = '', array $ids = []): array
     {
         $query = trim($query);
         $group = trim($group);
         $q = mb_strtolower($query);
-        $all = self::classes();
+        $all = self::applyIds(array_map(static fn (array $row) => self::present($row), self::classes()), $ids);
         $matched = [];
         foreach ($all as $row) {
             if ($group !== '' && strcasecmp($row['category'], $group) !== 0) {
@@ -131,7 +132,43 @@ class WayfairPartnerClassCatalog
             $groups[] = ['name' => $name, 'count' => $count];
         }
 
-        return ['groups' => $groups, 'classes' => $matched];
+        return ['groups' => $groups, 'classes' => self::applyIds($matched, $ids)];
+    }
+
+    /**
+     * Fill missing class IDs from a name → ID map (listed catalog, Partner Home CLIDs).
+     *
+     * @param  list<array{id: string, name: string, category: string, definition: string, path: string}>  $classes
+     * @param  array<string, string>  $ids
+     * @return list<array{id: string, name: string, category: string, definition: string, path: string}>
+     */
+    public static function applyIds(array $classes, array $ids = []): array
+    {
+        if ($ids === []) {
+            return $classes;
+        }
+        $out = [];
+        foreach ($classes as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($id === '' || ! self::isUsableClassId($id)) {
+                $key = mb_strtolower(trim((string) ($row['name'] ?? '')));
+                $id = trim((string) ($ids[$key] ?? ''));
+            }
+            if ($id !== '' && ! self::isUsableClassId($id)) {
+                $id = '';
+            }
+            $out[] = self::present([
+                'id' => $id,
+                'name' => (string) ($row['name'] ?? ''),
+                'category' => (string) ($row['category'] ?? ''),
+                'definition' => (string) ($row['definition'] ?? ''),
+            ]);
+        }
+
+        return $out;
     }
 
     /**
@@ -169,6 +206,54 @@ class WayfairPartnerClassCatalog
         }
 
         return null;
+    }
+
+    /**
+     * Storefront browse IDs that are not product-addition class IDs.
+     *
+     * @return list<string>
+     */
+    public static function browseIds(): array
+    {
+        return ['416547', '431590', '416504', '1868409', '1780385', '1773657', '414585'];
+    }
+
+    public static function isUsableClassId(string $id): bool
+    {
+        $id = trim($id);
+
+        return preg_match('/^\d{2,}$/', $id) === 1 && ! in_array($id, self::browseIds(), true);
+    }
+
+    /**
+     * Official CLIDs only. Storefront browse IDs are rejected.
+     *
+     * @return list<string>
+     */
+    public static function candidateIds(string $name): array
+    {
+        $key = mb_strtolower(trim($name));
+        $map = [
+            'tv mounts' => ['442'],
+            'console tables' => ['443'],
+            'bar carts' => ['61472'],
+            'bookcases' => ['38'],
+            'wall art' => ['1318'],
+            'storage cabinets' => ['157'],
+            'residential serving carts' => ['226'],
+            'floor cabinets' => ['12239'],
+            'tool cabinets' => ['14270'],
+            'hampers & baskets' => ['51550'],
+            'bathroom storage' => ['57444'],
+        ];
+        $ids = [];
+        foreach ($map[$key] ?? [] as $id) {
+            if (self::isUsableClassId((string) $id)) {
+                $ids[] = (string) $id;
+            }
+        }
+
+        return $ids;
     }
 
     /**
@@ -210,7 +295,7 @@ class WayfairPartnerClassCatalog
 
     private static function defaultDefinition(string $name): string
     {
-        return 'CLASS OVERVIEW: Select this class for '.$name.'. Use this class when the product is sold and merchandised as '.$name.' on Wayfair. Review the class definition in Partner Home if you are unsure.';
+        return 'CLASS OVERVIEW: Select this class for '.$name.'. Use this class when the product is sold and merchandised as '.$name.' on Wayfair.';
     }
 
     /**

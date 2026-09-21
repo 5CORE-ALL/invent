@@ -338,7 +338,8 @@ class ListingManagerPublishStatus
 
         if ($isWayfair) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
-            if ($categoryId === '' || ! preg_match('/^\d+$/', $categoryId)) {
+            $categoryName = trim((string) ($details['category_name'] ?? $details['primary_category_path'] ?? ''));
+            if (! WayfairPartnerClassCatalog::isUsableClassId($categoryId) && $categoryName === '') {
                 $tabErrors['category'][] = 'Wayfair class is required. Search and select a class.';
             }
             if (trim((string) ($details['color'] ?? '')) === '') {
