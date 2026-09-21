@@ -848,22 +848,33 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     protected function humanizeCreateAdError(?string $message): string
     {
-        $message = trim((string) $message);
+        $message = trim(preg_replace('/\s+/', ' ', (string) $message) ?? '');
         if ($message === '') {
-            return 'Temu did not create this ad';
-        }
-        $lower = strtolower($message);
-        if (str_contains($lower, 'between 0.1 and 12')) {
-            return 'Temu rejected the target ROAS. Use a value from 0.1 to 12.';
-        }
-        if (str_contains($lower, 'misleading') || str_contains($lower, 'ad approval')) {
-            return 'Temu rejected this listing for ads (misleading statements). Fix the title, images, or description in Seller Center, wait for review, then retry.';
-        }
-        if (str_contains($lower, 'pass the review') || str_contains($lower, 'seller center')) {
-            return 'Listing has not passed Temu product review, so an ad cannot be created. Open Seller Center for this goods ID, fix the review, then retry.';
+            return 'Temu did not create this ad (no reason returned).';
         }
 
         return $message;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function temuCreateFailReason(array $row): string
+    {
+        foreach (['reason', 'errorMsg', 'error_msg', 'failReason', 'failMsg', 'msg', 'message'] as $key) {
+            $v = trim((string) ($row[$key] ?? ''));
+            if ($v === '') {
+                continue;
+            }
+            $code = trim((string) ($row['errorCode'] ?? $row['error_code'] ?? ''));
+            if ($code !== '' && ! str_contains($v, $code)) {
+                return $code.': '.$v;
+            }
+
+            return $v;
+        }
+
+        return 'Temu did not create this ad';
     }
 
     /**
@@ -915,7 +926,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 $failed = array_key_exists('success', $row) ? empty($row['success']) : true;
                 if ($failed && ($rowId === '' || $rowId === $goodsId)) {
                     $response['ok'] = false;
-                    $response['error_msg'] = (string) ($row['reason'] ?? 'Temu did not create this ad');
+                    $response['error_msg'] = $this->temuCreateFailReason($row);
                     $response['error_code'] = $response['error_code'] ?? 'create_failed';
 
                     return $response;

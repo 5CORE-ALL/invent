@@ -123,15 +123,29 @@
             gap: 0.5rem;
             align-items: center;
         }
-        #alert-count {
-            background-color: #ca8a04;
-            color: #fff;
-            font-weight: bold;
+        #alert-count,
+        #alert-filter-btn {
+            background: #fff !important;
+            color: #dc2626 !important;
+            border: 1px solid #fecaca !important;
+            font-weight: 800;
             cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
-        #alert-count.is-alert-filter-on {
-            background-color: #a16207;
-            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #ca8a04;
+        #alert-count .temu-ads-alert-tri,
+        #alert-filter-btn .temu-ads-alert-tri,
+        #alert-count .temu-ads-badge-val,
+        #alert-filter-count {
+            color: #dc2626 !important;
+            font-weight: 800;
+        }
+        #alert-count.is-alert-filter-on,
+        #alert-filter-btn.is-alert-filter-on,
+        #alert-filter-btn:hover {
+            background: #fef2f2 !important;
+            box-shadow: 0 0 0 2px #dc2626;
         }
         .pricing-filter-item {
             display: inline-block;
@@ -439,6 +453,17 @@
                                 <option value="sku" data-label="SKU Ads">SKU Ads</option>
                                 <option value="all" data-label="All Ads">All Ads</option>
                             </select>
+                            <button type="button" id="alert-filter-btn" class="btn btn-sm pricing-filter-item"
+                                    title="Click to show only rows with a create-ad issue. Click again to clear.">
+                                <span class="temu-ads-alert-tri" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+                                </span>
+                                <span id="alert-filter-count">0</span>
+                            </button>
+                            <button type="button" id="export-alerts-btn" class="btn btn-sm btn-outline-warning pricing-filter-item"
+                                    title="Export create-ad errors with Temu's exact reason">
+                                <i class="fa fa-download"></i> Export Alerts
+                            </button>
                             <input type="text" id="search-goods-id" class="form-control form-control-sm pricing-filter-item"
                                    placeholder="Search Goods ID" style="width: 170px;">
                             <input type="text" id="search-sku" class="form-control form-control-sm pricing-filter-item"
@@ -589,7 +614,12 @@
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
                                 title="Create ads for selected No ad rows (Inv > 0). Follows Parent/SKU/All, search, status, inv, dil, and clicks filters. If nothing is selected, uses visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="alert-count"
-                                title="Click to show only rows with a create-ad issue. Click again to clear.">Alert: <span class="temu-ads-badge-val">0</span></span>
+                                title="Click to show only rows with a create-ad issue. Click again to clear.">
+                                <span class="temu-ads-alert-tri is-danger" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+                                </span>
+                                <span class="temu-ads-badge-val">0</span>
+                            </span>
                             <span class="badge fs-6 p-2" id="pause-run-count"
                                 style="background-color: #212529; color: white; font-weight: bold; cursor: pointer;"
                                 title="Pause and Run counts (live ads). Click for Pause + Run budget and details.">
@@ -1466,14 +1496,20 @@
             }
 
             function paintAlertBadge() {
-                const el = document.getElementById('alert-count');
                 const n = alertBadgeCount();
-                setBadgeVal('alert-count', Number(n).toLocaleString());
-                if (!el) return;
-                el.classList.toggle('is-alert-filter-on', !!alertFilterOn);
-                el.title = alertFilterOn
+                const text = Number(n).toLocaleString();
+                setBadgeVal('alert-count', text);
+                const filterCount = document.getElementById('alert-filter-count');
+                if (filterCount) filterCount.textContent = text;
+                const title = alertFilterOn
                     ? 'Showing ' + n + ' create-ad alert row(s). Click to show all rows again.'
                     : 'Click to show the ' + n + ' row(s) with a create-ad issue.';
+                ['alert-count', 'alert-filter-btn'].forEach(function (id) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    el.classList.toggle('is-alert-filter-on', !!alertFilterOn);
+                    el.title = title;
+                });
             }
 
             function toggleAlertFilter() {
@@ -1481,6 +1517,63 @@
                 if (table && typeof table.setPage === 'function') table.setPage(1);
                 applySearchFilters();
                 paintAlertBadge();
+            }
+
+            function csvCell(v) {
+                const s = String(v == null ? '' : v);
+                if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+                return s;
+            }
+
+            function createAlertExportRows() {
+                const byGoods = {};
+                (allAdsRows || []).forEach(function (r) {
+                    if (!r) return;
+                    const reason = rowCreateAlertText(r);
+                    if (!reason) return;
+                    const gid = String(r.goods_id || '').trim();
+                    if (!gid) return;
+                    const prev = byGoods[gid];
+                    if (!prev || r.is_parent) {
+                        byGoods[gid] = {
+                            goods_id: gid,
+                            parent: String(r.parent || '').trim().replace(/^PARENT\s+/i, ''),
+                            sku: String(r.sku || ''),
+                            sku_id: String(r.sku_id || ''),
+                            status: rowStatusValue(r),
+                            inv: r.inv,
+                            period: String(r.period || ''),
+                            error: reason,
+                        };
+                    } else if (!prev.sku_id && r.sku_id) {
+                        prev.sku_id = String(r.sku_id || '');
+                    }
+                });
+                return Object.keys(byGoods).sort().map(function (gid) { return byGoods[gid]; });
+            }
+
+            function exportCreateAlertCsv() {
+                const rows = createAlertExportRows();
+                if (!rows.length) {
+                    window.alert('No create-ad errors to export.');
+                    return;
+                }
+                const header = ['Goods ID', 'Parent', 'SKU', 'SKU ID', 'Status', 'Inv', 'Period', 'Create error (exact)'];
+                const lines = [header.map(csvCell).join(',')];
+                rows.forEach(function (r) {
+                    lines.push([
+                        r.goods_id, r.parent, r.sku, r.sku_id, r.status, r.inv, r.period, r.error,
+                    ].map(csvCell).join(','));
+                });
+                const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+                const a = document.createElement('a');
+                const day = new Date().toISOString().slice(0, 10);
+                a.href = URL.createObjectURL(blob);
+                a.download = 'temu-ads-create-errors-' + day + '.csv';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
             }
 
             function queueCreateGoodsIdsFromRows(rows) {
@@ -3312,6 +3405,9 @@
                     }
                 });
             });
+            document.getElementById('export-alerts-btn').addEventListener('click', function () {
+                exportCreateAlertCsv();
+            });
 
             function showCreateStatus(html) {
                 const el = document.getElementById('create-ad-status');
@@ -3541,6 +3637,9 @@
                 runBulkCreateQueue();
             });
             document.getElementById('alert-count').addEventListener('click', function () {
+                toggleAlertFilter();
+            });
+            document.getElementById('alert-filter-btn').addEventListener('click', function () {
                 toggleAlertFilter();
             });
 
