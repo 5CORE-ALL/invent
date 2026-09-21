@@ -11,13 +11,11 @@ class DepartmentFeedback extends Model
 {
     public const TABLE = 'department_feedbacks';
 
-    protected $table = self::TABLE;
-
     /**
      * "feedback" is uncountable, so Eloquent would use department_feedback.
      * The migration creates department_feedbacks.
      */
-    protected $table = 'department_feedbacks';
+    protected $table = self::TABLE;
 
     /**
      * One department per weekday. The popup for that department opens once on its day.
