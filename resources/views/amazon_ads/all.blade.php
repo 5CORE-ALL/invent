@@ -584,7 +584,7 @@
                                 <i class="fas fa-file-csv"></i>
                             </button>
                             <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT Vs ACOS Rule</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit LT ACOS band thresholds and SBGT tier values">BGT Vs ACOS Rule</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtViewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtViewsRuleModal" title="Edit View L7 bands and Bgt Views values">BGT Vs VIEWS</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtCvrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtCvrRuleModal" title="Edit CVR L30 bands and Bgt Cvr values">BGT Vs CVR</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtPrcRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtPrcRuleModal" title="Edit Price bands and BGT PRC values">BGT PRC</button>
@@ -693,7 +693,7 @@
                             </div>
                             <div class="amz-raw-filter-field" style="min-width:140px;">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterAcos">Acos</label>
-                                <select id="amazonAdsFilterAcos" class="form-select form-select-sm amz-raw-filter-select" title="Filter by ACOS color band (same BGT color rules as the ACOS% column)">
+                                <select id="amazonAdsFilterAcos" class="form-select form-select-sm amz-raw-filter-select" title="Filter by LT ACOS band (same ranges as BGT Vs ACOS)">
                                     <option value="" selected>All</option>
                                 </select>
                             </div>
@@ -873,13 +873,13 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsBgtRuleModalLabel">BGT rule — ACOS % → Suggested Budget (SBGT)</h5>
+                    <h5 class="modal-title" id="amazonAdsBgtRuleModalLabel">BGT rule — LT ACOS → Suggested Budget (SBGT)</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>ACOS % range</strong> (From → To). Rows are checked
-                        <strong>top to bottom</strong>; the first range that contains the campaign's ACOS gets its SBGT.
+                        Each row is an inclusive <strong>LT ACOS range</strong> (From → To). Rows are checked
+                        <strong>top to bottom</strong>; the first range that contains the campaign's lifetime ACOS gets its SBGT.
                         Use <code>9999</code> on <em>To</em> for the catch-all highest band.
                         <strong>SBGT 0</strong> cannot be pushed as daily budget — those campaigns are paused instead.
                         <strong>Count</strong> is campaigns on this grid page in that range.
@@ -889,10 +889,10 @@
                         <thead class="table-light">
                             <tr>
                                 <th style="width:40px;">#</th>
-                                <th>ACOS%</th>
+                                <th>LT ACOS</th>
                                 <th style="width:110px;">From (%)</th>
                                 <th style="width:110px;">To (%)</th>
-                                <th style="width:80px;" title="Campaigns on this grid page whose ACOS% falls in this band">Count</th>
+                                <th style="width:80px;" title="Campaigns on this grid page whose LT ACOS falls in this band">Count</th>
                                 <th style="width:120px;">SBGT</th>
                                 <th style="width:50px;"></th>
                             </tr>
@@ -1381,7 +1381,7 @@
             function amzApplyAcosDrivenBgt(rows) {
                 (rows || []).forEach(function (row) {
                     if (!row) return;
-                    var tier = amzBgtAcosFromAcos(row.ACOS);
+                    var tier = amzBgtAcosFromAcos(row.ltAcos);
                     if (tier !== null) row.bgtAcos = tier;
                     var sum = amzSumSbgtFromRow(row);
                     if (sum !== null) row.sbgt = sum;
@@ -1691,7 +1691,7 @@
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var field = cell.getField ? cell.getField() : '';
                 if (field === 'bgtAcos') {
-                    var fromAcos = amzBgtAcosFromAcos(row && row.ACOS);
+                    var fromAcos = amzBgtAcosFromAcos(row && row.ltAcos);
                     if (fromAcos !== null) v = fromAcos;
                 }
                 if (v === null || v === undefined || v === '') return amzDash();
@@ -1700,7 +1700,7 @@
                 if (t === 0) {
                     return '<span class="fw-semibold" style="color:#dc2626;" title="BGT ACOS 0 — cannot push $0; campaign will be paused">0</span>';
                 }
-                var color = (field === 'bgtAcos') ? amzAcosTierColor(row && row.ACOS) : amzSbgtTierColor(t);
+                var color = (field === 'bgtAcos') ? amzAcosTierColor(row && row.ltAcos) : amzSbgtTierColor(t);
                 return '<span class="fw-semibold" style="color:' + color + ';">' + t + '</span>';
             }
             function fmtSbgtSum(cell) {
@@ -2042,7 +2042,16 @@
                 if (c === 'targets') {
                     col.title = 'Targets';
                     col.formatter = fmtTargets;
-                    col.headerTooltip = 'Amazon Ads API count of enabled and paused keywords and targets on this campaign. 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
+                    col.headerTooltip = 'Target count from the Amazon L30 targeting report. 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
+                    col.width = 52;
+                    col.minWidth = 44;
+                    col.headerSort = false;
+                    return;
+                }
+                if (c === 'nTargets') {
+                    col.title = 'N Target';
+                    col.formatter = fmtTargets;
+                    col.headerTooltip = 'Negative keyword count on this campaign. 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
                     col.width = 52;
                     col.minWidth = 44;
                     col.headerSort = false;
@@ -2058,7 +2067,7 @@
                 }
                 if (c === 'bgtAcos') {
                     col.title = 'BGT ACOS';
-                    col.headerTooltip = 'Suggested budget from BGT Vs ACOS Rule — same ACOS% as the ACOS column (spend + Ads Sold 0 is 100%)';
+                    col.headerTooltip = 'Suggested budget from BGT Vs ACOS Rule — band is the campaign LT ACOS (spend with no sales is 100%)';
                     col.formatter = fmtSbgt;
                     col.width = 72;
                     col.minWidth = 64;
@@ -3899,7 +3908,7 @@
             // ---- BGT rule modal (ACOS bands -> SBGT) ----
             var amzCurrentBands = [];
             function amzAcosValueOfRow(row) {
-                var n = parseFloat(row && row.ACOS);
+                var n = parseFloat(row && row.ltAcos);
                 return isFinite(n) ? n : null;
             }
             function amzAcosCounts(bands) {
@@ -3920,7 +3929,7 @@
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
-                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose ACOS% falls in this band')
+                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose LT ACOS falls in this band')
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign"></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
