@@ -123,11 +123,9 @@
             gap: 0.5rem;
             align-items: center;
         }
-        #alert-count,
-        #alert-filter-btn {
-            background: #fff !important;
-            color: #dc2626 !important;
-            border: 1px solid #fecaca !important;
+        #alert-count {
+            background-color: #dc2626 !important;
+            color: #fff !important;
             font-weight: 800;
             cursor: pointer;
             display: inline-flex;
@@ -135,17 +133,13 @@
             gap: 6px;
         }
         #alert-count .temu-ads-alert-tri,
-        #alert-filter-btn .temu-ads-alert-tri,
-        #alert-count .temu-ads-badge-val,
-        #alert-filter-count {
-            color: #dc2626 !important;
+        #alert-count .temu-ads-alert-tri.is-danger,
+        #alert-count .temu-ads-badge-val {
+            color: #fff !important;
             font-weight: 800;
         }
-        #alert-count.is-alert-filter-on,
-        #alert-filter-btn.is-alert-filter-on,
-        #alert-filter-btn:hover {
-            background: #fef2f2 !important;
-            box-shadow: 0 0 0 2px #dc2626;
+        #alert-count.is-alert-filter-on {
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626;
         }
         .pricing-filter-item {
             display: inline-block;
@@ -453,13 +447,6 @@
                                 <option value="sku" data-label="SKU Ads">SKU Ads</option>
                                 <option value="all" data-label="All Ads">All Ads</option>
                             </select>
-                            <button type="button" id="alert-filter-btn" class="btn btn-sm pricing-filter-item"
-                                    title="Click to show only rows with a create-ad issue. Click again to clear.">
-                                <span class="temu-ads-alert-tri" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-                                </span>
-                                <span id="alert-filter-count">0</span>
-                            </button>
                             <button type="button" id="export-alerts-btn" class="btn btn-sm btn-outline-warning pricing-filter-item"
                                     title="Export create-ad errors with Temu's exact reason">
                                 <i class="fa fa-download"></i> Export Alerts
@@ -614,6 +601,7 @@
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
                                 title="Create ads for selected No ad rows (Inv > 0). Follows Parent/SKU/All, search, status, inv, dil, and clicks filters. If nothing is selected, uses visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="alert-count"
+                                style="background-color: #dc2626; color: white; font-weight: 800; cursor: pointer;"
                                 title="Click to show only rows with a create-ad issue. Click again to clear.">
                                 <span class="temu-ads-alert-tri is-danger" aria-hidden="true">
                                     <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
@@ -1497,19 +1485,13 @@
 
             function paintAlertBadge() {
                 const n = alertBadgeCount();
-                const text = Number(n).toLocaleString();
-                setBadgeVal('alert-count', text);
-                const filterCount = document.getElementById('alert-filter-count');
-                if (filterCount) filterCount.textContent = text;
-                const title = alertFilterOn
+                const el = document.getElementById('alert-count');
+                setBadgeVal('alert-count', Number(n).toLocaleString());
+                if (!el) return;
+                el.classList.toggle('is-alert-filter-on', !!alertFilterOn);
+                el.title = alertFilterOn
                     ? 'Showing ' + n + ' create-ad alert row(s). Click to show all rows again.'
                     : 'Click to show the ' + n + ' row(s) with a create-ad issue.';
-                ['alert-count', 'alert-filter-btn'].forEach(function (id) {
-                    const el = document.getElementById(id);
-                    if (!el) return;
-                    el.classList.toggle('is-alert-filter-on', !!alertFilterOn);
-                    el.title = title;
-                });
             }
 
             function toggleAlertFilter() {
@@ -3637,9 +3619,6 @@
                 runBulkCreateQueue();
             });
             document.getElementById('alert-count').addEventListener('click', function () {
-                toggleAlertFilter();
-            });
-            document.getElementById('alert-filter-btn').addEventListener('click', function () {
                 toggleAlertFilter();
             });
 
