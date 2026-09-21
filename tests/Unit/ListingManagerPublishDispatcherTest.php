@@ -86,6 +86,19 @@ class ListingManagerPublishDispatcherTest extends TestCase
         $this->assertTrue($profile['topdawg']);
     }
 
+    public function test_shein_editor_has_category_search(): void
+    {
+        $this->assertSame('shein', ListingManagerEditorProfile::family('shein'));
+
+        $profile = ListingManagerEditorProfile::forChannel('Shein');
+        $this->assertSame('shein', $profile['family']);
+        $this->assertTrue($profile['shein']);
+        $tabIds = array_map(static fn ($tab) => $tab['id'], $profile['tabs']);
+        $this->assertContains('category', $tabIds);
+        $this->assertStringContainsString('Search Shein', $profile['category_placeholder']);
+        $this->assertStringContainsString('leaf', $profile['category_help']);
+    }
+
     public function test_topdawg_category_search_and_resolve(): void
     {
         $all = TopDawgListingPublishService::searchListingCategories('');

@@ -19,6 +19,7 @@ use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\WayfairApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
+use App\Services\MarketplaceManager\SheinListingPublishService;
 use App\Services\MarketplaceManager\WayfairListingPublishService;
 use App\Services\MarketplaceManager\Temu2ListingPublishService;
 use App\Services\MarketplaceManager\TemuListingPublishService;
@@ -2404,6 +2405,9 @@ class ListingManagerController extends Controller
         if (ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName)) === 'wayfair') {
             $details = $this->applyWayfairSuggestedClass($details, (string) $draft->seller_sku);
         }
+        if (ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName)) === 'shein') {
+            $details = $this->applySheinSuggestedCategory($details, (string) $draft->seller_sku);
+        }
         $draft->listing_details = $details;
         $draft->save();
 
@@ -3148,6 +3152,45 @@ class ListingManagerController extends Controller
         return $details;
     }
 
+    /**
+     * @param  array<string, mixed>  $details
+     * @return array<string, mixed>
+     */
+    private function applySheinSuggestedCategory(array $details, string $sku): array
+    {
+        $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+        if ($categoryId !== '' && preg_match('/^\d+$/', $categoryId)) {
+            return $details;
+        }
+
+        try {
+            $suggested = app(SheinListingPublishService::class)->suggestCategoryForSku($sku);
+        } catch (\Throwable $e) {
+            Log::warning('Shein category suggest failed: '.$e->getMessage());
+
+            return $details;
+        }
+
+        $id = trim((string) ($suggested['id'] ?? ''));
+        if ($id === '' || ! preg_match('/^\d+$/', $id)) {
+            return $details;
+        }
+
+        $details['primary_category_id'] = $id;
+        $details['category_id'] = $id;
+        $path = trim((string) ($suggested['path'] ?? $suggested['name'] ?? ''));
+        if ($path !== '') {
+            $details['primary_category_path'] = $path;
+            $details['category_name'] = trim((string) ($suggested['name'] ?? $path));
+        }
+        $productTypeId = (int) ($suggested['product_type_id'] ?? 0);
+        if ($productTypeId > 0) {
+            $details['product_type_id'] = $productTypeId;
+        }
+
+        return $details;
+    }
+
     private function applyFaireDraftTitle(ListingManagerChannelDraft $draft, string $channelName): void
     {
         if (! ListingManagerAmazonHydrator::isFaireChannel($channelName) || (string) $draft->status === 'listed') {
@@ -3193,6 +3236,9 @@ class ListingManagerController extends Controller
         }
         if ($full && ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName)) === 'wayfair') {
             $details = $this->applyWayfairSuggestedClass($details, (string) $d->seller_sku);
+        }
+        if ($full && ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName)) === 'shein') {
+            $details = $this->applySheinSuggestedCategory($details, (string) $d->seller_sku);
         }
         $ready = ListingManagerPublishStatus::readiness(
             $d->title,

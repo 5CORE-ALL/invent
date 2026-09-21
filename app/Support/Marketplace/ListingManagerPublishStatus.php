@@ -308,6 +308,7 @@ class ListingManagerPublishStatus
         $isWayfair = $family === 'wayfair';
         $isMirakl = $family === 'mirakl';
         $isTopdawg = $family === 'topdawg';
+        $isShein = $family === 'shein';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -371,6 +372,13 @@ class ListingManagerPublishStatus
             $categoryName = trim((string) ($details['primary_category_path'] ?? $details['category_name'] ?? ''));
             if ($categoryId === '' && $categoryName === '') {
                 $tabErrors['category'][] = 'TopDawg category is required. Search and select a department / section / category.';
+            }
+        }
+
+        if ($isShein) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+            if ($categoryId === '' || ! preg_match('/^\d+$/', $categoryId)) {
+                $tabErrors['category'][] = 'Shein category is required. Search and select a leaf category.';
             }
         }
 
