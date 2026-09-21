@@ -1420,7 +1420,12 @@ class TemuAdsController extends Controller
                 $allSale = round((float) $kids->sum(fn (array $k) => (float) ($k['all_sale'] ?? 0)), 2);
                 $image = $parentImages[$parentSku] ?? ($first['image_path'] ?? null);
 
+                $gid = (string) ($first['goods_id'] ?? '');
+                $period = (string) ($first['period'] ?? '');
+
                 return array_merge($first, [
+                    'id' => 'p-'.$gid.'-'.$period,
+                    'raw_id' => $first['id'] ?? null,
                     'is_parent' => true,
                     'sku' => $parentSku,
                     'sku_id' => '',

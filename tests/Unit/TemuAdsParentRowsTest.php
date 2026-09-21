@@ -74,6 +74,8 @@ class TemuAdsParentRowsTest extends TestCase
 
         $parent = $rows->firstWhere('is_parent', true);
         $this->assertTrue($parent['is_parent']);
+        $this->assertSame('p-610036935935062-L30', $parent['id']);
+        $this->assertSame(1, $parent['raw_id']);
         $this->assertSame('DJ RACK', $parent['parent']);
         $this->assertSame('', $parent['sku_id']);
         $this->assertSame(6, $parent['inv']);

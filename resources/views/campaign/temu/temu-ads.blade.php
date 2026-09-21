@@ -298,6 +298,59 @@
             font-weight: 700;
             letter-spacing: 0.01em;
         }
+        #temu-ads-table .tabulator-data-tree-control {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            margin-right: 6px;
+            border: 0 !important;
+            background: transparent !important;
+            color: #fd7e14;
+            cursor: pointer;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+        #temu-ads-table .tabulator-data-tree-control:hover {
+            color: #e8590c;
+        }
+        #temu-ads-table .tabulator-data-tree-control-expand,
+        #temu-ads-table .tabulator-data-tree-control-collapse {
+            font-size: 0;
+            line-height: 0;
+            width: 0;
+            height: 0;
+            overflow: hidden;
+        }
+        #temu-ads-table .tabulator-data-tree-control-expand::after {
+            content: '';
+            display: block;
+            width: 0;
+            height: 0;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+            border-left: 7px solid currentColor;
+        }
+        #temu-ads-table .tabulator-data-tree-control-collapse::after {
+            content: '';
+            display: block;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 7px solid currentColor;
+        }
+        #temu-ads-table .tabulator-cell[tabulator-field="sku"] {
+            justify-content: flex-start !important;
+            text-align: left !important;
+        }
+        #temu-ads-table .tabulator-row.temu-ads-child-row .tabulator-cell {
+            background-color: #f8fafc;
+        }
+        #temu-ads-table .tabulator-row.temu-ads-child-row:hover .tabulator-cell {
+            background-color: #f1f5f9;
+        }
         .temu-ads-chart-badge { cursor: pointer; }
         .temu-ads-history-dot {
             display: inline-block;
@@ -351,6 +404,12 @@
                                 <option value="L60" data-label="L60">L60</option>
                             </select>
                             <span id="period-range-label" class="small text-muted fw-semibold" title="Same calendar window as Temu Seller Center (US Pacific)"></span>
+                            <select id="row-type-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Parent Ads = parent rows only. SKU Ads = variation SKUs only. All Ads = parents and children.">
+                                <option value="parent" data-label="Parent Ads" selected>Parent Ads</option>
+                                <option value="sku" data-label="SKU Ads">SKU Ads</option>
+                                <option value="all" data-label="All Ads">All Ads</option>
+                            </select>
                             <input type="text" id="search-goods-id" class="form-control form-control-sm pricing-filter-item"
                                    placeholder="Search Goods ID" style="width: 170px;">
                             <input type="text" id="search-sku" class="form-control form-control-sm pricing-filter-item"
@@ -1010,16 +1069,139 @@
                 return start + '-' + (start + 69);
             }
 
+            function currentRowType() {
+                const el = document.getElementById('row-type-filter');
+                const v = el ? String(el.value || '').trim() : 'parent';
+                return (v === 'sku' || v === 'all' || v === 'parent') ? v : 'parent';
+            }
+
+            function isParentAdsRow(row) {
+                return !!(row && row.is_parent);
+            }
+
+            function isSkuAdsRow(row) {
+                return !!(row && !row.is_parent);
+            }
+
             function currentFilterQuery() {
                 return {
                     goodsQ: (document.getElementById('search-goods-id').value || '').trim().toLowerCase(),
                     skuQ: (document.getElementById('search-sku').value || '').trim().toLowerCase(),
+                    rowType: currentRowType(),
                     statusQ: (document.getElementById('status-filter').value || '').trim(),
                     pauseRunQ: (document.getElementById('pause-run-filter').value || '').trim(),
                     invQ: (document.getElementById('inv-filter').value || '').trim(),
                     dilQ: (document.getElementById('dil-filter').value || '').trim(),
                     clicksQ: (document.getElementById('clicks-filter').value || '').trim(),
                 };
+            }
+
+            let allAdsRows = [];
+
+            function adsGroupKey(row) {
+                return String((row && row.parent) || '').trim()
+                    + '\n' + String((row && row.goods_id) || '')
+                    + '\n' + String((row && row.period) || '');
+            }
+
+            function adsRowsForView() {
+                if (currentRowType() === 'sku') {
+                    return (allAdsRows || []).filter(isSkuAdsRow);
+                }
+                return nestAdsRows(allAdsRows);
+            }
+
+            function expandAllAdsParents() {
+                if (!table) return;
+                (table.getRows() || []).forEach(function (row) {
+                    if (typeof row.treeExpand === 'function') row.treeExpand();
+                });
+            }
+
+            function applyRowTypeView() {
+                if (!table) return;
+                table.replaceData(adsRowsForView()).then(function () {
+                    applySearchFilters();
+                });
+            }
+
+            function nestAdsRows(rows) {
+                const list = Array.isArray(rows) ? rows : [];
+                const parents = [];
+                const orphans = [];
+                const childrenByKey = {};
+                list.forEach(function (r) {
+                    if (!r) return;
+                    if (!r.raw_id) r.raw_id = r.id;
+                    if (r.is_parent) {
+                        r._row_key = 'p|' + String(r.goods_id || '') + '|' + String(r.period || '') + '|' + String(r.parent || '');
+                        r._children = [];
+                        parents.push(r);
+                        return;
+                    }
+                    r._row_key = 'c|' + String(r.id || '') + '|' + String(r.sku_id || '') + '|' + String(r.period || '');
+                    if (String(r.parent || '').trim()) {
+                        const k = adsGroupKey(r);
+                        (childrenByKey[k] = childrenByKey[k] || []).push(r);
+                        return;
+                    }
+                    orphans.push(r);
+                });
+                parents.forEach(function (p) {
+                    p._children = childrenByKey[adsGroupKey(p)] || [];
+                });
+                return parents.concat(orphans);
+            }
+
+            function flattenAdsRows(rows) {
+                const out = [];
+                (Array.isArray(rows) ? rows : []).forEach(function (r) {
+                    if (!r) return;
+                    out.push(r);
+                    if (Array.isArray(r._children)) {
+                        r._children.forEach(function (c) { if (c) out.push(c); });
+                    }
+                });
+                return out;
+            }
+
+            function filteredFlatAdsRows() {
+                const q = currentFilterQuery();
+                return (allAdsRows || []).filter(function (r) {
+                    return rowMatchesQuery(r, q, '');
+                });
+            }
+
+            function walkAdsRows(fn) {
+                if (!table) return;
+                (table.getRows() || []).forEach(function (row) {
+                    fn(row);
+                    const kids = typeof row.getTreeChildren === 'function' ? row.getTreeChildren() : [];
+                    (kids || []).forEach(fn);
+                });
+            }
+
+            function collapseAllAdsParents() {
+                if (!table) return;
+                (table.getRows() || []).forEach(function (row) {
+                    if (typeof row.treeCollapse === 'function') row.treeCollapse();
+                });
+            }
+
+            function expandParentsForChildSearch() {
+                if (!table) return;
+                const q = currentFilterQuery();
+                if (!q.skuQ) return;
+                (table.getRows() || []).forEach(function (row) {
+                    const data = row.getData() || {};
+                    if (!data.is_parent || typeof row.treeExpand !== 'function') return;
+                    if (rowMatchesQuery(data, q, '')) return;
+                    const kids = typeof row.getTreeChildren === 'function' ? row.getTreeChildren() : [];
+                    const hit = (kids || []).some(function (k) {
+                        return rowMatchesQuery(k.getData() || {}, q, '');
+                    });
+                    if (hit) row.treeExpand();
+                });
             }
 
             function rowMatchesQuery(data, q, skip) {
@@ -1053,7 +1235,7 @@
             }
 
             function updateFilterCounts(rows) {
-                const all = Array.isArray(rows) ? rows : (table ? (table.getData() || []) : []);
+                const all = Array.isArray(rows) ? flattenAdsRows(rows) : (allAdsRows.length ? allAdsRows : flattenAdsRows(table ? (table.getData() || []) : []));
                 const q = currentFilterQuery();
                 const statusCounts = {};
                 const pauseCounts = {};
@@ -1105,13 +1287,30 @@
                 paintSelectOptionCounts('dil-filter', dilCounts, dilTotal);
                 paintSelectOptionCounts('clicks-filter', clicksCounts, clicksTotal);
                 paintSelectOptionCounts('period-filter', periodCounts, periodTotal);
+                let rowTypeParent = 0;
+                let rowTypeSku = 0;
+                all.forEach(function (row) {
+                    if (!rowMatchesQuery(row, q, '')) return;
+                    if (isParentAdsRow(row)) rowTypeParent++;
+                    else rowTypeSku++;
+                });
+                paintSelectOptionCounts('row-type-filter', {
+                    parent: rowTypeParent,
+                    sku: rowTypeSku,
+                    all: rowTypeParent + rowTypeSku,
+                }, rowTypeParent + rowTypeSku);
             }
 
             function paintPauseRunBadge(rows) {
-                const list = Array.isArray(rows) ? rows : [];
+                const list = flattenAdsRows(Array.isArray(rows) ? rows : []);
                 let pauseN = 0;
                 let runN = 0;
+                const seen = {};
                 list.forEach(function (r) {
+                    if (r && r.is_parent) return;
+                    const gid = String((r && r.goods_id) || '') || ('sku:' + String((r && r.sku) || ''));
+                    if (seen[gid]) return;
+                    seen[gid] = true;
                     const action = rowPauseRunAction(r);
                     if (action === 'run') runN++;
                     else if (action === 'pause') pauseN++;
@@ -1145,7 +1344,7 @@
             function pruneSelectedGoodsIds() {
                 if (!table) return;
                 const live = {};
-                (table.getData() || []).forEach(function (row) {
+                flattenAdsRows(table.getData() || []).forEach(function (row) {
                     const id = rowGoodsId(row);
                     if (id) live[id] = true;
                 });
@@ -1160,7 +1359,7 @@
 
             function selectedRowData() {
                 if (!table || !hasRowSelection()) return [];
-                return (table.getData() || []).filter(function (row) {
+                return flattenAdsRows(table.getData() || []).filter(function (row) {
                     return selectedGoodsIds.has(rowGoodsId(row));
                 });
             }
@@ -1197,7 +1396,7 @@
             function createSourceRows() {
                 if (!table) return [];
                 if (hasRowSelection()) return selectedRowData();
-                return table.getData(true) || [];
+                return flattenAdsRows(table.getData(true) || []);
             }
 
             function paintCreateBadge() {
@@ -1231,7 +1430,7 @@
             let channelTacos = null;
 
             function badgeCounts(rows) {
-                const list = Array.isArray(rows) ? rows : [];
+                const list = flattenAdsRows(Array.isArray(rows) ? rows : []);
                 const periodKey = currentPeriodKey();
                 let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, tacosSpend = 0, createN = 0, pauseN = 0, runN = 0;
                 const seenGoods = {};
@@ -1342,7 +1541,7 @@
             let badgeSnapshotTimer = null;
             function snapshotBadgeHistory() {
                 if (!table) return;
-                const m = badgeCounts(table.getData() || []);
+                const m = badgeCounts(filteredFlatAdsRows());
                 clearTimeout(badgeSnapshotTimer);
                 badgeSnapshotTimer = setTimeout(function () {
                     fetch(@json(route('temu.ads.badge-snapshot')), {
@@ -1551,7 +1750,7 @@
             function runningAdsRows(rows) {
                 const seen = {};
                 const out = [];
-                (rows || []).forEach(function (r) {
+                flattenAdsRows(rows || []).forEach(function (r) {
                     if (r && r.is_parent) return;
                     const action = rowPauseRunAction(r);
                     if (action !== 'run' && action !== 'pause') return;
@@ -1641,18 +1840,25 @@
 
             function updateBadgesFromTable() {
                 if (!table) return;
-                paintMetricBadges(table.getData(true));
+                paintMetricBadges(filteredFlatAdsRows());
                 snapshotBadgeHistory();
-                updateFilterCounts();
+                updateFilterCounts(allAdsRows);
             }
 
             const table = new Tabulator('#temu-ads-table', {
                 ajaxURL: dataUrl(),
                 ajaxResponse: function (url, params, response) {
-                    const rows = response.data || [];
-                    setBadges(rows, response);
-                    return rows;
+                    allAdsRows = response.data || [];
+                    setBadges(allAdsRows, response);
+                    return adsRowsForView();
                 },
+                index: '_row_key',
+                dataTree: true,
+                dataTreeStartExpanded: false,
+                dataTreeChildField: '_children',
+                dataTreeFilter: true,
+                dataTreeElementColumn: 'sku',
+                dataTreeChildIndent: 16,
                 layout: 'fitData',
                 height: '70vh',
                 pagination: 'local',
@@ -1668,11 +1874,14 @@
                 },
                 rowFormatter: function (row) {
                     const el = row.getElement();
-                    if (row.getData() && row.getData().is_parent) {
-                        el.classList.add('temu-ads-parent-row');
-                    } else {
-                        el.classList.remove('temu-ads-parent-row');
-                    }
+                    const data = row.getData() || {};
+                    if (data.is_parent) el.classList.add('temu-ads-parent-row');
+                    else el.classList.remove('temu-ads-parent-row');
+                    const treeParent = typeof row.getTreeParent === 'function' ? row.getTreeParent() : null;
+                    if (treeParent) el.classList.add('temu-ads-child-row');
+                    else el.classList.remove('temu-ads-child-row');
+                    const ctrl = el.querySelector('.tabulator-data-tree-control');
+                    if (ctrl && data.is_parent) ctrl.title = 'Show child ads';
                 },
                 initialSort: [{ column: 'parent', dir: 'asc' }],
                 columns: [
@@ -1748,7 +1957,7 @@
                         field: 'parent',
                         width: 120,
                         minWidth: 80,
-                        headerTooltip: 'Parent from Product Master. A PARENT row is inserted above its variation SKUs.',
+                        headerTooltip: 'Parent from Product Master. Table shows parent rows only; click the SKU arrow to open child ads.',
                         sorter: function (a, b, aRow, bRow) {
                             const ad = (aRow && aRow.getData()) || {};
                             const bd = (bRow && bRow.getData()) || {};
@@ -1764,8 +1973,11 @@
                     {
                         title: 'SKU',
                         field: 'sku',
-                        width: 140,
-                        minWidth: 90,
+                        width: 160,
+                        minWidth: 110,
+                        hozAlign: 'left',
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Click the arrow on a PARENT row to show its child ads.',
                         sorter: 'string',
                         formatter: function (cell) {
                             const sku = String(cell.getValue() || '');
@@ -1985,7 +2197,7 @@
                             document.getElementById('rawJsonModalLabel').textContent =
                                 'Raw API — Goods ' + (data.goods_id || '') + ' (' + (data.period || '') + ')';
                             new bootstrap.Modal(document.getElementById('rawJsonModal')).show();
-                            fetch(@json(url('/temu/ads/raw')) + '/' + encodeURIComponent(data.id || ''), {
+                            fetch(@json(url('/temu/ads/raw')) + '/' + encodeURIComponent(data.raw_id || data.id || ''), {
                                 headers: { Accept: 'application/json' },
                             })
                                 .then(function (r) { return r.json(); })
@@ -2016,6 +2228,7 @@
             });
             table.on('dataLoaded', function () {
                 pruneSelectedGoodsIds();
+                if (typeof applySearchFilters === 'function') applySearchFilters();
                 if (typeof applyPauseRunSlabsToTable === 'function') applyPauseRunSlabsToTable();
                 else updateBadgesFromTable();
                 refreshSelectCheckboxes();
@@ -2119,9 +2332,8 @@
 
             function applyPauseRunSlabsToTable() {
                 if (!table || !window.TemuAdsColorRules) return 0;
-                const rows = (typeof table.getRows === 'function' ? (table.getRows('all') || table.getRows()) : []) || [];
                 let n = 0;
-                rows.forEach(function (row) {
+                walkAdsRows(function (row) {
                     const data = row.getData() || {};
                     const action = TemuAdsColorRules.computedPauseRunAction
                         ? TemuAdsColorRules.computedPauseRunAction(data)
@@ -2154,7 +2366,7 @@
                 results.forEach(function (item) {
                     if (item && item.goods_id) byId[String(item.goods_id)] = item;
                 });
-                (table.getRows('all') || table.getRows() || []).forEach(function (row) {
+                walkAdsRows(function (row) {
                     const data = row.getData() || {};
                     const item = byId[String(data.goods_id || '')];
                     if (!item) return;
@@ -2989,16 +3201,22 @@
 
             function applySearchFilters() {
                 const q = currentFilterQuery();
+                const rowType = currentRowType();
                 if (!q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ) {
                     table.clearFilter(true);
+                    if (rowType === 'parent') collapseAllAdsParents();
+                    else if (rowType === 'all') expandAllAdsParents();
                     updateBadgesFromTable();
                     return;
                 }
                 table.setFilter(function (data) {
                     return rowMatchesQuery(data, q, '');
                 });
+                if (rowType === 'all') expandAllAdsParents();
+                else if (rowType === 'parent') expandParentsForChildSearch();
                 updateBadgesFromTable();
             }
+            document.getElementById('row-type-filter').addEventListener('change', applyRowTypeView);
             document.getElementById('search-goods-id').addEventListener('input', applySearchFilters);
             document.getElementById('search-sku').addEventListener('input', applySearchFilters);
             document.getElementById('status-filter').addEventListener('change', applySearchFilters);
@@ -3040,7 +3258,7 @@
             function rowByGoodsId(goodsId) {
                 const id = String(goodsId || '');
                 if (!id || !table) return null;
-                const rows = table.getData(true) || [];
+                const rows = flattenAdsRows(table.getData(true) || []);
                 for (let i = 0; i < rows.length; i++) {
                     if (String(rows[i].goods_id || '') === id) return rows[i];
                 }
@@ -3065,7 +3283,7 @@
                     if (!item || !item.rejected) return;
                     const gid = String(item.goods_id || '');
                     if (!gid) return;
-                    (table.getRows() || []).forEach(function (row) {
+                    walkAdsRows(function (row) {
                         const data = row.getData() || {};
                         if (String(data.goods_id || '') !== gid) return;
                         row.update({ ad_create_reject: item.message || 'Temu rejected this listing for ads.' });

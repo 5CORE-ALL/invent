@@ -932,6 +932,14 @@
                             <small class="text-muted">Manual compliance count for this channel.</small>
                         </div>
                         <div class="mb-3">
+                            <label for="channelBrandAuthorisation" class="form-label">Brand Authorisation</label>
+                            <select class="form-control" id="channelBrandAuthorisation">
+                                <option value="">Select</option>
+                                <option value="Yes">Yes</option>
+                                <option value="No">No</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
                             <label for="channelLogo" class="form-label">Channel Logo</label>
                             <div class="d-flex align-items-center gap-2">
                                 <div id="channelLogoPreview" class="channel-logo-preview">
@@ -1025,6 +1033,14 @@
                             <input type="number" class="form-control" id="editChannelComplianceCount" step="1"
                                 min="0" placeholder="e.g. 5">
                             <small class="text-muted">Manual compliance count for this channel.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelBrandAuthorisation" class="form-label">Brand Authorisation</label>
+                            <select class="form-control" id="editChannelBrandAuthorisation">
+                                <option value="">Select</option>
+                                <option value="Yes">Yes</option>
+                                <option value="No">No</option>
+                            </select>
                         </div>
                         <div class="mb-3">
                             <label for="editChannelLogo" class="form-label">Channel Logo</label>
@@ -2410,6 +2426,23 @@
                             const title = titles[slug] || label;
                             const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
                             return `<span class="type-badge ${cls}" title="${safeTitle}">${safe}</span>`;
+                        }
+                    },
+                    {
+                        title: "BA",
+                        field: "brand_authorisation",
+                        hozAlign: "center",
+                        width: 46,
+                        minWidth: 42,
+                        headerTooltip: "Brand Authorisation",
+                        menuTitle: "Brand Authorisation",
+                        formatter: function(cell) {
+                            const value = (cell.getValue() || '').toString().trim();
+                            if (value !== 'Yes' && value !== 'No') {
+                                return '<span style="color:#adb5bd;" title="Brand Authorisation">-</span>';
+                            }
+                            const color = value === 'Yes' ? '#198754' : '#dc3545';
+                            return `<span style="font-weight:600;color:${color};" title="Brand Authorisation">${value}</span>`;
                         }
                     },
                     {
@@ -4856,6 +4889,7 @@
                                     $('#editChannelAlias').val(rowData['alias'] || '');
                                     $('#editChannelPromotions').val(rowData['promotions'] ?? '');
                                     $('#editChannelComplianceCount').val(rowData['compliance_count'] ?? '');
+                                    $('#editChannelBrandAuthorisation').val(rowData['brand_authorisation'] || '');
                                     $('#editChannelUrl').val(sheetUrl);
                                     $('#editType').val(type);
                                     $('#editMissingLink').val(missingLink);
@@ -5809,10 +5843,12 @@
                     if (COLUMNS_MENU_EXCLUDED_FIELDS.indexOf(field) !== -1) return;
 
                     const isVisible = col.isVisible();
+                    const label = def.title || field;
+                    const hover = def.menuTitle || label;
                     const li = document.createElement("li");
                     li.style.minWidth = '0';
                     li.innerHTML =
-                        `<label class="dropdown-item py-1 px-2 text-truncate" style="white-space:nowrap;" title="${def.title}"><input type="checkbox" ${isVisible ? 'checked' : ''} data-field="${field}"> ${def.title}</label>`;
+                        `<label class="dropdown-item py-1 px-2 text-truncate" style="white-space:nowrap;" title="${hover}"><input type="checkbox" ${isVisible ? 'checked' : ''} data-field="${field}"> ${label}</label>`;
                     menu.appendChild(li);
                 });
             }
@@ -7019,6 +7055,7 @@
                     $('#editChannelAlias').val(rowData['alias'] || '');
                     $('#editChannelPromotions').val(rowData['promotions'] ?? '');
                     $('#editChannelComplianceCount').val(rowData['compliance_count'] ?? '');
+                    $('#editChannelBrandAuthorisation').val(rowData['brand_authorisation'] || '');
                     $('#editChannelUrl').val(sheetUrl);
                     $('#editType').val(type);
                     $('#editMissingLink').val(missingLink);
@@ -7126,6 +7163,7 @@
                 formData.append('alias', $('#channelAlias').val().trim());
                 formData.append('promotions', $('#channelPromotions').val().trim());
                 formData.append('compliance_count', $('#channelComplianceCount').val().trim());
+                formData.append('brand_authorisation', $('#channelBrandAuthorisation').val());
                 formData.append('sheet_link', channelUrl);
                 formData.append('type', type);
                 formData.append('seller_link', sellerLink);
@@ -7214,6 +7252,7 @@
                 const alias = $('#editChannelAlias').val().trim();
                 const promotions = $('#editChannelPromotions').val().trim();
                 const complianceCount = $('#editChannelComplianceCount').val().trim();
+                const brandAuthorisation = $('#editChannelBrandAuthorisation').val();
                 const sheetUrl = $('#editChannelUrl').val().trim();
                 const type = $('#editType').val();
                 const missingLink = $('#editMissingLink').val().trim();
@@ -7232,6 +7271,7 @@
                 formData.append('alias', alias);
                 formData.append('promotions', promotions);
                 formData.append('compliance_count', complianceCount);
+                formData.append('brand_authorisation', brandAuthorisation);
                 formData.append('sheet_url', sheetUrl);
                 formData.append('type', type);
                 formData.append('missing_link', missingLink);
