@@ -291,7 +291,7 @@
             gap: 8px;
             flex: 1 1 180px;
             min-width: 160px;
-            max-width: 320px;
+            max-width: 460px;
             padding: 4px 10px;
             border: 1px solid #bfdbfe;
             border-radius: 999px;
@@ -344,7 +344,7 @@
         .ch-promo-reload-push-progress-msg {
             flex: 0 1 auto;
             min-width: 0;
-            max-width: 9.5rem;
+            max-width: 16rem;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
