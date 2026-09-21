@@ -57,7 +57,7 @@ class NeweggListingPublishService
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
         $publishSkus = ($expandSiblings && $mode === 'variation')
             ? $this->expandToPublishableSiblings($skus, $channel)
-            : $this->filterPublishable($skus, $channel);
+            : $this->filterPublishable($skus, $channel, ! $expandSiblings);
 
         if ($publishSkus === []) {
             return ['success' => false, 'message' => $this->publishBlockReason($skus, $channel)];
@@ -214,7 +214,7 @@ class NeweggListingPublishService
      * @param  list<string>  $skus
      * @return list<string>
      */
-    private function filterPublishable(array $skus, string $channel): array
+    private function filterPublishable(array $skus, string $channel, bool $fromListingManager = false): array
     {
         $cfg = ChannelListingRegistry::get($channel);
         $listedMap = $cfg ? ChannelListingRegistry::loadListedIds($cfg, $skus) : [];
@@ -234,10 +234,11 @@ class NeweggListingPublishService
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                 continue;
             }
-            if (trim((string) ($listedMap[strtolower($sku)] ?? '')) !== '') {
+            $listedId = trim((string) ($listedMap[strtolower($sku)] ?? ''));
+            if ($listedId !== '' && $this->isLiveOnNewegg($sku, $listedId)) {
                 continue;
             }
-            if (ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
+            if (! $fromListingManager && ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
                 continue;
             }
             $product = $products->get(strtolower($sku)) ?: $this->findProduct($sku);
@@ -250,8 +251,35 @@ class NeweggListingPublishService
         return $out;
     }
 
+    private function isLiveOnNewegg(string $sku, string $listedId = ''): bool
+    {
+        if (! ChannelListingRegistry::isLiveNeweggListingId($listedId, $sku)) {
+            $listedId = '';
+        }
+        try {
+            $lookup = $this->api->lookupSellerItem($sku);
+        } catch (\Throwable $e) {
+            Log::warning('Newegg live listed check failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return $listedId !== '';
+        }
+        if (! empty($lookup['blocked_by_cloudflare'])) {
+            return $listedId !== '';
+        }
+        $itemNumber = trim((string) ($lookup['item_number'] ?? ''));
+
+        return ! empty($lookup['success']) && ChannelListingRegistry::isLiveNeweggListingId($itemNumber, $sku);
+    }
+
     private function publishBlockReason(array $skus, string $channel): string
     {
+        $cfg = ChannelListingRegistry::get($channel);
+        $listedMap = $cfg ? ChannelListingRegistry::loadListedIds($cfg, $skus) : [];
+        $dataView = $cfg['dataView'] ?? ($channel === 'neweggb2b' ? NeweggB2BDataView::class : Neweegb2cDataView::class);
+        $nrValues = ($dataView && class_exists($dataView))
+            ? ListingCountsEngine::loadNrValues($dataView, $skus)
+            : collect();
+
         $reasons = [];
         foreach ($this->uniqueSkus($skus) as $sku) {
             $product = $this->findProduct($sku);
@@ -261,6 +289,15 @@ class NeweggListingPublishService
             }
             if ($this->productImages($product, $sku) === []) {
                 $reasons[] = $sku.': no public https image';
+                continue;
+            }
+            $listedId = trim((string) ($listedMap[strtolower($sku)] ?? ''));
+            if ($listedId !== '' && $this->isLiveOnNewegg($sku, $listedId)) {
+                $reasons[] = $sku.': already listed on Newegg';
+                continue;
+            }
+            if (ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
+                $reasons[] = $sku.': NRL';
                 continue;
             }
             $reasons[] = $sku.': already listed or NRL';
@@ -273,12 +310,13 @@ class NeweggListingPublishService
 
     private function persistListed(string $sku, string $itemNumber, string $title, float $price, int $inv, string $channel): void
     {
+        $liveId = ChannelListingRegistry::isLiveNeweggListingId($itemNumber, $sku) ? $itemNumber : '';
         try {
-            if ($itemNumber !== '' && Schema::hasTable('newegg_metric')) {
+            if ($liveId !== '' && Schema::hasTable('newegg_metric')) {
                 NeweggMetric::updateOrCreate(
                     ['sku' => $sku],
                     [
-                        'product_id' => $itemNumber,
+                        'product_id' => $liveId,
                         'product_name' => $title,
                         'price' => $price,
                     ]
@@ -293,8 +331,8 @@ class NeweggListingPublishService
                     'country_code' => 'USA',
                     'active' => 1,
                 ];
-                if ($itemNumber !== '' && ! str_starts_with($itemNumber, 'NE-')) {
-                    $payload['newegg_item_number'] = $itemNumber;
+                if ($liveId !== '') {
+                    $payload['newegg_item_number'] = $liveId;
                 }
                 $existing = NeweggPricing::query()
                     ->where('seller_part_number', $sku)
@@ -319,12 +357,12 @@ class NeweggListingPublishService
             }
 
             $statusClass = $channel === 'neweggb2b' ? NeweggB2BListingStatus::class : NeweggB2CListingStatus::class;
-            if (class_exists($statusClass) && Schema::hasTable((new $statusClass)->getTable())) {
+            if ($liveId !== '' && class_exists($statusClass) && Schema::hasTable((new $statusClass)->getTable())) {
                 $status = $statusClass::query()->where('sku', $sku)->first();
                 $value = $status && is_array($status->value) ? $status->value : [];
                 $value['listed'] = 'Listed';
-                $value['listing_id'] = $itemNumber;
-                $value['product_id'] = $itemNumber;
+                $value['listing_id'] = $liveId;
+                $value['product_id'] = $liveId;
                 $statusClass::updateOrCreate(['sku' => $sku], ['value' => $value]);
             }
         } catch (\Throwable $e) {

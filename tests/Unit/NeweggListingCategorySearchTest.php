@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\NeweggApiService;
+use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingManagerEditorProfile;
 use PHPUnit\Framework\TestCase;
 
@@ -47,5 +48,14 @@ class NeweggListingCategorySearchTest extends TestCase
 
         $this->assertSame('214', $rows[0]['id']);
         $this->assertSame('Lighting Accessories', $rows[0]['name']);
+    }
+
+    public function test_sku_and_placeholder_are_not_live_newegg_item_numbers(): void
+    {
+        $sku = 'LS100-6 RED';
+        $this->assertFalse(ChannelListingRegistry::isLiveNeweggListingId('', $sku));
+        $this->assertFalse(ChannelListingRegistry::isLiveNeweggListingId($sku, $sku));
+        $this->assertFalse(ChannelListingRegistry::isLiveNeweggListingId('NE-abc123def456', $sku));
+        $this->assertTrue(ChannelListingRegistry::isLiveNeweggListingId('9SIA12345ABC', $sku));
     }
 }

@@ -882,7 +882,10 @@ class ChannelListingRegistry
                     foreach ($rows as $row) {
                         $sku = trim((string) $row->seller_part_number);
                         $id = trim((string) ($row->newegg_item_number ?? ''));
-                        self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
+                        if (! self::isLiveNeweggListingId($id, $sku)) {
+                            continue;
+                        }
+                        self::putListedId($byNorm, $wantedNorm, $sku, $id);
                     }
                 });
         }
@@ -896,14 +899,10 @@ class ChannelListingRegistry
                     foreach ($rows as $row) {
                         $sku = trim((string) $row->seller_part_number);
                         $itemNumber = trim((string) ($row->newegg_item_number ?? ''));
-                        $active = $row->active ?? $row->inventory_active;
-                        $isActive = $active === true || $active === 1 || $active === '1';
-                        $hasPrice = (float) ($row->selling_price ?? 0) > 0;
-                        $hasInv = $row->available_quantity !== null;
-                        if ($itemNumber === '' && ! $hasPrice && ! $isActive && ! $hasInv) {
+                        if (! self::isLiveNeweggListingId($itemNumber, $sku)) {
                             continue;
                         }
-                        self::putListedId($byNorm, $wantedNorm, $sku, $itemNumber !== '' ? $itemNumber : $sku);
+                        self::putListedId($byNorm, $wantedNorm, $sku, $itemNumber);
                     }
                 });
         }
@@ -919,7 +918,7 @@ class ChannelListingRegistry
                     foreach ($rows as $row) {
                         $sku = trim((string) $row->sku);
                         $id = trim((string) ($row->product_id ?? ''));
-                        if ($id === '' || strcasecmp($id, $sku) === 0) {
+                        if (! self::isLiveNeweggListingId($id, $sku)) {
                             continue;
                         }
                         self::putListedId($byNorm, $wantedNorm, $sku, $id);
@@ -936,7 +935,10 @@ class ChannelListingRegistry
                     }
                     $sku = trim((string) ($row['sku'] ?? ''));
                     $id = trim((string) ($row['product_id'] ?? ''));
-                    self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
+                    if (! self::isLiveNeweggListingId($id, $sku)) {
+                        continue;
+                    }
+                    self::putListedId($byNorm, $wantedNorm, $sku, $id);
                 }
             }
         } catch (\Throwable $e) {
@@ -944,6 +946,27 @@ class ChannelListingRegistry
         }
 
         return self::listedMapFromByNorm($skus, $byNorm);
+    }
+
+    /**
+     * True only for a real Newegg item #. SKU-as-id and NE- placeholders
+     * are leftover from a failed / in-review create and are not live.
+     */
+    public static function isLiveNeweggListingId(string $id, string $sku = ''): bool
+    {
+        $id = trim($id);
+        $sku = trim($sku);
+        if ($id === '') {
+            return false;
+        }
+        if (str_starts_with(strtoupper($id), 'NE-')) {
+            return false;
+        }
+        if ($sku !== '' && strcasecmp($id, $sku) === 0) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
