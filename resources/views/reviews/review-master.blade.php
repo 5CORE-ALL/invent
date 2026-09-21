@@ -41,63 +41,111 @@
 
         .stars { color:#f5b301; letter-spacing:1px; }
 
-        /* Compact 2-line page header (avoid theme 75px .page-title-box line-height) */
+        /* Header is exactly two lines: title/stats, then filters. */
+        .reviews-shell {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - var(--tz-topbar-height, 70px) - var(--tz-footer-height, 60px) - 4px);
+            min-height: 280px;
+        }
         .reviews-page-head {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            padding: 2px 0 6px;
-            min-height: 0;
+            height: 26px;
+            margin: 0;
+            padding: 0;
+            flex-wrap: nowrap;
+            overflow: hidden;
+            flex: 0 0 26px;
+        }
+        .reviews-title-group {
+            display: flex;
+            align-items: center;
+            flex-wrap: nowrap;
+            gap: 6px;
+            min-width: 0;
+            overflow: hidden;
         }
         .reviews-page-head .reviews-title {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
-            line-height: 1.25;
+            line-height: 1;
             margin: 0;
             white-space: nowrap;
         }
         .reviews-page-head .breadcrumb {
             margin: 0;
             padding: 0;
-            font-size: 12px;
-            line-height: 1.2;
+            font-size: 11px;
+            line-height: 1;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         .reviews-stat {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
             background: #fff;
             border: 1px solid #e9ecef;
-            border-radius: 8px;
-            padding: 3px 8px;
-            line-height: 1.15;
+            border-radius: 6px;
+            padding: 0 6px;
+            height: 20px;
+            line-height: 1;
             white-space: nowrap;
+            flex-shrink: 0;
         }
         .reviews-stat .stat-icon {
-            width: 22px;
-            height: 22px;
-            border-radius: 6px;
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 9px;
         }
         .reviews-stat .stat-label { font-size: 10px; color: #6c757d; }
-        .reviews-stat .stat-value { font-size: 13px; font-weight: 700; }
+        .reviews-stat .stat-value { font-size: 12px; font-weight: 700; }
 
+        .reviews-card {
+            flex: 1 1 auto;
+            min-height: 0;
+            margin: 2px 0 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .reviews-toolbar-body {
+            flex: 0 0 auto;
+            padding: 2px 6px !important;
+        }
         .reviews-toolbar {
             display: flex;
             align-items: center;
             flex-wrap: nowrap;
-            gap: 6px;
+            gap: 4px;
+            height: 26px;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
         }
-        .reviews-toolbar .form-select { flex: 0 0 auto; }
-        #summary-stats { flex: 0 0 auto; }
-        #summary-stats .badge { font-size: 11px; font-weight: 700; padding: 4px 8px; }
+        .reviews-toolbar .btn {
+            height: 22px;
+            padding: 0 7px;
+            font-size: 11px;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .reviews-toolbar .form-select {
+            flex: 0 0 auto;
+            height: 22px;
+            min-height: 22px;
+            padding-top: 0;
+            padding-bottom: 0;
+            font-size: 11px;
+        }
+        #summary-stats { flex: 0 0 auto; flex-wrap: nowrap !important; }
+        #summary-stats .badge { font-size: 10px; font-weight: 700; padding: 2px 6px; line-height: 1.2; }
 
         .review-clip { display:inline-block; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; cursor:pointer; }
 
@@ -107,8 +155,9 @@
 @endsection
 
 @section('content')
+<div class="reviews-shell">
     <div class="reviews-page-head">
-        <div class="d-flex align-items-center flex-wrap gap-2">
+        <div class="reviews-title-group">
             <h4 class="reviews-title">Review Intelligence Master</h4>
             <span class="reviews-stat" title="Total Reviews">
                 <span class="stat-icon bg-primary-subtle text-primary"><i class="fa fa-comment-dots"></i></span>
@@ -150,9 +199,8 @@
     <div class="toast-container"></div>
 
     {{-- ============================ Main Card ============================ --}}
-    <div class="row">
-        <div class="card shadow-sm">
-            <div class="card-body py-2">
+    <div class="card shadow-sm reviews-card">
+            <div class="card-body reviews-toolbar-body">
                 <div class="reviews-toolbar">
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -218,16 +266,16 @@
                 </div>
             </div>
 
-            <div class="card-body" style="padding:0;">
-                <div id="reviews-table-wrapper" style="height: calc(100vh - 210px); display:flex; flex-direction:column;">
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU…">
+            <div class="card-body reviews-table-body" style="padding:0; flex:1 1 auto; min-height:0; display:flex; flex-direction:column;">
+                <div id="reviews-table-wrapper" style="flex:1 1 auto; min-height:0; display:flex; flex-direction:column;">
+                    <div class="px-2 py-1 bg-light border-bottom">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU…" style="height:22px; min-height:22px; font-size:11px; padding-top:0; padding-bottom:0;">
                     </div>
                     <div id="reviews-table" style="flex:1;"></div>
                 </div>
             </div>
         </div>
-    </div>
+</div>
 
     {{-- ============================ Review Detail Modal ============================ --}}
     <div class="modal fade" id="reviewDetailModal" tabindex="-1">

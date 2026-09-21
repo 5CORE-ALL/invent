@@ -303,6 +303,7 @@ use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
 use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\PurchaseMaster\ScopeOfImprovementController;
 use App\Http\Controllers\PurchaseMaster\DarController as DarReportController;
+use App\Http\Controllers\DailyCloseoutController;
 use App\Http\Controllers\PurchaseMaster\SourcingController;
 use App\Http\Controllers\PurchaseMaster\SupplierController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
@@ -3527,6 +3528,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/dar/store', 'store')->name('dar.store');
         Route::post('/dar/update/{id}', 'update')->name('dar.update');
         Route::post('/dar/delete/{id}', 'destroy')->name('dar.delete');
+    });
+
+    Route::controller(DailyCloseoutController::class)->middleware('auth')->group(function () {
+        Route::get('/daily-closeout', 'index')->name('daily-closeout.index');
+        Route::get('/daily-closeout/data', 'data')->name('daily-closeout.data');
+        Route::get('/daily-closeout/nudge', 'nudge')->name('daily-closeout.nudge');
+        Route::post('/daily-closeout/tasks', 'answerTasks')->name('daily-closeout.tasks');
+        Route::post('/daily-closeout/dar-nudge', 'markDarNudge')->name('daily-closeout.dar-nudge');
     });
 
     // Sourcingƒvies

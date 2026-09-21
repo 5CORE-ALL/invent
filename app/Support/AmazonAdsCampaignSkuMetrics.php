@@ -106,6 +106,29 @@ final class AmazonAdsCampaignSkuMetrics
     /**
      * Tabulator Dil: OV L30 ÷ INV × 100. INV = 0 → 0 (gray 0% on the grid).
      */
+    /**
+     * Grid Inv filter. The cell shows a rounded integer, or a dash when Inv is missing.
+     * "zero" is that dash or 0. "gt" is a rounded Inv above 0.
+     */
+    public static function invMatchesFilter(mixed $inv, string $mode): bool
+    {
+        $shown = null;
+        if (is_numeric($inv)) {
+            $n = (float) $inv;
+            if (is_finite($n)) {
+                $shown = (int) round($n);
+            }
+        }
+        if ($mode === 'gt') {
+            return $shown !== null && $shown > 0;
+        }
+        if ($mode === 'zero') {
+            return $shown === null || $shown <= 0;
+        }
+
+        return true;
+    }
+
     public static function tabulatorDil(?float $inv, ?float $ovl30): ?float
     {
         if ($inv === null && $ovl30 === null) {

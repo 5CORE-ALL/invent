@@ -71,6 +71,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="{{ route('daily-closeout.index') }}" class="{{ request()->routeIs('daily-closeout.*') ? 'active' : '' }}">
+                                <i class="ri-calendar-check-line me-2"></i>Daily Closeout
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('announcements.index') }}" class="{{ request()->routeIs('announcements.*') ? 'active' : '' }}">
                                 <i class="ri-megaphone-line me-2"></i>Announcement
                             </a>

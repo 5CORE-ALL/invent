@@ -694,6 +694,9 @@
                             <a href="{{ route('dar.index') }}">DAR</a>
                         </li>
                         <li>
+                            <a href="{{ route('daily-closeout.index') }}">Daily Closeout</a>
+                        </li>
+                        <li>
                             <a href="{{ route('incoming.view') }}">Incoming</a>
                         </li>
                         <li>

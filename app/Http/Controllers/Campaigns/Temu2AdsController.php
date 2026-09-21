@@ -8,6 +8,7 @@ use App\Models\MarketplaceDailyMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Temu2CampaignReport;
+use App\Support\TemuAdsBadgeHistory;
 use App\Support\TemuGoodsIdHelper;
 use App\Services\Temu2AdsApiReportService;
 use App\Services\Temu2AdsAutoPauseService;
@@ -1029,7 +1030,9 @@ class Temu2AdsController extends Controller
         $row = ChannelTabulatorColumnSetting::query()->firstOrNew([
             'channel_name' => 'temu2_ads_badge_history',
         ]);
-        $hist = is_array($row->visibility) ? $row->visibility : [];
+        $hist = TemuAdsBadgeHistory::ensureYSpendInDollars(
+            is_array($row->visibility) ? $row->visibility : []
+        );
         if (! isset($hist[$period]) || ! is_array($hist[$period])) {
             $hist[$period] = [];
         }
@@ -1054,7 +1057,12 @@ class Temu2AdsController extends Controller
         $row = ChannelTabulatorColumnSetting::query()
             ->where('channel_name', 'temu2_ads_badge_history')
             ->first();
-        $hist = is_array($row?->visibility) ? $row->visibility : [];
+        $raw = is_array($row?->visibility) ? $row->visibility : [];
+        $hist = TemuAdsBadgeHistory::ensureYSpendInDollars($raw);
+        if ($row && empty($raw[TemuAdsBadgeHistory::Y_SPEND_DOLLARS_FLAG])) {
+            $row->visibility = $hist;
+            $row->save();
+        }
         $bucket = $hist[$period] ?? [];
 
         return is_array($bucket) ? $bucket : [];

@@ -788,6 +788,9 @@
                 if (field === 'spend_l1' && window.TemuAdsColorRules && TemuAdsColorRules.colorSpend1) {
                     TemuAdsColorRules.colorSpend1(el, v);
                 }
+                if (field === 'spend_l1') {
+                    return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
                 return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
             };
             const numFmt = (cell) => {

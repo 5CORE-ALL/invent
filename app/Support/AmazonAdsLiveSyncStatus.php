@@ -103,6 +103,16 @@ final class AmazonAdsLiveSyncStatus
                     ? ($row['sbid'] ?? $row['last_sbid'] ?? null)
                     : ($row['sbgt'] ?? null);
                 $presented = self::present($field, $state, $desired);
+                if ($field === 'bid' && $presented['color'] !== self::RED && self::displayedBidsMatch($row['last_sbid'] ?? null, $row['sbid'] ?? $desired)) {
+                    $shown = self::money($row['last_sbid'] ?? null);
+                    $want = self::money($row['sbid'] ?? $desired);
+                    $presented = [
+                        'color' => self::GREEN,
+                        'status' => 'synced',
+                        'reason' => 'already_matched',
+                        'tip' => self::greenTip('BID', 'SBID', 'already_matched', $shown, $want),
+                    ];
+                }
                 $row[$field.'_sync_color'] = $presented['color'];
                 $row[$field.'_sync_tip'] = $presented['tip'];
                 $row[$field.'_sync_status'] = $presented['status'];
@@ -134,6 +144,17 @@ final class AmazonAdsLiveSyncStatus
         }
 
         return $out;
+    }
+
+    public static function displayedBidsMatch(mixed $shown, mixed $desired): bool
+    {
+        $live = self::numeric($shown);
+        $want = self::numeric($desired);
+        if ($live === null || $want === null || $live <= 0 || $want <= 0) {
+            return false;
+        }
+
+        return AmazonAdsApiRetry::valuesMatch($live, $want, 0.015);
     }
 
     public static function colorFromStatus(?string $status): string
@@ -340,6 +361,16 @@ final class AmazonAdsLiveSyncStatus
             || str_contains($r, 'rate limit')
             || str_contains($r, 'too many')
             || str_contains($r, 'throttl');
+    }
+
+    private static function numeric(mixed $v): ?float
+    {
+        if ($v === null || $v === '' || ! is_numeric($v)) {
+            return null;
+        }
+        $n = (float) $v;
+
+        return is_finite($n) ? $n : null;
     }
 
     private static function money(mixed $v): ?string

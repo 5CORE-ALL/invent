@@ -52,6 +52,24 @@
             background: #dbeafe; border-bottom: 1px solid #dee2e6;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
         }
+        /* Frozen checkbox + campaign name — same pin as eBay 3 (solid fill so scrolled cells don't show through) */
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-frozen {
+            background-color: #dbeafe !important;
+            z-index: 12 !important;
+        }
+        #amz-ads-raw-wrap .tabulator-row .tabulator-frozen {
+            background-color: #fff !important;
+            z-index: 11 !important;
+        }
+        #amz-ads-raw-wrap .tabulator-row.tabulator-selectable:hover .tabulator-frozen {
+            background-color: #bbb !important;
+        }
+        #amz-ads-raw-wrap .tabulator-row.tabulator-selected .tabulator-frozen {
+            background-color: #9ABCEA !important;
+        }
+        #amz-ads-raw-wrap .tabulator-row.tabulator-selected:hover .tabulator-frozen {
+            background-color: #769BCC !important;
+        }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable {
             cursor: pointer;
         }
@@ -522,6 +540,14 @@
                                     <option value="lt66">&lt; 66%</option>
                                     <option value="66_99">66 – 99%</option>
                                     <option value="gt99">&gt; 99%</option>
+                                </select>
+                            </div>
+                            <div class="amz-raw-filter-field" id="amazonAdsFilterInvWrap">
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterInv">Inv</label>
+                                <select id="amazonAdsFilterInv" class="form-select form-select-sm amz-raw-filter-select" title="Shopify inventory on the Inv column">
+                                    <option value="" selected>All</option>
+                                    <option value="zero">= 0</option>
+                                    <option value="gt">&gt; 0</option>
                                 </select>
                             </div>
                             <div class="amz-raw-filter-field">
@@ -1665,6 +1691,7 @@
                     col.minWidth = window.innerWidth < 768 ? 140 : 200;
                     col.widthGrow = 4;
                     col.hozAlign = 'left';
+                    col.frozen = true;
                     return;
                 }
                 if (c === 'Inv' || c === 'INV') {
@@ -1864,7 +1891,8 @@
                 var cols = (rawSources[source] && rawSources[source].columns) ? rawSources[source].columns : [];
                 var defs = [{
                     title: '', field: '__sel', formatter: 'rowSelection', titleFormatter: 'rowSelection',
-                    headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 40, minWidth: 40
+                    headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 40, minWidth: 40,
+                    frozen: true
                 }];
                 cols.forEach(function (c) {
                     var col = { field: c, title: c, hozAlign: 'center', headerHozAlign: 'center', minWidth: 56, widthGrow: 0 };
@@ -1888,6 +1916,15 @@
                     },
                     cellClick: openAmzTaskFromCell,
                 });
+                // Tabulator left-freeze stops at the first unfrozen column, so pin
+                // the checkbox and any hidden columns through campaignName.
+                var nameIdx = -1;
+                for (var fi = 0; fi < defs.length; fi++) {
+                    if (defs[fi].field === 'campaignName') { nameIdx = fi; break; }
+                }
+                if (nameIdx !== -1) {
+                    for (var fj = 0; fj <= nameIdx; fj++) defs[fj].frozen = true;
+                }
                 return defs;
             }
 
@@ -1910,6 +1947,11 @@
             function amzSyncDotHtml(color, tip) {
                 var c = color === 'green' || color === 'red' ? color : 'yellow';
                 return '<span class="amz-sync-dot is-' + c + '" title="' + amzEsc(tip || '') + '"></span>';
+            }
+            function amzShownBidMatches(row) {
+                var live = parseFloat(row && row.last_sbid);
+                var want = parseFloat(row && row.sbid);
+                return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.abs(live - want) <= 0.015;
             }
             function amzFmtMoneyWithSync(cell, field) {
                 var row = cell.getRow ? cell.getRow().getData() : {};
@@ -2001,10 +2043,16 @@
                             + Number(src.sbgt).toFixed(2);
                     }
                     if (src.sbid != null) {
-                        patch.bid_sync_color = 'yellow';
-                        patch.bid_sync_status = 'pending';
-                        patch.bid_sync_tip = 'Pending — Pulling live Amazon BID for verification against SBID $'
-                            + Number(src.sbid).toFixed(2);
+                        if (amzShownBidMatches(d)) {
+                            patch.bid_sync_color = 'green';
+                            patch.bid_sync_status = 'synced';
+                            patch.bid_sync_tip = 'Updated — Lbid matches SBID';
+                        } else {
+                            patch.bid_sync_color = 'yellow';
+                            patch.bid_sync_status = 'pending';
+                            patch.bid_sync_tip = 'Pending — Pulling live Amazon BID for verification against SBID $'
+                                + Number(src.sbid).toFixed(2);
+                        }
                     }
                     if (Object.keys(patch).length) row.update(patch);
                 });
@@ -2031,9 +2079,18 @@
                         if (r.fields.bgt.reason === 'paused_zero_sbgt') patch.campaignStatus = 'PAUSED';
                     }
                     if (r.fields.bid) {
-                        patch.bid_sync_color = r.fields.bid.sync_color || amzColorFromStatus(r.fields.bid.status);
-                        patch.bid_sync_tip = r.fields.bid.sync_tip || '';
-                        patch.bid_sync_status = r.fields.bid.status || '';
+                        var bidFailed = String(r.fields.bid.status || '') === 'failed';
+                        if (!bidFailed && amzShownBidMatches(d)) {
+                            patch.bid_sync_color = 'green';
+                            patch.bid_sync_status = 'synced';
+                            patch.bid_sync_tip = String(r.fields.bid.status || '') === 'synced' && r.fields.bid.sync_tip
+                                ? r.fields.bid.sync_tip
+                                : 'Updated — Lbid matches SBID';
+                        } else if (String(r.fields.bid.reason || '') !== 'concurrent_sync' && String(r.fields.bid.status || '') !== 'in_progress') {
+                            patch.bid_sync_color = r.fields.bid.sync_color || amzColorFromStatus(r.fields.bid.status);
+                            patch.bid_sync_tip = r.fields.bid.sync_tip || '';
+                            patch.bid_sync_status = r.fields.bid.status || '';
+                        }
                         if (r.fields.bid.status === 'synced' && r.fields.bid.verified_live != null) {
                             patch.last_sbid = r.fields.bid.verified_live;
                         }
@@ -2051,6 +2108,7 @@
                     filter_u2: g('amazonAdsFilterU2'),
                     filter_u1: g('amazonAdsFilterU1'),
                     filter_campaign_status: g('amazonAdsFilterCampaignStatus'),
+                    filter_inv: g('amazonAdsFilterInv'),
                     filter_acos: g('amazonAdsFilterAcos'),
                     filter_ads_cvr: g('amazonAdsFilterAdsCvr'),
                     filter_bgt_sync: amzSyncFilters.bgt || '',
@@ -2530,9 +2588,16 @@
                 btn.title = ok ? 'Row counts by U7% band (U7 filter ignored).' : 'U7% mix is available for SP / SB / SD reports only';
             }
 
+            function amzSyncInvFilterVisibility() {
+                var wrap = document.getElementById('amazonAdsFilterInvWrap');
+                if (!wrap) return;
+                var cols = (rawSources[activeRawSourceKey] && rawSources[activeRawSourceKey].columns) ? rawSources[activeRawSourceKey].columns : [];
+                wrap.style.display = cols.indexOf('Inv') === -1 ? 'none' : '';
+            }
             function amzSwitchSource(sourceKey) {
                 if (!sourceKey || !rawSources[sourceKey]) sourceKey = 'all_reports';
                 activeRawSourceKey = sourceKey;
+                amzSyncInvFilterVisibility();
                 amzSetDatesToLatestForSource(sourceKey);
                 amzClearBadges();
                 amzUpdatePushButtons();
@@ -2552,7 +2617,7 @@
             }
 
             // Auto-reload filters
-            ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterCampaignStatus', 'amazonAdsFilterAcos', 'amazonAdsFilterAdsCvr'].forEach(function (id) {
+            ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterInv', 'amazonAdsFilterCampaignStatus', 'amazonAdsFilterAcos', 'amazonAdsFilterAdsCvr'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.addEventListener('change', function () {
                     if (id === 'amazonAdsFilterAcos') amzTintAcosFilterSelect();
@@ -2566,7 +2631,7 @@
             var clearBtn = document.getElementById('amazonAdsFilterClear');
             if (clearBtn) {
                 clearBtn.addEventListener('click', function () {
-                    ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterCampaignStatus', 'amazonAdsFilterAcos', 'amazonAdsFilterAdsCvr'].forEach(function (id) {
+                    ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterInv', 'amazonAdsFilterCampaignStatus', 'amazonAdsFilterAcos', 'amazonAdsFilterAdsCvr'].forEach(function (id) {
                         var el = document.getElementById(id); if (el) el.value = '';
                     });
                     amzSetDatesToLatestForSource(activeRawSourceKey);

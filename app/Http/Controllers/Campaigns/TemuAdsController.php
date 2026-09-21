@@ -14,9 +14,11 @@ use App\Services\TemuAdsApiReportService;
 use App\Services\TemuAdsAutoPauseService;
 use App\Services\TemuApiService;
 use App\Services\TemuShopifySalesService;
+use App\Support\TemuAdsBadgeHistory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -44,14 +46,17 @@ class TemuAdsController extends Controller
             $query->where('period', $period);
         }
 
-        $hasCreateReject = Schema::hasColumn('temu_ads_api_reports', 'ad_create_reject');
-        $hasPauseRunOk = Schema::hasColumn('temu_ads_api_reports', 'pause_run_ok');
+        $hasCreateReject = $this->reportHasColumn('ad_create_reject');
+        $hasPauseRunOk = $this->reportHasColumn('pause_run_ok');
         $listColumns = [
             'id', 'goods_id', 'sku', 'period', 'start_ts', 'end_ts',
             'impressions', 'clicks', 'ctr',
             'cart_cnt', 'order_pay_cnt', 'order_pay_amt', 'ad_spend', 'roas', 'acos',
             'ad_status', 'success', 'error_msg', 'fetched_at', 'updated_at',
         ];
+        if ($this->reportHasColumn('sku_id')) {
+            $listColumns[] = 'sku_id';
+        }
         if ($hasCreateReject) {
             $listColumns[] = 'ad_create_reject';
         }
@@ -59,9 +64,6 @@ class TemuAdsController extends Controller
             $listColumns[] = 'pause_run_ok';
             $listColumns[] = 'pause_run_error';
             $listColumns[] = 'pause_run_at';
-            if (Schema::hasColumn('temu_ads_api_reports', 'pause_run_history')) {
-                $listColumns[] = 'pause_run_history';
-            }
         }
         $records = $query->get($listColumns);
         $windowPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
@@ -74,50 +76,29 @@ class TemuAdsController extends Controller
             return (int) $r->start_ts === $spendWindow['start_ts'];
         };
         $windowRecords = $records->filter($inSpendWindow);
-        if (in_array($period, ['L7', 'L30', 'L60'], true)) {
-            $badge = TemuAdsApiReport::badgeTotals($period);
-            $spendSum = $badge['spend'];
-            $imprSum = $badge['impressions'];
-            $clickSum = $badge['clicks'];
-        } else {
-            $spendSum = round((float) $windowRecords->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
-            $imprSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
-            $clickSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
-        }
+        $uniqueGoods = $windowRecords->unique(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
+        $spendSum = round((float) $uniqueGoods->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
+        $imprSum = (int) $uniqueGoods->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
+        $clickSum = (int) $uniqueGoods->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
 
         $l7ClicksByGoods = TemuAdsApiReport::query()
             ->where('period', 'L7')
             ->whereNotNull('goods_id')
-            ->get(['goods_id', 'clicks', 'impressions'])
-            ->keyBy(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
+            ->selectRaw('goods_id, MAX(clicks) as clicks, MAX(impressions) as impressions')
+            ->groupBy('goods_id')
+            ->get()
+            ->keyBy(fn ($r) => (string) $r->goods_id);
 
         $l30ClicksByGoods = TemuAdsApiReport::query()
             ->where('period', 'L30')
             ->whereNotNull('goods_id')
-            ->get(['goods_id', 'clicks'])
-            ->keyBy(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
+            ->selectRaw('goods_id, MAX(clicks) as clicks')
+            ->groupBy('goods_id')
+            ->get()
+            ->keyBy(fn ($r) => (string) $r->goods_id);
 
-        $spendL1ByGoods = [];
         $spendLookupPeriods = in_array($period, ['L7', 'L30'], true) ? [$period] : ['L7', 'L30'];
-        TemuAdsApiReport::query()
-            ->whereIn('period', $spendLookupPeriods)
-            ->whereNotNull('goods_id')
-            ->whereNotNull('raw_response')
-            ->select(['id', 'goods_id', 'period', 'raw_response'])
-            ->orderBy('id')
-            ->chunkById(40, function ($chunk) use (&$spendL1ByGoods, $service) {
-                foreach ($chunk as $rep) {
-                    $gidKey = (string) $rep->goods_id;
-                    $extracted = $service->lastDaySpendFromResult($rep->rawPayload);
-                    $rep->raw_response = null;
-                    if ($extracted === null) {
-                        continue;
-                    }
-                    if ($rep->period === 'L7' || ! isset($spendL1ByGoods[$gidKey])) {
-                        $spendL1ByGoods[$gidKey] = $extracted;
-                    }
-                }
-            });
+        $spendL1ByGoods = $this->lastDaySpendByGoodsId($service, $spendLookupPeriods);
 
         $skus = $records->pluck('sku')
             ->filter(fn ($s) => $s !== null && trim((string) $s) !== '')
@@ -125,8 +106,9 @@ class TemuAdsController extends Controller
             ->unique()
             ->values()
             ->all();
-        $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
-        $productMasterByNorm = $this->productMasterByNormalizedSku($skus);
+        $skuLookup = $this->skuLookupVariants($skus);
+        $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skuLookup, false);
+        $productMasterByNorm = $this->productMasterByNormalizedSku($skuLookup);
 
         $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $hasPauseRunOk, $inSpendWindow) {
             $clicks = (int) ($r->clicks ?? 0);
@@ -157,7 +139,9 @@ class TemuAdsController extends Controller
             return [
                 'id' => $r->id,
                 'goods_id' => $r->goods_id,
+                'parent' => $this->productMasterParent($productMaster),
                 'sku' => $r->sku,
+                'sku_id' => $r->sku_id ?? '',
                 'image_path' => $this->productMasterImagePath($productMaster, $shopify),
                 'inv' => $inv,
                 'ovl30' => $ovl30,
@@ -186,14 +170,18 @@ class TemuAdsController extends Controller
                 'pause_run_ok' => $hasPauseRunOk ? $r->pause_run_ok : null,
                 'pause_run_error' => $hasPauseRunOk ? trim((string) ($r->pause_run_error ?? '')) : '',
                 'pause_run_at' => $hasPauseRunOk && $r->pause_run_at ? optional($r->pause_run_at)->toDateTimeString() : null,
-                'pause_run_history' => $hasPauseRunOk && is_array($r->pause_run_history) ? $r->pause_run_history : [],
+                'pause_run_history' => [],
                 'success' => (bool) $r->success,
                 'error_msg' => $r->error_msg,
                 'fetched_at' => optional($r->fetched_at)->toDateTimeString(),
                 'updated_at' => optional($r->updated_at)->toDateTimeString(),
+                'is_parent' => false,
                 'has_raw' => true,
             ];
         })->values();
+
+        $rows = $this->fillMissingParentsOnAdsRows($rows);
+        $rows = $this->appendParentRows($rows);
 
         $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
         $channelSales = $this->temuChannelSalesForPeriod($tacosPeriod);
@@ -250,6 +238,11 @@ class TemuAdsController extends Controller
 
         $period = $request->input('period');
         $goodsId = $request->input('goods_id') ?: null;
+        Cache::forget('temu_ads_spend_l1_'.$period);
+        Cache::forget('temu_ads_spend_l1_L7_L30');
+        Cache::forget('temu_ads_tcos_7');
+        Cache::forget('temu_ads_tcos_30');
+        Cache::forget('temu_ads_tcos_60');
 
         try {
             // Single goods: fetch immediately so the UI can refresh the row
@@ -1096,28 +1089,32 @@ class TemuAdsController extends Controller
             default => 30,
         };
 
-        try {
-            $start = Carbon::now()->subDays($days)->startOfDay();
-            $end = Carbon::now()->endOfDay();
-            $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
-            $sales = (float) ($m['sales'] ?? 0);
-            if ($sales > 0) {
-                return round($sales, 2);
+        return (float) Cache::remember('temu_ads_tcos_'.$days, 120, function () use ($days) {
+            if ($days === 30 && Schema::hasTable('marketplace_daily_metrics')) {
+                $row = MarketplaceDailyMetric::query()
+                    ->where('channel', 'Temu')
+                    ->latest('date')
+                    ->first(['total_sales']);
+                $sales = round((float) ($row->total_sales ?? 0), 2);
+                if ($sales > 0) {
+                    return $sales;
+                }
             }
-        } catch (\Throwable $e) {
-            Log::warning('Temu ads TCOS sales lookup failed', ['error' => $e->getMessage()]);
-        }
 
-        if ($days === 30 && Schema::hasTable('marketplace_daily_metrics')) {
-            $row = MarketplaceDailyMetric::query()
-                ->where('channel', 'Temu')
-                ->latest('date')
-                ->first();
+            try {
+                $start = Carbon::now()->subDays($days)->startOfDay();
+                $end = Carbon::now()->endOfDay();
+                $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
+                $sales = (float) ($m['sales'] ?? 0);
+                if ($sales > 0) {
+                    return round($sales, 2);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Temu ads TCOS sales lookup failed', ['error' => $e->getMessage()]);
+            }
 
-            return round((float) ($row->total_sales ?? 0), 2);
-        }
-
-        return 0.0;
+            return 0.0;
+        });
     }
 
     /**
@@ -1137,9 +1134,18 @@ class TemuAdsController extends Controller
         $tacosSpend = 0.0;
         $useL30SpendForTacos = strtoupper($period) === 'ALL';
 
+        $seenGoods = [];
         foreach ($rows as $row) {
+            if (! empty($row['is_parent'])) {
+                continue;
+            }
+            $gid = (string) ($row['goods_id'] ?? '');
+            $firstGoods = $gid === '' || ! isset($seenGoods[$gid]);
+            if ($gid !== '') {
+                $seenGoods[$gid] = true;
+            }
             $inWindow = ! array_key_exists('in_window', $row) || $row['in_window'];
-            if ($inWindow) {
+            if ($inWindow && $firstGoods) {
                 $impr += (float) ($row['impressions'] ?? 0);
                 $clicks += (float) ($row['clicks'] ?? 0);
                 $rowSpend = (float) ($row['ad_spend'] ?? 0);
@@ -1150,6 +1156,9 @@ class TemuAdsController extends Controller
                 $ySpend += (float) ($row['spend_l1'] ?? 0);
                 $sold += (float) ($row['order_pay_cnt'] ?? 0);
                 $sales += (float) ($row['order_pay_amt'] ?? 0);
+            }
+            if (! $firstGoods) {
+                continue;
             }
             if (($row['ad_status'] ?? '') === 'No ad') {
                 $createN++;
@@ -1172,7 +1181,7 @@ class TemuAdsController extends Controller
         }
 
         $this->storeBadgeSnapshot($period, [
-            'rows' => (float) $rows->count(),
+            'rows' => (float) collect($rows)->reject(fn ($r) => ! empty($r['is_parent']))->count(),
             'impressions' => $impr,
             'clicks' => $clicks,
             'spend' => $spend,
@@ -1200,7 +1209,9 @@ class TemuAdsController extends Controller
         $row = ChannelTabulatorColumnSetting::query()->firstOrNew([
             'channel_name' => 'temu_ads_badge_history',
         ]);
-        $hist = is_array($row->visibility) ? $row->visibility : [];
+        $hist = TemuAdsBadgeHistory::ensureYSpendInDollars(
+            is_array($row->visibility) ? $row->visibility : []
+        );
         if (! isset($hist[$period]) || ! is_array($hist[$period])) {
             $hist[$period] = [];
         }
@@ -1225,7 +1236,12 @@ class TemuAdsController extends Controller
         $row = ChannelTabulatorColumnSetting::query()
             ->where('channel_name', 'temu_ads_badge_history')
             ->first();
-        $hist = is_array($row?->visibility) ? $row->visibility : [];
+        $raw = is_array($row?->visibility) ? $row->visibility : [];
+        $hist = TemuAdsBadgeHistory::ensureYSpendInDollars($raw);
+        if ($row && empty($raw[TemuAdsBadgeHistory::Y_SPEND_DOLLARS_FLAG])) {
+            $row->visibility = $hist;
+            $row->save();
+        }
         $bucket = $hist[$period] ?? [];
 
         return is_array($bucket) ? $bucket : [];
@@ -1282,9 +1298,87 @@ class TemuAdsController extends Controller
     }
 
     /**
-     * @param  array<int, string>  $skus
-     * @return array<string, ProductMaster>
+     * One information_schema read per request instead of repeated hasColumn().
      */
+    private function reportHasColumn(string $name): bool
+    {
+        static $cols = null;
+        if ($cols === null) {
+            $cols = array_flip(Schema::getColumnListing('temu_ads_api_reports'));
+        }
+
+        return isset($cols[$name]);
+    }
+
+    /**
+     * Expand SKU strings for whereIn (exact + trailing-dot trim). Never scans whole tables.
+     *
+     * @param  array<int, string>  $skus
+     * @return array<int, string>
+     */
+    private function skuLookupVariants(array $skus): array
+    {
+        $out = [];
+        foreach ($skus as $sku) {
+            $s = trim((string) $sku);
+            if ($s === '') {
+                continue;
+            }
+            $out[$s] = true;
+            $stripped = rtrim($s, '.');
+            if ($stripped !== '' && $stripped !== $s) {
+                $out[$stripped] = true;
+            }
+        }
+
+        return array_keys($out);
+    }
+
+    /**
+     * One raw_response per goods_id (prefer L7, then L30) instead of every SKU variant.
+     *
+     * @param  array<int, string>  $periods
+     * @return array<string, float>
+     */
+    private function lastDaySpendByGoodsId(TemuAdsApiReportService $service, array $periods): array
+    {
+        $cacheKey = 'temu_ads_spend_l1_'.implode('_', $periods);
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
+
+        $out = [];
+        foreach ($periods as $period) {
+            $idByGoods = TemuAdsApiReport::query()
+                ->where('period', $period)
+                ->whereNotNull('goods_id')
+                ->whereNotNull('raw_response')
+                ->selectRaw('goods_id, MIN(id) as id')
+                ->groupBy('goods_id')
+                ->pluck('id', 'goods_id');
+            $need = [];
+            foreach ($idByGoods as $gid => $id) {
+                if (! isset($out[(string) $gid])) {
+                    $need[] = (int) $id;
+                }
+            }
+            foreach (array_chunk($need, 80) as $ids) {
+                foreach (TemuAdsApiReport::query()->whereIn('id', $ids)->get(['id', 'goods_id', 'raw_response']) as $rep) {
+                    $extracted = $service->lastDaySpendFromResult($rep->rawPayload);
+                    $rep->raw_response = null;
+                    if ($extracted !== null) {
+                        $out[(string) $rep->goods_id] = $extracted;
+                    }
+                }
+            }
+        }
+
+        Cache::put($cacheKey, $out, 180);
+
+        return $out;
+    }
+
     private function productMasterByNormalizedSku(array $skus): array
     {
         $wanted = [];
@@ -1294,39 +1388,159 @@ class TemuAdsController extends Controller
                 $wanted[$key] = true;
             }
         }
-        if ($wanted === []) {
+        if ($wanted === [] || $skus === []) {
             return [];
         }
 
         $out = [];
-        foreach (ProductMaster::query()->whereIn('sku', $skus)->get(['id', 'sku', 'Values', 'main_image']) as $pm) {
+        foreach (ProductMaster::query()->whereIn('sku', $skus)->get(['id', 'sku', 'parent', 'Values', 'main_image']) as $pm) {
             $key = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
             if ($key !== '' && isset($wanted[$key]) && ! isset($out[$key])) {
                 $out[$key] = $pm;
-                unset($wanted[$key]);
             }
         }
-        if ($wanted === []) {
-            return $out;
-        }
-
-        ProductMaster::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->orderBy('id')
-            ->chunkById(3000, function ($rows) use (&$out, &$wanted) {
-                foreach ($rows as $pm) {
-                    $key = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
-                    if ($key !== '' && isset($wanted[$key]) && ! isset($out[$key])) {
-                        $out[$key] = $pm;
-                        unset($wanted[$key]);
-                    }
-                }
-
-                return count($wanted) > 0;
-            });
 
         return $out;
+    }
+
+    /**
+     * Copy a known parent onto sibling SKUs of the same goods_id.
+     */
+    private function fillMissingParentsOnAdsRows($rows)
+    {
+        $rows = collect($rows);
+        $byGoods = [];
+        foreach ($rows as $row) {
+            $gid = (string) ($row['goods_id'] ?? '');
+            $parent = trim((string) ($row['parent'] ?? ''));
+            if ($gid !== '' && $parent !== '' && ! isset($byGoods[$gid])) {
+                $byGoods[$gid] = $parent;
+            }
+        }
+        if ($byGoods === []) {
+            return $rows->values();
+        }
+
+        return $rows->map(function (array $row) use ($byGoods): array {
+            if (trim((string) ($row['parent'] ?? '')) !== '') {
+                return $row;
+            }
+            $gid = (string) ($row['goods_id'] ?? '');
+            if ($gid !== '' && isset($byGoods[$gid])) {
+                $row['parent'] = $byGoods[$gid];
+            }
+
+            return $row;
+        })->values();
+    }
+
+    /**
+     * Insert a PARENT {name} summary row above each Product Master parent + goods + period group.
+     * Ad metrics stay goods-level (copied from the first child). Inv / Ovl30 / Dil% roll up from children.
+     */
+    private function appendParentRows($rows)
+    {
+        $names = collect($rows)
+            ->pluck('parent')
+            ->map(fn ($p) => trim((string) $p))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $parentImages = [];
+        if ($names !== []) {
+            $parentSkus = array_map(fn (string $name) => 'PARENT '.$name, $names);
+            $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($parentSkus, false);
+            $productMasterByNorm = [];
+            foreach (ProductMaster::query()->whereIn('sku', $parentSkus)->get(['id', 'sku', 'parent', 'Values', 'main_image']) as $pm) {
+                $key = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+                if ($key !== '' && ! isset($productMasterByNorm[$key])) {
+                    $productMasterByNorm[$key] = $pm;
+                }
+            }
+            foreach ($parentSkus as $parentSku) {
+                $skuKey = ShopifySku::normalizeSkuForShopifyLookup($parentSku);
+                $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
+                $productMaster = $skuKey !== '' ? ($productMasterByNorm[$skuKey] ?? null) : null;
+                $parentImages[$parentSku] = $this->productMasterImagePath($productMaster, $shopify);
+            }
+        }
+
+        return self::synthesizeParentAdsRows($rows, $parentImages);
+    }
+
+    /**
+     * @param  iterable<int, array<string, mixed>>  $rows
+     * @param  array<string, string|null>  $parentImages
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    public static function synthesizeParentAdsRows($rows, array $parentImages = [])
+    {
+        $children = collect($rows)->map(function (array $row): array {
+            $row['is_parent'] = false;
+
+            return $row;
+        });
+
+        $parentRows = $children
+            ->filter(fn (array $row) => trim((string) ($row['parent'] ?? '')) !== '')
+            ->groupBy(function (array $row) {
+                return trim((string) ($row['parent'] ?? ''))."\n".(string) ($row['goods_id'] ?? '')."\n".(string) ($row['period'] ?? '');
+            })
+            ->map(function ($kids) use ($parentImages) {
+                $first = $kids->first();
+                $parent = trim((string) ($first['parent'] ?? ''));
+                $parentSku = 'PARENT '.$parent;
+                $inv = (int) $kids->sum(fn (array $k) => (int) ($k['inv'] ?? 0));
+                $ovl30 = (int) $kids->sum(fn (array $k) => (int) ($k['ovl30'] ?? 0));
+                $allSale = round((float) $kids->sum(fn (array $k) => (float) ($k['all_sale'] ?? 0)), 2);
+                $image = $parentImages[$parentSku] ?? ($first['image_path'] ?? null);
+
+                $gid = (string) ($first['goods_id'] ?? '');
+                $period = (string) ($first['period'] ?? '');
+
+                return array_merge($first, [
+                    'id' => 'p-'.$gid.'-'.$period,
+                    'raw_id' => $first['id'] ?? null,
+                    'is_parent' => true,
+                    'sku' => $parentSku,
+                    'sku_id' => '',
+                    'image_path' => $image,
+                    'inv' => $inv,
+                    'ovl30' => $ovl30,
+                    'dil_percent' => $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0,
+                    'all_sale' => $allSale,
+                    'has_raw' => true,
+                ]);
+            })
+            ->values();
+
+        return $children
+            ->concat($parentRows)
+            ->sortBy(function (array $row) {
+                $parent = mb_strtolower((string) ($row['parent'] ?? ''));
+                $rank = ! empty($row['is_parent']) ? '0' : '1';
+                $sku = mb_strtolower((string) ($row['sku'] ?? ''));
+
+                return $parent."\n".$rank."\n".$sku;
+            })
+            ->values();
+    }
+
+    private function productMasterParent(?ProductMaster $productMaster): string
+    {
+        $parent = trim((string) ($productMaster?->parent ?? ''));
+        if ($parent === '') {
+            $values = is_array($productMaster?->Values)
+                ? $productMaster->Values
+                : (is_string($productMaster?->Values) ? (json_decode((string) $productMaster->Values, true) ?: []) : []);
+            $parent = trim((string) ($values['Parent'] ?? $values['parent'] ?? ''));
+        }
+        if ($parent !== '') {
+            $parent = trim((string) preg_replace('/^PARENT\s+/i', '', $parent));
+        }
+
+        return $parent;
     }
 
     private function productMasterImagePath(?ProductMaster $productMaster, ?ShopifySku $shopify): ?string

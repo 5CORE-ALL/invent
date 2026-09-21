@@ -95,7 +95,7 @@ class ShopifySku extends Model
      * @param  array<int, string>  $productSkus
      * @return array<string, self> normalized key => row (first wins)
      */
-    public static function buildShopifySkuLookupByNormalizedSku(array $productSkus): array
+    public static function buildShopifySkuLookupByNormalizedSku(array $productSkus, bool $scanMissing = true): array
     {
         $shopifyByNorm = [];
         $indexRow = static function ($row) use (&$shopifyByNorm): void {
@@ -109,8 +109,12 @@ class ShopifySku extends Model
             }
         };
 
-        foreach (self::whereIn('sku', $productSkus)->get() as $row) {
-            $indexRow($row);
+        if ($productSkus !== []) {
+            foreach (self::query()->whereIn('sku', $productSkus)->get([
+                'id', 'sku', 'inv', 'quantity', 'shopify_l30', 'price', 'b2c_price', 'image_src',
+            ]) as $row) {
+                $indexRow($row);
+            }
         }
 
         $missingFlip = [];
@@ -129,7 +133,7 @@ class ShopifySku extends Model
             }
         }
 
-        if ($missingFlip === []) {
+        if ($missingFlip === [] || ! $scanMissing) {
             return $shopifyByNorm;
         }
 

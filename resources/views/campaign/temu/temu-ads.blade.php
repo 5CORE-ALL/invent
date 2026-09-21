@@ -284,6 +284,60 @@
             border-radius: 2px;
             vertical-align: middle;
         }
+        #temu-ads-table .tabulator-row.temu-ads-parent-row,
+        #temu-ads-table .tabulator-row.temu-ads-parent-row .tabulator-cell {
+            background-color: #fffef2 !important;
+            font-weight: 700 !important;
+            color: #0f172a;
+        }
+        #temu-ads-table .tabulator-row.temu-ads-parent-row:hover,
+        #temu-ads-table .tabulator-row.temu-ads-parent-row:hover .tabulator-cell {
+            background-color: #fefce8 !important;
+        }
+        #temu-ads-table .temu-ads-parent-sku {
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
+        #temu-ads-table .tabulator-cell[tabulator-field="sku"] {
+            justify-content: flex-start !important;
+            text-align: left !important;
+        }
+        #temu-ads-table .temu-ads-expand-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            margin-right: 6px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: #fd7e14;
+            cursor: pointer;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+        #temu-ads-table .temu-ads-expand-btn:hover { color: #e8590c; }
+        #temu-ads-table .temu-ads-chevron {
+            display: block;
+            width: 0;
+            height: 0;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+            border-left: 7px solid currentColor;
+        }
+        #temu-ads-table .temu-ads-expand-btn.is-open .temu-ads-chevron {
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 7px solid currentColor;
+            border-bottom: 0;
+        }
+        #temu-ads-table .tabulator-row.temu-ads-child-row .tabulator-cell {
+            background-color: #f8fafc;
+        }
+        #temu-ads-table .tabulator-row.temu-ads-child-row:hover .tabulator-cell {
+            background-color: #f1f5f9;
+        }
         .temu-ads-chart-badge { cursor: pointer; }
         .temu-ads-history-dot {
             display: inline-block;
@@ -337,10 +391,16 @@
                                 <option value="L60" data-label="L60">L60</option>
                             </select>
                             <span id="period-range-label" class="small text-muted fw-semibold" title="Same calendar window as Temu Seller Center (US Pacific)"></span>
+                            <select id="row-type-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Parent Ads = parent rows only. SKU Ads = variation SKUs only. All Ads = parents and children.">
+                                <option value="parent" data-label="Parent Ads" selected>Parent Ads</option>
+                                <option value="sku" data-label="SKU Ads">SKU Ads</option>
+                                <option value="all" data-label="All Ads">All Ads</option>
+                            </select>
                             <input type="text" id="search-goods-id" class="form-control form-control-sm pricing-filter-item"
                                    placeholder="Search Goods ID" style="width: 170px;">
                             <input type="text" id="search-sku" class="form-control form-control-sm pricing-filter-item"
-                                   placeholder="Search SKU" style="width: 150px;">
+                                   placeholder="Search SKU / Parent" style="width: 170px;">
                             <select id="status-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
                                     title="Filter by Status">
                                 <option value="" data-label="All Status">All Status</option>
@@ -485,7 +545,7 @@
                                 title="Avg CVR = Sold / Clicks from badges. Click for history">Avg CVR: <span class="temu-ads-badge-val">0.0%</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="create-count"
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
-                                title="Create ads for selected No ad rows (Inv > 0). If nothing is selected, uses all visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
+                                title="Create ads for selected No ad rows (Inv > 0). Follows Parent/SKU/All, search, status, inv, dil, and clicks filters. If nothing is selected, uses visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="pause-run-count"
                                 style="background-color: #212529; color: white; font-weight: bold; cursor: pointer;"
                                 title="Pause and Run counts (live ads). Click for Pause + Run budget and details.">
@@ -812,6 +872,9 @@
                 if (field === 'spend_l1' && window.TemuAdsColorRules && TemuAdsColorRules.colorSpend1) {
                     TemuAdsColorRules.colorSpend1(el, v);
                 }
+                if (field === 'spend_l1') {
+                    return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
                 return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
             };
             const numFmt = (cell) => {
@@ -993,10 +1056,25 @@
                 return start + '-' + (start + 69);
             }
 
+            function currentRowType() {
+                const el = document.getElementById('row-type-filter');
+                const v = el ? String(el.value || '').trim() : 'parent';
+                return (v === 'sku' || v === 'all' || v === 'parent') ? v : 'parent';
+            }
+
+            function isParentAdsRow(row) {
+                return !!(row && row.is_parent);
+            }
+
+            function isSkuAdsRow(row) {
+                return !!(row && !row.is_parent);
+            }
+
             function currentFilterQuery() {
                 return {
                     goodsQ: (document.getElementById('search-goods-id').value || '').trim().toLowerCase(),
                     skuQ: (document.getElementById('search-sku').value || '').trim().toLowerCase(),
+                    rowType: currentRowType(),
                     statusQ: (document.getElementById('status-filter').value || '').trim(),
                     pauseRunQ: (document.getElementById('pause-run-filter').value || '').trim(),
                     invQ: (document.getElementById('inv-filter').value || '').trim(),
@@ -1005,12 +1083,88 @@
                 };
             }
 
+            let allAdsRows = [];
+            const expandedAdsKeys = {};
+
+            function adsGroupKey(row) {
+                return String((row && row.parent) || '').trim()
+                    + '\n' + String((row && row.goods_id) || '')
+                    + '\n' + String((row && row.period) || '');
+            }
+
+            function prepareAdsRows(rows) {
+                const byGoods = {};
+                (rows || []).forEach(function (r) {
+                    if (!r) return;
+                    const gid = String(r.goods_id || '');
+                    const p = String(r.parent || '').trim().replace(/^PARENT\s+/i, '');
+                    if (gid && p && !byGoods[gid]) byGoods[gid] = p;
+                });
+                (rows || []).forEach(function (r) {
+                    if (!r) return;
+                    if (!r.raw_id) r.raw_id = r.id;
+                    if (!String(r.parent || '').trim() && byGoods[String(r.goods_id || '')]) {
+                        r.parent = byGoods[String(r.goods_id || '')];
+                    }
+                    r.is_parent = r.is_parent === true || r.is_parent === 1 || r.is_parent === '1';
+                    r._row_key = r.is_parent
+                        ? ('p|' + String(r.goods_id || '') + '|' + String(r.period || '') + '|' + String(r.parent || ''))
+                        : ('c|' + String(r.id || '') + '|' + String(r.sku_id || '') + '|' + String(r.period || ''));
+                    if (r._children) delete r._children;
+                });
+                return rows || [];
+            }
+
+            function rowVisibleForView(data, q) {
+                q = q || currentFilterQuery();
+                if (!rowMatchesQuery(data, q, '')) return false;
+                const type = q.rowType || currentRowType();
+                if (type === 'sku') return !data.is_parent;
+                if (type === 'all') return true;
+                if (data.is_parent) return true;
+                if (expandedAdsKeys[adsGroupKey(data)]) return true;
+                return !!(q.skuQ && rowMatchesQuery(data, q, ''));
+            }
+
+            function flattenAdsRows(rows) {
+                return Array.isArray(rows) ? rows.filter(Boolean) : [];
+            }
+
+            function filteredFlatAdsRows() {
+                const q = currentFilterQuery();
+                return (allAdsRows || []).filter(function (r) {
+                    return rowVisibleForView(r, q);
+                });
+            }
+
+            function walkAdsRows(fn) {
+                if (!table) return;
+                (table.getRows() || []).forEach(fn);
+            }
+
+            function applyRowTypeView() {
+                if (table && typeof table.setPage === 'function') table.setPage(1);
+                applySearchFilters();
+            }
+
+            function applySearchFilters() {
+                if (!table) return;
+                const q = currentFilterQuery();
+                table.setFilter(function (data) {
+                    return rowVisibleForView(data, q);
+                });
+                if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
+            }
+
             function rowMatchesQuery(data, q, skip) {
                 q = q || currentFilterQuery();
                 skip = skip || '';
                 if (skip !== 'search') {
                     if (q.goodsQ && String(data.goods_id || '').toLowerCase().indexOf(q.goodsQ) === -1) return false;
-                    if (q.skuQ && String(data.sku || '').toLowerCase().indexOf(q.skuQ) === -1) return false;
+                    if (q.skuQ) {
+                        const skuHay = (String(data.sku || '') + ' ' + String(data.parent || '') + ' ' + String(data.sku_id || '')).toLowerCase();
+                        if (skuHay.indexOf(q.skuQ) === -1) return false;
+                    }
                 }
                 if (skip !== 'status' && q.statusQ && rowStatusValue(data) !== q.statusQ) return false;
                 if (skip !== 'pause_run' && q.pauseRunQ && rowPauseRunAction(data) !== q.pauseRunQ) return false;
@@ -1033,7 +1187,7 @@
             }
 
             function updateFilterCounts(rows) {
-                const all = Array.isArray(rows) ? rows : (table ? (table.getData() || []) : []);
+                const all = Array.isArray(rows) ? flattenAdsRows(rows) : (allAdsRows.length ? allAdsRows : flattenAdsRows(table ? (table.getData() || []) : []));
                 const q = currentFilterQuery();
                 const statusCounts = {};
                 const pauseCounts = {};
@@ -1047,30 +1201,39 @@
                 let dilTotal = 0;
                 let clicksTotal = 0;
                 let periodTotal = 0;
+                function rowInViewExcept(row, skip) {
+                    if (!rowMatchesQuery(row, q, skip)) return false;
+                    const type = q.rowType || currentRowType();
+                    if (type === 'sku') return !row.is_parent;
+                    if (type === 'all') return true;
+                    if (row.is_parent) return true;
+                    if (expandedAdsKeys[adsGroupKey(row)]) return true;
+                    return !!(q.skuQ && skip !== 'search');
+                }
                 all.forEach(function (row) {
-                    if (rowMatchesQuery(row, q, 'status')) {
+                    if (rowInViewExcept(row, 'status')) {
                         statusTotal++;
                         const s = rowStatusValue(row);
                         statusCounts[s] = (statusCounts[s] || 0) + 1;
                     }
-                    if (rowMatchesQuery(row, q, 'pause_run')) {
+                    if (rowInViewExcept(row, 'pause_run')) {
                         const a = rowPauseRunAction(row);
                         if (a === 'pause' || a === 'run') {
                             pauseTotal++;
                             pauseCounts[a] = (pauseCounts[a] || 0) + 1;
                         }
                     }
-                    if (rowMatchesQuery(row, q, 'inv')) {
+                    if (rowInViewExcept(row, 'inv')) {
                         invTotal++;
                         const b = rowInvBucket(row);
                         invCounts[b] = (invCounts[b] || 0) + 1;
                     }
-                    if (rowMatchesQuery(row, q, 'dil')) {
+                    if (rowInViewExcept(row, 'dil')) {
                         dilTotal++;
                         const d = rowDilBand(row);
                         dilCounts[d] = (dilCounts[d] || 0) + 1;
                     }
-                    if (rowMatchesQuery(row, q, 'clicks')) {
+                    if (rowInViewExcept(row, 'clicks')) {
                         clicksTotal++;
                         const c = rowClicksBucket(row);
                         clicksCounts[c] = (clicksCounts[c] || 0) + 1;
@@ -1085,13 +1248,29 @@
                 paintSelectOptionCounts('dil-filter', dilCounts, dilTotal);
                 paintSelectOptionCounts('clicks-filter', clicksCounts, clicksTotal);
                 paintSelectOptionCounts('period-filter', periodCounts, periodTotal);
+                let rowTypeParent = 0;
+                let rowTypeSku = 0;
+                all.forEach(function (row) {
+                    if (!rowMatchesQuery(row, q, '')) return;
+                    if (isParentAdsRow(row)) rowTypeParent++;
+                    else rowTypeSku++;
+                });
+                paintSelectOptionCounts('row-type-filter', {
+                    parent: rowTypeParent,
+                    sku: rowTypeSku,
+                    all: rowTypeParent + rowTypeSku,
+                }, rowTypeParent + rowTypeSku);
             }
 
             function paintPauseRunBadge(rows) {
-                const list = Array.isArray(rows) ? rows : [];
+                const list = flattenAdsRows(Array.isArray(rows) ? rows : []);
                 let pauseN = 0;
                 let runN = 0;
+                const seen = {};
                 list.forEach(function (r) {
+                    const gid = String((r && r.goods_id) || '') || ('sku:' + String((r && r.sku) || ''));
+                    if (seen[gid]) return;
+                    seen[gid] = true;
                     const action = rowPauseRunAction(r);
                     if (action === 'run') runN++;
                     else if (action === 'pause') pauseN++;
@@ -1125,7 +1304,7 @@
             function pruneSelectedGoodsIds() {
                 if (!table) return;
                 const live = {};
-                (table.getData() || []).forEach(function (row) {
+                flattenAdsRows(table.getData() || []).forEach(function (row) {
                     const id = rowGoodsId(row);
                     if (id) live[id] = true;
                 });
@@ -1139,8 +1318,8 @@
             }
 
             function selectedRowData() {
-                if (!table || !hasRowSelection()) return [];
-                return (table.getData() || []).filter(function (row) {
+                if (!hasRowSelection()) return [];
+                return filteredFlatAdsRows().filter(function (row) {
                     return selectedGoodsIds.has(rowGoodsId(row));
                 });
             }
@@ -1175,9 +1354,8 @@
             }
 
             function createSourceRows() {
-                if (!table) return [];
                 if (hasRowSelection()) return selectedRowData();
-                return table.getData(true) || [];
+                return filteredFlatAdsRows();
             }
 
             function paintCreateBadge() {
@@ -1187,7 +1365,7 @@
                 if (!el) return;
                 el.title = hasRowSelection()
                     ? 'Create the ' + n + ' selected No ad row(s) with Inv > 0.'
-                    : 'Create all ' + n + ' visible No ad rows with Inv > 0.';
+                    : 'Create all ' + n + ' filtered No ad rows with Inv > 0.';
             }
 
             function queueCreateGoodsIdsFromRows(rows) {
@@ -1211,13 +1389,17 @@
             let channelTacos = null;
 
             function badgeCounts(rows) {
-                const list = Array.isArray(rows) ? rows : [];
+                const list = flattenAdsRows(Array.isArray(rows) ? rows : []);
                 const periodKey = currentPeriodKey();
                 let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, tacosSpend = 0, createN = 0, pauseN = 0, runN = 0;
+                const seenGoods = {};
                 list.forEach(function (r) {
+                    const gid = String(r.goods_id || '');
+                    const firstGoods = !gid || !seenGoods[gid];
+                    if (gid) seenGoods[gid] = true;
                     const inWindow = r.in_window !== false;
-                    const rowSpend = inWindow ? (parseFloat(r.ad_spend) || 0) : 0;
-                    if (inWindow) {
+                    const rowSpend = inWindow && firstGoods ? (parseFloat(r.ad_spend) || 0) : 0;
+                    if (inWindow && firstGoods) {
                         impr += parseFloat(r.impressions) || 0;
                         clicks += parseFloat(r.clicks) || 0;
                         spend += rowSpend;
@@ -1225,9 +1407,10 @@
                         sold += parseFloat(r.order_pay_cnt) || 0;
                         sales += parseFloat(r.order_pay_amt) || 0;
                     }
-                    if (inWindow && (periodKey !== 'ALL' || String(r.period || '') === 'L30')) {
+                    if (firstGoods && inWindow && (periodKey !== 'ALL' || String(r.period || '') === 'L30')) {
                         tacosSpend += rowSpend;
                     }
+                    if (!firstGoods) return;
                     if (canCreateAdRow(r)) createN++;
                     const action = rowPauseRunAction(r);
                     if (action === 'run') runN++;
@@ -1287,13 +1470,15 @@
 
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
-                if (response && response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) {
+                const q = currentFilterQuery();
+                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ && q.rowType === 'all';
+                if (noLocalFilter && response && response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) {
                     m.spend = parseFloat(response.spend_sum);
                 }
-                if (response && response.clicks_sum != null && isFinite(parseFloat(response.clicks_sum))) {
+                if (noLocalFilter && response && response.clicks_sum != null && isFinite(parseFloat(response.clicks_sum))) {
                     m.clicks = parseFloat(response.clicks_sum);
                 }
-                if (response && response.impressions_sum != null && isFinite(parseFloat(response.impressions_sum))) {
+                if (noLocalFilter && response && response.impressions_sum != null && isFinite(parseFloat(response.impressions_sum))) {
                     m.impressions = parseFloat(response.impressions_sum);
                 }
                 currentAvgCtr = Number(m.ctr) || 0;
@@ -1301,7 +1486,7 @@
                 setBadgeVal('impr-sum', Math.round(m.impressions).toLocaleString());
                 setBadgeVal('click-sum', Math.round(m.clicks).toLocaleString());
                 setBadgeVal('spend-sum', '$' + Math.round(Number(m.spend) || 0).toLocaleString('en-US'));
-                setBadgeVal('y-spend-sum', '$' + Math.round(Number(m.y_spend) || 0).toLocaleString('en-US'));
+                setBadgeVal('y-spend-sum', '$' + Number(m.y_spend || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
                 setBadgeVal('roas-sum', Number(m.roas || 0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
                 setBadgeVal('acos-sum', Number(m.acos || 0).toFixed(1) + '%');
                 setBadgeVal('tacos-sum', Number(m.tacos || 0).toFixed(1) + '%');
@@ -1316,7 +1501,7 @@
             let badgeSnapshotTimer = null;
             function snapshotBadgeHistory() {
                 if (!table) return;
-                const m = badgeCounts(table.getData() || []);
+                const m = badgeCounts(filteredFlatAdsRows());
                 clearTimeout(badgeSnapshotTimer);
                 badgeSnapshotTimer = setTimeout(function () {
                     fetch(@json(route('temu.ads.badge-snapshot')), {
@@ -1525,7 +1710,7 @@
             function runningAdsRows(rows) {
                 const seen = {};
                 const out = [];
-                (rows || []).forEach(function (r) {
+                flattenAdsRows(rows || []).forEach(function (r) {
                     const action = rowPauseRunAction(r);
                     if (action !== 'run' && action !== 'pause') return;
                     const gid = String(r.goods_id || '').trim();
@@ -1548,7 +1733,7 @@
             }
 
             function fillRunningAdsModal() {
-                const rows = runningAdsRows(table ? table.getData(true) : []);
+                const rows = runningAdsRows(filteredFlatAdsRows());
                 const budgetEach = dailyCreateBudget();
                 const totalBudget = rows.length * budgetEach;
                 let spend = 0, impr = 0, clicks7 = 0, clicks30 = 0, orders = 0, orderAmt = 0;
@@ -1608,24 +1793,25 @@
                 if (response && response.tacos != null && isFinite(parseFloat(response.tacos))) {
                     channelTacos = parseFloat(response.tacos);
                 }
-                paintMetricBadges(rows, response);
-                updateFilterCounts(rows);
+                paintMetricBadges(filteredFlatAdsRows(), response);
+                updateFilterCounts(allAdsRows);
+                snapshotBadgeHistory();
             }
 
             function updateBadgesFromTable() {
                 if (!table) return;
-                paintMetricBadges(table.getData(true));
-                snapshotBadgeHistory();
-                updateFilterCounts();
+                paintMetricBadges(filteredFlatAdsRows());
+                updateFilterCounts(allAdsRows);
             }
 
             const table = new Tabulator('#temu-ads-table', {
                 ajaxURL: dataUrl(),
                 ajaxResponse: function (url, params, response) {
-                    const rows = response.data || [];
-                    setBadges(rows, response);
-                    return rows;
+                    allAdsRows = prepareAdsRows(response.data || []);
+                    setBadges(allAdsRows, response);
+                    return allAdsRows;
                 },
+                index: '_row_key',
                 layout: 'fitData',
                 height: '70vh',
                 pagination: 'local',
@@ -1639,6 +1825,15 @@
                     minWidth: 48,
                     resizable: true,
                 },
+                rowFormatter: function (row) {
+                    const el = row.getElement();
+                    const data = row.getData() || {};
+                    if (data.is_parent) el.classList.add('temu-ads-parent-row');
+                    else el.classList.remove('temu-ads-parent-row');
+                    if (!data.is_parent && String(data.parent || '').trim()) el.classList.add('temu-ads-child-row');
+                    else el.classList.remove('temu-ads-child-row');
+                },
+                initialSort: [{ column: 'parent', dir: 'asc' }],
                 columns: [
                     { title: 'Period', field: 'period', width: 70, visible: false, sorter: 'string' },
                     {
@@ -1707,7 +1902,59 @@
                             return '<img class="temu-ads-thumb" src="' + src.replace(/"/g, '&quot;') + '" alt="">';
                         },
                     },
-                    { title: 'SKU', field: 'sku', width: 120, minWidth: 80, sorter: 'string' },
+                    {
+                        title: 'Parent',
+                        field: 'parent',
+                        width: 120,
+                        minWidth: 80,
+                        headerTooltip: 'Parent from Product Master. Shown on both Parent Ads and SKU Ads.',
+                        formatter: function (cell) {
+                            const data = cell.getRow().getData() || {};
+                            const p = String(data.parent || '').trim().replace(/^PARENT\s+/i, '');
+                            return escapeAttr(p);
+                        },
+                        sorter: function (a, b, aRow, bRow) {
+                            const ad = (aRow && aRow.getData()) || {};
+                            const bd = (bRow && bRow.getData()) || {};
+                            const ap = String(ad.parent || '').toLowerCase();
+                            const bp = String(bd.parent || '').toLowerCase();
+                            if (ap !== bp) return ap < bp ? -1 : 1;
+                            const ai = ad.is_parent ? 0 : 1;
+                            const bi = bd.is_parent ? 0 : 1;
+                            if (ai !== bi) return ai - bi;
+                            return String(ad.sku || '').localeCompare(String(bd.sku || ''), undefined, { sensitivity: 'base' });
+                        },
+                    },
+                    {
+                        title: 'SKU',
+                        field: 'sku',
+                        width: 160,
+                        minWidth: 110,
+                        hozAlign: 'left',
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Click the arrow on a PARENT row to show its child ads.',
+                        sorter: 'string',
+                        formatter: function (cell) {
+                            const sku = String(cell.getValue() || '');
+                            const data = cell.getRow().getData() || {};
+                            if (!data.is_parent) return escapeAttr(sku);
+                            const open = !!expandedAdsKeys[adsGroupKey(data)];
+                            return '<button type="button" class="temu-ads-expand-btn' + (open ? ' is-open' : '') + '" title="Show child ads"><span class="temu-ads-chevron"></span></button><span class="temu-ads-parent-sku">' + escapeAttr(sku) + '</span>';
+                        },
+                        cellClick: function (e, cell) {
+                            const btn = e.target.closest('.temu-ads-expand-btn');
+                            if (!btn) return;
+                            e.stopPropagation();
+                            const data = cell.getRow().getData() || {};
+                            if (!data.is_parent) return;
+                            const k = adsGroupKey(data);
+                            if (expandedAdsKeys[k]) delete expandedAdsKeys[k];
+                            else expandedAdsKeys[k] = true;
+                            applySearchFilters();
+                        },
+                    },
+                    { title: 'SKU ID', field: 'sku_id', width: 130, minWidth: 100, sorter: 'string',
+                      headerTooltip: 'Temu skuId for this variation' },
                     { title: 'Inv', field: 'inv', width: 52, minWidth: 48, hozAlign: 'center', formatter: numFmt, sorter: 'number',
                       headerTooltip: 'Inventory from shopify_skus.inv' },
                     {
@@ -1915,7 +2162,7 @@
                             document.getElementById('rawJsonModalLabel').textContent =
                                 'Raw API — Goods ' + (data.goods_id || '') + ' (' + (data.period || '') + ')';
                             new bootstrap.Modal(document.getElementById('rawJsonModal')).show();
-                            fetch(@json(url('/temu/ads/raw')) + '/' + encodeURIComponent(data.id || ''), {
+                            fetch(@json(url('/temu/ads/raw')) + '/' + encodeURIComponent(data.raw_id || data.id || ''), {
                                 headers: { Accept: 'application/json' },
                             })
                                 .then(function (r) { return r.json(); })
@@ -1946,9 +2193,10 @@
             });
             table.on('dataLoaded', function () {
                 pruneSelectedGoodsIds();
-                if (typeof applyPauseRunSlabsToTable === 'function') applyPauseRunSlabsToTable();
-                else updateBadgesFromTable();
-                refreshSelectCheckboxes();
+                setTimeout(function () {
+                    applySearchFilters();
+                    refreshSelectCheckboxes();
+                }, 0);
             });
 
             try {
@@ -2048,26 +2296,19 @@
             }
 
             function applyPauseRunSlabsToTable() {
-                if (!table || !window.TemuAdsColorRules) return 0;
-                const rows = (typeof table.getRows === 'function' ? (table.getRows('all') || table.getRows()) : []) || [];
-                let n = 0;
-                rows.forEach(function (row) {
-                    const data = row.getData() || {};
-                    const action = TemuAdsColorRules.computedPauseRunAction
-                        ? TemuAdsColorRules.computedPauseRunAction(data)
-                        : TemuAdsColorRules.actionFromSlabs(data.clicks_l7 != null ? data.clicks_l7 : 0);
-                    if (data.pause_run !== action) {
-                        row.update({ pause_run: action });
-                    }
-                    const cell = typeof row.getCell === 'function' ? row.getCell('pause_run') : null;
-                    if (cell && typeof cell.setValue === 'function') {
-                        cell.setValue(action, true);
-                    }
-                    n++;
-                });
-                table.redraw(true);
+                if (!table) return 0;
+                const col = typeof table.getColumn === 'function' ? table.getColumn('pause_run') : null;
+                if (col && typeof col.getCells === 'function') {
+                    col.getCells().forEach(function (cell) {
+                        if (cell && typeof cell.setValue === 'function') {
+                            const data = cell.getRow().getData() || {};
+                            const action = rowPauseRunAction(data);
+                            if (data.pause_run !== action) cell.setValue(action, true);
+                        }
+                    });
+                }
                 if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
-                return n;
+                return table.getDataCount ? table.getDataCount() : 0;
             }
 
             renderPauseRunSlabs();
@@ -2084,7 +2325,7 @@
                 results.forEach(function (item) {
                     if (item && item.goods_id) byId[String(item.goods_id)] = item;
                 });
-                (table.getRows('all') || table.getRows() || []).forEach(function (row) {
+                walkAdsRows(function (row) {
                     const data = row.getData() || {};
                     const item = byId[String(data.goods_id || '')];
                     if (!item) return;
@@ -2305,7 +2546,7 @@
 
             function queuePushRoasItems() {
                 const usingSelection = hasRowSelection();
-                const rows = ((table && table.getData(true)) || []).filter(function (row) {
+                const rows = filteredFlatAdsRows().filter(function (row) {
                     if (!rowHasTemuAd(row)) return false;
                     if (usingSelection && !selectedGoodsIds.has(rowGoodsId(row))) return false;
                     return !!rowGoodsId(row);
@@ -2435,7 +2676,7 @@
 
             function classifyTemuAdsColumn(field) {
                 const f = String(field || '');
-                if (/^(sku|inv|image_path|ad_status|create_ad|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
+                if (/^(parent|sku|sku_id|inv|image_path|ad_status|create_ad|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
                 if (/^(impressions|impressions_l7|clicks_l30|clicks_l7|pause_run|pause_run_ok|ctr|ctr_l7|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|t_roas|roas|acos)$/.test(f)) {
                     return 'ads';
                 }
@@ -2556,6 +2797,7 @@
                     if (seen[f]) return;
                     if (f === 'spend_l1' || f === 't_roas') return;
                     valid.push(f);
+                    seen[f] = true;
                     if (f === 'ad_spend' && existing.indexOf('spend_l1') !== -1) {
                         valid.push('spend_l1');
                         seen.spend_l1 = true;
@@ -2575,6 +2817,15 @@
                     list.splice(i, 1);
                     list.splice(list.indexOf(after) + 1, 0, field);
                 }
+                function pinBefore(list, field, before) {
+                    const i = list.indexOf(field);
+                    const j = list.indexOf(before);
+                    if (i === -1 || j === -1) return;
+                    list.splice(i, 1);
+                    list.splice(list.indexOf(before), 0, field);
+                }
+                pinBefore(valid, 'parent', 'sku');
+                pinBefore(valid, 'sku_id', 'goods_id');
                 pinAfter(valid, 'create_ad', 'inv');
                 pinAfter(valid, 'ovl30', 'create_ad');
                 pinAfter(valid, 'dil_percent', 'ovl30');
@@ -2827,6 +3078,7 @@
                             applyColumnOrder(orderResp.order);
                         }
                         buildColumnDropdown(map);
+                        applySearchFilters();
                         if (unlockedImpr) {
                             saveColumnVisibilityToServer();
                         }
@@ -2834,6 +3086,7 @@
                     .catch(function (err) {
                         console.error('Error loading column visibility:', err);
                         buildColumnDropdown({});
+                        applySearchFilters();
                     });
             }
 
@@ -2907,20 +3160,14 @@
             });
             paintPeriodRangeLabel();
 
-            function applySearchFilters() {
-                const q = currentFilterQuery();
-                if (!q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ) {
-                    table.clearFilter(true);
-                    updateBadgesFromTable();
-                    return;
-                }
-                table.setFilter(function (data) {
-                    return rowMatchesQuery(data, q, '');
-                });
-                updateBadgesFromTable();
+            let searchFilterTimer = null;
+            function scheduleSearchFilters() {
+                clearTimeout(searchFilterTimer);
+                searchFilterTimer = setTimeout(applySearchFilters, 220);
             }
-            document.getElementById('search-goods-id').addEventListener('input', applySearchFilters);
-            document.getElementById('search-sku').addEventListener('input', applySearchFilters);
+            document.getElementById('row-type-filter').addEventListener('change', applyRowTypeView);
+            document.getElementById('search-goods-id').addEventListener('input', scheduleSearchFilters);
+            document.getElementById('search-sku').addEventListener('input', scheduleSearchFilters);
             document.getElementById('status-filter').addEventListener('change', applySearchFilters);
             document.getElementById('pause-run-filter').addEventListener('change', applySearchFilters);
             document.getElementById('inv-filter').addEventListener('change', applySearchFilters);
@@ -2960,7 +3207,7 @@
             function rowByGoodsId(goodsId) {
                 const id = String(goodsId || '');
                 if (!id || !table) return null;
-                const rows = table.getData(true) || [];
+                const rows = flattenAdsRows(table.getData(true) || []);
                 for (let i = 0; i < rows.length; i++) {
                     if (String(rows[i].goods_id || '') === id) return rows[i];
                 }
@@ -2985,7 +3232,7 @@
                     if (!item || !item.rejected) return;
                     const gid = String(item.goods_id || '');
                     if (!gid) return;
-                    (table.getRows() || []).forEach(function (row) {
+                    walkAdsRows(function (row) {
                         const data = row.getData() || {};
                         if (String(data.goods_id || '') !== gid) return;
                         row.update({ ad_create_reject: item.message || 'Temu rejected this listing for ads.' });

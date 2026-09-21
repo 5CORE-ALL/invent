@@ -28,6 +28,7 @@ class ChannelMaster extends Model
         'channel_percentage',
         'promotions',
         'compliance_count',
+        'brand_authorisation',
         'base',
         'target',
         'missing_link',

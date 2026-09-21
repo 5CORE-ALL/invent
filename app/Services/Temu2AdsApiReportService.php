@@ -295,8 +295,8 @@ class Temu2AdsApiReportService
     }
 
     /**
-     * Last calendar day ad spend from reportInfo.reportsItemList (max ts).
-     * Daily adSpend.val is in the same units as stored ad_spend.
+     * Last calendar day ad spend from reportInfo.reportsItemList (max ts), in dollars.
+     * Daily adSpend.val is cents (same as summary spend); stored ad_spend is already dollars.
      */
     public function lastDaySpendFromResult(?array $result): ?float
     {
@@ -304,9 +304,16 @@ class Temu2AdsApiReportService
             ? $result['reportInfo']['reportsItemList']
             : [];
         $latest = null;
+        $dailySum = 0.0;
         foreach ($items as $item) {
             if (! is_array($item) || ! isset($item['ts'])) {
                 continue;
+            }
+            $dayVal = $this->nestedVal($item, ['adSpend'])
+                ?? $this->nestedVal($item, ['netAdSpend'])
+                ?? $this->nestedVal($item, ['spend']);
+            if ($dayVal !== null && is_numeric($dayVal)) {
+                $dailySum += (float) $dayVal;
             }
             if ($latest === null || (int) $item['ts'] > (int) $latest['ts']) {
                 $latest = $item;
@@ -320,7 +327,29 @@ class Temu2AdsApiReportService
             ?? $this->nestedVal($latest, ['netAdSpend'])
             ?? $this->nestedVal($latest, ['spend']);
 
-        return $val === null ? null : round((float) $val, 4);
+        return $val === null ? null : round((float) $val * $this->dailyListDollarsScale($result, $dailySum), 4);
+    }
+
+    /**
+     * Scale reportsItemList money to dollars. Daily vals are cents when their sum
+     * is ~100× the already-converted overall spend.
+     */
+    private function dailyListDollarsScale(?array $result, float $dailySum): float
+    {
+        $overall = is_array($result['reportInfo']['summary'] ?? null) ? $result['reportInfo']['summary'] : [];
+        $adOnly = is_array($result['reportInfo']['reportsSummary'] ?? null) ? $result['reportInfo']['reportsSummary'] : [];
+        $overallDollars = $this->centsToDollars(
+            $this->val($adOnly, 'adSpendAll')
+            ?? $this->val($adOnly, 'netAdSpendAll')
+            ?? $this->nestedVal($overall, ['spend', 'total'])
+        );
+        if ($dailySum > 0 && $overallDollars !== null && $overallDollars > 0) {
+            $ratio = $dailySum / $overallDollars;
+
+            return ($ratio > 50 && $ratio < 150) ? 0.01 : 1.0;
+        }
+
+        return 0.01;
     }
 
     private function syncTemu2MetricClicks(string $goodsId, string $period, array $row): void

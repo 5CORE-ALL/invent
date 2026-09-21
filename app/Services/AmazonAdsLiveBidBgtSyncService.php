@@ -317,19 +317,36 @@ class AmazonAdsLiveBidBgtSyncService
         $channel = self::normalizeChannel($channel);
         $field = $field === 'bid' ? 'bid' : 'bgt';
         $lockKey = 'amazon-ads-live-sync:'.$channel.':'.$field.':'.$campaignId;
-        $locked = $this->acquireLock($lockKey);
+        $locked = $this->acquireLockWithRetry($lockKey);
         if ($locked === false) {
-            $result = [
+            $existing = $this->loadState($channel, $field, $campaignId);
+            if (is_array($existing) && (string) ($existing['status'] ?? '') === 'synced') {
+                $live = $existing['live_value'] ?? $existing['desired_value'] ?? null;
+                $tolerance = $field === 'bid' ? self::BID_TOLERANCE : self::BGT_TOLERANCE;
+                $liveNum = is_numeric($live) ? (float) $live : null;
+                if (AmazonAdsApiRetry::valuesMatch($liveNum, $desired, $tolerance)) {
+                    return $this->withPresentedStatus([
+                        'campaign_id' => $campaignId,
+                        'channel' => $channel,
+                        'field' => $field,
+                        'desired' => $desired,
+                        'verified_live' => $liveNum,
+                        'status' => 'synced',
+                        'reason' => 'already_matched',
+                    ]);
+                }
+            }
+
+            // Do not persist this. A second sync used to overwrite a verified row
+            // with in_progress and the grid stayed yellow even when Lbid already matched SBID.
+            return $this->withPresentedStatus([
                 'campaign_id' => $campaignId,
                 'channel' => $channel,
                 'field' => $field,
                 'desired' => $desired,
                 'status' => 'in_progress',
                 'reason' => 'concurrent_sync',
-            ];
-            $this->saveState($channel, $field, $campaignId, $campaignName, $desired, null, 'in_progress', 'concurrent_sync', 0, $result);
-
-            return $this->withPresentedStatus($result);
+            ]);
         }
 
         try {
@@ -857,6 +874,47 @@ class AmazonAdsLiveBidBgtSyncService
                 usleep($ms * 1000);
             }
         };
+    }
+
+    private function acquireLockWithRetry(string $key): bool
+    {
+        $delaysMs = [0, 200, 400, 800];
+        foreach ($delaysMs as $i => $ms) {
+            if ($i > 0) {
+                ($this->sleeper())($ms);
+            }
+            if ($this->acquireLock($key)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function loadState(string $channel, string $field, string $campaignId): ?array
+    {
+        if (isset($this->hooks['loadState'])) {
+            $loaded = ($this->hooks['loadState'])($channel, $field, $campaignId);
+
+            return is_array($loaded) ? $loaded : null;
+        }
+        try {
+            if (! Schema::hasTable('amazon_ads_live_sync_states')) {
+                return null;
+            }
+            $row = AmazonAdsLiveSyncState::query()
+                ->where('channel', $channel)
+                ->where('field', $field)
+                ->where('campaign_id', $campaignId)
+                ->first();
+
+            return $row ? $row->toArray() : null;
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function acquireLock(string $key): bool
