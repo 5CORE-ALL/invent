@@ -1106,6 +1106,7 @@
                     if (!String(r.parent || '').trim() && byGoods[String(r.goods_id || '')]) {
                         r.parent = byGoods[String(r.goods_id || '')];
                     }
+                    r.is_parent = r.is_parent === true || r.is_parent === 1 || r.is_parent === '1';
                     r._row_key = r.is_parent
                         ? ('p|' + String(r.goods_id || '') + '|' + String(r.period || '') + '|' + String(r.parent || ''))
                         : ('c|' + String(r.id || '') + '|' + String(r.sku_id || '') + '|' + String(r.period || ''));
@@ -1142,8 +1143,17 @@
             }
 
             function applyRowTypeView() {
-                if (typeof table.setPage === 'function') table.setPage(1);
+                if (table && typeof table.setPage === 'function') table.setPage(1);
                 applySearchFilters();
+            }
+
+            function applySearchFilters() {
+                if (!table) return;
+                const q = currentFilterQuery();
+                table.setFilter(function (data) {
+                    return rowVisibleForView(data, q);
+                });
+                if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
             }
 
             function rowMatchesQuery(data, q, skip) {
@@ -1802,9 +1812,6 @@
                     return allAdsRows;
                 },
                 index: '_row_key',
-                initialFilter: [
-                    function (data) { return rowVisibleForView(data, currentFilterQuery()); },
-                ],
                 layout: 'fitData',
                 height: '70vh',
                 pagination: 'local',
@@ -2186,7 +2193,10 @@
             });
             table.on('dataLoaded', function () {
                 pruneSelectedGoodsIds();
-                refreshSelectCheckboxes();
+                setTimeout(function () {
+                    applySearchFilters();
+                    refreshSelectCheckboxes();
+                }, 0);
             });
 
             try {
@@ -3068,6 +3078,7 @@
                             applyColumnOrder(orderResp.order);
                         }
                         buildColumnDropdown(map);
+                        applySearchFilters();
                         if (unlockedImpr) {
                             saveColumnVisibilityToServer();
                         }
@@ -3075,6 +3086,7 @@
                     .catch(function (err) {
                         console.error('Error loading column visibility:', err);
                         buildColumnDropdown({});
+                        applySearchFilters();
                     });
             }
 
@@ -3148,14 +3160,6 @@
             });
             paintPeriodRangeLabel();
 
-            function applySearchFilters() {
-                if (!table) return;
-                const q = currentFilterQuery();
-                table.setFilter(function (data) {
-                    return rowVisibleForView(data, q);
-                });
-                updateBadgesFromTable();
-            }
             let searchFilterTimer = null;
             function scheduleSearchFilters() {
                 clearTimeout(searchFilterTimer);
