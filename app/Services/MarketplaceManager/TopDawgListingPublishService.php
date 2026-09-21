@@ -35,7 +35,8 @@ class TopDawgListingPublishService
         string $mode = 'variation',
         string $parentHint = '',
         ?string $categoryUuid = null,
-        ?string $categoryName = null
+        ?string $categoryName = null,
+        array $overrides = []
     ): array
     {
         $skus = $this->uniqueSkus($skus);
@@ -53,7 +54,7 @@ class TopDawgListingPublishService
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
         $publishSkus = ($expandSiblings && $mode === 'variation')
             ? $this->expandToPublishableSiblings($skus)
-            : $this->filterPublishable($skus);
+            : $this->filterPublishable($skus, ! $expandSiblings);
 
         if ($publishSkus === []) {
             return ['success' => false, 'message' => $this->publishBlockReason($skus)];
@@ -65,7 +66,7 @@ class TopDawgListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryUuid, $categoryName);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryUuid, $categoryName, $overrides);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -94,12 +95,14 @@ class TopDawgListingPublishService
             return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
         }
 
-        $title = $this->resolveTitle($product, $sku);
+        $title = trim((string) ($overrides['title'] ?? '')) ?: $this->resolveTitle($product, $sku);
         if ($title === '') {
             return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
         }
 
-        $price = $this->resolvePrice($sku, $product);
+        $price = isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0
+            ? round((float) $overrides['price'], 2)
+            : $this->resolvePrice($sku, $product);
         if ($price === null || $price <= 0) {
             return [
                 'success' => false,
@@ -107,42 +110,66 @@ class TopDawgListingPublishService
             ];
         }
 
-        $images = $this->productImages($product, $sku);
+        $images = is_array($overrides['images'] ?? null) ? array_values(array_filter(array_map(
+            static fn ($url) => trim((string) $url),
+            $overrides['images']
+        ))) : [];
+        if ($images === []) {
+            $images = $this->productImages($product, $sku);
+        }
         if ($images === []) {
             return ['success' => false, 'message' => 'No public image URL for '.$sku.'. Add an https image on CP Master (or Image Master).'];
         }
 
-        $pkg = $this->packageInches($product, $sku);
+        $pkg = $this->packageInches($product, $sku, $overrides);
         if ($pkg['weight'] === null || $pkg['length'] === null || $pkg['width'] === null || $pkg['height'] === null) {
             return [
                 'success' => false,
-                'message' => $sku.': add weight and L/W/H (inches) on /dim-wt-master before publishing to TopDawg.',
+                'message' => $sku.': add weight and L/W/H (inches) on Package or /dim-wt-master before publishing to TopDawg.',
             ];
         }
 
-        $inv = $this->shopifyInv($sku);
-        $category = self::resolveCategory($categoryUuid, $categoryName);
+        $inv = isset($overrides['quantity']) && is_numeric($overrides['quantity'])
+            ? max(0, (int) $overrides['quantity'])
+            : $this->shopifyInv($sku);
+        $category = self::resolveCategory(
+            $categoryUuid ?? ($overrides['category_id'] ?? null),
+            $categoryName ?? ($overrides['category_name'] ?? null)
+        );
+        $madeIn = $this->madeInCountry((string) ($overrides['country_of_origin'] ?? $overrides['product_made_in'] ?? 'CN'));
+        $cost = isset($overrides['cost']) && is_numeric($overrides['cost']) && (float) $overrides['cost'] > 0
+            ? round((float) $overrides['cost'], 2)
+            : $price;
+        $msrp = isset($overrides['msrp']) && is_numeric($overrides['msrp']) && (float) $overrides['msrp'] > 0
+            ? round((float) $overrides['msrp'], 2)
+            : $this->resolveMsrp($sku, $product, $price);
+        $description = trim((string) ($overrides['description'] ?? '')) ?: $this->resolveDescription($product, $title);
         $res = $this->api->createProduct([
             'product_code' => $sku,
             'product_name' => $title,
-            'description' => $this->resolveDescription($product, $title),
+            'description' => $description,
             'price' => $price,
-            'cost' => $price,
-            'msrp' => $this->resolveMsrp($sku, $product, $price),
+            'cost' => $cost,
+            'msrp' => $msrp >= $cost ? $msrp : $cost,
             'qty_available' => $inv,
             'images' => $images,
-            'brand_name' => '5 Core',
+            'brand_name' => trim((string) ($overrides['brand'] ?? '5 Core')) ?: '5 Core',
+            'manufacturer' => trim((string) ($overrides['manufacturer'] ?? '5 Core')) ?: '5 Core',
+            'upc' => trim((string) ($overrides['upc'] ?? '')),
             'dept' => $category['dept'],
             'section' => $category['section'],
             'category' => $category['category'],
-            'gender' => 'Unisex',
-            'age_group' => 'Adults',
-            'pack_of' => 1,
+            'gender' => trim((string) ($overrides['gender'] ?? 'Unisex')) ?: 'Unisex',
+            'age_group' => trim((string) ($overrides['age_group'] ?? 'Adults')) ?: 'Adults',
+            'condition' => trim((string) ($overrides['condition'] ?? 'New')) ?: 'New',
+            'pack_of' => isset($overrides['pack_of']) && is_numeric($overrides['pack_of'])
+                ? max(1, (int) $overrides['pack_of'])
+                : 1,
             'product_weight' => $pkg['weight'],
             'ship_length' => $pkg['length'],
             'ship_width' => $pkg['width'],
             'ship_height' => $pkg['height'],
-            'product_made_in' => 'China',
+            'product_made_in' => $madeIn,
         ]);
 
         if (empty($res['success'])) {
@@ -207,7 +234,7 @@ class TopDawgListingPublishService
      * @param  list<string>  $skus
      * @return list<string>
      */
-    private function filterPublishable(array $skus): array
+    private function filterPublishable(array $skus, bool $fromListingManager = false): array
     {
         $cfg = ChannelListingRegistry::get('topdawg');
         $listedMap = $cfg ? ChannelListingRegistry::loadListedIds($cfg, $skus) : [];
@@ -224,10 +251,11 @@ class TopDawgListingPublishService
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                 continue;
             }
-            if (trim((string) ($listedMap[strtolower($sku)] ?? '')) !== '') {
+            $listedId = trim((string) ($listedMap[strtolower($sku)] ?? ''));
+            if ($listedId !== '' && $this->isLiveOnTopDawg($sku, $listedId)) {
                 continue;
             }
-            if (ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
+            if (! $fromListingManager && ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
                 continue;
             }
             $product = $products->get(strtolower($sku)) ?: $this->findProduct($sku);
@@ -240,8 +268,31 @@ class TopDawgListingPublishService
         return $out;
     }
 
+    private function isLiveOnTopDawg(string $sku, string $listedId = ''): bool
+    {
+        if (! ChannelListingRegistry::isLiveTopDawgListingId($listedId, $sku)) {
+            $listedId = '';
+        }
+        try {
+            $live = $this->api->lookupLiveCatalogProduct($sku, false);
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg live listed check failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return $listedId !== '';
+        }
+        if (! is_array($live)) {
+            return false;
+        }
+        $id = trim((string) ($live['id'] ?? $live['listing_id'] ?? $live['tdid'] ?? $live['TDID'] ?? ''));
+
+        return ChannelListingRegistry::isLiveTopDawgListingId($id, $sku) || $listedId !== '';
+    }
+
     private function publishBlockReason(array $skus): string
     {
+        $cfg = ChannelListingRegistry::get('topdawg');
+        $listedMap = $cfg ? ChannelListingRegistry::loadListedIds($cfg, $skus) : [];
+        $nrValues = ListingCountsEngine::loadNrValues(TopDawgDataView::class, $skus);
         $reasons = [];
         foreach ($this->uniqueSkus($skus) as $sku) {
             $product = $this->findProduct($sku);
@@ -251,6 +302,15 @@ class TopDawgListingPublishService
             }
             if ($this->productImages($product, $sku) === []) {
                 $reasons[] = $sku.': no public https image';
+                continue;
+            }
+            $listedId = trim((string) ($listedMap[strtolower($sku)] ?? ''));
+            if ($listedId !== '' && $this->isLiveOnTopDawg($sku, $listedId)) {
+                $reasons[] = $sku.': already listed on TopDawg';
+                continue;
+            }
+            if (ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
+                $reasons[] = $sku.': NRL';
                 continue;
             }
             $reasons[] = $sku.': already listed or NRL';
@@ -263,15 +323,21 @@ class TopDawgListingPublishService
 
     private function persistListed(string $sku, string $listingId, string $tdid, string $title, float $price, int $inv): void
     {
+        $liveId = ChannelListingRegistry::isLiveTopDawgListingId($listingId, $sku)
+            ? $listingId
+            : (ChannelListingRegistry::isLiveTopDawgListingId($tdid, $sku) ? $tdid : '');
+        if ($liveId === '') {
+            return;
+        }
         try {
             if (Schema::hasTable('topdawg_products')) {
                 $payload = [
-                    'topdawg_listing_id' => $listingId !== '' ? $listingId : $sku,
+                    'topdawg_listing_id' => $liveId,
                     'product_title' => $title,
                     'price' => $price,
                     'msrp' => $price,
                     'remaining_inventory' => max(0, $inv),
-                    'listing_state' => 'pending',
+                    'listing_state' => 'yes',
                 ];
                 if ($tdid !== '') {
                     $payload['tdid'] = $tdid;
@@ -289,8 +355,8 @@ class TopDawgListingPublishService
                 $status = TopDawgListingStatus::query()->where('sku', $sku)->first();
                 $value = $status && is_array($status->value) ? $status->value : [];
                 $value['listed'] = 'Listed';
-                $value['listing_id'] = $listingId;
-                $value['topdawg_listing_id'] = $listingId;
+                $value['listing_id'] = $liveId;
+                $value['topdawg_listing_id'] = $liveId;
                 TopDawgListingStatus::updateOrCreate(['sku' => $sku], ['value' => $value]);
             }
         } catch (\Throwable $e) {
@@ -381,16 +447,27 @@ class TopDawgListingPublishService
     }
 
     /**
+     * @param  array<string, mixed>  $overrides
      * @return array{weight: ?float, length: ?float, width: ?float, height: ?float}
      */
-    private function packageInches(ProductMaster $product, string $sku): array
+    private function packageInches(ProductMaster $product, string $sku, array $overrides = []): array
     {
+        $fromDraft = [
+            'length' => is_numeric($overrides['package_length'] ?? null) ? (float) $overrides['package_length'] : null,
+            'width' => is_numeric($overrides['package_width'] ?? null) ? (float) $overrides['package_width'] : null,
+            'height' => is_numeric($overrides['package_height'] ?? null) ? (float) $overrides['package_height'] : null,
+            'weight' => $this->weightLbFromOverrides($overrides),
+        ];
+        if ($fromDraft['weight'] !== null && $fromDraft['length'] !== null && $fromDraft['width'] !== null && $fromDraft['height'] !== null) {
+            return $fromDraft;
+        }
+
         $values = $this->productValues($product);
         $pkg = [
-            'weight' => $this->valuesNumber($values, 'wt_act', 'itm_wt_gw', 'wt_decl'),
-            'length' => $this->valuesNumber($values, 'l', 'l_decl'),
-            'width' => $this->valuesNumber($values, 'w', 'w_decl'),
-            'height' => $this->valuesNumber($values, 'h', 'h_decl'),
+            'weight' => $fromDraft['weight'] ?? $this->valuesNumber($values, 'wt_act', 'itm_wt_gw', 'wt_decl'),
+            'length' => $fromDraft['length'] ?? $this->valuesNumber($values, 'l', 'l_decl'),
+            'width' => $fromDraft['width'] ?? $this->valuesNumber($values, 'w', 'w_decl'),
+            'height' => $fromDraft['height'] ?? $this->valuesNumber($values, 'h', 'h_decl'),
         ];
         if ($pkg['weight'] !== null && $pkg['length'] !== null && $pkg['width'] !== null && $pkg['height'] !== null) {
             return $pkg;
@@ -455,6 +532,41 @@ class TopDawgListingPublishService
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function weightLbFromOverrides(array $overrides): ?float
+    {
+        $lb = is_numeric($overrides['package_weight_lb'] ?? null) ? (float) $overrides['package_weight_lb'] : 0.0;
+        $oz = is_numeric($overrides['package_weight_oz'] ?? null) ? (float) $overrides['package_weight_oz'] : 0.0;
+        $total = $lb + ($oz / 16);
+        if (isset($overrides['product_weight']) && is_numeric($overrides['product_weight']) && (float) $overrides['product_weight'] > 0) {
+            $total = max($total, (float) $overrides['product_weight']);
+        }
+
+        return $total > 0 ? round($total, 3) : null;
+    }
+
+    private function madeInCountry(string $raw): string
+    {
+        $raw = trim($raw);
+        $map = [
+            'CN' => 'China',
+            'US' => 'United States',
+            'IN' => 'India',
+            'VN' => 'Vietnam',
+            'TW' => 'Taiwan',
+            'MX' => 'Mexico',
+            'CA' => 'Canada',
+        ];
+        $upper = strtoupper($raw);
+        if (isset($map[$upper])) {
+            return $map[$upper];
+        }
+
+        return $raw !== '' ? $raw : 'China';
     }
 
     private function resolveDescription(ProductMaster $product, string $title): string

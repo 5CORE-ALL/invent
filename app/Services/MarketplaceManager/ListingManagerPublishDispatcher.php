@@ -49,6 +49,33 @@ class ListingManagerPublishDispatcher
                     'tags' => is_array($details['faire_tags'] ?? null) ? $details['faire_tags'] : [],
                 ];
             }
+            if (in_array($key, ['topdawg', 'topdawginc', 'top-dawg', 'top_dawg'], true)) {
+                $images = is_array($details['images'] ?? null) ? $details['images'] : [];
+                $overrides = [
+                    'title' => trim((string) $draft->title),
+                    'description' => trim((string) ($details['description'] ?? '')),
+                    'price' => $draft->price !== null ? (float) $draft->price : null,
+                    'quantity' => $draft->quantity !== null ? (int) $draft->quantity : null,
+                    'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
+                    'brand' => trim((string) ($details['brand'] ?? '5 Core')),
+                    'manufacturer' => trim((string) ($details['manufacturer'] ?? '5 Core')),
+                    'upc' => trim((string) ($details['upc'] ?? '')),
+                    'country_of_origin' => trim((string) ($details['country_of_origin'] ?? 'CN')),
+                    'package_length' => $details['package_length'] ?? '',
+                    'package_width' => $details['package_width'] ?? '',
+                    'package_height' => $details['package_height'] ?? '',
+                    'package_weight_lb' => $details['package_weight_lb'] ?? '',
+                    'package_weight_oz' => $details['package_weight_oz'] ?? '',
+                    'gender' => trim((string) ($details['gender'] ?? 'Unisex')),
+                    'age_group' => trim((string) ($details['age_group'] ?? 'Adults')),
+                    'condition' => trim((string) ($details['condition'] ?? $details['condition_name'] ?? 'New')),
+                    'pack_of' => $details['pack_of'] ?? 1,
+                    'cost' => $details['cost'] ?? $details['list_price'] ?? null,
+                    'msrp' => $details['msrp'] ?? $details['list_price'] ?? null,
+                    'category_id' => $categoryUuid,
+                    'category_name' => $categoryName,
+                ];
+            }
             if ($key === 'wayfair') {
                 $images = is_array($details['images'] ?? null) ? $details['images'] : [];
                 $overrides = [

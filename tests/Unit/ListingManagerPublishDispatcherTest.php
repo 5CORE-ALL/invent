@@ -83,7 +83,18 @@ class ListingManagerPublishDispatcherTest extends TestCase
         $this->assertSame('topdawg', $profile['family']);
         $tabIds = array_map(static fn ($tab) => $tab['id'], $profile['tabs']);
         $this->assertContains('category', $tabIds);
+        $this->assertContains('policies', $tabIds);
         $this->assertTrue($profile['topdawg']);
+        $this->assertStringContainsString('package', strtolower($profile['policies_help']));
+    }
+
+    public function test_topdawg_placeholder_ids_are_not_live(): void
+    {
+        $sku = 'LS100-6 RED';
+        $this->assertFalse(\App\Support\Marketplace\ChannelListingRegistry::isLiveTopDawgListingId('', $sku));
+        $this->assertFalse(\App\Support\Marketplace\ChannelListingRegistry::isLiveTopDawgListingId($sku, $sku));
+        $this->assertFalse(\App\Support\Marketplace\ChannelListingRegistry::isLiveTopDawgListingId('td-abc123def456', $sku));
+        $this->assertTrue(\App\Support\Marketplace\ChannelListingRegistry::isLiveTopDawgListingId('TD123456', $sku));
     }
 
     public function test_shein_editor_has_category_search(): void

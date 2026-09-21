@@ -128,7 +128,7 @@ class ListingVariationPreviewService
             return $this->newegg->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId);
         }
         if (in_array($channel, ['topdawg', 'top-dawg', 'top_dawg'], true)) {
-            return $this->topdawg->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName);
+            return $this->topdawg->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName, $overrides);
         }
         if ($this->isMiraklChannel($channel)) {
             $code = trim((string) ($categoryUuid ?? ''))
