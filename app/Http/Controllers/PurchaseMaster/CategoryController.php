@@ -3956,7 +3956,7 @@ PROMPT;
     {
         try {
             $validated = $request->validate([
-                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph',
+                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph,tsp,batch',
                 'image' => 'required|file|image|max:5120',
             ]);
 
@@ -3991,7 +3991,7 @@ PROMPT;
     {
         try {
             $request->validate([
-                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph',
+                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph,tsp,batch',
                 'pdf' => 'required|file|mimes:pdf|max:15360',
             ]);
 
@@ -4027,7 +4027,7 @@ PROMPT;
         try {
             $validated = $request->validate([
                 'sku' => 'required|string',
-                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph',
+                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph,tsp,batch',
                 'kind' => 'required|string|in:image,pdf',
             ]);
 
@@ -4127,7 +4127,7 @@ PROMPT;
      */
     private function complianceMasterRowHasFieldKeys(array $values): bool
     {
-        $fields = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'];
+        $fields = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'];
         foreach ($fields as $f) {
             if (! array_key_exists($f, $values)) {
                 continue;
@@ -4147,7 +4147,7 @@ PROMPT;
     private function mergeComplianceFieldsFromRequest(array $validated): array
     {
         $out = [];
-        foreach (['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'] as $field) {
+        foreach (['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'] as $field) {
             $v = $validated[$field] ?? '';
             $out[$field] = $v !== null ? trim((string) $v) : '';
             if ($out[$field] === '') {
@@ -4226,6 +4226,8 @@ PROMPT;
                 'bluetooth' => 'nullable|string',
                 'logo' => 'nullable|string',
                 'graph' => 'nullable|string',
+                'tsp' => 'nullable|string',
+                'batch' => 'nullable|string',
                 'battery_img' => 'nullable|string|max:500',
                 'wireless_img' => 'nullable|string|max:500',
                 'electric_img' => 'nullable|string|max:500',
@@ -4235,6 +4237,8 @@ PROMPT;
                 'bluetooth_img' => 'nullable|string|max:500',
                 'logo_img' => 'nullable|string|max:500',
                 'graph_img' => 'nullable|string|max:500',
+                'tsp_img' => 'nullable|string|max:500',
+                'batch_img' => 'nullable|string|max:500',
                 'battery_pdf' => 'nullable|string|max:500',
                 'wireless_pdf' => 'nullable|string|max:500',
                 'electric_pdf' => 'nullable|string|max:500',
@@ -4244,6 +4248,8 @@ PROMPT;
                 'bluetooth_pdf' => 'nullable|string|max:500',
                 'logo_pdf' => 'nullable|string|max:500',
                 'graph_pdf' => 'nullable|string|max:500',
+                'tsp_pdf' => 'nullable|string|max:500',
+                'batch_pdf' => 'nullable|string|max:500',
                 'apply_siblings' => 'nullable|boolean',
             ]);
 
@@ -4361,6 +4367,8 @@ PROMPT;
                 'bluetooth' => 'nullable|string',
                 'logo' => 'nullable|string',
                 'graph' => 'nullable|string',
+                'tsp' => 'nullable|string',
+                'batch' => 'nullable|string',
                 'battery_img' => 'nullable|string|max:500',
                 'wireless_img' => 'nullable|string|max:500',
                 'electric_img' => 'nullable|string|max:500',
@@ -4370,6 +4378,8 @@ PROMPT;
                 'bluetooth_img' => 'nullable|string|max:500',
                 'logo_img' => 'nullable|string|max:500',
                 'graph_img' => 'nullable|string|max:500',
+                'tsp_img' => 'nullable|string|max:500',
+                'batch_img' => 'nullable|string|max:500',
                 'battery_pdf' => 'nullable|string|max:500',
                 'wireless_pdf' => 'nullable|string|max:500',
                 'electric_pdf' => 'nullable|string|max:500',
@@ -4379,6 +4389,8 @@ PROMPT;
                 'bluetooth_pdf' => 'nullable|string|max:500',
                 'logo_pdf' => 'nullable|string|max:500',
                 'graph_pdf' => 'nullable|string|max:500',
+                'tsp_pdf' => 'nullable|string|max:500',
+                'batch_pdf' => 'nullable|string|max:500',
                 'apply_siblings' => 'nullable|boolean',
             ]);
 
@@ -4483,6 +4495,8 @@ PROMPT;
                 'bluetooth' => 'bluetooth',
                 'logo' => 'logo',
                 'graph' => 'graph',
+                'tsp' => 'tsp',
+                'batch' => 'batch',
             ];
 
             // Find column indices
@@ -4559,7 +4573,7 @@ PROMPT;
                     }
                 }
 
-                foreach (['gcc', 'rohs', 'blanket', 'bluetooth', 'logo'] as $field) {
+                foreach (['gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'] as $field) {
                     if (isset($columnIndices[$field]) && isset($row[$columnIndices[$field]])) {
                         $v = trim((string) $row[$columnIndices[$field]]);
                         if ($v !== '') {

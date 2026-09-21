@@ -183,6 +183,8 @@ class BadgeDataCatalog
                 'missing_bluetooth' => 'Bluetooth',
                 'missing_logo' => 'Logo',
                 'missing_graph' => 'Graph',
+                'missing_tsp' => 'TSP',
+                'missing_batch' => 'Batch',
             ],
         ];
     }
