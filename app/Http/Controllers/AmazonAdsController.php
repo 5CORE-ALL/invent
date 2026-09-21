@@ -7,7 +7,6 @@ use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Services\AmazonAdsLiveBidBgtSyncService;
-use App\Services\AmazonAdsService;
 use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPauseRuleState;
 use App\Services\AmazonAdsPauseRuleApplicator;
@@ -2077,8 +2076,7 @@ class AmazonAdsController extends Controller
         $q = DB::table($table)
             ->select($select)
             ->whereIn('campaign_id', $cidList)
-            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
-            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10');
         $q->groupBy($hasAdType ? ['campaign_id', 'ad_type'] : ['campaign_id']);
 
         $map = [];
@@ -2149,8 +2147,7 @@ class AmazonAdsController extends Controller
         $q = DB::table($table)
             ->select($select)
             ->whereIn('campaign_id', $cidList)
-            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
-            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10');
         $q->groupBy($hasAdType ? ['campaign_id', 'ad_type'] : ['campaign_id']);
 
         $map = [];
@@ -2217,8 +2214,7 @@ class AmazonAdsController extends Controller
         $q = DB::table($table)
             ->select($select)
             ->whereIn('campaign_id', $cidList)
-            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
-            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10');
         $q->groupBy($hasAdType ? ['campaign_id', 'ad_type'] : ['campaign_id']);
 
         $map = [];
@@ -3016,23 +3012,16 @@ class AmazonAdsController extends Controller
         };
     }
 
-    private static function targetCountCacheKey(string $adProduct, string $campaignId): string
-    {
-        return 'amz_ads_target_count_v1:'.$adProduct.':'.$campaignId;
-    }
-
     /**
-     * Enabled + paused keyword and product-target counts from the Amazon Ads API.
-     * Cached per campaign. On API failure, SP falls back to distinct L30 targeting-report rows;
-     * a missing count stays null so the cell is a dash instead of M.
+     * Target counts from the synced Amazon targeting report (L30), one grouped query.
+     * Campaigns with no report rows are 0 (shown as M). No live Advertising API call.
      *
      * @param  list<string>  $campaignIds
-     * @return array<string, int|null>
+     * @return array<string, int>
      */
     private static function targetCountsForCampaigns(string $table, array $campaignIds): array
     {
-        $adProduct = self::targetCountAdProduct($table);
-        if ($adProduct === null) {
+        if (self::targetCountAdProduct($table) === null) {
             return [];
         }
 
@@ -3048,37 +3037,10 @@ class AmazonAdsController extends Controller
             return [];
         }
 
+        $report = self::targetCountsFromKeywordReports($ids);
         $out = [];
-        $missing = [];
         foreach ($ids as $id) {
-            $hit = Cache::get(self::targetCountCacheKey($adProduct, $id));
-            if ($hit === null || $hit === false || ! is_numeric($hit)) {
-                $missing[] = $id;
-                continue;
-            }
-            $out[$id] = (int) $hit;
-        }
-        if ($missing === []) {
-            return $out;
-        }
-
-        try {
-            $fresh = app(AmazonAdsService::class)->countTargetsForCampaigns($adProduct, $missing);
-            foreach ($missing as $id) {
-                $n = (int) ($fresh[$id] ?? 0);
-                Cache::put(self::targetCountCacheKey($adProduct, $id), $n, now()->addHours(6));
-                $out[$id] = $n;
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Amazon Ads target count unavailable', [
-                'table' => $table,
-                'campaigns' => count($missing),
-                'error' => $e->getMessage(),
-            ]);
-            $report = self::targetCountsFromKeywordReports($missing);
-            foreach ($missing as $id) {
-                $out[$id] = array_key_exists($id, $report) ? $report[$id] : null;
-            }
+            $out[$id] = $report[$id] ?? 0;
         }
 
         return $out;

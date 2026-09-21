@@ -2042,7 +2042,7 @@
                 if (c === 'targets') {
                     col.title = 'Targets';
                     col.formatter = fmtTargets;
-                    col.headerTooltip = 'Amazon Ads API count of enabled and paused keywords and targets on this campaign. 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
+                    col.headerTooltip = 'Target count from the Amazon L30 targeting report. 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
                     col.width = 52;
                     col.minWidth = 44;
                     col.headerSort = false;
