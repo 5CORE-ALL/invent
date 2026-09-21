@@ -31,11 +31,13 @@ class TemuAdCreateRejectService
     public function handleFailedCreate(string $goodsId, ?string $sku, string $message, mixed $errorCode = null): array
     {
         $empty = ['rejected' => false, 'task_id' => null, 'title' => null];
+        $this->persistReject(
+            $goodsId,
+            trim($message) !== '' ? $message : 'Create ad failed.'
+        );
         if (! $this->temuApi->isListingCreateReject($message, $errorCode)) {
             return $empty;
         }
-
-        $this->persistReject($goodsId, $message);
         $skuName = trim((string) $sku);
         if ($skuName === '') {
             $skuName = (string) (TemuAdsApiReport::query()->where('goods_id', $goodsId)->value('sku') ?? '');

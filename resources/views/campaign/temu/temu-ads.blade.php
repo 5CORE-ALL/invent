@@ -123,6 +123,16 @@
             gap: 0.5rem;
             align-items: center;
         }
+        #alert-count {
+            background-color: #ca8a04;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #alert-count.is-alert-filter-on {
+            background-color: #a16207;
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #ca8a04;
+        }
         .pricing-filter-item {
             display: inline-block;
             vertical-align: middle;
@@ -269,6 +279,38 @@
             font-size: 11px;
             line-height: 1;
             cursor: help;
+        }
+        .temu-ads-alert-tri {
+            color: #ca8a04;
+            line-height: 0;
+            cursor: help;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+        }
+        .temu-ads-alert-tri svg { display: block; }
+        .temu-ads-alert-tri.is-danger { color: #dc2626; }
+        .alert .temu-ads-alert-tri { color: #111827; margin-left: 6px; }
+        .alert-danger .temu-ads-alert-tri { color: #7f1d1d; }
+        #temu-ads-table .tabulator-cell[tabulator-field="ad_create_reject"] {
+            overflow: visible;
+        }
+        #temu-ads-hover-tip {
+            position: fixed;
+            z-index: 1080;
+            max-width: 440px;
+            padding: 8px 10px;
+            background: #111827;
+            color: #fff;
+            font-size: 12px;
+            line-height: 1.45;
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.28);
+            white-space: pre-wrap;
+            word-break: break-word;
+            pointer-events: none;
+            display: none;
         }
         .create-row-ad-btn {
             padding: 1px 6px;
@@ -546,6 +588,8 @@
                             <span class="badge fs-6 p-2" id="create-count"
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
                                 title="Create ads for selected No ad rows (Inv > 0). Follows Parent/SKU/All, search, status, inv, dil, and clicks filters. If nothing is selected, uses visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
+                            <span class="badge fs-6 p-2" id="alert-count"
+                                title="Click to show only rows with a create-ad issue. Click again to clear.">Alert: <span class="temu-ads-badge-val">0</span></span>
                             <span class="badge fs-6 p-2" id="pause-run-count"
                                 style="background-color: #212529; color: white; font-weight: bold; cursor: pointer;"
                                 title="Pause and Run counts (live ads). Click for Pause + Run budget and details.">
@@ -1070,6 +1114,8 @@
                 return !!(row && !row.is_parent);
             }
 
+            let alertFilterOn = false;
+
             function currentFilterQuery() {
                 return {
                     goodsQ: (document.getElementById('search-goods-id').value || '').trim().toLowerCase(),
@@ -1080,6 +1126,7 @@
                     invQ: (document.getElementById('inv-filter').value || '').trim(),
                     dilQ: (document.getElementById('dil-filter').value || '').trim(),
                     clicksQ: (document.getElementById('clicks-filter').value || '').trim(),
+                    alertOnly: !!alertFilterOn,
                 };
             }
 
@@ -1092,13 +1139,46 @@
                     + '\n' + String((row && row.period) || '');
             }
 
+            const createAlertByGoods = {};
+
+            function rememberCreateAlert(gid, message) {
+                gid = String(gid || '').trim();
+                message = String(message || '').trim();
+                if (!gid || !message) return;
+                createAlertByGoods[gid] = message;
+            }
+
+            function clearCreateAlert(gid) {
+                gid = String(gid || '').trim();
+                if (gid) delete createAlertByGoods[gid];
+            }
+
+            function rowCreateAlertText(data) {
+                const gid = String((data && data.goods_id) || '').trim();
+                return String((data && data.ad_create_reject) || createAlertByGoods[gid] || '').trim();
+            }
+
+            function adsAlertTriangleHtml(reason, extraClass) {
+                if (!reason) return '';
+                return '<span class="temu-ads-alert-tri ' + (extraClass || '') + '" data-ads-alert="' + escapeAttr(reason) + '" role="img" aria-label="Create ad alert">' +
+                    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+                    '<path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>' +
+                    '</svg></span>';
+            }
+
             function prepareAdsRows(rows) {
                 const byGoods = {};
+                const rejectByGoods = {};
                 (rows || []).forEach(function (r) {
                     if (!r) return;
                     const gid = String(r.goods_id || '');
                     const p = String(r.parent || '').trim().replace(/^PARENT\s+/i, '');
                     if (gid && p && !byGoods[gid]) byGoods[gid] = p;
+                    const reason = String(r.ad_create_reject || '').trim() || createAlertByGoods[gid] || '';
+                    if (gid && reason && !rejectByGoods[gid]) rejectByGoods[gid] = reason;
+                });
+                Object.keys(createAlertByGoods).forEach(function (gid) {
+                    if (!rejectByGoods[gid]) rejectByGoods[gid] = createAlertByGoods[gid];
                 });
                 (rows || []).forEach(function (r) {
                     if (!r) return;
@@ -1106,6 +1186,8 @@
                     if (!String(r.parent || '').trim() && byGoods[String(r.goods_id || '')]) {
                         r.parent = byGoods[String(r.goods_id || '')];
                     }
+                    const gid = String(r.goods_id || '');
+                    if (rejectByGoods[gid]) r.ad_create_reject = rejectByGoods[gid];
                     r.is_parent = r.is_parent === true || r.is_parent === 1 || r.is_parent === '1';
                     r._row_key = r.is_parent
                         ? ('p|' + String(r.goods_id || '') + '|' + String(r.period || '') + '|' + String(r.parent || ''))
@@ -1171,6 +1253,7 @@
                 if (skip !== 'inv' && q.invQ && rowInvBucket(data) !== q.invQ) return false;
                 if (skip !== 'dil' && q.dilQ && rowDilBand(data) !== q.dilQ) return false;
                 if (skip !== 'clicks' && q.clicksQ && rowClicksBucket(data) !== q.clicksQ) return false;
+                if (skip !== 'alert' && q.alertOnly && !rowCreateAlertText(data)) return false;
                 return true;
             }
 
@@ -1368,6 +1451,38 @@
                     : 'Create all ' + n + ' filtered No ad rows with Inv > 0.';
             }
 
+            function alertBadgeCount() {
+                const q = Object.assign({}, currentFilterQuery(), { alertOnly: false });
+                const seen = {};
+                let n = 0;
+                (allAdsRows || []).forEach(function (r) {
+                    if (!rowVisibleForView(r, q) || !rowCreateAlertText(r)) return;
+                    const gid = String((r && r.goods_id) || '') || ('sku:' + String((r && r.sku) || ''));
+                    if (seen[gid]) return;
+                    seen[gid] = true;
+                    n++;
+                });
+                return n;
+            }
+
+            function paintAlertBadge() {
+                const el = document.getElementById('alert-count');
+                const n = alertBadgeCount();
+                setBadgeVal('alert-count', Number(n).toLocaleString());
+                if (!el) return;
+                el.classList.toggle('is-alert-filter-on', !!alertFilterOn);
+                el.title = alertFilterOn
+                    ? 'Showing ' + n + ' create-ad alert row(s). Click to show all rows again.'
+                    : 'Click to show the ' + n + ' row(s) with a create-ad issue.';
+            }
+
+            function toggleAlertFilter() {
+                alertFilterOn = !alertFilterOn;
+                if (table && typeof table.setPage === 'function') table.setPage(1);
+                applySearchFilters();
+                paintAlertBadge();
+            }
+
             function queueCreateGoodsIdsFromRows(rows) {
                 const seen = {};
                 const ids = [];
@@ -1471,7 +1586,7 @@
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
                 const q = currentFilterQuery();
-                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ && q.rowType === 'all';
+                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.alertOnly && q.rowType === 'all';
                 if (noLocalFilter && response && response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) {
                     m.spend = parseFloat(response.spend_sum);
                 }
@@ -1493,6 +1608,7 @@
                 setBadgeVal('ctr-avg', Number(m.ctr).toFixed(1) + '%');
                 setBadgeVal('cvr-avg', Number(m.cvr).toFixed(1) + '%');
                 paintCreateBadge();
+                paintAlertBadge();
                 paintPauseRunBadge(rows);
                 applyCtrAvgColors();
                 return m;
@@ -1960,8 +2076,8 @@
                     {
                         title: 'Ad',
                         field: 'create_ad',
-                        width: 96,
-                        minWidth: 80,
+                        width: 78,
+                        minWidth: 70,
                         hozAlign: 'center',
                         sorter: function (a, b, aRow, bRow) {
                             function rank(row) {
@@ -1973,7 +2089,7 @@
                             }
                             return rank(aRow) - rank(bRow);
                         },
-                        headerTooltip: 'Create is shown only when Status is No ad and Inv > 0. Select multiple rows and click Create to make those ads in one go. Red triangle = Temu rejected the listing.',
+                        headerTooltip: 'Create is shown only when Status is No ad and Inv > 0. Select multiple rows and click Create to make those ads in one go. Create-ad issues are in the Alert column.',
                         formatter: function (cell) {
                             const data = cell.getRow().getData() || {};
                             const status = String(data.ad_status || '');
@@ -1982,17 +2098,13 @@
                                 return '<span class="temu-ad-dot is-zero-inv" title="0 inventory — Create hidden"></span>';
                             }
                             if (status === 'No ad') {
-                                const reason = String(data.ad_create_reject || '').trim();
                                 const selectedN = queueCreateGoodsIdsFromRows(selectedRowData()).length;
                                 const gid = String(data.goods_id || '');
                                 const multi = selectedN >= 2 && selectedGoodsIds.has(gid);
                                 const btnTitle = multi
                                     ? 'Create Temu ads for the ' + selectedN + ' selected rows'
                                     : 'Create Temu ad';
-                                const tri = reason
-                                    ? '<i class="fas fa-exclamation-triangle temu-ad-reject-tri" title="' + escapeAttr(reason) + '"></i>'
-                                    : '';
-                                return '<span class="temu-ad-create-cell"><button type="button" class="btn btn-sm btn-outline-warning create-row-ad-btn" title="' + escapeAttr(btnTitle) + '">Create</button>' + tri + '</span>';
+                                return '<span class="temu-ad-create-cell"><button type="button" class="btn btn-sm btn-outline-warning create-row-ad-btn" title="' + escapeAttr(btnTitle) + '">Create</button></span>';
                             }
                             return '<span class="temu-ad-dot" title="Ad available"></span>';
                         },
@@ -2008,6 +2120,23 @@
                             }
                             runBulkCreateQueue([goodsId]);
                         }
+                    },
+                    {
+                        title: 'Alert',
+                        field: 'ad_create_reject',
+                        width: 56,
+                        minWidth: 48,
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Triangle when Temu rejected or failed creating an ad. Hover to read the full message.',
+                        sorter: function (a, b) {
+                            const as = String(a || '').trim() ? 1 : 0;
+                            const bs = String(b || '').trim() ? 1 : 0;
+                            return as - bs;
+                        },
+                        formatter: function (cell) {
+                            return adsAlertTriangleHtml(rowCreateAlertText(cell.getRow().getData() || {}), 'is-danger');
+                        },
                     },
                     { title: 'Ovl30', field: 'ovl30', width: 62, minWidth: 54, hozAlign: 'center', formatter: numFmt, sorter: 'number',
                       headerTooltip: 'Overall L30 sold units from Shopify (same as /temu-decrease OVL30)' },
@@ -2676,7 +2805,7 @@
 
             function classifyTemuAdsColumn(field) {
                 const f = String(field || '');
-                if (/^(parent|sku|sku_id|inv|image_path|ad_status|create_ad|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
+                if (/^(parent|sku|sku_id|inv|image_path|ad_status|create_ad|ad_create_reject|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
                 if (/^(impressions|impressions_l7|clicks_l30|clicks_l7|pause_run|pause_run_ok|ctr|ctr_l7|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|t_roas|roas|acos)$/.test(f)) {
                     return 'ads';
                 }
@@ -2827,7 +2956,8 @@
                 pinBefore(valid, 'parent', 'sku');
                 pinBefore(valid, 'sku_id', 'goods_id');
                 pinAfter(valid, 'create_ad', 'inv');
-                pinAfter(valid, 'ovl30', 'create_ad');
+                pinAfter(valid, 'ad_create_reject', 'create_ad');
+                pinAfter(valid, 'ovl30', 'ad_create_reject');
                 pinAfter(valid, 'dil_percent', 'ovl30');
                 pinAfter(valid, 'impressions', 'clicks_l7');
                 pinAfter(valid, 'ad_status', 'pause_run');
@@ -3189,6 +3319,22 @@
                 el.innerHTML = html;
             }
 
+            let fetchStatusHideTimer = null;
+            function cancelFetchStatusHide() {
+                clearTimeout(fetchStatusHideTimer);
+                fetchStatusHideTimer = null;
+            }
+            function hideFetchStatus() {
+                const status = document.getElementById('fetch-status');
+                if (!status) return;
+                status.style.display = 'none';
+                status.innerHTML = '';
+            }
+            function scheduleFetchStatusHide(ms) {
+                cancelFetchStatusHide();
+                fetchStatusHideTimer = setTimeout(hideFetchStatus, ms || 8000);
+            }
+
             function queueCreateGoodsIds() {
                 return queueCreateGoodsIdsFromRows(createSourceRows());
             }
@@ -3227,18 +3373,77 @@
             }
 
             function applyCreateRejectToRows(failed) {
-                if (!table || !failed || !failed.length) return;
+                if (!failed || !failed.length) return;
                 failed.forEach(function (item) {
-                    if (!item || !item.rejected) return;
-                    const gid = String(item.goods_id || '');
+                    if (!item) return;
+                    const gid = String(item.goods_id || '').trim();
                     if (!gid) return;
+                    const message = String(item.message || 'Create ad failed.').trim();
+                    rememberCreateAlert(gid, message);
+                    (allAdsRows || []).forEach(function (r) {
+                        if (String((r && r.goods_id) || '') === gid) r.ad_create_reject = message;
+                    });
+                    if (!table) return;
                     walkAdsRows(function (row) {
                         const data = row.getData() || {};
                         if (String(data.goods_id || '') !== gid) return;
-                        row.update({ ad_create_reject: item.message || 'Temu rejected this listing for ads.' });
+                        row.update({ ad_create_reject: message });
                     });
                 });
             }
+
+            function ensureAdsHoverTip() {
+                let el = document.getElementById('temu-ads-hover-tip');
+                if (el) return el;
+                el = document.createElement('div');
+                el.id = 'temu-ads-hover-tip';
+                document.body.appendChild(el);
+                return el;
+            }
+
+            function moveAdsHoverTip(ev) {
+                const el = document.getElementById('temu-ads-hover-tip');
+                if (!el || el.style.display === 'none' || !ev) return;
+                const pad = 12;
+                const w = el.offsetWidth;
+                const h = el.offsetHeight;
+                let x = ev.clientX + 14;
+                let y = ev.clientY + 14;
+                if (x + w > window.innerWidth - pad) x = ev.clientX - w - 12;
+                if (y + h > window.innerHeight - pad) y = ev.clientY - h - 12;
+                if (x < pad) x = pad;
+                if (y < pad) y = pad;
+                el.style.left = x + 'px';
+                el.style.top = y + 'px';
+            }
+
+            function showAdsHoverTip(text, ev) {
+                if (!text) return;
+                const el = ensureAdsHoverTip();
+                el.textContent = text;
+                el.style.display = 'block';
+                moveAdsHoverTip(ev);
+            }
+
+            function hideAdsHoverTip() {
+                const el = document.getElementById('temu-ads-hover-tip');
+                if (el) el.style.display = 'none';
+            }
+
+            document.addEventListener('mouseover', function (e) {
+                const host = e.target.closest('[data-ads-alert]');
+                if (!host) return;
+                showAdsHoverTip(host.getAttribute('data-ads-alert') || '', e);
+            });
+            document.addEventListener('mousemove', function (e) {
+                if (e.target.closest('[data-ads-alert]')) moveAdsHoverTip(e);
+            });
+            document.addEventListener('mouseout', function (e) {
+                const host = e.target.closest('[data-ads-alert]');
+                if (!host) return;
+                if (e.relatedTarget && host.contains(e.relatedTarget)) return;
+                hideAdsHoverTip();
+            });
 
             async function runBulkCreateQueue(explicitIds) {
                 const usingExplicit = Array.isArray(explicitIds);
@@ -3251,6 +3456,7 @@
                     status.innerHTML = usingSelection
                         ? '<div class="alert alert-warning py-2 mb-0">No selected rows can be created (need Status No ad and Inv &gt; 0).</div>'
                         : '<div class="alert alert-warning py-2 mb-0">No Create queue rows (Status No ad and Inv &gt; 0).</div>';
+                    scheduleFetchStatusHide(8000);
                     return;
                 }
                 const defaults = createAdDefaults();
@@ -3268,6 +3474,7 @@
                     return;
                 }
                 if (badge) badge.style.pointerEvents = 'none';
+                cancelFetchStatusHide();
                 status.style.display = 'block';
                 let created = 0;
                 let failed = 0;
@@ -3299,13 +3506,12 @@
                         });
                         const data = await res.json();
                         created += (data.created && data.created.length) ? data.created.length : 0;
+                        (data.created || []).forEach(clearCreateAlert);
                         if (data.failed && data.failed.length) {
                             failed += data.failed.length;
                             applyCreateRejectToRows(data.failed);
                             data.failed.forEach(function (row) {
                                 if (row.rejected) rejectedN++;
-                            });
-                            data.failed.slice(0, 5).forEach(function (row) {
                                 const note = (row.goods_id || '') + ': ' + (row.message || 'failed');
                                 failNotes.push(row.task_title ? (note + ' (' + row.task_title + ')') : note);
                             });
@@ -3321,9 +3527,11 @@
                 let cls = failed === 0 ? 'alert-success' : (created > 0 ? 'alert-warning' : 'alert-danger');
                 let msg = 'Created ' + created + '/' + ids.length + ' ads (budget $' + defaults.budget + ', ROAS ' + defaults.roas + ')';
                 if (failed > 0) msg += '. Failed ' + failed;
-                if (rejectedN > 0) msg += '. ' + rejectedN + ' listing reject task(s) created';
-                if (failNotes.length) msg += ' — ' + failNotes.slice(0, 3).join('; ');
-                status.innerHTML = '<div class="alert ' + cls + ' py-2 mb-0">' + msg + '</div>';
+                if (rejectedN > 0) msg += '. ' + rejectedN + ' listing reject(s)';
+                const full = failNotes.join('\n\n');
+                status.innerHTML = '<div class="alert ' + cls + ' py-2 mb-0 d-inline-flex align-items-center flex-wrap">' +
+                    '<span>' + msg + '</span>' + adsAlertTriangleHtml(full) + '</div>';
+                scheduleFetchStatusHide(8000);
                 if (badge) badge.style.pointerEvents = '';
                 table.setData(dataUrl());
             }
@@ -3331,6 +3539,9 @@
             document.getElementById('create-count').addEventListener('click', function (e) {
                 if (e.target.closest('.temu-ads-history-dot')) return;
                 runBulkCreateQueue();
+            });
+            document.getElementById('alert-count').addEventListener('click', function () {
+                toggleAlertFilter();
             });
 
             document.getElementById('pause-run-count').addEventListener('click', function (e) {
@@ -3371,6 +3582,7 @@
                 if (!confirm('Refresh Active/Inactive status from Temu for all goods on this page?')) {
                     return;
                 }
+                cancelFetchStatusHide();
                 status.style.display = 'block';
                 status.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Refreshing ad status…</div>';
                 btn.disabled = true;
@@ -3381,11 +3593,13 @@
                     timeout: 0,
                     success: function (response) {
                         status.innerHTML = '<div class="alert ' + (response.success ? 'alert-success' : 'alert-danger') + ' py-2 mb-0">' + (response.message || 'Done') + '</div>';
+                        scheduleFetchStatusHide(8000);
                         table.setData(dataUrl());
                     },
                     error: function (xhr) {
                         const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Status refresh failed';
                         status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + msg + '</div>';
+                        scheduleFetchStatusHide(8000);
                     },
                     complete: function () {
                         btn.disabled = false;
@@ -3463,31 +3677,31 @@
                     data: { goods_id: goodsId, budget: budget, roas: roas, _token: '{{ csrf_token() }}' },
                     success: function (response) {
                         if (response.success) {
+                            clearCreateAlert(goodsId);
                             showCreateStatus('<div class="alert alert-success py-2 mb-0">' + (response.message || 'Created') + '</div>');
                             table.setData(dataUrl());
                         } else {
-                            showCreateStatus('<div class="alert alert-danger py-2 mb-0">' + (response.message || 'Failed') + '</div>');
-                            if (response.rejected) {
-                                applyCreateRejectToRows([{
-                                    goods_id: goodsId,
-                                    message: response.message || 'Temu rejected this listing for ads.',
-                                    rejected: true,
-                                }]);
-                            }
+                            const failMsg = response.message || 'Failed';
+                            showCreateStatus('<div class="alert alert-danger py-2 mb-0 d-inline-flex align-items-center">' +
+                                '<span>' + failMsg + '</span>' + adsAlertTriangleHtml(failMsg) + '</div>');
+                            applyCreateRejectToRows([{
+                                goods_id: goodsId,
+                                message: failMsg,
+                                rejected: !!response.rejected,
+                            }]);
                             table.setData(dataUrl());
                         }
                     },
                     error: function (xhr) {
                         const data = xhr.responseJSON || {};
                         const msg = data.message || 'Create failed';
-                        showCreateStatus('<div class="alert alert-danger py-2 mb-0">' + msg + '</div>');
-                        if (data.rejected) {
-                            applyCreateRejectToRows([{
-                                goods_id: goodsId,
-                                message: data.message || 'Temu rejected this listing for ads.',
-                                rejected: true,
-                            }]);
-                        }
+                        showCreateStatus('<div class="alert alert-danger py-2 mb-0 d-inline-flex align-items-center">' +
+                            '<span>' + msg + '</span>' + adsAlertTriangleHtml(msg) + '</div>');
+                        applyCreateRejectToRows([{
+                            goods_id: goodsId,
+                            message: msg,
+                            rejected: !!data.rejected,
+                        }]);
                         table.setData(dataUrl());
                     },
                     complete: function () {
@@ -3512,6 +3726,7 @@
                 if (!confirm(fetchMsg)) {
                     return;
                 }
+                cancelFetchStatusHide();
                 status.style.display = 'block';
                 status.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Fetching ' + period + ' from Temu API…</div>';
                 btn.disabled = true;
@@ -3543,10 +3758,12 @@
                         } else {
                             status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + ((first && first.message) || 'Failed') + '</div>';
                         }
+                        scheduleFetchStatusHide(8000);
                     })
                     .fail(function (xhr) {
                         const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Fetch failed (timeout or server error). Try: php artisan temu:fetch-ads-api-reports --period=' + period;
                         status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + msg + '</div>';
+                        scheduleFetchStatusHide(8000);
                     })
                     .always(function () {
                         btn.disabled = false;
