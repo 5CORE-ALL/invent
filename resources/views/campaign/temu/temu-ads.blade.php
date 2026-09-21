@@ -1120,9 +1120,7 @@
 
             function applyRowTypeView() {
                 if (!table) return;
-                table.replaceData(adsRowsForView()).then(function () {
-                    applySearchFilters();
-                });
+                table.replaceData(adsRowsForView());
             }
 
             function nestAdsRows(rows) {
@@ -1836,12 +1834,12 @@
                 }
                 paintMetricBadges(rows, response);
                 updateFilterCounts(rows);
+                snapshotBadgeHistory();
             }
 
             function updateBadgesFromTable() {
                 if (!table) return;
                 paintMetricBadges(filteredFlatAdsRows());
-                snapshotBadgeHistory();
                 updateFilterCounts(allAdsRows);
             }
 
@@ -2228,9 +2226,14 @@
             });
             table.on('dataLoaded', function () {
                 pruneSelectedGoodsIds();
-                if (typeof applySearchFilters === 'function') applySearchFilters();
-                if (typeof applyPauseRunSlabsToTable === 'function') applyPauseRunSlabsToTable();
-                else updateBadgesFromTable();
+                const type = currentRowType();
+                if (type === 'parent') collapseAllAdsParents();
+                else if (type === 'all') expandAllAdsParents();
+                const q = currentFilterQuery();
+                if (q.goodsQ || q.skuQ || q.statusQ || q.pauseRunQ || q.invQ || q.dilQ || q.clicksQ) {
+                    table.setFilter(function (data) { return rowMatchesQuery(data, q, ''); });
+                    if (type === 'parent') expandParentsForChildSearch();
+                }
                 refreshSelectCheckboxes();
             });
 
@@ -2331,25 +2334,19 @@
             }
 
             function applyPauseRunSlabsToTable() {
-                if (!table || !window.TemuAdsColorRules) return 0;
-                let n = 0;
-                walkAdsRows(function (row) {
-                    const data = row.getData() || {};
-                    const action = TemuAdsColorRules.computedPauseRunAction
-                        ? TemuAdsColorRules.computedPauseRunAction(data)
-                        : TemuAdsColorRules.actionFromSlabs(data.clicks_l7 != null ? data.clicks_l7 : 0);
-                    if (data.pause_run !== action) {
-                        row.update({ pause_run: action });
-                    }
-                    const cell = typeof row.getCell === 'function' ? row.getCell('pause_run') : null;
-                    if (cell && typeof cell.setValue === 'function') {
-                        cell.setValue(action, true);
-                    }
-                    n++;
-                });
-                table.redraw(true);
+                if (!table) return 0;
+                const col = typeof table.getColumn === 'function' ? table.getColumn('pause_run') : null;
+                if (col && typeof col.getCells === 'function') {
+                    col.getCells().forEach(function (cell) {
+                        if (cell && typeof cell.setValue === 'function') {
+                            const data = cell.getRow().getData() || {};
+                            const action = rowPauseRunAction(data);
+                            if (data.pause_run !== action) cell.setValue(action, true);
+                        }
+                    });
+                }
                 if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
-                return n;
+                return table.getDataCount ? table.getDataCount() : 0;
             }
 
             renderPauseRunSlabs();
@@ -3216,9 +3213,14 @@
                 else if (rowType === 'parent') expandParentsForChildSearch();
                 updateBadgesFromTable();
             }
+            let searchFilterTimer = null;
+            function scheduleSearchFilters() {
+                clearTimeout(searchFilterTimer);
+                searchFilterTimer = setTimeout(applySearchFilters, 220);
+            }
             document.getElementById('row-type-filter').addEventListener('change', applyRowTypeView);
-            document.getElementById('search-goods-id').addEventListener('input', applySearchFilters);
-            document.getElementById('search-sku').addEventListener('input', applySearchFilters);
+            document.getElementById('search-goods-id').addEventListener('input', scheduleSearchFilters);
+            document.getElementById('search-sku').addEventListener('input', scheduleSearchFilters);
             document.getElementById('status-filter').addEventListener('change', applySearchFilters);
             document.getElementById('pause-run-filter').addEventListener('change', applySearchFilters);
             document.getElementById('inv-filter').addEventListener('change', applySearchFilters);
