@@ -545,7 +545,7 @@
                                 title="Avg CVR = Sold / Clicks from badges. Click for history">Avg CVR: <span class="temu-ads-badge-val">0.0%</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="create-count"
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
-                                title="Create ads for selected No ad rows (Inv > 0). If nothing is selected, uses all visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
+                                title="Create ads for selected No ad rows (Inv > 0). Follows Parent/SKU/All, search, status, inv, dil, and clicks filters. If nothing is selected, uses visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="pause-run-count"
                                 style="background-color: #212529; color: white; font-weight: bold; cursor: pointer;"
                                 title="Pause and Run counts (live ads). Click for Pause + Run budget and details.">
@@ -1093,9 +1093,19 @@
             }
 
             function prepareAdsRows(rows) {
+                const byGoods = {};
+                (rows || []).forEach(function (r) {
+                    if (!r) return;
+                    const gid = String(r.goods_id || '');
+                    const p = String(r.parent || '').trim().replace(/^PARENT\s+/i, '');
+                    if (gid && p && !byGoods[gid]) byGoods[gid] = p;
+                });
                 (rows || []).forEach(function (r) {
                     if (!r) return;
                     if (!r.raw_id) r.raw_id = r.id;
+                    if (!String(r.parent || '').trim() && byGoods[String(r.goods_id || '')]) {
+                        r.parent = byGoods[String(r.goods_id || '')];
+                    }
                     r._row_key = r.is_parent
                         ? ('p|' + String(r.goods_id || '') + '|' + String(r.period || '') + '|' + String(r.parent || ''))
                         : ('c|' + String(r.id || '') + '|' + String(r.sku_id || '') + '|' + String(r.period || ''));
@@ -1181,30 +1191,39 @@
                 let dilTotal = 0;
                 let clicksTotal = 0;
                 let periodTotal = 0;
+                function rowInViewExcept(row, skip) {
+                    if (!rowMatchesQuery(row, q, skip)) return false;
+                    const type = q.rowType || currentRowType();
+                    if (type === 'sku') return !row.is_parent;
+                    if (type === 'all') return true;
+                    if (row.is_parent) return true;
+                    if (expandedAdsKeys[adsGroupKey(row)]) return true;
+                    return !!(q.skuQ && skip !== 'search');
+                }
                 all.forEach(function (row) {
-                    if (rowMatchesQuery(row, q, 'status')) {
+                    if (rowInViewExcept(row, 'status')) {
                         statusTotal++;
                         const s = rowStatusValue(row);
                         statusCounts[s] = (statusCounts[s] || 0) + 1;
                     }
-                    if (rowMatchesQuery(row, q, 'pause_run')) {
+                    if (rowInViewExcept(row, 'pause_run')) {
                         const a = rowPauseRunAction(row);
                         if (a === 'pause' || a === 'run') {
                             pauseTotal++;
                             pauseCounts[a] = (pauseCounts[a] || 0) + 1;
                         }
                     }
-                    if (rowMatchesQuery(row, q, 'inv')) {
+                    if (rowInViewExcept(row, 'inv')) {
                         invTotal++;
                         const b = rowInvBucket(row);
                         invCounts[b] = (invCounts[b] || 0) + 1;
                     }
-                    if (rowMatchesQuery(row, q, 'dil')) {
+                    if (rowInViewExcept(row, 'dil')) {
                         dilTotal++;
                         const d = rowDilBand(row);
                         dilCounts[d] = (dilCounts[d] || 0) + 1;
                     }
-                    if (rowMatchesQuery(row, q, 'clicks')) {
+                    if (rowInViewExcept(row, 'clicks')) {
                         clicksTotal++;
                         const c = rowClicksBucket(row);
                         clicksCounts[c] = (clicksCounts[c] || 0) + 1;
@@ -1239,7 +1258,6 @@
                 let runN = 0;
                 const seen = {};
                 list.forEach(function (r) {
-                    if (r && r.is_parent) return;
                     const gid = String((r && r.goods_id) || '') || ('sku:' + String((r && r.sku) || ''));
                     if (seen[gid]) return;
                     seen[gid] = true;
@@ -1290,8 +1308,8 @@
             }
 
             function selectedRowData() {
-                if (!table || !hasRowSelection()) return [];
-                return flattenAdsRows(table.getData() || []).filter(function (row) {
+                if (!hasRowSelection()) return [];
+                return filteredFlatAdsRows().filter(function (row) {
                     return selectedGoodsIds.has(rowGoodsId(row));
                 });
             }
@@ -1326,9 +1344,8 @@
             }
 
             function createSourceRows() {
-                if (!table) return [];
                 if (hasRowSelection()) return selectedRowData();
-                return flattenAdsRows(table.getData(true) || []);
+                return filteredFlatAdsRows();
             }
 
             function paintCreateBadge() {
@@ -1338,7 +1355,7 @@
                 if (!el) return;
                 el.title = hasRowSelection()
                     ? 'Create the ' + n + ' selected No ad row(s) with Inv > 0.'
-                    : 'Create all ' + n + ' visible No ad rows with Inv > 0.';
+                    : 'Create all ' + n + ' filtered No ad rows with Inv > 0.';
             }
 
             function queueCreateGoodsIdsFromRows(rows) {
@@ -1367,7 +1384,6 @@
                 let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, tacosSpend = 0, createN = 0, pauseN = 0, runN = 0;
                 const seenGoods = {};
                 list.forEach(function (r) {
-                    if (r && r.is_parent) return;
                     const gid = String(r.goods_id || '');
                     const firstGoods = !gid || !seenGoods[gid];
                     if (gid) seenGoods[gid] = true;
@@ -1395,7 +1411,7 @@
                     ? channelTacos
                     : (allSales > 0 ? (tacosSpend / allSales) * 100 : (tacosSpend > 0 ? 100 : 0));
                 return {
-                    rows: list.filter(function (r) { return !(r && r.is_parent); }).length,
+                    rows: list.length,
                     impressions: impr,
                     clicks: clicks,
                     spend: spend,
@@ -1444,13 +1460,15 @@
 
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
-                if (response && response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) {
+                const q = currentFilterQuery();
+                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ && q.rowType === 'all';
+                if (noLocalFilter && response && response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) {
                     m.spend = parseFloat(response.spend_sum);
                 }
-                if (response && response.clicks_sum != null && isFinite(parseFloat(response.clicks_sum))) {
+                if (noLocalFilter && response && response.clicks_sum != null && isFinite(parseFloat(response.clicks_sum))) {
                     m.clicks = parseFloat(response.clicks_sum);
                 }
-                if (response && response.impressions_sum != null && isFinite(parseFloat(response.impressions_sum))) {
+                if (noLocalFilter && response && response.impressions_sum != null && isFinite(parseFloat(response.impressions_sum))) {
                     m.impressions = parseFloat(response.impressions_sum);
                 }
                 currentAvgCtr = Number(m.ctr) || 0;
@@ -1683,7 +1701,6 @@
                 const seen = {};
                 const out = [];
                 flattenAdsRows(rows || []).forEach(function (r) {
-                    if (r && r.is_parent) return;
                     const action = rowPauseRunAction(r);
                     if (action !== 'run' && action !== 'pause') return;
                     const gid = String(r.goods_id || '').trim();
@@ -1706,7 +1723,7 @@
             }
 
             function fillRunningAdsModal() {
-                const rows = runningAdsRows(table ? table.getData(true) : []);
+                const rows = runningAdsRows(filteredFlatAdsRows());
                 const budgetEach = dailyCreateBudget();
                 const totalBudget = rows.length * budgetEach;
                 let spend = 0, impr = 0, clicks7 = 0, clicks30 = 0, orders = 0, orderAmt = 0;
@@ -1766,8 +1783,8 @@
                 if (response && response.tacos != null && isFinite(parseFloat(response.tacos))) {
                     channelTacos = parseFloat(response.tacos);
                 }
-                paintMetricBadges(rows, response);
-                updateFilterCounts(rows);
+                paintMetricBadges(filteredFlatAdsRows(), response);
+                updateFilterCounts(allAdsRows);
                 snapshotBadgeHistory();
             }
 
@@ -1883,7 +1900,12 @@
                         field: 'parent',
                         width: 120,
                         minWidth: 80,
-                        headerTooltip: 'Parent from Product Master. Table shows parent rows only; click the SKU arrow to open child ads.',
+                        headerTooltip: 'Parent from Product Master. Shown on both Parent Ads and SKU Ads.',
+                        formatter: function (cell) {
+                            const data = cell.getRow().getData() || {};
+                            const p = String(data.parent || '').trim().replace(/^PARENT\s+/i, '');
+                            return escapeAttr(p);
+                        },
                         sorter: function (a, b, aRow, bRow) {
                             const ad = (aRow && aRow.getData()) || {};
                             const bd = (bRow && bRow.getData()) || {};
@@ -2514,7 +2536,7 @@
 
             function queuePushRoasItems() {
                 const usingSelection = hasRowSelection();
-                const rows = ((table && table.getData(true)) || []).filter(function (row) {
+                const rows = filteredFlatAdsRows().filter(function (row) {
                     if (!rowHasTemuAd(row)) return false;
                     if (usingSelection && !selectedGoodsIds.has(rowGoodsId(row))) return false;
                     return !!rowGoodsId(row);
@@ -3132,6 +3154,7 @@
                 table.setFilter(function (data) {
                     return rowVisibleForView(data, q);
                 });
+                updateBadgesFromTable();
             }
             let searchFilterTimer = null;
             function scheduleSearchFilters() {

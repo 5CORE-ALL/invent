@@ -180,6 +180,7 @@ class TemuAdsController extends Controller
             ];
         })->values();
 
+        $rows = $this->fillMissingParentsOnAdsRows($rows);
         $rows = $this->appendParentRows($rows);
 
         $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
@@ -1400,6 +1401,37 @@ class TemuAdsController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Copy a known parent onto sibling SKUs of the same goods_id.
+     */
+    private function fillMissingParentsOnAdsRows($rows)
+    {
+        $rows = collect($rows);
+        $byGoods = [];
+        foreach ($rows as $row) {
+            $gid = (string) ($row['goods_id'] ?? '');
+            $parent = trim((string) ($row['parent'] ?? ''));
+            if ($gid !== '' && $parent !== '' && ! isset($byGoods[$gid])) {
+                $byGoods[$gid] = $parent;
+            }
+        }
+        if ($byGoods === []) {
+            return $rows->values();
+        }
+
+        return $rows->map(function (array $row) use ($byGoods): array {
+            if (trim((string) ($row['parent'] ?? '')) !== '') {
+                return $row;
+            }
+            $gid = (string) ($row['goods_id'] ?? '');
+            if ($gid !== '' && isset($byGoods[$gid])) {
+                $row['parent'] = $byGoods[$gid];
+            }
+
+            return $row;
+        })->values();
     }
 
     /**
