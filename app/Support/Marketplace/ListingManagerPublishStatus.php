@@ -100,6 +100,29 @@ class ListingManagerPublishStatus
     }
 
     /**
+     * These channels keep stale local metric rows (SKU-as-ID / fuzzy aliases).
+     * Listing Manager Active must mean "published from this app", not "found in cache".
+     */
+    public static function requiresAppPublishForActive(string $channelName): bool
+    {
+        $key = ListingChannelCounts::normalize($channelName);
+
+        return in_array($key, [
+            'topdawg',
+            'shein',
+            'aliexpress',
+            'newegg',
+            'neweggb2c',
+            'neweggb2b',
+        ], true);
+    }
+
+    public static function wasPublishedFromListingManager(?string $notes): bool
+    {
+        return is_string($notes) && stripos($notes, 'via Listing Manager') !== false;
+    }
+
+    /**
      * Live Seller Central listing check (cached). listed only when Amazon returns an ASIN.
      *
      * @return array{checked: bool, found: bool, seller_sku?: string, asin?: string, status?: string|null, title?: string|null, quantity?: int|null, message?: string}
