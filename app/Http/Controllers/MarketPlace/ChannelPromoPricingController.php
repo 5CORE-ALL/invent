@@ -37,7 +37,6 @@ use App\Services\Support\ChannelPushPrmtJobStore;
 use App\Services\Support\ChannelPushSpriceJobStore;
 use App\Services\Support\ChannelPushSpriceRunner;
 use App\Support\AmazonDilGroiRule;
-use App\Support\MasterDilGroiSync;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -1504,15 +1503,6 @@ class ChannelPromoPricingController extends Controller
                 'column_order' => array_column($rules, 'key'),
             ]
         );
-
-        try {
-            MasterDilGroiSync::propagate($channel, $existing['rules'], $rules);
-        } catch (\Throwable $e) {
-            Log::error('Master Dil slab sync failed', [
-                'channel' => $channel,
-                'error' => $e->getMessage(),
-            ]);
-        }
 
         if ($channel === 'shopify_b2c') {
             $this->queueShopifyB2cRuleSpriceApply();

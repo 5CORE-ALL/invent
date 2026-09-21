@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Central Dil slab writes against the existing {channel}_dil_vs_groi rows
  * on channel_tabulator_column_settings. No extra table. Each Sprc Dil page
- * still reads its own store.
+ * reads and saves only its own store. writeFull() is the master-page save
+ * that updates every site.
  */
 class MasterDilGroiSync
 {
@@ -230,8 +231,8 @@ class MasterDilGroiSync
     }
 
     /**
-     * After one site saves: add/remove slabs on every store; Target % only where that slab exists
-     * (including first-time defaults, so an unsaved page still picks up the new value).
+     * Copy a slab diff from one channel onto every other store.
+     * Single-page Sprc Dil saves do not call this. A page edit stays on that channel.
      *
      * @param  list<array<string, mixed>>  $oldRules
      * @param  list<array<string, mixed>>  $newRules
