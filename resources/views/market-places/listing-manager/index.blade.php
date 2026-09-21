@@ -687,7 +687,7 @@
                         <div class="col-md-6" data-id-field="isbn"><label class="form-label">ISBN</label><input id="lc-isbn" class="form-control" placeholder="Optional"></div>
                         <div class="col-md-6" data-id-field="epid"><label class="form-label">ePID</label><input id="lc-epid" class="form-control" placeholder="Optional"></div>
                     </div>
-                    <div class="lc-amazon-only lc-wayfair-share d-none mt-4">
+                    <div class="lc-amazon-only lc-wayfair-share lc-topdawg-share d-none mt-4">
                         <div class="lc-section-title" id="lc-attr-heading">Amazon required attributes</div>
                         <p class="lc-help" id="lc-attr-help">Amazon will reject the listing without these. Color is taken from the SKU when possible.</p>
                         <div class="row g-3">
@@ -997,6 +997,50 @@
                         </div>
                         <div class="lc-cat-results" id="lc-category-results">
                             <div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>
+                        </div>
+                    </div>
+
+                    <div class="lc-topdawg-only d-none mt-4">
+                        <div class="lc-section-title">TopDawg product details</div>
+                        <p class="lc-help">These match the required fields on TopDawg Create New Product.</p>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Condition <span class="lc-req">*</span></label>
+                                <select id="lc-topdawg-condition" class="form-select">
+                                    <option value="New">New</option>
+                                    <option value="Refurbished">Refurbished</option>
+                                    <option value="Used">Used</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Gender <span class="lc-req">*</span></label>
+                                <select id="lc-topdawg-gender" class="form-select">
+                                    <option value="Unisex">Unisex</option>
+                                    <option value="Men">Men</option>
+                                    <option value="Women">Women</option>
+                                    <option value="Kids">Kids</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Age group <span class="lc-req">*</span></label>
+                                <select id="lc-topdawg-age" class="form-select">
+                                    <option value="Adults">Adults</option>
+                                    <option value="Kids">Kids</option>
+                                    <option value="All Ages">All Ages</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Pack of <span class="lc-req">*</span></label>
+                                <input type="number" min="1" id="lc-topdawg-pack" class="form-control" value="1">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Cost</label>
+                                <input type="number" min="0" step="0.01" id="lc-topdawg-cost" class="form-control" placeholder="Same as sell price if blank">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">MSRP</label>
+                                <input type="number" min="0" step="0.01" id="lc-topdawg-msrp" class="form-control" placeholder="Same as sell price if blank">
+                            </div>
                         </div>
                     </div>
 
@@ -2390,7 +2434,7 @@
         };
         return {
             description: getDescriptionValue(),
-            condition: 'New',
+            condition: $('#lc-topdawg-condition').val() || $('#lc-condition').val() || 'New',
             condition_description: $('#lc-condition-desc').val() || '',
             brand,
             manufacturer,
@@ -2456,6 +2500,11 @@
             publish_mode: selectedPublishMode(),
             variation_skus: selectedVariationSkus(),
             parent_group: String($('#lc-parent-group').val() || (currentDraft && currentDraft.family && currentDraft.family.parent) || '').trim(),
+            gender: $('#lc-topdawg-gender').val() || 'Unisex',
+            age_group: $('#lc-topdawg-age').val() || 'Adults',
+            pack_of: $('#lc-topdawg-pack').val() || 1,
+            cost: $('#lc-topdawg-cost').val() || '',
+            msrp: $('#lc-topdawg-msrp').val() || '',
             faire_tags: faireTags.slice(),
             wayfair_collection: $('#lc-wayfair-collection').val() || '',
             wayfair_map_price: $('#lc-wayfair-map').val() || '',
@@ -2776,6 +2825,14 @@
         if (isTopdawg && !String(d.primary_category_id || d.primary_category_path || '').trim()) {
             errors.category.push('Category');
         }
+        if (isTopdawg) {
+            if (!(parseFloat(d.package_length) > 0) || !(parseFloat(d.package_width) > 0) || !(parseFloat(d.package_height) > 0)) {
+                errors.policies.push('Dimensions');
+            }
+            if (!((parseFloat(d.package_weight_lb) || 0) + ((parseFloat(d.package_weight_oz) || 0) / 16) > 0)) {
+                errors.policies.push('Weight');
+            }
+        }
         const isShein = ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'shein') || /shein/.test(channel);
         if (isShein && (!d.primary_category_id || !/^\d+$/.test(String(d.primary_category_id)))) {
             errors.category.push('Category');
@@ -2851,6 +2908,7 @@
         if (err.policies.length && family === 'reverb') banners.push(['danger', 'Shipping & Package tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'amazon') banners.push(['danger', 'Packaging tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'wayfair') banners.push(['danger', 'Package tab is missing required information. Please fill in those required fields.']);
+        if (err.policies.length && family === 'topdawg') banners.push(['danger', 'Package tab is missing required information. Please fill in those required fields.']);
         if (err.title.length) banners.push(['danger', 'Title & Description tab is missing required information. Please fill in those required fields.']);
         if (err.images.length) banners.push(['danger', 'Images tab is missing required information. Please fill in those required fields.']);
         if (err.pricing.length) banners.push(['danger', 'Price & Stock tab is missing required information. Please fill in those required fields.']);
@@ -3228,23 +3286,26 @@
         }
         $('.lc-tiktok-only').toggleClass('d-none', !ed.tiktok);
         $('.lc-temu-only').toggleClass('d-none', !ed.temu);
+        $('.lc-topdawg-only').toggleClass('d-none', !ed.topdawg);
         $('.lc-reverb-only').toggleClass('d-none', !ed.reverb);
         $('.lc-faire-only').toggleClass('d-none', !ed.faire);
         $('.lc-wayfair-only').toggleClass('d-none', !ed.wayfair);
         $('.lc-amazon-only').each(function () {
-            const share = $(this).hasClass('lc-wayfair-share');
-            $(this).toggleClass('d-none', !(ed.amazon || (share && ed.wayfair)));
+            const share = $(this).hasClass('lc-wayfair-share') || $(this).hasClass('lc-topdawg-share');
+            $(this).toggleClass('d-none', !(ed.amazon || (share && (ed.wayfair || ed.topdawg))));
         });
         $('.lc-amazon-dgr-only').toggle(!!ed.amazon);
-        $('#lc-attr-heading').text(ed.wayfair && !ed.amazon ? 'Wayfair required attributes' : 'Amazon required attributes');
+        $('#lc-attr-heading').text(ed.wayfair && !ed.amazon ? 'Wayfair required attributes' : (ed.topdawg && !ed.amazon ? 'TopDawg required attributes' : 'Amazon required attributes'));
         $('#lc-attr-help').text(ed.wayfair && !ed.amazon
             ? 'Color and country of origin are sent with the Wayfair class questions. Color is taken from the SKU when possible.'
-            : 'Amazon will reject the listing without these. Color is taken from the SKU when possible.');
+            : (ed.topdawg && !ed.amazon
+                ? 'Product made-in is required on TopDawg Create New Product. Country of origin is sent as that field.'
+                : 'Amazon will reject the listing without these. Color is taken from the SKU when possible.'));
         $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg));
         $('.lc-mp-category-search').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg || ed.faire || ed.mirakl || ed.topdawg || ed.shein) && !ed.wayfair));
         $('.lc-mp-category-selected').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg || ed.faire || ed.mirakl || ed.topdawg || ed.shein) && !ed.wayfair));
         $('.lc-category-star').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.newegg || ed.faire || ed.wayfair || ed.mirakl || ed.topdawg || ed.shein));
-        $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon || ed.wayfair));
+        $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon || ed.wayfair || ed.topdawg));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
         $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.faire ? 'Faire Product Type' : (ed.wayfair ? 'Wayfair Class' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : (ed.topdawg ? 'TopDawg Category' : (ed.shein ? 'Shein Category' : 'Category')))))))));
         $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
@@ -3254,7 +3315,7 @@
         $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
         $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
         $('#lc-policies-title').text(
-            ed.amazon ? 'Packaging' : (ed.ebay ? 'Business Policies' : (ed.tiktok ? 'Warehouse & Package' : (ed.temu || ed.wayfair ? 'Package' : (ed.reverb ? 'Shipping & Package' : 'Shipping'))))
+            ed.amazon ? 'Packaging' : (ed.ebay ? 'Business Policies' : (ed.tiktok ? 'Warehouse & Package' : (ed.temu || ed.wayfair || ed.topdawg ? 'Package' : (ed.reverb ? 'Shipping & Package' : 'Shipping'))))
         );
         $('#lc-pricing-heading').text(ed.pricing_title || 'Pricing');
         $('#lc-title-heading').text(ed.title_heading || 'Title & Description');
@@ -3363,6 +3424,12 @@
         $('#lc-pkg-h').val(d.package_height ?? '');
         $('#lc-pkg-lb').val(d.package_weight_lb ?? '');
         $('#lc-pkg-oz').val(d.package_weight_oz ?? '');
+        $('#lc-topdawg-condition').val(d.condition || d.condition_name || 'New');
+        $('#lc-topdawg-gender').val(d.gender || 'Unisex');
+        $('#lc-topdawg-age').val(d.age_group || 'Adults');
+        $('#lc-topdawg-pack').val(d.pack_of || 1);
+        $('#lc-topdawg-cost').val(d.cost || '');
+        $('#lc-topdawg-msrp').val(d.msrp || d.list_price || '');
         $('#lc-vat').val(d.vat_percent || '');
         $('#lc-auto-relist').prop('checked', !!d.auto_relist);
         const familyKids = Array.isArray(draft.variations) ? draft.variations : (((draft.family || {}).children) || []);

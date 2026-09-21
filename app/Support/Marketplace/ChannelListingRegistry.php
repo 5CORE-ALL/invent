@@ -1076,7 +1076,9 @@ class ChannelListingRegistry
                         $sku = trim((string) $row->sku);
                         $listingId = trim((string) ($row->topdawg_listing_id ?? ''));
                         $tdid = trim((string) ($row->tdid ?? ''));
-                        $id = $listingId !== '' ? $listingId : ($tdid !== '' ? $tdid : $sku);
+                        $id = self::isLiveTopDawgListingId($listingId, $sku)
+                            ? $listingId
+                            : (self::isLiveTopDawgListingId($tdid, $sku) ? $tdid : '');
                         if ($id === '') {
                             continue;
                         }
@@ -1097,7 +1099,10 @@ class ChannelListingRegistry
                         continue;
                     }
                     $id = trim((string) ($row['product_id'] ?? ''));
-                    ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku, true);
+                    if (! self::isLiveTopDawgListingId($id, $sku)) {
+                        continue;
+                    }
+                    ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, $id, true);
                 }
             }
         } catch (\Throwable $e) {
@@ -1105,6 +1110,27 @@ class ChannelListingRegistry
         }
 
         return ListingCountsEngine::listedMapForProductSkus($skus, $byNorm, true);
+    }
+
+    /**
+     * True only for a real TopDawg listing / TDID. SKU-as-id and td- placeholders
+     * are leftover from a failed create and are not in the supplier catalog.
+     */
+    public static function isLiveTopDawgListingId(string $id, string $sku = ''): bool
+    {
+        $id = trim($id);
+        $sku = trim($sku);
+        if ($id === '') {
+            return false;
+        }
+        if (str_starts_with(strtolower($id), 'td-')) {
+            return false;
+        }
+        if ($sku !== '' && strcasecmp($id, $sku) === 0) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

@@ -244,6 +244,7 @@ class ListingManagerEditorProfile
                     ['id' => 'images', 'label' => 'Images'],
                     ['id' => 'pricing', 'label' => 'Price & Stock'],
                     ['id' => 'category', 'label' => 'Category'],
+                    ['id' => 'policies', 'label' => 'Package'],
                 ],
                 'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
                 'category_placeholder' => 'Search TopDawg categories (e.g. microphone)',
@@ -252,10 +253,10 @@ class ListingManagerEditorProfile
                 'header_import' => 'Import from TopDawg',
                 'pricing_title' => 'Price & Stock',
                 'title_heading' => 'Title & Description',
-                'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Condition is New.',
-                'images_help' => 'Load photos from Image Master. First image is Primary.',
-                'category_help' => 'Search and select a TopDawg department / section / category. This is sent when you Save & Publish.',
-                'policies_help' => '',
+                'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Condition is New. UPC is sent as GTIN when present.',
+                'images_help' => 'Load photos from Image Master. TopDawg needs 4 image slots — we repeat the primary photo if fewer are loaded.',
+                'category_help' => 'Search and select a TopDawg department / section / category. Gender, age group, condition, and pack-of are required on their create-product form.',
+                'policies_help' => 'Package size and weight come from Dim/Wt Master and are required. Product made-in is sent as Country of origin.',
             ],
             'shein' => [
                 'tabs' => [

@@ -373,6 +373,15 @@ class ListingManagerPublishStatus
             if ($categoryId === '' && $categoryName === '') {
                 $tabErrors['category'][] = 'TopDawg category is required. Search and select a department / section / category.';
             }
+            if (! ((float) ($details['package_length'] ?? 0) > 0)
+                || ! ((float) ($details['package_width'] ?? 0) > 0)
+                || ! ((float) ($details['package_height'] ?? 0) > 0)) {
+                $tabErrors['logistics'][] = 'Package dimensions are required.';
+            }
+            $weightLb = ((float) ($details['package_weight_lb'] ?? 0)) + (((float) ($details['package_weight_oz'] ?? 0)) / 16);
+            if ($weightLb <= 0) {
+                $tabErrors['logistics'][] = 'Package weight is required.';
+            }
         }
 
         if ($isShein) {

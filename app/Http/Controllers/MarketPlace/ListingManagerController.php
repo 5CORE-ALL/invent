@@ -2688,6 +2688,19 @@ class ListingManagerController extends Controller
                     $draft->external_listing_id = null;
                     $draft->asin = null;
                     $draft->notes = trim((string) $draft->notes."\nMoved back to Drafts: Amazon Seller Central does not have this SKU.");
+                } elseif ($draft->status === 'listed' && $requiresAppPublish && ! ($result['listed'] ?? false)) {
+                    $ready = ListingManagerPublishStatus::readiness(
+                        $draft->title,
+                        $draft->price,
+                        $draft->quantity,
+                        is_array($draft->listing_details) ? $draft->listing_details : [],
+                        'draft',
+                        $channelName
+                    );
+                    $draft->status = $ready['ready'] ? 'ready' : 'draft';
+                    $draft->listed_at = null;
+                    $draft->external_listing_id = null;
+                    $draft->notes = trim((string) $draft->notes."\nMoved back to Drafts: ".$channelName.' catalog does not have this SKU.');
                 } elseif ($draft->status === 'listed' && $requiresAppPublish && ! $publishedFromApp) {
                     $ready = ListingManagerPublishStatus::readiness(
                         $draft->title,
@@ -3035,7 +3048,13 @@ class ListingManagerController extends Controller
         if ($d->status !== 'listed') {
             return;
         }
-        if (ListingManagerPublishStatus::wasPublishedFromListingManager($d->notes)) {
+        $sku = trim((string) $d->seller_sku);
+        $ext = trim((string) $d->external_listing_id);
+        $placeholder = $ext === ''
+            || strcasecmp($ext, $sku) === 0
+            || str_starts_with(strtolower($ext), 'td-')
+            || str_starts_with(strtoupper($ext), 'NE-');
+        if (ListingManagerPublishStatus::wasPublishedFromListingManager($d->notes) && ! $placeholder) {
             return;
         }
         $ready = ListingManagerPublishStatus::readiness(
@@ -3049,7 +3068,9 @@ class ListingManagerController extends Controller
         $d->status = $ready['ready'] ? 'ready' : 'draft';
         $d->listed_at = null;
         $d->external_listing_id = null;
-        $d->notes = trim((string) $d->notes."\nMoved back to Drafts: not published from Listing Manager.");
+        $d->notes = trim((string) $d->notes."\nMoved back to Drafts: ".($placeholder
+            ? $channelName.' catalog does not have this SKU.'
+            : 'not published from Listing Manager.'));
         $d->save();
     }
 

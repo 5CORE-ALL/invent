@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ShopifySku;
 use App\Models\TopDawgProduct;
+use App\Support\Marketplace\ChannelListingRegistry;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
@@ -1041,16 +1042,68 @@ class TopDawgApiService
         $tdid = $ids['tdid'];
         $lastMessage = (string) ($acceptedResult['message'] ?? 'TopDawg product submitted for review.');
 
-        if ($listingId === '' || strcasecmp($listingId, $sku) === 0) {
-            $listingId = 'td-'.substr(sha1(strtoupper($sku)), 0, 12);
+        $live = $this->waitForLiveCatalogRow($sku);
+        if (is_array($live)) {
+            $liveIds = $this->listingIdsFromTopDawgRow($live, $sku);
+            if (ChannelListingRegistry::isLiveTopDawgListingId($liveIds['listing_id'], $sku)) {
+                $listingId = $liveIds['listing_id'];
+            }
+            if ($liveIds['tdid'] !== '') {
+                $tdid = $liveIds['tdid'];
+            }
+        }
+
+        if (! ChannelListingRegistry::isLiveTopDawgListingId($listingId, $sku)
+            && ! ChannelListingRegistry::isLiveTopDawgListingId($tdid, $sku)) {
+            return [
+                'success' => false,
+                'message' => $lastMessage !== '' && ! str_contains(mb_strtolower($lastMessage), 'success')
+                    ? $lastMessage
+                    : 'TopDawg did not create a catalog product for '.$sku.'. Fill department / section / category, 4 images, made-in, and package size, then publish again.',
+            ];
         }
 
         return [
             'success' => true,
-            'message' => $lastMessage !== '' ? $lastMessage : 'TopDawg product submitted for review.',
-            'listing_id' => $listingId,
+            'message' => $lastMessage !== '' ? $lastMessage : 'Published to TopDawg.',
+            'listing_id' => ChannelListingRegistry::isLiveTopDawgListingId($listingId, $sku) ? $listingId : $tdid,
             'tdid' => $tdid,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function lookupLiveCatalogProduct(string $sku, bool $scanCatalog = false): ?array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        try {
+            return $this->fetchLiveProductRow($sku, $scanCatalog);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function waitForLiveCatalogRow(string $sku): ?array
+    {
+        for ($attempt = 0; $attempt < 4; $attempt++) {
+            if ($attempt > 0) {
+                usleep(400000);
+            }
+            $row = $this->lookupLiveCatalogProduct($sku, $attempt === 3);
+            if (is_array($row)) {
+                return $row;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1062,13 +1115,21 @@ class TopDawgApiService
         if ($local) {
             $listingId = trim((string) ($local->topdawg_listing_id ?? ''));
             $tdid = trim((string) ($local->tdid ?? ''));
-            if ($listingId !== '' || $tdid !== '') {
-                return [
-                    'success' => true,
-                    'message' => 'Connected existing TopDawg listing.',
-                    'listing_id' => $listingId !== '' ? $listingId : $tdid,
-                    'tdid' => $tdid,
-                ];
+            $id = ChannelListingRegistry::isLiveTopDawgListingId($listingId, $sku)
+                ? $listingId
+                : (ChannelListingRegistry::isLiveTopDawgListingId($tdid, $sku) ? $tdid : '');
+            if ($id !== '') {
+                $live = $this->lookupLiveCatalogProduct($sku, false);
+                if (is_array($live)) {
+                    $ids = $this->listingIdsFromTopDawgRow($live, $sku);
+
+                    return [
+                        'success' => true,
+                        'message' => 'Connected existing TopDawg listing.',
+                        'listing_id' => $ids['listing_id'] !== '' ? $ids['listing_id'] : $id,
+                        'tdid' => $ids['tdid'] !== '' ? $ids['tdid'] : $tdid,
+                    ];
+                }
             }
         }
 
@@ -1076,7 +1137,7 @@ class TopDawgApiService
             return null;
         }
 
-        $live = $this->fetchLiveProductRow($sku, false);
+        $live = $this->fetchLiveProductRow($sku, true);
         if (! is_array($live)) {
             return null;
         }
@@ -1183,19 +1244,31 @@ class TopDawgApiService
             $msrp = $cost;
         }
 
+        $dept = trim((string) ($fields['dept'] ?? $fields['department'] ?? 'Electronics')) ?: 'Electronics';
+        $section = trim((string) ($fields['section'] ?? 'Music')) ?: 'Music';
+        $category = trim((string) ($fields['category'] ?? $fields['product_category'] ?? 'Music Accessories')) ?: 'Music Accessories';
+        $madeIn = trim((string) ($fields['product_made_in'] ?? $fields['country_of_origin'] ?? 'China')) ?: 'China';
+        $upc = preg_replace('/\D+/', '', (string) ($fields['upc'] ?? $fields['gtin'] ?? '')) ?? '';
+        $condition = trim((string) ($fields['condition'] ?? $fields['condition_name'] ?? 'New')) ?: 'New';
+
         $payload = [
             'product_code' => $sku,
             'sku' => $sku,
-            'brand_name' => trim((string) ($fields['brand_name'] ?? '5 Core')) ?: '5 Core',
+            'brand_name' => trim((string) ($fields['brand_name'] ?? $fields['brand'] ?? '5 Core')) ?: '5 Core',
+            'manufacturer' => trim((string) ($fields['manufacturer'] ?? $fields['brand_name'] ?? '5 Core')) ?: '5 Core',
             'product_name' => $title,
             'product_description' => $description,
             'description' => $description,
             'long_description' => $description,
-            'dept' => trim((string) ($fields['dept'] ?? 'Electronics')) ?: 'Electronics',
-            'section' => trim((string) ($fields['section'] ?? 'Music')) ?: 'Music',
-            'category' => trim((string) ($fields['category'] ?? 'Music Accessories')) ?: 'Music Accessories',
+            'dept' => $dept,
+            'department' => $dept,
+            'section' => $section,
+            'category' => $category,
+            'product_category' => $category,
             'gender' => trim((string) ($fields['gender'] ?? 'Unisex')) ?: 'Unisex',
             'age_group' => trim((string) ($fields['age_group'] ?? 'Adults')) ?: 'Adults',
+            'condition' => $condition,
+            'product_condition' => $condition,
             'cost' => $cost,
             'msrp' => $msrp,
             'qty_available' => isset($fields['qty_available']) ? max(0, (int) $fields['qty_available']) : 0,
@@ -1203,11 +1276,16 @@ class TopDawgApiService
                 ? max(1, (int) $fields['pack_of'])
                 : 1,
             'product_weight' => $this->positiveDecimal($fields['product_weight'] ?? null),
-            'ship_length' => $this->positiveDecimal($fields['ship_length'] ?? null),
-            'ship_width' => $this->positiveDecimal($fields['ship_width'] ?? null),
-            'ship_height' => $this->positiveDecimal($fields['ship_height'] ?? null),
-            'product_made_in' => trim((string) ($fields['product_made_in'] ?? 'China')) ?: 'China',
+            'ship_length' => $this->positiveDecimal($fields['ship_length'] ?? $fields['package_length'] ?? null),
+            'ship_width' => $this->positiveDecimal($fields['ship_width'] ?? $fields['package_width'] ?? null),
+            'ship_height' => $this->positiveDecimal($fields['ship_height'] ?? $fields['package_height'] ?? null),
+            'product_made_in' => $madeIn,
+            'country_of_origin' => $madeIn,
         ];
+        if (strlen($upc) >= 8) {
+            $payload['upc'] = $upc;
+            $payload['gtin'] = $upc;
+        }
 
         if ($images !== []) {
             $payload['picture_url'] = implode(',', array_slice($images, 0, 8));
