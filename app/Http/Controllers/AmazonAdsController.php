@@ -3651,6 +3651,105 @@ class AmazonAdsController extends Controller
         ]);
     }
 
+    /**
+     * Daily CPC for one campaign (Amazon report rows, YYYY-MM-DD), newest 365 days.
+     */
+    public function cpcAvgHistory(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
+        if ($cid === '') {
+            return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
+        }
+
+        $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
+        if ($table === null || ! Schema::hasTable($table)) {
+            return response()->json(['ok' => false, 'message' => 'No daily CPC table for this row.', 'points' => []], 404);
+        }
+
+        $dbColumns = Schema::getColumnListing($table);
+        $costCol = in_array('cost', $dbColumns, true) ? 'cost' : (in_array('spend', $dbColumns, true) ? 'spend' : null);
+        $hasClicks = in_array('clicks', $dbColumns, true);
+        $hasCpc = in_array('costPerClick', $dbColumns, true);
+        if (! $hasCpc && ! ($costCol !== null && $hasClicks)) {
+            return response()->json(['ok' => true, 'points' => []]);
+        }
+
+        $select = ['report_date_range'];
+        if ($costCol !== null) {
+            $select[] = $costCol;
+        }
+        if ($hasClicks) {
+            $select[] = 'clicks';
+        }
+        if ($hasCpc) {
+            $select[] = 'costPerClick';
+        }
+
+        $q = DB::table($table)
+            ->select($select)
+            ->where('campaign_id', $cid)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->orderBy('report_date_range', 'desc')
+            ->limit(365);
+        $adType = trim((string) $request->query('ad_type', ''));
+        if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $q->where('ad_type', $adType);
+        }
+
+        $points = [];
+        foreach ($q->get()->reverse()->values() as $row) {
+            $r = (array) $row;
+            $day = trim((string) ($r['report_date_range'] ?? ''));
+            if ($day === '') {
+                continue;
+            }
+            $cpc = null;
+            if ($costCol !== null && $hasClicks) {
+                $clicks = (float) ($r['clicks'] ?? 0);
+                $cost = (float) ($r[$costCol] ?? 0);
+                if ($clicks > 0 && $cost > 0) {
+                    $n = $cost / $clicks;
+                    $cpc = is_finite($n) && $n > 0 ? round($n, 4) : null;
+                }
+            }
+            if ($cpc === null && $hasCpc) {
+                $n = (float) ($r['costPerClick'] ?? 0);
+                $cpc = is_finite($n) && $n > 0 ? round($n, 4) : null;
+            }
+            if ($cpc === null) {
+                continue;
+            }
+            $points[] = ['date' => $day, 'cpc' => $cpc];
+        }
+
+        return response()->json(['ok' => true, 'points' => $points]);
+    }
+
+    private static function cpcHistoryTable(mixed $source, mixed $adType): ?string
+    {
+        $source = is_string($source) ? $source : '';
+        if (isset(self::RAW_TABLE_SOURCES[$source])) {
+            $table = self::RAW_TABLE_SOURCES[$source];
+            if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)) {
+                return $table;
+            }
+        }
+
+        $ad = strtoupper(trim(is_string($adType) ? $adType : ''));
+        if (str_contains($ad, 'BRAND')) {
+            return 'amazon_sb_campaign_reports';
+        }
+        if (str_contains($ad, 'DISPLAY')) {
+            return 'amazon_sd_campaign_reports';
+        }
+        if ($ad !== '' || $source === 'all_reports' || $source === 'sp_reports') {
+            return 'amazon_sp_campaign_reports';
+        }
+
+        return null;
+    }
+
 
     /**
      * Current U2%/U1% → SBID rule (Amazon Ads SBID RULE modal).

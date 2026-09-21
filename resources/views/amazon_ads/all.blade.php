@@ -195,20 +195,6 @@
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignName"].tabulator-sortable .tabulator-col-title {
             padding-right: 14px !important;
         }
-        /* BGT / bid headers: label stays vertical, sync counts stay horizontal */
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="bgt"] .tabulator-col-title,
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="last_sbid"] .tabulator-col-title,
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="sbid"] .tabulator-col-title {
-            writing-mode: horizontal-tb !important;
-            text-orientation: mixed !important;
-            transform: none !important;
-            height: 100% !important;
-            display: flex !important;
-            align-items: center;
-            justify-content: flex-end;
-            white-space: normal !important;
-            padding: 2px 0 !important;
-        }
         #amz-ads-raw-wrap .tabulator .tabulator-row { min-height: 32px; }
         #amz-ads-raw-wrap .tabulator .tabulator-row .tabulator-cell { padding: 3px 2px !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder { padding-left: 2px !important; padding-right: 2px !important; }
@@ -293,6 +279,14 @@
             color: #2563eb; font-size: 9px; line-height: 1; cursor: pointer;
         }
         #amz-ads-raw-wrap .amz-camp-skus-btn:hover { background: #2563eb; color: #fff; border-color: #2563eb; }
+        .amz-cpc-avg-cell {
+            display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;
+        }
+        .amz-cpc-avg-history-dot {
+            width: 8px; height: 8px; border: 0; padding: 0; border-radius: 50%;
+            background: #166534; cursor: pointer; flex-shrink: 0;
+        }
+        .amz-cpc-avg-history-dot:hover { transform: scale(1.35); }
         /* Pagination footer */
         #amz-ads-raw-wrap .tabulator .tabulator-footer {
             background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important; padding: 10px 16px !important;
@@ -759,6 +753,26 @@
         </div>
     </div>
 
+    <div class="modal fade" id="amazonAdsCpcAvgHistoryModal" tabindex="-1" aria-labelledby="amazonAdsCpcAvgHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsCpcAvgHistoryModalLabel">CPC history</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2" id="amazonAdsCpcAvgHistorySub">Daily CPC from Amazon ad reports.</p>
+                    <div id="amazonAdsCpcAvgHistoryLoading" class="small text-muted">Loading…</div>
+                    <p class="small text-danger mb-0 d-none" id="amazonAdsCpcAvgHistoryError" role="alert"></p>
+                    <div id="amazonAdsCpcAvgHistoryChart" style="min-height: 280px;"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="amazonAdsCampaignSkusModal" tabindex="-1" aria-labelledby="amazonAdsCampaignSkusModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-scrollable modal-lg modal-fullscreen-sm-down">
             <div class="modal-content">
@@ -1214,6 +1228,7 @@
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
             var prRuleSaveUrl = @json(route('amazon.ads.pr-rule.save'));
             var campaignSkusUrl = @json(route('amazon.ads.campaign-skus'));
+            var cpcAvgHistoryUrl = @json(route('amazon.ads.cpc-avg-history'));
             var u7PieDistribUrl = @json(url('/amazon-ads/u7-distribution')) + '/';
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
             window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
@@ -1442,6 +1457,22 @@
                 var n = parseInt(v, 10);
                 if (isNaN(n)) return amzDash();
                 return '<span class="fw-semibold">' + n.toLocaleString() + '</span>';
+            }
+            function fmtCpcAvg(cell) {
+                var v = cell.getValue();
+                var text = '—';
+                if (v !== null && v !== undefined && v !== '') {
+                    var n = typeof v === 'number' ? v : parseFloat(v);
+                    if (!isNaN(n)) text = n.toFixed(2);
+                }
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var cid = row && row.campaign_id != null ? String(row.campaign_id) : '';
+                var name = row && row.campaignName != null ? String(row.campaignName) : '';
+                var ad = row && row.ad_type != null ? String(row.ad_type) : '';
+                return '<span class="amz-cpc-avg-cell">'
+                    + '<button type="button" class="amz-cpc-avg-history-dot" title="Daily CPC history" aria-label="Daily CPC history"'
+                    + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '"></button>'
+                    + '<span>' + text + '</span></span>';
             }
             function fmt2dec(cell) {
                 var v = cell.getValue();
@@ -1870,10 +1901,9 @@
                 if (c === 'last_sbid') {
                     col.title = 'Lbid';
                     col.formatter = function (cell) { return amzFmtMoneyWithSync(cell, 'bid'); };
-                    col.titleFormatter = function () { return amzSyncHeaderHtml('Lbid', 'bid'); };
-                    col.headerTooltip = 'Live Amazon BID sync vs SBID. Green = verified live match. Click a count to filter.';
-                    col.minWidth = 96;
-                    col.width = 108;
+                    col.headerTooltip = 'Live Amazon BID sync vs SBID. Green = verified live match.';
+                    col.minWidth = 64;
+                    col.width = 72;
                     return;
                 }
                 if (c === 'sbid') {
@@ -1881,19 +1911,18 @@
                     col.formatter = fmtSbid;
                     if (!amzSourceHasColumn('last_sbid')) {
                         col.formatter = function (cell) { return amzFmtMoneyWithSync(cell, 'bid'); };
-                        col.titleFormatter = function () { return amzSyncHeaderHtml('SBID', 'bid'); };
-                        col.headerTooltip = 'Amazon BID sync vs SBID. Green = verified live match. Click a count to filter.';
-                        col.minWidth = 96;
+                        col.headerTooltip = 'Amazon BID sync vs SBID. Green = verified live match.';
+                        col.minWidth = 64;
+                        col.width = 72;
                     }
                     return;
                 }
                 if (c === 'bgt') {
                     col.title = 'BGT';
                     col.formatter = function (cell) { return amzFmtMoneyWithSync(cell, 'bgt'); };
-                    col.titleFormatter = function () { return amzSyncHeaderHtml('BGT', 'bgt'); };
-                    col.headerTooltip = 'Live Amazon BGT sync vs SBGT. Green = verified live match. Click a count to filter.';
-                    col.minWidth = 96;
-                    col.width = 108;
+                    col.headerTooltip = 'Live Amazon BGT sync vs SBGT. Green = verified live match.';
+                    col.minWidth = 64;
+                    col.width = 72;
                     return;
                 }
                 if (c === 'bgtAcos') {
@@ -1937,7 +1966,7 @@
                     return;
                 }
                 if (c === 'bgtReviews') {
-                    col.title = 'Bgt Reviews';
+                    col.title = 'Bgt REV';
                     col.headerTooltip = 'Suggested budget from BGT Vs REVIEWS — campaign star rating slabs';
                     col.formatter = fmtBgtReviews;
                     col.width = 68;
@@ -1963,7 +1992,7 @@
                     return;
                 }
                 if (c === 'viewsL30') {
-                    col.title = 'Views L30';
+                    col.title = 'Vw L30';
                     col.headerTooltip = 'Amz page parent View L30 (Σ Sess30) — same parent row as CVR';
                     col.formatter = function (cell) { return fmtAmzParentViews(cell, null); };
                     col.width = 72;
@@ -1971,7 +2000,7 @@
                     return;
                 }
                 if (c === 'viewsL7') {
-                    col.title = 'Views L7';
+                    col.title = 'Vw L7';
                     col.headerTooltip = 'Amz page parent View L7 (Σ Sess7) — same parent row as CVR. Red when under 70.';
                     col.formatter = function (cell) { return fmtAmzParentViews(cell, 70); };
                     col.width = 68;
@@ -1991,10 +2020,10 @@
                 if (c === 'CPC3') { col.title = 'CPC3'; col.formatter = fmt2dec; return; }
                 if (c === 'CPCAvg') {
                     col.title = 'CPC Avg';
-                    col.headerTooltip = 'Lifetime average CPC from Amazon Ads daily reports — total cost ÷ total clicks.';
-                    col.formatter = fmt2dec;
-                    col.width = 68;
-                    col.minWidth = 60;
+                    col.headerTooltip = 'Lifetime average CPC from Amazon Ads daily reports — total cost ÷ total clicks. Green dot opens daily CPC history.';
+                    col.formatter = fmtCpcAvg;
+                    col.width = 78;
+                    col.minWidth = 70;
                     return;
                 }
                 if (c === 'CPC2') { col.title = 'CPC2'; col.formatter = fmt2dec; return; }
@@ -2095,17 +2124,6 @@
                     + ' title="' + amzEsc(tip) + '" aria-pressed="' + (active === color ? 'true' : 'false') + '">'
                     + '<span class="amz-sync-dot is-' + color + '"></span>' + (Number(count) || 0)
                     + '</button>';
-            }
-            function amzSyncHeaderHtml(label, field) {
-                var counts = amzSyncHeaderCounts[field] || { green: 0, yellow: 0, red: 0 };
-                var active = amzSyncFilters[field] || '';
-                return '<div class="amz-sync-head">'
-                    + '<div class="amz-sync-head-title">' + amzEsc(label) + '</div>'
-                    + '<div class="amz-sync-head-badges" data-sync-field="' + field + '">'
-                    + amzSyncBadgeHtml('green', counts.green, field, active)
-                    + amzSyncBadgeHtml('yellow', counts.yellow, field, active)
-                    + amzSyncBadgeHtml('red', counts.red, field, active)
-                    + '</div></div>';
             }
             function amzNormalizeSyncCounts(raw) {
                 return {
@@ -2897,7 +2915,79 @@
                     amzOpenCampaignSkus(plus.getAttribute('data-campaign-id') || '', plus.getAttribute('data-campaign-name') || '');
                     return;
                 }
+                var cpcDot = e.target.closest ? e.target.closest('.amz-cpc-avg-history-dot') : null;
+                if (cpcDot) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    amzOpenCpcAvgHistory({
+                        campaign_id: cpcDot.getAttribute('data-campaign-id') || '',
+                        campaignName: cpcDot.getAttribute('data-campaign-name') || '',
+                        ad_type: cpcDot.getAttribute('data-ad-type') || ''
+                    });
+                }
             });
+            var amzCpcAvgChart = null;
+            function amzOpenCpcAvgHistory(row) {
+                row = row || {};
+                var cid = String(row.campaign_id || '').replace(/\D+/g, '');
+                var name = row.campaignName != null ? String(row.campaignName) : '';
+                var modalEl = document.getElementById('amazonAdsCpcAvgHistoryModal');
+                var sub = document.getElementById('amazonAdsCpcAvgHistorySub');
+                var load = document.getElementById('amazonAdsCpcAvgHistoryLoading');
+                var err = document.getElementById('amazonAdsCpcAvgHistoryError');
+                var box = document.getElementById('amazonAdsCpcAvgHistoryChart');
+                if (!modalEl) return;
+                if (sub) sub.textContent = (name || cid || 'Campaign') + ' — daily CPC from Amazon ad reports.';
+                if (load) load.classList.remove('d-none');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                if (box) box.innerHTML = '';
+                if (amzCpcAvgChart) { try { amzCpcAvgChart.destroy(); } catch (e) {} amzCpcAvgChart = null; }
+                if (window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                if (!cid) {
+                    if (load) load.classList.add('d-none');
+                    if (err) { err.textContent = 'This row has no campaign id.'; err.classList.remove('d-none'); }
+                    return;
+                }
+                var qs = '?campaign_id=' + encodeURIComponent(cid)
+                    + '&source=' + encodeURIComponent(activeRawSourceKey || '')
+                    + '&ad_type=' + encodeURIComponent(row.ad_type != null ? String(row.ad_type) : '');
+                fetch(cpcAvgHistoryUrl + qs, {
+                    method: 'GET',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                })
+                    .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+                    .then(function (out) {
+                        if (load) load.classList.add('d-none');
+                        var points = (out.body && Array.isArray(out.body.points)) ? out.body.points : [];
+                        if (!out.ok || !out.body || out.body.ok === false) {
+                            if (err) { err.textContent = (out.body && out.body.message) ? out.body.message : 'Could not load CPC history.'; err.classList.remove('d-none'); }
+                            return;
+                        }
+                        if (!points.length) {
+                            if (box) box.innerHTML = '<p class="small text-muted mb-0">No daily CPC for this campaign.</p>';
+                            return;
+                        }
+                        if (typeof Highcharts === 'undefined') {
+                            if (box) box.innerHTML = '<p class="small text-muted mb-0">' + points.length + ' days of CPC.</p>';
+                            return;
+                        }
+                        amzCpcAvgChart = Highcharts.chart('amazonAdsCpcAvgHistoryChart', {
+                            chart: { type: 'line', height: 280 },
+                            title: { text: null },
+                            credits: { enabled: false },
+                            xAxis: { categories: points.map(function (p) { return p.date; }), labels: { rotation: -45 } },
+                            yAxis: { title: { text: 'CPC' }, min: 0 },
+                            legend: { enabled: false },
+                            tooltip: { pointFormat: 'CPC <b>{point.y:.2f}</b>' },
+                            series: [{ name: 'CPC', color: '#166534', data: points.map(function (p) { return Number(p.cpc); }) }]
+                        });
+                    })
+                    .catch(function () {
+                        if (load) load.classList.add('d-none');
+                        if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); }
+                    });
+            }
 
             // Copy-to-clipboard for campaign name icon
             document.addEventListener('click', function (e) {
