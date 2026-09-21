@@ -271,15 +271,21 @@
             cursor: help;
         }
         .temu-ads-alert-tri {
-            color: #eab308;
-            font-size: 15px;
-            line-height: 1;
+            color: #ca8a04;
+            line-height: 0;
             cursor: help;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            vertical-align: middle;
         }
-        .temu-ads-alert-tri.is-danger { color: #dc3545; }
+        .temu-ads-alert-tri svg { display: block; }
+        .temu-ads-alert-tri.is-danger { color: #dc2626; }
+        .alert .temu-ads-alert-tri { color: #111827; margin-left: 6px; }
+        .alert-danger .temu-ads-alert-tri { color: #7f1d1d; }
+        #temu-ads-table .tabulator-cell[tabulator-field="ad_create_reject"] {
+            overflow: visible;
+        }
         #temu-ads-hover-tip {
             position: fixed;
             z-index: 1080;
@@ -1118,8 +1124,31 @@
                     + '\n' + String((row && row.period) || '');
             }
 
+            const createAlertByGoods = {};
+
+            function rememberCreateAlert(gid, message) {
+                gid = String(gid || '').trim();
+                message = String(message || '').trim();
+                if (!gid || !message) return;
+                createAlertByGoods[gid] = message;
+            }
+
+            function clearCreateAlert(gid) {
+                gid = String(gid || '').trim();
+                if (gid) delete createAlertByGoods[gid];
+            }
+
             function rowCreateAlertText(data) {
-                return String((data && data.ad_create_reject) || '').trim();
+                const gid = String((data && data.goods_id) || '').trim();
+                return String((data && data.ad_create_reject) || createAlertByGoods[gid] || '').trim();
+            }
+
+            function adsAlertTriangleHtml(reason, extraClass) {
+                if (!reason) return '';
+                return '<span class="temu-ads-alert-tri ' + (extraClass || '') + '" data-ads-alert="' + escapeAttr(reason) + '" role="img" aria-label="Create ad alert">' +
+                    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+                    '<path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>' +
+                    '</svg></span>';
             }
 
             function prepareAdsRows(rows) {
@@ -1130,8 +1159,11 @@
                     const gid = String(r.goods_id || '');
                     const p = String(r.parent || '').trim().replace(/^PARENT\s+/i, '');
                     if (gid && p && !byGoods[gid]) byGoods[gid] = p;
-                    const reason = rowCreateAlertText(r);
+                    const reason = String(r.ad_create_reject || '').trim() || createAlertByGoods[gid] || '';
                     if (gid && reason && !rejectByGoods[gid]) rejectByGoods[gid] = reason;
+                });
+                Object.keys(createAlertByGoods).forEach(function (gid) {
+                    if (!rejectByGoods[gid]) rejectByGoods[gid] = createAlertByGoods[gid];
                 });
                 (rows || []).forEach(function (r) {
                     if (!r) return;
@@ -1139,9 +1171,8 @@
                     if (!String(r.parent || '').trim() && byGoods[String(r.goods_id || '')]) {
                         r.parent = byGoods[String(r.goods_id || '')];
                     }
-                    if (!rowCreateAlertText(r) && rejectByGoods[String(r.goods_id || '')]) {
-                        r.ad_create_reject = rejectByGoods[String(r.goods_id || '')];
-                    }
+                    const gid = String(r.goods_id || '');
+                    if (rejectByGoods[gid]) r.ad_create_reject = rejectByGoods[gid];
                     r.is_parent = r.is_parent === true || r.is_parent === 1 || r.is_parent === '1';
                     r._row_key = r.is_parent
                         ? ('p|' + String(r.goods_id || '') + '|' + String(r.period || '') + '|' + String(r.parent || ''))
@@ -2055,10 +2086,7 @@
                             return as - bs;
                         },
                         formatter: function (cell) {
-                            const reason = rowCreateAlertText(cell.getRow().getData() || {});
-                            if (!reason) return '';
-                            return '<span class="temu-ads-alert-tri is-danger" data-ads-alert="' + escapeAttr(reason) + '">' +
-                                '<i class="fas fa-exclamation-triangle"></i></span>';
+                            return adsAlertTriangleHtml(rowCreateAlertText(cell.getRow().getData() || {}), 'is-danger');
                         },
                     },
                     { title: 'Ovl30', field: 'ovl30', width: 62, minWidth: 54, hozAlign: 'center', formatter: numFmt, sorter: 'number',
@@ -3286,6 +3314,7 @@
                     const gid = String(item.goods_id || '').trim();
                     if (!gid) return;
                     const message = String(item.message || 'Create ad failed.').trim();
+                    rememberCreateAlert(gid, message);
                     (allAdsRows || []).forEach(function (r) {
                         if (String((r && r.goods_id) || '') === gid) r.ad_create_reject = message;
                     });
@@ -3410,6 +3439,7 @@
                         });
                         const data = await res.json();
                         created += (data.created && data.created.length) ? data.created.length : 0;
+                        (data.created || []).forEach(clearCreateAlert);
                         if (data.failed && data.failed.length) {
                             failed += data.failed.length;
                             applyCreateRejectToRows(data.failed);
@@ -3432,10 +3462,8 @@
                 if (failed > 0) msg += '. Failed ' + failed;
                 if (rejectedN > 0) msg += '. ' + rejectedN + ' listing reject(s)';
                 const full = failNotes.join('\n\n');
-                const tri = full
-                    ? ' <span class="temu-ads-alert-tri' + (created === 0 ? ' is-danger' : '') + '" data-ads-alert="' + escapeAttr(full) + '"><i class="fas fa-exclamation-triangle"></i></span>'
-                    : '';
-                status.innerHTML = '<div class="alert ' + cls + ' py-2 mb-0">' + msg + tri + '</div>';
+                status.innerHTML = '<div class="alert ' + cls + ' py-2 mb-0 d-inline-flex align-items-center flex-wrap">' +
+                    '<span>' + msg + '</span>' + adsAlertTriangleHtml(full) + '</div>';
                 if (badge) badge.style.pointerEvents = '';
                 table.setData(dataUrl());
             }
@@ -3575,31 +3603,31 @@
                     data: { goods_id: goodsId, budget: budget, roas: roas, _token: '{{ csrf_token() }}' },
                     success: function (response) {
                         if (response.success) {
+                            clearCreateAlert(goodsId);
                             showCreateStatus('<div class="alert alert-success py-2 mb-0">' + (response.message || 'Created') + '</div>');
                             table.setData(dataUrl());
                         } else {
-                            showCreateStatus('<div class="alert alert-danger py-2 mb-0">' + (response.message || 'Failed') + '</div>');
-                            if (response.rejected) {
-                                applyCreateRejectToRows([{
-                                    goods_id: goodsId,
-                                    message: response.message || 'Temu rejected this listing for ads.',
-                                    rejected: true,
-                                }]);
-                            }
+                            const failMsg = response.message || 'Failed';
+                            showCreateStatus('<div class="alert alert-danger py-2 mb-0 d-inline-flex align-items-center">' +
+                                '<span>' + failMsg + '</span>' + adsAlertTriangleHtml(failMsg) + '</div>');
+                            applyCreateRejectToRows([{
+                                goods_id: goodsId,
+                                message: failMsg,
+                                rejected: !!response.rejected,
+                            }]);
                             table.setData(dataUrl());
                         }
                     },
                     error: function (xhr) {
                         const data = xhr.responseJSON || {};
                         const msg = data.message || 'Create failed';
-                        showCreateStatus('<div class="alert alert-danger py-2 mb-0">' + msg + '</div>');
-                        if (data.rejected) {
-                            applyCreateRejectToRows([{
-                                goods_id: goodsId,
-                                message: data.message || 'Temu rejected this listing for ads.',
-                                rejected: true,
-                            }]);
-                        }
+                        showCreateStatus('<div class="alert alert-danger py-2 mb-0 d-inline-flex align-items-center">' +
+                            '<span>' + msg + '</span>' + adsAlertTriangleHtml(msg) + '</div>');
+                        applyCreateRejectToRows([{
+                            goods_id: goodsId,
+                            message: msg,
+                            rejected: !!data.rejected,
+                        }]);
                         table.setData(dataUrl());
                     },
                     complete: function () {
