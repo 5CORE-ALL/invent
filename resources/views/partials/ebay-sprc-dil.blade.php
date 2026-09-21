@@ -1,8 +1,8 @@
 {{--
   Sprc Dil — Dil → Target NROI slabs on every Dil tabulator (Ads%=0 → same $ as GROI).
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
-  Master page /master-dil-rules writes the same existing store on every site.
-  A slab add/remove/value change on one site also updates that slab on the others.
+  A slab edit on this page writes only this channel's store.
+  Master page /master-dil-rules is the only save that writes every site.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Temu 3 also has a 0–0 slab on top for Dil = 0.
   AliExpress / Shein / Faire / TikTok / Mercari / PLS / Best Buy / Newegg / Reverb / Wayfair / Depop: 0–0 slab on top for Dil = 0. Channel L30 = 0 uses min Target NROI (same as other 0 Sold pages). Sold rows use the Dil-matching slab.

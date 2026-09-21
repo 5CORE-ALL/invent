@@ -74,7 +74,7 @@
                         removed on every site’s existing Dil vs Target NROI store. Change a Target NROI%
                         and that same From–To slab is updated wherever it is already used.
                         Per-site pages keep reading their own data. CVR overlay stays per site.
-                        Editing a slab on any one site page also updates that same slab on the other sites.
+                        Editing a slab on one site page changes only that page.
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0 mdil-table" id="mdil-table">

@@ -1790,6 +1790,67 @@
                         }
                     },
                     {
+                        title: "Push",
+                        field: "push_status",
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 52,
+                        headerTooltip: "S PRC push to Newegg. Double tick = S PRC matches Price. Upload = needs push. Cross = last push failed. Click to push this SKU.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const rank = function(d) {
+                                const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
+                                const shown = neShownSprice(d);
+                                const live = parseFloat(d && d.price) || 0;
+                                const matched = shown > 0 && live > 0 && Math.round(shown * 100) === Math.round(live * 100);
+                                if (status === 'queued' || status === 'processing' || status === 'pushing') return 3;
+                                if (!matched && (status === 'error' || status === 'failed')) return 2;
+                                if (matched) return 4;
+                                return shown > 0 ? 1 : 0;
+                            };
+                            return rank(aRow.getData()) - rank(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData() || {};
+                            if (!d.sku) return '';
+                            const price = neShownSprice(d);
+                            const live = parseFloat(d.price) || 0;
+                            const status = String(d.push_status || d.SPRICE_STATUS || '');
+                            if (!(price > 0)) {
+                                return '<span style="color:#adb5bd;" title="No S PRC">—</span>';
+                            }
+                            const matched = live > 0 && Math.round(price * 100) === Math.round(live * 100);
+                            let icon = '<i class="fas fa-upload"></i>';
+                            let color = '#0d6efd';
+                            let tip = 'Push $' + price.toFixed(2) + ' to Newegg'
+                                + (live > 0 ? ' (Price is $' + live.toFixed(2) + ')' : '');
+                            if (status === 'queued' || status === 'processing' || status === 'pushing') {
+                                icon = '<i class="fas fa-spinner fa-spin"></i>';
+                                color = '#ffc107';
+                                tip = 'Pushing $' + price.toFixed(2) + ' to Newegg…';
+                            } else if (!matched && (status === 'error' || status === 'failed')) {
+                                icon = '<i class="fa-solid fa-x"></i>';
+                                color = '#dc3545';
+                                tip = 'Last push failed — click to retry $' + price.toFixed(2);
+                            } else if (matched) {
+                                icon = '<i class="fa-solid fa-check-double"></i>';
+                                color = '#28a745';
+                                tip = 'S PRC $' + price.toFixed(2) + ' matches Newegg Price';
+                            }
+                            return '<button type="button" class="ne-push-ind-btn" data-sku="'
+                                + String(d.sku).replace(/"/g, '&quot;')
+                                + '" title="' + tip.replace(/"/g, '&quot;')
+                                + '" style="border:none;background:none;color:' + color
+                                + ';padding:0;cursor:pointer;font-size:16px;">' + icon + '</button>';
+                        },
+                        cellClick: function(e, cell) {
+                            const t = e.target;
+                            if (!t || typeof t.closest !== 'function' || !t.closest('.ne-push-ind-btn')) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            pushOneNeweggRow(cell.getRow());
+                        }
+                    },
+                    {
                         title: "SGROI%", field: "sroi", hozAlign: "right", headerSort: true,
                         accessor: function(value, data) {
                             return neSpriceMetrics(data).sroi;
@@ -2590,6 +2651,27 @@
 
             // Shared push pipeline: chunks updates, calls /newegg-pricing-push for each
             // chunk sequentially, reconciles per-row Price cells, and summarises in one toast.
+            function neMarkPushStatus(sku, status) {
+                if (!table || !sku) return;
+                table.searchRows('sku', '=', sku).forEach(function(row) {
+                    try { row.update({ push_status: status, SPRICE_STATUS: status }); } catch (e) { /* ignore */ }
+                });
+            }
+
+            function pushOneNeweggRow(row) {
+                const d = row && typeof row.getData === 'function' ? (row.getData() || {}) : {};
+                const sku = String(d.sku || '').trim();
+                const shown = neShownSprice(d);
+                if (!sku || !(shown > 0)) {
+                    showToast('No S PRC to push', 'error');
+                    return;
+                }
+                const price = +shown.toFixed(2);
+                if (!confirm('Push $' + price.toFixed(2) + ' to Newegg for ' + sku + '?')) return;
+                neMarkPushStatus(sku, 'queued');
+                pushUpdatesInChunks([{ sku: sku, price: price }], null);
+            }
+
             function pushUpdatesInChunks(updates, $btn) {
                 if (!updates || updates.length === 0) {
                     showToast('Nothing to push', 'error');
@@ -2626,6 +2708,7 @@
                         return;
                     }
 
+                    chunks[idx].forEach(u => neMarkPushStatus(u.sku, 'queued'));
                     $.ajax({
                         url: "{{ route('newegg.pricing.push') }}",
                         method: 'POST',
@@ -2633,18 +2716,27 @@
                         data: { updates: chunks[idx] },
                         success: function(res) {
                             if (!res || (res.success === false && !(res.pushed > 0))) {
-                                chunks[idx].forEach(u => allFails.push({
-                                    sku: u.sku,
-                                    error: (res && (res.error || res.message)) || 'Newegg did not confirm the price',
-                                }));
+                                chunks[idx].forEach(u => {
+                                    allFails.push({
+                                        sku: u.sku,
+                                        error: (res && (res.error || res.message)) || 'Newegg did not confirm the price',
+                                    });
+                                    neMarkPushStatus(u.sku, 'error');
+                                });
                                 totalFailed += chunks[idx].length;
                                 return;
                             }
                             totalPushed += (res.pushed || 0);
                             totalFailed += (res.failed || 0);
-                            (res.results || []).filter(r => r.success && r.price > 0).forEach(r => {
-                                const rows = table.searchRows('sku', '=', r.sku);
-                                if (rows.length) rows[0].update({ price: r.price });
+                            (res.results || []).forEach(r => {
+                                if (r.success && r.price > 0) {
+                                    const rows = table.searchRows('sku', '=', r.sku);
+                                    if (rows.length) {
+                                        try { rows[0].update({ price: r.price, push_status: 'pushed', SPRICE_STATUS: 'pushed' }); } catch (e) { /* ignore */ }
+                                    }
+                                } else if (!r.success) {
+                                    neMarkPushStatus(r.sku, 'error');
+                                }
                             });
                             if (typeof updateSummary === 'function') {
                                 try { updateSummary(); } catch (e) { /* ignore */ }
@@ -2654,9 +2746,12 @@
                         error: function(xhr) {
                             const r = xhr.responseJSON || {};
                             // Whole chunk failed (e.g. Cloudflare 502). Count each row as failed.
-                            chunks[idx].forEach(u => allFails.push({
-                                sku: u.sku, error: (r.error || `HTTP ${xhr.status}`)
-                            }));
+                            chunks[idx].forEach(u => {
+                                allFails.push({
+                                    sku: u.sku, error: (r.error || `HTTP ${xhr.status}`)
+                                });
+                                neMarkPushStatus(u.sku, 'error');
+                            });
                             totalFailed += chunks[idx].length;
                         },
                         complete: function() {
