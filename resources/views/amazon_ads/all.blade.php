@@ -1911,6 +1911,11 @@
                 var c = color === 'green' || color === 'red' ? color : 'yellow';
                 return '<span class="amz-sync-dot is-' + c + '" title="' + amzEsc(tip || '') + '"></span>';
             }
+            function amzShownBidMatches(row) {
+                var live = parseFloat(row && row.last_sbid);
+                var want = parseFloat(row && row.sbid);
+                return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.abs(live - want) <= 0.015;
+            }
             function amzFmtMoneyWithSync(cell, field) {
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var color = (row && row[field + '_sync_color']) ? String(row[field + '_sync_color']) : 'yellow';
@@ -2001,10 +2006,16 @@
                             + Number(src.sbgt).toFixed(2);
                     }
                     if (src.sbid != null) {
-                        patch.bid_sync_color = 'yellow';
-                        patch.bid_sync_status = 'pending';
-                        patch.bid_sync_tip = 'Pending — Pulling live Amazon BID for verification against SBID $'
-                            + Number(src.sbid).toFixed(2);
+                        if (amzShownBidMatches(d)) {
+                            patch.bid_sync_color = 'green';
+                            patch.bid_sync_status = 'synced';
+                            patch.bid_sync_tip = 'Updated — Lbid matches SBID';
+                        } else {
+                            patch.bid_sync_color = 'yellow';
+                            patch.bid_sync_status = 'pending';
+                            patch.bid_sync_tip = 'Pending — Pulling live Amazon BID for verification against SBID $'
+                                + Number(src.sbid).toFixed(2);
+                        }
                     }
                     if (Object.keys(patch).length) row.update(patch);
                 });
@@ -2031,9 +2042,18 @@
                         if (r.fields.bgt.reason === 'paused_zero_sbgt') patch.campaignStatus = 'PAUSED';
                     }
                     if (r.fields.bid) {
-                        patch.bid_sync_color = r.fields.bid.sync_color || amzColorFromStatus(r.fields.bid.status);
-                        patch.bid_sync_tip = r.fields.bid.sync_tip || '';
-                        patch.bid_sync_status = r.fields.bid.status || '';
+                        var bidFailed = String(r.fields.bid.status || '') === 'failed';
+                        if (!bidFailed && amzShownBidMatches(d)) {
+                            patch.bid_sync_color = 'green';
+                            patch.bid_sync_status = 'synced';
+                            patch.bid_sync_tip = String(r.fields.bid.status || '') === 'synced' && r.fields.bid.sync_tip
+                                ? r.fields.bid.sync_tip
+                                : 'Updated — Lbid matches SBID';
+                        } else if (String(r.fields.bid.reason || '') !== 'concurrent_sync' && String(r.fields.bid.status || '') !== 'in_progress') {
+                            patch.bid_sync_color = r.fields.bid.sync_color || amzColorFromStatus(r.fields.bid.status);
+                            patch.bid_sync_tip = r.fields.bid.sync_tip || '';
+                            patch.bid_sync_status = r.fields.bid.status || '';
+                        }
                         if (r.fields.bid.status === 'synced' && r.fields.bid.verified_live != null) {
                             patch.last_sbid = r.fields.bid.verified_live;
                         }

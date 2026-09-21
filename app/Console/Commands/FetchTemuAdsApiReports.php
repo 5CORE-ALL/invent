@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\TemuAdsApiReport;
 use App\Services\TemuAdsApiReportService;
 use App\Services\TemuAdsAutoPauseService;
 use Illuminate\Console\Command;
@@ -12,6 +13,7 @@ class FetchTemuAdsApiReports extends Command
     protected $signature = 'temu:fetch-ads-api-reports
                             {--period=L30 : Time period (L7, L30, or L60)}
                             {--goods-id= : Fetch for a specific goods ID only}
+                            {--fresh : Truncate temu_ads_api_reports before fetching}
                             {--reparse : Re-extract Overall metrics from stored raw JSON (no API call)}';
 
     protected $description = 'Fetch Temu ads goods reports via API and store full raw JSON in temu_ads_api_reports';
@@ -37,6 +39,11 @@ class FetchTemuAdsApiReports extends Command
             $this->error('Period must be L7, L30, or L60');
 
             return 1;
+        }
+
+        if ($this->option('fresh')) {
+            TemuAdsApiReport::query()->truncate();
+            $this->warn('Truncated temu_ads_api_reports. Inserting fresh API rows with goods_id + sku_id.');
         }
 
         $this->info("Fetching Temu ads API reports ({$period})" . ($goodsId ? " for goods {$goodsId}" : ' for all goods') . '...');

@@ -115,6 +115,62 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
         $this->assertSame('Updated — Amazon BID $0.85 matches SBID $0.85', $out['tip']);
     }
 
+    public function test_matching_lbid_and_sbid_stays_green_when_another_sync_holds_the_lock(): void
+    {
+        $rows = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '111', 'sbid' => 0.75, 'last_sbid' => 0.75]],
+            [
+                'bid' => [
+                    '111' => [
+                        'status' => 'in_progress',
+                        'reason' => 'concurrent_sync',
+                        'desired_value' => 0.75,
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertSame('green', $rows[0]['bid_sync_color']);
+        $this->assertSame('synced', $rows[0]['bid_sync_status']);
+        $this->assertStringContainsString('matches SBID', $rows[0]['bid_sync_tip']);
+    }
+
+    public function test_blank_lbid_stays_yellow_during_concurrent_sync(): void
+    {
+        $rows = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '111', 'sbid' => 0.75, 'last_sbid' => null]],
+            [
+                'bid' => [
+                    '111' => [
+                        'status' => 'in_progress',
+                        'reason' => 'concurrent_sync',
+                        'desired_value' => 0.75,
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertSame('yellow', $rows[0]['bid_sync_color']);
+    }
+
+    public function test_failed_bid_stays_red_even_when_lbid_matches_sbid(): void
+    {
+        $rows = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '111', 'sbid' => 0.75, 'last_sbid' => 0.75]],
+            [
+                'bid' => [
+                    '111' => [
+                        'status' => 'failed',
+                        'reason' => 'pull_failed: no live Amazon keyword/target bid found',
+                        'desired_value' => 0.75,
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertSame('red', $rows[0]['bid_sync_color']);
+    }
+
     public function test_yellow_bid_partial_pending(): void
     {
         $out = AmazonAdsLiveSyncStatus::present('bid', [

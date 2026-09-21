@@ -66,6 +66,8 @@
     @include('partials.overdue-nudge-modal')
     @include('partials.dar-logout-nudge-modal')
     @include('partials.tat-nudge-modal')
+    @include('partials.follow-up-nudge-modal')
+    @include('partials.daily-closeout-modals')
     @auth
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')

@@ -340,7 +340,7 @@
                             <input type="text" id="search-goods-id" class="form-control form-control-sm pricing-filter-item"
                                    placeholder="Search Goods ID" style="width: 170px;">
                             <input type="text" id="search-sku" class="form-control form-control-sm pricing-filter-item"
-                                   placeholder="Search SKU" style="width: 150px;">
+                                   placeholder="Search SKU / Parent" style="width: 170px;">
                             <select id="status-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
                                     title="Filter by Status">
                                 <option value="" data-label="All Status">All Status</option>
@@ -812,6 +812,9 @@
                 if (field === 'spend_l1' && window.TemuAdsColorRules && TemuAdsColorRules.colorSpend1) {
                     TemuAdsColorRules.colorSpend1(el, v);
                 }
+                if (field === 'spend_l1') {
+                    return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
                 return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
             };
             const numFmt = (cell) => {
@@ -1010,7 +1013,10 @@
                 skip = skip || '';
                 if (skip !== 'search') {
                     if (q.goodsQ && String(data.goods_id || '').toLowerCase().indexOf(q.goodsQ) === -1) return false;
-                    if (q.skuQ && String(data.sku || '').toLowerCase().indexOf(q.skuQ) === -1) return false;
+                    if (q.skuQ) {
+                        const skuHay = (String(data.sku || '') + ' ' + String(data.parent || '') + ' ' + String(data.sku_id || '')).toLowerCase();
+                        if (skuHay.indexOf(q.skuQ) === -1) return false;
+                    }
                 }
                 if (skip !== 'status' && q.statusQ && rowStatusValue(data) !== q.statusQ) return false;
                 if (skip !== 'pause_run' && q.pauseRunQ && rowPauseRunAction(data) !== q.pauseRunQ) return false;
@@ -1214,10 +1220,14 @@
                 const list = Array.isArray(rows) ? rows : [];
                 const periodKey = currentPeriodKey();
                 let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, tacosSpend = 0, createN = 0, pauseN = 0, runN = 0;
+                const seenGoods = {};
                 list.forEach(function (r) {
+                    const gid = String(r.goods_id || '');
+                    const firstGoods = !gid || !seenGoods[gid];
+                    if (gid) seenGoods[gid] = true;
                     const inWindow = r.in_window !== false;
-                    const rowSpend = inWindow ? (parseFloat(r.ad_spend) || 0) : 0;
-                    if (inWindow) {
+                    const rowSpend = inWindow && firstGoods ? (parseFloat(r.ad_spend) || 0) : 0;
+                    if (inWindow && firstGoods) {
                         impr += parseFloat(r.impressions) || 0;
                         clicks += parseFloat(r.clicks) || 0;
                         spend += rowSpend;
@@ -1225,9 +1235,10 @@
                         sold += parseFloat(r.order_pay_cnt) || 0;
                         sales += parseFloat(r.order_pay_amt) || 0;
                     }
-                    if (inWindow && (periodKey !== 'ALL' || String(r.period || '') === 'L30')) {
+                    if (firstGoods && inWindow && (periodKey !== 'ALL' || String(r.period || '') === 'L30')) {
                         tacosSpend += rowSpend;
                     }
+                    if (!firstGoods) return;
                     if (canCreateAdRow(r)) createN++;
                     const action = rowPauseRunAction(r);
                     if (action === 'run') runN++;
@@ -1301,7 +1312,7 @@
                 setBadgeVal('impr-sum', Math.round(m.impressions).toLocaleString());
                 setBadgeVal('click-sum', Math.round(m.clicks).toLocaleString());
                 setBadgeVal('spend-sum', '$' + Math.round(Number(m.spend) || 0).toLocaleString('en-US'));
-                setBadgeVal('y-spend-sum', '$' + Math.round(Number(m.y_spend) || 0).toLocaleString('en-US'));
+                setBadgeVal('y-spend-sum', '$' + Number(m.y_spend || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
                 setBadgeVal('roas-sum', Number(m.roas || 0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
                 setBadgeVal('acos-sum', Number(m.acos || 0).toFixed(1) + '%');
                 setBadgeVal('tacos-sum', Number(m.tacos || 0).toFixed(1) + '%');
@@ -1707,7 +1718,11 @@
                             return '<img class="temu-ads-thumb" src="' + src.replace(/"/g, '&quot;') + '" alt="">';
                         },
                     },
+                    { title: 'Parent', field: 'parent', width: 120, minWidth: 80, sorter: 'string',
+                      headerTooltip: 'Parent from Product Master' },
                     { title: 'SKU', field: 'sku', width: 120, minWidth: 80, sorter: 'string' },
+                    { title: 'SKU ID', field: 'sku_id', width: 130, minWidth: 100, sorter: 'string',
+                      headerTooltip: 'Temu skuId for this variation' },
                     { title: 'Inv', field: 'inv', width: 52, minWidth: 48, hozAlign: 'center', formatter: numFmt, sorter: 'number',
                       headerTooltip: 'Inventory from shopify_skus.inv' },
                     {
@@ -2435,7 +2450,7 @@
 
             function classifyTemuAdsColumn(field) {
                 const f = String(field || '');
-                if (/^(sku|inv|image_path|ad_status|create_ad|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
+                if (/^(parent|sku|sku_id|inv|image_path|ad_status|create_ad|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
                 if (/^(impressions|impressions_l7|clicks_l30|clicks_l7|pause_run|pause_run_ok|ctr|ctr_l7|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|t_roas|roas|acos)$/.test(f)) {
                     return 'ads';
                 }
@@ -2556,6 +2571,7 @@
                     if (seen[f]) return;
                     if (f === 'spend_l1' || f === 't_roas') return;
                     valid.push(f);
+                    seen[f] = true;
                     if (f === 'ad_spend' && existing.indexOf('spend_l1') !== -1) {
                         valid.push('spend_l1');
                         seen.spend_l1 = true;
@@ -2575,6 +2591,15 @@
                     list.splice(i, 1);
                     list.splice(list.indexOf(after) + 1, 0, field);
                 }
+                function pinBefore(list, field, before) {
+                    const i = list.indexOf(field);
+                    const j = list.indexOf(before);
+                    if (i === -1 || j === -1) return;
+                    list.splice(i, 1);
+                    list.splice(list.indexOf(before), 0, field);
+                }
+                pinBefore(valid, 'parent', 'sku');
+                pinBefore(valid, 'sku_id', 'goods_id');
                 pinAfter(valid, 'create_ad', 'inv');
                 pinAfter(valid, 'ovl30', 'create_ad');
                 pinAfter(valid, 'dil_percent', 'ovl30');

@@ -11,6 +11,7 @@ class TemuAdsApiReport extends Model
     protected $fillable = [
         'goods_id',
         'sku',
+        'sku_id',
         'period',
         'start_ts',
         'end_ts',
@@ -134,10 +135,14 @@ class TemuAdsApiReport extends Model
             $period = 'L30';
         }
 
+        $base = static::query()->inLatestWindow($period);
+        $rowCount = (int) (clone $base)->count();
+        $firstIds = (clone $base)
+            ->selectRaw('MIN(id) AS id')
+            ->groupBy('goods_id');
         $row = static::query()
-            ->inLatestWindow($period)
+            ->whereIn('id', $firstIds)
             ->selectRaw('
-                COUNT(*) AS row_count,
                 COALESCE(SUM(ad_spend), 0) AS spend,
                 COALESCE(SUM(clicks), 0) AS clicks,
                 COALESCE(SUM(impressions), 0) AS impressions,
@@ -152,7 +157,7 @@ class TemuAdsApiReport extends Model
             'impressions' => (int) ($row->impressions ?? 0),
             'sold' => (int) ($row->sold ?? 0),
             'sales' => round((float) ($row->sales ?? 0), 2),
-            'rows' => (int) ($row->row_count ?? 0),
+            'rows' => $rowCount,
         ];
     }
 

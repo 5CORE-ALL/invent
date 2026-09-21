@@ -237,6 +237,7 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
     {
         $held = [];
         $pushed = 0;
+        $saved = 0;
         $svc = $this->service([
             'acquireLock' => function ($key) use (&$held) {
                 if (isset($held[$key])) {
@@ -248,6 +249,9 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
             },
             'releaseLock' => function ($key) use (&$held) {
                 unset($held[$key]);
+            },
+            'saveState' => function () use (&$saved) {
+                $saved++;
             },
             'pullBudgets' => fn () => ['111' => 5.0],
             'pushBudget' => function () use (&$pushed) {
@@ -263,6 +267,25 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
         $this->assertSame('in_progress', $out['status']);
         $this->assertSame('concurrent_sync', $out['reason']);
         $this->assertSame(0, $pushed);
+        $this->assertSame(0, $saved);
+    }
+
+    public function test_concurrent_lock_keeps_already_synced_match(): void
+    {
+        $svc = $this->service([
+            'acquireLock' => fn () => false,
+            'loadState' => fn () => [
+                'status' => 'synced',
+                'live_value' => 0.75,
+                'desired_value' => 0.75,
+            ],
+        ]);
+
+        $out = $svc->syncField('sp', 'bid', '111', 'SKU KW', 0.75, 'test');
+
+        $this->assertSame('synced', $out['status']);
+        $this->assertSame('already_matched', $out['reason']);
+        $this->assertSame('green', $out['sync_color']);
     }
 
     public function test_sbgt_zero_pauses_and_verifies(): void

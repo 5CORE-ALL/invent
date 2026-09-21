@@ -14,6 +14,7 @@ use App\Services\TemuAdsApiReportService;
 use App\Services\TemuAdsAutoPauseService;
 use App\Services\TemuApiService;
 use App\Services\TemuShopifySalesService;
+use App\Support\TemuAdsBadgeHistory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -52,6 +53,9 @@ class TemuAdsController extends Controller
             'cart_cnt', 'order_pay_cnt', 'order_pay_amt', 'ad_spend', 'roas', 'acos',
             'ad_status', 'success', 'error_msg', 'fetched_at', 'updated_at',
         ];
+        if (Schema::hasColumn('temu_ads_api_reports', 'sku_id')) {
+            $listColumns[] = 'sku_id';
+        }
         if ($hasCreateReject) {
             $listColumns[] = 'ad_create_reject';
         }
@@ -80,9 +84,10 @@ class TemuAdsController extends Controller
             $imprSum = $badge['impressions'];
             $clickSum = $badge['clicks'];
         } else {
-            $spendSum = round((float) $windowRecords->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
-            $imprSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
-            $clickSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
+            $uniqueGoods = $windowRecords->unique(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
+            $spendSum = round((float) $uniqueGoods->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
+            $imprSum = (int) $uniqueGoods->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
+            $clickSum = (int) $uniqueGoods->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
         }
 
         $l7ClicksByGoods = TemuAdsApiReport::query()
@@ -157,7 +162,9 @@ class TemuAdsController extends Controller
             return [
                 'id' => $r->id,
                 'goods_id' => $r->goods_id,
+                'parent' => $this->productMasterParent($productMaster),
                 'sku' => $r->sku,
+                'sku_id' => $r->sku_id ?? '',
                 'image_path' => $this->productMasterImagePath($productMaster, $shopify),
                 'inv' => $inv,
                 'ovl30' => $ovl30,
@@ -1137,9 +1144,15 @@ class TemuAdsController extends Controller
         $tacosSpend = 0.0;
         $useL30SpendForTacos = strtoupper($period) === 'ALL';
 
+        $seenGoods = [];
         foreach ($rows as $row) {
+            $gid = (string) ($row['goods_id'] ?? '');
+            $firstGoods = $gid === '' || ! isset($seenGoods[$gid]);
+            if ($gid !== '') {
+                $seenGoods[$gid] = true;
+            }
             $inWindow = ! array_key_exists('in_window', $row) || $row['in_window'];
-            if ($inWindow) {
+            if ($inWindow && $firstGoods) {
                 $impr += (float) ($row['impressions'] ?? 0);
                 $clicks += (float) ($row['clicks'] ?? 0);
                 $rowSpend = (float) ($row['ad_spend'] ?? 0);
@@ -1150,6 +1163,9 @@ class TemuAdsController extends Controller
                 $ySpend += (float) ($row['spend_l1'] ?? 0);
                 $sold += (float) ($row['order_pay_cnt'] ?? 0);
                 $sales += (float) ($row['order_pay_amt'] ?? 0);
+            }
+            if (! $firstGoods) {
+                continue;
             }
             if (($row['ad_status'] ?? '') === 'No ad') {
                 $createN++;
@@ -1200,7 +1216,9 @@ class TemuAdsController extends Controller
         $row = ChannelTabulatorColumnSetting::query()->firstOrNew([
             'channel_name' => 'temu_ads_badge_history',
         ]);
-        $hist = is_array($row->visibility) ? $row->visibility : [];
+        $hist = TemuAdsBadgeHistory::ensureYSpendInDollars(
+            is_array($row->visibility) ? $row->visibility : []
+        );
         if (! isset($hist[$period]) || ! is_array($hist[$period])) {
             $hist[$period] = [];
         }
@@ -1225,7 +1243,12 @@ class TemuAdsController extends Controller
         $row = ChannelTabulatorColumnSetting::query()
             ->where('channel_name', 'temu_ads_badge_history')
             ->first();
-        $hist = is_array($row?->visibility) ? $row->visibility : [];
+        $raw = is_array($row?->visibility) ? $row->visibility : [];
+        $hist = TemuAdsBadgeHistory::ensureYSpendInDollars($raw);
+        if ($row && empty($raw[TemuAdsBadgeHistory::Y_SPEND_DOLLARS_FLAG])) {
+            $row->visibility = $hist;
+            $row->save();
+        }
         $bucket = $hist[$period] ?? [];
 
         return is_array($bucket) ? $bucket : [];
@@ -1299,7 +1322,7 @@ class TemuAdsController extends Controller
         }
 
         $out = [];
-        foreach (ProductMaster::query()->whereIn('sku', $skus)->get(['id', 'sku', 'Values', 'main_image']) as $pm) {
+        foreach (ProductMaster::query()->whereIn('sku', $skus)->get(['id', 'sku', 'parent', 'Values', 'main_image']) as $pm) {
             $key = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
             if ($key !== '' && isset($wanted[$key]) && ! isset($out[$key])) {
                 $out[$key] = $pm;
@@ -1327,6 +1350,22 @@ class TemuAdsController extends Controller
             });
 
         return $out;
+    }
+
+    private function productMasterParent(?ProductMaster $productMaster): string
+    {
+        $parent = trim((string) ($productMaster?->parent ?? ''));
+        if ($parent === '') {
+            $values = is_array($productMaster?->Values)
+                ? $productMaster->Values
+                : (is_string($productMaster?->Values) ? (json_decode((string) $productMaster->Values, true) ?: []) : []);
+            $parent = trim((string) ($values['Parent'] ?? $values['parent'] ?? ''));
+        }
+        if ($parent !== '') {
+            $parent = trim((string) preg_replace('/^PARENT\s+/i', '', $parent));
+        }
+
+        return $parent;
     }
 
     private function productMasterImagePath(?ProductMaster $productMaster, ?ShopifySku $shopify): ?string

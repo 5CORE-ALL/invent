@@ -2923,9 +2923,20 @@ class AmazonAdsController extends Controller
         };
 
         if ($color === AmazonAdsLiveSyncStatus::GREEN) {
-            $query->whereExists(function ($q) use ($exists) {
-                $exists($q);
-                $q->where('s.status', 'synced');
+            $query->where(function (Builder $w) use ($exists, $table, $field) {
+                $w->whereExists(function ($q) use ($exists) {
+                    $exists($q);
+                    $q->where('s.status', 'synced');
+                });
+                if ($field === 'bid') {
+                    $w->orWhere(function (Builder $m) use ($table, $exists) {
+                        $m->whereRaw(self::storedBidMatchesSql($table));
+                        $m->whereNotExists(function ($q) use ($exists) {
+                            $exists($q);
+                            $q->where('s.status', 'failed');
+                        });
+                    });
+                }
             });
 
             return;
@@ -2947,6 +2958,16 @@ class AmazonAdsController extends Controller
                 $q->whereNotIn('s.status', ['synced', 'failed']);
             });
         });
+        if ($field === 'bid') {
+            $query->whereRaw('NOT '.self::storedBidMatchesSql($table));
+        }
+    }
+
+    private static function storedBidMatchesSql(string $table): string
+    {
+        $t = str_replace('`', '', $table);
+
+        return "((`{$t}`.`last_sbid` + 0) > 0 AND (`{$t}`.`sbid` + 0) > 0 AND ABS((`{$t}`.`last_sbid` + 0) - (`{$t}`.`sbid` + 0)) <= 0.015)";
     }
 
     /**

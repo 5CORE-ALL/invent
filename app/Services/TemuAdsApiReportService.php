@@ -63,7 +63,7 @@ class TemuAdsApiReportService
         }
 
         $range = $ranges[$period];
-        $sku = $this->resolveSku($goodsId, $period);
+        $variants = $this->variantsForGoodsId($goodsId);
         $fetchedAt = $this->usNow();
 
         try {
@@ -81,19 +81,15 @@ class TemuAdsApiReportService
 
             if (! is_array($result)) {
                 $existing = TemuAdsApiReport::where('goods_id', $goodsId)->where('period', $period)->first();
-                TemuAdsApiReport::updateOrCreate(
-                    ['goods_id' => $goodsId, 'period' => $period],
-                    array_filter([
-                        'sku' => $sku,
-                        'start_ts' => $range['startTs'],
-                        'end_ts' => $range['endTs'],
-                        'raw_response' => $this->mergeAdDetailIntoRaw($existing?->raw_response, is_array($adDetail) ? $adDetail : null),
-                        'ad_status' => $statusQuery['statuses'][$goodsId] ?? null,
-                        'success' => false,
-                        'error_msg' => substr((string) ($detailed['error_msg'] ?? 'Empty or failed API response'), 0, 500),
-                        'fetched_at' => $fetchedAt,
-                    ], fn ($v) => $v !== null)
-                );
+                $this->upsertVariantRows($goodsId, $period, $variants, array_filter([
+                    'start_ts' => $range['startTs'],
+                    'end_ts' => $range['endTs'],
+                    'raw_response' => $this->mergeAdDetailIntoRaw($existing?->raw_response, is_array($adDetail) ? $adDetail : null),
+                    'ad_status' => $statusQuery['statuses'][$goodsId] ?? null,
+                    'success' => false,
+                    'error_msg' => substr((string) ($detailed['error_msg'] ?? 'Empty or failed API response'), 0, 500),
+                    'fetched_at' => $fetchedAt,
+                ], fn ($v) => $v !== null));
 
                 return ['ok' => false, 'goods_id' => $goodsId, 'period' => $period, 'message' => $detailed['error_msg'] ?? 'Empty API response'];
             }
@@ -102,6 +98,8 @@ class TemuAdsApiReportService
             if (is_array($adDetail)) {
                 $raw['adDetail'] = $adDetail;
             }
+            $raw['goodsId'] = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
+            $raw['skuVariants'] = $variants;
 
             $metrics = $this->metricsFromApiResult($result);
             $row = array_merge($metrics, [
@@ -112,19 +110,12 @@ class TemuAdsApiReportService
                 'error_msg' => null,
                 'fetched_at' => $fetchedAt,
             ]);
-            if ($sku !== null && $sku !== '') {
-                $row['sku'] = $sku;
-            }
 
             if (isset($statusQuery['statuses'][$goodsId])) {
                 $row['ad_status'] = $statusQuery['statuses'][$goodsId];
             }
 
-            TemuAdsApiReport::updateOrCreate(
-                ['goods_id' => $goodsId, 'period' => $period],
-                $row
-            );
-
+            $this->upsertVariantRows($goodsId, $period, $variants, $row);
             $this->syncTemuMetricClicks($goodsId, $period, $row);
 
             return ['ok' => true, 'goods_id' => $goodsId, 'period' => $period];
@@ -135,20 +126,13 @@ class TemuAdsApiReportService
                 'error' => $e->getMessage(),
             ]);
 
-            $fail = [
+            $this->upsertVariantRows($goodsId, $period, $variants, [
                 'start_ts' => $range['startTs'],
                 'end_ts' => $range['endTs'],
                 'success' => false,
                 'error_msg' => substr($e->getMessage(), 0, 500),
                 'fetched_at' => $fetchedAt,
-            ];
-            if ($sku !== null && $sku !== '') {
-                $fail['sku'] = $sku;
-            }
-            TemuAdsApiReport::updateOrCreate(
-                ['goods_id' => $goodsId, 'period' => $period],
-                $fail
-            );
+            ]);
 
             return [
                 'ok' => false,
@@ -157,6 +141,86 @@ class TemuAdsApiReportService
                 'message' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * @param  list<array{sku: string, sku_id: string}>  $variants
+     * @param  array<string, mixed>  $payload
+     */
+    private function upsertVariantRows(string $goodsId, string $period, array $variants, array $payload): void
+    {
+        if ($variants === []) {
+            $fallbackSku = $this->resolveSku($goodsId, $period);
+            $variants = [['sku' => (string) ($fallbackSku ?? ''), 'sku_id' => '']];
+        }
+
+        $keepSkuIds = [];
+        foreach ($variants as $variant) {
+            $skuId = trim((string) ($variant['sku_id'] ?? ''));
+            $sku = trim((string) ($variant['sku'] ?? ''));
+            $keepSkuIds[] = $skuId;
+            $row = $payload;
+            $row['sku'] = $sku !== '' ? $sku : ($payload['sku'] ?? null);
+            $row['sku_id'] = $skuId;
+            $row['goods_id'] = $goodsId;
+            TemuAdsApiReport::updateOrCreate(
+                [
+                    'goods_id' => $goodsId,
+                    'sku_id' => $skuId,
+                    'period' => $period,
+                ],
+                $row
+            );
+        }
+
+        TemuAdsApiReport::query()
+            ->where('goods_id', $goodsId)
+            ->where('period', $period)
+            ->whereNotIn('sku_id', $keepSkuIds)
+            ->delete();
+    }
+
+    /**
+     * Variation SKUs for a goods ID (unique by sku_id; drop trailing-dot duplicates).
+     *
+     * @return list<array{sku: string, sku_id: string}>
+     */
+    public function variantsForGoodsId(string $goodsId): array
+    {
+        $rows = TemuMetric::query()
+            ->where('goods_id', $goodsId)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'sku_id']);
+
+        return self::uniqueVariantsFromRows($rows);
+    }
+
+    /**
+     * @param  iterable<array<string, mixed>|object>  $rows
+     * @return list<array{sku: string, sku_id: string}>
+     */
+    public static function uniqueVariantsFromRows(iterable $rows): array
+    {
+        $byKey = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) (is_array($row) ? ($row['sku'] ?? '') : ($row->sku ?? '')));
+            $skuId = trim((string) (is_array($row) ? ($row['sku_id'] ?? '') : ($row->sku_id ?? '')));
+            if ($sku === '' && $skuId === '') {
+                continue;
+            }
+            $cleanSku = rtrim($sku, " \t.");
+            $key = $skuId !== '' ? $skuId : strtoupper($cleanSku);
+            $prefer = ! str_ends_with($sku, '.');
+            if (! isset($byKey[$key]) || ($prefer && str_ends_with((string) $byKey[$key]['sku'], '.'))) {
+                $byKey[$key] = [
+                    'sku' => $cleanSku !== '' ? $cleanSku : $sku,
+                    'sku_id' => $skuId,
+                ];
+            }
+        }
+
+        return array_values($byKey);
     }
 
     /**
@@ -277,14 +341,10 @@ class TemuAdsApiReportService
 
             $rows = TemuAdsApiReport::where('goods_id', $goodsId)->get();
             if ($rows->isEmpty()) {
-                $sku = TemuMetric::where('goods_id', $goodsId)->value('sku');
-                TemuAdsApiReport::create([
-                    'goods_id' => $goodsId,
-                    'sku' => $sku,
-                    'period' => 'L30',
+                $this->upsertVariantRows($goodsId, 'L30', $this->variantsForGoodsId($goodsId), [
                     'ad_status' => $status ?? 'Unknown',
                     'raw_response' => is_array($detail)
-                        ? json_encode(['adDetail' => $detail], JSON_UNESCAPED_UNICODE)
+                        ? json_encode(['adDetail' => $detail, 'goodsId' => $goodsId], JSON_UNESCAPED_UNICODE)
                         : null,
                     'success' => true,
                     'fetched_at' => $fetchedAt,
@@ -531,8 +591,8 @@ class TemuAdsApiReportService
     }
 
     /**
-     * Last calendar day ad spend from reportInfo.reportsItemList (max ts).
-     * Daily adSpend.val is in the same units as stored ad_spend.
+     * Last calendar day ad spend from reportInfo.reportsItemList (max ts), in dollars.
+     * Daily adSpend.val is cents (same as summary spend); stored ad_spend is already dollars.
      */
     public function lastDaySpendFromResult(?array $result): ?float
     {
@@ -556,7 +616,28 @@ class TemuAdsApiReportService
             ?? $this->nestedVal($latest, ['netAdSpend'])
             ?? $this->nestedVal($latest, ['spend']);
 
-        return $val === null ? null : round((float) $val, 4);
+        return $val === null ? null : round((float) $val * $this->dailyListDollarsScale($result), 4);
+    }
+
+    /**
+     * Scale reportsItemList money to dollars. Daily vals are cents when their sum
+     * is ~100× the already-converted overall spend.
+     */
+    private function dailyListDollarsScale(?array $result): float
+    {
+        $dailySum = array_sum($this->dailySpendByDateFromResult($result));
+        $overall = is_array($result['reportInfo']['summary'] ?? null) ? $result['reportInfo']['summary'] : [];
+        $adOnly = is_array($result['reportInfo']['reportsSummary'] ?? null) ? $result['reportInfo']['reportsSummary'] : [];
+        $overallDollars = $this->centsToDollars(
+            $this->nestedVal($overall, ['spend', 'total']) ?? $this->val($adOnly, 'adSpendAll')
+        );
+        if ($dailySum > 0 && $overallDollars !== null && $overallDollars > 0) {
+            $ratio = $dailySum / $overallDollars;
+
+            return ($ratio > 50 && $ratio < 150) ? 0.01 : 1.0;
+        }
+
+        return 0.01;
     }
 
     private function syncTemuMetricClicks(string $goodsId, string $period, array $row): void
