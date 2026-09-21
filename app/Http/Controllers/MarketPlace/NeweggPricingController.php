@@ -301,6 +301,7 @@ class NeweggPricingController extends Controller
                 ? (float) $dvValue['SROI']
                 : (isset($dvValue['SGROI']) ? (float) $dvValue['SGROI'] : null);
             $nr      = $dvValue['NR'] ?? 'REQ';
+            $pushStatus = isset($dvValue['SPRICE_STATUS']) ? (string) $dvValue['SPRICE_STATUS'] : null;
             $buyerLink  = $dvValue['BUYER_LINK'] ?? null;
             $sellerLink = $dvValue['SELLER_LINK'] ?? null;
 
@@ -409,6 +410,8 @@ class NeweggPricingController extends Controller
                 'sprice'             => $sprice,
                 'spft'               => $spft,
                 'sroi'               => $sroi,
+                'push_status'        => $pushStatus,
+                'SPRICE_STATUS'      => $pushStatus,
                 '_margin'            => $factor,
                 'nr'                 => $nr,
                 'buyer_link'         => $buyerLink,
@@ -836,12 +839,16 @@ class NeweggPricingController extends Controller
                         'selling_price' => $confirmed,
                     ]);
                     $priceBySpn[$spn] = $confirmed;
+                    $this->stampPushStatus($localSku, 'pushed');
                 } elseif ($success && $requested !== null) {
                     $pushed++;
                     NeweggPricing::where('seller_part_number', $spn)->update([
                         'selling_price' => $requested,
                     ]);
                     $priceBySpn[$spn] = $requested;
+                    $this->stampPushStatus($localSku, 'pushed');
+                } else {
+                    $this->stampPushStatus($localSku, 'error');
                 }
                 $results[] = [
                     'sku'     => $localSku,
@@ -894,6 +901,31 @@ class NeweggPricingController extends Controller
                 'error' => 'Push failed: ' . $e->getMessage(),
                 'message' => 'Push failed: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Remember the last S PRC push result so the Push column survives reload.
+     */
+    private function stampPushStatus(string $sku, string $status): void
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return;
+        }
+        $status = $status === 'pushed' ? 'pushed' : 'error';
+        try {
+            $dv = NeweggDataView::firstOrNew(['sku' => $sku]);
+            $values = is_array($dv->value) ? $dv->value : [];
+            $values['SPRICE_STATUS'] = $status;
+            $values['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            $dv->value = $values;
+            $dv->save();
+        } catch (\Throwable $e) {
+            Log::warning('Newegg push status stamp failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -1909,7 +1941,7 @@ class NeweggPricingController extends Controller
                 'dil' => true, 'price' => true, 'a_price' => true, 'l30' => true,
                 'views' => true, 'cvr' => true,
                 'lp' => false, 'ship' => false, 'pft' => true, 'pft_pct' => true, 'roi' => true,
-                'sprice' => true, 'spft' => true, 'sroi' => true, 'nr' => true, 'bs' => true,
+                'sprice' => true, 'push_status' => true, 'spft' => true, 'sroi' => true, 'nr' => true, 'bs' => true,
                 'lmp_price' => true, 'lmp_diff_pct' => true,
                 'linked_lmp_skus' => true, 'linked_lmp_sku_add' => true,
                 'map' => true, 'available_quantity' => true, 'currency' => false, 'status' => true,
