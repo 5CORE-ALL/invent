@@ -277,7 +277,9 @@
                 const finished = !active && total > 0 && (done >= total || pct >= 100);
                 let msg;
                 if (active) {
-                    msg = total ? (done + ' / ' + total) : 'Starting…';
+                    msg = total
+                        ? (done + ' / ' + total + ' · ' + ok + ' ok' + (fail ? (' · ' + fail + ' failed') : ''))
+                        : 'Starting…';
                 } else if (finished) {
                     msg = (opts.msg && String(opts.msg).trim())
                         ? String(opts.msg)
@@ -332,6 +334,23 @@
                 if (sw) return !!sw.checked;
                 return true;
             }
+            function chPushPaintRowColumns(row) {
+                if (!row || typeof row.getCell !== 'function') return;
+                ['push_price', 'push_status', 'SPRICE'].forEach(function(field) {
+                    let cell;
+                    try { cell = row.getCell(field); } catch (e) { return; }
+                    if (!cell || typeof cell.getElement !== 'function' || typeof cell.getColumn !== 'function') return;
+                    const el = cell.getElement();
+                    const col = cell.getColumn();
+                    const def = col && typeof col.getDefinition === 'function' ? col.getDefinition() : null;
+                    if (!el || !def || typeof def.formatter !== 'function') return;
+                    let html = '';
+                    try { html = def.formatter(cell); } catch (e) { return; }
+                    if (html == null) html = '';
+                    const next = String(html);
+                    if (el.innerHTML !== next) el.innerHTML = next;
+                });
+            }
             function applyChannelPushSpriceTasks(tasks) {
                 if (typeof table === 'undefined' || !table || !Array.isArray(tasks)) return;
                 const bySku = {};
@@ -381,7 +400,10 @@
                             if (d.listing_status !== 'ENDED') patch.listing_status = 'ENDED';
                             if (!d.listing_ended) patch.listing_ended = true;
                         }
-                    } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                    } else if (st === 'pushing') {
+                        if (d.SPRICE_STATUS !== 'processing') patch.SPRICE_STATUS = 'processing';
+                        if (d.push_status !== 'pushing') patch.push_status = 'pushing';
+                    } else if (st === 'pending' || st === 'queued') {
                         if (d.SPRICE_STATUS !== 'queued') patch.SPRICE_STATUS = 'queued';
                         if (d.push_status !== 'queued') patch.push_status = 'queued';
                     } else {
@@ -415,6 +437,7 @@
                                     || t.ebay_price || t.price) || 0;
                                 if (livePrice > 0) global.macysApplyLivePriceToRow(row, livePrice);
                             }
+                            chPushPaintRowColumns(row);
                         }
                     }
                     if (typeof row.getTreeChildren === 'function') {

@@ -3380,7 +3380,7 @@
                     vertAlign: "middle",
                     headerSort: false,
                     width: 55,
-                    headerTooltip: "Push SPRICE to Reverb. Blank when already pushed. Click header to push all visible rows that still need it.",
+                    headerTooltip: "Push SPRICE to Reverb. Clock = queued, spinner = pushing, green double-check = pushed, red cross = failed. Click header to push all visible rows that still need it.",
                     titleFormatter: function() {
                         return '<button type="button" class="btn btn-sm p-0 reverb-push-sprice-header-btn" '
                             + 'title="Push SPRICE for all visible rows that are not already pushed" '
@@ -3400,45 +3400,49 @@
                         const rowData = cell.getRow().getData() || {};
                         const sku = reverbSpricePushSku(rowData);
                         if (!reverbSpricePushIsChild(rowData)) return '';
-                        const sprice = parseFloat(rowData.SPRICE || 0);
+                        const sprice = Number(reverbRowSpriceForAlert(rowData)) || parseFloat(rowData.SPRICE || 0);
                         if (!(sprice > 0)) return '';
-                        const status = String(rowData.SPRICE_STATUS || '');
+                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
                         const pushedValue = rowData.SPRICE_PUSHED_VALUE;
                         const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT;
                         const pushedBy = rowData.SPRICE_PUSHED_BY;
-
-                        if (status === 'processing') {
-                            return '<button type="button" class="btn btn-sm p-0 reverb-push-price-btn" disabled '
-                                + 'title="Price pushing in progress…" '
-                                + 'style="border:none;background:none;color:#ffc107;padding:0;cursor:default;">'
-                                + '<i class="fas fa-spinner fa-spin"></i></button>';
+                        let icon = '<i class="fas fa-upload"></i>';
+                        let color = '#fd7e14';
+                        let tip = 'Push $' + sprice.toFixed(2) + ' to Reverb';
+                        let disabled = false;
+                        if (status === 'processing' || status === 'pushing') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            color = '#ffc107';
+                            tip = 'Pushing $' + sprice.toFixed(2) + ' to Reverb…';
+                            disabled = true;
+                        } else if (status === 'queued' || status === 'pending') {
+                            icon = '<i class="fas fa-clock"></i>';
+                            color = '#6c757d';
+                            tip = 'Queued — $' + sprice.toFixed(2) + ' waiting to push';
+                            disabled = true;
+                        } else if (status === 'error' || status === 'failed') {
+                            icon = '<i class="fa-solid fa-xmark"></i>';
+                            color = '#dc3545';
+                            tip = 'Last push failed — click to retry $' + sprice.toFixed(2);
+                        } else if (status === 'pushed' || status === 'applied' || !reverbSpriceNeedsPush(rowData)) {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            color = '#28a745';
+                            tip = 'Pushed $' + sprice.toFixed(2) + ' to Reverb';
                         }
-                        if (status === 'error') {
-                            const tip = 'Last push failed — click to retry $' + sprice.toFixed(2);
-                            return '<button type="button" class="btn btn-sm p-0 reverb-push-price-btn" '
-                                + 'data-sku="' + sku.replace(/"/g, '&quot;') + '" '
-                                + 'data-price="' + sprice + '" data-status="error" '
-                                + 'title="' + tip.replace(/"/g, '&quot;') + '" '
-                                + 'style="border:none;background:none;color:#dc3545;padding:0;cursor:pointer;">'
-                                + '<i class="fa-solid fa-xmark"></i></button>';
-                        }
-                        if (!reverbSpriceNeedsPush(rowData)) {
-                            return '';
-                        }
-
-                        let titleText = 'Push $' + sprice.toFixed(2) + ' to Reverb';
                         if (pushedValue !== null && pushedValue !== undefined && parseFloat(pushedValue) > 0) {
-                            titleText += ' | Last: $' + parseFloat(pushedValue).toFixed(2);
+                            tip += ' | Last: $' + parseFloat(pushedValue).toFixed(2);
                         }
-                        if (updatedAt) titleText += ' | ' + updatedAt;
-                        if (pushedBy) titleText += ' | by ' + pushedBy;
-
-                        return '<button type="button" class="btn btn-sm p-0 reverb-push-price-btn" '
-                            + 'data-sku="' + sku.replace(/"/g, '&quot;') + '" '
-                            + 'data-price="' + sprice + '" data-status="' + (status || '') + '" '
-                            + 'title="' + titleText.replace(/"/g, '&quot;') + '" '
-                            + 'style="border:none;background:none;color:#fd7e14;padding:0;cursor:pointer;">'
-                            + '<i class="fas fa-upload"></i></button>';
+                        if (updatedAt) tip += ' | ' + updatedAt;
+                        if (pushedBy) tip += ' | by ' + pushedBy;
+                        return '<button type="button" class="btn btn-sm p-0 reverb-push-price-btn"'
+                            + (disabled ? ' disabled' : '')
+                            + ' data-sku="' + sku.replace(/"/g, '&quot;') + '"'
+                            + ' data-price="' + sprice + '"'
+                            + ' data-status="' + status.replace(/"/g, '&quot;') + '"'
+                            + ' title="' + tip.replace(/"/g, '&quot;') + '"'
+                            + ' style="border:none;background:none;color:' + color + ';padding:0;cursor:'
+                            + (disabled ? 'default' : 'pointer') + ';">'
+                            + icon + '</button>';
                     },
                     cellClick: function(e, cell) {
                         const btn = e.target.closest('.reverb-push-price-btn');
