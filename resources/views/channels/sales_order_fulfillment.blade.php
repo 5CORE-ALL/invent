@@ -1478,7 +1478,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels that have not been carrier-scanned yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels in the selected date range that the carrier has not scanned yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -4069,12 +4069,12 @@
             const allOrderEl = document.getElementById('sof-all-order-total');
             if (channelEl) channelEl.textContent = channelCount.toLocaleString();
             if (pendingEl) pendingEl.textContent = pendingTotal.toLocaleString();
-            if (fulfilledEl) fulfilledEl.textContent = fulfilled24h.toLocaleString();
-            if (scanDoneEl) scanDoneEl.textContent = scanDone24h.toLocaleString();
-            if (inTransitEl) inTransitEl.textContent = inTransitTotal.toLocaleString();
-            if (invoicedEl) invoicedEl.textContent = invoicedTotal.toLocaleString();
-            if (deliveredEl) deliveredEl.textContent = deliveredTotal.toLocaleString();
-            if (allOrderEl) allOrderEl.textContent = allOrderTotal.toLocaleString();
+            if (fulfilledEl && !fulfilledTableLoaded) fulfilledEl.textContent = fulfilled24h.toLocaleString();
+            if (scanDoneEl && !scanDoneTableLoaded) scanDoneEl.textContent = scanDone24h.toLocaleString();
+            if (inTransitEl && !inTransitTableLoaded) inTransitEl.textContent = inTransitTotal.toLocaleString();
+            if (invoicedEl && !invoicedTableLoaded) invoicedEl.textContent = invoicedTotal.toLocaleString();
+            if (deliveredEl && !deliveredTableLoaded) deliveredEl.textContent = deliveredTotal.toLocaleString();
+            if (allOrderEl && !allOrderTableLoaded) allOrderEl.textContent = allOrderTotal.toLocaleString();
             loadSofHistoryDots();
             const pendingTabCount = document.getElementById('sof-pending-tab-count');
             if (pendingTabCount && !pendingTableLoaded) {

@@ -208,7 +208,7 @@ class SalesOrderFulfillmentController extends Controller
                 ];
             })->values();
 
-            $totals = $this->collectSummaryTotals($data->count(), $data);
+            $totals = $this->collectPageSummaryTotals($data->count(), $data);
 
             return response()->json(array_merge([
                 'success' => true,
@@ -263,9 +263,9 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Label Created / No Scan — last 24 hours only.
-     * Older labeled rows with no successful carrier scan used to be forced into
-     * In Transit; domestic parcels older than 5 days now go to Delivered instead.
+     * Label Created / No Scan — selected date range, carrier has not scanned yet.
+     * Older labeled rows stay here (red triangle after 24h). They are not moved
+     * to In Transit just because the label is older than a day.
      */
     public function fulfilledData(): JsonResponse
     {
@@ -2068,7 +2068,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Label Created / No Scan: last 24 hours, carrier has not scanned yet.
+     * Label Created / No Scan: selected date range, carrier has not scanned yet.
      *
      * @return list<array<string, mixed>>
      */
@@ -2077,30 +2077,18 @@ class SalesOrderFulfillmentController extends Controller
         return array_values(array_filter(
             $this->labelCreatedOrderRows(),
             fn (array $r) => ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null)
-                && $this->rowIsWithinLast24Hours($r)
         ));
     }
 
     /**
-     * Labeled more than 24 hours ago with no carrier scan yet — warehouse already scanned these.
+     * Older labeled rows used to be forced into In Transit after 24 hours.
+     * Keep them on Label Created / No Scan until the carrier actually scans.
      *
      * @return list<array<string, mixed>>
      */
     protected function labelCreatedAssumedScannedRows(): array
     {
-        $rows = [];
-        foreach ($this->labelCreatedOrderRows() as $row) {
-            if ($this->carrierStatusHasLeftLabelCreated($row['shipment_status'] ?? null)) {
-                continue;
-            }
-            if ($this->rowIsWithinLast24Hours($row)) {
-                continue;
-            }
-            $row['status_label'] = 'In Transit';
-            $rows[] = $row;
-        }
-
-        return $rows;
+        return [];
     }
 
     /**
@@ -4628,12 +4616,64 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Count of Label Created / No Scan orders in the last 24 hours (all MM channels).
+     * Count of Label Created / No Scan orders in the selected date range (all MM channels).
      * JSON key remains fulfilled_24h for frontend compatibility.
      */
     protected function fulfilledLast24HoursCount(): int
     {
         return count($this->labelCreatedNoScanRows());
+    }
+
+    /**
+     * Fast badge totals for the SOF page. Avoids hydrating every tab's order rows
+     * (that made /data take so long that Label Created looked empty).
+     *
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>|null  $channelRows
+     * @return array<string, int|string|null>
+     */
+    protected function collectPageSummaryTotals(?int $channelCount = null, $channelRows = null): array
+    {
+        if ($channelCount === null) {
+            $channelCount = Schema::hasTable('channel_master')
+                ? (int) ChannelMaster::query()
+                    ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                    ->whereNotNull('channel')
+                    ->where('channel', '!=', '')
+                    ->count()
+                : 0;
+        }
+
+        $pendingTotal = 0;
+        if ($channelRows !== null) {
+            $pendingTotal = (int) collect($channelRows)->sum(function ($row) {
+                return ($row['pending_count'] ?? null) !== null ? (int) $row['pending_count'] : 0;
+            });
+        } else {
+            $pendingTotal = (int) array_sum($this->pendingOrderCountsBySlug());
+        }
+
+        $scanDone = $this->scanDoneLast24HoursCount();
+        $inReceived = $this->inReceivedOrdersCount();
+
+        return [
+            'channel_count' => (int) $channelCount,
+            'pending_total' => $pendingTotal,
+            'fulfilled_24h' => $this->countAllOrders(
+                fn (string $slug) => $this->scopedToLast30Days($this->fulfilledOrdersQuery($slug), $slug)
+            ),
+            'scan_done_24h' => $scanDone,
+            'in_transit_total' => $this->countAllOrders(
+                fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug)
+            ),
+            'in_received_total' => $inReceived,
+            'received_by_carrier_total' => $scanDone + $inReceived,
+            'invoiced_total' => $this->invoicedOrdersCount(),
+            'delivered_total' => $this->countAllOrders(
+                fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug)
+            ),
+            'all_order_total' => $this->allOrdersCount(),
+            'calculated_at' => now($this->sofTimezone())->toDateTimeString(),
+        ];
     }
 
     /**
