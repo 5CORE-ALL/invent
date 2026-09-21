@@ -23,6 +23,7 @@ class ListingVariationPreviewService
         private SheinListingPublishService $shein,
         private NeweggListingPublishService $newegg,
         private TopDawgListingPublishService $topdawg,
+        private MiraklListingPublishService $mirakl,
     ) {
     }
 
@@ -128,6 +129,13 @@ class ListingVariationPreviewService
         }
         if (in_array($channel, ['topdawg', 'top-dawg', 'top_dawg'], true)) {
             return $this->topdawg->publishSkus($skus, $expandSiblings, $mode, $parentHint);
+        }
+        if ($this->isMiraklChannel($channel)) {
+            $code = trim((string) ($categoryUuid ?? ''))
+                ?: trim((string) ($categoryName ?? ''))
+                ?: ($categoryId !== null && $categoryId > 0 ? (string) $categoryId : null);
+
+            return $this->mirakl->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $code);
         }
 
         $label = $this->channelLabel($channel);
@@ -325,6 +333,11 @@ class ListingVariationPreviewService
             'newegg', 'neweggb2c', 'newegg-b2c', 'newegg_b2c',
             'neweggb2b', 'newegg-b2b', 'newegg_b2b',
         ], true);
+    }
+
+    private function isMiraklChannel(string $channel): bool
+    {
+        return MiraklListingPublishService::isMiraklListingChannel($channel);
     }
 
     private function channelLabel(string $channel): string

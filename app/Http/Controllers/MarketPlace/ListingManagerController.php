@@ -1314,7 +1314,10 @@ class ListingManagerController extends Controller
         } else {
             foreach ($allActive as $c) {
                 $key = ListingChannelCounts::normalize((string) $c->channel);
-                if (in_array($key, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true)) {
+                if (in_array($key, [
+                    'amazon', 'amazonfba', 'amz', 'amzfbm',
+                    'macys', 'macy', 'bestbuy', 'bestbuyusa', 'purchasingpower',
+                ], true)) {
                     $enabledIds[] = (int) $c->id;
                 }
             }
@@ -1883,6 +1886,13 @@ class ListingManagerController extends Controller
             $key = ListingChannelCounts::normalize($channel);
             $platform = in_array($key, ['neweggb2b', 'newegg-b2b', 'newegg_b2b'], true) ? 'b2b' : 'b2c';
             $result = app(NeweggApiService::class)->searchListingCategories($q, $title, $platform);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
+        if ($family === 'mirakl') {
+            $result = app(\App\Services\MarketplaceManager\MiraklListingPublishService::class)
+                ->searchListingCategories($q, $channel, $title);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }

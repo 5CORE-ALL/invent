@@ -20,6 +20,11 @@ class ListingBestbuyUSAController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'bestbuyusa';
+    }
+
     public function listingBestbuyUSA(Request $request)
     {
         $mode = $request->query('mode');

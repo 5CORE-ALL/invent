@@ -368,6 +368,7 @@ class ListingManagerProductPublisher
             'walmart' => 'walmart',
             'wayfair' => 'wayfair',
             'bestbuy' => 'bestbuy',
+            'bestbuyusa' => 'bestbuy',
             'macy' => 'macy',
             'macys' => 'macy',
             'doba' => 'doba',

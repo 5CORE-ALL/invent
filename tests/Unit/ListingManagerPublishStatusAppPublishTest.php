@@ -9,7 +9,7 @@ class ListingManagerPublishStatusAppPublishTest extends TestCase
 {
     public function test_topdawg_shein_aliexpress_newegg_require_app_publish(): void
     {
-        foreach (['TopDawg', 'Shein', 'AliExpress', 'Newegg', 'Newegg B2C', 'Newegg B2B'] as $channel) {
+        foreach (['TopDawg', 'Shein', 'AliExpress', 'Newegg', 'Newegg B2C', 'Newegg B2B', 'Macys', 'Best Buy USA', 'Purchasing Power'] as $channel) {
             $this->assertTrue(
                 ListingManagerPublishStatus::requiresAppPublishForActive($channel),
                 $channel.' Active should require a Listing Manager publish'

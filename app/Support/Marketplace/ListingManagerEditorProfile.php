@@ -21,6 +21,7 @@ class ListingManagerEditorProfile
      *   wayfair: bool,
      *   reverb: bool,
      *   newegg: bool,
+     *   mirakl: bool,
      *   category_placeholder: string,
      *   optimize_label: string,
      *   header_quick: string,
@@ -189,6 +190,28 @@ class ListingManagerEditorProfile
                 'category_help' => 'Search Newegg Seller Portal subcategories and pick a leaf. The Subcategory ID is what Newegg uses to create the listing. You can also type a numeric Subcategory ID.',
                 'policies_help' => 'Package size and weight come from Dim/Wt Master.',
             ],
+            'mirakl' => [
+                'tabs' => [
+                    ['id' => 'identifiers', 'label' => 'Product Identifiers'],
+                    ['id' => 'variations', 'label' => 'Variations'],
+                    ['id' => 'title', 'label' => 'Title & Description'],
+                    ['id' => 'images', 'label' => 'Images'],
+                    ['id' => 'pricing', 'label' => 'Price & Stock'],
+                    ['id' => 'category', 'label' => 'Category'],
+                    ['id' => 'policies', 'label' => 'Package'],
+                ],
+                'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
+                'category_placeholder' => 'Search categories (e.g. speaker)',
+                'optimize_label' => 'Optimize Description',
+                'header_quick' => 'Quick/Auto List',
+                'header_import' => 'Import from Marketplace',
+                'pricing_title' => 'Price & Stock',
+                'title_heading' => 'Title & Description',
+                'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Condition is New.',
+                'images_help' => 'Load photos from Image Master. First image is Primary. Mirakl uses HTTPS images.',
+                'category_help' => 'Search and select a Mirakl category code used by this marketplace, or type a category code. Title, description, images, price, and stock are pushed on Save & Publish.',
+                'policies_help' => 'Package size and weight come from Dim/Wt Master.',
+            ],
             'amazon' => [
                 'tabs' => [
                     ['id' => 'identifiers', 'label' => 'Product Identifiers'],
@@ -210,6 +233,26 @@ class ListingManagerEditorProfile
                 'images_help' => 'Load photos from Image Master. Amazon uses the first 9 HTTPS images.',
                 'category_help' => 'Type a keyword such as light stand. Amazon suggestions appear below — pick the product type (for example LIGHTING_ACCESSORY) before you publish.',
                 'policies_help' => 'Package size and weight come from Dim/Wt Master. Amazon will not show a new SKU in Manage Inventory until Product Type, Packaging, images, and a UPC (or existing ASIN) are complete.',
+            ],
+            'topdawg' => [
+                'tabs' => [
+                    ['id' => 'identifiers', 'label' => 'Product Identifiers'],
+                    ['id' => 'variations', 'label' => 'Variations'],
+                    ['id' => 'title', 'label' => 'Title & Description'],
+                    ['id' => 'images', 'label' => 'Images'],
+                    ['id' => 'pricing', 'label' => 'Price & Stock'],
+                ],
+                'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
+                'category_placeholder' => '',
+                'optimize_label' => 'Optimize Description for TopDawg',
+                'header_quick' => 'Quick/Auto List to TopDawg',
+                'header_import' => 'Import from TopDawg',
+                'pricing_title' => 'Price & Stock',
+                'title_heading' => 'Title & Description',
+                'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Condition is New.',
+                'images_help' => 'Load photos from Image Master. First image is Primary.',
+                'category_help' => '',
+                'policies_help' => '',
             ],
             'default' => [
                 'tabs' => [
@@ -250,6 +293,8 @@ class ListingManagerEditorProfile
             'reverb' => $family === 'reverb',
             'amazon' => $family === 'amazon',
             'newegg' => $family === 'newegg',
+            'mirakl' => $family === 'mirakl',
+            'topdawg' => $family === 'topdawg',
             'category_placeholder' => $base['category_placeholder'],
             'optimize_label' => $base['optimize_label'],
             'header_quick' => $base['header_quick'],
@@ -292,6 +337,12 @@ class ListingManagerEditorProfile
         }
         if ($normalizedKey === 'wayfair') {
             return 'wayfair';
+        }
+        if (in_array($normalizedKey, ['macys', 'macy', 'bestbuy', 'bestbuyusa', 'purchasingpower'], true)) {
+            return 'mirakl';
+        }
+        if (in_array($normalizedKey, ['topdawg', 'topdawginc', 'top-dawg', 'top_dawg'], true)) {
+            return 'topdawg';
         }
 
         return 'default';

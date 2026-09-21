@@ -19,6 +19,11 @@ class ListingMacysController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'macys';
+    }
+
     public function listingMacys(Request $request)
     {
         $mode = $request->query('mode');
