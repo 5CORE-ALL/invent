@@ -1897,6 +1897,13 @@ class ListingManagerController extends Controller
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }
 
+        if ($family === 'topdawg') {
+            $result = app(\App\Services\MarketplaceManager\TopDawgListingPublishService::class)
+                ->searchListingCategories($q, $title);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
         if (mb_strlen($q) < 2) {
             return response()->json(['success' => true, 'categories' => []]);
         }

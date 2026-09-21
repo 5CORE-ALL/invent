@@ -29,7 +29,14 @@ class TopDawgListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = ''): array
+    public function publishSkus(
+        array $skus,
+        bool $expandSiblings = true,
+        string $mode = 'variation',
+        string $parentHint = '',
+        ?string $categoryUuid = null,
+        ?string $categoryName = null
+    ): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -58,7 +65,7 @@ class TopDawgListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryUuid, $categoryName);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -114,6 +121,7 @@ class TopDawgListingPublishService
         }
 
         $inv = $this->shopifyInv($sku);
+        $category = self::resolveCategory($categoryUuid, $categoryName);
         $res = $this->api->createProduct([
             'product_code' => $sku,
             'product_name' => $title,
@@ -124,9 +132,9 @@ class TopDawgListingPublishService
             'qty_available' => $inv,
             'images' => $images,
             'brand_name' => '5 Core',
-            'dept' => 'Electronics',
-            'section' => 'Music',
-            'category' => 'Music Accessories',
+            'dept' => $category['dept'],
+            'section' => $category['section'],
+            'category' => $category['category'],
             'gender' => 'Unisex',
             'age_group' => 'Adults',
             'pack_of' => 1,
@@ -512,6 +520,150 @@ class TopDawgListingPublishService
             if ($sku !== '' && ! in_array($sku, $out, true)) {
                 $out[] = $sku;
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{success: bool, categories: list<array{id: string, name: string, path: string}>}
+     */
+    public static function searchListingCategories(string $q, string $title = ''): array
+    {
+        $needle = mb_strtolower(trim($q));
+        $out = [];
+        foreach (self::categoryCatalog() as $row) {
+            $hay = mb_strtolower($row['id'].' '.$row['path']);
+            if ($needle !== '' && ! str_contains($hay, $needle)) {
+                continue;
+            }
+            $out[] = [
+                'id' => $row['id'],
+                'name' => $row['category'],
+                'path' => $row['path'],
+            ];
+            if (count($out) >= 40) {
+                break;
+            }
+        }
+
+        return ['success' => true, 'categories' => $out];
+    }
+
+    /**
+     * @return array{dept: string, section: string, category: string}
+     */
+    public static function resolveCategory(?string $id, ?string $name): array
+    {
+        $id = trim((string) $id);
+        $name = trim((string) $name);
+
+        if ($id !== '') {
+            foreach (self::categoryCatalog() as $row) {
+                if (strcasecmp($row['id'], $id) === 0) {
+                    return [
+                        'dept' => $row['dept'],
+                        'section' => $row['section'],
+                        'category' => $row['category'],
+                    ];
+                }
+            }
+            if (str_contains($id, '|')) {
+                return self::partsToCategory(explode('|', $id));
+            }
+        }
+
+        if ($name !== '') {
+            foreach (self::categoryCatalog() as $row) {
+                if (strcasecmp($row['path'], $name) === 0 || strcasecmp($row['category'], $name) === 0) {
+                    return [
+                        'dept' => $row['dept'],
+                        'section' => $row['section'],
+                        'category' => $row['category'],
+                    ];
+                }
+            }
+            if (str_contains($name, '>')) {
+                return self::partsToCategory(explode('>', $name));
+            }
+
+            return [
+                'dept' => 'Electronics',
+                'section' => 'Music',
+                'category' => $name,
+            ];
+        }
+
+        return [
+            'dept' => 'Electronics',
+            'section' => 'Music',
+            'category' => 'Music Accessories',
+        ];
+    }
+
+    /**
+     * @param  list<string>  $parts
+     * @return array{dept: string, section: string, category: string}
+     */
+    private static function partsToCategory(array $parts): array
+    {
+        $parts = array_values(array_filter(array_map('trim', $parts), static fn ($part) => $part !== ''));
+
+        return [
+            'dept' => $parts[0] ?? 'Electronics',
+            'section' => $parts[1] ?? 'Music',
+            'category' => $parts[2] ?? ($parts[1] ?? ($parts[0] ?? 'Music Accessories')),
+        ];
+    }
+
+    /**
+     * @return list<array{id: string, dept: string, section: string, category: string, path: string}>
+     */
+    public static function categoryCatalog(): array
+    {
+        $rows = [
+            ['Electronics', 'Music', 'Music Accessories'],
+            ['Electronics', 'Music', 'Microphones'],
+            ['Electronics', 'Music', 'Microphone Accessories'],
+            ['Electronics', 'Music', 'Wireless Microphones'],
+            ['Electronics', 'Music', 'Speakers'],
+            ['Electronics', 'Music', 'PA Speakers'],
+            ['Electronics', 'Music', 'Headphones'],
+            ['Electronics', 'Music', 'Cables'],
+            ['Electronics', 'Music', 'Audio Cables'],
+            ['Electronics', 'Music', 'Stands'],
+            ['Electronics', 'Music', 'Microphone Stands'],
+            ['Electronics', 'Music', 'Speaker Stands'],
+            ['Electronics', 'Music', 'Keyboard Stands'],
+            ['Electronics', 'Music', 'Mixers'],
+            ['Electronics', 'Music', 'Amplifiers'],
+            ['Electronics', 'Music', 'DJ Equipment'],
+            ['Electronics', 'Music', 'DJ Controllers'],
+            ['Electronics', 'Music', 'Lighting'],
+            ['Electronics', 'Music', 'Stage Lighting'],
+            ['Electronics', 'Music', 'Light Stands'],
+            ['Electronics', 'Music', 'Tripods'],
+            ['Electronics', 'Music', 'Wireless Systems'],
+            ['Electronics', 'Audio', 'Accessories'],
+            ['Electronics', 'Audio', 'Cables & Connectors'],
+            ['Electronics', 'Audio', 'Headphones & Earphones'],
+            ['Electronics', 'Lighting', 'Stage Lights'],
+            ['Electronics', 'Lighting', 'Lighting Stands'],
+            ['Electronics', 'Lighting', 'Lighting Accessories'],
+            ['Musical Instruments', 'Accessories', 'Stands'],
+            ['Musical Instruments', 'Accessories', 'Cables'],
+            ['Musical Instruments', 'Accessories', 'Microphones'],
+        ];
+
+        $out = [];
+        foreach ($rows as [$dept, $section, $category]) {
+            $out[] = [
+                'id' => $dept.'|'.$section.'|'.$category,
+                'dept' => $dept,
+                'section' => $section,
+                'category' => $category,
+                'path' => $dept.' > '.$section.' > '.$category,
+            ];
         }
 
         return $out;
