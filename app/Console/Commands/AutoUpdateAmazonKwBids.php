@@ -604,7 +604,8 @@ class AutoUpdateAmazonKwBids extends Command
                 $l1_cpc,
                 $l2_cpc,
                 $l7_cpc,
-                $cpcFallback
+                $cpcFallback,
+                $avgCpc > 0 ? $avgCpc : null
             );
             $row['sbid'] = $bidOut['sbid'];
             if ($row['sbid'] !== null && $row['sbid'] > 0 && $bidOut['band'] !== 'none') {

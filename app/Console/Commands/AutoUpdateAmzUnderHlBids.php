@@ -443,7 +443,8 @@ class AutoUpdateAmzUnderHlBids extends Command
                 $l1_cpc,
                 $l2_cpc,
                 $l7_cpc,
-                $cpcFallback
+                $cpcFallback,
+                $avgCpc > 0 ? $avgCpc : null
             );
 
             $row['INV'] = (int) ($row['INV'] ?? 0);

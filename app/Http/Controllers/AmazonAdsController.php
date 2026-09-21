@@ -7,6 +7,7 @@ use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Services\AmazonAdsLiveBidBgtSyncService;
+use App\Services\AmazonAdsService;
 use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPauseRuleState;
 use App\Services\AmazonAdsPauseRuleApplicator;
@@ -26,6 +27,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -81,10 +83,10 @@ class AmazonAdsController extends Controller
      */
     private const PHP_SORT_DISPLAY_COLUMNS = [
         'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt',
-        'U7%', 'U2%', 'U1%', 'CPC3', 'CPCAvg', 'CPC2',
+        'U7%', 'U2%', 'U1%', 'CPC3', 'CPCAvg', 'CPC2', 'ltCvr',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'pageCvr', 'viewsL30', 'viewsL7',
-        'ACOS',
+        'ACOS', 'ltAcos',
     ];
 
     /**
@@ -238,6 +240,17 @@ class AmazonAdsController extends Controller
             }
         }
 
+        // Targets: live keyword + product-target count, immediately after SBID.
+        if (in_array('sbid', $ordered, true)
+            && in_array('campaign_id', $ordered, true)
+            && in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'targets'));
+            $idxSbidTargets = array_search('sbid', $ordered, true);
+            if ($idxSbidTargets !== false) {
+                array_splice($ordered, $idxSbidTargets + 1, 0, ['targets']);
+            }
+        }
+
         // Display "bgt" after campaign name (same value as campaignBudgetAmount; hide duplicate DB column).
         $idxCn = array_search('campaignName', $ordered, true);
         if ($idxCn !== false && in_array('campaignBudgetAmount', $ordered, true)) {
@@ -373,16 +386,18 @@ class AmazonAdsController extends Controller
         }
 
         // ACOS (%) = cost / sales * 100 — spend + Ads Sold 0 is saved as 100% for BGT / SBGT.
+        // LT ACOS is lifetime cost ÷ lifetime sales on daily API rows, immediately after ACOS%.
         $canAcos = in_array('cost', $baseCols, true)
             && (in_array('sales30d', $baseCols, true) || in_array('sales', $baseCols, true));
         if ($canAcos) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'ACOS' && $c !== 'ltAcos'));
             $idxSales30 = array_search('sales30d', $ordered, true);
             if ($idxSales30 !== false) {
-                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS']);
+                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS', 'ltAcos']);
             } else {
                 $idxSales = array_search('sales', $ordered, true);
                 if ($idxSales !== false) {
-                    array_splice($ordered, $idxSales + 1, 0, ['ACOS']);
+                    array_splice($ordered, $idxSales + 1, 0, ['ACOS', 'ltAcos']);
                 }
             }
         }
@@ -406,21 +421,25 @@ class AmazonAdsController extends Controller
         }
 
         // Ads CVR (%) = Ads Sold ÷ Ads Clicks × 100 — both from the same L30 summary row.
+        // LT CVR is lifetime sold ÷ lifetime clicks on daily API rows, immediately after Ads CVR.
         if (in_array('Prchase', $ordered, true) && in_array('clicks', $ordered, true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'Cvr'));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'Cvr' && $c !== 'ltCvr'));
             $idxPrchaseForCvr = array_search('Prchase', $ordered, true);
             if ($idxPrchaseForCvr !== false) {
-                array_splice($ordered, $idxPrchaseForCvr + 1, 0, ['Cvr']);
+                array_splice($ordered, $idxPrchaseForCvr + 1, 0, ['Cvr', 'ltCvr']);
             }
         }
 
-        // Listing CVR + parent View L30 / View L7 from /amazon-tabulator-view, after Ads CVR.
+        // Listing CVR + parent View L30 / View L7 from /amazon-tabulator-view, after LT CVR.
         if ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports') {
             $ordered = array_values(array_filter(
                 $ordered,
                 static fn (string $c): bool => ! in_array($c, ['pageCvr', 'viewsL30', 'viewsL7'], true)
             ));
-            $idxPageCvr = array_search('Cvr', $ordered, true);
+            $idxPageCvr = array_search('ltCvr', $ordered, true);
+            if ($idxPageCvr === false) {
+                $idxPageCvr = array_search('Cvr', $ordered, true);
+            }
             if ($idxPageCvr === false) {
                 $idxPageCvr = array_search('Prchase', $ordered, true);
             }
@@ -2089,6 +2108,153 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Lifetime CVR % for the visible page: total purchases ÷ total clicks × 100 on daily API rows.
+     * SP uses `purchases30d` (same attribution as Ads Sold). SB/SD use `purchases`.
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  iterable<int, object>  $pageRows
+     * @return array<string, float|null>
+     */
+    private static function prefetchLifetimeCvrForPageRows(string $table, array $dbColumns, iterable $pageRows): array
+    {
+        if (! in_array('campaign_id', $dbColumns, true)
+            || ! in_array('report_date_range', $dbColumns, true)
+            || ! in_array('clicks', $dbColumns, true)) {
+            return [];
+        }
+        $purchCol = in_array('purchases30d', $dbColumns, true)
+            ? 'purchases30d'
+            : (in_array('purchases', $dbColumns, true) ? 'purchases' : null);
+        if ($purchCol === null) {
+            return [];
+        }
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+        $cids = [];
+        foreach ($pageRows as $row) {
+            $rowArr = (array) $row;
+            $cid = isset($rowArr['campaign_id']) ? trim((string) $rowArr['campaign_id']) : '';
+            if ($cid !== '') {
+                $cids[$cid] = true;
+            }
+        }
+        $cidList = array_keys($cids);
+        if ($cidList === []) {
+            return [];
+        }
+
+        $select = ['campaign_id', DB::raw('SUM(`'.$purchCol.'`) as life_purch'), DB::raw('SUM(`clicks`) as life_clicks')];
+        if ($hasAdType) {
+            $select[] = 'ad_type';
+        }
+        $q = DB::table($table)
+            ->select($select)
+            ->whereIn('campaign_id', $cidList)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+        $q->groupBy($hasAdType ? ['campaign_id', 'ad_type'] : ['campaign_id']);
+
+        $map = [];
+        foreach ($q->get() as $fr) {
+            $r = (array) $fr;
+            $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($r['ad_type'] ?? '')) : '';
+            $clicks = (float) ($r['life_clicks'] ?? 0);
+            $purch = (float) ($r['life_purch'] ?? 0);
+            $cvr = null;
+            if ($clicks > 0 && is_finite($purch)) {
+                $n = ($purch / $clicks) * 100;
+                $cvr = is_finite($n) ? round($n, 2) : null;
+            }
+            $map[$cid."\0".$ad] = $cvr;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Lifetime ACOS % for the visible page: total cost ÷ total sales × 100 on daily API rows.
+     * Spend with no sales is 100%, matching the ACOS% column.
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  iterable<int, object>  $pageRows
+     * @return array<string, float|null>
+     */
+    private static function prefetchLifetimeAcosForPageRows(string $table, array $dbColumns, iterable $pageRows): array
+    {
+        if (! in_array('campaign_id', $dbColumns, true) || ! in_array('report_date_range', $dbColumns, true)) {
+            return [];
+        }
+        $costCol = in_array('cost', $dbColumns, true) ? 'cost' : (in_array('spend', $dbColumns, true) ? 'spend' : null);
+        $salesCol = in_array('sales30d', $dbColumns, true) ? 'sales30d' : (in_array('sales', $dbColumns, true) ? 'sales' : null);
+        if ($costCol === null || $salesCol === null) {
+            return [];
+        }
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+        $cids = [];
+        foreach ($pageRows as $row) {
+            $rowArr = (array) $row;
+            $cid = isset($rowArr['campaign_id']) ? trim((string) $rowArr['campaign_id']) : '';
+            if ($cid !== '') {
+                $cids[$cid] = true;
+            }
+        }
+        $cidList = array_keys($cids);
+        if ($cidList === []) {
+            return [];
+        }
+
+        $select = [
+            'campaign_id',
+            DB::raw('SUM(`'.$costCol.'`) as life_cost'),
+            DB::raw('SUM(`'.$salesCol.'`) as life_sales'),
+        ];
+        if ($hasAdType) {
+            $select[] = 'ad_type';
+        }
+        $q = DB::table($table)
+            ->select($select)
+            ->whereIn('campaign_id', $cidList)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+        $q->groupBy($hasAdType ? ['campaign_id', 'ad_type'] : ['campaign_id']);
+
+        $map = [];
+        foreach ($q->get() as $fr) {
+            $r = (array) $fr;
+            $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($r['ad_type'] ?? '')) : '';
+            $cost = (float) ($r['life_cost'] ?? 0);
+            $sales = (float) ($r['life_sales'] ?? 0);
+            $map[$cid."\0".$ad] = self::lifetimeAcosPercent($cost, $sales);
+        }
+
+        return $map;
+    }
+
+    private static function lifetimeAcosPercent(float $cost, float $sales): ?float
+    {
+        if (! is_finite($cost) || ! is_finite($sales)) {
+            return null;
+        }
+        if ($sales > 0) {
+            $n = ($cost / $sales) * 100;
+
+            return is_finite($n) ? round($n, 2) : null;
+        }
+        if ($cost > 0) {
+            return 100.0;
+        }
+
+        return null;
+    }
+
+    /**
      * Prefetch CPC2/CPC3 for a page of rows in one query (avoids N+1 per-row day lookups).
      *
      * Cache key matches {@see fetchCostPerClickOnReportDay}: campaign_id + ad + YYYY-MM-DD.
@@ -2376,7 +2542,8 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Grid SBID from U7%/U1% + CPC1/CPC2/CPC3 (`costPerClick`, `CPC2`, `CPC3`), aligned with auto-update commands.
+     * Grid SBID from U7%/U1% + CPC1/CPC2/CPC3 (`costPerClick`, `CPC2`, `CPC3`).
+     * When all three are missing and Avg CPC is available, SBID is Avg CPC + 0.10.
      * Outside red+red / pink+pink bands, sbid is forced to null so the UI shows "--".
      */
     private static function applyGridSbidFromUb2Ub1AndCpc(array &$arr, array $u, array $rowArr, array $dbColumns, string $table): void
@@ -2400,6 +2567,7 @@ class AmazonAdsController extends Controller
         }
         $cpc2 = self::rowPositiveFloatFromKeys($arr, ['CPC2']);
         $cpc3 = self::rowPositiveFloatFromKeys($arr, ['CPC3']);
+        $avgCpc = self::rowPositiveFloatFromKeys($arr, ['CPCAvg']);
 
         $out = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
             (float) $u2,
@@ -2407,7 +2575,8 @@ class AmazonAdsController extends Controller
             $cpc1,
             $cpc2,
             $cpc3,
-            null
+            null,
+            $avgCpc > 0 ? $avgCpc : null
         );
 
         $arr['sbid'] = $out['sbid'];
@@ -2532,6 +2701,7 @@ class AmazonAdsController extends Controller
         self::applyAcosColorFilter($query, $table, $request);
         self::applyAdsCvrColorFilter($query, $table, $request);
         self::applyInventoryFilter($query, $table, $request, $dbColumns);
+        self::applyTargetsFilter($query, $table, $request);
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
             self::applyLiveSyncStatusFilters($query, $table, $request);
         }
@@ -2813,6 +2983,200 @@ class AmazonAdsController extends Controller
         self::applyOneUtilizationPercentRangeFilter($query, $spendExpr, 7, $u7);
         self::applyOneUtilizationPercentRangeFilter($query, $spendExpr, 2, $u2);
         self::applyOneUtilizationPercentRangeFilter($query, $spendExpr, 1, $u1);
+    }
+
+    /**
+     * Target-count bands for the Targets column. 0 is its own band (shown as M).
+     */
+    private static function normalizeTargetsFilter(mixed $raw): ?string
+    {
+        $v = strtolower(trim((string) $raw));
+
+        return in_array($v, ['m', 'lt50', 'mid', 'gt100'], true) ? $v : null;
+    }
+
+    private static function targetCountMatchesBand(int $count, string $band): bool
+    {
+        return match ($band) {
+            'm' => $count === 0,
+            'lt50' => $count > 0 && $count < 50,
+            'mid' => $count >= 50 && $count <= 100,
+            'gt100' => $count > 100,
+            default => false,
+        };
+    }
+
+    private static function targetCountAdProduct(string $table): ?string
+    {
+        return match ($table) {
+            'amazon_sp_campaign_reports' => 'sp',
+            'amazon_sb_campaign_reports' => 'sb',
+            'amazon_sd_campaign_reports' => 'sd',
+            default => null,
+        };
+    }
+
+    private static function targetCountCacheKey(string $adProduct, string $campaignId): string
+    {
+        return 'amz_ads_target_count_v1:'.$adProduct.':'.$campaignId;
+    }
+
+    /**
+     * Enabled + paused keyword and product-target counts from the Amazon Ads API.
+     * Cached per campaign. On API failure, SP falls back to distinct L30 targeting-report rows;
+     * a missing count stays null so the cell is a dash instead of M.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, int|null>
+     */
+    private static function targetCountsForCampaigns(string $table, array $campaignIds): array
+    {
+        $adProduct = self::targetCountAdProduct($table);
+        if ($adProduct === null) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($campaignIds as $id) {
+            $s = trim((string) $id);
+            if ($s !== '') {
+                $ids[$s] = true;
+            }
+        }
+        $ids = array_keys($ids);
+        if ($ids === []) {
+            return [];
+        }
+
+        $out = [];
+        $missing = [];
+        foreach ($ids as $id) {
+            $hit = Cache::get(self::targetCountCacheKey($adProduct, $id));
+            if ($hit === null || $hit === false || ! is_numeric($hit)) {
+                $missing[] = $id;
+                continue;
+            }
+            $out[$id] = (int) $hit;
+        }
+        if ($missing === []) {
+            return $out;
+        }
+
+        try {
+            $fresh = app(AmazonAdsService::class)->countTargetsForCampaigns($adProduct, $missing);
+            foreach ($missing as $id) {
+                $n = (int) ($fresh[$id] ?? 0);
+                Cache::put(self::targetCountCacheKey($adProduct, $id), $n, now()->addHours(6));
+                $out[$id] = $n;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon Ads target count unavailable', [
+                'table' => $table,
+                'campaigns' => count($missing),
+                'error' => $e->getMessage(),
+            ]);
+            $report = self::targetCountsFromKeywordReports($missing);
+            foreach ($missing as $id) {
+                $out[$id] = array_key_exists($id, $report) ? $report[$id] : null;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Distinct L30 targeting-report rows (keyword_id) per campaign. Used when the live list API fails.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, int>
+     */
+    private static function targetCountsFromKeywordReports(array $campaignIds): array
+    {
+        if ($campaignIds === [] || ! Schema::hasTable('amazon_sp_keyword_reports')) {
+            return [];
+        }
+        $cols = Schema::getColumnListing('amazon_sp_keyword_reports');
+        if (! in_array('campaign_id', $cols, true) || ! in_array('keyword_id', $cols, true) || ! in_array('report_date_range', $cols, true)) {
+            return [];
+        }
+
+        $map = [];
+        foreach (array_chunk($campaignIds, 500) as $chunk) {
+            $rows = DB::table('amazon_sp_keyword_reports')
+                ->select('campaign_id', DB::raw('COUNT(DISTINCT keyword_id) AS c'))
+                ->where('report_date_range', 'L30')
+                ->whereIn('campaign_id', $chunk)
+                ->whereNotNull('keyword_id')
+                ->where('keyword_id', '!=', '')
+                ->groupBy('campaign_id')
+                ->get();
+            foreach ($rows as $row) {
+                $map[trim((string) $row->campaign_id)] = (int) $row->c;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private static function attachTargetCountsToRows(array $rows, string $table): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            $ids[] = $row['campaign_id'] ?? '';
+        }
+        $counts = self::targetCountsForCampaigns($table, $ids);
+        foreach ($rows as $i => $row) {
+            $cid = trim((string) ($row['campaign_id'] ?? ''));
+            $rows[$i]['targets'] = ($cid !== '' && array_key_exists($cid, $counts)) ? $counts[$cid] : null;
+        }
+
+        return $rows;
+    }
+
+    private static function applyTargetsFilter(Builder $query, string $table, Request $request): void
+    {
+        $band = self::normalizeTargetsFilter($request->input('filter_targets'));
+        if ($band === null || self::targetCountAdProduct($table) === null) {
+            return;
+        }
+        $cols = Schema::getColumnListing($table);
+        if (! in_array('campaign_id', $cols, true)) {
+            return;
+        }
+
+        $ids = $query->clone()->reorder()->select('campaign_id')->distinct()->pluck('campaign_id');
+        $idList = [];
+        foreach ($ids as $id) {
+            $s = trim((string) $id);
+            if ($s !== '') {
+                $idList[] = $s;
+            }
+        }
+        $counts = self::targetCountsForCampaigns($table, $idList);
+        $keep = [];
+        foreach ($idList as $id) {
+            $n = $counts[$id] ?? null;
+            if ($n === null) {
+                continue;
+            }
+            if (self::targetCountMatchesBand((int) $n, $band)) {
+                $keep[] = $id;
+            }
+        }
+        if ($keep === []) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+        $query->where(function (Builder $w) use ($keep) {
+            foreach (array_chunk($keep, 500) as $chunk) {
+                $w->orWhereIn('campaign_id', $chunk);
+            }
+        });
     }
 
     private static function normalizeInvFilter(mixed $raw): ?string
@@ -3685,13 +4049,18 @@ class AmazonAdsController extends Controller
             $select[] = 'costPerClick';
         }
 
+        $days = (int) $request->query('days', 30);
+        if (! in_array($days, [0, 7, 30, 31, 32, 35, 60, 90], true)) {
+            $days = 30;
+        }
+
         $q = DB::table($table)
             ->select($select)
             ->where('campaign_id', $cid)
             ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
             ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
             ->orderBy('report_date_range', 'desc')
-            ->limit(365);
+            ->limit($days === 0 ? 2000 : $days);
         $adType = trim((string) $request->query('ad_type', ''));
         if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
             $q->where('ad_type', $adType);
@@ -3721,6 +4090,121 @@ class AmazonAdsController extends Controller
                 continue;
             }
             $points[] = ['date' => $day, 'cpc' => $cpc];
+        }
+
+        return response()->json(['ok' => true, 'points' => $points]);
+    }
+
+    /**
+     * Daily CVR history for the LT CVR dot. Same daily API rows as the lifetime column.
+     */
+    public function ltCvrHistory(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
+        if ($cid === '') {
+            return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
+        }
+
+        $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
+        if ($table === null || ! Schema::hasTable($table)) {
+            return response()->json(['ok' => false, 'message' => 'No daily CVR table for this row.', 'points' => []], 404);
+        }
+
+        $dbColumns = Schema::getColumnListing($table);
+        $purchCol = in_array('purchases30d', $dbColumns, true)
+            ? 'purchases30d'
+            : (in_array('purchases', $dbColumns, true) ? 'purchases' : null);
+        if ($purchCol === null || ! in_array('clicks', $dbColumns, true)) {
+            return response()->json(['ok' => true, 'points' => []]);
+        }
+
+        $days = (int) $request->query('days', 30);
+        if (! in_array($days, [0, 7, 30, 31, 32, 35, 60, 90], true)) {
+            $days = 30;
+        }
+
+        $q = DB::table($table)
+            ->select(['report_date_range', $purchCol, 'clicks'])
+            ->where('campaign_id', $cid)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->orderBy('report_date_range', 'desc')
+            ->limit($days === 0 ? 2000 : $days);
+        $adType = trim((string) $request->query('ad_type', ''));
+        if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $q->where('ad_type', $adType);
+        }
+
+        $points = [];
+        foreach ($q->get()->reverse()->values() as $row) {
+            $r = (array) $row;
+            $day = trim((string) ($r['report_date_range'] ?? ''));
+            $clicks = (float) ($r['clicks'] ?? 0);
+            if ($day === '' || $clicks <= 0) {
+                continue;
+            }
+            $purch = (float) ($r[$purchCol] ?? 0);
+            $n = ($purch / $clicks) * 100;
+            if (! is_finite($n)) {
+                continue;
+            }
+            $points[] = ['date' => $day, 'cvr' => round($n, 2)];
+        }
+
+        return response()->json(['ok' => true, 'points' => $points]);
+    }
+
+    /**
+     * Daily ACOS history for the LT ACOS dot. Same daily API rows as the lifetime column.
+     */
+    public function ltAcosHistory(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
+        if ($cid === '') {
+            return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
+        }
+
+        $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
+        if ($table === null || ! Schema::hasTable($table)) {
+            return response()->json(['ok' => false, 'message' => 'No daily ACOS table for this row.', 'points' => []], 404);
+        }
+
+        $dbColumns = Schema::getColumnListing($table);
+        $costCol = in_array('cost', $dbColumns, true) ? 'cost' : (in_array('spend', $dbColumns, true) ? 'spend' : null);
+        $salesCol = in_array('sales30d', $dbColumns, true) ? 'sales30d' : (in_array('sales', $dbColumns, true) ? 'sales' : null);
+        if ($costCol === null || $salesCol === null) {
+            return response()->json(['ok' => true, 'points' => []]);
+        }
+
+        $days = (int) $request->query('days', 30);
+        if (! in_array($days, [0, 7, 30, 31, 32, 35, 60, 90], true)) {
+            $days = 30;
+        }
+
+        $q = DB::table($table)
+            ->select(['report_date_range', $costCol, $salesCol])
+            ->where('campaign_id', $cid)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->orderBy('report_date_range', 'desc')
+            ->limit($days === 0 ? 2000 : $days);
+        $adType = trim((string) $request->query('ad_type', ''));
+        if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $q->where('ad_type', $adType);
+        }
+
+        $points = [];
+        foreach ($q->get()->reverse()->values() as $row) {
+            $r = (array) $row;
+            $day = trim((string) ($r['report_date_range'] ?? ''));
+            if ($day === '') {
+                continue;
+            }
+            $acos = self::lifetimeAcosPercent((float) ($r[$costCol] ?? 0), (float) ($r[$salesCol] ?? 0));
+            if ($acos === null) {
+                continue;
+            }
+            $points[] = ['date' => $day, 'acos' => $acos];
         }
 
         return response()->json(['ok' => true, 'points' => $points]);
@@ -4169,6 +4653,7 @@ class AmazonAdsController extends Controller
         self::applyAcosColorFilter($query, $table, $request);
         self::applyAdsCvrColorFilter($query, $table, $request);
         self::applyInventoryFilter($query, $table, $request, $dbColumns);
+        self::applyTargetsFilter($query, $table, $request);
 
         $bgtSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
         $bidSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
@@ -4294,6 +4779,8 @@ class AmazonAdsController extends Controller
         $hasCpc2 = in_array('CPC2', $columns, true);
         $hasCpc3 = in_array('CPC3', $columns, true);
         $hasCpcAvg = in_array('CPCAvg', $columns, true);
+        $hasLtCvr = in_array('ltCvr', $columns, true);
+        $hasLtAcos = in_array('ltAcos', $columns, true);
         $needRuleStatus = in_array('ruleStatus', $columns, true);
         $needActiveAgain = in_array('activeAgain', $columns, true);
         $needSkuMetrics = $needRuleStatus || $needActiveAgain || in_array('sbgt', $columns, true)
@@ -4377,6 +4864,12 @@ class AmazonAdsController extends Controller
         $cpcAvgMap = $hasCpcAvg
             ? self::prefetchLifetimeAvgCpcForPageRows($table, $dbColumns, $rows)
             : [];
+        $ltCvrMap = $hasLtCvr
+            ? self::prefetchLifetimeCvrForPageRows($table, $dbColumns, $rows)
+            : [];
+        $ltAcosMap = $hasLtAcos
+            ? self::prefetchLifetimeAcosForPageRows($table, $dbColumns, $rows)
+            : [];
         $data = [];
         foreach ($rows as $row) {
             $rowArr = (array) $row;
@@ -4439,6 +4932,18 @@ class AmazonAdsController extends Controller
                 $adKeyAvg = in_array('ad_type', $dbColumns, true) ? trim((string) ($adTypeStr ?? '')) : '';
                 $arr['CPCAvg'] = ($cid !== '' && array_key_exists($cid."\0".$adKeyAvg, $cpcAvgMap))
                     ? $cpcAvgMap[$cid."\0".$adKeyAvg]
+                    : null;
+            }
+            if ($hasLtCvr) {
+                $adKeyLt = in_array('ad_type', $dbColumns, true) ? trim((string) ($adTypeStr ?? '')) : '';
+                $arr['ltCvr'] = ($cid !== '' && array_key_exists($cid."\0".$adKeyLt, $ltCvrMap))
+                    ? $ltCvrMap[$cid."\0".$adKeyLt]
+                    : null;
+            }
+            if ($hasLtAcos) {
+                $adKeyAcos = in_array('ad_type', $dbColumns, true) ? trim((string) ($adTypeStr ?? '')) : '';
+                $arr['ltAcos'] = ($cid !== '' && array_key_exists($cid."\0".$adKeyAcos, $ltAcosMap))
+                    ? $ltAcosMap[$cid."\0".$adKeyAcos]
                     : null;
             }
             if ($hasCpc2) {
@@ -4702,6 +5207,9 @@ class AmazonAdsController extends Controller
 
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
             $data = self::attachLiveSyncStatusesToRows($data, $table);
+        }
+        if (in_array('targets', $columns, true)) {
+            $data = self::attachTargetCountsToRows($data, $table);
         }
 
         $payload = [
