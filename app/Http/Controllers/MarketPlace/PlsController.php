@@ -292,6 +292,8 @@ class PlsController extends Controller
             $row['gpft'] = round($gpft, 2);
             $row['gpft_pct'] = round($gpftPct, 2);
             $row['roi_pct'] = round($roiPct, 2);
+            // PLS has no ads, so NROI% = GROI%.
+            $row['nroi_pct'] = round($roiPct, 2);
             $row['_margin'] = $plsPercentage;
             $row['percentage'] = $plsPercentage;
             

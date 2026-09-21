@@ -581,6 +581,30 @@
                 sroi: lp > 0 ? Math.round(((s * margin - lp) / lp) * 100) : 0,
             };
         }
+        /** Dil slab target after CVR. Faire Ads% = 0, so SGROI and SNROI both equal this. */
+        function frFaireRuleTargetPct(d) {
+            if (typeof ebayDilGroiTargetGroi !== 'function') return null;
+            const target = ebayDilGroiTargetGroi(d);
+            if (target == null || !isFinite(Number(target))) return null;
+            return Math.round(Number(target));
+        }
+        function frFaireShownRoi(d) {
+            const target = frFaireRuleTargetPct(d);
+            if (target != null) return target;
+            const sprice = (typeof frRowSpriceForAlert === 'function') ? frRowSpriceForAlert(d) : 0;
+            if (!(sprice > 0)) return parseFloat(d && d.sroi) || 0;
+            return frFaireSpriceMetrics(d, sprice).sroi;
+        }
+        function frFaireRoiHtml(v) {
+            const n = Math.round(Number(v) || 0);
+            if (!n) return '<span style="font-weight:700;">0%</span>';
+            let color;
+            if (n < 40) color = '#a00211';
+            else if (n < 75) color = '#ffc107';
+            else if (n < 125) color = '#28a745';
+            else color = '#d63384';
+            return '<span style="color:' + color + ';font-weight:700;">' + n + '%</span>';
+        }
         function frRowData(row) {
             if (!row) return null;
             if (typeof row.getData === 'function') {
@@ -2512,20 +2536,27 @@
                         }
                     },
                     {
-                        title: 'SGROI%', field: 'sroi', sorter: 'number', headerSort: true, hozAlign: 'right',
+                        title: 'SGROI%', field: 'sroi', headerSort: true, hozAlign: 'right',
+                        sorter: function(a, b, aRow, bRow) {
+                            return frFaireShownRoi(aRow.getData()) - frFaireShownRoi(bRow.getData());
+                        },
+                        headerTooltip: 'SGROI from Sprc Dil. Faire Ads% = 0, so SGROI = SNROI = the Dil Target NROI (Ship not used).',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const sprice = frRowSpriceForAlert(d);
-                            const metrics = frFaireSpriceMetrics(d, sprice);
-                            const v = sprice > 0 ? metrics.sroi : (parseFloat(cell.getValue()) || 0);
-                            if (isNaN(v) || v === 0) return '<span style="font-weight:700;">0%</span>';
-                            let color;
-                            if (v < 40) color = '#a00211';
-                            else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else color = '#d63384';
-                            return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
+                            return frFaireRoiHtml(frFaireShownRoi(d));
+                        }
+                    },
+                    {
+                        title: 'SNROI', field: 'SNROI', headerSort: true, hozAlign: 'right',
+                        sorter: function(a, b, aRow, bRow) {
+                            return frFaireShownRoi(aRow.getData()) - frFaireShownRoi(bRow.getData());
+                        },
+                        headerTooltip: 'SNROI = Dil Target NROI. S PRC is back-solved so this matches the slab. Faire Ads% = 0, so SNROI = SGROI. Ship not used.',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            return frFaireRoiHtml(frFaireShownRoi(d));
                         }
                     },
                     {

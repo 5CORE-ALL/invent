@@ -77,6 +77,57 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(19.92, $out['sprice'], 0.01);
     }
 
+    public function test_faire_sold_row_uses_dil_slab_without_ship_or_lmp(): void
+    {
+        $out = DilRuleSpriceApplyService::for('faire')->computeTarget(
+            [
+                'inv' => 10,
+                'dil' => 12,
+                'ov_l30' => 4,
+                'al30' => 3,
+                'cvr' => 0,
+                'views' => 0,
+                'lp' => 20,
+                'ship' => 8,
+                'lmp' => 10,
+            ],
+            AmazonDilGroiRule::defaults(),
+            AmazonDilGroiRule::defaultCvrAdj(),
+            0.81
+        );
+
+        $this->assertNotNull($out);
+        // Dil 12 → 60% slab. No views, so CVR −10 does not apply. Ship and LMP ignored.
+        // (20 × 1.60) / 0.81 = 39.51
+        $this->assertEqualsWithDelta(60.0, $out['groi'], 0.01);
+        $this->assertEqualsWithDelta(39.51, $out['sprice'], 0.01);
+    }
+
+    public function test_faire_zero_sold_uses_min_target_not_dil_slab(): void
+    {
+        $out = DilRuleSpriceApplyService::for('faire')->computeTarget(
+            [
+                'inv' => 10,
+                'dil' => 12,
+                'ov_l30' => 4,
+                'al30' => 0,
+                'cvr' => 0,
+                'views' => 20,
+                'lp' => 20,
+                'ship' => 0,
+                'lmp' => 0,
+            ],
+            AmazonDilGroiRule::defaults(),
+            AmazonDilGroiRule::defaultCvrAdj(),
+            0.81
+        );
+
+        $this->assertNotNull($out);
+        // AL30 = 0 → min target 50, then CVR 0 with views → −10 = 40. Not the Dil 60% slab.
+        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
+        $this->assertEqualsWithDelta(34.57, $out['sprice'], 0.01);
+    }
+
     public function test_exclude_ship_on_wayfair(): void
     {
         $out = $this->compute('wayfair', [
