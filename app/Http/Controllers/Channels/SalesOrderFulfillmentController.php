@@ -44,6 +44,7 @@ use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Services\SheinApiService;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
+use App\Support\Marketplace\SofOrderCancelDetector;
 use App\Support\TrackingCarrierGuesser;
 use App\Services\FourSellerApiService;
 use App\Services\TemuShopifySalesService;
@@ -2688,54 +2689,12 @@ class SalesOrderFulfillmentController extends Controller
 
     protected function statusTextLooksCancelled(string $raw): bool
     {
-        $u = strtoupper(str_replace(['-', ' '], '_', trim($raw)));
-        if ($u === '') {
-            return false;
-        }
-        if (in_array($u, ['CANCELED', 'CANCELLED', 'CANCEL_REQUESTED', 'CANCELLATION_REQUESTED', 'VOID', 'VOIDED', 'INVALID'], true)) {
-            return true;
-        }
-
-        return str_contains($u, 'CANCEL');
+        return SofOrderCancelDetector::statusLooksCancelled($raw);
     }
 
     protected function payloadLooksCancelled(mixed $payload): bool
     {
-        $payload = AmazonOrder::decodeRawPayload($payload);
-        if ($payload === []) {
-            return false;
-        }
-
-        $cancelStatus = is_array($payload['cancelStatus'] ?? null) ? $payload['cancelStatus'] : [];
-        $cancelStatusAlt = is_array($payload['cancel_status'] ?? null) ? $payload['cancel_status'] : [];
-        $cancelState = $cancelStatus['cancelState']
-            ?? $cancelStatusAlt['cancel_state']
-            ?? $payload['cancelState']
-            ?? $payload['cancel_state']
-            ?? '';
-        if ($this->statusTextLooksCancelled((string) $cancelState)) {
-            return true;
-        }
-
-        $paymentSummary = is_array($payload['paymentSummary'] ?? null) ? $payload['paymentSummary'] : [];
-        $payment = (string) (
-            $payload['orderPaymentStatus']
-            ?? $paymentSummary['paymentStatus']
-            ?? $payload['payment_status']
-            ?? ''
-        );
-        $payU = strtoupper($payment);
-        if (str_contains($payU, 'FULLY_REFUNDED') || $payU === 'REFUNDED') {
-            return true;
-        }
-
-        foreach (['OrderStatus', 'orderStatus', 'order_status', 'orderFulfillmentStatus'] as $key) {
-            if (isset($payload[$key]) && $this->statusTextLooksCancelled((string) $payload[$key])) {
-                return true;
-            }
-        }
-
-        return false;
+        return SofOrderCancelDetector::payloadLooksCancelled($payload);
     }
 
     /**
@@ -5361,6 +5320,37 @@ class SalesOrderFulfillmentController extends Controller
                         "UPPER(TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_data, '$.OrderStatus')), ''))) NOT IN (?, ?)",
                         ['CANCELED', 'CANCELLED']
                     );
+            });
+        }
+
+        if (in_array($slug, ['aliexpress', 'alibaba'], true) && Schema::hasColumn($table, 'raw_payload')) {
+            $query->where(function (Builder $q) {
+                $q->whereNull('raw_payload')
+                    ->orWhere(function (Builder $inner) {
+                        $inner->whereRaw(
+                            "UPPER(TRIM(COALESCE(
+                                JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.order.order_status')),
+                                JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.order_status')),
+                                ''
+                            ))) NOT LIKE ?",
+                            ['%CANCEL%']
+                        )->whereRaw(
+                            "UPPER(TRIM(COALESCE(
+                                JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.order.order_status')),
+                                JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.order_status')),
+                                ''
+                            ))) NOT IN (?, ?)",
+                            ['CLOSED', 'CLOSE']
+                        )->whereRaw(
+                            "UPPER(TRIM(COALESCE(
+                                JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.order.refund_status')),
+                                JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.refund_status')),
+                                JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.order.refund_info.refund_status')),
+                                ''
+                            ))) NOT IN (?, ?, ?, ?, ?, ?)",
+                            ['REFUND_OK', 'WAIT_REFUND', 'IN_REFUND', 'REFUND_SUCCESS', 'FULLY_REFUNDED', 'REFUNDED']
+                        );
+                    });
             });
         }
 
