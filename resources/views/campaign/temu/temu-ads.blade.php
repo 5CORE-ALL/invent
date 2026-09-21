@@ -123,6 +123,16 @@
             gap: 0.5rem;
             align-items: center;
         }
+        #alert-count {
+            background-color: #ca8a04;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #alert-count.is-alert-filter-on {
+            background-color: #a16207;
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #ca8a04;
+        }
         .pricing-filter-item {
             display: inline-block;
             vertical-align: middle;
@@ -578,6 +588,8 @@
                             <span class="badge fs-6 p-2" id="create-count"
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
                                 title="Create ads for selected No ad rows (Inv > 0). Follows Parent/SKU/All, search, status, inv, dil, and clicks filters. If nothing is selected, uses visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
+                            <span class="badge fs-6 p-2" id="alert-count"
+                                title="Click to show only rows with a create-ad issue. Click again to clear.">Alert: <span class="temu-ads-badge-val">0</span></span>
                             <span class="badge fs-6 p-2" id="pause-run-count"
                                 style="background-color: #212529; color: white; font-weight: bold; cursor: pointer;"
                                 title="Pause and Run counts (live ads). Click for Pause + Run budget and details.">
@@ -1102,6 +1114,8 @@
                 return !!(row && !row.is_parent);
             }
 
+            let alertFilterOn = false;
+
             function currentFilterQuery() {
                 return {
                     goodsQ: (document.getElementById('search-goods-id').value || '').trim().toLowerCase(),
@@ -1112,6 +1126,7 @@
                     invQ: (document.getElementById('inv-filter').value || '').trim(),
                     dilQ: (document.getElementById('dil-filter').value || '').trim(),
                     clicksQ: (document.getElementById('clicks-filter').value || '').trim(),
+                    alertOnly: !!alertFilterOn,
                 };
             }
 
@@ -1238,6 +1253,7 @@
                 if (skip !== 'inv' && q.invQ && rowInvBucket(data) !== q.invQ) return false;
                 if (skip !== 'dil' && q.dilQ && rowDilBand(data) !== q.dilQ) return false;
                 if (skip !== 'clicks' && q.clicksQ && rowClicksBucket(data) !== q.clicksQ) return false;
+                if (skip !== 'alert' && q.alertOnly && !rowCreateAlertText(data)) return false;
                 return true;
             }
 
@@ -1435,6 +1451,38 @@
                     : 'Create all ' + n + ' filtered No ad rows with Inv > 0.';
             }
 
+            function alertBadgeCount() {
+                const q = Object.assign({}, currentFilterQuery(), { alertOnly: false });
+                const seen = {};
+                let n = 0;
+                (allAdsRows || []).forEach(function (r) {
+                    if (!rowVisibleForView(r, q) || !rowCreateAlertText(r)) return;
+                    const gid = String((r && r.goods_id) || '') || ('sku:' + String((r && r.sku) || ''));
+                    if (seen[gid]) return;
+                    seen[gid] = true;
+                    n++;
+                });
+                return n;
+            }
+
+            function paintAlertBadge() {
+                const el = document.getElementById('alert-count');
+                const n = alertBadgeCount();
+                setBadgeVal('alert-count', Number(n).toLocaleString());
+                if (!el) return;
+                el.classList.toggle('is-alert-filter-on', !!alertFilterOn);
+                el.title = alertFilterOn
+                    ? 'Showing ' + n + ' create-ad alert row(s). Click to show all rows again.'
+                    : 'Click to show the ' + n + ' row(s) with a create-ad issue.';
+            }
+
+            function toggleAlertFilter() {
+                alertFilterOn = !alertFilterOn;
+                if (table && typeof table.setPage === 'function') table.setPage(1);
+                applySearchFilters();
+                paintAlertBadge();
+            }
+
             function queueCreateGoodsIdsFromRows(rows) {
                 const seen = {};
                 const ids = [];
@@ -1538,7 +1586,7 @@
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
                 const q = currentFilterQuery();
-                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ && q.rowType === 'all';
+                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.alertOnly && q.rowType === 'all';
                 if (noLocalFilter && response && response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) {
                     m.spend = parseFloat(response.spend_sum);
                 }
@@ -1560,6 +1608,7 @@
                 setBadgeVal('ctr-avg', Number(m.ctr).toFixed(1) + '%');
                 setBadgeVal('cvr-avg', Number(m.cvr).toFixed(1) + '%');
                 paintCreateBadge();
+                paintAlertBadge();
                 paintPauseRunBadge(rows);
                 applyCtrAvgColors();
                 return m;
@@ -3270,6 +3319,22 @@
                 el.innerHTML = html;
             }
 
+            let fetchStatusHideTimer = null;
+            function cancelFetchStatusHide() {
+                clearTimeout(fetchStatusHideTimer);
+                fetchStatusHideTimer = null;
+            }
+            function hideFetchStatus() {
+                const status = document.getElementById('fetch-status');
+                if (!status) return;
+                status.style.display = 'none';
+                status.innerHTML = '';
+            }
+            function scheduleFetchStatusHide(ms) {
+                cancelFetchStatusHide();
+                fetchStatusHideTimer = setTimeout(hideFetchStatus, ms || 8000);
+            }
+
             function queueCreateGoodsIds() {
                 return queueCreateGoodsIdsFromRows(createSourceRows());
             }
@@ -3391,6 +3456,7 @@
                     status.innerHTML = usingSelection
                         ? '<div class="alert alert-warning py-2 mb-0">No selected rows can be created (need Status No ad and Inv &gt; 0).</div>'
                         : '<div class="alert alert-warning py-2 mb-0">No Create queue rows (Status No ad and Inv &gt; 0).</div>';
+                    scheduleFetchStatusHide(8000);
                     return;
                 }
                 const defaults = createAdDefaults();
@@ -3408,6 +3474,7 @@
                     return;
                 }
                 if (badge) badge.style.pointerEvents = 'none';
+                cancelFetchStatusHide();
                 status.style.display = 'block';
                 let created = 0;
                 let failed = 0;
@@ -3464,6 +3531,7 @@
                 const full = failNotes.join('\n\n');
                 status.innerHTML = '<div class="alert ' + cls + ' py-2 mb-0 d-inline-flex align-items-center flex-wrap">' +
                     '<span>' + msg + '</span>' + adsAlertTriangleHtml(full) + '</div>';
+                scheduleFetchStatusHide(8000);
                 if (badge) badge.style.pointerEvents = '';
                 table.setData(dataUrl());
             }
@@ -3471,6 +3539,9 @@
             document.getElementById('create-count').addEventListener('click', function (e) {
                 if (e.target.closest('.temu-ads-history-dot')) return;
                 runBulkCreateQueue();
+            });
+            document.getElementById('alert-count').addEventListener('click', function () {
+                toggleAlertFilter();
             });
 
             document.getElementById('pause-run-count').addEventListener('click', function (e) {
@@ -3511,6 +3582,7 @@
                 if (!confirm('Refresh Active/Inactive status from Temu for all goods on this page?')) {
                     return;
                 }
+                cancelFetchStatusHide();
                 status.style.display = 'block';
                 status.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Refreshing ad status…</div>';
                 btn.disabled = true;
@@ -3521,11 +3593,13 @@
                     timeout: 0,
                     success: function (response) {
                         status.innerHTML = '<div class="alert ' + (response.success ? 'alert-success' : 'alert-danger') + ' py-2 mb-0">' + (response.message || 'Done') + '</div>';
+                        scheduleFetchStatusHide(8000);
                         table.setData(dataUrl());
                     },
                     error: function (xhr) {
                         const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Status refresh failed';
                         status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + msg + '</div>';
+                        scheduleFetchStatusHide(8000);
                     },
                     complete: function () {
                         btn.disabled = false;
@@ -3652,6 +3726,7 @@
                 if (!confirm(fetchMsg)) {
                     return;
                 }
+                cancelFetchStatusHide();
                 status.style.display = 'block';
                 status.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Fetching ' + period + ' from Temu API…</div>';
                 btn.disabled = true;
@@ -3683,10 +3758,12 @@
                         } else {
                             status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + ((first && first.message) || 'Failed') + '</div>';
                         }
+                        scheduleFetchStatusHide(8000);
                     })
                     .fail(function (xhr) {
                         const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Fetch failed (timeout or server error). Try: php artisan temu:fetch-ads-api-reports --period=' + period;
                         status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + msg + '</div>';
+                        scheduleFetchStatusHide(8000);
                     })
                     .always(function () {
                         btn.disabled = false;
