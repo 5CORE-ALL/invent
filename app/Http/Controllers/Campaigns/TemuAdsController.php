@@ -198,9 +198,12 @@ class TemuAdsController extends Controller
                 'error_msg' => $r->error_msg,
                 'fetched_at' => optional($r->fetched_at)->toDateTimeString(),
                 'updated_at' => optional($r->updated_at)->toDateTimeString(),
+                'is_parent' => false,
                 'has_raw' => true,
             ];
         })->values();
+
+        $rows = $this->appendParentRows($rows);
 
         $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
         $channelSales = $this->temuChannelSalesForPeriod($tacosPeriod);
@@ -1146,6 +1149,9 @@ class TemuAdsController extends Controller
 
         $seenGoods = [];
         foreach ($rows as $row) {
+            if (! empty($row['is_parent'])) {
+                continue;
+            }
             $gid = (string) ($row['goods_id'] ?? '');
             $firstGoods = $gid === '' || ! isset($seenGoods[$gid]);
             if ($gid !== '') {
@@ -1188,7 +1194,7 @@ class TemuAdsController extends Controller
         }
 
         $this->storeBadgeSnapshot($period, [
-            'rows' => (float) $rows->count(),
+            'rows' => (float) collect($rows)->reject(fn ($r) => ! empty($r['is_parent']))->count(),
             'impressions' => $impr,
             'clicks' => $clicks,
             'spend' => $spend,
@@ -1350,6 +1356,94 @@ class TemuAdsController extends Controller
             });
 
         return $out;
+    }
+
+    /**
+     * Insert a PARENT {name} summary row above each Product Master parent + goods + period group.
+     * Ad metrics stay goods-level (copied from the first child). Inv / Ovl30 / Dil% roll up from children.
+     */
+    private function appendParentRows($rows)
+    {
+        $names = collect($rows)
+            ->pluck('parent')
+            ->map(fn ($p) => trim((string) $p))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $parentImages = [];
+        if ($names !== []) {
+            $parentSkus = array_map(fn (string $name) => 'PARENT '.$name, $names);
+            $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($parentSkus);
+            $productMasterByNorm = [];
+            foreach (ProductMaster::query()->whereIn('sku', $parentSkus)->get(['id', 'sku', 'parent', 'Values', 'main_image']) as $pm) {
+                $key = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+                if ($key !== '' && ! isset($productMasterByNorm[$key])) {
+                    $productMasterByNorm[$key] = $pm;
+                }
+            }
+            foreach ($parentSkus as $parentSku) {
+                $skuKey = ShopifySku::normalizeSkuForShopifyLookup($parentSku);
+                $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
+                $productMaster = $skuKey !== '' ? ($productMasterByNorm[$skuKey] ?? null) : null;
+                $parentImages[$parentSku] = $this->productMasterImagePath($productMaster, $shopify);
+            }
+        }
+
+        return self::synthesizeParentAdsRows($rows, $parentImages);
+    }
+
+    /**
+     * @param  iterable<int, array<string, mixed>>  $rows
+     * @param  array<string, string|null>  $parentImages
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    public static function synthesizeParentAdsRows($rows, array $parentImages = [])
+    {
+        $children = collect($rows)->map(function (array $row): array {
+            $row['is_parent'] = false;
+
+            return $row;
+        });
+
+        $parentRows = $children
+            ->filter(fn (array $row) => trim((string) ($row['parent'] ?? '')) !== '')
+            ->groupBy(function (array $row) {
+                return trim((string) ($row['parent'] ?? ''))."\n".(string) ($row['goods_id'] ?? '')."\n".(string) ($row['period'] ?? '');
+            })
+            ->map(function ($kids) use ($parentImages) {
+                $first = $kids->first();
+                $parent = trim((string) ($first['parent'] ?? ''));
+                $parentSku = 'PARENT '.$parent;
+                $inv = (int) $kids->sum(fn (array $k) => (int) ($k['inv'] ?? 0));
+                $ovl30 = (int) $kids->sum(fn (array $k) => (int) ($k['ovl30'] ?? 0));
+                $allSale = round((float) $kids->sum(fn (array $k) => (float) ($k['all_sale'] ?? 0)), 2);
+                $image = $parentImages[$parentSku] ?? ($first['image_path'] ?? null);
+
+                return array_merge($first, [
+                    'is_parent' => true,
+                    'sku' => $parentSku,
+                    'sku_id' => '',
+                    'image_path' => $image,
+                    'inv' => $inv,
+                    'ovl30' => $ovl30,
+                    'dil_percent' => $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0,
+                    'all_sale' => $allSale,
+                    'has_raw' => true,
+                ]);
+            })
+            ->values();
+
+        return $children
+            ->concat($parentRows)
+            ->sortBy(function (array $row) {
+                $parent = mb_strtolower((string) ($row['parent'] ?? ''));
+                $rank = ! empty($row['is_parent']) ? '0' : '1';
+                $sku = mb_strtolower((string) ($row['sku'] ?? ''));
+
+                return $parent."\n".$rank."\n".$sku;
+            })
+            ->values();
     }
 
     private function productMasterParent(?ProductMaster $productMaster): string

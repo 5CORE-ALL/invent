@@ -284,6 +284,20 @@
             border-radius: 2px;
             vertical-align: middle;
         }
+        #temu-ads-table .tabulator-row.temu-ads-parent-row,
+        #temu-ads-table .tabulator-row.temu-ads-parent-row .tabulator-cell {
+            background-color: #fffef2 !important;
+            font-weight: 700 !important;
+            color: #0f172a;
+        }
+        #temu-ads-table .tabulator-row.temu-ads-parent-row:hover,
+        #temu-ads-table .tabulator-row.temu-ads-parent-row:hover .tabulator-cell {
+            background-color: #fefce8 !important;
+        }
+        #temu-ads-table .temu-ads-parent-sku {
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
         .temu-ads-chart-badge { cursor: pointer; }
         .temu-ads-history-dot {
             display: inline-block;
@@ -1222,6 +1236,7 @@
                 let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, tacosSpend = 0, createN = 0, pauseN = 0, runN = 0;
                 const seenGoods = {};
                 list.forEach(function (r) {
+                    if (r && r.is_parent) return;
                     const gid = String(r.goods_id || '');
                     const firstGoods = !gid || !seenGoods[gid];
                     if (gid) seenGoods[gid] = true;
@@ -1249,7 +1264,7 @@
                     ? channelTacos
                     : (allSales > 0 ? (tacosSpend / allSales) * 100 : (tacosSpend > 0 ? 100 : 0));
                 return {
-                    rows: list.length,
+                    rows: list.filter(function (r) { return !(r && r.is_parent); }).length,
                     impressions: impr,
                     clicks: clicks,
                     spend: spend,
@@ -1537,6 +1552,7 @@
                 const seen = {};
                 const out = [];
                 (rows || []).forEach(function (r) {
+                    if (r && r.is_parent) return;
                     const action = rowPauseRunAction(r);
                     if (action !== 'run' && action !== 'pause') return;
                     const gid = String(r.goods_id || '').trim();
@@ -1650,6 +1666,15 @@
                     minWidth: 48,
                     resizable: true,
                 },
+                rowFormatter: function (row) {
+                    const el = row.getElement();
+                    if (row.getData() && row.getData().is_parent) {
+                        el.classList.add('temu-ads-parent-row');
+                    } else {
+                        el.classList.remove('temu-ads-parent-row');
+                    }
+                },
+                initialSort: [{ column: 'parent', dir: 'asc' }],
                 columns: [
                     { title: 'Period', field: 'period', width: 70, visible: false, sorter: 'string' },
                     {
@@ -1718,9 +1743,39 @@
                             return '<img class="temu-ads-thumb" src="' + src.replace(/"/g, '&quot;') + '" alt="">';
                         },
                     },
-                    { title: 'Parent', field: 'parent', width: 120, minWidth: 80, sorter: 'string',
-                      headerTooltip: 'Parent from Product Master' },
-                    { title: 'SKU', field: 'sku', width: 120, minWidth: 80, sorter: 'string' },
+                    {
+                        title: 'Parent',
+                        field: 'parent',
+                        width: 120,
+                        minWidth: 80,
+                        headerTooltip: 'Parent from Product Master. A PARENT row is inserted above its variation SKUs.',
+                        sorter: function (a, b, aRow, bRow) {
+                            const ad = (aRow && aRow.getData()) || {};
+                            const bd = (bRow && bRow.getData()) || {};
+                            const ap = String(ad.parent || '').toLowerCase();
+                            const bp = String(bd.parent || '').toLowerCase();
+                            if (ap !== bp) return ap < bp ? -1 : 1;
+                            const ai = ad.is_parent ? 0 : 1;
+                            const bi = bd.is_parent ? 0 : 1;
+                            if (ai !== bi) return ai - bi;
+                            return String(ad.sku || '').localeCompare(String(bd.sku || ''), undefined, { sensitivity: 'base' });
+                        },
+                    },
+                    {
+                        title: 'SKU',
+                        field: 'sku',
+                        width: 140,
+                        minWidth: 90,
+                        sorter: 'string',
+                        formatter: function (cell) {
+                            const sku = String(cell.getValue() || '');
+                            const data = cell.getRow().getData() || {};
+                            if (data.is_parent) {
+                                return '<span class="temu-ads-parent-sku">' + escapeAttr(sku) + '</span>';
+                            }
+                            return escapeAttr(sku);
+                        },
+                    },
                     { title: 'SKU ID', field: 'sku_id', width: 130, minWidth: 100, sorter: 'string',
                       headerTooltip: 'Temu skuId for this variation' },
                     { title: 'Inv', field: 'inv', width: 52, minWidth: 48, hozAlign: 'center', formatter: numFmt, sorter: 'number',

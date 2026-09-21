@@ -1,7 +1,6 @@
 {{--
-    IST end-of-day popups:
-    4:30 AM — Did you complete today's tasks? (Yes / No + mandatory reason)
-    5:00 AM and 5:30 AM — Fill DAR
+    IST closeout popups — once a day each, at a random time after 12:00 AM IST
+    (task Yes/No, then two DAR reminders). Never before that fire time.
 --}}
 @auth
 <style>
@@ -202,7 +201,7 @@
         var hello = document.getElementById('closeoutDarHello');
         var title = document.getElementById('closeoutDarTitle');
         if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
-        if (hello) hello.textContent = slot === 'second' ? '5:30 AM IST reminder' : '5:00 AM IST reminder';
+        if (hello) hello.textContent = 'DAR reminder';
         if (title) title.textContent = 'Fill your DAR before logout';
         modalEl.setAttribute('data-slot', slot);
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -266,10 +265,18 @@
             var slot = data[key];
             if (!slot || !slot.needed || armed[key]) return;
             var wait = parseInt(slot.wait_ms, 10);
-            if (!(wait >= 0)) wait = 0;
+            if (!(wait >= 0)) return;
             armed[key] = true;
             timers.push(setTimeout(function () {
-                enqueueShow(show);
+                fetch(cfg.nudgeUrl, {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function (r) { return r.json(); }).then(function (fresh) {
+                    var next = fresh && fresh[key];
+                    if (!next || !next.needed || !next.due) return;
+                    state.check_date = fresh.check_date || state.check_date;
+                    enqueueShow(show);
+                }).catch(function () {});
             }, wait));
         });
     }

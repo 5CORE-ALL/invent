@@ -71,7 +71,7 @@
             <div class="card">
                 <div class="card-body">
                     <p class="text-muted mb-3">
-                        End-of-day answers from the 4:30 AM IST task check and the 5:00 / 5:30 AM IST DAR reminders.
+                        Once-a-day answers from the after-midnight IST task check and DAR reminders.
                     </p>
                     <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
                         <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -168,8 +168,8 @@
                         }
                     },
                     { title: 'Answered at', field: 'tasks_answered_at', width: 150, hozAlign: 'center' },
-                    { title: 'DAR 5:00 AM', field: 'dar_nudge_5am_at', width: 140, hozAlign: 'center' },
-                    { title: 'DAR 5:30 AM', field: 'dar_nudge_530am_at', width: 140, hozAlign: 'center' },
+                    { title: 'DAR 1', field: 'dar_nudge_5am_at', width: 140, hozAlign: 'center' },
+                    { title: 'DAR 2', field: 'dar_nudge_530am_at', width: 140, hozAlign: 'center' },
                 ]
             });
 

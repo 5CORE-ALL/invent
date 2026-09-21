@@ -2438,6 +2438,7 @@ class AmazonAdsController extends Controller
         self::applyCampaignStatusFilter($query, $table, $request);
         self::applyAcosColorFilter($query, $table, $request);
         self::applyAdsCvrColorFilter($query, $table, $request);
+        self::applyInventoryFilter($query, $table, $request, $dbColumns);
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
             self::applyLiveSyncStatusFilters($query, $table, $request);
         }
@@ -2721,6 +2722,74 @@ class AmazonAdsController extends Controller
         self::applyOneUtilizationPercentRangeFilter($query, $spendExpr, 1, $u1);
     }
 
+    private static function normalizeInvFilter(mixed $raw): ?string
+    {
+        $v = strtolower(trim((string) $raw));
+
+        return in_array($v, ['zero', 'gt'], true) ? $v : null;
+    }
+
+    /**
+     * Keep rows whose campaign Inv matches the grid (0 / blank, or above 0).
+     * Resolved once from campaign names, then applied in SQL so paging and counts
+     * stay on the matching set instead of scanning thousands of report rows in PHP.
+     *
+     * @param  list<string>  $dbColumns
+     */
+    private static function applyInventoryFilter(Builder $query, string $table, Request $request, array $dbColumns): void
+    {
+        $mode = self::normalizeInvFilter($request->input('filter_inv'));
+        if ($mode === null
+            || ! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)
+            || ! in_array('campaignName', $dbColumns, true)
+        ) {
+            return;
+        }
+
+        $names = $query->clone()
+            ->reorder()
+            ->select('campaignName')
+            ->distinct()
+            ->pluck('campaignName');
+
+        $named = [];
+        $hasBlank = false;
+        foreach ($names as $name) {
+            $raw = (string) $name;
+            if (trim($raw) === '') {
+                $hasBlank = true;
+                continue;
+            }
+            $named[$raw] = true;
+        }
+
+        $keep = [];
+        if ($named !== []) {
+            $metrics = AmazonAdsCampaignSkuMetrics::mapForCampaignNames(array_keys($named));
+            foreach (array_keys($named) as $name) {
+                if (AmazonAdsCampaignSkuMetrics::invMatchesFilter($metrics[$name]['inv'] ?? null, $mode)) {
+                    $keep[] = $name;
+                }
+            }
+        }
+
+        $includeBlank = $mode === 'zero' && $hasBlank;
+        if ($keep === [] && ! $includeBlank) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+
+        $query->where(function (Builder $w) use ($keep, $includeBlank) {
+            foreach (array_chunk($keep, 500) as $chunk) {
+                $w->orWhereIn('campaignName', $chunk);
+            }
+            if ($includeBlank) {
+                $w->orWhereNull('campaignName')->orWhere('campaignName', '=', '');
+            }
+        });
+    }
+
     private static function normalizeCampaignStatusFilter(?string $raw): ?string
     {
         if ($raw === null || trim((string) $raw) === '') {
@@ -2847,30 +2916,43 @@ class AmazonAdsController extends Controller
     {
         $field = $field === 'bid' ? 'bid' : 'bgt';
         try {
-            $q = $query->clone();
+            $q = $query->clone()->reorder();
             $otherField = $field === 'bgt' ? 'bid' : 'bgt';
             $otherInput = $otherField === 'bgt' ? 'filter_bgt_sync' : 'filter_bid_sync';
             self::applyOneLiveSyncStatusFilter($q, $table, $request, $otherField, $otherInput);
 
-            $total = (int) $q->clone()->count();
-            if ($total < 1) {
-                return self::emptyLiveSyncCounts();
-            }
             if (! Schema::hasTable('amazon_ads_live_sync_states')) {
-                return ['green' => 0, 'yellow' => $total, 'red' => 0];
+                $total = (int) $q->clone()->count();
+
+                return $total < 1
+                    ? self::emptyLiveSyncCounts()
+                    : ['green' => 0, 'yellow' => $total, 'red' => 0];
             }
 
-            $green = (int) $q->clone()->where(function (Builder $w) use ($table, $field) {
-                self::constrainLiveSyncColor($w, $table, $field, AmazonAdsLiveSyncStatus::GREEN);
-            })->count();
-            $red = (int) $q->clone()->where(function (Builder $w) use ($table, $field) {
-                self::constrainLiveSyncColor($w, $table, $field, AmazonAdsLiveSyncStatus::RED);
-            })->count();
+            $inner = $q->clone()->select($table.'.campaign_id');
+            if ($field === 'bid') {
+                $inner->addSelect([$table.'.last_sbid', $table.'.sbid']);
+            }
+            $channel = self::liveSyncChannelForTable($table);
+            $colorSql = self::liveSyncColorSql('r', $field);
+            $row = DB::query()
+                ->fromSub($inner, 'r')
+                ->leftJoin('amazon_ads_live_sync_states as s', function ($join) use ($channel, $field) {
+                    $join->on('s.campaign_id', '=', 'r.campaign_id')
+                        ->where('s.channel', '=', $channel)
+                        ->where('s.field', '=', $field);
+                })
+                ->selectRaw(
+                    "COALESCE(SUM(CASE WHEN ({$colorSql}) = 'green' THEN 1 ELSE 0 END), 0) AS green_n, "
+                    ."COALESCE(SUM(CASE WHEN ({$colorSql}) = 'yellow' THEN 1 ELSE 0 END), 0) AS yellow_n, "
+                    ."COALESCE(SUM(CASE WHEN ({$colorSql}) = 'red' THEN 1 ELSE 0 END), 0) AS red_n"
+                )
+                ->first();
 
             return [
-                'green' => $green,
-                'yellow' => max(0, $total - $green - $red),
-                'red' => $red,
+                'green' => (int) ($row->green_n ?? 0),
+                'yellow' => (int) ($row->yellow_n ?? 0),
+                'red' => (int) ($row->red_n ?? 0),
             ];
         } catch (\Throwable $e) {
             Log::warning('amazon-ads live sync status counts failed', [
@@ -2910,57 +2992,36 @@ class AmazonAdsController extends Controller
         self::constrainLiveSyncColor($query, $table, $field, $color);
     }
 
+    /**
+     * Same green / yellow / red as the dots on the row.
+     * Failed stays red. BID is green when Amazon already matches SBID, unless that row failed.
+     */
+    private static function liveSyncColorSql(string $alias, string $field): string
+    {
+        $failed = "s.status = 'failed'";
+        $synced = "s.status = 'synced'";
+        if ($field === 'bid') {
+            $match = self::storedBidMatchesSql($alias);
+
+            return "CASE WHEN {$failed} THEN 'red' WHEN {$synced} OR ({$match}) THEN 'green' ELSE 'yellow' END";
+        }
+
+        return "CASE WHEN {$failed} THEN 'red' WHEN {$synced} THEN 'green' ELSE 'yellow' END";
+    }
+
     private static function constrainLiveSyncColor(Builder $query, string $table, string $field, string $color): void
     {
         $field = $field === 'bid' ? 'bid' : 'bgt';
         $channel = self::liveSyncChannelForTable($table);
-        $exists = function ($q) use ($table, $channel, $field) {
-            $q->select(DB::raw('1'))
-                ->from('amazon_ads_live_sync_states as s')
-                ->whereColumn('s.campaign_id', $table.'.campaign_id')
-                ->where('s.channel', $channel)
-                ->where('s.field', $field);
-        };
-
-        if ($color === AmazonAdsLiveSyncStatus::GREEN) {
-            $query->where(function (Builder $w) use ($exists, $table, $field) {
-                $w->whereExists(function ($q) use ($exists) {
-                    $exists($q);
-                    $q->where('s.status', 'synced');
-                });
-                if ($field === 'bid') {
-                    $w->orWhere(function (Builder $m) use ($table, $exists) {
-                        $m->whereRaw(self::storedBidMatchesSql($table));
-                        $m->whereNotExists(function ($q) use ($exists) {
-                            $exists($q);
-                            $q->where('s.status', 'failed');
-                        });
-                    });
-                }
-            });
-
-            return;
-        }
-        if ($color === AmazonAdsLiveSyncStatus::RED) {
-            $query->whereExists(function ($q) use ($exists) {
-                $exists($q);
-                $q->where('s.status', 'failed');
-            });
-
-            return;
-        }
-
-        $query->where(function (Builder $outer) use ($exists) {
-            $outer->whereNotExists(function ($q) use ($exists) {
-                $exists($q);
-            })->orWhereExists(function ($q) use ($exists) {
-                $exists($q);
-                $q->whereNotIn('s.status', ['synced', 'failed']);
-            });
-        });
-        if ($field === 'bid') {
-            $query->whereRaw('NOT '.self::storedBidMatchesSql($table));
-        }
+        $t = str_replace('`', '', $table);
+        $colorSql = self::liveSyncColorSql($t, $field);
+        $query->whereRaw(
+            '(SELECT '.$colorSql.' FROM (SELECT 1) AS amz_sync_one'
+            .' LEFT JOIN amazon_ads_live_sync_states AS s'
+            ." ON s.campaign_id = `{$t}`.`campaign_id` AND s.channel = ? AND s.field = ?"
+            .' LIMIT 1) = ?',
+            [$channel, $field, $color]
+        );
     }
 
     private static function storedBidMatchesSql(string $table): string
@@ -3915,6 +3976,7 @@ class AmazonAdsController extends Controller
         self::applyCampaignStatusFilter($query, $table, $request);
         self::applyAcosColorFilter($query, $table, $request);
         self::applyAdsCvrColorFilter($query, $table, $request);
+        self::applyInventoryFilter($query, $table, $request, $dbColumns);
 
         $bgtSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
         $bidSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
