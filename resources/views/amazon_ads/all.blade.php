@@ -2495,7 +2495,9 @@
                     signal: amzAjaxAbort ? amzAjaxAbort.signal : undefined
                 }).then(function (res) { return res.json(); }).catch(function (err) {
                     if (err && err.name === 'AbortError') {
-                        return new Promise(function () {});
+                        var aborted = new Error('aborted');
+                        aborted.name = 'AbortError';
+                        throw aborted;
                     }
                     throw err;
                 });
@@ -2543,9 +2545,11 @@
             table.on('pageLoaded', amzRefreshUiSoon);
             table.on('dataLoaded', function () {
                 amzRefreshUiSoon();
-                amzAutoPushChangedSbgt();
             });
             table.on('dataLoadError', function (error) {
+                if (error && (error.name === 'AbortError' || String(error.message || error).indexOf('abort') !== -1)) {
+                    return;
+                }
                 console.error('amazon-ads raw data load error', error);
                 amzUpdateTotalBadge(NaN);
             });

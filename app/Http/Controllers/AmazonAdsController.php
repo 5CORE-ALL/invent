@@ -4547,8 +4547,6 @@ class AmazonAdsController extends Controller
         // Newest → oldest by default (id desc when id exists and first column).
         $orderDir = strtolower((string) $request->input('order.0.dir', 'desc')) === 'asc' ? 'asc' : 'desc';
 
-        $recordsTotal = (int) DB::table($table)->count();
-
         $query = DB::table($table);
         $usedCalendarSearchFallback = self::applyCalendarSearchWithL30Fallback($query, $table, $dbColumns, $request, $search);
         if (! $usedCalendarSearchFallback) {
@@ -4574,6 +4572,7 @@ class AmazonAdsController extends Controller
         }
 
         $recordsFiltered = (int) $query->clone()->count();
+        $recordsTotal = $recordsFiltered;
 
         $queryForAggregates = $query->clone();
         // Calendar latest-day grid omits paused L30 campaigns Amazon still counts.
@@ -4584,9 +4583,9 @@ class AmazonAdsController extends Controller
 
         $distinctCampaignCount = null;
         if (in_array('campaign_id', $dbColumns, true)) {
-            $distinctCampaignCount = (int) DB::query()
-                ->fromSub($query->clone(), 'r')
-                ->selectRaw('COUNT(DISTINCT r.campaign_id) AS c')
+            $distinctCampaignCount = (int) $query->clone()
+                ->reorder()
+                ->selectRaw('COUNT(DISTINCT `'.$table.'`.campaign_id) AS c')
                 ->value('c');
         }
 
