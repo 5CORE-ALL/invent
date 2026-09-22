@@ -24,7 +24,9 @@ use App\Http\Controllers\MarketPlace\TikTokSyncController;
 use App\Http\Controllers\MarketPlace\TikTok2SyncController;
 use App\Http\Controllers\MarketPlace\PlsSyncController;
 use App\Http\Controllers\MarketPlace\B5cB2bSyncController;
+use App\Models\AmazonOrder;
 use App\Models\ShopifySku;
+use App\Services\MarketplaceManager\AmazonTrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingInstantMapService;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Jobs\FetchMarketplaceShopifyTrackingJob;
@@ -464,6 +466,22 @@ class MarketplaceController extends Controller
     public function fetchTracking(string $marketplace, int $order): JsonResponse
     {
         $result = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder($marketplace, $order);
+
+        if (strtolower($marketplace) === 'amazon') {
+            $amazonOrder = AmazonOrder::query()->find($order);
+            if ($amazonOrder !== null) {
+                $fill = app(AmazonTrackingSyncService::class)->fillTrackingForOrder($amazonOrder);
+                if (trim((string) ($fill['tracking'] ?? '')) !== '') {
+                    $result['success'] = true;
+                    $result['skipped'] = false;
+                    $result['tracking'] = $fill['tracking'];
+                    $result['carrier'] = $fill['carrier'] ?? ($result['carrier'] ?? null);
+                    $result['message'] = $fill['message'] ?? ('Saved tracking '.$fill['tracking'].' for SOF.');
+                } elseif (empty($result['success']) && ! empty($fill['message'])) {
+                    $result['message'] = $fill['message'];
+                }
+            }
+        }
 
         return response()->json([
             'success' => ! empty($result['success']),

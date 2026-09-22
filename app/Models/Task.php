@@ -12,6 +12,21 @@ class Task extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /** Statuses that can be set from /tasks (dropdown + API). */
+    public const STATUSES = [
+        'Todo',
+        'Working',
+        'Archived',
+        'Done',
+        'Need Help',
+        'Need Approval',
+        'Dependent',
+        'Approved',
+        'Hold',
+        'Monitor',
+        'Rework',
+    ];
+
     // If your old table has a different name, specify it here
     // protected $table = 'your_old_table_name';
 

@@ -687,15 +687,8 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        $localTn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
-        $localHit = strlen($localTn) >= 8 && ! isset($exclude[$localTn])
-            ? [
-                'tracking' => $localTn,
-                'carrier' => (string) ($localTracking['carrier'] ?? 'Other'),
-                'source' => 'marketplace',
-            ]
-            : null;
-        if ($localHit !== null && $sku === '') {
+        $localHit = self::sofLocalTrackingIfReady($localTracking, array_keys($exclude));
+        if ($localHit !== null) {
             return $localHit;
         }
 
@@ -868,6 +861,18 @@ class VeeqoShopifyFulfillmentService
             'skipped' => 0,
             'failed' => 0,
         ]);
+
+        $sofFromShopify = $this->syncUnfulfilledShopifyFromSofTracking(min(250, max(80, (int) ceil($limit * 0.4))));
+        $checked += (int) ($sofFromShopify['checked'] ?? 0);
+        $fulfilled += (int) ($sofFromShopify['fulfilled'] ?? 0);
+        $skipped += (int) ($sofFromShopify['skipped'] ?? 0);
+        $failed += (int) ($sofFromShopify['failed'] ?? 0);
+
+        $sofSweep = $this->syncSofTrackingToUnfulfilledShopify(min(400, max(150, (int) ceil($limit * 0.6))));
+        $checked += (int) ($sofSweep['checked'] ?? 0);
+        $fulfilled += (int) ($sofSweep['fulfilled'] ?? 0);
+        $skipped += (int) ($sofSweep['skipped'] ?? 0);
+        $failed += (int) ($sofSweep['failed'] ?? 0);
 
         $localSweep = $this->syncLocalTrackedLinkedOrders(min(800, max(150, (int) ceil($limit * 0.55))));
         $checked += (int) ($localSweep['checked'] ?? 0);
@@ -1375,9 +1380,340 @@ class VeeqoShopifyFulfillmentService
     /**
      * @return array<string, array{0: class-string, 1: string}>
      */
+    /**
+     * Tracking already on SOF / the marketplace row is enough to fulfill Shopify.
+     * Do not wait on Veeqo/GOFO — those lookups hang and leave copies unfulfilled.
+     *
+     * @param  array{tracking?: string, carrier?: string}|null  $localTracking
+     * @param  list<string>  $excludeTrackings
+     * @return array{tracking: string, carrier: string, source: string}|null
+     */
+    public static function sofLocalTrackingIfReady(?array $localTracking, array $excludeTrackings = []): ?array
+    {
+        $tn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
+        if (strlen($tn) < 8 || preg_match('/^\d{3}-\d{7}-\d{7}$/', $tn) === 1) {
+            return null;
+        }
+        foreach ($excludeTrackings as $have) {
+            $have = strtoupper(preg_replace('/\s+/', '', (string) $have) ?? '');
+            if ($have !== '' && $have === $tn) {
+                return null;
+            }
+        }
+
+        return [
+            'tracking' => $tn,
+            'carrier' => trim((string) ($localTracking['carrier'] ?? '')) ?: 'Other',
+            'source' => 'sof',
+        ];
+    }
+
+    /**
+     * Walk Shopify Unfulfilled (last 7 days) and apply tracking already on SOF.
+     * Does not call Veeqo/GOFO — those lookups starve yesterday’s copies behind ~10k open orders.
+     *
+     * @return array{checked: int, fulfilled: int, skipped: int, failed: int, message: string}
+     */
+    public function syncUnfulfilledShopifyFromSofTracking(int $limit = 200): array
+    {
+        $limit = max(1, min(500, $limit));
+        $checked = 0;
+        $fulfilled = 0;
+        $skipped = 0;
+        $failed = 0;
+        $since = now('America/Los_Angeles')->subDays(7)->startOfDay()->utc()->toIso8601String();
+
+        foreach ($this->uniqueShopifyConfigs() as $config) {
+            $storeUrl = trim((string) ($config['store_url'] ?? ''));
+            $token = trim((string) ($config['token'] ?? ''));
+            if ($storeUrl === '' || $token === '') {
+                continue;
+            }
+            $orders = $this->listUnfulfilledShopifyOrders($storeUrl, $token, max($limit * 2, $limit), [
+                'created_at_min' => $since,
+                'max_pages' => 16,
+            ]);
+            foreach ($orders as $order) {
+                if ($checked >= $limit) {
+                    break 2;
+                }
+                if (! is_array($order)) {
+                    continue;
+                }
+                $shopifyId = (string) ($order['id'] ?? '');
+                if ($shopifyId === '' || $this->shopifyOrderLooksFba($order)) {
+                    continue;
+                }
+                $identity = $this->marketplaceIdentityFromShopifyOrder($order);
+                $marketplace = (string) ($identity['slug'] ?? '');
+                $ids = is_array($identity['ids'] ?? null) ? $identity['ids'] : [];
+                if ($marketplace === '' || $ids === []) {
+                    continue;
+                }
+                $ready = self::sofLocalTrackingIfReady(
+                    $this->sofTrackingForUnfulfilledShopify($marketplace, $ids)
+                );
+                if ($ready === null) {
+                    continue;
+                }
+                $checked++;
+                $skus = $this->skusFromShopifyOrder($order);
+                if ($skus === []) {
+                    $skus = [''];
+                }
+                $anyOk = false;
+                $already = false;
+                $lastMessage = 'Shopify fulfill did not run.';
+                foreach ($skus as $sku) {
+                    $created = $this->createShopifyFulfillment(
+                        $config,
+                        $shopifyId,
+                        $ready['tracking'],
+                        $ready['carrier'],
+                        (string) $sku,
+                        0
+                    );
+                    if (empty($created['success'])) {
+                        $lastMessage = (string) ($created['message'] ?? 'Shopify fulfill failed.');
+                        continue;
+                    }
+                    $anyOk = true;
+                    $already = $already || ! empty($created['already']);
+                    $lastMessage = (string) ($created['message'] ?? ('Shopify fulfilled with '.$ready['tracking']));
+                    $this->cacheTrackingOnShopifyRawOrder($shopifyId, $ready['tracking'], $ready['carrier']);
+                    $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
+                    if ($model !== null) {
+                        $this->persistTrackingOntoMarketplaceOrder(
+                            $marketplace,
+                            (int) $model->id,
+                            $shopifyId,
+                            $ready['tracking'],
+                            $ready['carrier']
+                        );
+                    }
+                    if (empty($created['already'])) {
+                        break;
+                    }
+                }
+                if ($anyOk && ! $already) {
+                    $fulfilled++;
+                } elseif ($anyOk) {
+                    $skipped++;
+                } else {
+                    $failed++;
+                    Log::info('VeeqoShopifyFulfillmentService: SOF→Shopify fulfill failed', [
+                        'shopify_order_id' => $shopifyId,
+                        'marketplace' => $marketplace,
+                        'tracking' => $ready['tracking'],
+                        'message' => $lastMessage,
+                    ]);
+                }
+                usleep(80000);
+            }
+        }
+
+        return [
+            'checked' => $checked,
+            'fulfilled' => $fulfilled,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "Unfulfilled Shopify←SOF: checked {$checked}, fulfilled {$fulfilled}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    /**
+     * @param  list<string>  $ids
+     * @return array{tracking: string, carrier: string}|null
+     */
+    protected function sofTrackingForUnfulfilledShopify(string $marketplace, array $ids): ?array
+    {
+        $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
+        if ($model === null) {
+            return null;
+        }
+        if ($marketplace === 'amazon' && $model instanceof AmazonOrder) {
+            $hit = $model->localTracking();
+            if (trim((string) ($hit['tracking'] ?? '')) !== '') {
+                return [
+                    'tracking' => (string) $hit['tracking'],
+                    'carrier' => trim((string) ($hit['carrier'] ?? '')) ?: 'Other',
+                ];
+            }
+        }
+        if (in_array($marketplace, ['tiktok', 'tiktok2'], true)) {
+            $raw = $model->raw_json ?? $model->raw_payload ?? $model->raw_data ?? null;
+            if (is_string($raw)) {
+                $decoded = json_decode($raw, true);
+                $raw = is_array($decoded) ? $decoded : null;
+            }
+            if (is_array($raw)) {
+                $hit = self::trackingFromTikTokOrderPayload($raw);
+                if (is_array($hit) && trim((string) ($hit['tracking'] ?? '')) !== '') {
+                    return $hit;
+                }
+            }
+        }
+
+        return $this->trackingFromLoadedMarketplaceModel($marketplace, $model);
+    }
+
+    /**
+     * Push tracking already shown on /sales-order-fulfillment onto unfulfilled Shopify copies.
+     *
+     * @return array{checked: int, fulfilled: int, skipped: int, failed: int, message: string}
+     */
+    public function syncSofTrackingToUnfulfilledShopify(int $limit = 200): array
+    {
+        $limit = max(1, min(800, $limit));
+        $checked = 0;
+        $fulfilled = 0;
+        $skipped = 0;
+        $failed = 0;
+        $seenShopify = [];
+        $since = now('America/Los_Angeles')->subDays(30)->startOfDay();
+        $map = $this->localTrackedMarketplaceMap();
+        $perMarket = max(30, (int) ceil($limit / max(1, count($map))));
+
+        foreach ($map as $slug => [$class, $dateCol]) {
+            $table = (new $class)->getTable();
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_order_id')) {
+                continue;
+            }
+            $query = $class::query()
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->where('shopify_order_id', 'not like', 'manual%');
+            if ($slug === 'amazon' && Schema::hasColumn($table, 'fulfillment_channel')) {
+                $query->where(function ($q) {
+                    $q->whereNull('fulfillment_channel')
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(fulfillment_channel, ''))) != ?", ['AFN']);
+                });
+            }
+            if (Schema::hasColumn($table, $dateCol)) {
+                $query->where($dateCol, '>=', $since)->orderByDesc($dateCol);
+            } elseif (Schema::hasColumn($table, 'created_at')) {
+                $query->where('created_at', '>=', $since);
+            }
+            $rows = $query->orderByDesc('id')->limit(max(80, $perMarket * 6))->get();
+            foreach ($rows as $row) {
+                if ($checked >= $limit) {
+                    break 2;
+                }
+                $shopifyId = trim((string) ($row->shopify_order_id ?? ''));
+                if ($shopifyId === '' || isset($seenShopify[$shopifyId])) {
+                    continue;
+                }
+                if ($slug === 'amazon' && $row instanceof AmazonOrder && $row->isFba()) {
+                    continue;
+                }
+                $local = $this->trackingFromLoadedMarketplaceModel((string) $slug, $row);
+                $ready = self::sofLocalTrackingIfReady($local);
+                if ($ready === null) {
+                    continue;
+                }
+                $seenShopify[$shopifyId] = true;
+                $checked++;
+                $result = $this->fulfillShopifyWithKnownTracking(
+                    (string) $slug,
+                    $row,
+                    $ready['tracking'],
+                    $ready['carrier']
+                );
+                if (! empty($result['success']) && ($result['action'] ?? '') === 'shopify_fulfilled') {
+                    $fulfilled++;
+                } elseif (! empty($result['skipped']) || ($result['action'] ?? '') === 'already_on_shopify') {
+                    $skipped++;
+                } else {
+                    $failed++;
+                }
+                usleep(80000);
+            }
+        }
+
+        return [
+            'checked' => $checked,
+            'fulfilled' => $fulfilled,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "SOF→Shopify: checked {$checked}, fulfilled {$fulfilled}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    /**
+     * @return array{success: bool, skipped?: bool, action?: string, message: string, tracking?: string, carrier?: string}
+     */
+    protected function fulfillShopifyWithKnownTracking(
+        string $marketplace,
+        object $row,
+        string $tracking,
+        string $carrier
+    ): array {
+        $shopifyId = trim((string) ($row->shopify_order_id ?? ''));
+        if ($shopifyId === '' || str_starts_with($shopifyId, 'manual')) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'action' => 'not_linked',
+                'message' => 'Order is not linked to a Shopify order yet.',
+            ];
+        }
+
+        $config = $this->shopifyConfigFor($marketplace);
+        $skus = $this->skuListFromMarketplaceModel($marketplace, $row);
+        if ($skus === []) {
+            $skus = [''];
+        }
+
+        $last = [
+            'success' => false,
+            'skipped' => true,
+            'action' => 'shopify_fulfill_failed',
+            'message' => 'Shopify fulfill did not run.',
+            'tracking' => $tracking,
+            'carrier' => $carrier,
+        ];
+        $anyOk = false;
+        foreach ($skus as $sku) {
+            $created = $this->createShopifyFulfillment($config, $shopifyId, $tracking, $carrier, (string) $sku, 0);
+            if (empty($created['success'])) {
+                $last = [
+                    'success' => false,
+                    'action' => 'shopify_fulfill_failed',
+                    'message' => (string) ($created['message'] ?? 'Shopify fulfill failed.'),
+                    'tracking' => $tracking,
+                    'carrier' => $carrier,
+                ];
+                continue;
+            }
+            $anyOk = true;
+            $this->cacheTrackingOnShopifyRawOrder($shopifyId, $tracking, $carrier);
+            $this->persistTrackingOntoMarketplaceOrder(
+                $marketplace,
+                (int) $row->id,
+                $shopifyId,
+                $tracking,
+                $carrier
+            );
+            $last = [
+                'success' => true,
+                'skipped' => ! empty($created['already']),
+                'action' => ! empty($created['already']) ? 'already_on_shopify' : 'shopify_fulfilled',
+                'message' => (string) ($created['message'] ?? ('Shopify fulfilled with '.$tracking)),
+                'tracking' => $tracking,
+                'carrier' => $carrier,
+            ];
+            if (empty($created['already'])) {
+                break;
+            }
+        }
+
+        return $anyOk ? array_merge($last, ['success' => true]) : $last;
+    }
+
     protected function localTrackedMarketplaceMap(): array
     {
         return [
+            'amazon' => [AmazonOrder::class, 'order_date'],
             'temu' => [TemuOrder::class, 'parent_order_time'],
             'temu2' => [Temu2Order::class, 'parent_order_time'],
             'ebay1' => [Ebay1OrderMetric::class, 'order_date'],
@@ -2179,6 +2515,29 @@ class VeeqoShopifyFulfillmentService
      */
     protected function trackingFromLoadedMarketplaceModel(string $marketplace, object $model): ?array
     {
+        if ($marketplace === 'amazon' && $model instanceof AmazonOrder) {
+            $hit = $model->localTracking();
+            if (trim((string) ($hit['tracking'] ?? '')) !== '') {
+                return [
+                    'tracking' => (string) $hit['tracking'],
+                    'carrier' => trim((string) ($hit['carrier'] ?? '')) ?: 'Other',
+                ];
+            }
+        }
+        if (in_array($marketplace, ['tiktok', 'tiktok2'], true)) {
+            $raw = $model->raw_json ?? $model->raw_payload ?? $model->raw_data ?? null;
+            if (is_string($raw)) {
+                $decoded = json_decode($raw, true);
+                $raw = is_array($decoded) ? $decoded : null;
+            }
+            if (is_array($raw)) {
+                $hit = self::trackingFromTikTokOrderPayload($raw);
+                if (is_array($hit) && trim((string) ($hit['tracking'] ?? '')) !== '') {
+                    return $hit;
+                }
+            }
+        }
+
         $local = $this->trackingFromModel($model);
         if ($local === null) {
             foreach (['raw_payload', 'raw_json', 'raw_data'] as $rawField) {

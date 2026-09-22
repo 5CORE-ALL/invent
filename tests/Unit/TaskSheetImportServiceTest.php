@@ -121,6 +121,7 @@ class TaskSheetImportServiceTest extends TestCase
         $this->assertSame('low', $service->mapPriority('LOW'));
         $this->assertSame('normal', $service->mapPriority(null));
         $this->assertSame('Need Help', $service->mapStatus('need help'));
+        $this->assertSame('Monitor', $service->mapStatus('monitor'));
         $this->assertSame('Todo', $service->mapStatus('pending'));
         $this->assertSame('Todo', $service->mapStatus(null));
     }

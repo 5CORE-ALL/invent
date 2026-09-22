@@ -265,6 +265,7 @@
             'Dependent': {bg: '#d63384', text: '#fff'},
             'Approved': {bg: '#20c997', text: '#000'},
             'Hold': {bg: '#495057', text: '#fff'},
+            'Monitor': {bg: '#0f766e', text: '#fff'},
             'Rework': {bg: '#f5576c', text: '#fff'}
         };
 

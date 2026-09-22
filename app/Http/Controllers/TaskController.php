@@ -3551,7 +3551,7 @@ class TaskController extends Controller
         $this->mergeEmptyReferenceLink($request);
 
         $validated = $request->validate([
-            'status' => 'required|in:Todo,Working,Archived,Done,Need Help,Need Approval,Dependent,Approved,Hold,Rework',
+            'status' => ['required', Rule::in(Task::STATUSES)],
             'atc' => 'nullable|integer|min:1|digits_between:1,10',
             'rework_reason' => 'nullable|string',
             // Report is optional when marking Done (checklist flow uses /complete instead)

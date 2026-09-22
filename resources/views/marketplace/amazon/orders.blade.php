@@ -8,6 +8,22 @@
         padding: 0.7rem 1.3rem !important;
         line-height: 1.2;
     }
+
+    /*
+     * Global .table-responsive { overflow: auto } creates a scrollport, so sticky
+     * thead pins to that box instead of the page. Keep overflow visible here so
+     * the column header freezes under the topbar while the window scrolls.
+     */
+    .amazon-orders-table-wrap.table-responsive {
+        overflow: visible !important;
+    }
+    .amazon-orders-table-wrap > table.table > thead > tr > th {
+        position: sticky !important;
+        top: var(--tz-topbar-height, 70px) !important;
+        z-index: 8 !important;
+        background-color: #dbeafe !important;
+        box-shadow: 0 1px 0 #93c5fd;
+    }
 </style>
 @endsection
 
@@ -78,7 +94,7 @@
                 </div>
             </div>
             <div class="card-body p-0">
-                <div class="table-responsive">
+                <div class="table-responsive amazon-orders-table-wrap">
                     <table class="table table-bordered table-hover mb-0">
                         <thead class="table-light">
                             <tr>
@@ -89,6 +105,7 @@
                                 <th>Items</th>
                                 <th>Qty</th>
                                 <th>Amount</th>
+                                <th>Tracking</th>
                                 <th>Shopify</th>
                                 <th>Action</th>
                             </tr>
@@ -106,6 +123,7 @@
                                     $pushBlocked = ($importPaidOrdersOnly ?? false)
                                         && ! \App\Services\MarketplaceManager\MarketplaceOrderPaidFilter::isPaid('amazon', $o);
                                     $canPush = empty($o->shopify_order_id) && ! $isFba && $o->canCreateShopifyOrder() && ! $pushBlocked;
+                                    $localTrack = $o->localTracking();
                                 @endphp
                                 <tr style="cursor: pointer;" onclick="window.location='{{ $orderUrl }}'">
                                     <td>
@@ -142,6 +160,16 @@
                                     <td>
                                         {{ $amount > 0 ? number_format($amount, 2) : '—' }}
                                         <small class="text-muted">{{ $o->currency ?: 'USD' }}</small>
+                                    </td>
+                                    <td class="small">
+                                        @if(trim((string) ($localTrack['tracking'] ?? '')) !== '')
+                                            <code>{{ $localTrack['tracking'] }}</code>
+                                            @if(trim((string) ($localTrack['carrier'] ?? '')) !== '')
+                                                <small class="d-block text-muted">{{ $localTrack['carrier'] }}</small>
+                                            @endif
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
                                     </td>
                                     <td>
                                         @if($isFba)
@@ -190,7 +218,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="9" class="text-center text-muted py-4">
+                                    <td colspan="10" class="text-center text-muted py-4">
                                         No orders yet. Click <strong>Fetch from Amz</strong>.
                                     </td>
                                 </tr>
