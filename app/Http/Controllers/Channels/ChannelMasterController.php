@@ -50,6 +50,7 @@ use App\Support\Marketplace\ChannelMasterInventoryGuard;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Support\Marketplace\PlsActiveChannelSales;
 use App\Support\Marketplace\ChannelMetricDotPair;
+use App\Support\Marketplace\ChannelMetricDotTrendStore;
 use App\Support\Marketplace\ChartDatePad;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\Marketplace\EbayTwoListingCounts;
@@ -17909,17 +17910,36 @@ class ChannelMasterController extends Controller
     {
         $cacheKey = $this->channelMetricDotTrendsCacheKey($window);
         $cached = \Cache::get($cacheKey);
-        if (is_array($cached)) {
+        if (is_array($cached) && $cached !== []) {
             return $cached;
         }
+
+        $stored = ChannelMetricDotTrendStore::get($window);
+        if (is_array($stored) && $stored !== []) {
+            \Cache::put($cacheKey, $stored, 3600);
+
+            return $stored;
+        }
+
         if (! $computeIfMissing) {
             return [];
         }
 
+        return $this->persistChannelMetricDotTrends($window);
+    }
+
+    /**
+     * @return array<string, array<string, array{0: mixed, 1: mixed}>>
+     */
+    private function persistChannelMetricDotTrends(int $window): array
+    {
         $out = $this->computeChannelMetricDotTrends($this->activeMarketplaceSnapshotKeys(), $window);
-        if ($out !== []) {
-            \Cache::put($cacheKey, $out, 3600);
+        if ($out === []) {
+            return [];
         }
+
+        ChannelMetricDotTrendStore::put($window, $out);
+        \Cache::put($this->channelMetricDotTrendsCacheKey($window), $out, 3600);
 
         return $out;
     }
@@ -17928,7 +17948,7 @@ class ChannelMasterController extends Controller
     {
         foreach ([0, 1, 7] as $window) {
             \Cache::forget($this->channelMetricDotTrendsCacheKey($window));
-            $this->rememberChannelMetricDotTrends($window, true);
+            $this->persistChannelMetricDotTrends($window);
         }
     }
 

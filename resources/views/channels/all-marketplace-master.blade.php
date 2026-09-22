@@ -2043,21 +2043,6 @@
                 if (!pair || pair[0] == null || pair[1] == null || isNaN(pair[0]) || isNaN(pair[1])) return null;
                 return pair[1] - pair[0];
             }
-            function saveDotColorsToStorage() {
-                try {
-                    localStorage.setItem('channelMasterDotColors', JSON.stringify(lastDotColorByKey));
-                } catch (e) { /* ignore */ }
-            }
-            function hydrateDotColorsFromStorage() {
-                try {
-                    var raw = localStorage.getItem('channelMasterDotColors');
-                    if (!raw) return;
-                    var parsed = JSON.parse(raw);
-                    if (parsed && typeof parsed === 'object') {
-                        lastDotColorByKey = parsed;
-                    }
-                } catch (e) { /* ignore */ }
-            }
             function applyDotTrendsMap(channels) {
                 if (!channels) return;
                 Object.keys(channels).forEach(function(channel) {
@@ -2070,7 +2055,6 @@
                         lastDotColorByKey[channel + '_' + metric] = colorFromDotPair(v1, v2, metric);
                     });
                 });
-                saveDotColorsToStorage();
             }
             function colorFromDotPair(v1, v2, metric) {
                 if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
@@ -2080,84 +2064,6 @@
                 if (Math.abs(v2 - v1) <= eps) return DEFAULT_DOT_GRAY;
                 var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
                 return isInverted ? (v2 < v1 ? '#28a745' : '#dc3545') : (v2 > v1 ? '#28a745' : '#dc3545');
-            }
-            function liveMetricFromRow(row, metric) {
-                if (!row) return null;
-                var ch = snapshotChannelKey(row['Channel '] || row['Channel'] || '');
-                var views = parseNumber(row['Total Views'] || 0);
-                var qty = parseNumber(row['Qty'] || 0);
-                var n = function(v) {
-                    var x = parseNumber(v);
-                    return (x == null || isNaN(x)) ? null : x;
-                };
-                switch (metric) {
-                    case 'y_sales': return n(row['Y Sales']);
-                    case 'y_pft': return yGrossPftFromRow(row);
-                    case 'y_npft_amt': return yNetPftFromRow(row);
-                    case 'y_npft_pct': {
-                        const ySales = n(row['Y Sales']);
-                        if (ySales == null || ySales <= 0) return null;
-                        return n(row['N PFT']);
-                    }
-                    case 'y_groi_pct': {
-                        const ySales = n(row['Y Sales']);
-                        if (ySales == null || ySales <= 0) return null;
-                        return n(row['G Roi']);
-                    }
-                    case 'l30_sales': return n(row['L30 Sales']);
-                    case 'p_sales': {
-                        const l7 = n(row['L7 Sales']);
-                        return l7 == null ? null : projectedSalesFromL7(l7);
-                    }
-                    case 'p_npft':
-                        return pNpftPctFromRow(row);
-                    case 'p_npft_amt':
-                        return pNetPftFromRow(row);
-                    case 'p_groi_pct':
-                        return pGroiPctFromRow(row);
-                    case 'l60_sales': return n(row['L-60 Sales']);
-                    case 'ad_spend': return n(row['Total Ad Spend']);
-                    case 'total_views': return views > 0 ? views : null;
-                    case 'qty': return qty > 0 ? qty : null;
-                    case 'l30_orders': return n(row['L30 Orders']);
-                    case 'l60_orders': return n(row['L60 Orders']);
-                    case 'cvr':
-                        if (ch === 'amazon' || ch === 'reverb') return views > 0 ? Math.round((qty / views) * 10000) / 100 : null;
-                        if (row['CVR'] !== undefined && row['CVR'] !== null && row['CVR'] !== '') return n(row['CVR']);
-                        return views > 0 ? Math.round((qty / views) * 10000) / 100 : null;
-                    case 'gprofit': return n(row['Gprofit%']);
-                    case 'groi': return n(row['G Roi']);
-                    case 'ads_pct': return n(row['Ads%'] != null ? row['Ads%'] : row['TACOS']);
-                    case 'npft': return n(row['N PFT']);
-                    case 'nroi': return n(row['N ROI']);
-                    case 'clicks': return n(row['clicks'] != null ? row['clicks'] : row['Clicks']);
-                    case 'ad_sales': return n(row['Ad Sales']);
-                    case 'ad_sold': return n(row['ad_sold'] != null ? row['ad_sold'] : row['Ad Sold']);
-                    case 'acos': return n(row['ACOS']);
-                    case 'map': return n(row['Map']);
-                    case 'nmap': return n(row['NMap']);
-                    case 'missing_l': return n(row['Miss']);
-                    default: return null;
-                }
-            }
-            function alignAllDotsToLiveTable(tableData) {
-                var data = tableData && Array.isArray(tableData) ? tableData : (table && table.getData ? table.getData() : []);
-                for (var i = 0; i < data.length; i++) {
-                    var ch = snapshotChannelKey(data[i]['Channel '] || data[i]['Channel'] || '');
-                    if (!ch) continue;
-                    for (var m = 0; m < metricDotMetricKeys.length; m++) {
-                        var metric = metricDotMetricKeys[m];
-                        var live = liveMetricFromRow(data[i], metric);
-                        if (live == null || isNaN(live)) continue;
-                        var key = ch + '_' + metric;
-                        var pair = lastDotPairByKey[key];
-                        if (!pair || pair[0] == null || isNaN(pair[0])) continue;
-                        var v1 = pair[0];
-                        lastDotPairByKey[key] = [v1, live];
-                        lastDotColorByKey[key] = colorFromDotPair(v1, live, metric);
-                    }
-                }
-                saveDotColorsToStorage();
             }
             function channelKeysFromTableData(tableData) {
                 var data = tableData && Array.isArray(tableData) ? tableData : (table && table.getData ? table.getData() : []);
@@ -2213,19 +2119,20 @@
                 }
             }
 
-            // Last-visit colors first so the table never paints a full gray row, then
-            // refresh from /channel-metric-dot-trends in parallel with the table AJAX.
-            hydrateDotColorsFromStorage();
+            // Shared server pair only. Do not reuse this browser's last visit,
+            // and do not recolor from a live overlay — that made the same saved
+            // row green for one user and red for another.
+            try { localStorage.removeItem('channelMasterDotColors'); } catch (e) {}
             dotTrendsPrefetch = $.ajax({
                 url: channelMetricDotTrendsUrl || '/channel-metric-dot-trends',
                 type: 'GET',
                 dataType: 'json'
             }).done(function(response) {
-                if (response && response.success && response.channels) {
-                    applyDotTrendsMap(response.channels);
-                    alignAllDotsToLiveTable();
+                var channels = response && response.success ? response.channels : null;
+                if (channels && Object.keys(channels).length) {
+                    applyDotTrendsMap(channels);
                     if (table) {
-                        paintMetricDots(Object.keys(response.channels));
+                        paintMetricDots(Object.keys(channels));
                     }
                 }
             });
@@ -2336,10 +2243,9 @@
                                 tatBadge.title = 'TAT = inv ÷ L30 Sales (months of stock): ' + tatRounded.toFixed(2);
                             }
                         }
-                        if (response.dot_trends) {
+                        if (response.dot_trends && Object.keys(response.dot_trends).length) {
                             applyDotTrendsMap(response.dot_trends);
                         }
-                        alignAllDotsToLiveTable(response.data);
                         if (!dotTrendsLoadedOnce) {
                             dotTrendsLoadedOnce = true;
                             loadMetricDotTrends(response.data);
@@ -5125,15 +5031,9 @@
                 if (channelKeys.length === 0) return;
 
                 function finish(channels) {
-                    if (channels) applyDotTrendsMap(channels);
-                    alignAllDotsToLiveTable(tableData);
-                    for (var c = 0; c < channelKeys.length; c++) {
-                        for (var m = 0; m < metricDotMetricKeys.length; m++) {
-                            var key = channelKeys[c] + '_' + metricDotMetricKeys[m];
-                            if (lastDotColorByKey[key] === undefined) lastDotColorByKey[key] = DEFAULT_DOT_GRAY;
-                        }
+                    if (channels && Object.keys(channels).length) {
+                        applyDotTrendsMap(channels);
                     }
-                    saveDotColorsToStorage();
                     paintMetricDots(channelKeys);
                 }
 
@@ -5219,38 +5119,6 @@
                             nCls = 'down';
                         }
                         $(this).removeClass('up down flat none').addClass(nCls);
-                        return;
-                    }
-                    if (metric === 'y_pft' || metric === 'y_npft_amt') {
-                        var yRows = [];
-                        try {
-                            yRows = (table && table.getData) ? (table.getData('active') || table.getData() || []) : [];
-                        } catch (e) {
-                            yRows = (table && table.getData) ? (table.getData() || []) : [];
-                        }
-                        var liveAmt = 0, liveSales = 0;
-                        yRows.forEach(function(row) {
-                            liveAmt += metric === 'y_pft' ? yGrossPftFromRow(row) : yNetPftFromRow(row);
-                            liveSales += parseNumber(row['Y Sales'] || 0);
-                        });
-                        var profitPair = lastDotPairByKey['all_' + metric];
-                        var prevAmt = (profitPair && profitPair[0] != null && !isNaN(profitPair[0])) ? profitPair[0] : null;
-                        var ySalesPair = lastDotPairByKey['all_y_sales'];
-                        var salesMoved = ySalesPair && ySalesPair[0] != null && ySalesPair[1] != null
-                            && !isNaN(ySalesPair[0]) && !isNaN(ySalesPair[1])
-                            && Math.abs(ySalesPair[1] - ySalesPair[0]) > 0.5;
-                        if ((prevAmt == null || Math.abs(liveAmt - prevAmt) <= 0.5) && salesMoved && liveSales > 0.5 && Math.abs(ySalesPair[1]) > 0.5) {
-                            prevAmt = liveAmt * (ySalesPair[0] / ySalesPair[1]);
-                        }
-                        var yCls = 'none';
-                        if (prevAmt != null && !isNaN(prevAmt)) {
-                            if (Math.abs(liveAmt - prevAmt) < 0.5) yCls = 'flat';
-                            else yCls = liveAmt > prevAmt ? 'up' : 'down';
-                            lastDotPairByKey['all_' + metric] = [prevAmt, liveAmt];
-                        } else if (salesMoved) {
-                            yCls = ySalesPair[1] > ySalesPair[0] ? 'up' : 'down';
-                        }
-                        $(this).removeClass('up down flat none').addClass(yCls);
                         return;
                     }
                     // Prefer the blended All pair. Only treat it as settled when
