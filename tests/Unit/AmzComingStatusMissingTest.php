@@ -88,6 +88,19 @@ class AmzComingStatusMissingTest extends TestCase
         $this->assertContains('SKUNRL', AmazonListingCounts::skuLookupKeys('SKU NRL FBA'));
     }
 
+    public function test_fba_amazon_offer_counts_as_listed_for_the_base_sku(): void
+    {
+        $map = [];
+        $index = new ReflectionMethod(AmazonListingCounts::class, 'indexListing');
+        $index->setAccessible(true);
+        $index->invokeArgs(null, [&$map, 'DFPDCH04 FBA', 'B0TESTASIN1']);
+
+        $hit = AmazonListingCounts::pickListingForProductSku('DFPDCH04', $map);
+        $this->assertNotNull($hit);
+        $this->assertTrue(AmazonListingCounts::isListedFromApi($hit));
+        $this->assertSame('B0TESTASIN1', AmazonListingCounts::asinFromApi($hit));
+    }
+
     public function test_coming_child_already_in_campaign_stays_added(): void
     {
         [$controller, $method] = $this->adsMethod('buildSiblingAdFields');
