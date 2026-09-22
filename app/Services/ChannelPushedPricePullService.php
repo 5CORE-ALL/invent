@@ -8,6 +8,8 @@ use App\Models\ShopifySku;
 use App\Models\StoreListingPrice;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Pricing;
+use App\Models\Temu3Metric;
+use App\Models\Temu3Pricing;
 use App\Models\TemuMetric;
 use App\Models\TemuPricing;
 use App\Models\TikTokProduct;
@@ -59,7 +61,7 @@ class ChannelPushedPricePullService
             return $this->pullShopifyStore($skus, $channel);
         }
 
-        if (in_array($channel, ['temu', 'temu2'], true)) {
+        if (in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
             return $this->pullTemu($skus, $channel);
         }
 
@@ -95,18 +97,29 @@ class ChannelPushedPricePullService
     }
 
     /**
-     * Live Temu / Temu 2 supplier (base) price via bg.local.goods.sku.list.price.query.
+     * Live Temu / Temu 2 / Temu 3 supplier (base) price via bg.local.goods.sku.list.price.query.
      *
      * @param  list<string>  $skus
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,base_price?:float,sprice:?float,message:string,skipped?:bool}>
      */
     private function pullTemu(array $skus, string $channel): array
     {
-        $temu2 = $channel === 'temu2';
-        $api = $temu2 ? app(Temu2ApiService::class) : app(TemuApiService::class);
-        $metricClass = $temu2 ? Temu2Metric::class : TemuMetric::class;
-        $pricingClass = $temu2 ? Temu2Pricing::class : TemuPricing::class;
-        $pricingTable = $temu2 ? 'temu2_pricing' : 'temu_pricing';
+        if ($channel === 'temu3') {
+            $api = app(Temu3ApiService::class);
+            $metricClass = Temu3Metric::class;
+            $pricingClass = Temu3Pricing::class;
+            $pricingTable = 'temu3_pricing';
+        } elseif ($channel === 'temu2') {
+            $api = app(Temu2ApiService::class);
+            $metricClass = Temu2Metric::class;
+            $pricingClass = Temu2Pricing::class;
+            $pricingTable = 'temu2_pricing';
+        } else {
+            $api = app(TemuApiService::class);
+            $metricClass = TemuMetric::class;
+            $pricingClass = TemuPricing::class;
+            $pricingTable = 'temu_pricing';
+        }
 
         $wanted = [];
         foreach ($skus as $sku) {

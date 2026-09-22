@@ -5136,6 +5136,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu3-pricing/save-sprice', [Temu3Controller::class, 'saveTemu3Sprice']);
     Route::post('/temu3-pricing/save-sprice-batch', [Temu3Controller::class, 'saveTemu3SpriceBatch']);
     Route::post('/temu3/push-price', [Temu3Controller::class, 'pushTemu3Price'])->name('temu3.push.price');
+    Route::post('/temu3/pull-price', [Temu3Controller::class, 'pullTemu3Price'])->name('temu3.pull.price');
     Route::post('/temu3-data-view/save-listing-fields', [Temu3Controller::class, 'saveTemu3ListingFieldsToDataView'])->name('temu3.dataview.save.listing');
     Route::post('/temu3-clear-sprice', [Temu3Controller::class, 'clearAllTemu3Sprice'])->name('temu3.clear.sprice');
 

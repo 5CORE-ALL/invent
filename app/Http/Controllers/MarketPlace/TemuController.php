@@ -22,6 +22,7 @@ use App\Models\TemuPricing;
 use App\Models\Temu2Pricing;
 use App\Models\Temu2Metric;
 use App\Models\Temu2DataView;
+use App\Models\Temu3Metric;
 use App\Models\Temu3Pricing;
 use App\Models\Temu3DataView;
 use App\Models\Temu3ViewData;
@@ -2553,7 +2554,12 @@ class TemuController extends Controller
             };
 
             if ($isTemu3) {
-                $allPricingData = collect();
+                $allPricingData = Schema::hasTable('temu3_metrics')
+                    ? Temu3Metric::query()
+                        ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'quantity'])
+                        ->get()
+                        ->map($mapMetricToPricingRow)
+                    : collect();
             } elseif ($isTemu2Pricing) {
                 $allPricingData = Schema::hasTable('temu2_metrics')
                     ? Temu2Metric::query()
@@ -2583,11 +2589,11 @@ class TemuController extends Controller
                 }
             }
 
-            // Temu 2 / Temu 3: Price + Goods ID from uploaded price sheet matched by SKU → CP Master.
-            // Goods ID from this sheet is the join key for view_data Views (product_clicks).
-            // Drop API / leftover metric prices so a sheet with no Price shows $0.
+            // Temu 2: Price + Goods ID from the uploaded price sheet.
+            // Temu 3: live API base_price (temu3_metrics) wins. The sheet price is used only
+            // when the pull has not returned a price yet. Goods ID still joins view_data.
             $temu2PricingGoodsIdBySku = []; // original CP Master sku => normalized goods_id
-            if ($isSheetPricing) {
+            if ($isTemu2Pricing) {
                 foreach ($pricingData as $existing) {
                     $existing->base_price = 0;
                 }
@@ -2617,7 +2623,10 @@ class TemuController extends Controller
                     }
                     $existing = $pricingData->get($originalSku);
                     if ($existing) {
-                        $existing->base_price = $sheetBasePrice;
+                        $apiBase = (float) ($existing->base_price ?? 0);
+                        if (! ($isTemu3 && $apiBase > 0)) {
+                            $existing->base_price = $sheetBasePrice;
+                        }
                         if ($sheetGoodsId) {
                             $existing->goods_id = $sheetGoodsId;
                         }

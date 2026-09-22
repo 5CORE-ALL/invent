@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Temu3Metric;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -281,6 +282,158 @@ class Temu3ApiService
     public function openApiUrl(): string
     {
         return rtrim((string) config('services.temu3.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+    }
+
+    public function isConfigured(): bool
+    {
+        $appKey = trim((string) (config('services.temu3.app_key') ?? ''));
+        $secret = trim((string) (config('services.temu3.secret_key') ?? ''));
+        $token = trim((string) (config('services.temu3.access_token') ?? ''));
+
+        return $appKey !== '' && $secret !== '' && $token !== '';
+    }
+
+    public function getGoodsIdBySku(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+        $goodsId = Temu3Metric::query()
+            ->where(function ($q) use ($sku) {
+                $q->where('sku', $sku)
+                    ->orWhere('sku_id', $sku)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+            })
+            ->value('goods_id');
+
+        return ($goodsId !== null && $goodsId !== '') ? (string) $goodsId : null;
+    }
+
+    public function getSkuIdBySku(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+        $skuId = Temu3Metric::query()
+            ->where(function ($q) use ($sku) {
+                $q->where('sku', $sku)
+                    ->orWhere('sku_id', $sku)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+            })
+            ->value('sku_id');
+
+        return ($skuId !== null && $skuId !== '') ? (string) $skuId : null;
+    }
+
+    /**
+     * Live supplier/base prices via bg.local.goods.sku.list.price.query.
+     *
+     * @param  list<array{goodsId:int|string, skuIdList:list<int|string>}>  $queryList
+     * @return array<string, float> skuId => amount
+     */
+    public function querySkuSupplierPrices(array $queryList): array
+    {
+        if (! $this->isConfigured()) {
+            Log::warning('Temu 3 querySkuSupplierPrices skipped: credentials missing');
+
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($queryList as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $goodsId = $row['goodsId'] ?? null;
+            $skuIds = $row['skuIdList'] ?? [];
+            if ($goodsId === null || $goodsId === '' || ! is_array($skuIds) || $skuIds === []) {
+                continue;
+            }
+            $ids = [];
+            foreach ($skuIds as $skuId) {
+                $n = (int) $skuId;
+                if ($n > 0) {
+                    $ids[$n] = true;
+                }
+            }
+            if ($ids === []) {
+                continue;
+            }
+            $normalized[] = [
+                'goodsId' => is_numeric($goodsId) ? (int) $goodsId : $goodsId,
+                'skuIdList' => array_map('intval', array_keys($ids)),
+            ];
+        }
+        if ($normalized === []) {
+            return [];
+        }
+
+        try {
+            $response = Http::timeout(45)
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post($this->openApiUrl(), $this->generateSignValue([
+                    'type' => 'bg.local.goods.sku.list.price.query',
+                    'querySupplierPriceBaseList' => $normalized,
+                    'language' => 'en',
+                ]));
+        } catch (\Throwable $e) {
+            Log::warning('Temu 3 querySkuSupplierPrices failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        $data = $response->json() ?? [];
+        if ($response->failed() || ! ($data['success'] ?? false)) {
+            Log::warning('Temu 3 querySkuSupplierPrices failed', [
+                'status' => $response->status(),
+                'message' => $data['errorMsg'] ?? $data['message'] ?? null,
+            ]);
+
+            return [];
+        }
+
+        $result = is_array($data['result'] ?? null) ? $data['result'] : [];
+        $goodsPriceList = $result['openapiGoodsSupplierPriceDTOList']
+            ?? $result['skuPriceInfoList']
+            ?? [];
+
+        $out = [];
+        foreach ($goodsPriceList as $goodsBlock) {
+            if (! is_array($goodsBlock)) {
+                continue;
+            }
+            $skuPriceList = $goodsBlock['openapiSkuSupplierPriceDTOList'] ?? null;
+            if (is_array($skuPriceList)) {
+                foreach ($skuPriceList as $skuPrice) {
+                    if (is_array($skuPrice)) {
+                        $this->collectQueriedSkuPrice($out, $skuPrice);
+                    }
+                }
+                continue;
+            }
+            $this->collectQueriedSkuPrice($out, $goodsBlock);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, float>  $out
+     * @param  array<string, mixed>  $skuPrice
+     */
+    private function collectQueriedSkuPrice(array &$out, array $skuPrice): void
+    {
+        $skuId = $skuPrice['skuId'] ?? $skuPrice['sku_id'] ?? null;
+        $amount = $skuPrice['supplierPrice']['amount']
+            ?? $skuPrice['supplierPrice']['val']
+            ?? $skuPrice['basePrice']
+            ?? null;
+        if ($skuId === null || $amount === null || ! is_numeric($amount)) {
+            return;
+        }
+        $out[(string) (int) $skuId] = round((float) $amount, 2);
     }
 
     protected function generateSignValue(array $requestBody): array

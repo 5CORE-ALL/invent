@@ -968,7 +968,39 @@ class Temu3Controller extends TemuController
     }
 
     /**
-     * Temu 3 has no API — persist SPRICE→base locally on the price sheet only.
+     * Pull live Temu 3 listing base price(s) after a push.
+     * Same bg.local.goods.sku.list.price.query as Temu 1 / Temu 2.
+     */
+    public function pullTemu3Price(Request $request)
+    {
+        $skus = $request->input('skus', []);
+        if (! is_array($skus) || $skus === []) {
+            $sku = trim((string) $request->input('sku', ''));
+            $skus = $sku !== '' ? [$sku] : [];
+        }
+        if ($skus === []) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $results = app(\App\Services\ChannelPushedPricePullService::class)->pullSkus('temu3', $skus);
+        $ok = 0;
+        foreach ($results as $row) {
+            if (! empty($row['success'])) {
+                $ok++;
+            }
+        }
+
+        return response()->json([
+            'success' => $ok > 0,
+            'channel' => 'temu3',
+            'ok_count' => $ok,
+            'fail_count' => count($results) - $ok,
+            'results' => $results,
+        ]);
+    }
+
+    /**
+     * Persist SPRICE→base on the price sheet. Live Price is filled by /temu3/pull-price.
      */
     public function pushTemu3Price(Request $request)
     {
