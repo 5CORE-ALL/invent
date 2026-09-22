@@ -2042,7 +2042,7 @@
                 if (c === 'targets') {
                     col.title = 'Targets';
                     col.formatter = fmtTargets;
-                    col.headerTooltip = 'Target count from the Amazon L30 targeting report. 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
+                    col.headerTooltip = 'Keyword and product-target count. SP uses the L30 targeting report. SB and SD use the synced keyword list. 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
                     col.width = 52;
                     col.minWidth = 44;
                     col.headerSort = false;
@@ -2051,7 +2051,7 @@
                 if (c === 'nTargets') {
                     col.title = 'N Target';
                     col.formatter = fmtTargets;
-                    col.headerTooltip = 'Negative keyword count on this campaign. 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
+                    col.headerTooltip = 'Negative keyword count. SP uses the synced negative-keyword list. SB uses the synced SB negative list. 0 shows M. Under 50 red, 50–100 green, over 100 purple.';
                     col.width = 52;
                     col.minWidth = 44;
                     col.headerSort = false;

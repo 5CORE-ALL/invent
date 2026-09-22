@@ -555,6 +555,23 @@ class AmazonAdsService
     }
 
     /**
+     * Enabled + paused Sponsored Brands negative keywords.
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listSbNegativeKeywordsByCampaignIds(array $campaignIds): array
+    {
+        return $this->listPagedGetByCampaignIds(
+            '/sb/negativeKeywords',
+            'application/vnd.sbnegativekeyword.v3.2+json',
+            ['negativeKeywords', 'keywords'],
+            $campaignIds,
+            'enabled,paused'
+        );
+    }
+
+    /**
      * @param  list<string>  $campaignIds
      * @return list<array<string, mixed>>
      */

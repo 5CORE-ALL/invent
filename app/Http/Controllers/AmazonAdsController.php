@@ -21,6 +21,7 @@ use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbidRule;
 use App\Support\AmazonAdsLiveSyncStatus;
 use App\Support\AmazonAdsSbgt;
+use App\Support\AmazonAdsTargetCounts;
 use App\Support\AmazonAcosSbgtRule;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
@@ -3013,31 +3014,28 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Target counts from the synced Amazon targeting report (L30), one grouped query.
-     * Campaigns with no report rows are 0 (shown as M). No live Advertising API call.
+     * Target counts for the grid. SP uses the L30 targeting report. SB and SD are not in that
+     * report (HEAD / HL keywords live on the Sponsored Brands list), so they use the synced
+     * amazon_ads_target_counts table. Campaigns with no rows are 0 (shown as M).
      *
      * @param  list<string>  $campaignIds
      * @return array<string, int>
      */
     private static function targetCountsForCampaigns(string $table, array $campaignIds): array
     {
-        if (self::targetCountAdProduct($table) === null) {
+        $adProduct = self::targetCountAdProduct($table);
+        if ($adProduct === null) {
             return [];
         }
 
-        $ids = [];
-        foreach ($campaignIds as $id) {
-            $s = trim((string) $id);
-            if ($s !== '') {
-                $ids[$s] = true;
-            }
-        }
-        $ids = array_keys($ids);
+        $ids = AmazonAdsTargetCounts::normalizeIds($campaignIds);
         if ($ids === []) {
             return [];
         }
 
-        $report = self::targetCountsFromKeywordReports($ids);
+        $report = $adProduct === 'sp'
+            ? self::targetCountsFromKeywordReports($ids)
+            : AmazonAdsTargetCounts::map($adProduct, $ids, 'targets');
         $out = [];
         foreach ($ids as $id) {
             $out[$id] = $report[$id] ?? 0;
@@ -3086,16 +3084,19 @@ class AmazonAdsController extends Controller
      * @param  list<string>  $campaignIds
      * @return array<string, int>
      */
-    private static function negativeTargetCountsForCampaigns(array $campaignIds): array
+    private static function negativeTargetCountsForCampaigns(array $campaignIds, ?string $table = null): array
     {
-        $ids = [];
-        foreach ($campaignIds as $id) {
-            $s = trim((string) $id);
-            if ($s !== '') {
-                $ids[$s] = true;
+        $ids = AmazonAdsTargetCounts::normalizeIds($campaignIds);
+        $adProduct = $table === null ? null : self::targetCountAdProduct($table);
+        if ($adProduct === 'sb' || $adProduct === 'sd') {
+            $stored = AmazonAdsTargetCounts::map($adProduct, $ids, 'n_targets');
+            $out = [];
+            foreach ($ids as $id) {
+                $out[$id] = $stored[$id] ?? 0;
             }
+
+            return $out;
         }
-        $ids = array_keys($ids);
         if ($ids === [] || ! Schema::hasTable('amazon_sp_negative_keywords')) {
             return array_fill_keys($ids, 0);
         }
@@ -3136,7 +3137,7 @@ class AmazonAdsController extends Controller
             $ids[] = $row['campaign_id'] ?? '';
         }
         $counts = $withTargets ? self::targetCountsForCampaigns($table, $ids) : [];
-        $negatives = $withNegatives ? self::negativeTargetCountsForCampaigns($ids) : [];
+        $negatives = $withNegatives ? self::negativeTargetCountsForCampaigns($ids, $table) : [];
         foreach ($rows as $i => $row) {
             $cid = trim((string) ($row['campaign_id'] ?? ''));
             if ($withTargets) {
