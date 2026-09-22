@@ -94,6 +94,7 @@ class Kernel extends ConsoleKernel
         AmazonSdCampaignReports::class,
         AmazonSpKeywordReports::class,
         AmazonSpNegativeKeywords::class,
+        \App\Console\Commands\AmazonAdsSyncTargetCounts::class,
         FetchGoogleAdsCampaigns::class,
         \App\Console\Commands\FetchGoogleAdsNegativeKeywords::class,
         \App\Console\Commands\SaveGoogleAdsBadgeL30Snapshots::class,
@@ -1327,6 +1328,13 @@ class Kernel extends ConsoleKernel
       
         $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');
         $retryFiveTimesUntil('app:amazon-sp-negative-keywords --prune', 'amazon-sp-negative-keywords', '18:20');
+        $ist($schedule->command('app:amazon-ads-target-counts')
+            ->dailyAt('18:22')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-ads-target-counts')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
         // Dil% ≥ threshold pauses PARENT + child SKU campaigns. Only recently Dil-paused PARENT campaigns auto-enable.
         $retryFiveTimesUntil('amazon:ads-pause-rule', 'amazon-ads-pause-rule', '18:25');
 

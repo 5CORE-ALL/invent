@@ -158,6 +158,12 @@
         #deleted-tasks-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-content .tabulator-col-title {
             padding-right: 0 !important;
         }
+        #deleted-tasks-table .tabulator-cell {
+            text-align: center !important;
+        }
+        #deleted-tasks-table .tabulator-cell .d-flex {
+            justify-content: center !important;
+        }
 
         .tabulator-row {
             border-bottom: 1px solid #e9ecef !important;
@@ -305,6 +311,51 @@
             min-width: 7rem;
             max-width: 9rem;
         }
+        .deleted-filters-bar .deleted-filter-item--date {
+            flex: 0 0 auto;
+            min-width: 11.5rem;
+            max-width: 14rem;
+        }
+        .deleted-filters-bar .deleted-filter-item--datepick {
+            flex: 0 0 auto;
+            min-width: 9.5rem;
+            max-width: 11rem;
+        }
+        .deleted-filters-bar .deleted-filter-item--datepick[hidden] {
+            display: none !important;
+        }
+        .deleted-playback-group .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            border-radius: 50%;
+        }
+        .deleted-playback-group .btn i { font-size: 1rem; line-height: 1; }
+        .deleted-playback-group .deleted-play-auto {
+            background: #28a745;
+            color: #fff;
+            border-color: #28a745;
+        }
+        .deleted-playback-group .deleted-play-pause {
+            background: #ffc107;
+            color: #212529;
+            border-color: #ffc107;
+        }
+        .deleted-playback-group .btn:disabled {
+            opacity: 0.45;
+        }
+        .deleted-playback-label {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            color: #0d6efd;
+            white-space: nowrap;
+            margin-top: 0.15rem;
+        }
+        .deleted-playback-label[hidden] { display: none !important; }
         .deleted-filters-bar .deleted-filter-item--search {
             flex: 1.35 1 8rem;
             min-width: 8rem;
@@ -517,11 +568,45 @@
                             </div>
                             <div class="deleted-filter-item">
                                 <label for="filter-assignor" class="form-label">Assignor</label>
-                                <input type="text" id="filter-assignor" class="form-control form-control-sm" placeholder="Name">
+                                <div class="d-flex align-items-center gap-1">
+                                    <input type="text" id="filter-assignor" class="form-control form-control-sm" placeholder="Name">
+                                    <div class="btn-group deleted-playback-group" role="group" aria-label="Assignor playback">
+                                        <button type="button" id="deleted-play-backward-assignor" class="btn btn-light btn-sm" title="Previous assignor" disabled>
+                                            <i class="mdi mdi-skip-previous"></i>
+                                        </button>
+                                        <button type="button" id="deleted-play-pause-assignor" class="btn btn-sm deleted-play-pause" style="display:none;" title="Show all assignors">
+                                            <i class="mdi mdi-pause"></i>
+                                        </button>
+                                        <button type="button" id="deleted-play-auto-assignor" class="btn btn-sm deleted-play-auto" title="Step through assignors">
+                                            <i class="mdi mdi-play"></i>
+                                        </button>
+                                        <button type="button" id="deleted-play-forward-assignor" class="btn btn-light btn-sm" title="Next assignor" disabled>
+                                            <i class="mdi mdi-skip-next"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <span id="deleted-playback-label-assignor" class="deleted-playback-label" hidden></span>
                             </div>
                             <div class="deleted-filter-item">
                                 <label for="filter-assignee" class="form-label">Assignee</label>
-                                <input type="text" id="filter-assignee" class="form-control form-control-sm" placeholder="Name">
+                                <div class="d-flex align-items-center gap-1">
+                                    <input type="text" id="filter-assignee" class="form-control form-control-sm" placeholder="Name">
+                                    <div class="btn-group deleted-playback-group" role="group" aria-label="Assignee playback">
+                                        <button type="button" id="deleted-play-backward-assignee" class="btn btn-light btn-sm" title="Previous assignee" disabled>
+                                            <i class="mdi mdi-skip-previous"></i>
+                                        </button>
+                                        <button type="button" id="deleted-play-pause-assignee" class="btn btn-sm deleted-play-pause" style="display:none;" title="Show all assignees">
+                                            <i class="mdi mdi-pause"></i>
+                                        </button>
+                                        <button type="button" id="deleted-play-auto-assignee" class="btn btn-sm deleted-play-auto" title="Step through assignees">
+                                            <i class="mdi mdi-play"></i>
+                                        </button>
+                                        <button type="button" id="deleted-play-forward-assignee" class="btn btn-light btn-sm" title="Next assignee" disabled>
+                                            <i class="mdi mdi-skip-next"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <span id="deleted-playback-label-assignee" class="deleted-playback-label" hidden></span>
                             </div>
                             <div class="deleted-filter-item deleted-filter-item--priority">
                                 <label for="filter-priority" class="form-label">Priority</label>
@@ -539,6 +624,19 @@
                                     <option value="done">Done</option>
                                     <option value="missed">Missed</option>
                                 </select>
+                            </div>
+                            <div class="deleted-filter-item deleted-filter-item--date">
+                                <label for="filter-date-range" class="form-label">Date</label>
+                                <select id="filter-date-range" class="form-select form-select-sm">
+                                    <option value="yesterday" selected>Yesterday ({{ $yesterdayLabel }})</option>
+                                    <option value="7">Last 7 Days</option>
+                                    <option value="30">Last 30 Days</option>
+                                    <option value="date">Date Selection</option>
+                                </select>
+                            </div>
+                            <div class="deleted-filter-item deleted-filter-item--datepick" id="filter-date-wrap" hidden>
+                                <label for="filter-date" class="form-label">Select date</label>
+                                <input type="date" id="filter-date" class="form-control form-control-sm" value="{{ $yesterdayDate }}" max="{{ \App\Support\TaskBusinessTime::today()->toDateString() }}">
                             </div>
                         </div>
 
@@ -711,12 +809,66 @@
                 });
             }
 
+            function formatOfficePst(value) {
+                if (!value || value === '0000-00-00 00:00:00' || value === '0000-00-00') return '';
+                var raw = String(value).trim();
+                var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                var wall = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+                var hasZone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw);
+                var day, month, hh, mm;
+                if (wall && !hasZone) {
+                    day = String(parseInt(wall[3], 10));
+                    month = months[parseInt(wall[2], 10) - 1] || '';
+                    hh = wall[4];
+                    mm = wall[5];
+                } else {
+                    var date = new Date(raw);
+                    if (isNaN(date.getTime())) return '';
+                    var parts = {};
+                    new Intl.DateTimeFormat('en-US', {
+                        timeZone: 'America/Los_Angeles',
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hourCycle: 'h23'
+                    }).formatToParts(date).forEach(function (part) {
+                        if (part.type !== 'literal') parts[part.type] = part.value;
+                    });
+                    day = String(parseInt(parts.day, 10));
+                    month = parts.month || '';
+                    hh = parts.hour || '00';
+                    mm = parts.minute || '00';
+                }
+                if (!day || !month) return '';
+                return day + ' ' + month + '<br><small style="color: #6c757d;">' + hh + ':' + mm + ' PST</small>';
+            }
+
+            function formatDurationHm(minutes) {
+                var n = Math.round(Number(minutes));
+                if (isNaN(n)) return null;
+                var abs = Math.abs(n);
+                if (abs < 60) {
+                    return {
+                        text: abs + ' M',
+                        title: abs + (abs === 1 ? ' minute' : ' minutes')
+                    };
+                }
+                var h = Math.floor(abs / 60);
+                var m = abs % 60;
+                var text = h + ' H' + (m ? ' ' + m + ' M' : '');
+                var title = h + (h === 1 ? ' hour' : ' hours');
+                if (m) title += ' ' + m + (m === 1 ? ' minute' : ' minutes');
+                return { text: text, title: title };
+            }
+
             // Initialize Tabulator
             var table = new Tabulator("#deleted-tasks-table", {
-                ajaxURL: "{{ route('tasks.deletedData') }}",
+                ajaxURL: "{{ route('tasks.deletedData') }}?range=yesterday",
                 ajaxContentType: "json",
                 defaultColumn: {
                     headerHozAlign: "center",
+                    hozAlign: "center",
                 },
                 layout: "fitData",
                 pagination: true,
@@ -740,20 +892,45 @@
                 },
                 columns: [
                     {
-                        title: "ID", 
-                        field: "original_task_id", 
-                        width: 80,
+                        title: "GROUP",
+                        field: "group",
+                        minWidth: 64,
                         formatter: function(cell) {
-                            return '<strong>#' + cell.getValue() + '</strong>';
+                            var value = cell.getValue();
+                            if (!value) return '<span style="color: #adb5bd;">-</span>';
+                            return '<span style="white-space:nowrap;">' + value + '</span>';
+                        }
+                    },
+                    {
+                        title: "PRT",
+                        headerTooltip: "Priority",
+                        field: "priority",
+                        minWidth: 44,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue() || 'normal';
+                            var key = String(value).toLowerCase();
+                            var dotColors = {
+                                'low': '#9ca3af',
+                                'normal': '#fbbf24',
+                                'high': '#fd7e14',
+                                'urgent': '#fd7e14'
+                            };
+                            var labelMap = { 'high': 'Urgent', 'urgent': 'Urgent', 'normal': 'Normal', 'low': 'Low' };
+                            var color = dotColors[key] || dotColors['normal'];
+                            var label = labelMap[key] || (value.charAt(0).toUpperCase() + String(value).slice(1));
+                            return '<div style="display: inline-flex; align-items: center; justify-content: center;">' +
+                                '<span style="display: inline-block; width: 16px; height: 16px; border-radius: 50%; background: ' + color + '; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" title="' + label + '" aria-label="' + label + '"></span>' +
+                                '</div>';
                         }
                     },
                     {
                         title: "TASK", 
                         field: "title", 
-                        width: 250,
+                        width: 500,
                         formatter: function(cell) {
                             var title = cell.getValue() || '';
-                            return '<div style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.4;">' + 
+                            return '<div style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.4; text-align: center;">' + 
                                    '<strong>' + title + '</strong>' + 
                                    '</div>';
                         }
@@ -761,8 +938,9 @@
                     {
                         title: "LINKS",
                         field: "links",
-                        width: 230,
+                        minWidth: 64,
                         hozAlign: "center",
+                        headerHozAlign: "center",
                         headerSort: false,
                         formatter: function(cell) {
                             var data = cell.getRow().getData();
@@ -787,27 +965,18 @@
                                         .replace(/</g, '&lt;')
                                         .replace(/>/g, '&gt;');
                                     return '<a href="' + safeUrl + '" target="_blank" ' +
-                                           'class="badge bg-info text-white me-1 mb-1 text-decoration-none" ' +
-                                           'style="font-size: 10px; font-weight: 600;" ' +
+                                           'class="badge bg-info text-white text-decoration-none" ' +
+                                           'style="font-size: 10px; font-weight: 600; margin-right: 3px;" ' +
                                            'title="' + safeUrl + '" ' +
                                            'onclick="event.stopPropagation();">' + l.label + '</a>';
                                 }).join('');
-                            return html || '<span style="color: #adb5bd;">-</span>';
-                        }
-                    },
-                    {
-                        title: "GROUP", 
-                        field: "group", 
-                        width: 120,
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value || '<span style="color: #adb5bd;">-</span>';
+                            return '<div style="white-space:nowrap;">' + (html || '<span style="color: #adb5bd;">-</span>') + '</div>';
                         }
                     },
                     {
                         title: "ASSIGNOR",
                         field: "assignor_name",
-                        width: 120,
+                        minWidth: 72,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -816,7 +985,7 @@
                                 var firstName = value.trim().split(' ')[0];
                                 var imgSrc = (row.assignor_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
                                 var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                return '<div style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap;">' +
                                     '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:28px;height:28px;object-fit:cover;flex-shrink:0;">' +
                                     '<strong style="font-size: 11px;">' + nameEsc + '</strong>' +
                                     '</div>';
@@ -827,7 +996,7 @@
                     {
                         title: "ASSIGNEE",
                         field: "assignee_name",
-                        width: 120,
+                        minWidth: 72,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -836,7 +1005,7 @@
                                 var firstName = value.trim().split(' ')[0];
                                 var imgSrc = (row.assignee_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
                                 var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                return '<div style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap;">' +
                                     '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:28px;height:28px;object-fit:cover;flex-shrink:0;">' +
                                     '<strong style="font-size: 11px;">' + nameEsc + '</strong>' +
                                     '</div>';
@@ -846,44 +1015,37 @@
                     },
                     {
                         title: "ETC",
-                        field: "eta_time", 
-                        width: 80,
+                        field: "eta_time",
+                        minWidth: 48,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            return value ? value + ' min' : '<span style="color: #adb5bd;">-</span>';
+                            if (value === null || value === undefined || value === '') {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            var formatted = formatDurationHm(value);
+                            if (!formatted) return '<span style="color: #adb5bd;">-</span>';
+                            return '<span title="' + formatted.title + '">' + formatted.text + '</span>';
                         }
                     },
                     {
                         title: "ATC",
-                        field: "etc_done", 
-                        width: 80,
+                        field: "etc_done",
+                        minWidth: 48,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            return value ? '<strong style="color: #28a745;">' + value + ' min</strong>' : '<span style="color: #adb5bd;">0</span>';
-                        }
-                    },
-                    {
-                        title: "PRIORITY", 
-                        field: "priority", 
-                        width: 110,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue() || 'Normal';
-                            var styles = {
-                                'low': {bg: '#6c757d', color: '#fff'},
-                                'normal': {bg: '#0d6efd', color: '#fff'},
-                                'high': {bg: '#fd7e14', color: '#fff'}
-                            };
-                            var style = styles[value.toLowerCase()] || styles['normal'];
-                            return '<span class="priority-badge" style="background: ' + style.bg + '; color: ' + style.color + ';">' + value.toUpperCase() + '</span>';
+                            var formatted = formatDurationHm(value);
+                            if (!formatted || Math.round(Number(value)) <= 0) {
+                                return '<span style="color: #adb5bd;">0</span>';
+                            }
+                            return '<strong style="color: #28a745;" title="' + formatted.title + '">' + formatted.text + '</strong>';
                         }
                     },
                     {
                         title: "STATUS",
                         field: "status",
-                        width: 100,
+                        minWidth: 64,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = (cell.getValue() || '').trim();
@@ -898,72 +1060,72 @@
                     {
                         title: "TAT",
                         field: "tat",
-                        width: 90,
+                        minWidth: 48,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (value !== null && value !== undefined && value !== '') {
                                 var d = Math.round(Number(value));
-                                return '<span style="font-weight: 600;">' + (isNaN(d) ? '-' : d) + ' days</span>';
+                                return '<span style="font-weight: 600;" title="' + (isNaN(d) ? '' : d + (d === 1 ? ' day' : ' days')) + '">' + (isNaN(d) ? '-' : d) + ' D</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
                     },
                     {
-                        title: "ARCHIVED BY", 
-                        field: "deleted_by_name", 
-                        width: 120,
+                        title: "BY",
+                        headerTooltip: "Archived by",
+                        field: "deleted_by_name",
+                        minWidth: 48,
                         formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var status = ((row.status || '') + '').trim().toLowerCase();
+                            if (status !== 'done') {
+                                return '<strong style="color: #dc3545; white-space:nowrap;">AUTO</strong>';
+                            }
                             var value = cell.getValue();
                             if (value) {
                                 var firstName = value.trim().split(' ')[0];
-                                return '<strong style="color: #dc3545;">' + firstName + '</strong>';
+                                var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                return '<strong style="color: #212529; white-space:nowrap;">' + nameEsc + '</strong>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
                     },
                     {
-                        title: "DONE DATE",
+                        title: "DONE DT",
+                        headerTooltip: "Done date",
                         field: "completion_date",
-                        width: 150,
+                        minWidth: 72,
                         hozAlign: "center",
                         formatter: function(cell) {
-                            var value = cell.getValue();
-                            if (value && value !== '0000-00-00 00:00:00' && value !== '0000-00-00') {
-                                var date = new Date(value);
-                                if (!isNaN(date.getTime())) {
-                                    return date.toLocaleDateString() +
-                                        '<br><small style="color: #6c757d;">' + date.toLocaleTimeString() + '</small>';
-                                }
-                            }
-                            return '<span style="color: #adb5bd;">-</span>';
+                            var html = formatOfficePst(cell.getValue());
+                            return '<div style="display:inline-block; white-space:nowrap; text-align:center; line-height:1.25;">' + (html || '<span style="color: #adb5bd;">-</span>') + '</div>';
                         }
                     },
                     {
-                        title: "ARCHIVED DATE", 
-                        field: "deleted_at", 
-                        width: 150,
+                        title: "DT",
+                        headerTooltip: "Archived date",
+                        field: "deleted_at",
+                        minWidth: 72,
+                        hozAlign: "center",
                         formatter: function(cell) {
-                            var value = cell.getValue();
-                            if (value) {
-                                var date = new Date(value);
-                                return date.toLocaleDateString() + '<br><small style="color: #6c757d;">' + date.toLocaleTimeString() + '</small>';
-                            }
-                            return '<span style="color: #adb5bd;">-</span>';
+                            var html = formatOfficePst(cell.getValue());
+                            return '<div style="display:inline-block; white-space:nowrap; text-align:center; line-height:1.25;">' + (html || '<span style="color: #adb5bd;">-</span>') + '</div>';
                         }
                     },
                     {
                         title: "ACTION",
                         field: "id",
-                        width: 120,
+                        minWidth: 52,
                         hozAlign: "center",
+                        headerHozAlign: "center",
                         formatter: function(cell) {
                             if (!canReviveArchivedTasks) {
                                 return '<span style="color: #adb5bd;">-</span>';
                             }
                             var id = cell.getValue();
-                            return '<button class="btn btn-sm btn-success revive-archived-task" data-id="' + id + '">' +
-                                '<i class="mdi mdi-restore me-1"></i>Revive</button>';
+                            return '<button type="button" class="btn btn-sm btn-success revive-archived-task" data-id="' + id + '" title="Revive" aria-label="Revive">' +
+                                '<i class="mdi mdi-restore" aria-hidden="true"></i></button>';
                         }
                     },
                 ],
@@ -1103,7 +1265,10 @@
             }
 
             table.on('dataLoaded', function() {
-                setTimeout(updateBadgesFromTable, 0);
+                setTimeout(function() {
+                    applyFilters();
+                    updateBadgesFromTable();
+                }, 0);
             });
             table.on('dataFiltered', function() {
                 setTimeout(updateBadgesFromTable, 0);
@@ -1143,9 +1308,17 @@
                     ]);
                 }
                 
-                var deletedByValue = $('#filter-deleted-by').val();
+                var deletedByValue = ($('#filter-deleted-by').val() || '').trim().toLowerCase();
                 if (deletedByValue) {
-                    filters.push({field:"deleted_by_name", type:"like", value:deletedByValue});
+                    filters.push({
+                        field: function(data) {
+                            var status = ((data.status || '') + '').trim().toLowerCase();
+                            var shown = status === 'done'
+                                ? ((data.deleted_by_name || '') + '')
+                                : 'AUTO';
+                            return shown.toLowerCase().indexOf(deletedByValue) !== -1;
+                        }
+                    });
                 }
                 
                 var assignorValue = $('#filter-assignor').val();
@@ -1165,11 +1338,12 @@
 
                 var statusValue = $('#filter-status').val();
                 if (statusValue) {
-                    filters.push(function(data) {
-                        var s = ((data.status || '') + '').trim().toLowerCase();
-                        if (statusValue === 'done') return s === 'done';
-                        // missed = anything that is not Done
-                        return s !== 'done';
+                    filters.push({
+                        field: function(data) {
+                            var s = ((data.status || '') + '').trim().toLowerCase();
+                            if (statusValue === 'done') return s === 'done';
+                            return s !== 'done';
+                        }
                     });
                 }
 
@@ -1188,6 +1362,102 @@
             $('#filter-assignee').on('keyup', applyFilters);
             $('#filter-priority').on('change', applyFilters);
             $('#filter-status').on('change', applyFilters);
+
+            var deletedDataBase = @json(route('tasks.deletedData'));
+            function deletedDataUrl() {
+                var range = $('#filter-date-range').val() || 'yesterday';
+                var url = deletedDataBase + '?range=' + encodeURIComponent(range);
+                if (range === 'date') {
+                    url += '&date=' + encodeURIComponent($('#filter-date').val() || @json($yesterdayDate));
+                }
+                return url;
+            }
+            function reloadDeletedByDate() {
+                var isPick = ($('#filter-date-range').val() || '') === 'date';
+                $('#filter-date-wrap').prop('hidden', !isPick);
+                table.setData(deletedDataUrl());
+            }
+            $('#filter-date-range').on('change', reloadDeletedByDate);
+            $('#filter-date').on('change', function() {
+                if (($('#filter-date-range').val() || '') === 'date') {
+                    reloadDeletedByDate();
+                }
+            });
+
+            function playbackNames(field) {
+                var seen = {};
+                var list = [];
+                (table.getData() || []).forEach(function (row) {
+                    var name = String(row[field] || '').trim();
+                    if (!name || name === '-') return;
+                    var key = name.toLowerCase();
+                    if (seen[key]) return;
+                    seen[key] = true;
+                    list.push(name);
+                });
+                list.sort(function (a, b) { return a.localeCompare(b); });
+                return list;
+            }
+
+            function bindUserPlayback(kind, field) {
+                var list = [];
+                var index = -1;
+                var active = false;
+                var $play = $('#deleted-play-auto-' + kind);
+                var $pause = $('#deleted-play-pause-' + kind);
+                var $prev = $('#deleted-play-backward-' + kind);
+                var $next = $('#deleted-play-forward-' + kind);
+                var $label = $('#deleted-playback-label-' + kind);
+                var $input = $('#filter-' + kind);
+
+                function paint() {
+                    var atStart = index <= 0;
+                    var atEnd = index >= list.length - 1;
+                    $prev.prop('disabled', !active || atStart);
+                    $next.prop('disabled', !active || atEnd);
+                    if (active && list.length && index >= 0) {
+                        $label.text(list[index] + ' (' + (index + 1) + '/' + list.length + ')').prop('hidden', false);
+                    } else {
+                        $label.prop('hidden', true).text('');
+                    }
+                }
+                function show(i) {
+                    index = i;
+                    $input.val(list[index]);
+                    applyFilters();
+                    paint();
+                }
+                function start() {
+                    list = playbackNames(field);
+                    if (!list.length) return;
+                    active = true;
+                    $play.hide();
+                    $pause.show();
+                    show(0);
+                }
+                function stop() {
+                    active = false;
+                    index = -1;
+                    list = [];
+                    $input.val('');
+                    applyFilters();
+                    $pause.hide();
+                    $play.show();
+                    paint();
+                }
+                $play.on('click', start);
+                $pause.on('click', stop);
+                $next.on('click', function () {
+                    if (!active || index >= list.length - 1) return;
+                    show(index + 1);
+                });
+                $prev.on('click', function () {
+                    if (!active || index <= 0) return;
+                    show(index - 1);
+                });
+            }
+            bindUserPlayback('assignor', 'assignor_name');
+            bindUserPlayback('assignee', 'assignee_name');
 
             // Revive archived task (president access only)
             $(document).on('click', '.revive-archived-task', function() {

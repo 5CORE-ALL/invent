@@ -31,21 +31,15 @@
         opacity: 0.92;
     }
 
-    /* Role select & dot in the table row — laid out side-by-side, with
-       enough room around them so the dot never visually touches the next
-       column's cell border. */
+    /* Role label and the tags dot sit side by side. The label is plain text;
+       choosing a role opens a small menu, so the column stays as wide as the word. */
     .task-summary-role-cell {
         white-space: nowrap;
         text-align: center;
-        /* Reserve room for: select (96–120px) + gap + dot (0.65rem) +
-           dot's right margin. Prevents the auto-sized column from
-           collapsing tight enough to make the dot look like it's in
-           the next column. */
-        min-width: 150px;
-        padding-right: 0.7rem !important;
+        padding-right: 0.45rem !important;
         overflow: visible;
     }
-    .task-summary-role-cell > .task-summary-role-select,
+    .task-summary-role-cell > .task-summary-role-btn,
     .task-summary-role-cell > .task-summary-role-mgr-dot {
         display: inline-flex;
         align-items: center;
@@ -55,13 +49,26 @@
     .task-summary-role-cell > .task-summary-role-mgr-dot {
         margin-right: 0.25rem;
     }
-    .task-summary-role-select {
-        font-size: 0.78rem;
-        padding: 0.15rem 1.5rem 0.15rem 0.45rem;
-        min-width: 96px;
-        max-width: 120px;
-        /* margin: 0 auto removed — the cell now lays its children in a
-           single inline-flex row instead of stacking them. */
+    .task-summary-role-btn {
+        border: 0;
+        background: transparent;
+        padding: 0;
+        margin: 0;
+        color: inherit;
+        font: inherit;
+        line-height: inherit;
+        cursor: pointer;
+    }
+    .task-summary-role-btn:hover,
+    .task-summary-role-btn.is-open {
+        color: #1d4ed8;
+    }
+    .task-summary-role-btn:focus-visible {
+        outline: 2px solid #93c5fd;
+        outline-offset: 2px;
+    }
+    .task-summary-role-btn.is-saving {
+        opacity: 0.55;
     }
     .task-summary-role-mgr-dot {
         display: inline-block;

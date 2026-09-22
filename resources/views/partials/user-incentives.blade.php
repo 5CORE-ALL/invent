@@ -776,6 +776,13 @@
         btn.title = count > 0 ? ('My incentives · ' + formatRupee(total)) : 'My incentives';
     }
 
+    function formatAmountK(amount) {
+        var n = parseFloat(amount);
+        if (isNaN(n) || n <= 0) return '0';
+        var k = Math.round((n / 1000) * 10) / 10;
+        var text = Math.abs(k - Math.round(k)) < 0.001 ? String(Math.round(k)) : k.toFixed(1);
+        return text + 'K';
+    }
     function updateRowIncentiveStats(userId, count, amount, cutoffAlert) {
         userId = parseInt(userId, 10) || 0;
         if (!userId) return;
@@ -785,18 +792,20 @@
         var total = parseFloat(amount) || 0;
         rowBtn.setAttribute('data-incentive-count', String(n));
         rowBtn.setAttribute('data-incentive-amount', String(total));
-        var existing = rowBtn.querySelector('.incentive-bag-count');
-        if (n > 0 || total > 0) {
-            if (existing) existing.textContent = formatRupee(total);
-            else {
-                var span = document.createElement('span');
-                span.className = 'incentive-bag-count';
-                span.textContent = formatRupee(total);
-                rowBtn.appendChild(span);
-            }
-        } else if (existing) {
-            existing.remove();
+        var icon = rowBtn.querySelector('.incentive-dollar-icon');
+        if (icon) icon.remove();
+        var oldBadge = rowBtn.querySelector('.incentive-bag-count');
+        if (oldBadge) oldBadge.remove();
+        var label = rowBtn.querySelector('.incentive-k-amount');
+        if (!label) {
+            label = document.createElement('span');
+            label.className = 'incentive-k-amount';
+            rowBtn.appendChild(label);
         }
+        label.textContent = formatAmountK(total);
+        var baseTitle = rowBtn.getAttribute('title') || '';
+        baseTitle = baseTitle.replace(/\s·\s[\d,]+$/, '');
+        rowBtn.title = total > 0 ? (baseTitle + ' · ' + Math.round(total).toLocaleString('en-IN')) : baseTitle;
         if (cutoffAlert !== undefined) {
             setCutoffAlertClass(rowBtn, !!cutoffAlert, cutoffAlert ? 'Red alert: CutOff Date is tomorrow or sooner' : '');
         }

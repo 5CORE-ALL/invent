@@ -11,6 +11,7 @@ use App\Models\AutomateTaskChecklistForm;
 use App\Models\AutomateTaskChecklistSubmission;
 use App\Models\Badge;
 use App\Models\Dar;
+use App\Models\Designation;
 use App\Models\DesignationMgrCheckpoint;
 use App\Models\DesignationRrCheckpoint;
 use App\Models\DesignationRrItem;
@@ -609,6 +610,7 @@ class TaskController extends Controller
 
         $this->addArchivedMissedPeriodCounts($byEmail, $defaultCounts, $missedLookback, $now);
         $this->addArchivedEtcAtcLast30($byEmail, $defaultCounts, $tatCutoff);
+        $yDoneByEmail = $this->yesterdayDoneCountsByEmail();
 
         $members = $this->activeTeamUsersQuery()
             ->orderBy('name')
@@ -779,6 +781,7 @@ class TaskController extends Controller
                 'a_task_h' => (int) round($counts['a_task_h'] / 60),
                 'need_approval' => $counts['need_approval'],
                 'done' => $counts['done'],
+                'y_done' => (int) ($yDoneByEmail[strtolower((string) $email)] ?? 0),
             ], $kpiFields, [
                 'soi_count' => (int) ($soiCounts[$member->id] ?? 0),
                 'incentive_count' => (int) (optional($incentiveStats->get($member->id))->incentive_count ?? 0),
@@ -1336,10 +1339,13 @@ class TaskController extends Controller
 
         $canEditIncentives = $this->canEditIncentives($viewer);
         $canViewAllIncentives = $this->canViewAllIncentives($viewer);
+        $designationOptions = $this->taskSummaryDesignationOptions();
+        $yDoneTotal = array_sum(array_map(fn (array $r) => (int) ($r['y_done'] ?? 0), $rows));
+        $yDoneDate = $this->yesterdayDoneWindow()['label'];
 
         return view(
             'tasks.task-summary',
-            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives', 'canViewAllIncentives')
+            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives', 'canViewAllIncentives', 'designationOptions', 'yDoneTotal', 'yDoneDate')
         );
     }
 
@@ -1447,6 +1453,764 @@ class TaskController extends Controller
             'viewer' => $viewer ? $viewer->name : null,
             'shown' => $shown,
         ];
+    }
+
+    /**
+     * Yesterday on the Pacific clock. Task datetimes are stored as business-TZ
+     * wall clock (IST), so the PST day bounds are converted into that clock
+     * before they are compared. The date itself stays the Pacific calendar day.
+     *
+     * @return array{date: string, start: string, end: string, label: string}
+     */
+    protected function yesterdayDoneWindow(): array
+    {
+        $day = \Carbon\Carbon::today('America/Los_Angeles')->subDay();
+        $storageTz = TaskBusinessTime::tz();
+
+        return [
+            'date' => $day->toDateString(),
+            'start' => $day->copy()->startOfDay()->timezone($storageTz)->format('Y-m-d H:i:s'),
+            'end' => $day->copy()->endOfDay()->timezone($storageTz)->format('Y-m-d H:i:s'),
+            'label' => $day->format('D, M j, Y'),
+        ];
+    }
+
+    /**
+     * Tasks marked Done yesterday, one row per assignee.
+     * When $includeMissed is true, tasks missed yesterday are included too
+     * (live is_missed rows, and archives that were not completed).
+     * Live tasks are "not deleted". Archived copies in deleted_tasks are
+     * "deleted", with the person (or auto job) who removed them.
+     *
+     * @param  list<string>|null  $onlyEmails  lowercase emails; null keeps every assignee
+     * @param  array<string, string>  $nameByEmail
+     * @return list<array{title: string, email: string, assignee: string, completed_at: string, deleted: bool, deleted_by: string, deleted_at: string, type: string}>
+     */
+    protected function yesterdayDoneRecords(?array $onlyEmails = null, array $nameByEmail = [], bool $includeMissed = false): array
+    {
+        $window = $this->yesterdayDoneWindow();
+        $only = null;
+        if ($onlyEmails !== null) {
+            $only = [];
+            foreach ($onlyEmails as $email) {
+                $email = strtolower(trim((string) $email));
+                if ($email !== '') {
+                    $only[$email] = true;
+                }
+            }
+        }
+
+        $records = [];
+        $liveIds = [];
+
+        $push = function ($task, bool $deleted, string $type = 'Done') use (&$records, &$liveIds, $only, $nameByEmail): void {
+            $taskId = (int) ($deleted ? ($task->original_task_id ?? 0) : ($task->id ?? 0));
+            if ($deleted && $taskId > 0 && isset($liveIds[$taskId])) {
+                return;
+            }
+            if (! $deleted && $taskId > 0) {
+                $liveIds[$taskId] = true;
+            }
+
+            $emails = array_values(array_filter(array_map('trim', explode(',', (string) ($task->assign_to ?? '')))));
+            if ($emails === []) {
+                return;
+            }
+
+            $completed = '';
+            if (! empty($task->completion_date)) {
+                try {
+                    $completed = TaskBusinessTime::formatDisplay(TaskBusinessTime::parse($task->completion_date));
+                } catch (\Throwable $e) {
+                    $completed = '';
+                }
+            }
+
+            $deletedBy = '';
+            $deletedAt = '';
+            if ($deleted) {
+                $deletedBy = trim((string) ($task->deleted_by_name ?? ''));
+                if ($deletedBy === '') {
+                    $deletedBy = trim((string) ($task->deleted_by_email ?? ''));
+                }
+                if (strtolower($deletedBy) === 'system@auto' || strtolower((string) ($task->deleted_by_email ?? '')) === 'system@auto') {
+                    $deletedBy = 'Auto';
+                }
+                if ($deletedBy === '') {
+                    $deletedBy = 'Unknown';
+                }
+                if (! empty($task->deleted_at)) {
+                    try {
+                        $deletedAt = TaskBusinessTime::formatDisplay(TaskBusinessTime::parse($task->deleted_at));
+                    } catch (\Throwable $e) {
+                        $deletedAt = '';
+                    }
+                }
+            }
+
+            foreach ($emails as $email) {
+                $key = strtolower($email);
+                if ($only !== null && ! isset($only[$key])) {
+                    continue;
+                }
+                $assignee = $nameByEmail[$key] ?? '';
+                if ($assignee === '' && $deleted) {
+                    $assignee = trim((string) ($task->assignee_name ?? ''));
+                }
+                if ($assignee === '') {
+                    $assignee = $email;
+                }
+                $records[] = [
+                    'title' => trim((string) ($task->title ?? '')) ?: 'Untitled task',
+                    'email' => $email,
+                    'assignee' => $assignee,
+                    'completed_at' => $completed,
+                    'deleted' => $deleted,
+                    'deleted_by' => $deletedBy,
+                    'deleted_at' => $deletedAt,
+                    'type' => $type,
+                ];
+            }
+        };
+
+        Task::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$window['start'], $window['end']])
+            ->orderBy('completion_date')
+            ->get(['id', 'title', 'assign_to', 'completion_date'])
+            ->each(fn ($task) => $push($task, false));
+
+        DeletedTask::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$window['start'], $window['end']])
+            ->orderBy('completion_date')
+            ->get(['original_task_id', 'title', 'assign_to', 'assignee_name', 'completion_date', 'deleted_by_name', 'deleted_by_email', 'deleted_at'])
+            ->each(fn ($task) => $push($task, true));
+
+        if ($includeMissed) {
+            Task::query()
+                ->where('is_missed', 1)
+                ->whereBetween('start_date', [$window['start'], $window['end']])
+                ->orderBy('start_date')
+                ->get(['id', 'title', 'assign_to', 'completion_date'])
+                ->each(fn ($task) => $push($task, false, 'Missed'));
+
+            DeletedTask::query()
+                ->whereBetween('deleted_at', [$window['start'], $window['end']])
+                ->where(function ($q) {
+                    $q->where('is_missed', 1)
+                        ->orWhereNull('status')
+                        ->orWhere('status', '')
+                        ->orWhere('status', '!=', 'Done');
+                })
+                ->orderBy('deleted_at')
+                ->get(['original_task_id', 'title', 'assign_to', 'assignee_name', 'completion_date', 'deleted_by_name', 'deleted_by_email', 'deleted_at'])
+                ->each(fn ($task) => $push($task, true, 'Missed'));
+        }
+
+        usort($records, function (array $a, array $b): int {
+            $byName = strcasecmp($a['assignee'], $b['assignee']);
+            if ($byName !== 0) {
+                return $byName;
+            }
+
+            return strcasecmp($a['title'], $b['title']);
+        });
+
+        return $records;
+    }
+
+    /**
+     * @return array<string, int> lowercase assignee email => yesterday-done count
+     */
+    protected function yesterdayDoneCountsByEmail(): array
+    {
+        $counts = [];
+        foreach ($this->yesterdayDoneRecords() as $record) {
+            $key = strtolower($record['email']);
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Tasks completed yesterday (office PT), with deleted vs still on the board.
+     */
+    public function yesterdayDone(Request $request)
+    {
+        $viewer = Auth::user();
+        $visibleIds = $this->getTaskSummaryVisibleUserIds($viewer);
+        $focusId = (int) $request->query('user_id', 0);
+
+        $usersQuery = $this->activeTeamUsersQuery()->orderBy('name');
+        if ($visibleIds !== null) {
+            $usersQuery->whereIn('id', $visibleIds ?: [0]);
+        }
+        if ($focusId > 0) {
+            if ($visibleIds !== null && ! in_array($focusId, $visibleIds, true)) {
+                abort(403);
+            }
+            $usersQuery->where('id', $focusId);
+        }
+
+        $users = $usersQuery->get(['id', 'name', 'email']);
+        $nameByEmail = [];
+        $emails = [];
+        foreach ($users as $user) {
+            $key = strtolower(trim((string) $user->email));
+            if ($key === '') {
+                continue;
+            }
+            $emails[] = $key;
+            $nameByEmail[$key] = (string) $user->name;
+        }
+
+        $window = $this->yesterdayDoneWindow();
+        $rows = $this->yesterdayDoneGridRows($emails, $focusId);
+        $focusUser = $focusId > 0 ? $users->first() : null;
+        $yesterdayDars = $this->yesterdayDarRows($users->pluck('id')->all(), $window['date']);
+        $yesterdayActiveLabel = $this->yesterdayActiveLabel($users->pluck('id')->all(), $window['date']);
+        $attendanceUrl = route('attendance.summary', array_filter([
+            'executive' => $focusId > 0 ? $focusId : null,
+            'range' => 'custom',
+            'from' => $window['date'],
+            'to' => $window['date'],
+            'timezone' => 'America/Los_Angeles',
+        ]));
+        $taskBadges = $this->taskManagerBadgesForEmails(
+            $emails,
+            $focusId > 0 ? $focusId : (int) Auth::id()
+        );
+
+        return view('tasks.yesterday-done', compact('rows', 'window', 'focusUser', 'yesterdayDars', 'taskBadges', 'yesterdayActiveLabel', 'attendanceUrl'));
+    }
+
+    /**
+     * Total attendance active time for these users on the Pacific yesterday.
+     * Uses the daily summary and the sessions that ran that day, same as the activity timeline.
+     *
+     * @param  list<int>  $userIds
+     */
+    protected function yesterdayActiveLabel(array $userIds, string $date): string
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        $seconds = 0;
+        if ($userIds !== []) {
+            $start = \Carbon\Carbon::parse($date, 'America/Los_Angeles')->startOfDay();
+            $end = $start->copy()->endOfDay();
+
+            $summaryByUser = [];
+            if (Schema::hasTable('attendance_daily_summaries')) {
+                $summaryByUser = AttendanceDailySummary::query()
+                    ->whereIn('user_id', $userIds)
+                    ->whereDate('work_date', $date)
+                    ->pluck('active_seconds', 'user_id')
+                    ->all();
+            }
+
+            $sessionByUser = [];
+            if (Schema::hasTable('attendance_sessions')) {
+                $sessions = AttendanceSession::query()
+                    ->whereIn('user_id', $userIds)
+                    ->where('started_at', '<=', $end)
+                    ->where(function ($query) use ($start) {
+                        $query->whereNull('ended_at')->orWhere('ended_at', '>=', $start);
+                    })
+                    ->get(['user_id', 'total_active_seconds']);
+                foreach ($sessions as $session) {
+                    $id = (int) $session->user_id;
+                    $sessionByUser[$id] = ($sessionByUser[$id] ?? 0) + (int) $session->total_active_seconds;
+                }
+            }
+
+            $teamLoggerByUser = $this->yesterdayTeamLoggerSeconds($userIds, $date);
+            foreach ($userIds as $id) {
+                $attendance = max((int) ($summaryByUser[$id] ?? 0), (int) ($sessionByUser[$id] ?? 0));
+                $seconds += max($attendance, (int) ($teamLoggerByUser[$id] ?? 0));
+            }
+        }
+
+        $hours = intdiv(max(0, $seconds), 3600);
+        $minutes = intdiv(max(0, $seconds) % 3600, 60);
+
+        return $hours.'h '.$minutes.'m';
+    }
+
+    /**
+     * Team Logger active seconds for people who still clock time there (Shobha, Mariya).
+     * The stored day matches the Pacific calendar date (Team Logger resets at 12:00 IST).
+     *
+     * @param  list<int>  $userIds
+     * @return array<int, int>
+     */
+    protected function yesterdayTeamLoggerSeconds(array $userIds, string $date): array
+    {
+        $users = User::query()
+            ->whereIn('id', $userIds)
+            ->get(['id', 'name', 'email'])
+            ->filter(fn (User $user) => AttL30Metrics::usesTeamLogger($user->name, $user->email))
+            ->values();
+        if ($users->isEmpty()) {
+            return [];
+        }
+
+        $byEmail = [];
+        if (Schema::hasTable('team_logger_daily_hours')) {
+            TeamLoggerDailyHours::query()
+                ->whereDate('work_date', $date)
+                ->get(['employee_email', 'active_hours', 'productive_hours'])
+                ->each(function ($row) use (&$byEmail) {
+                    $email = strtolower(trim((string) $row->employee_email));
+                    if ($email === '') {
+                        return;
+                    }
+                    $hours = (float) $row->active_hours;
+                    if ($hours <= 0) {
+                        $hours = (float) $row->productive_hours;
+                    }
+                    $byEmail[$email] = max($byEmail[$email] ?? 0, $hours);
+                });
+        }
+
+        $mapper = new TeamSalaryCalculator();
+        $needsApi = $users->contains(function (User $user) use ($byEmail, $mapper) {
+            $appEmail = strtolower(trim((string) $user->email));
+            $tlEmail = strtolower($mapper->teamLoggerEmail((string) $user->email));
+
+            return ($byEmail[$tlEmail] ?? $byEmail[$appEmail] ?? 0) <= 0;
+        });
+
+        if ($needsApi) {
+            try {
+                $api = (new TeamLoggerService())->fetchByDay($date, true);
+                foreach ($api as $email => $row) {
+                    $key = strtolower(trim((string) $email));
+                    if ($key === '') {
+                        continue;
+                    }
+                    $hours = (float) ($row['active_hours'] ?? 0);
+                    if ($hours <= 0) {
+                        $hours = (float) ($row['hours'] ?? 0);
+                    }
+                    $byEmail[$key] = max($byEmail[$key] ?? 0, $hours);
+                }
+            } catch (\Throwable $e) {
+                \Log::error('Yesterday TeamLogger hours failed: '.$e->getMessage());
+            }
+        }
+
+        $out = [];
+        foreach ($users as $user) {
+            $appEmail = strtolower(trim((string) $user->email));
+            $tlEmail = strtolower($mapper->teamLoggerEmail((string) $user->email));
+            $found = $byEmail[$tlEmail] ?? $byEmail[$appEmail] ?? 0;
+            if ($found <= 0) {
+                $needle = null;
+                $haystack = $appEmail.' '.strtolower((string) $user->name);
+                foreach (AttL30Metrics::TEAM_LOGGER_NAME_NEEDLES as $candidate) {
+                    if (str_contains($haystack, $candidate)) {
+                        $needle = $candidate;
+                        break;
+                    }
+                }
+                if ($needle) {
+                    foreach ($byEmail as $key => $value) {
+                        if ($value > 0 && str_contains($key, $needle)) {
+                            $found = $value;
+                            break;
+                        }
+                    }
+                }
+            }
+            if ($found > 0) {
+                $out[(int) $user->id] = (int) round($found * 3600);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Same headline badges as /tasks, limited to these assignee emails.
+     *
+     * @param  list<string>  $emails
+     * @return array{pending: int, ca: int, overdue: int, etc_l30_h: int, atc_l30_h: int, tat: string, score: string, missed: int, pending_etc_h: int}
+     */
+    protected function taskManagerBadgesForEmails(array $emails, int $scoreUserId): array
+    {
+        $emails = array_values(array_unique(array_filter(array_map(
+            fn ($email) => strtolower(trim((string) $email)),
+            $emails
+        ))));
+
+        $empty = [
+            'pending' => 0,
+            'ca' => 0,
+            'overdue' => 0,
+            'etc_l30_h' => 0,
+            'atc_l30_h' => 0,
+            'tat' => '-',
+            'score' => '-',
+            'missed' => 0,
+            'pending_etc_h' => 0,
+        ];
+        if ($emails === []) {
+            $empty['score'] = $this->taskBadgeAverageScore($scoreUserId);
+
+            return $empty;
+        }
+
+        $q = $this->taskManagerVisibilityQuery()->where(function ($query) use ($emails) {
+            foreach ($emails as $email) {
+                $query->orWhere('assign_to', 'LIKE', '%'.$email.'%');
+            }
+        });
+
+        $agg = (clone $q)->toBase()->selectRaw("
+            COUNT(*) as total,
+            SUM(CASE WHEN COALESCE(is_corrective_action, 0) = 1 THEN 1 ELSE 0 END) as ca,
+            COALESCE(SUM(CASE WHEN status NOT IN ('Done', 'Archived') THEN eta_time ELSE 0 END), 0) as pending_etc
+        ")->first();
+
+        $overdue = $this->whereOverdueByBusinessTid(clone $q)
+            ->whereNotIn('status', ['Done', 'Archived'])
+            ->count();
+
+        $deleted = DeletedTask::query()
+            ->where('deleted_at', '>=', now()->subDays(30))
+            ->where(function ($query) use ($emails) {
+                foreach ($emails as $email) {
+                    $query->orWhere('assign_to', 'LIKE', '%'.$email.'%');
+                }
+            });
+        $deletedAgg = (clone $deleted)->toBase()->selectRaw(
+            'COALESCE(SUM(eta_time), 0) as etc_minutes, COALESCE(SUM(etc_done), 0) as atc_minutes'
+        )->first();
+
+        $doneRows = (clone $q)
+            ->where('status', 'Done')
+            ->whereNotNull('start_date')
+            ->where('completion_date', '>=', now()->subDays(30))
+            ->toBase()
+            ->get(['start_date', 'completion_date']);
+        $tatValues = [];
+        foreach ($doneRows as $task) {
+            $start = \Carbon\Carbon::parse($task->start_date);
+            $completion = \Carbon\Carbon::parse($task->completion_date);
+            $tatValues[] = abs($completion->getTimestamp() - $start->getTimestamp()) / 86400;
+        }
+
+        $missedLive = (clone $q)
+            ->whereNotNull('start_date')
+            ->where('start_date', '>=', now()->subDays(30))
+            ->whereNotIn('status', ['Done', 'Archived'])
+            ->count();
+        $missedArchived = DeletedTask::query()
+            ->where('is_missed', 1)
+            ->where('deleted_at', '>=', now()->subDays(30))
+            ->whereNotNull('start_date')
+            ->where(function ($query) use ($emails) {
+                foreach ($emails as $email) {
+                    $query->orWhere('assign_to', 'LIKE', '%'.$email.'%');
+                }
+            })
+            ->count();
+
+        return [
+            'pending' => (int) ($agg->total ?? 0),
+            'ca' => (int) ($agg->ca ?? 0),
+            'overdue' => (int) $overdue,
+            'etc_l30_h' => (int) round(((float) ($deletedAgg->etc_minutes ?? 0)) / 60),
+            'atc_l30_h' => (int) round(((float) ($deletedAgg->atc_minutes ?? 0)) / 60),
+            'tat' => $tatValues !== [] ? number_format(array_sum($tatValues) / count($tatValues), 1, '.', '') : '-',
+            'score' => $this->taskBadgeAverageScore($scoreUserId),
+            'missed' => (int) $missedLive + (int) $missedArchived,
+            'pending_etc_h' => (int) round(((float) ($agg->pending_etc ?? 0)) / 60),
+        ];
+    }
+
+    protected function taskBadgeAverageScore(int $userId): string
+    {
+        if ($userId <= 0 || ! Schema::hasTable('performance_reviews')) {
+            return '-';
+        }
+        try {
+            $avg = PerformanceReview::query()
+                ->where('employee_id', $userId)
+                ->where('is_completed', true)
+                ->avg('normalized_score');
+
+            return $avg !== null ? number_format((float) $avg, 2, '.', '') : '-';
+        } catch (\Throwable $e) {
+            return '-';
+        }
+    }
+
+    /**
+     * DAR rows for the office yesterday date, limited to the users on this page.
+     *
+     * @param  list<int>  $userIds
+     * @return list<array{user: string, group: string, task: string, time_taken: string}>
+     */
+    protected function yesterdayDarRows(array $userIds, string $reportDate): array
+    {
+        $userIds = array_values(array_filter(array_map('intval', $userIds)));
+        if ($userIds === [] || ! Schema::hasTable('dars')) {
+            return [];
+        }
+
+        return Dar::query()
+            ->with('user:id,name')
+            ->whereIn('user_id', $userIds)
+            ->whereDate('report_date', $reportDate)
+            ->orderBy('user_id')
+            ->orderBy('id')
+            ->get(['id', 'user_id', 'group', 'task', 'time_taken'])
+            ->filter(function ($row) {
+                return trim((string) $row->task) !== '' || trim((string) $row->group) !== '';
+            })
+            ->map(function ($row) {
+                $minutes = (int) round((float) $row->time_taken);
+                $hours = intdiv($minutes, 60);
+                $remain = $minutes % 60;
+                if ($hours > 0 && $remain > 0) {
+                    $time = $hours.'h '.$remain.'m';
+                } elseif ($hours > 0) {
+                    $time = $hours.'h';
+                } else {
+                    $time = $remain.'m';
+                }
+
+                return [
+                    'user' => (string) (optional($row->user)->name ?: ''),
+                    'group' => (string) ($row->group ?? ''),
+                    'task' => (string) ($row->task ?? ''),
+                    'time_taken' => $time,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * One Task Manager-shaped row per yesterday done or missed task.
+     *
+     * @param  list<string>  $onlyEmails
+     * @return list<array<string, mixed>>
+     */
+    protected function yesterdayDoneGridRows(array $onlyEmails, int $focusUserId = 0): array
+    {
+        $window = $this->yesterdayDoneWindow();
+        $only = [];
+        foreach ($onlyEmails as $email) {
+            $email = strtolower(trim($email));
+            if ($email !== '') {
+                $only[$email] = true;
+            }
+        }
+
+        $matches = function ($task) use ($only): bool {
+            if ($only === []) {
+                return false;
+            }
+            foreach (array_filter(array_map('trim', explode(',', (string) ($task->assign_to ?? '')))) as $email) {
+                if (isset($only[strtolower($email)])) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        $items = [];
+        $liveIds = [];
+
+        Task::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$window['start'], $window['end']])
+            ->orderBy('completion_date')
+            ->get()
+            ->each(function ($task) use (&$items, &$liveIds, $matches) {
+                if (! $matches($task)) {
+                    return;
+                }
+                $liveIds[(int) $task->id] = true;
+                $items[] = [$task, false, 'Done'];
+            });
+
+        DeletedTask::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$window['start'], $window['end']])
+            ->orderBy('completion_date')
+            ->get()
+            ->each(function ($task) use (&$items, $liveIds, $matches) {
+                $originalId = (int) ($task->original_task_id ?? 0);
+                if ($originalId > 0 && isset($liveIds[$originalId])) {
+                    return;
+                }
+                if (! $matches($task)) {
+                    return;
+                }
+                $items[] = [$task, true, 'Done'];
+            });
+
+        Task::query()
+            ->where('is_missed', 1)
+            ->whereBetween('start_date', [$window['start'], $window['end']])
+            ->orderBy('start_date')
+            ->get()
+            ->each(function ($task) use (&$items, &$liveIds, $matches) {
+                if (! $matches($task) || isset($liveIds[(int) $task->id])) {
+                    return;
+                }
+                $liveIds[(int) $task->id] = true;
+                $items[] = [$task, false, 'Missed'];
+            });
+
+        DeletedTask::query()
+            ->whereBetween('deleted_at', [$window['start'], $window['end']])
+            ->where(function ($q) {
+                $q->where('is_missed', 1)
+                    ->orWhereNull('status')
+                    ->orWhere('status', '')
+                    ->orWhere('status', '!=', 'Done');
+            })
+            ->orderBy('deleted_at')
+            ->get()
+            ->each(function ($task) use (&$items, $liveIds, $matches) {
+                $originalId = (int) ($task->original_task_id ?? 0);
+                if ($originalId > 0 && isset($liveIds[$originalId])) {
+                    return;
+                }
+                if (! $matches($task)) {
+                    return;
+                }
+                $items[] = [$task, true, 'Missed'];
+            });
+
+        $defaultAvatar = asset('images/users/avatar-2.jpg');
+        $teamUsers = User::query()->get(['id', 'name', 'email', 'avatar', 'designation']);
+        [$usersByEmail, $usersByName, $usersByFirst] = $this->taskUserLookupMaps($teamUsers);
+
+        $rows = [];
+        foreach ($items as [$task, $deleted, $type]) {
+            $assignorName = '-';
+            $assignorAvatar = null;
+            $assignorDesignation = null;
+            if ($task->assignor) {
+                $assignorUser = $this->findTaskUserFromMaps((string) $task->assignor, $usersByEmail, $usersByName, $usersByFirst);
+                $assignorName = $assignorUser ? $assignorUser->name : (string) $task->assignor;
+                $assignorDesignation = $assignorUser ? $assignorUser->designation : null;
+                $assignorAvatar = $assignorUser && $assignorUser->avatar
+                    ? asset('storage/'.$assignorUser->avatar)
+                    : $defaultAvatar;
+            }
+
+            $assigneeNames = [];
+            $assigneeAvatar = null;
+            $assigneeDesignation = null;
+            $assigneeId = $focusUserId > 0 ? $focusUserId : 0;
+            foreach (array_filter(array_map('trim', explode(',', (string) ($task->assign_to ?? '')))) as $email) {
+                $assigneeUser = $this->findTaskUserFromMaps($email, $usersByEmail, $usersByName, $usersByFirst);
+                if ($assigneeUser) {
+                    $assigneeNames[] = $assigneeUser->name;
+                    if ($assigneeId === 0) {
+                        $assigneeId = (int) $assigneeUser->id;
+                    }
+                    if ($assigneeAvatar === null) {
+                        $assigneeAvatar = $assigneeUser->avatar
+                            ? asset('storage/'.$assigneeUser->avatar)
+                            : $defaultAvatar;
+                        $assigneeDesignation = $assigneeUser->designation;
+                    }
+                } else {
+                    $assigneeNames[] = $email;
+                    $assigneeAvatar = $assigneeAvatar ?: $defaultAvatar;
+                }
+            }
+            if ($assigneeNames === [] && $deleted) {
+                $fallback = trim((string) ($task->assignee_name ?? ''));
+                if ($fallback !== '') {
+                    $assigneeNames[] = $fallback;
+                }
+            }
+
+            $start = $this->formatTaskWallClockDatetime($task->getRawOriginal('start_date')) ?? (string) ($task->start_date ?? '');
+            $tatEnd = '';
+            if (! empty($task->completion_date)) {
+                $tatEnd = $this->formatTaskWallClockDatetime($task->getRawOriginal('completion_date')) ?? (string) $task->completion_date;
+            } elseif ($deleted && ! empty($task->deleted_at)) {
+                $tatEnd = $this->formatTaskWallClockDatetime($task->getRawOriginal('deleted_at')) ?? (string) $task->deleted_at;
+            }
+            $tat = null;
+            if ($start !== '' && $tatEnd !== '') {
+                try {
+                    $tat = (int) round(abs(\Carbon\Carbon::parse($tatEnd)->getTimestamp() - \Carbon\Carbon::parse($start)->getTimestamp()) / 86400);
+                } catch (\Throwable $e) {
+                    $tat = null;
+                }
+            }
+            $deletedBy = '';
+            if ($deleted) {
+                $deletedBy = trim((string) ($task->deleted_by_name ?? ''));
+                if ($deletedBy === '') {
+                    $deletedBy = trim((string) ($task->deleted_by_email ?? ''));
+                }
+                if (strtolower($deletedBy) === 'system@auto' || strtolower((string) ($task->deleted_by_email ?? '')) === 'system@auto') {
+                    $deletedBy = 'Auto';
+                }
+            }
+
+            $rows[] = [
+                'id' => $deleted ? null : (int) $task->id,
+                'title' => trim((string) ($task->title ?? '')) ?: 'Untitled task',
+                'group' => (string) ($task->group ?? ''),
+                'priority' => (string) ($task->priority ?: 'normal'),
+                'status' => $type === 'Missed' ? 'Missed' : (string) ($task->status ?: 'Done'),
+                'type' => $type,
+                'is_missed' => $type === 'Missed' ? 1 : (int) ($task->is_missed ?? 0),
+                'is_automate_task' => (int) ($task->is_automate_task ?? 0),
+                'is_corrective_action' => (int) ($task->is_corrective_action ?? 0),
+                'assignor_name' => $assignorName,
+                'assignor_avatar' => $assignorAvatar,
+                'assignor_designation' => $assignorDesignation,
+                'assignee_name' => $assigneeNames !== [] ? implode(', ', $assigneeNames) : '-',
+                'assignee_id' => $assigneeId,
+                'assignee_avatar' => $assigneeAvatar,
+                'assignee_designation' => $assigneeDesignation,
+                'start_date' => $start,
+                'tid_business_date' => TaskBusinessTime::businessDateFromStart($task->start_date),
+                'tat' => $tat,
+                'eta_time' => (int) ($task->eta_time ?? 0),
+                'etc_done' => (int) ($task->etc_done ?? 0),
+                'link1' => (string) ($task->link1 ?? ''),
+                'link2' => (string) ($task->link2 ?? ''),
+                'link3' => (string) ($task->link3 ?? ''),
+                'link4' => (string) ($task->link4 ?? ''),
+                'link5' => (string) ($task->link5 ?? ''),
+                'link6' => (string) ($task->link6 ?? ''),
+                'link7' => (string) ($task->link7 ?? ''),
+                'link8' => (string) ($task->link8 ?? ''),
+                'link9' => (string) ($task->link9 ?? ''),
+                'image' => (string) ($task->image ?? ''),
+                'report' => (string) ($task->report ?? ''),
+                'parent_task_id' => $task->parent_task_id ?? null,
+                'deleted' => $deleted,
+                'deleted_by' => $deletedBy,
+            ];
+        }
+
+        usort($rows, function (array $a, array $b): int {
+            $byName = strcasecmp((string) $a['assignee_name'], (string) $b['assignee_name']);
+            if ($byName !== 0) {
+                return $byName;
+            }
+
+            return strcasecmp((string) $a['title'], (string) $b['title']);
+        });
+
+        return $rows;
     }
 
     /**
@@ -4843,21 +5607,27 @@ class TaskController extends Controller
         }
 
         $canReviveArchivedTasks = $this->userCanReviveArchivedTasks($user);
+        $yesterdayDate = TaskBusinessTime::today()->subDay()->toDateString();
+        $yesterdayLabel = TaskBusinessTime::today()->subDay()->format('M j, Y');
 
-        return view('tasks.deleted', compact('stats', 'isAdmin', 'tatChartData', 'missedChartData', 'selectedUserName', 'canReviveArchivedTasks'));
+        return view('tasks.deleted', compact('stats', 'isAdmin', 'tatChartData', 'missedChartData', 'selectedUserName', 'canReviveArchivedTasks', 'yesterdayDate', 'yesterdayLabel'));
     }
 
     /**
      * Get deleted tasks data for table
      */
-    public function deletedData()
+    public function deletedData(Request $request)
     {
         $user = Auth::user();
         $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
-        // Show only tasks deleted in the last 30 days
+        [$windowStart, $windowEnd] = $this->deletedTasksDateWindow(
+            (string) $request->query('range', 'yesterday'),
+            $request->query('date')
+        );
+
         $query = DeletedTask::query()
-            ->where('deleted_at', '>=', now()->subDays(30));
+            ->whereBetween('deleted_at', [$windowStart, $windowEnd]);
         
         if (!$isAdmin) {
             $query->where(function($q) use ($user) {
@@ -4916,6 +5686,55 @@ class TaskController extends Controller
         });
 
         return response()->json($deletedTasks);
+    }
+
+    /**
+     * Archive-date window for /tasks/deleted.
+     * yesterday = the previous office day, 7/30 = that many calendar days through today,
+     * date = one selected office day.
+     *
+     * @return array{0: string, 1: string}
+     */
+    protected function deletedTasksDateWindow(string $range, mixed $date): array
+    {
+        $today = TaskBusinessTime::today();
+
+        if ($range === '7') {
+            return [
+                $today->copy()->subDays(6)->startOfDay()->format('Y-m-d H:i:s'),
+                $today->copy()->endOfDay()->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        if ($range === '30') {
+            return [
+                $today->copy()->subDays(29)->startOfDay()->format('Y-m-d H:i:s'),
+                $today->copy()->endOfDay()->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        if ($range === 'date') {
+            $raw = trim((string) $date);
+            try {
+                $day = $raw !== ''
+                    ? TaskBusinessTime::parse($raw.' 00:00:00')->startOfDay()
+                    : $today->copy()->subDay()->startOfDay();
+            } catch (\Throwable $e) {
+                $day = $today->copy()->subDay()->startOfDay();
+            }
+
+            return [
+                $day->format('Y-m-d H:i:s'),
+                $day->copy()->endOfDay()->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        $yesterday = $today->copy()->subDay();
+
+        return [
+            $yesterday->copy()->startOfDay()->format('Y-m-d H:i:s'),
+            $yesterday->copy()->endOfDay()->format('Y-m-d H:i:s'),
+        ];
     }
 
     /**
@@ -7753,6 +8572,75 @@ class TaskController extends Controller
             'user' => [
                 'id' => $user->id,
                 'org_level' => $user->org_level,
+            ],
+        ]);
+    }
+
+    /**
+     * Distinct designation names for the Task Summary column editor.
+     * Combines values already on active users with the designations table.
+     *
+     * @return list<string>
+     */
+    protected function taskSummaryDesignationOptions(): array
+    {
+        $fromUsers = $this->activeTeamUsersQuery()
+            ->whereNotNull('designation')
+            ->where('designation', '!=', '')
+            ->distinct()
+            ->pluck('designation');
+
+        $fromTable = collect();
+        if (Schema::hasTable('designations')) {
+            $fromTable = Designation::query()
+                ->where('is_active', true)
+                ->pluck('name');
+        }
+
+        return $fromUsers
+            ->merge($fromTable)
+            ->map(fn ($name) => trim((string) $name))
+            ->filter(fn ($name) => $name !== '')
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->sort(fn ($a, $b) => strcasecmp($a, $b))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Update a user's designation from the Task Summary column.
+     *
+     * Same row gate as the rest of Task Summary: admins, directors, and
+     * Shobha can edit anyone; a manager can edit themselves, tagged juniors,
+     * and Executives; everyone else can edit only their own row.
+     */
+    public function updateUserDesignation(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'designation' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $viewer = Auth::user();
+        $user = User::findOrFail($validated['user_id']);
+        $designation = trim((string) ($validated['designation'] ?? ''));
+        $designation = $designation === '' ? null : $designation;
+
+        if (! $this->canManageRow($viewer, $user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only change designations for yourself, your tagged juniors, or Executives.',
+            ], 403);
+        }
+
+        $user->designation = $designation;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'user' => [
+                'id' => $user->id,
+                'designation' => $user->designation,
             ],
         ]);
     }
