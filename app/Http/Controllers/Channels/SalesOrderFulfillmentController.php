@@ -4169,7 +4169,7 @@ class SalesOrderFulfillmentController extends Controller
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
-    protected function fillRecentAmazonMissingTrackingOnRows(array $rows, int $limit = 6, float $seconds = 10.0): array
+    protected function fillRecentAmazonMissingTrackingOnRows(array $rows, int $limit = 3, float $seconds = 18.0): array
     {
         $missing = [];
         foreach ($rows as $idx => $row) {
@@ -4205,7 +4205,7 @@ class SalesOrderFulfillmentController extends Controller
                 if ($order === null || $order->isFba() || $order->isCancelled()) {
                     continue;
                 }
-                $filled = $sync->fillTrackingForOrder($order, true);
+                $filled = $sync->fillTrackingForOrder($order, false);
                 $tn = trim((string) ($filled['tracking'] ?? ''));
                 if ($tn === '') {
                     continue;
