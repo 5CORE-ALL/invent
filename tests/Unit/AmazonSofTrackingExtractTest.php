@@ -57,7 +57,7 @@ class AmazonSofTrackingExtractTest extends TestCase
         $sizes = AmazonTrackingSyncService::trackingBatchSizes(40);
 
         $this->assertSame(40, $sizes['unshipped']);
-        $this->assertSame(80, $sizes['missing']);
+        $this->assertSame(120, $sizes['missing']);
         $this->assertGreaterThanOrEqual($sizes['unshipped'], $sizes['missing']);
     }
 }

@@ -8,6 +8,22 @@
         padding: 0.7rem 1.3rem !important;
         line-height: 1.2;
     }
+
+    /*
+     * Global .table-responsive { overflow: auto } creates a scrollport, so sticky
+     * thead pins to that box instead of the page. Keep overflow visible here so
+     * the column header freezes under the topbar while the window scrolls.
+     */
+    .amazon-orders-table-wrap.table-responsive {
+        overflow: visible !important;
+    }
+    .amazon-orders-table-wrap > table.table > thead > tr > th {
+        position: sticky !important;
+        top: var(--tz-topbar-height, 70px) !important;
+        z-index: 8 !important;
+        background-color: #dbeafe !important;
+        box-shadow: 0 1px 0 #93c5fd;
+    }
 </style>
 @endsection
 
@@ -78,7 +94,7 @@
                 </div>
             </div>
             <div class="card-body p-0">
-                <div class="table-responsive">
+                <div class="table-responsive amazon-orders-table-wrap">
                     <table class="table table-bordered table-hover mb-0">
                         <thead class="table-light">
                             <tr>

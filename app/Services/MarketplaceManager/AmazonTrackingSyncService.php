@@ -295,27 +295,34 @@ class AmazonTrackingSyncService
         }
 
         $limit = max(1, min(400, $limit));
-        $orders = AmazonOrder::query()
-            ->with('items')
+        $scan = min(800, max($limit * 8, 200));
+        $query = AmazonOrder::query()
             ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
             ->where(function ($q) {
                 $q->whereNull('fulfillment_channel')
                     ->orWhereRaw("UPPER(TRIM(COALESCE(fulfillment_channel, ''))) != ?", ['AFN']);
             })
             ->where('order_date', '>=', now()->subDays(45))
-            ->where(function ($q) {
-                $q->whereNull('raw_data')
-                    ->orWhere('raw_data', '')
-                    ->orWhere(function ($missing) {
-                        $missing->whereRaw("LOWER(CONVERT(COALESCE(raw_data, '') USING utf8mb4)) NOT LIKE ?", ['%tracking_number%'])
-                            ->whereRaw("LOWER(CONVERT(COALESCE(raw_data, '') USING utf8mb4)) NOT LIKE ?", ['%trackingnumber%']);
-                    });
-            })
-            ->orderByRaw("CASE WHEN shopify_order_id IS NULL OR shopify_order_id = '' THEN 1 ELSE 0 END")
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->where('shopify_order_id', 'not like', 'manual%')
             ->orderByDesc('order_date')
             ->orderByDesc('id')
-            ->limit($limit)
-            ->get();
+            ->limit($scan);
+
+        try {
+            $orders = (clone $query)
+                ->where(function ($q) {
+                    $q->whereNull('raw_data')
+                        ->orWhereRaw("IFNULL(JSON_UNQUOTE(JSON_EXTRACT(raw_data, '$.tracking_number')), '') = ''");
+                })
+                ->get();
+        } catch (\Throwable $e) {
+            Log::warning('AmazonTrackingSyncService: JSON tracking filter failed, scanning recent shipped', [
+                'error' => $e->getMessage(),
+            ]);
+            $orders = $query->get();
+        }
 
         $checked = 0;
         $filled = 0;
@@ -457,7 +464,7 @@ class AmazonTrackingSyncService
 
         return [
             'unshipped' => $limit,
-            'missing' => max(80, $limit * 2),
+            'missing' => max(120, $limit * 3),
         ];
     }
 
