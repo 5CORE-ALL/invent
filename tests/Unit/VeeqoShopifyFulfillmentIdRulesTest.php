@@ -139,5 +139,8 @@ class VeeqoShopifyFulfillmentIdRulesTest extends TestCase
         $this->assertNull(VeeqoShopifyFulfillmentService::sofLocalTrackingIfReady([
             'tracking' => 'GFU5081074281244545',
         ], ['GFU5081074281244545']));
+        $this->assertNull(VeeqoShopifyFulfillmentService::sofLocalTrackingIfReady([
+            'tracking' => '',
+        ]));
     }
 }

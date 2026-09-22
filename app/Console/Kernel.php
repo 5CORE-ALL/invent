@@ -2088,6 +2088,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(18)
             ->appendOutputTo($log);
 
+        $schedule->job(new \App\Jobs\PushSofTrackingToShopifyJob(200))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('sof-tracking-to-shopify')
+            ->withoutOverlapping(6)
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\FetchMarketplaceShopifyTrackingJob(800))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
