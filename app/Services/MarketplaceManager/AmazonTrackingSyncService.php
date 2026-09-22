@@ -303,9 +303,8 @@ class AmazonTrackingSyncService
                     ->orWhereRaw("UPPER(TRIM(COALESCE(fulfillment_channel, ''))) != ?", ['AFN']);
             })
             ->where('order_date', '>=', now()->subDays(45))
-            ->whereNotNull('shopify_order_id')
-            ->where('shopify_order_id', '!=', '')
-            ->where('shopify_order_id', 'not like', 'manual%')
+            ->orderByRaw("CASE WHEN order_date >= ? THEN 0 ELSE 1 END", [now('America/Los_Angeles')->subDays(7)->startOfDay()])
+            ->orderByRaw("CASE WHEN shopify_order_id IS NULL OR shopify_order_id = '' OR shopify_order_id LIKE 'manual%' THEN 1 ELSE 0 END")
             ->orderByDesc('order_date')
             ->orderByDesc('id')
             ->limit($scan);
@@ -354,6 +353,56 @@ class AmazonTrackingSyncService
             'filled' => $filled,
             'skipped' => $skipped,
             'message' => "Amazon SOF tracking fill: checked {$checked}, filled {$filled}, still missing {$skipped}.",
+        ];
+    }
+
+    /**
+     * @param  list<int>  $ids
+     * @return array{success: bool, checked: int, filled: int, skipped: int, message: string}
+     */
+    public function fillMissingSofTrackingForIds(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map(static fn ($id) => (int) $id, $ids),
+            static fn (int $id) => $id > 0
+        )));
+        $checked = 0;
+        $filled = 0;
+        $skipped = 0;
+        if ($ids === []) {
+            return [
+                'success' => true,
+                'checked' => 0,
+                'filled' => 0,
+                'skipped' => 0,
+                'message' => 'Amazon SOF tracking fill: no ids.',
+            ];
+        }
+
+        $orders = AmazonOrder::query()->whereIn('id', array_slice($ids, 0, 80))->get();
+        foreach ($orders as $order) {
+            if ($order->isFba() || $order->isCancelled()) {
+                continue;
+            }
+            if (trim((string) ($order->localTracking()['tracking'] ?? '')) !== '') {
+                continue;
+            }
+            $checked++;
+            $result = $this->fillTrackingForOrder($order);
+            if (! empty($result['success']) && trim((string) ($result['tracking'] ?? '')) !== '') {
+                $filled++;
+            } else {
+                $skipped++;
+            }
+            usleep(120000);
+        }
+
+        return [
+            'success' => true,
+            'checked' => $checked,
+            'filled' => $filled,
+            'skipped' => $skipped,
+            'message' => "Amazon SOF tracking fill (ids): checked {$checked}, filled {$filled}, still missing {$skipped}.",
         ];
     }
 
@@ -440,7 +489,16 @@ class AmazonTrackingSyncService
         }
         $local = $order->localTracking();
         $localHit = trim((string) ($local['tracking'] ?? '')) !== '' ? $local : null;
-        $found = $this->veeqoFulfillment->lookupLabelTracking($refs, $localHit, false, '');
+        $sku = '';
+        $items = $order->relationLoaded('items') ? $order->items : $order->items()->orderBy('id')->get();
+        foreach ($items as $item) {
+            $one = trim((string) ($item->sku ?? ''));
+            if ($one !== '' && ! in_array($one, ['__order__', '__unknown__'], true)) {
+                $sku = $one;
+                break;
+            }
+        }
+        $found = $this->veeqoFulfillment->lookupLabelTracking($refs, $localHit, false, $sku);
         $tn = trim((string) ($found['tracking'] ?? ''));
         if ($tn === '') {
             return null;

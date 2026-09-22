@@ -104,9 +104,9 @@ class AmazonOrder extends Model
      * @param  array<string, mixed>|null  $raw
      * @return array{tracking: string, carrier: string}
      */
-    public static function trackingFromDecoded(?array $raw): array
+    public static function trackingFromDecoded(?array $raw, int $depth = 0): array
     {
-        if (! is_array($raw)) {
+        if (! is_array($raw) || $depth > 2) {
             return ['tracking' => '', 'carrier' => ''];
         }
 
@@ -131,6 +131,18 @@ class AmazonOrder extends Model
                 }
                 if ($tn !== '') {
                     break 2;
+                }
+            }
+        }
+
+        if ($tn === '' && $depth === 0) {
+            foreach ((array) ($raw['OrderItems'] ?? $raw['orderItems'] ?? []) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $nested = self::trackingFromDecoded($item, $depth + 1);
+                if ($nested['tracking'] !== '') {
+                    return $nested;
                 }
             }
         }
