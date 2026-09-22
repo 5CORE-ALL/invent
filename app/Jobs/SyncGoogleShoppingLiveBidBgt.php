@@ -26,6 +26,12 @@ class SyncGoogleShoppingLiveBidBgt implements ShouldQueue, ShouldBeUnique
 
     public int $uniqueFor = 7200;
 
+    public function __construct()
+    {
+        // Named queue: the server does not run a worker for the default queue.
+        $this->onQueue('google-shopping-live');
+    }
+
     public function uniqueId(): string
     {
         return 'google-shopping-live-bid-bgt';

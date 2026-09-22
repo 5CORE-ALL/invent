@@ -355,10 +355,9 @@ class PurchasingPowerApiService extends BestBuyApiService
             ];
         }
 
-        // One exact OF21 lookup. The sku filter is case-sensitive, and the push
-        // path uppercases SKUs, so use the stored shop SKU (original case) when
-        // we have one. Do not spray variants — that submitted PRI01 for unlisted
-        // SKUs and waited ~20–40s each just to get "No existing offer".
+        // One exact OF21 lookup. The sku filter must match the shop SKU's case
+        // and non-breaking spaces. Do not spray variants — that submitted PRI01
+        // for unlisted SKUs and waited ~20–40s each just to get "No existing offer".
         $listed = \App\Http\Controllers\MarketPlace\PurchasingPowerController::findProductBySku($sku);
         $lookupSku = \App\Http\Controllers\MarketPlace\PurchasingPowerController::offerLookupSku(
             $sku,
