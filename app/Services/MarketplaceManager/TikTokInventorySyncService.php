@@ -352,7 +352,14 @@ class TikTokInventorySyncService
             return collect();
         }
 
-        $uppers = array_keys($wanted);
+        $aliasList = [];
+        foreach ($skus as $sku) {
+            foreach (self::skuAliasesForPush((string) $sku) as $alias) {
+                $aliasList[] = $alias;
+                $aliasList[] = strtoupper($alias);
+            }
+        }
+        $aliasList = array_values(array_unique(array_filter($aliasList)));
 
         return TikTokProduct::query()
             ->whereNotNull('product_id')
@@ -360,16 +367,42 @@ class TikTokInventorySyncService
             ->where('sku', '!=', '')
             ->where('product_id', '!=', '')
             ->where('sku_id', '!=', '')
-            ->where(function ($q) use ($skus, $uppers) {
+            ->where(function ($q) use ($skus, $aliasList) {
                 $q->whereIn('sku', $skus);
-                foreach (array_chunk($uppers, 80) as $chunk) {
+                foreach (array_chunk($aliasList, 80) as $chunk) {
+                    $q->orWhereIn('sku', $chunk);
                     $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                    $q->orWhereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', $chunk);
+                    $q->orWhereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', array_map('strtoupper', $chunk));
                 }
             })
             ->get()
             ->filter(fn (TikTokProduct $metric) => $this->skuIsWanted((string) $metric->sku, $wanted))
             ->values();
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function skuAliasesForPush(string $sku): array
+    {
+        $sku = trim($sku);
+        $out = [];
+        foreach ([
+            $sku,
+            strtoupper($sku),
+            ShopifySku::normalizeSkuForShopifyLookup($sku),
+            str_replace('-', ' ', $sku),
+            preg_replace('/\s+/', '-', $sku) ?: '',
+            str_replace(' ', '', $sku),
+            ShopifySku::compactSkuForLookup($sku),
+        ] as $alias) {
+            $alias = trim((string) $alias);
+            if ($alias !== '' && ! in_array($alias, $out, true)) {
+                $out[] = $alias;
+            }
+        }
+
+        return $out;
     }
 
     /**

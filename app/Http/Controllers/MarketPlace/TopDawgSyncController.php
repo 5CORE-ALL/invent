@@ -27,6 +27,7 @@ use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -791,36 +792,59 @@ class TopDawgSyncController extends Controller
 
     public function syncMismatchInventoryNow(Request $request): JsonResponse
     {
-        @set_time_limit(300);
+        try {
+            return $this->runMismatchInventoryNow($request);
+        } catch (\Throwable $e) {
+            Log::error('TopDawg mismatch inventory sync failed', ['error' => $e->getMessage()]);
 
-        $settings = MarketplaceSyncSettings::getFor('topdawg');
-        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
-            ], 422);
+                'message' => 'Mismatch sync failed: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    protected function runMismatchInventoryNow(Request $request): JsonResponse
+    {
+        @set_time_limit(120);
+
+        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
+        $offset = max(0, (int) $request->input('offset', 0));
+        $limit = 1;
+        $cacheKey = 'topdawg_mismatch_sync_list_'.(string) (auth()->id() ?? 'guest').'_'.$scope;
+        $hasReadyFlag = $request->exists('ready');
+
+        if ($offset === 0 && $hasReadyFlag && ! $request->boolean('ready')) {
+            $mismatch = $this->resolveTopDawgMismatchSkuList($scope);
+            Cache::put($cacheKey, $mismatch, now()->addMinutes(30));
+            $total = count($mismatch);
+
+            return response()->json([
+                'success' => true,
+                'prepared' => true,
+                'done' => $total === 0,
+                'total' => $total,
+                'offset' => 0,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'Prepared '.$total.' SKU(s). Starting…',
+            ]);
         }
 
-        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $liveService = app(TopDawgLiveListingsService::class);
-        $linkedSkus = $this->linkedTopDawgSkus();
-        $verified = $catalog->filterLinkedToVerified($linkedSkus);
-        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
-            $liveService->peekCached(),
-            $this->topdawgStockMapForSkus($verified)
-        );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'topdawg');
-        $mismatchQty = $classified['mismatch'] ?? [];
-        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
-        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        $mismatch = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
-
-        $offset = max(0, (int) $request->input('offset', 0));
-        $limit = max(1, min(40, (int) $request->input('limit', 25)));
+        $cached = Cache::get($cacheKey);
+        $mismatch = is_array($cached) && $cached !== []
+            ? array_values($cached)
+            : $this->resolveTopDawgMismatchSkuList($scope);
+        if (! is_array($cached) || $cached === []) {
+            Cache::put($cacheKey, $mismatch, now()->addMinutes(30));
+        }
         $total = count($mismatch);
         $batch = array_slice($mismatch, $offset, $limit);
 
         if ($batch === []) {
+            Cache::forget($cacheKey);
+
             return response()->json([
                 'success' => true,
                 'done' => true,
@@ -836,6 +860,14 @@ class TopDawgSyncController extends Controller
         $result = app(TopDawgInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
+        if ($done) {
+            Cache::forget($cacheKey);
+            try {
+                app(TopDawgLiveListingsService::class)->clearCache();
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
 
         return response()->json([
             'success' => true,
@@ -851,6 +883,27 @@ class TopDawgSyncController extends Controller
                 ? 'Mismatch inventory sync complete.'
                 : 'Synced batch '.$nextOffset.' / '.$total.'…'),
         ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function resolveTopDawgMismatchSkuList(string $scope): array
+    {
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $liveService = app(TopDawgLiveListingsService::class);
+        $linkedSkus = $this->linkedTopDawgSkus();
+        $verified = $catalog->filterLinkedToVerified($linkedSkus);
+        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            $liveService->peekCached(),
+            $this->topdawgStockMapForSkus($verified)
+        );
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'topdawg');
+        if (! is_array($classified)) {
+            return [];
+        }
+
+        return MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
     }
 
     public function pushOrderToShopify(Request $request): JsonResponse

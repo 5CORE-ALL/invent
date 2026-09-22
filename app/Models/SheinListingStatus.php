@@ -64,18 +64,7 @@ class SheinListingStatus extends Model
             return [];
         }
 
-        $wanted = [];
-        foreach ($skus as $sku) {
-            $raw = trim((string) $sku);
-            if ($raw === '') {
-                continue;
-            }
-            $wanted[$raw] = $raw;
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
-            if ($norm !== '') {
-                $wanted[$norm] = $raw;
-            }
-        }
+        $wanted = static::sellerSkuWantedMap($skus);
 
         $out = [];
         foreach (static::query()->get(['sku', 'value']) as $row) {
@@ -97,11 +86,9 @@ class SheinListingStatus extends Model
             if ($code === '' || preg_match('/\s/', $code) || strcasecmp($code, $sku) === 0) {
                 continue;
             }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            foreach (array_unique(array_filter([$sku, $norm])) as $key) {
-                if (isset($wanted[$key]) && ! isset($out[$wanted[$key]])) {
-                    $out[$wanted[$key]] = $code;
-                }
+            $requested = static::requestedSkuFromWanted($wanted, $sku);
+            if ($requested !== '' && ! isset($out[$requested])) {
+                $out[$requested] = $code;
             }
         }
 
@@ -136,18 +123,7 @@ class SheinListingStatus extends Model
             return [];
         }
 
-        $wanted = [];
-        foreach ($skus as $sku) {
-            $raw = trim((string) $sku);
-            if ($raw === '') {
-                continue;
-            }
-            $wanted[$raw] = $raw;
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
-            if ($norm !== '') {
-                $wanted[$norm] = $raw;
-            }
-        }
+        $wanted = static::sellerSkuWantedMap($skus);
 
         $out = [];
         foreach (static::query()->get(['sku', 'value']) as $row) {
@@ -166,14 +142,51 @@ class SheinListingStatus extends Model
             if ($spu === '') {
                 continue;
             }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            foreach (array_unique(array_filter([$sku, $norm])) as $key) {
-                if (isset($wanted[$key]) && ! isset($out[$wanted[$key]])) {
-                    $out[$wanted[$key]] = $spu;
-                }
+            $requested = static::requestedSkuFromWanted($wanted, $sku);
+            if ($requested !== '' && ! isset($out[$requested])) {
+                $out[$requested] = $spu;
             }
         }
 
         return $out;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, string> alias => requested SKU
+     */
+    protected static function sellerSkuWantedMap(array $skus): array
+    {
+        $wanted = [];
+        foreach ($skus as $sku) {
+            $raw = trim((string) $sku);
+            if ($raw === '') {
+                continue;
+            }
+            foreach (\App\Services\SheinApiService::skuAliasesForLookup($raw) as $alias) {
+                $wanted[$alias] = $raw;
+                $wanted[strtoupper($alias)] = $raw;
+            }
+        }
+
+        return $wanted;
+    }
+
+    /**
+     * @param  array<string, string>  $wanted
+     */
+    protected static function requestedSkuFromWanted(array $wanted, string $listingSku): string
+    {
+        foreach (\App\Services\SheinApiService::skuAliasesForLookup($listingSku) as $alias) {
+            if (isset($wanted[$alias])) {
+                return $wanted[$alias];
+            }
+            $upper = strtoupper($alias);
+            if (isset($wanted[$upper])) {
+                return $wanted[$upper];
+            }
+        }
+
+        return '';
     }
 }

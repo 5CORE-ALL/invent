@@ -149,9 +149,15 @@ final class EbayLiveListingMapper
                 if ($vSku === '' || ! self::skuEquals($vSku, $sku)) {
                     continue;
                 }
-                foreach (['Quantity', 'QuantityAvailable'] as $key) {
+                $sold = (int) ($variation['SellingStatus']['QuantitySold'] ?? $variation['QuantitySold'] ?? 0);
+                foreach (['QuantityAvailable', 'Quantity'] as $key) {
                     if (isset($variation[$key]) && is_numeric($variation[$key])) {
-                        return (int) $variation[$key];
+                        $qty = (int) $variation[$key];
+                        if ($key === 'Quantity' && $sold > 0 && $qty >= $sold) {
+                            return $qty - $sold;
+                        }
+
+                        return $qty;
                     }
                 }
 
@@ -161,9 +167,15 @@ final class EbayLiveListingMapper
             return null;
         }
 
-        foreach (['Quantity', 'QuantityAvailable'] as $key) {
+        $sold = (int) ($item['SellingStatus']['QuantitySold'] ?? $item['QuantitySold'] ?? 0);
+        foreach (['QuantityAvailable', 'Quantity'] as $key) {
             if (isset($item[$key]) && is_numeric($item[$key])) {
-                return (int) $item[$key];
+                $qty = (int) $item[$key];
+                if ($key === 'Quantity' && $sold > 0 && $qty >= $sold) {
+                    return $qty - $sold;
+                }
+
+                return $qty;
             }
         }
 
