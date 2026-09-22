@@ -1724,8 +1724,10 @@ class TaskController extends Controller
                 }
             }
 
+            $teamLoggerByUser = $this->yesterdayTeamLoggerSeconds($userIds, $date);
             foreach ($userIds as $id) {
-                $seconds += max((int) ($summaryByUser[$id] ?? 0), (int) ($sessionByUser[$id] ?? 0));
+                $attendance = max((int) ($summaryByUser[$id] ?? 0), (int) ($sessionByUser[$id] ?? 0));
+                $seconds += max($attendance, (int) ($teamLoggerByUser[$id] ?? 0));
             }
         }
 
@@ -1733,6 +1735,100 @@ class TaskController extends Controller
         $minutes = intdiv(max(0, $seconds) % 3600, 60);
 
         return $hours.'h '.$minutes.'m';
+    }
+
+    /**
+     * Team Logger active seconds for people who still clock time there (Shobha, Mariya).
+     * The stored day matches the Pacific calendar date (Team Logger resets at 12:00 IST).
+     *
+     * @param  list<int>  $userIds
+     * @return array<int, int>
+     */
+    protected function yesterdayTeamLoggerSeconds(array $userIds, string $date): array
+    {
+        $users = User::query()
+            ->whereIn('id', $userIds)
+            ->get(['id', 'name', 'email'])
+            ->filter(fn (User $user) => AttL30Metrics::usesTeamLogger($user->name, $user->email))
+            ->values();
+        if ($users->isEmpty()) {
+            return [];
+        }
+
+        $byEmail = [];
+        if (Schema::hasTable('team_logger_daily_hours')) {
+            TeamLoggerDailyHours::query()
+                ->whereDate('work_date', $date)
+                ->get(['employee_email', 'active_hours', 'productive_hours'])
+                ->each(function ($row) use (&$byEmail) {
+                    $email = strtolower(trim((string) $row->employee_email));
+                    if ($email === '') {
+                        return;
+                    }
+                    $hours = (float) $row->active_hours;
+                    if ($hours <= 0) {
+                        $hours = (float) $row->productive_hours;
+                    }
+                    $byEmail[$email] = max($byEmail[$email] ?? 0, $hours);
+                });
+        }
+
+        $mapper = new TeamSalaryCalculator();
+        $needsApi = $users->contains(function (User $user) use ($byEmail, $mapper) {
+            $appEmail = strtolower(trim((string) $user->email));
+            $tlEmail = strtolower($mapper->teamLoggerEmail((string) $user->email));
+
+            return ($byEmail[$tlEmail] ?? $byEmail[$appEmail] ?? 0) <= 0;
+        });
+
+        if ($needsApi) {
+            try {
+                $api = (new TeamLoggerService())->fetchByDay($date, true);
+                foreach ($api as $email => $row) {
+                    $key = strtolower(trim((string) $email));
+                    if ($key === '') {
+                        continue;
+                    }
+                    $hours = (float) ($row['active_hours'] ?? 0);
+                    if ($hours <= 0) {
+                        $hours = (float) ($row['hours'] ?? 0);
+                    }
+                    $byEmail[$key] = max($byEmail[$key] ?? 0, $hours);
+                }
+            } catch (\Throwable $e) {
+                \Log::error('Yesterday TeamLogger hours failed: '.$e->getMessage());
+            }
+        }
+
+        $out = [];
+        foreach ($users as $user) {
+            $appEmail = strtolower(trim((string) $user->email));
+            $tlEmail = strtolower($mapper->teamLoggerEmail((string) $user->email));
+            $found = $byEmail[$tlEmail] ?? $byEmail[$appEmail] ?? 0;
+            if ($found <= 0) {
+                $needle = null;
+                $haystack = $appEmail.' '.strtolower((string) $user->name);
+                foreach (AttL30Metrics::TEAM_LOGGER_NAME_NEEDLES as $candidate) {
+                    if (str_contains($haystack, $candidate)) {
+                        $needle = $candidate;
+                        break;
+                    }
+                }
+                if ($needle) {
+                    foreach ($byEmail as $key => $value) {
+                        if ($value > 0 && str_contains($key, $needle)) {
+                            $found = $value;
+                            break;
+                        }
+                    }
+                }
+            }
+            if ($found > 0) {
+                $out[(int) $user->id] = (int) round($found * 3600);
+            }
+        }
+
+        return $out;
     }
 
     /**
