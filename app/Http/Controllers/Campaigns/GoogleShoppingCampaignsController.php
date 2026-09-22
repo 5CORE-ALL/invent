@@ -8,6 +8,8 @@ use App\Models\GoogleAdsNegativeKeyword;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\GoogleAdsSbidService;
+use App\Services\GoogleShoppingLiveBidBgtService;
+use App\Support\GoogleShoppingLiveSyncStatus;
 use App\Support\GoogleShoppingBgtCvrRule;
 use App\Support\GoogleShoppingBgtParts;
 use App\Support\GoogleShoppingBgtPrcRule;
@@ -439,6 +441,59 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Pull live Google Ads bid or budget for the current grid page.
+     * Bid and budget are separate requests so one failure does not clear the other column.
+     *
+     * Request JSON: `{ "field": "bid"|"bgt", "rows": [{ "campaign_id", "sbid", "sbgt" }] }`
+     */
+    public function pullLive(Request $request): JsonResponse
+    {
+        $field = (string) $request->input('field', '');
+        if (! in_array($field, ['bid', 'bgt'], true)) {
+            return response()->json([
+                'ok' => false,
+                'field' => $field,
+                'message' => 'field must be bid or bgt.',
+                'rows' => [],
+            ], 422);
+        }
+
+        $suggested = $this->suggestedByCampaignFromRequest($request);
+        $ids = array_keys($suggested);
+        if ($ids === []) {
+            $ids = $this->validatedPushCampaignIds($request);
+        }
+        if (count($ids) > 200) {
+            $ids = array_slice($ids, 0, 200);
+        }
+        if ($ids === []) {
+            return response()->json([
+                'ok' => false,
+                'field' => $field,
+                'message' => 'No campaign_ids.',
+                'rows' => [],
+            ], 422);
+        }
+
+        $live = $this->shoppingLiveFieldPayload($field, $ids, $suggested);
+        if ($live === null) {
+            return response()->json([
+                'ok' => false,
+                'field' => $field,
+                'message' => 'Live bid/budget columns are only on Google Shopping.',
+                'rows' => [],
+            ], 404);
+        }
+
+        return response()->json([
+            'ok' => (bool) $live['ok'],
+            'field' => $field,
+            'error' => $live['error'],
+            'rows' => $live['rows'],
+        ]);
+    }
+
+    /**
      * @return list<string>
      */
     private function validatedPushCampaignIds(Request $request): array
@@ -604,6 +659,7 @@ class GoogleShoppingCampaignsController extends Controller
                 $unchanged = (int) round($currentBudget) === $newBudget;
                 $changeNote = $unchanged ? ' (already at SBGT — confirmed in Google Ads)' : '';
                 $lines[] = "[OK] {$name} ({$campaignId}): Budget=\${$currentBudget} → \${$newBudget}{$changeNote} (ACOS={$acos}%, SBGT={$newBudget})";
+                $this->rememberShoppingPush('bgt', $campaignId, (float) $newBudget);
                 $updated++;
             } catch (\Throwable $e) {
                 $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
@@ -627,7 +683,7 @@ class GoogleShoppingCampaignsController extends Controller
             $okBits[] = "{$paused} paused (SBGT 0)";
         }
 
-        return response()->json([
+        $payload = [
             'ok' => $errors === 0,
             'exit_code' => $errors === 0 ? 0 : 1,
             'command' => $this->pushSbgtCommandLabel(),
@@ -636,7 +692,13 @@ class GoogleShoppingCampaignsController extends Controller
                 : "SBGT push finished with {$errors} error(s).",
             'output' => $output,
             'paused_zero_sbgt' => $paused,
-        ], $errors === 0 ? 200 : 422);
+        ];
+        $live = $this->shoppingLiveFieldPayload('bgt', $campaignIds, $this->suggestedFromEnrichedRows($rowsById));
+        if ($live !== null) {
+            $payload['live'] = $live;
+        }
+
+        return response()->json($payload, $errors === 0 ? 200 : 422);
     }
 
     /**
@@ -705,6 +767,7 @@ class GoogleShoppingCampaignsController extends Controller
                 $pushNote = $this->pushSbidToGoogleAds($sbidService, $customerId, $campaignId, $sbid, $row);
                 $noteSuffix = $pushNote !== '' ? " — {$pushNote}" : '';
                 $lines[] = "[OK] {$name} ({$campaignId}): SBID=\${$sbid} (7UB={$ub7}%, 1UB={$ub1}%){$noteSuffix}";
+                $this->rememberShoppingPush('bid', $campaignId, $sbid);
                 $updated++;
             } catch (\Throwable $e) {
                 $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
@@ -717,7 +780,7 @@ class GoogleShoppingCampaignsController extends Controller
 
         $output = implode("\n", $lines);
 
-        return response()->json([
+        $payload = [
             'ok' => $errors === 0,
             'exit_code' => $errors === 0 ? 0 : 1,
             'command' => $this->pushSbidCommandLabel(),
@@ -725,7 +788,146 @@ class GoogleShoppingCampaignsController extends Controller
                 ? "SBID push finished — {$updated} campaign(s) updated."
                 : "SBID push finished with {$errors} error(s).",
             'output' => $output,
-        ], $errors === 0 ? 200 : 422);
+        ];
+        $live = $this->shoppingLiveFieldPayload('bid', $campaignIds, $this->suggestedFromEnrichedRows($rowsById));
+        if ($live !== null) {
+            $payload['live'] = $live;
+        }
+
+        return response()->json($payload, $errors === 0 ? 200 : 422);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $rowsById
+     * @return array<string, array{sbid: mixed, sbgt: mixed}>
+     */
+    private function suggestedFromEnrichedRows(array $rowsById): array
+    {
+        $out = [];
+        foreach ($rowsById as $id => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $cid = preg_replace('/\D+/', '', (string) $id) ?? '';
+            if ($cid === '') {
+                continue;
+            }
+            $out[$cid] = [
+                'sbid' => $row['sbid'] ?? null,
+                'sbgt' => $row['sbgt'] ?? null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
+     * @return array<string, array<string, mixed>>
+     */
+    private function liveBidBgtStatesForPage(array $campaignIds): array
+    {
+        if ($this->channelKey() !== 'shopping' || $campaignIds === []) {
+            return [];
+        }
+
+        return app(GoogleShoppingLiveBidBgtService::class)->statesFor('shopping', $campaignIds);
+    }
+
+    /**
+     * @param  array<string, mixed>  $arr
+     * @param  array<string, array<string, mixed>>  $states
+     * @return array<string, mixed>
+     */
+    private function mergeLiveBidBgtColumns(array $arr, array $states): array
+    {
+        if ($this->channelKey() !== 'shopping') {
+            return $arr;
+        }
+        $cid = preg_replace('/\D+/', '', (string) ($arr['campaign_id'] ?? '')) ?? '';
+        $presented = GoogleShoppingLiveSyncStatus::columns(
+            $states[$cid] ?? null,
+            $arr['sbid'] ?? null,
+            $arr['sbgt'] ?? null
+        );
+        foreach ($presented as $key => $value) {
+            $arr[$key] = $value;
+        }
+
+        return $arr;
+    }
+
+    private function rememberShoppingPush(string $field, string $campaignId, float $value): void
+    {
+        if ($this->channelKey() !== 'shopping') {
+            return;
+        }
+        app(GoogleShoppingLiveBidBgtService::class)->recordPush('shopping', $campaignId, $field, true, $value);
+    }
+
+    /**
+     * Pull one live column and describe each campaign. Null outside the Shopping grid.
+     *
+     * @param  list<string>  $campaignIds
+     * @param  array<string, array{sbid?: mixed, sbgt?: mixed}>  $suggestedById
+     * @return array{field: string, ok: bool, error: ?string, rows: list<array<string, mixed>>}|null
+     */
+    private function shoppingLiveFieldPayload(string $field, array $campaignIds, array $suggestedById): ?array
+    {
+        if ($this->channelKey() !== 'shopping') {
+            return null;
+        }
+        $field = $field === 'bid' ? 'bid' : 'bgt';
+        $sync = app(GoogleShoppingLiveBidBgtService::class);
+        $customerId = trim((string) config('services.google_ads.login_customer_id'));
+        $pulled = $sync->pullAndStore($customerId, $campaignIds, $field, 'shopping');
+        $states = $sync->statesFor('shopping', $campaignIds);
+        $rows = [];
+        foreach ($campaignIds as $id) {
+            $sug = $suggestedById[$id] ?? [];
+            $suggested = $field === 'bid' ? ($sug['sbid'] ?? null) : ($sug['sbgt'] ?? null);
+            $rows[] = array_merge(
+                ['campaign_id' => (string) $id],
+                GoogleShoppingLiveSyncStatus::fieldRow($field, $states[$id] ?? null, $suggested)
+            );
+        }
+
+        return [
+            'field' => $field,
+            'ok' => (bool) ($pulled['ok'] ?? false),
+            'error' => $pulled['error'] ?? null,
+            'rows' => $rows,
+        ];
+    }
+
+    /**
+     * @return array<string, array{sbid: mixed, sbgt: mixed}>
+     */
+    private function suggestedByCampaignFromRequest(Request $request): array
+    {
+        $raw = $request->input('rows');
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $cid = preg_replace('/\D+/', '', (string) ($row['campaign_id'] ?? '')) ?? '';
+            if ($cid === '' || strlen($cid) > 32) {
+                continue;
+            }
+            $out[$cid] = [
+                'sbid' => $row['sbid'] ?? null,
+                'sbgt' => $row['sbgt'] ?? null,
+            ];
+            if (count($out) >= 200) {
+                break;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -896,9 +1098,11 @@ class GoogleShoppingCampaignsController extends Controller
                 ->all();
             $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
             $negCounts = $this->negativeTargetCountsForPage($pageCampaignIds);
+            $liveStates = $this->liveBidBgtStatesForPage($pageCampaignIds);
             foreach ($pageRows as $i => $arr) {
                 $this->attachSbgtTrend($arr, $prevSbgtMap);
                 $this->attachNegativeTargetCount($arr, $negCounts);
+                $arr = $this->mergeLiveBidBgtColumns($arr, $liveStates);
                 if (! $verifyId) {
                     $arr['id_mismatch'] = false;
                     $arr['id_alert_title'] = '';
@@ -934,11 +1138,13 @@ class GoogleShoppingCampaignsController extends Controller
             ->all();
         $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
         $negCounts = $this->negativeTargetCountsForPage($pageCampaignIds);
+        $liveStates = $this->liveBidBgtStatesForPage($pageCampaignIds);
 
-        $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $negCounts, $invResolver, $bgtResolver) {
+        $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $negCounts, $invResolver, $bgtResolver, $liveStates) {
             $arr = $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
             $this->attachSbgtTrend($arr, $prevSbgtMap);
             $this->attachNegativeTargetCount($arr, $negCounts);
+            $arr = $this->mergeLiveBidBgtColumns($arr, $liveStates);
             $arr['id_mismatch'] = false;
             $arr['id_alert_title'] = '';
 
@@ -3093,6 +3299,12 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_prc_price',
             'ovl30',
             'sbid',
+            'lbid',
+            'lbgt',
+            'lbid_green',
+            'lbgt_green',
+            'lbid_tip',
+            'lbgt_tip',
             'n_targets',
             'video_audit_filled',
             'video_audit_ai_filled',

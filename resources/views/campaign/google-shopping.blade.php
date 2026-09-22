@@ -182,6 +182,20 @@
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-row.parent-row {
             background-color: #fffef2;
         }
+        #google-ads-campaigns-raw-wrap .gac-live-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        #google-ads-campaigns-raw-wrap .gac-live-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            flex-shrink: 0;
+        }
         /* CTR / CVR flag bands (relative to the filtered-set average):
            red   < avg*0.80, green avg*0.80–avg*1.20, magenta > avg*1.20 */
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.flag-red {
@@ -934,6 +948,7 @@
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
+            const gacRawPullLiveUrl = @json(route('google.shopping.campaigns.pull.live'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
             const gacRawSbgtHistoryUrl = @json(route('google.shopping.campaigns.sbgt.history'));
             const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
@@ -969,6 +984,10 @@
                 bgt_prc_label: true,
                 bgt_prc_price: true,
                 ovl30: true,
+                lbid_green: true,
+                lbgt_green: true,
+                lbid_tip: true,
+                lbgt_tip: true,
             };
             /** Toggle: L30 spend = 0 + INV &gt; 0 + Merchant Item ID check. */
             let gacRawVerifyIdActive = false;
@@ -1070,6 +1089,101 @@
             // or there is no prior day yet. Clicking the dot opens the daily history.
             function gacRawEscAttr(s) {
                 return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            }
+            function gacLiveMoneyFormatter(cell) {
+                var row = cell.getRow() ? cell.getRow().getData() : {};
+                var field = cell.getField ? cell.getField() : '';
+                var isBid = field === 'lbid';
+                var green = isBid ? row.lbid_green : row.lbgt_green;
+                var tip = isBid ? (row.lbid_tip || '') : (row.lbgt_tip || '');
+                var v = parseFloat(cell.getValue());
+                var text = isFinite(v) ? v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+                var showDot = (green === true || green === 1 || green === '1') && isFinite(v);
+                var dot = showDot ? '<span class="gac-live-dot" aria-hidden="true"></span>' : '';
+                return '<span class="gac-live-cell" title="' + gacRawEscAttr(tip) + '">' + dot + text + '</span>';
+            }
+            var gacLivePullGen = 0;
+            function gacApplyLiveField(field, rows) {
+                if (!table || !rows || !rows.length) return;
+                var byId = {};
+                rows.forEach(function(r) {
+                    if (r && r.campaign_id != null) byId[String(r.campaign_id)] = r;
+                });
+                (table.getRows() || []).forEach(function(row) {
+                    var d = row.getData ? row.getData() : null;
+                    if (!d) return;
+                    var r = byId[String(d.campaign_id || '')];
+                    if (!r) return;
+                    var patch = {};
+                    if (field === 'bid') {
+                        patch.lbid = r.value == null ? null : r.value;
+                        patch.lbid_green = !!r.green;
+                        patch.lbid_tip = r.tip || '';
+                    } else if (field === 'bgt') {
+                        patch.lbgt = r.value == null ? null : r.value;
+                        patch.lbgt_green = !!r.green;
+                        patch.lbgt_tip = r.tip || '';
+                    } else {
+                        return;
+                    }
+                    row.update(patch);
+                });
+            }
+            function gacPullLiveFieldChunks(field, ids, gen, offset) {
+                if (gen !== gacLivePullGen || offset >= ids.length) return;
+                var chunkIds = ids.slice(offset, offset + 40);
+                var byId = {};
+                (table.getData() || []).forEach(function(r) {
+                    if (!r || r.campaign_id == null) return;
+                    byId[String(r.campaign_id)] = r;
+                });
+                var rows = chunkIds.map(function(id) {
+                    var r = byId[id] || {};
+                    return { campaign_id: id, sbid: r.sbid, sbgt: r.sbgt };
+                });
+                var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                fetch(gacRawPullLiveUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ field: field, rows: rows }),
+                }).then(function(res) {
+                    return res.json().then(function(body) {
+                        return body || {};
+                    }).catch(function() {
+                        return {};
+                    });
+                }).then(function(body) {
+                    if (gen !== gacLivePullGen) return;
+                    if (body && Array.isArray(body.rows)) {
+                        gacApplyLiveField(field, body.rows);
+                    }
+                    gacPullLiveFieldChunks(field, ids, gen, offset + 40);
+                }).catch(function() {
+                    if (gen !== gacLivePullGen) return;
+                    gacPullLiveFieldChunks(field, ids, gen, offset + 40);
+                });
+            }
+            function gacPullLiveColumns() {
+                if (!table || !table.getData) return;
+                var ids = [];
+                var seen = {};
+                (table.getData() || []).forEach(function(r) {
+                    if (!r || r.campaign_id == null || r.campaign_id === '') return;
+                    var id = String(r.campaign_id);
+                    if (seen[id]) return;
+                    seen[id] = true;
+                    ids.push(id);
+                });
+                if (!ids.length) return;
+                var gen = ++gacLivePullGen;
+                gacPullLiveFieldChunks('bid', ids, gen, 0);
+                gacPullLiveFieldChunks('bgt', ids, gen, 0);
             }
             function gacRawSbgtCellFormatter(cell) {
                 var row = cell.getRow().getData();
@@ -2301,6 +2415,17 @@
                             col.formatter = intLocaleFormatter;
                             col.minWidth = Math.max(col.minWidth || 0, 57);
                         }
+                        if (col.field === 'lbid' || col.field === 'lbgt') {
+                            var isLiveBid = col.field === 'lbid';
+                            col.title = isLiveBid ? 'LBid' : 'LBgt';
+                            col.headerTooltip = isLiveBid
+                                ? 'Live Bid from Google Ads. Green dot only when this bid was fetched, SBID was pushed successfully, and the two values match.'
+                                : 'Live Budget from Google Ads. Green dot only when this budget was fetched, SBGT was pushed successfully, and the two values match.';
+                            col.formatter = gacLiveMoneyFormatter;
+                            col.headerSort = false;
+                            col.minWidth = 78;
+                            col.width = 84;
+                        }
                         if (col.field === 'n_targets') {
                             col.title = 'N Target';
                             col.formatter = nTargetFormatter;
@@ -2568,6 +2693,7 @@
             table.on('dataLoaded', function() {
                 gacRawRefreshTableUiSoon();
                 gacEnsureColumnVisibilityUi();
+                gacPullLiveColumns();
             });
 
             table.on('dataLoadError', function(error) {
@@ -2745,6 +2871,9 @@
                             }
                             if (b.output) {
                                 outputs.push(b.output);
+                            }
+                            if (b.live && b.live.field && Array.isArray(b.live.rows)) {
+                                gacApplyLiveField(b.live.field, b.live.rows);
                             }
                             runNext(index + 1);
                         })
