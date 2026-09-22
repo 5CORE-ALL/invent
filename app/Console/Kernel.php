@@ -1096,16 +1096,6 @@ class Kernel extends ConsoleKernel
 
         // PEF Dil vs PRMT → eBay1 sale-event create is disabled (do not schedule).
 
-        // PEF CVR vs CPN → eBay1 public coded coupon API (always once/day after Dil/PRMT / price window).
-        // Same CPN% reuses campaign (SAVE{nn}PCT); CPN%=0 removes SKU from coupon.
-        $schedule->command('pef:cvr-cpn-auto-apply')
-            ->dailyAt('00:30')
-            ->timezone('Asia/Kolkata')
-            ->name('pef-cvr-cpn-auto-apply-after-price-ist')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         // Pull business5core.com price / sold / views into store_listing_prices.
         $schedule->command('store:sync-prices')
             ->dailyAt('16:30')

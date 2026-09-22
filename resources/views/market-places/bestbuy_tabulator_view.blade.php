@@ -116,6 +116,7 @@
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'bestbuy'])
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'bestbuy-price-gt-lmp-badge', 'pglChannelKey' => 'bestbuy', 'pglPriceField' => 'BB Price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'bestbuy-price-lt80-lmp-badge', 'pltChannelKey' => 'bestbuy', 'pltPriceField' => 'BB Price'])
                         <span class="badge fs-6 p-2" id="bestbuy-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ BB Price. Click to show only those rows. Click again to clear.">
@@ -475,6 +476,7 @@
     let increaseModeActive = false;
     let selectedSkus = new Set();
     let priceGtLmpFilterActive = false;
+    let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
     let amzCapFilterActive = false;
 
@@ -2037,19 +2039,21 @@
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
-                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const lmpCmp = rowData.lmp_price || rowData.lmp || rowData.LMP;
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, lmpCmp) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, lmpCmp) : '');
                         
                         // Show red if BB Price is less than Amazon Price
                         if (amazonPrice > 0 && value < amazonPrice) {
-                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}`;
+                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
                         
                         // Show green if BB Price is greater than Amazon Price
                         if (amazonPrice > 0 && value > amazonPrice) {
-                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}`;
+                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
                         
-                        return `$${value.toFixed(2)}${lmpTri}`;
+                        return `$${value.toFixed(2)}${lmpTri}${purpleTri}`;
                     },
                     width: 70
                 },
@@ -2778,6 +2782,11 @@
                     return PriceGtLmpBadge.hasRedTriangle(data, 'BB Price');
                 });
             }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'BB Price');
+                });
+            }
             if (blueTriangleFilterActive) {
                 table.addFilter(function(data) {
                     return bestbuyHasBlueTriangle(data);
@@ -2799,8 +2808,30 @@
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
                     if (on) {
+                        priceLt80LmpFilterActive = false;
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
+                        if (window.PriceLt80LmpBadge) {
+                            PriceLt80LmpBadge.setOutline(document.getElementById('bestbuy-price-lt80-lmp-badge'), false);
+                        }
+                    }
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#bestbuy-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                    if (on) {
+                        priceGtLmpFilterActive = false;
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                        if (window.PriceGtLmpBadge) {
+                            PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
+                        }
                     }
                     applyFilters();
                 }
@@ -2815,9 +2846,13 @@
             blueTriangleFilterActive = !blueTriangleFilterActive;
             if (blueTriangleFilterActive) {
                 priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
                 amzCapFilterActive = false;
                 if (window.PriceGtLmpBadge) {
                     PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
+                }
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.setOutline(document.getElementById('bestbuy-price-lt80-lmp-badge'), false);
                 }
             }
             applyFilters();
@@ -2826,9 +2861,13 @@
             amzCapFilterActive = !amzCapFilterActive;
             if (amzCapFilterActive) {
                 priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
                 if (window.PriceGtLmpBadge) {
                     PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
+                }
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.setOutline(document.getElementById('bestbuy-price-lt80-lmp-badge'), false);
                 }
             }
             applyFilters();
@@ -2915,6 +2954,10 @@
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#bestbuy-price-gt-lmp-badge', table.getData(), 'bestbuy', 'BB Price');
                 PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), priceGtLmpFilterActive);
+            }
+            if (window.PriceLt80LmpBadge && table) {
+                PriceLt80LmpBadge.update('#bestbuy-price-lt80-lmp-badge', table.getData(), 'bestbuy', 'BB Price');
+                PriceLt80LmpBadge.setOutline(document.getElementById('bestbuy-price-lt80-lmp-badge'), priceLt80LmpFilterActive);
             }
             let blueTriangleCount = 0;
             let amzCapCount = 0;

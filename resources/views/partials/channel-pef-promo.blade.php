@@ -8,8 +8,9 @@
 @php
     $channelPromoPart = $channelPromoPart ?? 'all';
     $channelPromoChannel = $channelPromoChannel ?? 'ebay1';
-    $channelPromoHideCvrCpn = !empty($channelPromoHideCvrCpn)
-        || in_array($channelPromoChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg', 'pls', 'mercari_wship', 'mercari_woship'], true);
+    // CVR vs CPN rule + cvr % column removed from every channel page.
+    // Shopify B2C keeps CVR Disc. (Amazon discount slabs), which shares this flag.
+    $channelPromoHideCvrCpn = $channelPromoChannel !== 'shopify_b2c';
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);

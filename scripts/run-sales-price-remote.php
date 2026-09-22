@@ -100,7 +100,6 @@ $price = [
     'sync:amazon-prices',
     'amazon:pull-pushed-prices',
     'walmart:fetch-listed-prices',
-    'pef:cvr-cpn-auto-apply',
     'channel:push-sprice-daily',
 ];
 

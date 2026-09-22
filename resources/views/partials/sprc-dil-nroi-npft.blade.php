@@ -40,6 +40,12 @@
             return null;
         }
         function ebayDilRowSprice(d) {
+            // PLS S PRC cell paints the live Dil price. SNROI must use that same dollar.
+            if (typeof EBAY_DIL_GROI_CHANNEL !== 'undefined' && EBAY_DIL_GROI_CHANNEL === 'pls'
+                && typeof plsVisibleSprice === 'function') {
+                const shown = Number(plsVisibleSprice(d)) || 0;
+                if (shown > 0) return shown;
+            }
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(d));
                 if (saved > 0) return saved;
@@ -136,11 +142,15 @@
                         ? 'SNPFT = SGPFT (this page has no Ads%)'
                         : 'SNROI = SGROI (this page has no Ads%)');
                 const color = ebayDilPctColor(v, kind === 'snpft' ? 'gpft' : 'groi');
-                const st = (window.MetricPctColors && typeof MetricPctColors.styleForCellColor === 'function')
-                    ? MetricPctColors.styleForCellColor(color)
-                    : (color === '#ffc107'
-                        ? 'color:#000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;'
-                        : ('color:' + color + ';font-weight:600;'));
+                const amzField = kind === 'snpft' ? 'GPFT%' : 'GROI%';
+                const st = (typeof EBAY_DIL_GROI_CHANNEL !== 'undefined' && EBAY_DIL_GROI_CHANNEL === 'pls'
+                    && window.MetricPctColors && typeof MetricPctColors.styleForField === 'function')
+                    ? (MetricPctColors.styleForField(amzField, v) || '')
+                    : ((window.MetricPctColors && typeof MetricPctColors.styleForCellColor === 'function')
+                        ? MetricPctColors.styleForCellColor(color)
+                        : (color === '#ffc107'
+                            ? 'color:#000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;'
+                            : ('color:' + color + ';font-weight:600;')));
                 return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="' + st + '">'
                     + Math.round(v) + '%</span>';
             };
@@ -155,7 +165,9 @@
                 width: 58,
                 headerTooltip: kind === 'snpft'
                     ? (ads > 0 ? 'SNPFT = SGPFT − Ads%.' : 'SNPFT = SGPFT (this page has no Ads%).')
-                    : (ads > 0 ? 'SNROI from S PRC, net of Ads%.' : 'SNROI = SGROI (this page has no Ads%).'),
+                    : (typeof EBAY_DIL_GROI_CHANNEL !== 'undefined' && EBAY_DIL_GROI_CHANNEL === 'pls'
+                        ? 'Dil slab sets this SNROI. S PRC cell and the saved S PRC are the same dollar.'
+                        : (ads > 0 ? 'SNROI from S PRC, net of Ads%.' : 'SNROI = SGROI (this page has no Ads%).')),
                 formatter: ebayDilNetColFormatter(kind),
                 accessorDownload: function(value, d) {
                     const v = kind === 'snpft' ? ebayDilComputedSnpft(d || {}) : ebayDilComputedSnroi(d || {});
