@@ -32,6 +32,7 @@ use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
 use App\Models\TopDawgOrderMetric;
 use App\Models\WayfairDailyData;
+use App\Jobs\FillAmazonSofTrackingForIdsJob;
 use App\Jobs\SyncShipmentTrackingStatusJob;
 use App\Services\GofoExpressService;
 use App\Services\MarketplaceManager\ChannelTrackingApiFallbackService;
@@ -56,6 +57,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -275,6 +277,7 @@ class SalesOrderFulfillmentController extends Controller
             // Return rows immediately. Live Veeqo/GOFO pulls belong on Pull Tracking —
             // blocking this endpoint left the tab empty while the badge still showed a count.
             $rows = $this->labelCreatedNoScanRows();
+            $this->queueAmazonSofTrackingFillForRows($rows);
 
             return response()->json([
                 'success' => true,
@@ -1517,6 +1520,18 @@ class SalesOrderFulfillmentController extends Controller
                     ? trim((string) $n['tracking_company'])
                     : $this->extractCarrierFromPayload($n['raw_payload'] ?? null);
                 $company = TrackingCarrierGuesser::fill($company, $tracking);
+                if ($slug === 'amazon' && $order instanceof AmazonOrder) {
+                    $local = $order->localTracking();
+                    $localTn = trim((string) ($local['tracking'] ?? ''));
+                    if ($localTn !== '') {
+                        $tracking = $localTn;
+                        if (trim((string) ($local['carrier'] ?? '')) !== '') {
+                            $company = $local['carrier'];
+                        }
+                    } elseif ($tracking !== null && preg_match('/^\d{3}-\d{7}-\d{7}$/', trim((string) $tracking)) === 1) {
+                        $tracking = null;
+                    }
+                }
                 $apiOrderId = trim((string) ($n['order_id'] ?? ''));
                 $orderNumber = trim((string) ($n['order_number'] ?? ''));
                 // Prefer human-readable order number (e.g. Faire display_id N8PA3FG3F8)
@@ -3899,6 +3914,7 @@ class SalesOrderFulfillmentController extends Controller
                         (string) ($filled['carrier'] ?? ''),
                         $tn
                     ) ?? '';
+                    $showId = (int) $amazonOrder->id;
                     $this->persistPulledChannelTracking($slug, $showId, $row, $tn, $carrier);
                     $withTracking++;
                     $updated++;
@@ -4105,6 +4121,49 @@ class SalesOrderFulfillmentController extends Controller
         $this->forgetSofOrderRowCaches();
 
         return $this->labelCreatedNoScanRows();
+    }
+
+    /**
+     * Queue a background fill for Amazon Label Created rows that still have no tracking.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    protected function queueAmazonSofTrackingFillForRows(array $rows): void
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (strtolower(trim((string) ($row['mm_slug'] ?? ''))) !== 'amazon') {
+                continue;
+            }
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $id = (int) ($row['show_id'] ?? $row['row_id'] ?? 0);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        if ($ids === []) {
+            return;
+        }
+        $ids = array_slice($ids, 0, 40);
+        sort($ids);
+        $cacheKey = 'sof.amazon.fill.'.md5(implode(',', $ids));
+        try {
+            if (! Cache::add($cacheKey, 1, now()->addMinutes(3))) {
+                return;
+            }
+            FillAmazonSofTrackingForIdsJob::dispatch($ids);
+        } catch (\Throwable) {
+            try {
+                FillAmazonSofTrackingForIdsJob::dispatch($ids);
+            } catch (\Throwable) {
+            }
+        }
     }
 
     /**

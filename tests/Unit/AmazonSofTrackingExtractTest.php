@@ -52,6 +52,25 @@ class AmazonSofTrackingExtractTest extends TestCase
         $this->assertSame('USPS', $hit['carrier']);
     }
 
+    public function test_reads_tracking_nested_under_order_items(): void
+    {
+        $hit = AmazonOrder::trackingFromDecoded([
+            'AmazonOrderId' => '111-6593956-3036223',
+            'OrderItems' => [
+                [
+                    'SellerSKU' => '6-51080 L D1',
+                    'PackageTrackingDetails' => [
+                        'TrackingNumber' => 'GFU1234567890123456',
+                        'CarrierCode' => 'GOFO',
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('GFU1234567890123456', $hit['tracking']);
+        $this->assertSame('GOFO', $hit['carrier']);
+    }
+
     public function test_tracking_batch_reserves_slots_for_missing_shipped(): void
     {
         $sizes = AmazonTrackingSyncService::trackingBatchSizes(40);
@@ -59,5 +78,17 @@ class AmazonSofTrackingExtractTest extends TestCase
         $this->assertSame(40, $sizes['unshipped']);
         $this->assertSame(120, $sizes['missing']);
         $this->assertGreaterThanOrEqual($sizes['unshipped'], $sizes['missing']);
+    }
+
+    public function test_id_fill_returns_empty_when_no_ids(): void
+    {
+        $sync = (new \ReflectionClass(AmazonTrackingSyncService::class))
+            ->newInstanceWithoutConstructor();
+
+        $result = $sync->fillMissingSofTrackingForIds([]);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(0, $result['checked']);
+        $this->assertSame(0, $result['filled']);
     }
 }

@@ -4651,6 +4651,7 @@
                         try { fulfilledTable.redraw(true); } catch (e) {}
                     }
                     sofAutoFillMissingLabelTracking(fulfilledRows, 0);
+                    sofRefreshAmazonTrackingAfterFill(fulfilledRows);
                 }, 50);
             },
             dataSorted: function () {
@@ -5809,6 +5810,25 @@
      * After Label Created rows render, pull GOFO/Veeqo tracking for blank Tracking cells.
      * Continues in small batches until every missing Label Created row has been checked.
      */
+    function sofRefreshAmazonTrackingAfterFill(rows) {
+        const missingAmazon = (Array.isArray(rows) ? rows : []).some(function (r) {
+            return String(r.mm_slug || '').toLowerCase() === 'amazon'
+                && !String(r.tracking_number || '').trim();
+        });
+        if (!missingAmazon || window.__sofAmazonTrackingRefreshQueued) return;
+        window.__sofAmazonTrackingRefreshQueued = true;
+        setTimeout(function () {
+            window.__sofAmazonTrackingRefreshQueued = false;
+            if (!fulfilledTable || typeof fulfilledTable.replaceData !== 'function') return;
+            const stillMissing = (fulfilledRows || []).some(function (r) {
+                return String(r.mm_slug || '').toLowerCase() === 'amazon'
+                    && !String(r.tracking_number || '').trim();
+            });
+            if (!stillMissing) return;
+            try { fulfilledTable.replaceData(); } catch (e) {}
+        }, 12000);
+    }
+
     function sofAutoFillMissingLabelTracking(rows, round) {
         round = round || 0;
         if (round >= 80 || window.__sofAutoFillTrackingBusy) return;
