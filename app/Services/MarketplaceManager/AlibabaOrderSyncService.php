@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Jobs\ImportAlibabaOrderToShopify;
+use App\Models\AlibabaMetric;
 use App\Models\AlibabaOrderMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\AlibabaApiService;
@@ -278,12 +279,29 @@ class AlibabaOrderSyncService
      */
     protected function storeOrder(array $order): int
     {
-        $orderId = (string) ($order['order_id'] ?? $order['id'] ?? '');
+        $orderId = (string) ($order['trade_id'] ?? $order['e_trade_id'] ?? $order['order_id'] ?? $order['id'] ?? '');
         if ($orderId === '') {
             return 0;
         }
 
-        $orderDate = $order['gmt_create'] ?? $order['create_time'] ?? null;
+        $lines = $this->aliExpressApi->extractOrderProductLines($order);
+        if ($lines === []) {
+            $detail = $this->aliExpressApi->getOrderInfo($orderId);
+            if (! empty($detail['success']) && is_array($detail['data'] ?? null)) {
+                $detailOrder = $detail['data'];
+                $detailLines = $this->aliExpressApi->extractOrderProductLines($detailOrder);
+                if ($detailLines !== []) {
+                    $order = array_merge($detailOrder, [
+                        'trade_id' => $order['trade_id'] ?? $detailOrder['trade_id'] ?? $orderId,
+                        'order_id' => $orderId,
+                    ]);
+                    $lines = $detailLines;
+                }
+            }
+            usleep(100000);
+        }
+
+        $orderDate = $this->alibabaOrderDate($order);
         if ($orderDate) {
             try {
                 $parsed = Carbon::parse($orderDate, 'America/Los_Angeles');
@@ -295,8 +313,7 @@ class AlibabaOrderSyncService
             }
         }
 
-        $status = (string) ($order['order_status'] ?? $order['status'] ?? '');
-        $lines = $this->aliExpressApi->extractOrderProductLines($order);
+        $status = $this->alibabaOrderStatus($order);
         $count = 0;
 
         if ($lines === []) {
@@ -320,6 +337,10 @@ class AlibabaOrderSyncService
             if ($sku === '') {
                 $sku = (string) ($line['product_id'] ?? '__unknown__');
             }
+            $qtyRaw = $line['quantity'] ?? $line['product_count'] ?? null;
+            $quantity = is_numeric($qtyRaw) ? (int) round((float) $qtyRaw) : 1;
+            $unit = $line['product_unit_price']['amount'] ?? null;
+            $amount = is_numeric($unit) && (float) $unit > 0 ? (float) $unit : null;
 
             AlibabaOrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => $sku],
@@ -329,36 +350,94 @@ class AlibabaOrderSyncService
                     'status' => $status,
                     'product_id' => (string) ($line['product_id'] ?? ''),
                     'display_title' => (string) ($line['product_name'] ?? $line['title'] ?? ''),
-                    'quantity' => max(1, (int) ($line['quantity'] ?? $line['product_count'] ?? 1)),
-                    'amount' => $this->extractLineAmount($line, $order),
+                    'quantity' => $quantity,
+                    'amount' => $amount,
                     'raw_payload' => ['order' => $order, 'line' => $line],
                 ]
             );
+            $this->recordLineSales($orderId, $orderDate, $line, $sku, $quantity, $amount);
             $count++;
+        }
+
+        if ($count > 0) {
+            AlibabaOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->where('sku', '__order__')
+                ->delete();
         }
 
         return $count;
     }
 
-    protected function extractOrderAmount(array $order): ?float
+    protected function alibabaOrderDate(array $order): ?string
     {
-        $amount = $order['order_amount']['amount'] ?? $order['total_amount'] ?? $order['pay_amount'] ?? null;
+        $created = $order['create_date'] ?? null;
+        if (is_array($created)) {
+            if (isset($created['timestamp']) && is_numeric($created['timestamp'])) {
+                $ts = (int) $created['timestamp'];
+                if ($ts > 9999999999) {
+                    $ts = (int) floor($ts / 1000);
+                }
 
-        return is_numeric($amount) ? (float) $amount : null;
-    }
-
-    protected function extractLineAmount(array $line, array $order): ?float
-    {
-        $amount = $line['product_unit_price']['amount']
-            ?? $line['product_unit_price']
-            ?? $line['amount']
-            ?? null;
-
-        if (is_numeric($amount)) {
-            return (float) $amount;
+                return Carbon::createFromTimestamp($ts, 'America/Los_Angeles')->toDateTimeString();
+            }
+            if (! empty($created['date_str'])) {
+                return (string) $created['date_str'];
+            }
         }
 
-        return $this->extractOrderAmount($order);
+        $raw = $order['gmt_create'] ?? $order['create_time'] ?? null;
+
+        return is_scalar($raw) && (string) $raw !== '' ? (string) $raw : null;
+    }
+
+    protected function alibabaOrderStatus(array $order): string
+    {
+        $status = $order['trade_status'] ?? $order['order_status'] ?? $order['status'] ?? '';
+        if (is_array($status)) {
+            $status = $status['status'] ?? $status['name'] ?? '';
+        }
+
+        return is_scalar($status) ? (string) $status : '';
+    }
+
+    protected function recordLineSales(string $orderId, ?string $orderDate, array $line, string $sku, int $quantity, ?float $amount): void
+    {
+        if ($orderDate === null || $sku === '' || $sku === '__unknown__' || ! Schema::hasTable('alibaba_metrics')) {
+            return;
+        }
+
+        $productId = (string) ($line['product_id'] ?? '');
+        if ($productId === '' && $sku === '') {
+            return;
+        }
+
+        AlibabaMetric::updateOrderMetrics($productId, $sku, [
+            'order_id' => $orderId,
+            'gmt_create' => $orderDate,
+        ], [
+            'product_count' => $quantity,
+            'product_name' => $line['product_name'] ?? null,
+            'product_unit_price' => ['amount' => $amount ?? 0],
+        ]);
+    }
+
+    protected function extractOrderAmount(array $order): ?float
+    {
+        foreach ([
+            $order['product_total_amount']['amount'] ?? null,
+            $order['total_amount']['amount'] ?? null,
+            $order['order_amount']['amount'] ?? null,
+            $order['pay_amount']['amount'] ?? null,
+            $order['total_amount'] ?? null,
+            $order['pay_amount'] ?? null,
+        ] as $amount) {
+            if (is_numeric($amount)) {
+                return (float) $amount;
+            }
+        }
+
+        return null;
     }
 
     public function dispatchImportsForNewOrders(): int

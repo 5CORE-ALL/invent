@@ -1853,7 +1853,9 @@ class AlibabaDetailFormatter
     protected function extractRichOrderLines(array $order, Collection $lines): array
     {
         $apiProducts = $this->list(
-            $order['product_list']['order_product_dto']
+            $order['order_products']['trade_ecology_order_product']
+            ?? $order['order_products']
+            ?? $order['product_list']['order_product_dto']
             ?? $order['product_list']['aeop_order_product_dto']
             ?? $order['product_list']
             ?? $order['child_order_list']['global_aeop_tp_child_order_dto']
@@ -1871,12 +1873,12 @@ class AlibabaDetailFormatter
             $product = $this->arr($product);
             $sku = $this->str($product['sku_code'] ?? $product['sku'] ?? $product['skuCode'] ?? null) ?: '__unknown__';
             $db = $bySku[$sku] ?? null;
-            $unit = $product['product_unit_price'] ?? $product['product_price'] ?? $product['total_product_amount'] ?? null;
+            $unit = $product['unit_price'] ?? $product['product_unit_price'] ?? $product['product_price'] ?? $product['total_product_amount'] ?? null;
 
             $out[] = [
                 'sku' => $sku,
                 'product_id' => $this->str($product['product_id'] ?? $db?->product_id),
-                'title' => $this->str($product['product_name'] ?? $product['subject'] ?? $db?->display_title),
+                'title' => $this->str($product['name'] ?? $product['product_name'] ?? $product['subject'] ?? $db?->display_title),
                 'quantity' => (int) ($product['product_count'] ?? $product['quantity'] ?? $db?->quantity ?? 1),
                 'unit_price' => $this->money($unit),
                 'line_total' => $this->multiplyMoney($this->money($unit), (int) ($product['product_count'] ?? 1)),
