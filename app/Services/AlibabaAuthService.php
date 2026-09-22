@@ -81,7 +81,10 @@ class AlibabaAuthService
         ];
 
         if (str_contains($authUrl, 'oauth.alibaba.com')) {
-            $query['sp'] = 'icbu';
+            // Official ICBU authorize URL:
+            // response_type, client_id, redirect_uri, state, view=web, sp=ICBU
+            $query['view'] = 'web';
+            $query['sp'] = 'ICBU';
         }
 
         return $authUrl.'?'.http_build_query($query);
