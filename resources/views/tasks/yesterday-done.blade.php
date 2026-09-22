@@ -51,6 +51,12 @@
         }
         .ydone-time-btn:hover { background: #ccfbf1; }
         .ydone-time-btn img { width: 20px; height: 20px; object-fit: contain; }
+        .ydone-active-time {
+            font-weight: 700;
+            color: #0f172a;
+            font-size: 0.95rem;
+            white-space: nowrap;
+        }
         #ydone-table { border: 1px solid #e9ecef !important; border-radius: 8px !important; font-size: 14px; background: #fff; }
         #ydone-table .tabulator-header { background-color: #f8f9fa !important; border-bottom: 2px solid #e9ecef !important; }
         #ydone-table .tabulator-header .tabulator-col { background-color: #f8f9fa !important; border-right: 1px solid #e9ecef !important; }
@@ -102,9 +108,18 @@
                                 data-bs-target="#ydone-dar-modal">
                             Y-DAR
                         </button>
+                        <a class="ydone-time-btn"
+                           href="{{ $attendanceUrl }}"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           title="Open attendance summary{{ !empty($focusUser) ? ' for '.$focusUser->name : '' }}"
+                           aria-label="Open attendance summary">
+                            <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="">
+                        </a>
+                        <span class="ydone-active-time" title="Active time yesterday">{{ $yesterdayActiveLabel }}</span>
                     </div>
                     <p class="ydone-page-meta mb-0">
-                        {{ $window['label'] ?? '' }} ({{ \App\Support\TaskBusinessTime::shortLabel() }})
+                        {{ $window['label'] ?? '' }} (PST)
                         · {{ $doneCount }} done
                         · {{ $missedCount }} missed
                     </p>
@@ -144,7 +159,7 @@
                         @if (!empty($focusUser))
                             — {{ $focusUser->name }}
                         @endif
-                        · {{ $window['label'] ?? '' }}
+                        · {{ $window['label'] ?? '' }} (PST)
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -225,8 +240,6 @@
         var sopIcon = @json(asset('assets/images/task-sop-icon.png'));
         var videoIcon = @json(asset('assets/images/task-video-icon.png'));
         var caIcon = @json(asset('assets/images/task-ca-icon.png'));
-        var magnifyIcon = @json(asset('assets/images/task-magnify-icon.png'));
-        var attendanceSummaryUrl = @json(route('attendance.summary'));
         var defaultAvatar = @json(asset('images/users/avatar-2.jpg'));
 
         function personCell(name, avatar, designation) {
@@ -320,16 +333,6 @@
                     }
                 },
                 {
-                    title: 'TIME', field: 'assignee_id', width: 64, hozAlign: 'center', headerSort: false, headerTooltip: 'Open attendance summary',
-                    formatter: function (cell) {
-                        var id = parseInt(cell.getValue(), 10) || 0;
-                        if (!id) return '<span style="color:#adb5bd;">-</span>';
-                        var name = cell.getRow().getData().assignee_name || 'this user';
-                        return '<a class="ydone-time-btn" href="' + attendanceSummaryUrl + '?executive=' + id + '" target="_blank" rel="noopener noreferrer" title="Open attendance for ' + esc(name) + '" aria-label="Open attendance for ' + esc(name) + '">' +
-                            '<img src="' + magnifyIcon + '" alt=""></a>';
-                    }
-                },
-                {
                     title: 'TID', field: 'start_date', width: 88, hozAlign: 'center', headerTooltip: 'Task Initiation Date',
                     formatter: function (cell) {
                         var row = cell.getRow().getData();
@@ -337,6 +340,16 @@
                         if (!fp) return '<span style="color:#adb5bd;">-</span>';
                         var missed = row.type === 'Missed' || row.status === 'Missed';
                         return '<span style="color:' + (missed ? '#dc3545' : '#0d6efd') + ';font-weight:600;font-size:11px;" title="' + esc(fp.title) + '">' + esc(fp.label) + '</span>';
+                    }
+                },
+                {
+                    title: 'TAT', field: 'tat', width: 64, hozAlign: 'center', headerTooltip: 'Days from TID to completion',
+                    formatter: function (cell) {
+                        var value = cell.getValue();
+                        if (value === null || value === undefined || value === '') return '<span style="color:#adb5bd;">-</span>';
+                        var d = Math.round(Number(value));
+                        if (isNaN(d)) return '<span style="color:#adb5bd;">-</span>';
+                        return '<span style="font-weight:600;" title="' + d + (d === 1 ? ' day' : ' days') + '">' + d + ' D</span>';
                     }
                 },
                 {
@@ -380,7 +393,7 @@
                     }
                 },
                 {
-                    title: 'BY', field: 'deleted_by', hozAlign: 'center', headerTooltip: 'Archived by',
+                    title: 'ARCHIVED', field: 'deleted_by', hozAlign: 'center', headerTooltip: 'Archived by',
                     formatter: function (cell) {
                         var row = cell.getRow().getData();
                         if (!row.deleted) return '<span style="color:#adb5bd;">-</span>';

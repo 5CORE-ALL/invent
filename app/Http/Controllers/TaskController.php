@@ -1456,19 +1456,21 @@ class TaskController extends Controller
     }
 
     /**
-     * Yesterday in the task office timezone (PT). completion_date is stored
-     * as that same wall clock, so the window is compared as plain datetimes.
+     * Yesterday on the Pacific clock. Task datetimes are stored as business-TZ
+     * wall clock (IST), so the PST day bounds are converted into that clock
+     * before they are compared. The date itself stays the Pacific calendar day.
      *
      * @return array{date: string, start: string, end: string, label: string}
      */
     protected function yesterdayDoneWindow(): array
     {
-        $day = TaskBusinessTime::today()->subDay();
+        $day = \Carbon\Carbon::today('America/Los_Angeles')->subDay();
+        $storageTz = TaskBusinessTime::tz();
 
         return [
             'date' => $day->toDateString(),
-            'start' => $day->copy()->startOfDay()->format('Y-m-d H:i:s'),
-            'end' => $day->copy()->endOfDay()->format('Y-m-d H:i:s'),
+            'start' => $day->copy()->startOfDay()->timezone($storageTz)->format('Y-m-d H:i:s'),
+            'end' => $day->copy()->endOfDay()->timezone($storageTz)->format('Y-m-d H:i:s'),
             'label' => $day->format('D, M j, Y'),
         ];
     }
@@ -1668,12 +1670,35 @@ class TaskController extends Controller
         $rows = $this->yesterdayDoneGridRows($emails, $focusId);
         $focusUser = $focusId > 0 ? $users->first() : null;
         $yesterdayDars = $this->yesterdayDarRows($users->pluck('id')->all(), $window['date']);
+        $yesterdayActiveLabel = $this->yesterdayActiveLabel($users->pluck('id')->all(), $window['date']);
+        $attendanceUrl = route('attendance.summary', $focusId > 0 ? ['executive' => $focusId] : []);
         $taskBadges = $this->taskManagerBadgesForEmails(
             $emails,
             $focusId > 0 ? $focusId : (int) Auth::id()
         );
 
-        return view('tasks.yesterday-done', compact('rows', 'window', 'focusUser', 'yesterdayDars', 'taskBadges'));
+        return view('tasks.yesterday-done', compact('rows', 'window', 'focusUser', 'yesterdayDars', 'taskBadges', 'yesterdayActiveLabel', 'attendanceUrl'));
+    }
+
+    /**
+     * Total attendance active time for these users on the office yesterday date.
+     *
+     * @param  list<int>  $userIds
+     */
+    protected function yesterdayActiveLabel(array $userIds, string $date): string
+    {
+        $userIds = array_values(array_filter(array_map('intval', $userIds)));
+        $seconds = 0;
+        if ($userIds !== [] && Schema::hasTable('attendance_daily_summaries')) {
+            $seconds = (int) AttendanceDailySummary::query()
+                ->whereIn('user_id', $userIds)
+                ->whereDate('work_date', $date)
+                ->sum('active_seconds');
+        }
+        $hours = intdiv(max(0, $seconds), 3600);
+        $minutes = intdiv(max(0, $seconds) % 3600, 60);
+
+        return $hours.'h '.$minutes.'m';
     }
 
     /**
@@ -1982,6 +2007,20 @@ class TaskController extends Controller
             }
 
             $start = $this->formatTaskWallClockDatetime($task->getRawOriginal('start_date')) ?? (string) ($task->start_date ?? '');
+            $tatEnd = '';
+            if (! empty($task->completion_date)) {
+                $tatEnd = $this->formatTaskWallClockDatetime($task->getRawOriginal('completion_date')) ?? (string) $task->completion_date;
+            } elseif ($deleted && ! empty($task->deleted_at)) {
+                $tatEnd = $this->formatTaskWallClockDatetime($task->getRawOriginal('deleted_at')) ?? (string) $task->deleted_at;
+            }
+            $tat = null;
+            if ($start !== '' && $tatEnd !== '') {
+                try {
+                    $tat = (int) round(abs(\Carbon\Carbon::parse($tatEnd)->getTimestamp() - \Carbon\Carbon::parse($start)->getTimestamp()) / 86400);
+                } catch (\Throwable $e) {
+                    $tat = null;
+                }
+            }
             $deletedBy = '';
             if ($deleted) {
                 $deletedBy = trim((string) ($task->deleted_by_name ?? ''));
@@ -2012,6 +2051,7 @@ class TaskController extends Controller
                 'assignee_designation' => $assigneeDesignation,
                 'start_date' => $start,
                 'tid_business_date' => TaskBusinessTime::businessDateFromStart($task->start_date),
+                'tat' => $tat,
                 'eta_time' => (int) ($task->eta_time ?? 0),
                 'etc_done' => (int) ($task->etc_done ?? 0),
                 'link1' => (string) ($task->link1 ?? ''),
