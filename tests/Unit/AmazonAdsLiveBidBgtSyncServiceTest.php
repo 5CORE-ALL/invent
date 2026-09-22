@@ -233,6 +233,40 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
         $this->assertEqualsCanonicalizing(['2', '3'], $pushed);
     }
 
+    public function test_pulls_live_bid_and_pushes_only_rows_that_still_differ_from_sbid(): void
+    {
+        $pushed = [];
+        $pushedIds = [];
+        $svc = $this->service([
+            'pullBids' => function () use (&$pushedIds) {
+                $map = ['match' => 0.83, 'diff' => 0.75];
+                if (in_array('diff', $pushedIds, true)) {
+                    $map['diff'] = 0.83;
+                }
+
+                return $map;
+            },
+            'pushBid' => function ($ch, $cid, $desired) use (&$pushed, &$pushedIds) {
+                $pushed[] = [(string) $cid, (float) $desired];
+                $pushedIds[] = (string) $cid;
+
+                return ['status' => 200, 'failed' => []];
+            },
+            'persistLive' => static function (): void {},
+        ]);
+
+        $out = $svc->syncRows([
+            ['campaign_id' => 'match', 'channel' => 'sp', 'sbid' => 0.83, 'campaign_name' => 'MATCH'],
+            ['campaign_id' => 'diff', 'channel' => 'sp', 'sbid' => 0.83, 'campaign_name' => 'PARENT GRACK PT'],
+        ], 'cron-live-sync');
+
+        $this->assertSame([['diff', 0.83]], $pushed);
+        $this->assertSame(2, $out['synced']);
+        $this->assertSame(0, $out['failed']);
+        $this->assertSame('already_matched', $out['results'][0]['reason']);
+        $this->assertSame('verified_after_push', $out['results'][1]['reason']);
+    }
+
     public function test_duplicate_concurrent_lock_does_not_push(): void
     {
         $held = [];

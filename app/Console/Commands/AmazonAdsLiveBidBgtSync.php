@@ -14,7 +14,7 @@ class AmazonAdsLiveBidBgtSync extends Command
         {--channel=all : sp, sb, or all}
         {--campaign-id= : Only this campaign ID}
         {--failed-only : Retry rows that are not verified}
-        {--limit=80 : Max report campaigns to verify in this run}';
+        {--limit=200 : Max report campaigns to verify in this run}';
 
     protected $description = 'Pull live Amazon BGT/BID, compare to rule SBGT/SBID, push mismatches, verify before marking synced';
 
@@ -43,7 +43,7 @@ class AmazonAdsLiveBidBgtSync extends Command
             return self::SUCCESS;
         }
 
-        $this->info('Retrying '.count($rows).' campaign(s) against live Amazon.');
+        $this->info('Pulling live bid/BGT for '.count($rows).' campaign(s). Push only where Amazon still differs from SBID/SBGT.');
         $out = $sync->syncRows($rows, 'cron-live-sync');
         $this->info('Synced '.$out['synced'].' | Failed '.$out['failed'].' | Skipped '.$out['skipped'].' | In progress '.$out['in_progress']);
 
@@ -83,7 +83,8 @@ class AmazonAdsLiveBidBgtSync extends Command
     }
 
     /**
-     * L30 campaigns whose last stored SBID/Lbid was never verified against Amazon.
+     * L30 campaigns that are unverified, or whose live bid no longer matches SBID.
+     * A previous synced mark does not skip a mismatch: the sync pulls Amazon, pushes SBID, then pulls again.
      *
      * @return list<array<string, mixed>>
      */
@@ -96,6 +97,7 @@ class AmazonAdsLiveBidBgtSync extends Command
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'last_sbid')) {
                 continue;
             }
+            $mismatch = AmazonAdsLiveBidBgtSyncService::BID_TOLERANCE;
             $q = DB::table($table.' as r')
                 ->leftJoin('amazon_ads_live_sync_states as s', function ($join) use ($channel) {
                     $join->on('s.campaign_id', '=', 'r.campaign_id')
@@ -103,12 +105,28 @@ class AmazonAdsLiveBidBgtSync extends Command
                         ->where('s.field', '=', 'bid');
                 })
                 ->where('r.report_date_range', 'L30')
-                ->whereNotNull('r.last_sbid')
-                ->where('r.last_sbid', '!=', '')
-                ->where('r.last_sbid', '!=', '0')
-                ->where(function ($w) {
-                    $w->whereNull('s.id')->orWhere('s.status', '!=', 'synced');
-                });
+                ->where(function ($w) use ($mismatch) {
+                    $w->where(function ($unverified) {
+                        $unverified->whereNotNull('r.last_sbid')
+                            ->where('r.last_sbid', '!=', '')
+                            ->where('r.last_sbid', '!=', '0')
+                            ->where(function ($st) {
+                                $st->whereNull('s.id')->orWhere('s.status', '!=', 'synced');
+                            });
+                    })->orWhere(function ($diff) use ($mismatch) {
+                        // Previously synced, but the rule SBID no longer matches the live bid.
+                        $diff->whereNotNull('r.sbid')
+                            ->where('r.sbid', '!=', '')
+                            ->where('r.sbid', '!=', '0')
+                            ->whereNotNull('r.last_sbid')
+                            ->where('r.last_sbid', '!=', '')
+                            ->whereRaw('ABS((r.sbid + 0) - (r.last_sbid + 0)) > ?', [$mismatch]);
+                    });
+                })
+                ->orderByRaw(
+                    'CASE WHEN r.sbid IS NOT NULL AND r.last_sbid IS NOT NULL AND ABS((r.sbid + 0) - (r.last_sbid + 0)) > ? THEN 0 ELSE 1 END',
+                    [$mismatch]
+                );
             if ($onlyCid !== '') {
                 $q->where('r.campaign_id', $onlyCid);
             }
