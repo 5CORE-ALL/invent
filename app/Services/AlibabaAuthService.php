@@ -78,13 +78,10 @@ class AlibabaAuthService
             'client_id' => (string) config('services.alibaba.app_key'),
             'redirect_uri' => $this->redirectUri(),
             'state' => $state ?: bin2hex(random_bytes(8)),
-            'force_auth' => 'true',
         ];
 
         if (str_contains($authUrl, 'oauth.alibaba.com')) {
             $query['sp'] = 'icbu';
-            $query['view'] = 'web';
-            $query['force_login'] = 'true';
         }
 
         return $authUrl.'?'.http_build_query($query);
