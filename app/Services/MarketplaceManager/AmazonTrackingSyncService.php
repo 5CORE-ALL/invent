@@ -409,7 +409,7 @@ class AmazonTrackingSyncService
     /**
      * @return array{success: bool, tracking: ?string, carrier: ?string, message?: string}
      */
-    public function fillTrackingForOrder(AmazonOrder $order): array
+    public function fillTrackingForOrder(AmazonOrder $order, bool $fast = false): array
     {
         $existing = $order->localTracking();
         if (trim((string) ($existing['tracking'] ?? '')) !== '') {
@@ -443,13 +443,13 @@ class AmazonTrackingSyncService
         }
 
         if (empty($hit['tracking'])) {
-            $warehouse = $this->lookupWarehouseTracking($order);
+            $warehouse = $this->lookupWarehouseTracking($order, $fast);
             if ($warehouse !== null) {
                 $hit = $warehouse;
             }
         }
 
-        if (empty($hit['tracking'])) {
+        if (empty($hit['tracking']) && ! $fast) {
             $fromAmazon = $this->ordersClient->lookupTrackingForOrder($amazonOrderId);
             if ($fromAmazon !== null && trim((string) ($fromAmazon['tracking'] ?? '')) !== '') {
                 $hit = $fromAmazon;
@@ -480,7 +480,7 @@ class AmazonTrackingSyncService
     /**
      * @return array{tracking: string, carrier: string}|null
      */
-    protected function lookupWarehouseTracking(AmazonOrder $order): ?array
+    protected function lookupWarehouseTracking(AmazonOrder $order, bool $fast = false): ?array
     {
         $refs = $order->trackingLookupRefs();
         $shopifyOrderId = trim((string) ($order->shopify_order_id ?? ''));
@@ -498,7 +498,7 @@ class AmazonTrackingSyncService
                 break;
             }
         }
-        $found = $this->veeqoFulfillment->lookupLabelTracking($refs, $localHit, false, $sku);
+        $found = $this->veeqoFulfillment->lookupLabelTracking($refs, $localHit, $fast, $sku);
         $tn = trim((string) ($found['tracking'] ?? ''));
         if ($tn === '') {
             return null;

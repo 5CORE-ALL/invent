@@ -277,6 +277,7 @@ class SalesOrderFulfillmentController extends Controller
             // Return rows immediately. Live Veeqo/GOFO pulls belong on Pull Tracking —
             // blocking this endpoint left the tab empty while the badge still showed a count.
             $rows = $this->labelCreatedNoScanRows();
+            $rows = $this->fillRecentAmazonMissingTrackingOnRows($rows);
             $this->queueAmazonSofTrackingFillForRows($rows);
 
             return response()->json([
@@ -1512,26 +1513,27 @@ class SalesOrderFulfillmentController extends Controller
             foreach ($orders as $order) {
                 $n = $this->normalizeOrderFields($slug, $order);
                 $statusRaw = trim((string) ($n['status'] ?? ''));
-                $tracking = $this->extractTrackingNumber($slug, $n['raw_payload'] ?? null);
-                if ($tracking === null || $tracking === '') {
-                    $tracking = isset($n['tracking_number']) ? trim((string) $n['tracking_number']) ?: null : null;
-                }
-                $company = isset($n['tracking_company']) && trim((string) $n['tracking_company']) !== ''
-                    ? trim((string) $n['tracking_company'])
-                    : $this->extractCarrierFromPayload($n['raw_payload'] ?? null);
-                $company = TrackingCarrierGuesser::fill($company, $tracking);
                 if ($slug === 'amazon' && $order instanceof AmazonOrder) {
                     $local = $order->localTracking();
-                    $localTn = trim((string) ($local['tracking'] ?? ''));
-                    if ($localTn !== '') {
-                        $tracking = $localTn;
-                        if (trim((string) ($local['carrier'] ?? '')) !== '') {
-                            $company = $local['carrier'];
-                        }
-                    } elseif ($tracking !== null && preg_match('/^\d{3}-\d{7}-\d{7}$/', trim((string) $tracking)) === 1) {
-                        $tracking = null;
+                    $tracking = trim((string) ($local['tracking'] ?? '')) ?: null;
+                    $company = trim((string) ($local['carrier'] ?? ''))
+                        ?: (isset($n['tracking_company']) ? trim((string) $n['tracking_company']) : '');
+                    if ($tracking === null && isset($n['tracking_number'])) {
+                        $fallback = trim((string) $n['tracking_number']);
+                        $tracking = $fallback !== '' && preg_match('/^\d{3}-\d{7}-\d{7}$/', $fallback) !== 1
+                            ? $fallback
+                            : null;
                     }
+                } else {
+                    $tracking = $this->extractTrackingNumber($slug, $n['raw_payload'] ?? null);
+                    if ($tracking === null || $tracking === '') {
+                        $tracking = isset($n['tracking_number']) ? trim((string) $n['tracking_number']) ?: null : null;
+                    }
+                    $company = isset($n['tracking_company']) && trim((string) $n['tracking_company']) !== ''
+                        ? trim((string) $n['tracking_company'])
+                        : $this->extractCarrierFromPayload($n['raw_payload'] ?? null);
                 }
+                $company = TrackingCarrierGuesser::fill($company, $tracking);
                 $apiOrderId = trim((string) ($n['order_id'] ?? ''));
                 $orderNumber = trim((string) ($n['order_number'] ?? ''));
                 // Prefer human-readable order number (e.g. Faire display_id N8PA3FG3F8)
@@ -1826,45 +1828,11 @@ class SalesOrderFulfillmentController extends Controller
         $byShopifyId = [];
         $byNumber = [];
         try {
-            $q = DB::table('shopify_raw_orders')
-                ->select(['order_id', 'order_number', 'tracking_number', 'tracking_company', 'fulfillment_status'])
-                ->where(function ($outer) {
-                    $outer->where(function ($t) {
-                        $t->whereNotNull('tracking_number')->where('tracking_number', '!=', '');
-                    })->orWhereIn('fulfillment_status', ['fulfilled', 'partial', 'partially_fulfilled']);
-                });
-            $q->where(function ($inner) use ($needIds, $needNumbers) {
-                if ($needIds !== []) {
-                    $inner->orWhereIn('order_id', array_keys($needIds));
-                }
-                if ($needNumbers !== []) {
-                    $inner->orWhereIn('order_number', array_keys($needNumbers));
-                }
-            });
-            foreach ($q->get() as $srow) {
-                $tn = trim((string) ($srow->tracking_number ?? ''));
-                $ff = strtolower(trim((string) ($srow->fulfillment_status ?? '')));
-                if ($tn === '' && ! in_array($ff, ['fulfilled', 'partial', 'partially_fulfilled'], true)) {
-                    continue;
-                }
-                $payload = [
-                    'tracking_number' => $tn,
-                    'tracking_company' => trim((string) ($srow->tracking_company ?? '')) ?: null,
-                    'fulfillment_status' => $ff !== '' ? $ff : null,
-                ];
-                $oid = (int) ($srow->order_id ?? 0);
-                if ($oid > 0 && ! isset($byShopifyId[$oid])) {
-                    $byShopifyId[$oid] = $payload;
-                }
-                $num = trim((string) ($srow->order_number ?? ''));
-                if ($num !== '' && ! isset($byNumber[$num])) {
-                    $byNumber[$num] = $payload;
-                }
-                foreach ($this->shopifyTrackingLookupKeys($num) as $key) {
-                    if (! isset($byNumber[$key])) {
-                        $byNumber[$key] = $payload;
-                    }
-                }
+            foreach (array_chunk(array_keys($needIds), 400) as $idChunk) {
+                $this->indexShopifyRawTrackingHits($idChunk, [], $byShopifyId, $byNumber);
+            }
+            foreach (array_chunk(array_keys($needNumbers), 400) as $numChunk) {
+                $this->indexShopifyRawTrackingHits([], $numChunk, $byShopifyId, $byNumber);
             }
         } catch (\Throwable) {
             return $rows;
@@ -1910,6 +1878,77 @@ class SalesOrderFulfillmentController extends Controller
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * Index shopify_raw_orders lines that actually have a tracking number.
+     * Line-item grain: a fulfilled Amz row with NULL tracking must not hide a sibling line that has one.
+     *
+     * @param  list<int>  $orderIds
+     * @param  list<string>  $orderNumbers
+     * @param  array<int, array{tracking_number: string, tracking_company: ?string, fulfillment_status: ?string}>  $byShopifyId
+     * @param  array<string, array{tracking_number: string, tracking_company: ?string, fulfillment_status: ?string}>  $byNumber
+     */
+    protected function indexShopifyRawTrackingHits(array $orderIds, array $orderNumbers, array &$byShopifyId, array &$byNumber): void
+    {
+        if ($orderIds === [] && $orderNumbers === []) {
+            return;
+        }
+
+        $q = DB::table('shopify_raw_orders')
+            ->select(['order_id', 'order_number', 'tracking_number', 'tracking_company', 'fulfillment_status'])
+            ->whereNotNull('tracking_number')
+            ->where('tracking_number', '!=', '');
+        $q->where(function ($inner) use ($orderIds, $orderNumbers) {
+            if ($orderIds !== []) {
+                $inner->orWhereIn('order_id', $orderIds);
+            }
+            if ($orderNumbers !== []) {
+                $inner->orWhereIn('order_number', $orderNumbers);
+            }
+        });
+
+        foreach ($q->get() as $srow) {
+            $tn = trim((string) ($srow->tracking_number ?? ''));
+            if ($tn === '') {
+                continue;
+            }
+            $payload = [
+                'tracking_number' => $tn,
+                'tracking_company' => trim((string) ($srow->tracking_company ?? '')) ?: null,
+                'fulfillment_status' => strtolower(trim((string) ($srow->fulfillment_status ?? ''))) ?: null,
+            ];
+            $oid = (int) ($srow->order_id ?? 0);
+            if ($oid > 0) {
+                $byShopifyId[$oid] = self::preferShopifyTrackingHit($byShopifyId[$oid] ?? null, $payload);
+            }
+            $num = trim((string) ($srow->order_number ?? ''));
+            if ($num !== '') {
+                $byNumber[$num] = self::preferShopifyTrackingHit($byNumber[$num] ?? null, $payload);
+            }
+            foreach ($this->shopifyTrackingLookupKeys($num) as $key) {
+                $byNumber[$key] = self::preferShopifyTrackingHit($byNumber[$key] ?? null, $payload);
+            }
+        }
+    }
+
+    /**
+     * @param  array{tracking_number?: string, tracking_company?: ?string, fulfillment_status?: ?string}|null  $existing
+     * @param  array{tracking_number: string, tracking_company: ?string, fulfillment_status: ?string}  $incoming
+     * @return array{tracking_number: string, tracking_company: ?string, fulfillment_status: ?string}
+     */
+    public static function preferShopifyTrackingHit(?array $existing, array $incoming): array
+    {
+        if ($existing === null) {
+            return $incoming;
+        }
+        $oldTn = trim((string) ($existing['tracking_number'] ?? ''));
+        $newTn = trim((string) ($incoming['tracking_number'] ?? ''));
+        if ($oldTn === '' && $newTn !== '') {
+            return $incoming;
+        }
+
+        return $existing;
     }
 
     /**
@@ -4121,6 +4160,67 @@ class SalesOrderFulfillmentController extends Controller
         $this->forgetSofOrderRowCaches();
 
         return $this->labelCreatedNoScanRows();
+    }
+
+    /**
+     * Newest Amazon Label Created rows still missing tracking — fill on this request
+     * so the grid (Sep 22 at the top) is not waiting on the mm-tracking queue.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function fillRecentAmazonMissingTrackingOnRows(array $rows, int $limit = 6, float $seconds = 10.0): array
+    {
+        $missing = [];
+        foreach ($rows as $idx => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (strtolower(trim((string) ($row['mm_slug'] ?? ''))) !== 'amazon') {
+                continue;
+            }
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $id = (int) ($row['show_id'] ?? $row['row_id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $missing[] = ['idx' => $idx, 'id' => $id, 'date' => (string) ($row['order_date'] ?? $row['updated_at'] ?? '')];
+        }
+        usort($missing, static fn (array $a, array $b) => strcmp((string) $b['date'], (string) $a['date']));
+        $missing = array_slice($missing, 0, max(1, min(12, $limit)));
+        if ($missing === []) {
+            return $rows;
+        }
+
+        $deadline = microtime(true) + max(3.0, $seconds);
+        $sync = app(AmazonTrackingSyncService::class);
+        foreach ($missing as $item) {
+            if (microtime(true) >= $deadline) {
+                break;
+            }
+            try {
+                $order = AmazonOrder::query()->with('items')->find((int) $item['id']);
+                if ($order === null || $order->isFba() || $order->isCancelled()) {
+                    continue;
+                }
+                $filled = $sync->fillTrackingForOrder($order, true);
+                $tn = trim((string) ($filled['tracking'] ?? ''));
+                if ($tn === '') {
+                    continue;
+                }
+                $idx = (int) $item['idx'];
+                $rows[$idx]['tracking_number'] = $tn;
+                $rows[$idx]['tracking_company'] = TrackingCarrierGuesser::fill(
+                    (string) ($filled['carrier'] ?? $rows[$idx]['tracking_company'] ?? ''),
+                    $tn
+                );
+            } catch (\Throwable) {
+            }
+        }
+
+        return $rows;
     }
 
     /**
