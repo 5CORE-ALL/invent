@@ -742,10 +742,6 @@
                             title="Dil% slabs vs PRMT% rules — edit and apply as PRMT %">
                             <i class="fas fa-sliders-h"></i> Dil vs PRMT
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="pef-cvr-vs-cpn-btn"
-                            title="CVR% slabs vs CPN% rules — edit and apply as CPN %">
-                            <i class="fas fa-percentage"></i> CVR vs CPN
-                        </button>
                         <button type="button" class="btn btn-sm" id="pef-zero-sold-btn"
                             style="background:#e83e8c;border-color:#e83e8c;color:#fff;"
                             title="0 Sold: Dil color (Red / Green / Pink) → Target GROI%. PEF has its own rule table. Apply sets SPrice so GROI equals the target when L30 = 0.">
@@ -918,60 +914,6 @@
                         </div>
                     </div>
                     <div id="pef-table" style="flex:1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- CVR vs CPN: CVR% slabs with editable CPN% --}}
-    <div class="modal fade" id="pefCvrVsCpnModal" tabindex="-1" aria-labelledby="pefCvrVsCpnModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title fs-6" id="pefCvrVsCpnModalLabel">
-                        <i class="fas fa-percentage me-1"></i> CVR vs CPN
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body py-2">
-                    <p class="small text-muted mb-2">
-                        Map CVR% slabs to CPN% (no 0% slab). First-time defaults: <strong>&gt; 7% → 0</strong> up to
-                        <strong>0.01–1% → 9</strong>. Save stores rules; Apply fills <strong>CPN %</strong> from each row’s CVR%.
-                        <strong>CVR = 0%</strong> maps to <strong>0</strong> CPN%.
-                        If <strong>INV = 0</strong>, CPN% is forced to <strong>0</strong>.
-                        Auto-applies to <strong>eBay1</strong> coupons every night at <strong>00:30 IST</strong>
-                        (after Dil/PRMT @ midnight — whether or not CVR changed).
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-0" id="pef-cvr-cpn-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:55%;">CVR%</th>
-                                    <th style="width:45%;" class="text-end">CPN %</th>
-                                </tr>
-                            </thead>
-                            <tbody id="pef-cvr-cpn-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div class="small text-muted mt-2" id="pef-cvr-cpn-status"></div>
-                </div>
-                <div class="modal-footer py-2 flex-wrap gap-1">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pef-cvr-cpn-reset-btn"
-                        title="Reset CPN% to first-time defaults (0.01–1% → 9 … > 7% → 0)">
-                        Reset defaults
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="pef-cvr-cpn-save-btn">
-                        <i class="fas fa-save"></i> Save
-                    </button>
-                    <button type="button" class="btn btn-sm btn-success" id="pef-cvr-cpn-apply-selected-btn"
-                        title="Apply CPN% from CVR slabs on checked rows">
-                        Apply to selected
-                    </button>
-                    <button type="button" class="btn btn-sm btn-primary" id="pef-cvr-cpn-apply-visible-btn"
-                        title="Apply CPN% from CVR slabs on all visible rows">
-                        Apply to visible
-                    </button>
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -3269,34 +3211,6 @@
                         else if (st === 'syncing') badge = '<span class="text-primary ms-1" title="Syncing…">…</span>';
                         else if (st === 'error') badge = '<span class="text-danger ms-1" title="' + tip + '">!</span>';
                         return '<span class="d-inline-flex align-items-center">' + base + badge + '</span>';
-                    },
-                },
-                {
-                    title: 'CPN %',
-                    field: 'cpn_pct',
-                    width: 62,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: false,
-                    editable: true,
-                    editor: 'input',
-                    headerTooltip: 'eBay1: live coupon API (5–80%, or 0 = pause). Other channels: % less on SPRICE.',
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        const base = fmtPefPromoCell(cell.getValue(), '%');
-                        if (!isPefEbay1Row(d)) return base;
-                        const st = String(d.coupon_status || '');
-                        if (!st) return base;
-                        const tip = String(d.coupon_message || st).replace(/"/g, '&quot;');
-                        let badge = '';
-                        if (st === 'live') badge = '<span class="text-success ms-1" title="' + tip + '">●</span>';
-                        else if (st === 'paused') badge = '<span class="text-muted ms-1" title="' + tip + '">◐</span>';
-                        else if (st === 'syncing') badge = '<span class="text-primary ms-1" title="Syncing…">…</span>';
-                        else if (st === 'error') badge = '<span class="text-danger ms-1" title="' + tip + '">!</span>';
-                        return '<span class="d-inline-flex align-items-center">' + base + badge + '</span>';
-                    },
-                    cellEdited: function(cell) {
-                        applyPefPromoFromCell(cell, 'cpn', 'percent');
                     },
                 },
                 {

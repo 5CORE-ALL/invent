@@ -174,6 +174,37 @@ class AlibabaApiService extends AliExpressApiService
             ], static fn ($v) => $v !== null && $v !== ''),
         ];
 
+        $sellerQuery = [
+            'role' => 'seller',
+            'page_size' => $pageSize,
+            'start_page' => max(0, $page - 1),
+        ];
+        if ($start !== '') {
+            $sellerQuery['create_date_start'] = ['date_str' => $start];
+        }
+        if ($end !== '') {
+            $sellerQuery['create_date_end'] = ['date_str' => $end];
+        }
+
+        $seller = $this->callIcbu('alibaba.seller.order.list', [
+            'param_trade_ecology_order_list_query' => $sellerQuery,
+        ]);
+        if (! empty($seller['success'])) {
+            $payload = $this->unwrapSolutionEnvelope($seller['data'] ?? []);
+            $parsed = $this->parseIcbuOrderList(is_array($payload) ? $payload : []);
+
+            return [
+                'success' => true,
+                'status' => $seller['status'] ?? 200,
+                'data' => $parsed,
+                'raw' => $payload,
+                'request_id' => $seller['request_id'] ?? null,
+            ];
+        }
+        if ($this->isAuthError($seller)) {
+            return $seller;
+        }
+
         $methods = [
             'alibaba.trade.getSellerOrderList',
             'alibaba.icbu.order.list',
@@ -216,6 +247,24 @@ class AlibabaApiService extends AliExpressApiService
     public function getOrderInfo(string $orderId): array
     {
         $orderId = trim($orderId);
+        $seller = $this->callIcbu('alibaba.seller.order.get', [
+            'e_trade_id' => $orderId,
+        ]);
+        if (! empty($seller['success'])) {
+            $payload = $this->unwrapSolutionEnvelope($seller['data'] ?? []);
+            $result = $this->unwrapSellerOrder($payload);
+
+            return [
+                'success' => true,
+                'status' => $seller['status'] ?? 200,
+                'data' => $result,
+                'request_id' => $seller['request_id'] ?? null,
+            ];
+        }
+        if ($this->isAuthError($seller)) {
+            return $seller;
+        }
+
         $shapes = [
             ['order_id' => $orderId],
             ['id' => $orderId],
@@ -628,6 +677,89 @@ class AlibabaApiService extends AliExpressApiService
     }
 
     /**
+     * Alibaba.com order lines live on order_products (quantity + unit_price.amount + sku_code).
+     *
+     * @param  array<string, mixed>  $order
+     * @return array<int, array<string, mixed>>
+     */
+    public function extractOrderProductLines(array $order): array
+    {
+        $products = $order['order_products']['trade_ecology_order_product']
+            ?? $order['order_products']
+            ?? null;
+
+        $lines = [];
+        foreach ($this->alibabaProductNodes($products) as $product) {
+            $qtyRaw = $product['quantity'] ?? $product['product_count'] ?? null;
+            $qty = is_numeric($qtyRaw) ? (int) round((float) $qtyRaw) : 0;
+            $unit = $product['unit_price']['amount']
+                ?? (is_numeric($product['unit_price'] ?? null) ? $product['unit_price'] : null);
+            $price = is_numeric($unit) ? (float) $unit : 0.0;
+            if ($qty <= 0 && $price <= 0 && trim((string) ($product['sku_code'] ?? '')) === '') {
+                continue;
+            }
+
+            $lines[] = [
+                'product_id' => (string) ($product['product_id'] ?? ''),
+                'sku_code' => (string) ($product['sku_code'] ?? $product['sku_id'] ?? ''),
+                'product_count' => $qty,
+                'quantity' => $qty,
+                'product_unit_price' => ['amount' => $price],
+                'product_name' => $product['name'] ?? $product['product_name'] ?? null,
+            ];
+        }
+
+        if ($lines !== []) {
+            return $lines;
+        }
+
+        return parent::extractOrderProductLines($order);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function unwrapSellerOrder(array $payload): array
+    {
+        $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
+        if (is_array($result['value'] ?? null)) {
+            $result = $result['value'];
+        }
+        if (isset($result['order']) && is_array($result['order'])) {
+            $result = $result['order'];
+        }
+
+        return is_array($result) ? $result : [];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    protected function alibabaProductNodes(mixed $products): array
+    {
+        if (! is_array($products) || $products === []) {
+            return [];
+        }
+        if (isset($products['trade_ecology_order_product']) && is_array($products['trade_ecology_order_product'])) {
+            $products = $products['trade_ecology_order_product'];
+        }
+        $isLine = isset($products['product_id']) || isset($products['sku_code']) || isset($products['quantity']) || isset($products['unit_price']);
+        if ($isLine && ! array_is_list($products)) {
+            return [$products];
+        }
+
+        $nodes = [];
+        foreach ($products as $product) {
+            if (is_array($product)) {
+                $nodes[] = $product;
+            }
+        }
+
+        return $nodes;
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      * @return array{products: array<int, mixed>, total_count: mixed, total_page: mixed, current_page: mixed, page_size: mixed}
      */
@@ -672,11 +804,21 @@ class AlibabaApiService extends AliExpressApiService
     protected function parseIcbuOrderList(array $payload): array
     {
         $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
+        if (is_array($result['value'] ?? null)) {
+            $valueTotal = $result['value']['total_count'] ?? $result['value']['totalCount'] ?? null;
+            $result = array_merge($result, $result['value']);
+            if ($valueTotal !== null) {
+                $result['total_count'] = $valueTotal;
+            }
+        }
         $orders = $result['order_list']
             ?? $result['orders']
             ?? $result['target_list']
             ?? $result['list']
             ?? [];
+        if (is_array($orders) && isset($orders['trade_ecology_order']) && is_array($orders['trade_ecology_order'])) {
+            $orders = $orders['trade_ecology_order'];
+        }
         if (is_array($orders) && isset($orders['trade_info']) && is_array($orders['trade_info'])) {
             $orders = $orders['trade_info'];
         }

@@ -529,10 +529,6 @@
                         'ebaySprcDilZeroSoldUsesMinGroi' => true,
                         'ebaySprcDilClampToNearest' => true,
                     ])
-                    <button type="button" class="btn btn-sm" id="newtemutwo-cvr-vs-cpn-btn"
-                        title="Map CVR% slabs to CPN%. CPN% live-fills when a slab changes (no coupon push).">
-                        CVR%
-                    </button>
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
@@ -757,45 +753,6 @@
         'ebaySprcDilZeroSoldUsesMinGroi' => true,
         'ebaySprcDilClampToNearest' => true,
     ])
-
-    <div class="modal fade" id="newTemuoneCvrVsCpnModal" tabindex="-1" aria-labelledby="newTemuoneCvrVsCpnModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title fs-6" id="newTemuoneCvrVsCpnModalLabel">CVR%</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body py-2">
-                    <p class="small text-muted mb-2">
-                        Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
-                        Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
-                        <strong>Save Rule</strong> stores the slabs
-                        (channel-pef-promo).
-                        <strong>CPN% live-fills the column when a slab changes</strong>
-                        (no marketplace coupon).
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-0" id="newtemutwo-cvr-cpn-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:55%;">CVR%</th>
-                                    <th style="width:45%;" class="text-end">CPN %</th>
-                                </tr>
-                            </thead>
-                            <tbody id="newtemutwo-cvr-cpn-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div class="small text-muted mt-2" id="newtemutwo-cvr-cpn-status"></div>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-primary" id="newtemutwo-cvr-cpn-save-btn"
-                        title="Save CVR→CPN slab values. The CPN column updates from these slabs.">
-                        <i class="fas fa-save me-1"></i>Save Rule
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
@@ -3247,28 +3204,6 @@
                             + ' ÷ T Price $' + (parseFloat(row.t_price) || 0).toFixed(2)
                             + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
                         return temuPercentCell(value, 'pft', tip);
-                    }
-                },
-                {
-                    title: 'CPN',
-                    field: 'cpn_pct',
-                    accessorDownload: function(value, data) { return temuCpnForRow(data); },
-                    hozAlign: 'center',
-                    width: 55,
-                    sorter: function(a, b, aRow, bRow) {
-                        return temuCpnForRow(aRow.getData()) - temuCpnForRow(bRow.getData());
-                    },
-                    headerTooltip: 'Live from CVR → CPN slabs (0.01–1% → 9 … > 7% → 0). No 0% CVR slab. INV = 0 or CVR = 0 → 0. Same rule as New Temu One. Not a marketplace coupon.',
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData() || {};
-                        if (row.is_parent_summary) return '';
-                        const cpn = temuCpnForRow(row);
-                        const cvr = parseFloat(row.cvr_percent != null ? row.cvr_percent : row.cvr_30) || 0;
-                        const tip = 'CVR ' + (cvr > 3.5 ? Math.round(cvr) : cvr.toFixed(1)) + '% → CPN ' + cpn + '%';
-                        if (!(cpn > 0)) {
-                            return '<span style="color: #6c757d;" title="' + tip + '">—</span>';
-                        }
-                        return '<span style="color: #198754; font-weight: 700;" title="' + tip + '">' + cpn + '%</span>';
                     }
                 },
                 {

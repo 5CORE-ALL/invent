@@ -41,10 +41,18 @@ class AlibabaMetric extends Model
         
         Log::info("Processing product ID: {$productId}, SKU: {$sku}, Order Date: {$orderDate}");
         
-        $metric = static::firstOrNew([
-            'product_id' => $productId,
-            'sku' => $sku
-        ]);
+        $metric = $sku !== '' && $sku !== null
+            ? static::query()->where('sku', $sku)->first()
+            : null;
+        if (! $metric) {
+            $metric = static::firstOrNew([
+                'product_id' => $productId,
+                'sku' => $sku,
+            ]);
+        }
+        if ($productId !== '' && $productId !== null) {
+            $metric->product_id = $productId;
+        }
         
         $orderDates = $metric->order_dates ?? [];
         $orderKey = $orderData['order_id'] . '_' . $productId . '_' . $orderDate->toDateTimeString();
@@ -75,13 +83,20 @@ class AlibabaMetric extends Model
                 }
             }
             
-            $metric->fill([
-                'price' => $productData['product_unit_price']['amount'],
+            $fill = [
                 'l30' => $l30,
                 'l60' => $l60,
                 'order_dates' => $orderDates,
-                'last_order_date' => $orderDate
-            ]);
+                'last_order_date' => $orderDate,
+            ];
+            $unitPrice = $productData['product_unit_price']['amount'] ?? null;
+            if (is_numeric($unitPrice) && (float) $unitPrice > 0) {
+                $fill['price'] = $unitPrice;
+            }
+            if (! empty($productData['product_name'])) {
+                $fill['product_name'] = $productData['product_name'];
+            }
+            $metric->fill($fill);
             
             $metric->save();
         }

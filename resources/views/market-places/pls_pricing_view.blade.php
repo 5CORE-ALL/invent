@@ -167,37 +167,6 @@
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'pls'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'pls'])
 
-                    {{-- Target ROI% / GPFT% — same take-home as marketplace_percentages PLS. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="pls-target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / PLS% on every selected row">
-                        <label for="pls-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
-                        </label>
-                        <input type="number" id="pls-target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target ROI% applied to all selected rows when you click Apply">
-                        <button id="pls-apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / PLS% for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="pls-target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (PLS% − Target GPFT%/100) on every selected row">
-                        <label for="pls-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
-                        </label>
-                        <input type="number" id="pls-target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than PLS take-home.">
-                        <button id="pls-apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (PLS% − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
                     <button id="pls-clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
                         <i class="fas fa-eraser"></i> Clear SPRICE
                     </button>
@@ -360,8 +329,34 @@
         const stored = parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
         return stored > 0 ? stored : 0;
     }
+    /** Background Dil save persists this exact cell dollar. */
+    function ebayDisplayedSprice(data) {
+        return plsVisibleSprice(data);
+    }
+    window.ebayDisplayedSprice = ebayDisplayedSprice;
     function plsRowSpriceForAlert(data) {
         return plsVisibleSprice(data);
+    }
+    /** Live SGROI / SGPFT from the same S PRC the cell paints. Dil target is SNROI. */
+    function plsSMetrics(data) {
+        const sprice = plsVisibleSprice(data);
+        if (!(sprice > 0) || !data) return { sroi: null, sgpft: null };
+        const lp = parseFloat(data.lp) || 0;
+        const ship = parseFloat(data.ship) || 0;
+        if (!(lp > 0)) return { sroi: null, sgpft: null };
+        const gross = sprice * PLS_PERCENTAGE - ship - lp;
+        return {
+            sroi: (gross / lp) * 100,
+            sgpft: (gross / sprice) * 100,
+        };
+    }
+    function plsMetricSpan(field, percent) {
+        if (percent == null || !isFinite(percent)) return '';
+        const st = (window.MetricPctColors && typeof MetricPctColors.styleForField === 'function')
+            ? (MetricPctColors.styleForField(field, percent) || '')
+            : '';
+        const text = Math.round(percent) + '%';
+        return st ? '<span style="' + st + '">' + text + '</span>' : text;
     }
     function plsHasBlueTriangle(data) {
         if (plsIsParentRow(data)) return false;
@@ -1016,7 +1011,7 @@
                     editable: false,
                     sorter: "number",
                     visible: true,
-                    headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. 0 Sold (P L30 = 0) uses the lowest Target NROI. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                    headerTooltip: "Same dollar the Dil rule saves. Solved so SNROI = Target NROI: (LP × (1 + NROI%/100) + Ship) / PLS%. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (plsIsParentRow(rowData)) return '';
@@ -1045,20 +1040,15 @@
                     title: "SGROI%",
                     field: "sroi",
                     hozAlign: "center",
-                    sorter: "number",
                     visible: true,
+                    headerTooltip: "Live from the S PRC cell: ((S PRC × PLS% − ship − LP) / LP) × 100. The Dil slab sets SNROI, not this column.",
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = plsSMetrics(aRow.getData()).sroi;
+                        const bv = plsSMetrics(bRow.getData()).sroi;
+                        return ((av == null || !isFinite(av)) ? 0 : av) - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                    },
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return plsMetricSpan('SGROI', plsSMetrics(cell.getRow().getData()).sroi);
                     },
                     width: 60
                 },
@@ -1066,21 +1056,15 @@
                     title: "SGPFT%",
                     field: "sgpft",
                     hozAlign: "center",
-                    sorter: "number",
                     visible: true,
+                    headerTooltip: "Live from the S PRC cell: ((S PRC × PLS% − ship − LP) / S PRC) × 100.",
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = plsSMetrics(aRow.getData()).sgpft;
+                        const bv = plsSMetrics(bRow.getData()).sgpft;
+                        return ((av == null || !isFinite(av)) ? 0 : av) - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                    },
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent < 30) color = '#28a745';
-                        else color = '#20c997';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return plsMetricSpan('SGPFT', plsSMetrics(cell.getRow().getData()).sgpft);
                     },
                     width: 60
                 },
@@ -1113,8 +1097,8 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
-                        const spriceRaw = rowData.sprice;
-                        const sprice = spriceRaw ? parseFloat(spriceRaw) : 0;
+                        const sprice = plsVisibleSprice(rowData);
+                        const spriceRaw = sprice > 0 ? sprice : '';
                         const plsStatus = rowData.pls_status || null;
                         
                         if (!sku || !sprice || sprice <= 0) {
@@ -1160,7 +1144,7 @@
                             // Read price from fresh row data
                             const rowData = cell.getRow().getData();
                             const sku = rowData.sku;
-                            const price = parseFloat(rowData.sprice) || 0;
+                            const price = plsVisibleSprice(rowData);
                             
                             if (!sku || !price || price <= 0 || isNaN(price)) {
                                 showToast('Invalid SKU or price', 'error');
@@ -1833,123 +1817,6 @@
         $('#pls-apply-discount-btn').on('click', function() { plsApplyDiscount(); });
         $('#pls-discount-input').on('keypress', function(e) {
             if (e.which === 13) plsApplyDiscount();
-        });
-
-        /*
-         * Target ROI% / Target GPFT% — marketplace_percentages PLS take-home.
-         *   SROI%  = ((sprice × PLS% − lp − ship) / lp) * 100
-         *      → sprice = (lp × (1 + ROI%/100) + ship) / PLS%
-         *   SGPFT% = ((sprice × PLS% − ship − lp) / sprice) * 100
-         *      → sprice = (lp + ship) / (PLS% − GPFT%/100)
-         */
-        function plsApplyTargetBackSolve(computeFn, labelPrefix) {
-            if (plsSelectedSkus.size === 0) {
-                showToast('Please select at least one SKU first (turn on Price % to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const allData = table.getData('all');
-            const tasks   = [];
-            let skippedNoLp = 0;
-            let skippedHigh = 0;
-
-            allData.forEach(function (row) {
-                if (row.parent && String(row.parent).toUpperCase().startsWith('PARENT')) return;
-                const sku = row.sku;
-                if (!sku || !plsSelectedSkus.has(sku)) return;
-
-                const lp = parseFloat(row.lp) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(row.ship) || 0;
-
-                const computed = computeFn(lp, ship);
-                if (computed == null) { skippedHigh++; return; }
-                const newSprice = +computed.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                const tableRow = table.getRows().find(function (r) { return r.getData().sku === sku; });
-                if (!tableRow) return;
-                const originalSprice = parseFloat(row.sprice) || 0;
-                tableRow.update({ sprice: newSprice });
-
-                tasks.push({ sku: sku, newSprice: newSprice, tableRow: tableRow, originalSprice: originalSprice });
-            });
-
-            if (tasks.length === 0) {
-                if (skippedHigh > 0) {
-                    showToast(labelPrefix + ' too high — must be less than PLS take-home (' + Math.round(PLS_PERCENTAGE * 100) + '%).', 'error');
-                } else {
-                    showToast('No selected rows have a usable LP > 0', 'warning');
-                }
-                return;
-            }
-
-            let okCount  = 0;
-            let errCount = 0;
-            const total  = tasks.length;
-
-            tasks.forEach(function (t) {
-                plsSaveSpriceWithRetry(t.sku, t.newSprice, t.tableRow)
-                    .then(function () {
-                        okCount++;
-                        if (okCount + errCount === total) {
-                            let note = '';
-                            if (skippedNoLp > 0) note += ' (' + skippedNoLp + ' skipped — no LP)';
-                            if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ PLS take-home)';
-                            if (errCount === 0) {
-                                showToast(labelPrefix + ' applied to ' + okCount + ' SKU(s)' + note, 'success');
-                            } else {
-                                showToast(labelPrefix + ' applied to ' + okCount + ' SKU(s), ' + errCount + ' failed' + note, 'error');
-                            }
-                        }
-                    })
-                    .catch(function () {
-                        errCount++;
-                        if (t.tableRow) t.tableRow.update({ sprice: t.originalSprice });
-                        if (okCount + errCount === total) {
-                            let note = '';
-                            if (skippedNoLp > 0) note += ' (' + skippedNoLp + ' skipped — no LP)';
-                            if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ PLS take-home)';
-                            showToast(labelPrefix + ' applied to ' + okCount + ' SKU(s), ' + errCount + ' failed' + note, 'error');
-                        }
-                    });
-            });
-        }
-
-        $('#pls-apply-target-roi-btn').on('click', function () {
-            const rawInput = $('#pls-target-roi-input').val();
-            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) { showToast('Please enter a Target ROI%', 'error'); return; }
-            if (!isFinite(targetRoiPct))             { showToast('Target ROI% must be a number', 'error'); return; }
-
-            const roiMultiplier = 1 + (targetRoiPct / 100);
-            plsApplyTargetBackSolve(function (lp, ship) {
-                if (!(PLS_PERCENTAGE > 0)) return null;
-                return (lp * roiMultiplier + ship) / PLS_PERCENTAGE;
-            }, 'Target ROI ' + targetRoiPct + '%');
-        });
-
-        $('#pls-apply-target-gpft-btn').on('click', function () {
-            const rawInput = $('#pls-target-gpft-input').val();
-            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) { showToast('Please enter a Target GPFT%', 'error'); return; }
-            if (!isFinite(targetGpftPct))            { showToast('Target GPFT% must be a number', 'error'); return; }
-
-            const targetFraction = targetGpftPct / 100;
-            plsApplyTargetBackSolve(function (lp, ship) {
-                const denom = PLS_PERCENTAGE - targetFraction;
-                if (denom <= 0) return null;
-                return (lp + ship) / denom;
-            }, 'Target GPFT ' + targetGpftPct + '%');
-        });
-
-        $('#pls-target-roi-input').on('keypress', function (e) {
-            if (e.which === 13) $('#pls-apply-target-roi-btn').click();
-        });
-        $('#pls-target-gpft-input').on('keypress', function (e) {
-            if (e.which === 13) $('#pls-apply-target-gpft-btn').click();
         });
 
         // Clear SPRICE for selected SKUs
