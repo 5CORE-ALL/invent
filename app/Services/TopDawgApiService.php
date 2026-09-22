@@ -1527,62 +1527,24 @@ class TopDawgApiService
             return ['success' => false, 'message' => 'SKU is required.'];
         }
 
-        $liveBefore = $this->readLiveQty($sku);
-        if ($liveBefore !== null && $liveBefore === $qty) {
-            return [
-                'success' => true,
-                'message' => 'TopDawg qty already '.$qty.'.',
-                'live_qty' => $liveBefore,
-            ];
-        }
-
         $resolved = $this->resolveProductCode($sku) ?: $sku;
-        $codes = array_slice($this->topDawgProductCodeCandidates($sku, $resolved), 0, 4);
-        $fieldSets = [
-            ['qty_available' => $qty],
-            ['qty_available' => $qty, 'quantity' => $qty],
-            ['quantity' => $qty],
-            ['remaining_inventory' => $qty],
-            ['qty' => $qty],
-            ['stock' => $qty],
-        ];
-        $endpoints = [
-            '/SupplierProduct/update',
-            '/SupplierProduct/updateInventory',
-            '/SupplierProduct/updateQty',
-        ];
-
+        $codes = array_slice($this->topDawgProductCodeCandidates($sku, $resolved), 0, 2);
         $lastMessage = 'TopDawg inventory update failed.';
-        foreach ($endpoints as $path) {
-            foreach ($codes as $productCode) {
-                foreach ($fieldSets as $fields) {
-                    $pushed = $this->postTopDawgProductUpdate($path, array_merge([
-                        'product_code' => $productCode,
-                    ], $fields));
-                    if (empty($pushed['success'])) {
-                        $lastMessage = (string) ($pushed['message'] ?? $lastMessage);
-                        continue;
-                    }
-                    $live = $this->readLiveQty($sku);
-                    if ($live !== null && $live === $qty) {
-                        return [
-                            'success' => true,
-                            'message' => 'TopDawg inventory updated to '.$qty.'.',
-                            'live_qty' => $live,
-                        ];
-                    }
-                    if ($live === null) {
-                        return [
-                            'success' => true,
-                            'message' => trim((string) ($pushed['message'] ?? '')) !== ''
-                                ? (string) $pushed['message']
-                                : 'TopDawg inventory submitted for review.',
-                            'live_qty' => null,
-                        ];
-                    }
-                    $lastMessage = 'TopDawg accepted the update but listing qty stayed '.$live.' (wanted '.$qty.').';
-                }
+        foreach ($codes as $productCode) {
+            $pushed = $this->postTopDawgProductUpdate('/SupplierProduct/update', [
+                'product_code' => $productCode,
+                'qty_available' => $qty,
+            ]);
+            if (! empty($pushed['success'])) {
+                return [
+                    'success' => true,
+                    'message' => trim((string) ($pushed['message'] ?? '')) !== ''
+                        ? (string) $pushed['message']
+                        : 'TopDawg inventory submitted for review.',
+                    'live_qty' => null,
+                ];
             }
+            $lastMessage = (string) ($pushed['message'] ?? $lastMessage);
         }
 
         return ['success' => false, 'message' => $lastMessage];

@@ -66,7 +66,6 @@ class TopDawgMismatchInventoryTest extends TestCase
         $result = (new TopDawgApiService())->updateItemInventory('C10BP 20 10 R', 255);
 
         $this->assertTrue($result['success']);
-        $this->assertSame(255, $result['live_qty'] ?? null);
 
         Http::assertSent(function ($request) {
             if (! str_contains($request->url(), '/SupplierProduct/update')) {
