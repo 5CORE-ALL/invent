@@ -3063,8 +3063,55 @@ class TikTokShopService
         return ['202309'];
     }
 
+    public static function isIdentifierCodeLockedError(string $message): bool
+    {
+        $message = strtolower($message);
+
+        return str_contains($message, 'identifier code')
+            || str_contains($message, 'identifier_code')
+            || str_contains($message, 'keep the submitted identifier');
+    }
+
+    /**
+     * Keep the GTIN/EAN/UPC TikTok already accepted. Omitting it on Partial Edit
+     * is treated as a change and LIVE listings reject the qty push.
+     *
+     * @param  array<string, mixed>  $node
+     * @return array{code: string, type?: string}|null
+     */
+    public static function identifierCodeFromSkuNode(array $node): ?array
+    {
+        $raw = $node['identifier_code'] ?? $node['identifierCode'] ?? null;
+        $type = '';
+        $code = '';
+        if (is_array($raw)) {
+            $code = trim((string) ($raw['code'] ?? $raw['identifier_code'] ?? $raw['value'] ?? ''));
+            $type = strtoupper(trim((string) ($raw['type'] ?? $raw['identifier_code_type'] ?? '')));
+        } else {
+            $code = trim((string) $raw);
+        }
+        if ($code === '') {
+            $code = trim((string) ($node['gtin'] ?? $node['ean'] ?? $node['upc'] ?? ''));
+        }
+        if ($type === '') {
+            $type = strtoupper(trim((string) ($node['identifier_code_type'] ?? $node['identifier_type'] ?? '')));
+        }
+        if ($code === '') {
+            return null;
+        }
+        $out = ['code' => $code];
+        if (in_array($type, ['GTIN', 'EAN', 'UPC', 'ISBN'], true)) {
+            $out['type'] = $type;
+        }
+
+        return $out;
+    }
+
     protected function isProductStatusRestrictionError(string $message): bool
     {
+        if (self::isIdentifierCodeLockedError($message)) {
+            return false;
+        }
         $message = strtolower($message);
 
         return str_contains($message, '12052901')
@@ -3104,6 +3151,21 @@ class TikTokShopService
         $message = strtolower($message);
 
         return str_contains($message, 'sales_attributes');
+    }
+
+    /**
+     * @param  array{skus?: list<array<string, mixed>>}  $params
+     * @return array{skus?: list<array<string, mixed>>}
+     */
+    protected function partialEditParamsWithoutSalesAttributes(array $params): array
+    {
+        foreach ($params['skus'] ?? [] as $i => $sku) {
+            if (is_array($sku)) {
+                unset($params['skus'][$i]['sales_attributes']);
+            }
+        }
+
+        return $params;
     }
 
     protected function isInvalidApiVersionError(string $message): bool
@@ -3164,6 +3226,10 @@ class TikTokShopService
         $sellerSku = $this->sellerSkuForPartialEdit($productId, $skuId, $node);
         if ($sellerSku !== '') {
             $sku['seller_sku'] = $sellerSku;
+        }
+        $ident = self::identifierCodeFromSkuNode($node);
+        if ($ident !== null) {
+            $sku['identifier_code'] = $ident;
         }
         $attrs = $this->sanitizeSalesAttributes(is_array($node['sales_attributes'] ?? null) ? $node['sales_attributes'] : []);
         if ($attrs !== []) {
@@ -3300,22 +3366,26 @@ class TikTokShopService
         $data = $this->searchProductDataById($productId);
         $node = $this->skuNodeFromProductData($data, $skuId);
         $attrs = $this->sanitizeSalesAttributes(is_array($node['sales_attributes'] ?? null) ? $node['sales_attributes'] : []);
-        if ($node !== [] && ($attrs !== [] || ! $forceSearch)) {
-            if ($attrs !== []) {
-                $node['sales_attributes'] = $attrs;
-            }
+        $needsDetail = $forceSearch
+            || $node === []
+            || ($attrs === [] && $forceSearch)
+            || self::identifierCodeFromSkuNode($node) === null;
 
-            return $node;
+        if ($needsDetail) {
+            try {
+                $data = $this->fetchProductData($productId);
+                $detailNode = $this->skuNodeFromProductData($data, $skuId);
+                if ($detailNode !== []) {
+                    $node = $detailNode;
+                    $attrs = $this->sanitizeSalesAttributes(is_array($node['sales_attributes'] ?? null) ? $node['sales_attributes'] : []);
+                }
+            } catch (\Throwable $e) {
+                $this->rememberIpAllowList($e->getMessage());
+            }
         }
 
-        try {
-            $data = $this->fetchProductData($productId);
-            $detailNode = $this->skuNodeFromProductData($data, $skuId);
-            if ($detailNode !== []) {
-                return $detailNode;
-            }
-        } catch (\Throwable $e) {
-            $this->rememberIpAllowList($e->getMessage());
+        if ($attrs !== []) {
+            $node['sales_attributes'] = $attrs;
         }
 
         return $node;
@@ -3495,8 +3565,11 @@ class TikTokShopService
                 'error' => $lastMessage,
             ]);
 
-            if ($this->isSalesAttributesError($lastMessage)) {
+            if ($this->isSalesAttributesError($lastMessage) || self::isIdentifierCodeLockedError($lastMessage)) {
                 $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
+                if (self::isIdentifierCodeLockedError($lastMessage)) {
+                    $partialParams = $this->partialEditParamsWithoutSalesAttributes($partialParams);
+                }
                 if ($this->partialEditSkuHasSellerSku($partialParams)) {
                     $retry = $this->invokeSdkInventory($productId, $partialParams, '202309', 'partial');
                     if (! empty($retry['success'])) {
@@ -3641,9 +3714,12 @@ class TikTokShopService
                 if ($this->isEnforcementBlockedError($lastError)) {
                     return ['success' => false, 'message' => $lastError];
                 }
-                if (! $triedForceSearch && $this->isSalesAttributesError($lastError)) {
+                if (! $triedForceSearch && ($this->isSalesAttributesError($lastError) || self::isIdentifierCodeLockedError($lastError))) {
                     $triedForceSearch = true;
                     $retryBody = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
+                    if (self::isIdentifierCodeLockedError($lastError)) {
+                        $retryBody = $this->partialEditParamsWithoutSalesAttributes($retryBody);
+                    }
                     if ($this->partialEditSkuHasSellerSku($retryBody)) {
                         $full = $retryBody;
                         try {
@@ -3788,6 +3864,10 @@ class TikTokShopService
                 'id' => $skuId,
                 'seller_sku' => $seller,
             ];
+            $ident = self::identifierCodeFromSkuNode($node);
+            if ($ident !== null) {
+                $row['identifier_code'] = $ident;
+            }
             $attrs = $this->sanitizeSalesAttributes(is_array($node['sales_attributes'] ?? null) ? $node['sales_attributes'] : []);
             if ($attrs !== []) {
                 $row['sales_attributes'] = $attrs;
