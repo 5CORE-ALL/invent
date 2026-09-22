@@ -16,6 +16,10 @@ return new class extends Migration
                 continue;
             }
 
+            DB::statement('SET SESSION net_read_timeout = 3600');
+            DB::statement('SET SESSION net_write_timeout = 3600');
+            DB::statement('SET SESSION wait_timeout = 3600');
+
             // Full VARCHAR(255) columns exceed this server's 1000-byte index limit.
             // Prefixes cover L30 / YYYY-MM-DD, Amazon campaign ids, and ad type labels.
             DB::statement(
