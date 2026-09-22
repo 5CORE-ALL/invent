@@ -355,14 +355,20 @@ class PurchasingPowerApiService extends BestBuyApiService
             ];
         }
 
-        // One exact OF21 lookup. Do not spray SKU variants or fall back to leftover
-        // purchasing_power_products — that path submitted PRI01 for unlisted SKUs
-        // and waited ~20–40s each just to get "No existing offer".
-        $offerSku = $this->resolveLiveMcmOfferSkuExact($sku, $apiKey, $baseUrl);
+        // One exact OF21 lookup. The sku filter is case-sensitive, and the push
+        // path uppercases SKUs, so use the stored shop SKU (original case) when
+        // we have one. Do not spray variants — that submitted PRI01 for unlisted
+        // SKUs and waited ~20–40s each just to get "No existing offer".
+        $listed = \App\Http\Controllers\MarketPlace\PurchasingPowerController::findProductBySku($sku);
+        $lookupSku = \App\Http\Controllers\MarketPlace\PurchasingPowerController::offerLookupSku(
+            $sku,
+            $listed->sku ?? null
+        );
+        $offerSku = $this->resolveLiveMcmOfferSkuExact($lookupSku, $apiKey, $baseUrl);
         if ($offerSku === null) {
             return [
                 'success' => false,
-                'message' => "SKU is not listed on Purchasing Power MCM: {$sku}",
+                'message' => "SKU is not listed on Purchasing Power MCM: {$lookupSku}",
                 'status_code' => 404,
             ];
         }

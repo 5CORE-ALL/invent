@@ -9,8 +9,8 @@ use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
- * Pull Google Ads live bid and live budget on separate queries so one failure
- * cannot mark the other column as fetched.
+ * Pull Google Ads live bid and live budget on separate queries.
+ * A failed pull leaves the last verified amount and green status untouched.
  */
 class GoogleShoppingLiveBidBgtService
 {
@@ -56,6 +56,71 @@ class GoogleShoppingLiveBidBgtService
         $this->persistFetch($channel, $ids, $field, $resolved);
 
         return ['ok' => true, 'error' => null];
+    }
+
+    /**
+     * One background pull for every shopping campaign. Writes a column only when
+     * Google Ads returns a single live amount; that amount is then compared with
+     * SBID or SBGT. A failed query does not change stored values.
+     *
+     * @param  array<string, array{sbid?: mixed, sbgt?: mixed}>  $targets
+     * @return array{bid_updated: int, bgt_updated: int, error: ?string}
+     */
+    public function verifyAndStore(string $customerId, array $targets, string $channel = 'shopping'): array
+    {
+        $stats = ['bid_updated' => 0, 'bgt_updated' => 0, 'error' => null];
+        if (! Schema::hasTable(self::TABLE)
+            || ! Schema::hasColumn(self::TABLE, 'bid_green')
+            || ! Schema::hasColumn(self::TABLE, 'bgt_green')) {
+            $stats['error'] = 'Live bid/budget storage is not ready.';
+
+            return $stats;
+        }
+
+        $normalized = [];
+        foreach ($targets as $id => $row) {
+            $cid = self::normalizeIds([(string) $id])[0] ?? '';
+            if ($cid === '' || isset($normalized[$cid])) {
+                continue;
+            }
+            $normalized[$cid] = is_array($row) ? $row : [];
+        }
+        $ids = array_keys($normalized);
+        if ($ids === []) {
+            return $stats;
+        }
+
+        $customerId = trim($customerId);
+        if ($customerId === '') {
+            Log::warning('Google Shopping live sync skipped: customer ID is not configured.');
+            $stats['error'] = 'Google Ads customer ID is not configured.';
+
+            return $stats;
+        }
+
+        try {
+            $bids = $this->fetchBids($customerId, $ids);
+            $stats['bid_updated'] = $this->persistVerified($channel, 'bid', $normalized, $bids);
+        } catch (Throwable $e) {
+            Log::error('Google Shopping live bid verification failed', [
+                'customer_id' => $customerId,
+                'error' => $e->getMessage(),
+            ]);
+            $stats['error'] = $e->getMessage();
+        }
+
+        try {
+            $budgets = $this->fetchBudgets($customerId, $ids);
+            $stats['bgt_updated'] = $this->persistVerified($channel, 'bgt', $normalized, $budgets);
+        } catch (Throwable $e) {
+            Log::error('Google Shopping live budget verification failed', [
+                'customer_id' => $customerId,
+                'error' => $e->getMessage(),
+            ]);
+            $stats['error'] = $stats['error'] ?? $e->getMessage();
+        }
+
+        return $stats;
     }
 
     public function recordPush(string $channel, string $campaignId, string $field, bool $ok, ?float $value): void
@@ -252,6 +317,59 @@ class GoogleShoppingLiveBidBgtService
     }
 
     /**
+     * @param  array<string, array{sbid?: mixed, sbgt?: mixed}>  $targets
+     * @param  array<string, array{value: float|null, error: ?string}>  $resolved
+     */
+    private function persistVerified(string $channel, string $field, array $targets, array $resolved): int
+    {
+        $now = now();
+        $isBid = $field === 'bid';
+        $rows = [];
+        foreach ($targets as $id => $target) {
+            $entry = $resolved[$id] ?? ['value' => null, 'error' => 'missing'];
+            $live = isset($entry['value']) && is_numeric($entry['value']) ? (float) $entry['value'] : null;
+            $decision = GoogleShoppingLiveSyncStatus::verifiedStore(
+                $field,
+                $live,
+                isset($entry['error']) ? (string) $entry['error'] : null,
+                $isBid ? ($target['sbid'] ?? null) : ($target['sbgt'] ?? null)
+            );
+            if ($decision === null) {
+                continue;
+            }
+            $row = [
+                'channel' => $channel,
+                'campaign_id' => $id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+            if ($isBid) {
+                $row['live_bid'] = $decision['value'];
+                $row['bid_fetch_ok'] = true;
+                $row['bid_fetch_error'] = null;
+                $row['bid_fetched_at'] = $now;
+                $row['bid_green'] = $decision['green'] ? 1 : 0;
+            } else {
+                $row['live_bgt'] = $decision['value'];
+                $row['bgt_fetch_ok'] = true;
+                $row['bgt_fetch_error'] = null;
+                $row['bgt_fetched_at'] = $now;
+                $row['bgt_green'] = $decision['green'] ? 1 : 0;
+            }
+            $rows[] = $row;
+        }
+
+        $update = $isBid
+            ? ['live_bid', 'bid_fetch_ok', 'bid_fetch_error', 'bid_fetched_at', 'bid_green', 'updated_at']
+            : ['live_bgt', 'bgt_fetch_ok', 'bgt_fetch_error', 'bgt_fetched_at', 'bgt_green', 'updated_at'];
+        foreach (array_chunk($rows, 100) as $chunk) {
+            DB::table(self::TABLE)->upsert($chunk, ['channel', 'campaign_id'], $update);
+        }
+
+        return count($rows);
+    }
+
+    /**
      * @param  list<string>  $ids
      * @param  array<string, array{value: float|null, error: ?string}>  $resolved
      */
@@ -262,7 +380,8 @@ class GoogleShoppingLiveBidBgtService
         }
         $now = now();
         $isBid = $field === 'bid';
-        $rows = [];
+        $okRows = [];
+        $failedRows = [];
         foreach ($ids as $id) {
             $entry = $resolved[$id] ?? ['value' => null, 'error' => 'missing'];
             $value = isset($entry['value']) && is_numeric($entry['value']) ? (float) $entry['value'] : null;
@@ -275,25 +394,39 @@ class GoogleShoppingLiveBidBgtService
                 'updated_at' => $now,
             ];
             if ($isBid) {
-                $row['live_bid'] = $fetchOk ? round($value, 4) : null;
                 $row['bid_fetch_ok'] = $fetchOk;
                 $row['bid_fetch_error'] = $fetchOk ? null : ($error !== '' ? $error : 'missing');
                 $row['bid_fetched_at'] = $now;
+                if ($fetchOk) {
+                    $row['live_bid'] = round($value, 4);
+                }
             } else {
-                $row['live_bgt'] = $fetchOk ? round($value, 2) : null;
                 $row['bgt_fetch_ok'] = $fetchOk;
                 $row['bgt_fetch_error'] = $fetchOk ? null : ($error !== '' ? $error : 'missing');
                 $row['bgt_fetched_at'] = $now;
+                if ($fetchOk) {
+                    $row['live_bgt'] = round($value, 2);
+                }
             }
-            $rows[] = $row;
+            if ($fetchOk) {
+                $okRows[] = $row;
+            } else {
+                $failedRows[] = $row;
+            }
         }
 
-        $update = $isBid
+        $okUpdate = $isBid
             ? ['live_bid', 'bid_fetch_ok', 'bid_fetch_error', 'bid_fetched_at', 'updated_at']
             : ['live_bgt', 'bgt_fetch_ok', 'bgt_fetch_error', 'bgt_fetched_at', 'updated_at'];
+        $failUpdate = $isBid
+            ? ['bid_fetch_ok', 'bid_fetch_error', 'bid_fetched_at', 'updated_at']
+            : ['bgt_fetch_ok', 'bgt_fetch_error', 'bgt_fetched_at', 'updated_at'];
 
-        foreach (array_chunk($rows, 100) as $chunk) {
-            DB::table(self::TABLE)->upsert($chunk, ['channel', 'campaign_id'], $update);
+        foreach (array_chunk($okRows, 100) as $chunk) {
+            DB::table(self::TABLE)->upsert($chunk, ['channel', 'campaign_id'], $okUpdate);
+        }
+        foreach (array_chunk($failedRows, 100) as $chunk) {
+            DB::table(self::TABLE)->upsert($chunk, ['channel', 'campaign_id'], $failUpdate);
         }
     }
 

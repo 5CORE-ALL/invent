@@ -1698,6 +1698,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Queue one Google Ads read for Shopping LBid/LBgt after the daily SBID and budget pushes.
+        // The command only dispatches the job. The shopping page never starts this.
+        $schedule->command('google-shopping:sync-live-bid-bgt')
+            ->dailyAt('18:00')
+            ->timezone('Asia/Kolkata')
+            ->name('google-shopping-live-bid-bgt')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Reset SBID status daily — must complete before sbid:update at 17:48 IST.
         // withoutOverlapping(2) keeps the daily reset single-fire even if a tick is delayed.
         $schedule->call(function () {

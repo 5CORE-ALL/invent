@@ -804,7 +804,7 @@
                             <span class="summary-trend-dot none" data-metric="ads_pct" title="Rolling history"></span>Ads: <span id="ads-percent-badge">0%</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Total Views (listing/Map traffic)">
-                            <span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span>Clicks: <span id="total-views-badge">0</span>
+                            <span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span>Clicks: <span id="total-views-badge">0</span><span id="total-views-growth" style="margin-left:4px;font-weight:800;"></span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): weighted from each channel's listing CVR × views (same as the CVR column). Falls back to Qty ÷ Views when a channel has no listing CVR.">
                             <span class="summary-trend-dot none" data-metric="cvr" title="Rolling history"></span>CVR: <span id="cvr-pct-badge">0.00%</span>
@@ -1395,6 +1395,10 @@
                             <div style="text-align: center;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
                                 <div id="adChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                            <div id="adChartGrowthWrap" style="display:none; text-align: center; border-top: 1px dashed #adb5bd; padding-top: 4px;">
+                                <div id="adChartGrowthLabel" style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">L30 %</div>
+                                <div id="adChartGrowth" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
                             </div>
                         </div>
                     </div>
@@ -5422,9 +5426,12 @@
                     const val = Math.round(totalViews);
                     const $el = $('#total-views-badge');
                     $el.text(toCompact(val));
-                    $el.closest('.badge').attr('title',
-                        'View trend - Total Views (listing/Map traffic): ' + val.toLocaleString('en-US'));
+                    const badge = $el.closest('.badge');
+                    const viewsTitle = 'View trend - Total Views (listing/Map traffic): ' + val.toLocaleString('en-US');
+                    badge.attr('data-views-title', viewsTitle);
+                    badge.attr('title', viewsTitle);
                     setBadgeExact($el, val);
+                    loadTotalViewsGrowth(val);
                 })();
                 // Listing CVR: prefer each channel's listing CVR × views (same as the CVR column /
                 // /temu-decrease / Shopify / Reverb badges). Fallback to Qty ÷ Views.
@@ -6686,6 +6693,81 @@
             // Stub kept so existing call sites in loadAdBreakdownChart() remain valid.
             function loadSalesOrdersItemsBarChart() { /* removed */ }
 
+            function viewsL30Growth(values) {
+                if (!values || values.length < 2) return null;
+                var latest = Number(values[values.length - 1]);
+                var baseIdx = Math.max(0, values.length - 31);
+                var base = Number(values[baseIdx]);
+                if (!isFinite(latest) || !isFinite(base) || Math.abs(base) < 0.5) return null;
+                return {
+                    pct: ((latest - base) / Math.abs(base)) * 100,
+                    span: values.length - 1 - baseIdx
+                };
+            }
+            function formatViewsGrowth(pct) {
+                if (pct == null || !isFinite(pct) || Math.abs(pct) < 0.05) return '0%';
+                return (pct > 0 ? '+' : '−') + Math.abs(pct).toFixed(1) + '%';
+            }
+            function viewsGrowthColor(pct) {
+                if (pct == null || !isFinite(pct) || Math.abs(pct) < 0.05) return '#6c757d';
+                return pct > 0 ? '#198754' : '#dc3545';
+            }
+            function paintViewsBadgeGrowth(pct) {
+                var el = document.getElementById('total-views-growth');
+                if (!el) return;
+                el.textContent = formatViewsGrowth(pct);
+                el.style.color = viewsGrowthColor(pct);
+                el.title = 'Views change versus about 30 days ago';
+                var badge = el.closest('.badge');
+                if (badge && pct != null && isFinite(pct)) {
+                    var baseTitle = badge.getAttribute('data-views-title') || badge.getAttribute('title') || '';
+                    badge.setAttribute('data-views-title', baseTitle.replace(/ Views L30 growth:.*$/, ''));
+                    badge.setAttribute('title', badge.getAttribute('data-views-title') + ' Views L30 growth: ' + formatViewsGrowth(pct));
+                }
+            }
+            function paintChartViewsGrowth(values) {
+                var wrap = document.getElementById('adChartGrowthWrap');
+                var el = document.getElementById('adChartGrowth');
+                var label = document.getElementById('adChartGrowthLabel');
+                if (!wrap || !el) return;
+                if (currentChartMetric !== 'total_views') {
+                    wrap.style.display = 'none';
+                    return;
+                }
+                var growth = viewsL30Growth(values);
+                wrap.style.display = '';
+                if (!growth) {
+                    el.textContent = '—';
+                    el.style.color = '#6c757d';
+                    el.title = '';
+                    if (label) label.textContent = 'L30 %';
+                    return;
+                }
+                if (label) label.textContent = growth.span >= 25 ? 'L30 %' : (growth.span + 'D %');
+                el.textContent = formatViewsGrowth(growth.pct);
+                el.style.color = viewsGrowthColor(growth.pct);
+                el.title = 'Change from ' + growth.span + ' days earlier to the latest views';
+                if (currentChartChannel === 'all') paintViewsBadgeGrowth(growth.pct);
+            }
+            var viewsGrowthPrefetch = null;
+            function loadTotalViewsGrowth(badgeValue) {
+                if (viewsGrowthPrefetch && viewsGrowthPrefetch.readyState !== 4) return;
+                viewsGrowthPrefetch = $.ajax({
+                    url: '/channel-metric-chart-data',
+                    method: 'GET',
+                    data: {
+                        channel: 'all',
+                        metric: 'total_views',
+                        days: 30,
+                        badge_value: badgeValue
+                    }
+                }).done(function(response) {
+                    var rows = response && response.success && response.data ? response.data : [];
+                    var growth = viewsL30Growth(rows.map(function(row) { return Number(row.value); }));
+                    paintViewsBadgeGrowth(growth ? growth.pct : null);
+                });
+            }
+
             // Render chart
             function renderAdBreakdownChart(data) {
                 const ctx = document.getElementById('adBreakdownChart').getContext('2d');
@@ -6758,6 +6840,8 @@
                 lowestEl.textContent = fmtVal(dataMin);
                 lowestEl.style.color = dotColors[minIdx] || refGray;
                 if (lowestEl.previousElementSibling) lowestEl.previousElementSibling.style.color = lowestEl.style.color;
+
+                paintChartViewsGrowth(values);
 
                 // --- Median line plugin ---
                 const medianLinePlugin = {

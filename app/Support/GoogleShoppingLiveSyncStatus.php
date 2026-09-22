@@ -3,9 +3,9 @@
 namespace App\Support;
 
 /**
- * Green LBid / LBgt dots for /google/shopping/google-shopping.
- * Each column is independent: a dot shows only when that value was fetched,
- * the matching SBID or SBGT was pushed, and the live number still matches.
+ * Stored LBid / LBgt for /google/shopping/google-shopping.
+ * The page only reads values already verified by the background queue.
+ * A failed Google Ads pull does not change the last stored amount or dot.
  */
 final class GoogleShoppingLiveSyncStatus
 {
@@ -14,13 +14,38 @@ final class GoogleShoppingLiveSyncStatus
     public const BGT_TOLERANCE = 0.01;
 
     /**
+     * Decide whether a pulled live amount may replace the stored value.
+     * Null means the pull failed or returned nothing, so the last verified row stays.
+     *
+     * @return array{value: float, green: bool}|null
+     */
+    public static function verifiedStore(string $field, ?float $live, ?string $error, mixed $suggested): ?array
+    {
+        $isBid = $field === 'bid';
+        $error = trim((string) ($error ?? ''));
+        if ($error !== '' || $live === null || ! is_finite($live) || $live <= 0) {
+            return null;
+        }
+
+        $rounded = round($live, $isBid ? 4 : 2);
+        $want = self::positiveNumber($suggested);
+        $tolerance = $isBid ? self::BID_TOLERANCE : self::BGT_TOLERANCE;
+
+        return [
+            'value' => $rounded,
+            'green' => self::amountsMatch($rounded, $want, $tolerance),
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>|null  $state
      * @return array{lbid: float|null, lbid_green: bool, lbid_tip: string, lbgt: float|null, lbgt_green: bool, lbgt_tip: string}
      */
-    public static function columns(?array $state, mixed $sbid, mixed $sbgt): array
+    public static function columns(?array $state, mixed $sbid = null, mixed $sbgt = null): array
     {
-        $bid = self::evaluate('bid', $state ?? [], $sbid);
-        $bgt = self::evaluate('bgt', $state ?? [], $sbgt);
+        $state = $state ?? [];
+        $bid = self::evaluate('bid', $state, $sbid);
+        $bgt = self::evaluate('bgt', $state, $sbgt);
 
         return [
             'lbid' => $bid['value'],
@@ -128,74 +153,35 @@ final class GoogleShoppingLiveSyncStatus
         $fetchKey = $isBid ? 'bid_fetch_ok' : 'bgt_fetch_ok';
         $pushKey = $isBid ? 'bid_push_ok' : 'bgt_push_ok';
         $pushedKey = $isBid ? 'bid_pushed_value' : 'bgt_pushed_value';
-        $errorKey = $isBid ? 'bid_fetch_error' : 'bgt_fetch_error';
-        $tolerance = $isBid ? self::BID_TOLERANCE : self::BGT_TOLERANCE;
         $liveLabel = $isBid ? 'Live Bid' : 'Live Budget';
         $suggestedLabel = $isBid ? 'SBID' : 'SBGT';
 
+        $greenKey = $isBid ? 'bid_green' : 'bgt_green';
         $fetchOk = self::boolish($state[$fetchKey] ?? false);
         $pushOk = self::boolish($state[$pushKey] ?? false);
-        $live = $fetchOk ? self::positiveNumber($state[$liveKey] ?? null) : null;
-        $pushed = $pushOk ? self::positiveNumber($state[$pushedKey] ?? null) : null;
-        $want = self::positiveNumber($suggested);
-        $error = trim((string) ($state[$errorKey] ?? ''));
-
-        $value = $live;
-        $matchesLive = self::amountsMatch($live, $want, $tolerance);
-        $matchesPush = self::amountsMatch($pushed, $want, $tolerance);
-        $green = $fetchOk && $pushOk && $value !== null && $matchesLive && $matchesPush;
+        $live = self::positiveNumber($state[$liveKey] ?? null);
+        $pushed = self::positiveNumber($state[$pushedKey] ?? null);
+        $green = self::boolish($state[$greenKey] ?? false) && $live !== null;
 
         return [
-            'value' => $value,
-            'fetch_ok' => $fetchOk && $value !== null,
+            'value' => $live,
+            'fetch_ok' => $fetchOk && $live !== null,
             'push_ok' => $pushOk && $pushed !== null,
             'green' => $green,
-            'tip' => self::tip($liveLabel, $suggestedLabel, $green, $fetchOk, $pushOk, $value, $want, $pushed, $error, $matchesLive),
+            'tip' => self::storedTip($liveLabel, $suggestedLabel, $green, $live),
         ];
     }
 
-    private static function tip(
-        string $liveLabel,
-        string $suggestedLabel,
-        bool $green,
-        bool $fetchOk,
-        bool $pushOk,
-        ?float $live,
-        ?float $want,
-        ?float $pushed,
-        string $error,
-        bool $matchesLive
-    ): string {
+    private static function storedTip(string $liveLabel, string $suggestedLabel, bool $green, ?float $live): string
+    {
+        if ($live === null) {
+            return $liveLabel.' has not been verified yet';
+        }
         if ($green) {
-            return 'Updated — '.$liveLabel.' '.self::money($live).' matches '.$suggestedLabel.' '.self::money($want).' (fetched and pushed)';
-        }
-        if (! $fetchOk || $live === null) {
-            if ($error === 'mixed') {
-                return $liveLabel.' values differ across Google Ads — no single amount to compare with '.$suggestedLabel;
-            }
-            if ($error === 'missing') {
-                return $liveLabel.' was not returned by Google Ads for this campaign';
-            }
-            if ($error !== '') {
-                return $liveLabel.' could not be fetched. '.$error;
-            }
-
-            return $liveLabel.' has not been fetched yet';
-        }
-        if ($want === null) {
-            return $liveLabel.' '.self::money($live).' — no '.$suggestedLabel.' to compare';
-        }
-        if (! $matchesLive) {
-            return $liveLabel.' '.self::money($live).' does not match '.$suggestedLabel.' '.self::money($want);
-        }
-        if (! $pushOk || $pushed === null) {
-            return $liveLabel.' '.self::money($live).' matches '.$suggestedLabel.' '.self::money($want).' — not pushed yet';
-        }
-        if (! self::amountsMatch($pushed, $want, $liveLabel === 'Live Bid' ? self::BID_TOLERANCE : self::BGT_TOLERANCE)) {
-            return $liveLabel.' '.self::money($live).' matches the last push '.self::money($pushed).', but '.$suggestedLabel.' is now '.self::money($want);
+            return 'Verified — '.$liveLabel.' '.self::money($live).' matches '.$suggestedLabel;
         }
 
-        return $liveLabel.' '.self::money($live).' is not verified against '.$suggestedLabel.' '.self::money($want);
+        return $liveLabel.' '.self::money($live).' does not match '.$suggestedLabel;
     }
 
     private static function amountsMatch(?float $a, ?float $b, float $tolerance): bool

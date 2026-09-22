@@ -7781,7 +7781,8 @@ class CvrMasterController extends Controller
             } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
                 $response = $this->pushToMacy($sku, $price);
             } elseif ($marketplace === 'ppower' || $marketplace === 'purchasingpower' || $marketplace === 'purchase') {
-                $response = $this->pushToPurchasingPower($sku, $price);
+                // Keep original SKU case. Mirakl OF21 sku match is case-sensitive.
+                $response = $this->pushToPurchasingPower($skuRaw !== '' ? $skuRaw : $sku, $price);
             } elseif ($marketplace === 'wayfair') {
                 $response = $this->pushToWayfair($sku, $price);
             } elseif ($marketplace === 'topdawg') {
