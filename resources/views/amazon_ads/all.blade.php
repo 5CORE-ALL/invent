@@ -1270,6 +1270,15 @@
         document.addEventListener('DOMContentLoaded', function () {
             var rawSources = @json($rawSources ?? []);
             var amazonAdsDefaultReportDates = @json($defaultReportRangeDates ?? (object) []);
+            (function () {
+                var d = amazonAdsDefaultReportDates.all_reports;
+                var fromEl = document.getElementById('amazonAdsFilterDateFrom');
+                var toEl = document.getElementById('amazonAdsFilterDateTo');
+                if (d && typeof d === 'string' && fromEl && toEl && !fromEl.value && !toEl.value) {
+                    fromEl.value = d;
+                    toEl.value = d;
+                }
+            })();
             var dataUrlTemplate = @json(url('/amazon-ads/raw-data')) + '/';
             var pushSpSbidsUrl = @json(route('amazon.ads.push-sp-sbids'));
             var pushSbSbidsUrl = @json(route('amazon.ads.push-sb-sbids'));
@@ -2456,6 +2465,7 @@
             }
 
             // ---- AJAX bridge: translate Tabulator remote params -> DataTables protocol ----
+            var amzAjaxAbort = null;
             function amzAjaxRequestFunc(url, config, params) {
                 var source = activeRawSourceKey || 'all_reports';
                 var cols = (rawSources[source] && rawSources[source].columns) ? rawSources[source].columns : [];
@@ -2477,6 +2487,10 @@
                 var f = amzFilterPayload();
                 Object.keys(f).forEach(function (k) { body.set(k, f[k]); });
                 body.set('_token', csrfToken);
+                if (amzAjaxAbort) {
+                    try { amzAjaxAbort.abort(); } catch (e) {}
+                }
+                amzAjaxAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
                 return fetch(dataUrlTemplate + encodeURIComponent(source), {
                     method: 'POST',
                     headers: {
@@ -2486,8 +2500,16 @@
                         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
                     },
                     credentials: 'same-origin',
-                    body: body.toString()
-                }).then(function (res) { return res.json(); });
+                    body: body.toString(),
+                    signal: amzAjaxAbort ? amzAjaxAbort.signal : undefined
+                }).then(function (res) { return res.json(); }).catch(function (err) {
+                    if (err && err.name === 'AbortError') {
+                        var aborted = new Error('aborted');
+                        aborted.name = 'AbortError';
+                        throw aborted;
+                    }
+                    throw err;
+                });
             }
 
             table = new Tabulator('#amz-ads-raw-table', {
@@ -2532,9 +2554,11 @@
             table.on('pageLoaded', amzRefreshUiSoon);
             table.on('dataLoaded', function () {
                 amzRefreshUiSoon();
-                amzAutoPushChangedSbgt();
             });
             table.on('dataLoadError', function (error) {
+                if (error && (error.name === 'AbortError' || String(error.message || error).indexOf('abort') !== -1)) {
+                    return;
+                }
                 console.error('amazon-ads raw data load error', error);
                 amzUpdateTotalBadge(NaN);
             });
@@ -2954,7 +2978,7 @@
                         lastSearch = v;
                         amzReloadGridForFilters();
                     };
-                    if (immediate) run(); else searchTimer = setTimeout(run, 300);
+                    if (immediate) run(); else searchTimer = setTimeout(run, 500);
                 };
                 searchEl.addEventListener('input', function () { schedule(false); });
                 searchEl.addEventListener('search', function () { schedule(true); });

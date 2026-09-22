@@ -27,7 +27,6 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -860,7 +859,7 @@ class AmazonAdsController extends Controller
         $adClause = $hasAdType ? ' AND l30.ad_type <=> `'.$t.'`.ad_type ' : '';
 
         return 'SELECT l30.`'.$purchCol.'` FROM `'.$t.'` AS l30 WHERE l30.campaign_id = `'.$t.'`.campaign_id'.$adClause
-            ." AND UPPER(TRIM(l30.report_date_range)) = 'L30' ORDER BY l30.id DESC LIMIT 1";
+            ." AND l30.report_date_range = 'L30' ORDER BY l30.id DESC LIMIT 1";
     }
 
     /**
@@ -878,7 +877,7 @@ class AmazonAdsController extends Controller
         $adClause = $hasAdType ? ' AND l30.ad_type <=> `'.$t.'`.ad_type ' : '';
 
         return 'SELECT l30.clicks FROM `'.$t.'` AS l30 WHERE l30.campaign_id = `'.$t.'`.campaign_id'.$adClause
-            ." AND UPPER(TRIM(l30.report_date_range)) = 'L30' ORDER BY l30.id DESC LIMIT 1";
+            ." AND l30.report_date_range = 'L30' ORDER BY l30.id DESC LIMIT 1";
     }
 
     /**
@@ -914,7 +913,7 @@ class AmazonAdsController extends Controller
         $adClause = $hasAdType ? ' AND l30.ad_type <=> `'.$t.'`.ad_type ' : '';
 
         return 'SELECT l30.`'.$salesCol.'` FROM `'.$t.'` AS l30 WHERE l30.campaign_id = `'.$t.'`.campaign_id'.$adClause
-            ." AND UPPER(TRIM(l30.report_date_range)) = 'L30' ORDER BY l30.id DESC LIMIT 1";
+            ." AND l30.report_date_range = 'L30' ORDER BY l30.id DESC LIMIT 1";
     }
 
     /**
@@ -936,7 +935,7 @@ class AmazonAdsController extends Controller
         $adClause = $hasAdType ? ' AND l30.ad_type <=> `'.$t.'`.ad_type ' : '';
 
         return 'SELECT '.$expr.' FROM `'.$t.'` AS l30 WHERE l30.campaign_id = `'.$t.'`.campaign_id'.$adClause
-            ." AND UPPER(TRIM(l30.report_date_range)) = 'L30' ORDER BY l30.id DESC LIMIT 1";
+            ." AND l30.report_date_range = 'L30' ORDER BY l30.id DESC LIMIT 1";
     }
 
     /**
@@ -968,9 +967,8 @@ class AmazonAdsController extends Controller
         $adClause = $hasAdType ? ' AND s30.ad_type <=> `'.$t.'`.ad_type ' : '';
 
         return 'SELECT SUM('.$rowExpr.') FROM `'.$t.'` AS s30 WHERE s30.campaign_id = `'.$t.'`.campaign_id'.$adClause
-            .' AND CHAR_LENGTH(TRIM(s30.report_date_range)) >= 10 '
-            ."AND LEFT(TRIM(s30.report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' "
-            .'AND LEFT(TRIM(s30.report_date_range), 10) BETWEEN \''.$from.'\' AND \''.$anchor.'\'';
+            .' AND CHAR_LENGTH(s30.report_date_range) = 10 '
+            .'AND s30.report_date_range BETWEEN \''.$from.'\' AND \''.$anchor.'\'';
     }
 
     /**
@@ -1013,13 +1011,13 @@ class AmazonAdsController extends Controller
         if (in_array('ad_type', $dbColumns, true)) {
             return 'SELECT t.campaign_id AS u_cid, t.ad_type AS u_ad, '.$spendSel.' AS u_sp FROM '.$t.' t INNER JOIN ('
                 .' SELECT campaign_id, ad_type, MAX(id) AS mid FROM '.$t
-                ." WHERE UPPER(TRIM(report_date_range)) = 'L7' GROUP BY campaign_id, ad_type"
+                ." WHERE report_date_range = 'L7' GROUP BY campaign_id, ad_type"
                 .' ) z ON z.mid = t.id';
         }
 
         return 'SELECT t.campaign_id AS u_cid, '.$spendSel.' AS u_sp FROM '.$t.' t INNER JOIN ('
             .' SELECT campaign_id, MAX(id) AS mid FROM '.$t
-            ." WHERE UPPER(TRIM(report_date_range)) = 'L7' GROUP BY campaign_id"
+            ." WHERE report_date_range = 'L7' GROUP BY campaign_id"
             .' ) z ON z.mid = t.id';
     }
 
@@ -1043,13 +1041,13 @@ class AmazonAdsController extends Controller
         if (in_array('ad_type', $dbColumns, true)) {
             return 'SELECT t.campaign_id AS u_cid, t.ad_type AS u_ad, '.$spendSel.' AS u_sp FROM '.$t.' t INNER JOIN ('
                 .' SELECT campaign_id, ad_type, MAX(id) AS mid FROM '.$t
-                ." WHERE UPPER(TRIM(report_date_range)) = 'L1' GROUP BY campaign_id, ad_type"
+                ." WHERE report_date_range = 'L1' GROUP BY campaign_id, ad_type"
                 .' ) z ON z.mid = t.id';
         }
 
         return 'SELECT t.campaign_id AS u_cid, '.$spendSel.' AS u_sp FROM '.$t.' t INNER JOIN ('
             .' SELECT campaign_id, MAX(id) AS mid FROM '.$t
-            ." WHERE UPPER(TRIM(report_date_range)) = 'L1' GROUP BY campaign_id"
+            ." WHERE report_date_range = 'L1' GROUP BY campaign_id"
             .' ) z ON z.mid = t.id';
     }
 
@@ -1325,204 +1323,62 @@ class AmazonAdsController extends Controller
         if (! in_array('campaign_id', $dbColumns, true) || ! in_array('cost', $dbColumns, true)) {
             return null;
         }
-        $subQ = $filteredBaseQuery->clone()->reorder();
+        return self::sumLatestL30MetricsForFilteredCampaigns($filteredBaseQuery, $table, $dbColumns);
+    }
+
+    /**
+     * Badge totals: one SQL sum of the latest L30 row per filtered campaign (+ ad_type).
+     * Avoids loading every matching campaign into PHP on search and sort.
+     *
+     * @param  array<int, string>  $dbColumns
+     * @return array{cost_sum: float, sales_sum: float, purchases_sum: float, clicks_sum: float}
+     */
+    private static function sumLatestL30MetricsForFilteredCampaigns(Builder $filteredBaseQuery, string $table, array $dbColumns): array
+    {
         $hasAd = in_array('ad_type', $dbColumns, true);
-        $pairsQ = DB::query()->fromSub($subQ, 'r');
+        $salesCol = self::l30SummarySalesDbColumn($dbColumns);
+        $purchCol = self::l30SummaryPurchasesDbColumn($dbColumns);
+        $clicksCol = in_array('clicks', $dbColumns, true) ? 'clicks' : null;
+        $costExpr = self::costPreferCoalesceExprForTableAlias('t', $dbColumns);
+
+        $pairs = $filteredBaseQuery->clone()->reorder()->select($table.'.campaign_id');
         if ($hasAd) {
-            $pairs = $pairsQ->select('r.campaign_id', 'r.ad_type')->distinct()->get();
-        } else {
-            $pairs = $pairsQ->select('r.campaign_id')->distinct()->get();
+            $pairs->addSelect($table.'.ad_type');
         }
-        if ($pairs->isEmpty()) {
-            return ['cost_sum' => 0.0, 'sales_sum' => 0.0, 'purchases_sum' => 0.0, 'clicks_sum' => 0.0];
-        }
-        $stubRows = [];
-        foreach ($pairs as $p) {
-            $o = new \stdClass;
-            $o->campaign_id = $p->campaign_id;
+        $pairs->distinct();
+
+        $latest = DB::table($table.' as src')->where('src.report_date_range', 'L30');
+        $latest->joinSub($pairs, 'flt', function ($join) use ($hasAd) {
+            $join->on('flt.campaign_id', '=', 'src.campaign_id');
             if ($hasAd) {
-                $o->ad_type = $p->ad_type ?? null;
+                $join->whereRaw('flt.ad_type <=> src.ad_type');
             }
-            $stubRows[] = $o;
-        }
-        $needL30ForAcosSbgt = in_array('cost', $columns, true)
-            || in_array('ACOS', $columns, true)
-            || in_array('sbgt', $columns, true)
-            || in_array('bgtAcos', $columns, true);
-        // Always fetch the L30 slice: badge totals (Spend / Sold / Sales / Clicks) all read distinct-campaign L30 values from it.
-        $l30SliceMap = self::fetchL30SummarySliceMap($table, $dbColumns, $stubRows);
-        $l30SpendMap = [];
-        if ($needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
-            $needDailyFallback = $l30SliceMap === [];
-            if (! $needDailyFallback) {
-                foreach ($stubRows as $stub) {
-                    $cid = isset($stub->campaign_id) ? trim((string) $stub->campaign_id) : '';
-                    if ($cid === '') {
-                        continue;
-                    }
-                    $ad = $hasAd ? trim((string) ($stub->ad_type ?? '')) : '';
-                    $lk = $cid."\0".$ad;
-                    if (! isset($l30SliceMap[$lk]) || $l30SliceMap[$lk]['spend'] === null) {
-                        $needDailyFallback = true;
-                        break;
-                    }
-                }
-            }
-            if ($needDailyFallback) {
-                $l30SpendMap = self::fetchL30DailySpendSumMap($table, $dbColumns, $stubRows);
-            }
-        }
-        $rawByKey = [];
-        $rawSalesByKey = [];
-        $rawPurchByKey = [];
-        $rawClicksByKey = [];
-        $coalesce = self::costPreferCoalesceExprForTableAlias('r', $dbColumns);
-        $salesColRaw = self::l30SummarySalesDbColumn($dbColumns);
-        $purchColRaw = in_array('purchases30d', $dbColumns, true)
-            ? 'purchases30d'
-            : (in_array('purchases', $dbColumns, true) ? 'purchases' : null);
-        $clicksColRaw = in_array('clicks', $dbColumns, true) ? 'clicks' : null;
-        $gq = DB::query()->fromSub($filteredBaseQuery->clone()->reorder(), 'r');
-        $selectChunks = [];
+        });
         if ($hasAd) {
-            $selectChunks[] = 'TRIM(r.campaign_id) AS lk_cid';
-            $selectChunks[] = 'TRIM(IFNULL(r.ad_type, \'\')) AS lk_ad';
+            $latest->selectRaw('MAX(src.id) AS max_id')->groupBy('src.campaign_id', 'src.ad_type');
         } else {
-            $selectChunks[] = 'TRIM(r.campaign_id) AS lk_cid';
-        }
-        if ($coalesce !== null) {
-            $selectChunks[] = 'MAX('.$coalesce.') AS mx_spend';
-        }
-        if ($salesColRaw !== null) {
-            $selectChunks[] = 'MAX(r.`'.$salesColRaw.'`) AS mx_sales';
-        }
-        if ($purchColRaw !== null) {
-            $selectChunks[] = 'MAX(r.`'.$purchColRaw.'`) AS mx_purch';
-        }
-        if ($clicksColRaw !== null) {
-            $selectChunks[] = 'MAX(r.`'.$clicksColRaw.'`) AS mx_clicks';
-        }
-        if (count($selectChunks) > ($hasAd ? 2 : 1)) {
-            $gq->selectRaw(implode(', ', $selectChunks));
-            if ($hasAd) {
-                $gq->groupBy('lk_cid', 'lk_ad');
-            } else {
-                $gq->groupBy('lk_cid');
-            }
-            foreach ($gq->get() as $rw) {
-                $kc = trim((string) ($rw->lk_cid ?? ''));
-                if ($kc === '') {
-                    continue;
-                }
-                $ka = $hasAd ? trim((string) ($rw->lk_ad ?? '')) : '';
-                $key = $kc."\0".$ka;
-                if ($coalesce !== null) {
-                    $mx = $rw->mx_spend ?? null;
-                    if ($mx === null || $mx === '') {
-                        $rawByKey[$key] = null;
-                    } else {
-                        $n = (float) $mx;
-                        $rawByKey[$key] = is_finite($n) ? $n : null;
-                    }
-                }
-                if ($salesColRaw !== null && property_exists($rw, 'mx_sales')) {
-                    $ms = $rw->mx_sales ?? null;
-                    if ($ms === null || $ms === '') {
-                        $rawSalesByKey[$key] = null;
-                    } else {
-                        $sn = (float) $ms;
-                        $rawSalesByKey[$key] = is_finite($sn) ? $sn : null;
-                    }
-                }
-                if ($purchColRaw !== null && property_exists($rw, 'mx_purch')) {
-                    $mp = $rw->mx_purch ?? null;
-                    if ($mp === null || $mp === '') {
-                        $rawPurchByKey[$key] = null;
-                    } else {
-                        $pn = (float) $mp;
-                        $rawPurchByKey[$key] = is_finite($pn) ? $pn : null;
-                    }
-                }
-                if ($clicksColRaw !== null && property_exists($rw, 'mx_clicks')) {
-                    $mk = $rw->mx_clicks ?? null;
-                    if ($mk === null || $mk === '') {
-                        $rawClicksByKey[$key] = null;
-                    } else {
-                        $kn = (float) $mk;
-                        $rawClicksByKey[$key] = is_finite($kn) ? $kn : null;
-                    }
-                }
-            }
-        }
-        $costSum = 0.0;
-        $salesSum = 0.0;
-        $purchasesSum = 0.0;
-        $clicksSum = 0.0;
-        foreach ($pairs as $p) {
-            $cid = isset($p->campaign_id) ? trim((string) $p->campaign_id) : '';
-            if ($cid === '') {
-                continue;
-            }
-            $adTypeStr = $hasAd ? trim((string) ($p->ad_type ?? '')) : '';
-            $adKeyL30 = $hasAd ? $adTypeStr : '';
-            $lkL30 = $cid."\0".trim((string) $adKeyL30);
-            $costVal = null;
-            if ($l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap) && $l30SliceMap[$lkL30]['spend'] !== null) {
-                $sv = (float) $l30SliceMap[$lkL30]['spend'];
-                $costVal = is_finite($sv) ? $sv : null;
-            } elseif ($l30SpendMap !== [] && array_key_exists($lkL30, $l30SpendMap)) {
-                $l30v = $l30SpendMap[$lkL30];
-                if ($l30v !== null && is_finite((float) $l30v)) {
-                    $costVal = (float) $l30v;
-                }
-            } elseif (array_key_exists($lkL30, $rawByKey) && $rawByKey[$lkL30] !== null && is_finite((float) $rawByKey[$lkL30])) {
-                $costVal = (float) $rawByKey[$lkL30];
-            }
-            if ($costVal !== null) {
-                $costSum += $costVal;
-            }
-            $salesVal = null;
-            if ($l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap)) {
-                $s30 = $l30SliceMap[$lkL30]['sales30d'];
-                if ($s30 !== null && is_finite((float) $s30)) {
-                    $salesVal = (float) $s30;
-                }
-            }
-            if ($salesVal === null && array_key_exists($lkL30, $rawSalesByKey) && $rawSalesByKey[$lkL30] !== null && is_finite((float) $rawSalesByKey[$lkL30])) {
-                $salesVal = (float) $rawSalesByKey[$lkL30];
-            }
-            if ($salesVal !== null) {
-                $salesSum += $salesVal;
-            }
-            $purchVal = null;
-            if ($l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap)) {
-                $p30 = $l30SliceMap[$lkL30]['purchases30d'] ?? null;
-                if ($p30 !== null && is_finite((float) $p30)) {
-                    $purchVal = (float) $p30;
-                }
-            }
-            if ($purchVal === null && array_key_exists($lkL30, $rawPurchByKey) && $rawPurchByKey[$lkL30] !== null && is_finite((float) $rawPurchByKey[$lkL30])) {
-                $purchVal = (float) $rawPurchByKey[$lkL30];
-            }
-            if ($purchVal !== null) {
-                $purchasesSum += $purchVal;
-            }
-            $clicksVal = null;
-            if ($l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap)) {
-                $c30 = $l30SliceMap[$lkL30]['clicks'] ?? null;
-                if ($c30 !== null && is_finite((float) $c30)) {
-                    $clicksVal = (float) $c30;
-                }
-            }
-            if ($clicksVal === null && array_key_exists($lkL30, $rawClicksByKey) && $rawClicksByKey[$lkL30] !== null && is_finite((float) $rawClicksByKey[$lkL30])) {
-                $clicksVal = (float) $rawClicksByKey[$lkL30];
-            }
-            if ($clicksVal !== null) {
-                $clicksSum += $clicksVal;
-            }
+            $latest->selectRaw('MAX(src.id) AS max_id')->groupBy('src.campaign_id');
         }
 
-        return ['cost_sum' => $costSum, 'sales_sum' => $salesSum, 'purchases_sum' => $purchasesSum, 'clicks_sum' => $clicksSum];
+        $selects = [
+            $costExpr !== null ? 'COALESCE(SUM('.$costExpr.'), 0) AS cost_sum' : '0 AS cost_sum',
+            $salesCol !== null ? 'COALESCE(SUM(t.`'.$salesCol.'`), 0) AS sales_sum' : '0 AS sales_sum',
+            $purchCol !== null ? 'COALESCE(SUM(t.`'.$purchCol.'`), 0) AS purchases_sum' : '0 AS purchases_sum',
+            $clicksCol !== null ? 'COALESCE(SUM(t.`'.$clicksCol.'`), 0) AS clicks_sum' : '0 AS clicks_sum',
+        ];
+
+        $row = DB::query()
+            ->fromSub($latest, 'm')
+            ->join($table.' as t', 't.id', '=', 'm.max_id')
+            ->selectRaw(implode(', ', $selects))
+            ->first();
+
+        return [
+            'cost_sum' => (float) ($row->cost_sum ?? 0),
+            'sales_sum' => (float) ($row->sales_sum ?? 0),
+            'purchases_sum' => (float) ($row->purchases_sum ?? 0),
+            'clicks_sum' => (float) ($row->clicks_sum ?? 0),
+        ];
     }
 
     /**
@@ -1701,10 +1557,11 @@ class AmazonAdsController extends Controller
         if (! Schema::hasTable($table)) {
             return self::$latestDailyReportYmdCache[$table] = null;
         }
-        // Exact YYYY-MM-DD daily rows (indexed); avoid LEFT/TRIM/REGEXP full scans.
+        // Date labels sort before L1/L7/L30, so this range uses the report_date_range index.
         $max = DB::table($table)
+            ->where('report_date_range', '>=', '2010-01-01')
+            ->where('report_date_range', '<=', '2099-12-31')
             ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
-            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
             ->max('report_date_range');
 
         if ($max === null || $max === '') {
@@ -1881,7 +1738,7 @@ class AmazonAdsController extends Controller
         $summaryRows = DB::table($table)
             ->select($select)
             ->whereIn('campaign_id', $cidList)
-            ->whereRaw("UPPER(TRIM(report_date_range)) = ?", ['L1'])
+            ->where('report_date_range', 'L1')
             ->orderBy('id', 'desc')
             ->get();
         foreach ($summaryRows as $fr) {
@@ -2741,30 +2598,54 @@ class AmazonAdsController extends Controller
         $like = '%'.addcslashes($search, '%_\\').'%';
         $hasAdType = in_array('ad_type', $dbColumns, true);
 
-        $query->where(function (Builder $outer) use ($from, $to, $like, $table, $hasAdType) {
-            $outer->where(function (Builder $daily) use ($from, $to, $like) {
-                self::whereReportDateRangeDailyYmdInRange($daily, $from, $to);
-                $daily->where('campaignName', 'LIKE', $like);
-            })->orWhere(function (Builder $l30) use ($from, $to, $like, $table, $hasAdType) {
-                $l30->whereRaw("UPPER(TRIM(report_date_range)) = 'L30'")
-                    ->where('campaignName', 'LIKE', $like)
-                    ->whereNotExists(function ($sub) use ($from, $to, $table, $hasAdType) {
-                        $sub->select(DB::raw('1'))
-                            ->from($table.' as amz_cal_d')
-                            ->whereColumn('amz_cal_d.campaign_id', $table.'.campaign_id');
-                        if ($hasAdType) {
-                            $sub->whereColumn('amz_cal_d.ad_type', $table.'.ad_type');
-                        }
-                        $sub->whereRaw('CHAR_LENGTH(TRIM(amz_cal_d.report_date_range)) >= 10')
-                            ->whereRaw("LEFT(TRIM(amz_cal_d.report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
-                        if ($from !== null) {
-                            $sub->whereRaw('LEFT(TRIM(amz_cal_d.report_date_range), 10) >= ?', [$from]);
-                        }
-                        if ($to !== null) {
-                            $sub->whereRaw('LEFT(TRIM(amz_cal_d.report_date_range), 10) <= ?', [$to]);
-                        }
-                    });
-            });
+        // Two index lookups. OR + NOT EXISTS makes MySQL scan the whole report table.
+        $dailyIds = DB::table($table)->select('id');
+        self::whereReportDateRangeDailyYmdInRange($dailyIds, $from, $to);
+        $dailyIdList = $dailyIds->where('campaignName', 'LIKE', $like)->pluck('id')->all();
+
+        $present = DB::table($table)->select('campaign_id');
+        if ($hasAdType) {
+            $present->addSelect('ad_type');
+        }
+        self::whereReportDateRangeDailyYmdInRange($present, $from, $to);
+        $presentKeys = [];
+        foreach ($present->distinct()->get() as $row) {
+            $cid = trim((string) ($row->campaign_id ?? ''));
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($row->ad_type ?? '')) : '';
+            $presentKeys[$cid."\0".$ad] = true;
+        }
+
+        $l30IdList = [];
+        $l30Rows = DB::table($table)
+            ->select($hasAdType ? ['id', 'campaign_id', 'ad_type'] : ['id', 'campaign_id'])
+            ->where('report_date_range', 'L30')
+            ->where('campaignName', 'LIKE', $like)
+            ->get();
+        foreach ($l30Rows as $row) {
+            $cid = trim((string) ($row->campaign_id ?? ''));
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($row->ad_type ?? '')) : '';
+            if (isset($presentKeys[$cid."\0".$ad])) {
+                continue;
+            }
+            $l30IdList[] = $row->id;
+        }
+
+        $ids = array_values(array_unique(array_merge($dailyIdList, $l30IdList)));
+        if ($ids === []) {
+            $query->whereRaw('1 = 0');
+
+            return true;
+        }
+        $query->where(function (Builder $w) use ($ids) {
+            foreach (array_chunk($ids, 500) as $chunk) {
+                $w->orWhereIn('id', $chunk);
+            }
         });
 
         return true;
@@ -2888,6 +2769,14 @@ class AmazonAdsController extends Controller
         }
 
         if ($from === null && $to === null) {
+            // Calendar mode with no dates must not scan every historical row.
+            if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)) {
+                $latest = self::latestDailyReportYmdInTable($table);
+                if ($latest !== null && $latest !== '') {
+                    $query->where('report_date_range', $latest);
+                }
+            }
+
             return;
         }
         // Calendar mode: only rows where `report_date_range` is an ISO date (exclude L7, L30, L1, …).
@@ -3045,7 +2934,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Distinct L30 targeting-report rows (keyword_id) per campaign. Used when the live list API fails.
+     * Distinct L30 targeting-report rows (keyword_id) for the campaigns on this page.
      *
      * @param  list<string>  $campaignIds
      * @return array<string, int>
@@ -3055,24 +2944,23 @@ class AmazonAdsController extends Controller
         if ($campaignIds === [] || ! Schema::hasTable('amazon_sp_keyword_reports')) {
             return [];
         }
+
         $cols = Schema::getColumnListing('amazon_sp_keyword_reports');
         if (! in_array('campaign_id', $cols, true) || ! in_array('keyword_id', $cols, true) || ! in_array('report_date_range', $cols, true)) {
             return [];
         }
 
         $map = [];
-        foreach (array_chunk($campaignIds, 500) as $chunk) {
-            $rows = DB::table('amazon_sp_keyword_reports')
-                ->select('campaign_id', DB::raw('COUNT(DISTINCT keyword_id) AS c'))
-                ->where('report_date_range', 'L30')
-                ->whereIn('campaign_id', $chunk)
-                ->whereNotNull('keyword_id')
-                ->where('keyword_id', '!=', '')
-                ->groupBy('campaign_id')
-                ->get();
-            foreach ($rows as $row) {
-                $map[trim((string) $row->campaign_id)] = (int) $row->c;
-            }
+        $rows = DB::table('amazon_sp_keyword_reports')
+            ->select('campaign_id', DB::raw('COUNT(DISTINCT keyword_id) AS c'))
+            ->where('report_date_range', 'L30')
+            ->whereIn('campaign_id', $campaignIds)
+            ->whereNotNull('keyword_id')
+            ->where('keyword_id', '!=', '')
+            ->groupBy('campaign_id')
+            ->get();
+        foreach ($rows as $row) {
+            $map[trim((string) $row->campaign_id)] = (int) $row->c;
         }
 
         return $map;
@@ -3100,30 +2988,33 @@ class AmazonAdsController extends Controller
         if ($ids === [] || ! Schema::hasTable('amazon_sp_negative_keywords')) {
             return array_fill_keys($ids, 0);
         }
+
         $cols = Schema::getColumnListing('amazon_sp_negative_keywords');
         if (! in_array('campaign_id', $cols, true) || ! in_array('keyword_id', $cols, true)) {
             return array_fill_keys($ids, 0);
         }
 
-        $map = array_fill_keys($ids, 0);
+        $map = [];
         $hasState = in_array('state', $cols, true);
-        foreach (array_chunk($ids, 500) as $chunk) {
-            $q = DB::table('amazon_sp_negative_keywords')
-                ->select('campaign_id', DB::raw('COUNT(DISTINCT keyword_id) AS c'))
-                ->whereIn('campaign_id', $chunk)
-                ->whereNotNull('keyword_id')
-                ->where('keyword_id', '!=', '');
-            if ($hasState) {
-                $q->where(function ($w) {
-                    $w->whereNull('state')->orWhereRaw("UPPER(state) <> 'ARCHIVED'");
-                });
-            }
-            foreach ($q->groupBy('campaign_id')->get() as $row) {
-                $map[trim((string) $row->campaign_id)] = (int) $row->c;
-            }
+        $q = DB::table('amazon_sp_negative_keywords')
+            ->select('campaign_id', DB::raw('COUNT(DISTINCT keyword_id) AS c'))
+            ->whereIn('campaign_id', $ids)
+            ->whereNotNull('keyword_id')
+            ->where('keyword_id', '!=', '');
+        if ($hasState) {
+            $q->where(function ($w) {
+                $w->whereNull('state')->orWhereRaw("UPPER(state) <> 'ARCHIVED'");
+            });
+        }
+        foreach ($q->groupBy('campaign_id')->get() as $row) {
+            $map[trim((string) $row->campaign_id)] = (int) $row->c;
+        }
+        $out = [];
+        foreach ($ids as $id) {
+            $out[$id] = $map[$id] ?? 0;
         }
 
-        return $map;
+        return $out;
     }
 
     /**
@@ -4686,8 +4577,6 @@ class AmazonAdsController extends Controller
         // Newest → oldest by default (id desc when id exists and first column).
         $orderDir = strtolower((string) $request->input('order.0.dir', 'desc')) === 'asc' ? 'asc' : 'desc';
 
-        $recordsTotal = (int) DB::table($table)->count();
-
         $query = DB::table($table);
         $usedCalendarSearchFallback = self::applyCalendarSearchWithL30Fallback($query, $table, $dbColumns, $request, $search);
         if (! $usedCalendarSearchFallback) {
@@ -4713,6 +4602,7 @@ class AmazonAdsController extends Controller
         }
 
         $recordsFiltered = (int) $query->clone()->count();
+        $recordsTotal = $recordsFiltered;
 
         $queryForAggregates = $query->clone();
         // Calendar latest-day grid omits paused L30 campaigns Amazon still counts.
@@ -4723,9 +4613,9 @@ class AmazonAdsController extends Controller
 
         $distinctCampaignCount = null;
         if (in_array('campaign_id', $dbColumns, true)) {
-            $distinctCampaignCount = (int) DB::query()
-                ->fromSub($query->clone(), 'r')
-                ->selectRaw('COUNT(DISTINCT r.campaign_id) AS c')
+            $distinctCampaignCount = (int) $query->clone()
+                ->reorder()
+                ->selectRaw('COUNT(DISTINCT `'.$table.'`.campaign_id) AS c')
                 ->value('c');
         }
 
@@ -4776,10 +4666,26 @@ class AmazonAdsController extends Controller
             ? (string) $columns[$orderColumnIndex]
             : '';
         $usePhpSort = in_array($requestedOrderCol, self::PHP_SORT_DISPLAY_COLUMNS, true);
+        $phpSortPaged = false;
 
         if ($usePhpSort) {
             $fetchLen = (int) min(8000, max($recordsFiltered, $start + $length));
-            $rows = $query->limit(max(1, $fetchLen))->get();
+            $window = $query->limit(max(1, $fetchLen))->get();
+            $paged = self::pageRowsMatchingDisplaySort(
+                $window,
+                $table,
+                $dbColumns,
+                $requestedOrderCol,
+                $orderDir,
+                $start,
+                $length
+            );
+            if ($paged !== null) {
+                $rows = $paged;
+                $phpSortPaged = true;
+            } else {
+                $rows = $window;
+            }
         } else {
             $rows = $query->offset($start)
                 ->limit($length)
@@ -5245,7 +5151,7 @@ class AmazonAdsController extends Controller
             $data[] = $arr;
         }
 
-        if ($usePhpSort) {
+        if ($usePhpSort && ! $phpSortPaged) {
             usort($data, static function ($a, $b) use ($requestedOrderCol, $orderDir) {
                 $cmp = self::compareAmazonAdsRowValues(
                     self::amazonAdsRowSortValue($a, $requestedOrderCol),
@@ -5434,6 +5340,112 @@ class AmazonAdsController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * Sort a wide window by the display value, then keep only this page.
+     * Returns null when the column still needs the full row builder (SKU / SBGT).
+     *
+     * @param  iterable<int, object>  $rows
+     * @param  array<int, string>  $dbColumns
+     * @return \Illuminate\Support\Collection<int, object>|null
+     */
+    private static function pageRowsMatchingDisplaySort(
+        iterable $rows,
+        string $table,
+        array $dbColumns,
+        string $column,
+        string $orderDir,
+        int $start,
+        int $length
+    ) {
+        $keys = self::displaySortKeysForPageWindow($rows, $table, $dbColumns, $column);
+        if ($keys === null) {
+            return null;
+        }
+        $indexed = [];
+        $i = 0;
+        foreach ($rows as $row) {
+            $indexed[] = [$row, $keys[$i] ?? null];
+            $i++;
+        }
+        usort($indexed, static function (array $a, array $b) use ($orderDir): int {
+            $cmp = self::compareAmazonAdsRowValues($a[1], $b[1]);
+
+            return $orderDir === 'asc' ? $cmp : -$cmp;
+        });
+        $slice = array_slice($indexed, $start, $length);
+        $out = [];
+        foreach ($slice as $pair) {
+            $out[] = $pair[0];
+        }
+
+        return collect($out);
+    }
+
+    /**
+     * Sort keys for columns that can be ranked from one lookup, aligned with $rows.
+     * Null means the caller must enrich the whole window.
+     *
+     * @param  iterable<int, object>  $rows
+     * @param  array<int, string>  $dbColumns
+     * @return list<mixed>|null
+     */
+    private static function displaySortKeysForPageWindow(iterable $rows, string $table, array $dbColumns, string $column): ?array
+    {
+        $list = [];
+        foreach ($rows as $row) {
+            $list[] = $row;
+        }
+        if ($list === []) {
+            return [];
+        }
+
+        $spendCols = ['L7spend' => 'L7', 'L2spend' => 'L2', 'L1spend' => 'L1'];
+        $utilCols = ['U7%' => 'U7', 'U2%' => 'U2', 'U1%' => 'U1'];
+        $hasAd = in_array('ad_type', $dbColumns, true);
+
+        if (isset($spendCols[$column]) || isset($utilCols[$column])) {
+            $map = self::fetchL7L2L1SpendMap($table, $dbColumns, $list);
+            $keys = [];
+            foreach ($list as $row) {
+                $r = (array) $row;
+                $cid = trim((string) ($r['campaign_id'] ?? ''));
+                $ad = $hasAd ? trim((string) ($r['ad_type'] ?? '')) : '';
+                $slice = ($cid !== '' && isset($map[$cid."\0".$ad]))
+                    ? $map[$cid."\0".$ad]
+                    : ['L7' => null, 'L2' => null, 'L1' => null];
+                if (isset($spendCols[$column])) {
+                    $keys[] = $slice[$spendCols[$column]] ?? null;
+                } else {
+                    $u = self::utilizationPercentValuesFromLSlice($r, $slice);
+                    $keys[] = self::formatUtilPercent($u[$utilCols[$column]] ?? null);
+                }
+            }
+
+            return $keys;
+        }
+
+        if ($column === 'ACOS') {
+            $map = self::fetchL30SummarySliceMap($table, $dbColumns, $list);
+            $keys = [];
+            foreach ($list as $row) {
+                $r = (array) $row;
+                $cid = trim((string) ($r['campaign_id'] ?? ''));
+                $ad = $hasAd ? trim((string) ($r['ad_type'] ?? '')) : '';
+                $lk = $cid."\0".$ad;
+                $arr = [];
+                if ($cid !== '' && isset($map[$lk]) && $map[$lk]['spend'] !== null) {
+                    $arr['cost'] = $map[$lk]['spend'];
+                }
+                $acosRow = self::acosCalculationRowFromGridOverlays($r, $arr, $dbColumns, $map, $cid !== '' ? $lk : '');
+                $keys[] = self::computedAcosPercentFromReportRow($acosRow, $dbColumns);
+            }
+
+            return $keys;
+        }
+
+        return null;
     }
 
     /**
@@ -6474,7 +6486,7 @@ class AmazonAdsController extends Controller
 
         // Fallback (no daily rows): latest L30 row id per campaign.
         $latest = DB::table($table)
-            ->whereRaw("UPPER(TRIM(report_date_range)) = 'L30'")
+            ->where('report_date_range', 'L30')
             ->whereNotNull('campaign_id')
             ->selectRaw('campaign_id, MAX(id) AS max_id')
             ->groupBy('campaign_id');
