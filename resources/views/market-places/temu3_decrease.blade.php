@@ -4314,7 +4314,7 @@
                 },
                 {
                     title: "SNROI%",
-                    field: "sroi_percent",
+                    field: "snroi_percent",
                     hozAlign: "center",
                     sorter: temuSortBy(function(d) { return temuExportSnroi(d); }),
                     headerTooltip: "SNROI% = Dil + CVR Target NROI. S PRC is back-solved so this matches the slab (same as eBay / Amazon). If S PRC was capped to eBay / Amazon / LMP, it shows live SNPFT ÷ LP instead.",
@@ -5334,7 +5334,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|gpft_dollar|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|SPRC_DIL|s_recovery|stemu_price|sgroi_percent|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|_push)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|gpft_dollar|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|SPRC_DIL|s_recovery|stemu_price|sgroi_percent|sgprft_percent|spft_percent|sroi_percent|snroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|_push)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|sgroi|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery|prmt|cpn|dsc|appr|push\s*prc|queue)\b/i.test(tl)
             ) {
                 return 'pricing';
@@ -5710,7 +5710,7 @@
 
         // Columns that should ALWAYS stay hidden and stay out of the column box.
         var alwaysHiddenColumns = [
-            'cvr_45', 'profit', 'SPRC_DIL', 'sroi_percent', 'spft_percent',
+            'cvr_45', 'profit', 'SPRC_DIL', 'spft_percent',
             'missing', 'nr_req', 't_clicks', 't_clicks_growth',
             'lmp_delivery', 'lmp_diff_pct', 'spend',
             'handling_charge', 'o_size_charge', 'temu_ship', 'goods_id',
