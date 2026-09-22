@@ -402,7 +402,14 @@
                             it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
                             (page close OK).
                         </li>
-                        @if(!empty($ebaySprcDilTargetNroi))
+                        @if($ebaySprcDilChannel === 'temu3')
+                        <li>
+                            <strong>When</strong> S PRC is calculated:
+                            set it so <strong>SNROI = Target {{ $ebaySprcDilTargetLabel }}</strong>
+                            (no ads):
+                            <code>(LP × (1 + {{ $ebaySprcDilTargetLabel }}%/100) + Ship) / (0.88 × margin)</code>.
+                        </li>
+                        @elseif(!empty($ebaySprcDilTargetNroi))
                         <li>
                             <strong>When</strong> S PRC is calculated:
                             set it so <strong>SNROI = Target {{ $ebaySprcDilTargetLabel }}</strong>

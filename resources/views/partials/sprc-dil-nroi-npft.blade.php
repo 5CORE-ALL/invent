@@ -40,6 +40,11 @@
             return null;
         }
         function ebayDilRowSprice(d) {
+            // Temu paints S PRC from Dil. SNPFT / SNROI must use that same dollar as SGROI / SGPRFT.
+            if (typeof temuDisplayedSprice === 'function') {
+                const shown = Number(temuDisplayedSprice(d)) || 0;
+                if (shown > 0) return shown;
+            }
             // PLS S PRC cell paints the live Dil price. SNROI must use that same dollar.
             if (typeof EBAY_DIL_GROI_CHANNEL !== 'undefined' && EBAY_DIL_GROI_CHANNEL === 'pls'
                 && typeof plsVisibleSprice === 'function') {
@@ -79,6 +84,20 @@
             if (typeof aeSpriceMetrics === 'function') {
                 const m = aeSpriceMetrics(d) || {};
                 return { sgroi: Number(m.sroi) || 0, sgpft: Number(m.sgpft) || 0 };
+            }
+            // Temu S Profit is S Recovery × margin − ship − LP, same dollars as the SGROI / SGPRFT cells.
+            if (typeof temu2SpftDollars === 'function') {
+                const price = ebayDilRowSprice(d);
+                const lp = ebayDilRowLp(d);
+                if (price > 0) {
+                    const spft = temu2SpftDollars(d, price);
+                    if (spft != null && isFinite(spft)) {
+                        return {
+                            sgroi: lp > 0 ? (spft / lp) * 100 : 0,
+                            sgpft: (spft / price) * 100,
+                        };
+                    }
+                }
             }
             const price = ebayDilRowSprice(d);
             const lp = ebayDilRowLp(d);
@@ -179,6 +198,11 @@
             tbl = tbl || ((typeof table !== 'undefined') ? table : null);
             if (!tbl || typeof tbl.getColumns !== 'function') return false;
             if (tbl._ebayDilNetColsAdded) return true;
+            // Temu 3 defines its own SNROI and SNPFT. Do not inject a second pair.
+            if (typeof EBAY_DIL_GROI_CHANNEL !== 'undefined' && EBAY_DIL_GROI_CHANNEL === 'temu3') {
+                tbl._ebayDilNetColsAdded = true;
+                return true;
+            }
             let cols = [];
             try { cols = tbl.getColumns(true) || []; } catch (e) { return false; }
             if (!cols.length) return false;
