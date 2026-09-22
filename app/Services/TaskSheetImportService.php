@@ -474,7 +474,7 @@ class TaskSheetImportService
             'Select Low, Normal, High, or Urgent.'
         ));
         $sheet->setDataValidation('H2:H200', $this->listValidation(
-            '"Todo,Working,Done,Need Help,Need Approval,Dependent,Approved,Hold,Rework,Cancelled"',
+            '"Todo,Working,Done,Need Help,Need Approval,Dependent,Approved,Hold,Monitor,Rework,Cancelled"',
             'Status',
             'Select a status, or leave Todo.'
         ));
@@ -779,6 +779,7 @@ class TaskSheetImportService
             'dependent' => 'Dependent',
             'approved' => 'Approved',
             'hold' => 'Hold',
+            'monitor' => 'Monitor',
             'rework' => 'Rework',
             'cancelled' => 'Cancelled',
         ];

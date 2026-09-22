@@ -1445,7 +1445,7 @@
                     <div class="alert alert-info">
                         <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
                         <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, CL (hover: Checklist), Report (hover: Form report)</p>
-                        <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
+                        <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Monitor, Rework, Cancelled</p>
                         <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, High, Urgent</p>
                         <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
                     </div>
@@ -4385,6 +4385,7 @@
                 'dependent': 'Dependent',
                 'approved': 'Approved',
                 'hold': 'Hold',
+                'monitor': 'Monitor',
                 'rework': 'Rework',
                 'cancelled': 'Cancelled'
             };

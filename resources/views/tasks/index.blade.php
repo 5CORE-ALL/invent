@@ -1287,6 +1287,12 @@
             border: 1px solid #ced4da;
         }
 
+        .status-monitor {
+            background-color: #ccfbf1;
+            color: #115e59;
+            border: 1px solid #5eead4;
+        }
+
         .status-cancelled {
             background-color: #f8d7da;
             color: #721c24;
@@ -2169,6 +2175,7 @@
                                     <option value="Dependent">Dependent</option>
                                     <option value="Approved">Approved</option>
                                     <option value="Hold">Hold</option>
+                                    <option value="Monitor">Monitor</option>
                                     <option value="Cancelled">Cancelled</option>
                                     <option value="Missed" style="color: #dc3545; font-weight: 600;">Missed</option>
                                 </select>
@@ -2863,7 +2870,7 @@
                         <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>Sheet Format:</h6>
                         <p class="mb-1"><strong>Required:</strong> Task, Assignee</p>
                         <p class="mb-1"><strong>Optional:</strong> Assignor, Group, Priority, Status, Description, ETC Minutes, Start Date, L1, L2, Training, Video, Form, Form Report, Checklist, PL, Process, Corrective Action</p>
-                        <p class="mb-1"><strong>Status Options:</strong> Todo, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
+                        <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Done, Need Help, Need Approval, Dependent, Approved, Hold, Monitor, Rework, Cancelled</p>
                         <p class="mb-1"><strong>Priority Options:</strong> Low, Normal, Urgent</p>
                         <p class="mb-0"><small class="text-muted">Download the <strong>Excel</strong> template. Click Assignee and choose the person from the dropdown. Use Assignee 2 / Assignee 3 for more people. Do not type a different name.</small></p>
                     </div>
@@ -3737,6 +3744,9 @@
                         case 'Hold':
                             statusBadge = 'bg-secondary text-white';
                             break;
+                        case 'Monitor':
+                            statusBadge = 'bg-info text-dark';
+                            break;
                         case 'Cancelled':
                             statusBadge = 'bg-dark text-white';
                             break;
@@ -4466,6 +4476,7 @@
                                 'Dependent': {bg: '#d63384', text: '#fff'},
                                 'Approved': {bg: '#20c997', text: '#000'},
                                 'Hold': {bg: '#495057', text: '#fff'},
+                                'Monitor': {bg: '#0f766e', text: '#fff'},
                                 'Rework': {bg: '#f5576c', text: '#fff'}
                             };
                             var currentStatus = statuses[value] || {bg: '#6c757d', text: '#fff'};
@@ -4488,6 +4499,7 @@
                                     <option value="Dependent" ${value === 'Dependent' ? 'selected' : ''}>Dependent</option>
                                     <option value="Approved" ${value === 'Approved' ? 'selected' : ''}>Approved</option>
                                     <option value="Hold" ${value === 'Hold' ? 'selected' : ''}>Hold</option>
+                                    <option value="Monitor" ${value === 'Monitor' ? 'selected' : ''}>Monitor</option>
                                     <option value="Rework" ${value === 'Rework' ? 'selected' : ''}>Rework</option>
                                 </select>
                             `;
@@ -6945,6 +6957,7 @@
                     'Dependent':     { bg: '#d63384', text: '#fff' },
                     'Approved':      { bg: '#20c997', text: '#000' },
                     'Hold':          { bg: '#495057', text: '#fff' },
+                    'Monitor':       { bg: '#0f766e', text: '#fff' },
                     'Rework':        { bg: '#f5576c', text: '#fff' }
                 };
                 var statusVal = d && d.status ? d.status : '-';
@@ -7919,6 +7932,7 @@
                 'Dependent': 'Dependent',
                 'Approved': 'Approved',
                 'Hold': 'Hold',
+                'Monitor': 'Monitor',
                 'Rework': 'Rework'
             };
             
