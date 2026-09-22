@@ -14,7 +14,26 @@ use Illuminate\Support\Str;
 
 class ChatWorkspace
 {
-    public const BOT_NAME = '@invent';
+    public const BOT_NAME = '5 Core Bot';
+
+    public const BOT_HANDLE = '@invent';
+
+    public const BOT_AVATAR = 'assets/images/5core-bot-logo.png';
+
+    public static function botDisplayName(?string $stored = null): string
+    {
+        $stored = trim((string) $stored);
+        if ($stored === '' || in_array(strtolower($stored), ['@invent', 'invent', 'invent bot', 'inventbot'], true)) {
+            return self::BOT_NAME;
+        }
+
+        return $stored;
+    }
+
+    public static function botAvatarUrl(): string
+    {
+        return asset(self::BOT_AVATAR);
+    }
 
     public const ATTACH_MAX_KB = 10240;
 
@@ -152,11 +171,15 @@ class ChatWorkspace
             ['slug' => $slug],
             [
                 'type' => ChatChannel::TYPE_BOT,
-                'name' => 'Invent Bot',
+                'name' => self::BOT_NAME,
                 'topic' => 'Daily DAR and overdue reminders, plus @invent commands',
                 'created_by' => $user->id,
             ]
         );
+        if ($channel->name !== self::BOT_NAME) {
+            $channel->name = self::BOT_NAME;
+            $channel->save();
+        }
         self::ensureMember($channel, (int) $user->id);
 
         ChatMessage::query()
@@ -359,7 +382,7 @@ class ChatWorkspace
             $out[] = [
                 'id' => (int) $channel->id,
                 'type' => $channel->type,
-                'name' => $label,
+                'name' => $channel->isBotInbox() ? self::BOT_NAME : $label,
                 'slug' => $channel->slug,
                 'topic' => $channel->topic,
                 'unread' => (int) ($unread[$channel->id] ?? 0),
@@ -367,7 +390,7 @@ class ChatWorkspace
                 'last_read_message_id' => $lastRead,
                 'first_unread_id' => $lastRead > 0 ? $lastRead + 1 : null,
                 'peer_id' => $peer?->id,
-                'avatar' => $channel->isBotInbox() ? null : self::avatarUrl($peer),
+                'avatar' => $channel->isBotInbox() ? self::botAvatarUrl() : self::avatarUrl($peer),
                 'member_count' => (int) ($memberCounts[$channel->id] ?? 0),
                 'online' => (bool) ($peerPresence['online'] ?? false),
                 'status' => $peerPresence['status'] ?? 'active',
@@ -617,7 +640,7 @@ class ChatWorkspace
                 $origUser = $orig->user;
                 $forwarded = [
                     'id' => (int) $orig->id,
-                    'name' => $orig->is_bot ? ($orig->bot_name ?: self::BOT_NAME) : ($origUser->name ?? 'Member'),
+                    'name' => $orig->is_bot ? self::botDisplayName($orig->bot_name) : ($origUser->name ?? 'Member'),
                     'preview' => Str::limit(trim((string) ($orig->body ?: $orig->attachment_name ?: 'Attachment')), 140),
                 ];
             }
@@ -632,11 +655,11 @@ class ChatWorkspace
             'parent_id' => $message->parent_id ? (int) $message->parent_id : null,
             'user_id' => $message->user_id ? (int) $message->user_id : null,
             'is_bot' => (bool) $message->is_bot,
-            'bot_name' => $message->bot_name ?: self::BOT_NAME,
+            'bot_name' => $message->is_bot ? self::botDisplayName($message->bot_name) : ($message->bot_name ?: self::BOT_NAME),
             'name' => $message->is_bot
-                ? ($message->bot_name ?: self::BOT_NAME)
+                ? self::botDisplayName($message->bot_name)
                 : ($user->name ?? 'Member'),
-            'avatar' => $message->is_bot ? null : self::avatarUrl($user),
+            'avatar' => $message->is_bot ? self::botAvatarUrl() : self::avatarUrl($user),
             'body' => $deleted ? null : $message->body,
             'html' => $deleted ? '<em>This message was deleted.</em>' : self::formatBody($message->body),
             'attachment_url' => (! $deleted && $message->attachment_path) ? route('chat.file', $message->id) : null,
@@ -889,7 +912,7 @@ class ChatWorkspace
                 'channel_id' => (int) $m->channel_id,
                 'channel_name' => $ch?->name,
                 'channel_type' => $ch?->type,
-                'name' => $m->user->name ?? ($m->is_bot ? self::BOT_NAME : 'Member'),
+                'name' => $m->user->name ?? ($m->is_bot ? self::botDisplayName($m->bot_name) : 'Member'),
                 'preview' => Str::limit((string) ($m->body ?: $m->attachment_name), 160),
                 'created_label' => optional($m->created_at)->timezone(TaskBusinessTime::tz())->format('M j, g:i A'),
                 'has_attachment' => (bool) $m->attachment_path,

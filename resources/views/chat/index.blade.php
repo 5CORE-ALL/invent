@@ -77,7 +77,8 @@
         .slack-item.is-active { background: #1164a3; color: #fff; }
         .slack-item.is-unread { font-weight: 800; color: #fff; }
         .slack-item__hash { width: 14px; opacity: .7; }
-        .slack-item img { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; }
+        .slack-item img { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; background: #fff; }
+        .slack-item img.slack-bot-logo { border-radius: 50%; }
         .slack-dot {
             width: 8px; height: 8px; border-radius: 50%;
             background: #2bac76; box-shadow: 0 0 0 2px rgba(43,172,118,.2);
@@ -125,6 +126,7 @@
         .slack-msg { display: flex; gap: 10px; padding: 6px 20px; position: relative; }
         .slack-msg:hover { background: #f8f8f8; }
         .slack-msg__avatar { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; background: #3f0e40; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; flex-shrink: 0; }
+        img.slack-msg__avatar.is-bot-logo { background: #fff; border-radius: 50%; }
         .slack-msg__meta { font-size: 12px; color: #616061; }
         .slack-msg__meta strong { color: #1d1c1d; font-size: 14px; margin-right: 6px; }
         .slack-msg__body { color: #1d1c1d; font-size: 15px; line-height: 1.45; word-break: break-word; }
@@ -276,7 +278,7 @@
                 <div class="slack-pick" id="slackPeopleList"></div>
             </div>
             <div class="slack-nav__scroll">
-                <div class="slack-sec">Invent Bot</div>
+                <div class="slack-sec">5 Core Bot</div>
                 <div id="slackBotList"></div>
                 <div class="slack-sec">
                     <span>Channels</span>
@@ -663,7 +665,9 @@
             btn.type = 'button';
             btn.className = 'slack-item' + (ch.id === activeId ? ' is-active' : '') + (ch.unread > 0 ? ' is-unread' : '');
             const prefix = (ch.type === 'public' || ch.type === 'private') ? '<span class="slack-item__hash">#</span>' : '';
-            const avatar = ch.avatar ? '<img src="' + esc(ch.avatar) + '" alt="">' : (ch.type === 'bot' ? '<i class="ri-robot-2-line"></i>' : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : ''));
+            const avatar = ch.avatar
+                ? '<img class="' + (ch.type === 'bot' ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
+                : (ch.type === 'bot' ? '<i class="ri-robot-2-line"></i>' : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : ''));
             const dot = (ch.type === 'dm') ? '<span class="' + presenceDotClass('slack-dot', ch) + '" title="' + esc(presenceTitle(ch)) + '"></span>' : '';
             const badge = ch.unread > 0 ? '<span class="slack-item__badge">' + ch.unread + '</span>' : '';
             btn.innerHTML = avatar + prefix + dot + '<span class="slack-item__name">' + esc(ch.name) + '</span>' + badge;
@@ -727,7 +731,7 @@
         wrap.className = 'slack-msg' + (m.failed ? ' is-failed' : '') + (m.pending ? ' is-pending' : '');
         wrap.dataset.clientId = m.client_id || '';
         const avatar = m.is_bot
-            ? '<div class="slack-msg__avatar">@i</div>'
+            ? '<img class="slack-msg__avatar is-bot-logo" src="' + esc(m.avatar || '') + '" alt="5 Core Bot">'
             : '<img class="slack-msg__avatar" src="' + esc(m.avatar || '') + '" alt="">';
         let fwd = '';
         if (m.forwarded) {
@@ -763,7 +767,7 @@
             '</div>'
         );
         wrap.innerHTML = avatar + '<div style="flex:1;min-width:0">' +
-            '<div class="slack-msg__meta"><strong>' + esc(m.is_bot ? 'Invent' : m.name) + '</strong>' + esc(m.created_label || '') + edited + '</div>' +
+            '<div class="slack-msg__meta"><strong>' + esc(m.name || (m.is_bot ? '5 Core Bot' : '')) + '</strong>' + esc(m.created_label || '') + edited + '</div>' +
             fwd + '<div class="slack-msg__body">' + (m.html || esc(m.body || '')) + '</div>' + file + task +
             (rx ? '<div class="mt-1">' + rx + '</div>' : '') + replies + seen +
             '</div>' + actions;

@@ -11,7 +11,7 @@ class ChatDailyNudges extends Command
 {
     protected $signature = 'chat:daily-nudges';
 
-    protected $description = 'Send once-a-day DAR and overdue Invent Bot DMs';
+    protected $description = 'Send once-a-day DAR and overdue 5 Core Bot DMs';
 
     public function handle(): int
     {

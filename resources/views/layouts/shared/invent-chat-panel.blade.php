@@ -44,14 +44,15 @@
         height: 36px;
         border-radius: 50%;
         object-fit: cover;
-        background: #115e59;
+        background: #fff;
+        overflow: hidden;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: 800;
         flex-shrink: 0;
     }
-    .invent-bot-head__avatar img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+    .invent-bot-head__avatar img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: #fff; }
     .invent-bot-head__text { flex: 1; min-width: 0; }
     .invent-bot-head__name { font-weight: 800; font-size: 15px; line-height: 1.2; }
     .invent-bot-head__sub { font-size: 11px; opacity: .85; }
@@ -99,6 +100,7 @@
         height: 22px;
         border-radius: 50%;
         object-fit: cover;
+        background: #fff;
     }
     .invent-bot-chip__bot {
         background: #0f766e;
@@ -134,6 +136,7 @@
         justify-content: center;
         flex-shrink: 0;
     }
+    img.invent-bot-msg__avatar { background: #fff; }
     .invent-bot-msg__bubble {
         max-width: 80%;
         background: #fff;
@@ -199,11 +202,11 @@
 
 <div class="invent-bot-root" id="inventChatRoot" hidden>
     <div class="invent-bot-backdrop" id="inventChatBackdrop"></div>
-    <aside class="invent-bot-panel" role="dialog" aria-label="Invent chatbot">
+    <aside class="invent-bot-panel" role="dialog" aria-label="5 Core Bot">
         <div class="invent-bot-head">
-            <div class="invent-bot-head__avatar" id="inventChatHeadAvatar">@i</div>
+            <div class="invent-bot-head__avatar" id="inventChatHeadAvatar"><img src="{{ asset('assets/images/5core-bot-logo.png') }}" alt="5 Core Bot"></div>
             <div class="invent-bot-head__text">
-                <div class="invent-bot-head__name" id="inventChatHeadName">Invent</div>
+                <div class="invent-bot-head__name" id="inventChatHeadName">5 Core Bot</div>
                 <div class="invent-bot-head__sub" id="inventChatHeadSub">Ask for a task, overdue, DAR, or SI</div>
             </div>
             <button type="button" class="invent-bot-head__close" id="inventChatClose" aria-label="Close">&times;</button>
@@ -213,7 +216,7 @@
             <div class="invent-bot-people__list" id="inventChatPeople"></div>
         </div>
         <div class="invent-bot-feed" id="inventChatFeed">
-            <div class="invent-bot-empty">Opening Invent…</div>
+            <div class="invent-bot-empty">Opening 5 Core Bot…</div>
         </div>
         <div class="invent-bot-actions" id="inventChatActions">
             <button type="button" data-send="overdue">Overdue</button>
@@ -222,7 +225,7 @@
             <button type="button" data-task="1">New task</button>
         </div>
         <form class="invent-bot-composer" id="inventChatComposer">
-            <textarea id="inventChatBody" rows="2" placeholder="Ask Invent…  e.g. Create a task Buy tape @aman"></textarea>
+            <textarea id="inventChatBody" rows="2" placeholder="Ask 5 Core Bot…  e.g. Create a task Buy tape @aman"></textarea>
             <div class="invent-bot-composer__row">
                 <label class="invent-bot-file">
                     <input type="file" id="inventChatFile" hidden>
@@ -256,6 +259,8 @@
     let opened = false;
     let taskMode = false;
     const meId = {{ (int) auth()->id() }};
+    const botName = @json(\App\Support\ChatWorkspace::BOT_NAME);
+    const botAvatar = @json(\App\Support\ChatWorkspace::botAvatarUrl());
 
     function esc(s) {
         return String(s == null ? '' : s)
@@ -303,7 +308,7 @@
         peopleEl.innerHTML = chips.map(function (c) {
             const active = c.channel && c.id === activeId;
             const avatar = c.type === 'bot'
-                ? '<span class="invent-bot-chip__bot">@i</span>'
+                ? '<img src="' + esc(c.avatar || botAvatar) + '" alt="' + esc(botName) + '">'
                 : '<img src="' + esc(c.avatar || '') + '" alt="">';
             const badge = c.unread > 0 ? ' · ' + c.unread : '';
             return '<button type="button" class="invent-bot-chip' + (active ? ' is-active' : '') + (c.unread ? ' is-unread' : '') + '" data-channel="' + (c.channel ? c.id : '') + '" data-user="' + (c.userId || '') + '">' + avatar + esc(c.name) + badge + '</button>';
@@ -342,16 +347,18 @@
         const subEl = document.getElementById('inventChatHeadSub');
         const av = document.getElementById('inventChatHeadAvatar');
         const isBot = !ch || ch.type === 'bot';
-        nameEl.textContent = isBot ? 'Invent' : (ch.name || 'Chat');
+        nameEl.textContent = isBot ? botName : (ch.name || 'Chat');
         subEl.textContent = isBot ? 'Ask for a task, overdue, DAR, or SI' : 'Direct message';
-        if (isBot || !ch.avatar) {
-            av.innerHTML = '@i';
-        } else {
+        if (isBot) {
+            av.innerHTML = '<img src="' + esc(botAvatar) + '" alt="' + esc(botName) + '">';
+        } else if (ch && ch.avatar) {
             av.innerHTML = '<img src="' + esc(ch.avatar) + '" alt="">';
+        } else {
+            av.innerHTML = '';
         }
         actions.style.display = isBot ? '' : 'none';
         bodyEl.placeholder = isBot
-            ? 'Ask Invent…  e.g. Create a task Buy tape @aman'
+            ? 'Ask 5 Core Bot…  e.g. Create a task Buy tape @aman'
             : 'Message ' + (ch.name || '');
     }
 
@@ -368,7 +375,7 @@
             wrap.id = 'invent-bot-msg-' + m.id;
             wrap.className = 'invent-bot-msg' + (m.is_bot ? ' is-bot' : '') + (mine ? ' is-mine' : '');
             const avatar = m.is_bot
-                ? '<div class="invent-bot-msg__avatar">@i</div>'
+                ? '<img class="invent-bot-msg__avatar" src="' + esc(m.avatar || botAvatar) + '" alt="' + esc(botName) + '">'
                 : '<img class="invent-bot-msg__avatar" src="' + esc(m.avatar || '') + '" alt="">';
             let file = '';
             if (m.attachment_url) {
@@ -376,7 +383,7 @@
                     ? '<div class="invent-bot-msg__file"><a href="' + esc(m.attachment_url) + '" target="_blank"><img src="' + esc(m.attachment_url) + '" alt=""></a></div>'
                     : '<div class="invent-bot-msg__file"><a href="' + esc(m.attachment_url) + '" target="_blank">' + esc(m.attachment_name || 'File') + '</a></div>';
             }
-            wrap.innerHTML = avatar + '<div class="invent-bot-msg__bubble"><div class="invent-bot-msg__meta">' + esc(m.is_bot ? 'Invent' : (m.name || '')) + ' · ' + esc(m.created_label || '') + '</div><div class="invent-bot-msg__body">' + (m.html || esc(m.body || '')) + '</div>' + file + '</div>';
+            wrap.innerHTML = avatar + '<div class="invent-bot-msg__bubble"><div class="invent-bot-msg__meta">' + esc(m.is_bot ? (m.name || botName) : (m.name || '')) + ' · ' + esc(m.created_label || '') + '</div><div class="invent-bot-msg__body">' + (m.html || esc(m.body || '')) + '</div>' + file + '</div>';
             feed.appendChild(wrap);
             lastId = Math.max(lastId, Number(m.id) || 0);
         });
@@ -412,7 +419,7 @@
         fileEl.value = '';
         fileNameEl.textContent = '';
         taskMode = false;
-        bodyEl.placeholder = 'Ask Invent…  e.g. Create a task Buy tape @aman';
+        bodyEl.placeholder = 'Ask 5 Core Bot…  e.g. Create a task Buy tape @aman';
         appendMessages(data.messages || [], false);
         loadInbox();
     }

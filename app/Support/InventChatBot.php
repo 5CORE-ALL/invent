@@ -15,7 +15,7 @@ class InventChatBot
 {
     public static function welcomeText(): string
     {
-        return "Hi, I'm Invent.\n"
+        return "Hi, I'm 5 Core Bot.\n"
             .'I can create a task or check overdue, DAR, and SI. Tap a button or just tell me what you need.';
     }
 
