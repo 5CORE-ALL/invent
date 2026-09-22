@@ -1388,6 +1388,36 @@ class VeeqoShopifyFulfillmentService
      * @param  list<string>  $excludeTrackings
      * @return array{tracking: string, carrier: string, source: string}|null
      */
+    /**
+     * Veeqo / 3PL holds the fulfillment order — Admin cannot add tracking until we move it.
+     *
+     * @param  array<string, mixed>  $fo
+     */
+    public static function fulfillmentOrderAssignedToService(array $fo): bool
+    {
+        $name = strtolower((string) (data_get($fo, 'assigned_location.name') ?? ''));
+        if (str_contains($name, 'fulfillment service') || str_contains($name, 'veeqo') || str_contains($name, 'gofo')) {
+            return true;
+        }
+        $handle = strtolower((string) (data_get($fo, 'assigned_fulfillment_service.handle') ?? ''));
+        if ($handle !== '' && $handle !== 'manual') {
+            return true;
+        }
+        $request = strtolower((string) ($fo['request_status'] ?? ''));
+        if (in_array($request, ['submitted', 'accepted', 'cancellation_rejected'], true)) {
+            return true;
+        }
+        $actions = [];
+        foreach ((array) ($fo['supported_actions'] ?? []) as $action) {
+            $action = strtolower(trim((string) $action));
+            if ($action !== '') {
+                $actions[] = $action;
+            }
+        }
+
+        return $actions !== [] && ! in_array('create_fulfillment', $actions, true);
+    }
+
     public static function sofLocalTrackingIfReady(?array $localTracking, array $excludeTrackings = []): ?array
     {
         $tn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
@@ -1417,12 +1447,22 @@ class VeeqoShopifyFulfillmentService
     public function syncUnfulfilledShopifyFromSofTracking(int $limit = 200): array
     {
         $limit = max(1, min(500, $limit));
-        $checked = 0;
-        $fulfilled = 0;
-        $skipped = 0;
-        $failed = 0;
-        $since = now('America/Los_Angeles')->subDays(7)->startOfDay()->utc()->toIso8601String();
+        $pagePush = $this->pushSofPageTrackingToShopify($limit);
+        $checked = (int) ($pagePush['checked'] ?? 0);
+        $fulfilled = (int) ($pagePush['fulfilled'] ?? 0);
+        $skipped = (int) ($pagePush['skipped'] ?? 0);
+        $failed = (int) ($pagePush['failed'] ?? 0);
+        if ($checked >= $limit) {
+            return [
+                'checked' => $checked,
+                'fulfilled' => $fulfilled,
+                'skipped' => $skipped,
+                'failed' => $failed,
+                'message' => $pagePush['message'] ?? "Unfulfilled Shopify←SOF: checked {$checked}, fulfilled {$fulfilled}, skipped {$skipped}, failed {$failed}.",
+            ];
+        }
 
+        $since = now('America/Los_Angeles')->subDays(7)->startOfDay()->utc()->toIso8601String();
         foreach ($this->uniqueShopifyConfigs() as $config) {
             $storeUrl = trim((string) ($config['store_url'] ?? ''));
             $token = trim((string) ($config['token'] ?? ''));
@@ -1555,6 +1595,126 @@ class VeeqoShopifyFulfillmentService
         }
 
         return $this->trackingFromLoadedMarketplaceModel($marketplace, $model);
+    }
+
+    /**
+     * Use the exact tracking numbers /sales-order-fulfillment already displays.
+     *
+     * @return array{checked: int, fulfilled: int, skipped: int, failed: int, message: string}
+     */
+    public function pushSofPageTrackingToShopify(int $limit = 200): array
+    {
+        $limit = max(1, min(500, $limit));
+        $checked = 0;
+        $fulfilled = 0;
+        $skipped = 0;
+        $failed = 0;
+        $rows = app(\App\Http\Controllers\Channels\SalesOrderFulfillmentController::class)
+            ->trackingRowsReadyForShopifyPush(max($limit * 2, $limit));
+
+        foreach ($rows as $row) {
+            if ($checked >= $limit) {
+                break;
+            }
+            $marketplace = (string) ($row['marketplace'] ?? '');
+            $tracking = (string) ($row['tracking'] ?? '');
+            $carrier = (string) ($row['carrier'] ?? 'Other');
+            $storedId = (string) ($row['shopify_order_id'] ?? '');
+            if ($marketplace === '' || $tracking === '' || $storedId === '') {
+                continue;
+            }
+            $config = $this->shopifyConfigFor($marketplace);
+            $shopifyId = $this->resolveShopifyRestOrderId($config, $storedId);
+            if ($shopifyId === '') {
+                $failed++;
+                $checked++;
+                Log::info('VeeqoShopifyFulfillmentService: SOF page row has no Shopify REST id', [
+                    'marketplace' => $marketplace,
+                    'stored' => $storedId,
+                    'tracking' => $tracking,
+                ]);
+                continue;
+            }
+            $checked++;
+            $created = $this->createShopifyFulfillment(
+                $config,
+                $shopifyId,
+                $tracking,
+                $carrier,
+                (string) ($row['sku'] ?? ''),
+                0
+            );
+            if (empty($created['success'])) {
+                $created = $this->createShopifyFulfillment($config, $shopifyId, $tracking, $carrier, '', 0);
+            }
+            if (! empty($created['success']) && empty($created['already'])) {
+                $fulfilled++;
+                $this->cacheTrackingOnShopifyRawOrder($shopifyId, $tracking, $carrier);
+                $rowId = (int) ($row['row_id'] ?? 0);
+                if ($rowId > 0) {
+                    $this->persistTrackingOntoMarketplaceOrder($marketplace, $rowId, $shopifyId, $tracking, $carrier);
+                }
+            } elseif (! empty($created['success'])) {
+                $skipped++;
+            } else {
+                $failed++;
+                Log::info('VeeqoShopifyFulfillmentService: SOF page→Shopify fulfill failed', [
+                    'marketplace' => $marketplace,
+                    'shopify_order_id' => $shopifyId,
+                    'tracking' => $tracking,
+                    'message' => $created['message'] ?? '',
+                ]);
+            }
+            usleep(80000);
+        }
+
+        return [
+            'checked' => $checked,
+            'fulfilled' => $fulfilled,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "SOF page→Shopify: checked {$checked}, fulfilled {$fulfilled}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    /**
+     * Shopify Admin REST needs the 13-digit id, not #3427433.
+     */
+    protected function resolveShopifyRestOrderId(array $config, string $stored): string
+    {
+        $stored = trim($stored);
+        if ($stored === '' || str_starts_with($stored, 'manual')) {
+            return '';
+        }
+        if (preg_match('/^\d{10,}$/', $stored) === 1) {
+            return $stored;
+        }
+
+        $storeUrl = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        if ($storeUrl === '' || $token === '') {
+            return '';
+        }
+        $name = ltrim($stored, '#');
+        if ($name === '') {
+            return '';
+        }
+        try {
+            $gql = $this->shopifyApi($storeUrl, $token, 'POST', 'graphql.json', [
+                'query' => 'query ($q: String!) { orders(first: 5, query: $q) { edges { node { id name } } } }',
+                'variables' => ['q' => 'name:#'.$name.' OR name:'.$name],
+            ]);
+            foreach ($gql?->json('data.orders.edges') ?? [] as $edge) {
+                $gid = (string) data_get($edge, 'node.id', '');
+                if (preg_match('/(\d{10,})$/', $gid, $m)) {
+                    return $m[1];
+                }
+            }
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return '';
     }
 
     /**
@@ -4082,7 +4242,10 @@ class VeeqoShopifyFulfillmentService
             $foId = (int) $fo['id'];
             $didCancelRequest = false;
 
-            if (! $canCreate && in_array('cancel_fulfillment_request', $actions, true)) {
+            if (
+                in_array('cancel_fulfillment_request', $actions, true)
+                && (! $canCreate || self::fulfillmentOrderAssignedToService($fo))
+            ) {
                 $cancelled = $this->cancelShopifyFulfillmentRequest($storeUrl, $token, $foId);
                 if (is_array($cancelled) && ! empty($cancelled['id'])) {
                     $fo = $cancelled;
@@ -4098,7 +4261,10 @@ class VeeqoShopifyFulfillmentService
                 }
             }
 
-            if ($forceMove || (! $canCreate && ($canMove || $didCancelRequest))) {
+            $needsTakeover = $forceMove
+                || self::fulfillmentOrderAssignedToService($fo)
+                || (! $canCreate && ($canMove || $didCancelRequest));
+            if ($needsTakeover) {
                 if ($locationId === null) {
                     $locationId = $this->shopifyMerchantLocationId($storeUrl, $token, $fo);
                 }

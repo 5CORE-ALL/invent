@@ -1974,6 +1974,49 @@ class SalesOrderFulfillmentController extends Controller
         return $this->cachedLabelCreatedRows;
     }
 
+    /**
+     * Same tracking the /sales-order-fulfillment grid already shows, ready to fulfill Shopify.
+     *
+     * @return list<array{marketplace: string, shopify_order_id: string, tracking: string, carrier: string, sku: string, row_id: int}>
+     */
+    public function trackingRowsReadyForShopifyPush(int $limit = 250): array
+    {
+        $limit = max(1, min(800, $limit));
+        $out = [];
+        $seen = [];
+        foreach ($this->labelCreatedOrderRows() as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $tn = trim((string) ($row['tracking_number'] ?? ''));
+            if (! $this->looksLikeCarrierTrackingNumber($tn)) {
+                continue;
+            }
+            $sid = trim((string) ($row['shopify_order_id'] ?? ''));
+            if ($sid === '' || str_starts_with($sid, 'manual')) {
+                continue;
+            }
+            $key = strtolower($sid.'|'.strtoupper(preg_replace('/\s+/', '', $tn) ?? $tn));
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = [
+                'marketplace' => strtolower(trim((string) ($row['mm_slug'] ?? ''))),
+                'shopify_order_id' => $sid,
+                'tracking' => strtoupper(preg_replace('/\s+/', '', $tn) ?? $tn),
+                'carrier' => trim((string) ($row['tracking_company'] ?? '')) ?: 'Other',
+                'sku' => trim((string) ($row['sku'] ?? '')),
+                'row_id' => (int) ($row['row_id'] ?? $row['show_id'] ?? 0),
+            ];
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
     protected function carrierStatusHasLeftLabelCreated(?string $shipmentStatus): bool
     {
         return in_array((string) $shipmentStatus, [
