@@ -35,6 +35,7 @@ class ChatController extends Controller
 
         if (ChatWorkspace::tablesReady()) {
             ChatWorkspace::bootstrap($user);
+            ChatWorkspace::pruneImplicitPublicMembersOnce();
             ChatPresence::touch($user);
         }
 
@@ -392,13 +393,6 @@ class ChatController extends Controller
             $validated['member_ids'] ?? []
         )));
 
-        if ($validated['type'] === ChatChannel::TYPE_PUBLIC) {
-            $memberIds = ChatWorkspace::activeUsersQuery()->pluck('id')->map(fn ($id) => (int) $id)->all();
-            if (! in_array((int) $user->id, $memberIds, true)) {
-                $memberIds[] = (int) $user->id;
-            }
-        }
-
         $now = now();
         $rows = [];
         foreach ($memberIds as $memberId) {
@@ -418,14 +412,15 @@ class ChatController extends Controller
             'name' => $channel->name,
         ]);
 
-        ChatMessage::query()->create([
-            'channel_id' => $channel->id,
-            'user_id' => null,
-            'is_bot' => true,
-            'bot_name' => ChatWorkspace::BOT_NAME,
-            'body' => '#'.$channel->name.' created by '.$user->name.'.',
-            'command' => 'channel',
-        ]);
+        $others = array_values(array_filter($memberIds, static fn ($id) => $id !== (int) $user->id));
+        $added = ChatWorkspace::formatNameList(
+            User::query()->whereIn('id', $others)->orderBy('name')->pluck('name')->all()
+        );
+        ChatWorkspace::postSystemNotice(
+            $channel,
+            $user->name.' created #'.$channel->name.($added !== '' ? ' and added '.$added : ''),
+            'channel'
+        );
 
         return response()->json(['channel_id' => (int) $channel->id]);
     }
@@ -740,8 +735,11 @@ class ChatController extends Controller
     {
         $user = Auth::user();
         abort_unless($user, 403);
-        $row = ChatWorkspace::memberOrFail($user, $channel);
+        $row = ChatWorkspace::canManageChannels($user)
+            ? ChatChannel::query()->findOrFail($channel)
+            : ChatWorkspace::memberOrFail($user, $channel);
         abort_unless(ChatWorkspace::canManageMembers($user, $row), 403);
+        ChatWorkspace::pruneImplicitPublicMembersOnce();
 
         $validated = $request->validate([
             'add' => 'nullable|array',
@@ -750,12 +748,16 @@ class ChatController extends Controller
             'remove.*' => 'integer|exists:users,id',
         ]);
 
+        $added = [];
         foreach ($validated['add'] ?? [] as $uid) {
-            ChatChannelMember::query()->firstOrCreate(
+            $member = ChatChannelMember::query()->firstOrCreate(
                 ['channel_id' => $row->id, 'user_id' => (int) $uid],
                 ['created_at' => now(), 'updated_at' => now()]
             );
-            ChatAudit::record($user, 'member.added', 'user', (int) $uid, (int) $row->id);
+            if ($member->wasRecentlyCreated) {
+                $added[] = (int) $uid;
+                ChatAudit::record($user, 'member.added', 'user', (int) $uid, (int) $row->id);
+            }
         }
         foreach ($validated['remove'] ?? [] as $uid) {
             if ((int) $uid === (int) $user->id && ! ChatWorkspace::canManageChannels($user)) {
@@ -765,8 +767,18 @@ class ChatController extends Controller
             ChatAudit::record($user, 'member.removed', 'user', (int) $uid, (int) $row->id);
         }
         ChatWorkspace::forgetUnreadCache((int) $user->id);
+        $notice = ChatWorkspace::announceAdded($user, $row, $added);
+        $roster = ChatWorkspace::memberRoster($row);
 
-        return response()->json(['ok' => true, 'member_count' => $row->members()->count()]);
+        return response()->json([
+            'ok' => true,
+            'member_count' => $roster['count'],
+            'member_ids' => $roster['ids'],
+            'member_names' => $roster['names'],
+            'messages' => $notice
+                ? $this->serializeMessages($row, collect([$notice]), (int) $user->id, false)
+                : [],
+        ]);
     }
 
     public function createTask(Request $request, int $message): JsonResponse
@@ -963,6 +975,7 @@ class ChatController extends Controller
             ->where('channel_id', $channel->id)
             ->where('user_id', $user->id)
             ->first();
+        $roster = ChatWorkspace::memberRoster($channel);
 
         return [
             'id' => (int) $channel->id,
@@ -972,9 +985,10 @@ class ChatController extends Controller
             'peer_id' => $peerId,
             'online' => (bool) ($presence['online'] ?? false),
             'status' => $presence['status'] ?? 'active',
-            'last_seen_label' => $presence['last_seen_label'] ?? ($channel->isGroup() ? $channel->members()->count().' members' : null),
-            'member_count' => (int) $channel->members()->count(),
-            'member_ids' => $channel->members()->pluck('user_id')->map(fn ($id) => (int) $id)->values()->all(),
+            'last_seen_label' => $presence['last_seen_label'] ?? ($roster['names'] !== [] ? implode(', ', $roster['names']) : null),
+            'member_count' => $roster['count'],
+            'member_ids' => $roster['ids'],
+            'member_names' => $roster['names'],
             'last_read_message_id' => (int) ($member->last_read_message_id ?? 0),
             'notify_pref' => $member->notify_pref ?? 'all',
             'can_manage_members' => ChatWorkspace::canManageMembers($user, $channel),

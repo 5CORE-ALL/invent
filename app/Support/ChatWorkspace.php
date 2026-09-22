@@ -129,9 +129,14 @@ class ChatWorkspace
             return;
         }
 
+        $defaultSlugs = array_values(array_filter(array_map(
+            static fn ($def) => (string) ($def['slug'] ?? ''),
+            self::defaultPublicChannels()
+        )));
         $channels = ChatChannel::query()
             ->where('type', ChatChannel::TYPE_PUBLIC)
             ->where('is_archived', false)
+            ->when($defaultSlugs !== [], fn ($q) => $q->whereIn('slug', $defaultSlugs))
             ->get();
 
         foreach ($channels as $channel) {
@@ -281,16 +286,161 @@ class ChatWorkspace
         }
         ChatChannelMember::query()->insert($rows);
 
-        ChatMessage::query()->create([
+        $others = array_values(array_filter($ids, static fn ($id) => $id !== (int) $creator->id));
+        $added = self::formatNameList(
+            User::query()->whereIn('id', $others)->orderBy('name')->pluck('name')->all()
+        );
+        self::postSystemNotice(
+            $channel,
+            $creator->name.' created this group'.($added !== '' ? ' and added '.$added : ''),
+            'group'
+        );
+
+        return $channel;
+    }
+
+    /**
+     * @param  list<string|null>  $names
+     */
+    public static function formatNameList(array $names): string
+    {
+        $names = array_values(array_filter(array_map(static fn ($n) => trim((string) $n), $names)));
+        $count = count($names);
+        if ($count === 0) {
+            return '';
+        }
+        if ($count === 1) {
+            return $names[0];
+        }
+        if ($count === 2) {
+            return $names[0].' and '.$names[1];
+        }
+
+        return implode(', ', array_slice($names, 0, -1)).' and '.$names[$count - 1];
+    }
+
+    public static function postSystemNotice(ChatChannel $channel, string $body, string $command): ChatMessage
+    {
+        return ChatMessage::query()->create([
             'channel_id' => $channel->id,
             'user_id' => null,
             'is_bot' => true,
             'bot_name' => self::BOT_NAME,
-            'body' => $creator->name.' created this group.',
-            'command' => 'group',
+            'body' => $body,
+            'command' => $command,
         ]);
+    }
 
-        return $channel;
+    /**
+     * @param  list<int>  $userIds
+     */
+    public static function announceAdded(User $actor, ChatChannel $channel, array $userIds): ?ChatMessage
+    {
+        $userIds = array_values(array_unique(array_filter(
+            array_map('intval', $userIds),
+            static fn ($id) => $id > 0 && $id !== (int) $actor->id
+        )));
+        if ($userIds === []) {
+            return null;
+        }
+        $list = self::formatNameList(
+            User::query()->whereIn('id', $userIds)->orderBy('name')->pluck('name')->all()
+        );
+        if ($list === '') {
+            return null;
+        }
+
+        return self::postSystemNotice($channel, $actor->name.' added '.$list, 'member');
+    }
+
+    public static function pruneImplicitPublicMembersOnce(): void
+    {
+        if (! self::tablesReady()) {
+            return;
+        }
+
+        Cache::remember('chat_public_member_prune.v2', now()->addYear(), function () {
+            self::pruneImplicitPublicMembers();
+
+            return 1;
+        });
+    }
+
+    public static function pruneImplicitPublicMembers(): void
+    {
+        if (! self::tablesReady()) {
+            return;
+        }
+
+        $defaultSlugs = array_values(array_filter(array_map(
+            static fn ($def) => (string) ($def['slug'] ?? ''),
+            self::defaultPublicChannels()
+        )));
+        $channels = ChatChannel::query()
+            ->where('type', ChatChannel::TYPE_PUBLIC)
+            ->where('is_archived', false)
+            ->when($defaultSlugs !== [], fn ($q) => $q->whereNotIn('slug', $defaultSlugs))
+            ->get();
+
+        foreach ($channels as $channel) {
+            self::pruneImplicitPublicChannel($channel);
+        }
+    }
+
+    public static function pruneImplicitPublicChannel(ChatChannel $channel): void
+    {
+        if ($channel->type !== ChatChannel::TYPE_PUBLIC || $channel->is_archived) {
+            return;
+        }
+        $defaultSlugs = array_values(array_filter(array_map(
+            static fn ($def) => (string) ($def['slug'] ?? ''),
+            self::defaultPublicChannels()
+        )));
+        if (in_array((string) $channel->slug, $defaultSlugs, true)) {
+            return;
+        }
+
+        $keep = [(int) $channel->created_by];
+        $authors = ChatMessage::query()
+            ->where('channel_id', $channel->id)
+            ->where('is_bot', false)
+            ->whereNotNull('user_id')
+            ->pluck('user_id');
+        foreach ($authors as $id) {
+            $keep[] = (int) $id;
+        }
+        $keep = array_values(array_unique(array_filter($keep)));
+        ChatChannelMember::query()
+            ->where('channel_id', $channel->id)
+            ->whereNotIn('user_id', $keep)
+            ->delete();
+    }
+
+    /**
+     * @return array{ids: list<int>, names: list<string>, count: int}
+     */
+    public static function memberRoster(ChatChannel $channel, int $limit = 8): array
+    {
+        $ids = $channel->members()->pluck('user_id')->map(fn ($id) => (int) $id)->values()->all();
+        $names = User::query()
+            ->whereIn('id', $ids)
+            ->orderBy('name')
+            ->pluck('name')
+            ->map(static fn ($n) => trim((string) $n))
+            ->filter()
+            ->values()
+            ->all();
+        $total = count($names);
+        $shown = array_slice($names, 0, $limit);
+        if ($total > $limit) {
+            $shown[] = ($total - $limit).' more';
+        }
+
+        return [
+            'ids' => $ids,
+            'names' => $shown,
+            'count' => $total,
+        ];
     }
 
     public static function memberOrFail(User $user, int $channelId): ChatChannel
@@ -320,6 +470,8 @@ class ChatWorkspace
             });
         }
 
+        self::pruneImplicitPublicMembersOnce();
+
         $memberChannelIds = ChatChannelMember::query()
             ->where('user_id', $user->id)
             ->pluck('channel_id');
@@ -348,6 +500,11 @@ class ChatWorkspace
             ->whereIn('channel_id', $channels->pluck('id'))
             ->groupBy('channel_id')
             ->pluck('c', 'channel_id');
+        $memberIdsByChannel = ChatChannelMember::query()
+            ->whereIn('channel_id', $channels->pluck('id'))
+            ->get(['channel_id', 'user_id'])
+            ->groupBy('channel_id')
+            ->map(fn ($rows) => $rows->pluck('user_id')->map(fn ($id) => (int) $id)->values()->all());
 
         $peerIds = [];
         foreach ($channels as $channel) {
@@ -392,6 +549,7 @@ class ChatWorkspace
                 'peer_id' => $peer?->id,
                 'avatar' => $channel->isBotInbox() ? self::botAvatarUrl() : self::avatarUrl($peer),
                 'member_count' => (int) ($memberCounts[$channel->id] ?? 0),
+                'member_ids' => $memberIdsByChannel[$channel->id] ?? [],
                 'online' => (bool) ($peerPresence['online'] ?? false),
                 'status' => $peerPresence['status'] ?? 'active',
                 'last_seen_label' => $peerPresence['last_seen_label'] ?? null,
@@ -718,7 +876,10 @@ class ChatWorkspace
         if (self::canManageChannels($user)) {
             return true;
         }
-        if (! ($channel->isGroup() || $channel->type === ChatChannel::TYPE_PRIVATE)) {
+        if ((int) $channel->created_by === (int) $user->id) {
+            return true;
+        }
+        if (! ($channel->isGroup() || $channel->type === ChatChannel::TYPE_PRIVATE || $channel->type === ChatChannel::TYPE_PUBLIC)) {
             return false;
         }
 
@@ -737,7 +898,7 @@ class ChatWorkspace
             return true;
         }
 
-        return $channel->isGroup() && (int) $channel->created_by === (int) $user->id;
+        return (int) $channel->created_by === (int) $user->id;
     }
 
     public static function notifyMode(User $user): string

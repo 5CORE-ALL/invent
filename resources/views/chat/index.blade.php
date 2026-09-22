@@ -222,6 +222,20 @@
         .slack-people-col label.is-hidden { display: none; }
         .slack-people-col input { margin-top: 2px; flex-shrink: 0; }
         .slack-people-empty { color: #616061; text-align: center; padding: 24px 8px; }
+        .slack-msg.is-system { justify-content: center; padding: 8px 20px; }
+        .slack-msg.is-system:hover { background: transparent; }
+        .slack-sys {
+            display: inline-block;
+            max-width: 92%;
+            background: #e7f8f2;
+            color: #1f6b4a;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.4;
+        }
         .slack-pinbar { display: none; padding: 6px 18px; border-bottom: 1px solid #eee; background: #fff8e1; font-size: 13px; }
         .slack-pinbar.is-on { display: block; }
         .slack-pinbar button { border: 0; background: transparent; color: #1d1c1d; }
@@ -775,6 +789,13 @@
         wrap.id = 'slack-msg-' + m.id;
         wrap.className = 'slack-msg' + (m.failed ? ' is-failed' : '') + (m.pending ? ' is-pending' : '');
         wrap.dataset.clientId = m.client_id || '';
+        const systemCmds = { channel: 1, group: 1, member: 1, deleted: 1 };
+        const systemBody = / created | added | deleted this /i.test(String(m.body || ''));
+        if (m.is_bot && (systemCmds[m.command] || systemBody)) {
+            wrap.className += ' is-system';
+            wrap.innerHTML = '<div class="slack-sys">' + (m.html || esc(m.body || '')) + '</div>';
+            return wrap;
+        }
         const avatar = m.is_bot
             ? '<img class="slack-msg__avatar is-bot-logo" src="' + esc(m.avatar || '') + '" alt="5 Core Bot">'
             : '<img class="slack-msg__avatar" src="' + esc(m.avatar || '') + '" alt="">';
@@ -943,9 +964,18 @@
         document.getElementById('slackRoomName').textContent = name;
         const src = detail || ch || {};
         let sub = 'Message';
-        if (src.last_seen_label) sub = src.last_seen_label;
-        else if (ch && ch.type === 'group') sub = (ch.member_count || 0) + ' members';
-        else if (ch && ch.type === 'bot') sub = 'Create a task, or check overdue, DAR, and SI';
+        const rosterTypes = { group: 1, public: 1, private: 1 };
+        if (src.member_names && src.member_names.length && ch && rosterTypes[ch.type]) {
+            sub = src.member_names.join(', ');
+        } else if (src.last_seen_label && !(ch && rosterTypes[ch.type])) {
+            sub = src.last_seen_label;
+        } else if (ch && rosterTypes[ch.type]) {
+            sub = (src.member_count || ch.member_count || 0) + ' members';
+        } else if (src.last_seen_label) {
+            sub = src.last_seen_label;
+        } else if (ch && ch.type === 'bot') {
+            sub = 'Create a task, or check overdue, DAR, and SI';
+        }
         document.getElementById('slackRoomSub').textContent = sub;
         const dot = document.getElementById('slackRoomDot');
         if (dot) {
@@ -1115,10 +1145,19 @@
             }
             if (data.channels) {
                 noticeInbox(data.channels);
-                channels = data.channels;
+                const prevById = {};
+                channels.forEach(function (c) { prevById[c.id] = c; });
+                channels = data.channels.map(function (c) {
+                    const prev = prevById[c.id];
+                    if (prev) {
+                        if ((!c.member_ids || !c.member_ids.length) && prev.member_ids) c.member_ids = prev.member_ids;
+                        if ((!c.member_names || !c.member_names.length) && prev.member_names) c.member_names = prev.member_names;
+                    }
+                    return c;
+                });
                 renderNav();
                 const ch = channels.find(function (c) { return c.id === activeId; });
-                if (ch) setHead(ch, data.channel);
+                if (ch) setHead(ch, data.channel || ch);
             }
             if (data.messages && data.messages.length) appendMessages(data.messages, false, true);
             applyReceipts(data.receipts || {});
@@ -1430,10 +1469,19 @@
     });
     document.getElementById('slackDeleteRoomBtn').addEventListener('click', async function () {
         const ch = channels.find(function (c) { return c.id === activeId; });
-        if (!ch || !ch.can_delete) return;
+        if (!ch) return;
         const kind = ch.type === 'group' ? 'group' : 'channel';
         if (!confirm('Delete this ' + kind + '? It will disappear for everyone.')) return;
-        await api('/chat/channels/' + ch.id, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' } });
+        try {
+            await api('/chat/channels/' + ch.id + '/delete', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: '{}'
+            });
+        } catch (err) {
+            alert(err.message || ('Could not delete this ' + kind + '.'));
+            return;
+        }
         const inbox = await api('/chat/inbox');
         channels = inbox.channels || [];
         if (inbox.directory) directory = inbox.directory;
@@ -1456,12 +1504,30 @@
             return;
         }
         if (mode === 'add') {
-            await api('/chat/channels/' + activeId + '/members', {
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ add: ids })
-            });
+            let added;
+            try {
+                added = await api('/chat/channels/' + activeId + '/members', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ add: ids })
+                });
+            } catch (err) {
+                alert(err.message || 'Could not add people.');
+                return;
+            }
+            const ch = channels.find(function (c) { return c.id === activeId; });
+            if (ch && added) {
+                if (added.member_ids) ch.member_ids = added.member_ids;
+                if (added.member_names) ch.member_names = added.member_names;
+                if (typeof added.member_count === 'number') ch.member_count = added.member_count;
+                setHead(ch, ch);
+            }
             window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackGroupModal')).hide();
+            if (added && added.messages && added.messages.length) {
+                appendMessages(added.messages, false, false);
+            } else {
+                alert('Those people are already in this channel.');
+            }
             openChannel(activeId);
             return;
         }
