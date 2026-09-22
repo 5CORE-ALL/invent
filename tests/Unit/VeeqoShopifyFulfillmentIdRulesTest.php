@@ -122,4 +122,22 @@ class VeeqoShopifyFulfillmentIdRulesTest extends TestCase
         ));
         $this->assertFalse(VeeqoShopifyFulfillmentService::shouldFulfillRemainingWithExistingTracking(1, ''));
     }
+
+    public function test_sof_tracking_is_ready_to_push_to_unfulfilled_shopify(): void
+    {
+        $hit = VeeqoShopifyFulfillmentService::sofLocalTrackingIfReady([
+            'tracking' => 'GFU5081074281244545',
+            'carrier' => 'GOFO',
+        ]);
+
+        $this->assertSame('GFU5081074281244545', $hit['tracking'] ?? null);
+        $this->assertSame('GOFO', $hit['carrier'] ?? null);
+        $this->assertSame('sof', $hit['source'] ?? null);
+        $this->assertNull(VeeqoShopifyFulfillmentService::sofLocalTrackingIfReady([
+            'tracking' => '111-6593956-3036223',
+        ]));
+        $this->assertNull(VeeqoShopifyFulfillmentService::sofLocalTrackingIfReady([
+            'tracking' => 'GFU5081074281244545',
+        ], ['GFU5081074281244545']));
+    }
 }
