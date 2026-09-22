@@ -198,7 +198,7 @@
             tbl = tbl || ((typeof table !== 'undefined') ? table : null);
             if (!tbl || typeof tbl.getColumns !== 'function') return false;
             if (tbl._ebayDilNetColsAdded) return true;
-            // Temu 3 has no ads. SNROI is already on the page and equals SGROI; do not add SNPFT.
+            // Temu 3 defines its own SNROI and SNPFT. Do not inject a second pair.
             if (typeof EBAY_DIL_GROI_CHANNEL !== 'undefined' && EBAY_DIL_GROI_CHANNEL === 'temu3') {
                 tbl._ebayDilNetColsAdded = true;
                 return true;

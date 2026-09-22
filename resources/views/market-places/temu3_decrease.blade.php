@@ -4327,6 +4327,24 @@
                     }
                 },
                 {
+                    title: "SNPFT",
+                    field: "snpft_percent",
+                    hozAlign: "center",
+                    sorter: temuSortBy(function(d) { return temuExportSgpft(d); }),
+                    headerTooltip: "SNPFT = SGPRFT%. This page has no ads, so both are S Profit ÷ S PRC.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sprice = typeof temuDisplayedSprice === 'function'
+                            ? temuDisplayedSprice(rowData)
+                            : (parseFloat(rowData.sprice) || 0);
+                        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(rowData, sprice) : null;
+                        if (!(sprice > 0) || spft == null) return '';
+                        const snpft = (spft / sprice) * 100;
+                        const colorClass = getPftColor(snpft);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(snpft)}%</span>`;
+                    }
+                },
+                {
                     title: "LP",
                     field: "lp",
                     hozAlign: "center",
@@ -5282,7 +5300,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|gpft_dollar|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|SPRC_DIL|s_recovery|stemu_price|sgroi_percent|sgprft_percent|spft_percent|sroi_percent|snroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|_push)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|gpft_dollar|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|SPRC_DIL|s_recovery|stemu_price|sgroi_percent|sgprft_percent|spft_percent|snpft_percent|sroi_percent|snroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|_push)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|sgroi|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery|prmt|cpn|dsc|appr|push\s*prc|queue)\b/i.test(tl)
             ) {
                 return 'pricing';
