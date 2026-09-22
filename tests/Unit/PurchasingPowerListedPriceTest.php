@@ -188,6 +188,14 @@ class PurchasingPowerListedPriceTest extends TestCase
         );
     }
 
+    public function test_offer_lookup_keeps_nbsp_shop_sku(): void
+    {
+        $shop = "WF\u{00A0}8120\u{00A0}4\u{00A0}OHM 2PCS";
+
+        $this->assertSame($shop, PurchasingPowerController::offerLookupSku('WF 8120 4 OHM 2PCS', $shop));
+        $this->assertSame($shop, PurchasingPowerController::offerLookupSku($shop, 'WF 8120 4 OHM 2PCS'));
+    }
+
     public function test_listing_inactive_flag(): void
     {
         $this->assertTrue(PurchasingPowerController::isListingMarkedInactive((object) [

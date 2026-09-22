@@ -572,19 +572,34 @@ class PurchasingPowerController extends Controller
     }
 
     /**
-     * SKU string for the Mirakl OF21 `sku` filter. That filter is case-sensitive.
-     * Price push uppercases the grid SKU, which misses shop SKUs like "GRack" or "Pair".
-     * Prefer a stored shop SKU that still has its original case, then the request SKU.
+     * SKU string for the Mirakl OF21 `sku` filter.
+     * The filter is exact: case and non-breaking spaces both have to match the shop SKU.
+     * Uppercasing misses "GRack" / "Pair". Replacing NBSP with a normal space misses
+     * offers such as "WF\u{00A0}8120\u{00A0}4\u{00A0}OHM 2PCS".
      */
     public static function offerLookupSku(string $requested, ?string $storedShopSku = null): string
     {
-        $requested = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', trim($requested));
-        $stored = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', trim((string) $storedShopSku));
+        $requested = trim($requested);
+        $stored = trim((string) $storedShopSku);
 
-        foreach ([$stored, $requested] as $candidate) {
-            if ($candidate !== '' && $candidate !== strtoupper($candidate)) {
-                return $candidate;
+        $rank = static function (string $candidate): int {
+            if ($candidate === '') {
+                return -1;
             }
+            $rank = 0;
+            if (str_contains($candidate, "\u{00A0}") || str_contains($candidate, "\u{202F}")) {
+                $rank += 2;
+            }
+            $plain = str_replace(["\u{00A0}", "\u{202F}"], ' ', $candidate);
+            if ($plain !== strtoupper($plain)) {
+                $rank += 1;
+            }
+
+            return $rank;
+        };
+
+        if ($rank($requested) > $rank($stored)) {
+            return $requested;
         }
 
         return $stored !== '' ? $stored : $requested;
@@ -1177,7 +1192,7 @@ class PurchasingPowerController extends Controller
 
     public function pushPriceTabulator(Request $request)
     {
-        $sku = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', trim((string) $request->input('sku', '')));
+        $sku = trim((string) $request->input('sku', ''));
         $price = $request->input('price', $request->input('sprice'));
         if ($sku === '' || ! is_numeric($price) || (float) $price <= 0) {
             return response()->json(['success' => false, 'message' => 'SKU and price required'], 422);
