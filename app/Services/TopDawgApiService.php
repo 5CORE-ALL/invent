@@ -7,6 +7,7 @@ use App\Models\TopDawgProduct;
 use App\Support\Marketplace\ChannelListingRegistry;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
 
@@ -433,6 +434,28 @@ class TopDawgApiService
     }
 
     /**
+     * Live available qty from a SupplierProduct/list row.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    public static function qtyFromLiveProductRow(array $item): ?int
+    {
+        $bags = [$item];
+        if (isset($item['product']) && is_array($item['product'])) {
+            $bags[] = $item['product'];
+        }
+        foreach ($bags as $bag) {
+            foreach (['qty_available', 'remaining_inventory', 'inventory', 'quantity', 'qty', 'stock', 'available_qty'] as $key) {
+                if (isset($bag[$key]) && is_numeric($bag[$key])) {
+                    return max(0, (int) $bag[$key]);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * TopDawg `POST /SupplierProduct/update` keys on seller SKU as `product_code`
      * (e.g. "GSTOOL BLK"), not tdid — tdid returns 404 on update.
      */
@@ -441,6 +464,14 @@ class TopDawgApiService
         $sku = trim($sku);
         if ($sku === '') {
             return null;
+        }
+
+        try {
+            if (! Schema::hasTable('topdawg_products')) {
+                return $sku;
+            }
+        } catch (\Throwable $e) {
+            return $sku;
         }
 
         $upper = strtoupper($sku);
@@ -747,6 +778,14 @@ class TopDawgApiService
         $sku = trim($sku);
         $resolved = trim((string) ($resolved ?: $sku));
         if ($sku === '') {
+            return null;
+        }
+
+        try {
+            if (! Schema::hasTable('topdawg_products')) {
+                return null;
+            }
+        } catch (\Throwable $e) {
             return null;
         }
 
@@ -1464,6 +1503,92 @@ class TopDawgApiService
     }
 
     /**
+     * Live qty for one seller SKU (targeted list lookup, no full-catalog walk).
+     */
+    public function readLiveQty(string $sku): ?int
+    {
+        $row = $this->fetchLiveProductRow($sku, false);
+
+        return is_array($row) ? self::qtyFromLiveProductRow($row) : null;
+    }
+
+    /**
+     * Push one SKU qty the same way price works: product_code + qty_available.
+     * Confirm against SupplierProduct/list when TopDawg returns a live row.
+     *
+     * @return array{success: bool, message: string, live_qty?: int|null}
+     */
+    public function updateItemInventory(string $sku, int $quantity): array
+    {
+        $this->assertConfigured();
+        $sku = trim($sku);
+        $qty = max(0, $quantity);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $liveBefore = $this->readLiveQty($sku);
+        if ($liveBefore !== null && $liveBefore === $qty) {
+            return [
+                'success' => true,
+                'message' => 'TopDawg qty already '.$qty.'.',
+                'live_qty' => $liveBefore,
+            ];
+        }
+
+        $resolved = $this->resolveProductCode($sku) ?: $sku;
+        $codes = array_slice($this->topDawgProductCodeCandidates($sku, $resolved), 0, 4);
+        $fieldSets = [
+            ['qty_available' => $qty],
+            ['qty_available' => $qty, 'quantity' => $qty],
+            ['quantity' => $qty],
+            ['remaining_inventory' => $qty],
+            ['qty' => $qty],
+            ['stock' => $qty],
+        ];
+        $endpoints = [
+            '/SupplierProduct/update',
+            '/SupplierProduct/updateInventory',
+            '/SupplierProduct/updateQty',
+        ];
+
+        $lastMessage = 'TopDawg inventory update failed.';
+        foreach ($endpoints as $path) {
+            foreach ($codes as $productCode) {
+                foreach ($fieldSets as $fields) {
+                    $pushed = $this->postTopDawgProductUpdate($path, array_merge([
+                        'product_code' => $productCode,
+                    ], $fields));
+                    if (empty($pushed['success'])) {
+                        $lastMessage = (string) ($pushed['message'] ?? $lastMessage);
+                        continue;
+                    }
+                    $live = $this->readLiveQty($sku);
+                    if ($live !== null && $live === $qty) {
+                        return [
+                            'success' => true,
+                            'message' => 'TopDawg inventory updated to '.$qty.'.',
+                            'live_qty' => $live,
+                        ];
+                    }
+                    if ($live === null) {
+                        return [
+                            'success' => true,
+                            'message' => trim((string) ($pushed['message'] ?? '')) !== ''
+                                ? (string) $pushed['message']
+                                : 'TopDawg inventory submitted for review.',
+                            'live_qty' => null,
+                        ];
+                    }
+                    $lastMessage = 'TopDawg accepted the update but listing qty stayed '.$live.' (wanted '.$qty.').';
+                }
+            }
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
      * Push inventory quantities via SupplierProduct/update (qty_available).
      *
      * @param  list<array{sku: string, quantity: int}>  $items
@@ -1484,11 +1609,7 @@ class TopDawgApiService
                 continue;
             }
 
-            $result = $this->pushSupplierProductFields($sku, [
-                'qty_available' => $qty,
-                'quantity' => $qty,
-                'remaining_inventory' => $qty,
-            ]);
+            $result = $this->updateItemInventory($sku, $qty);
 
             if (! empty($result['success'])) {
                 $pushed++;

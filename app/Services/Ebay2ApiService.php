@@ -2429,7 +2429,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         $hasVariations = false;
         $matchedSku = $sku;
         $raw = $this->getItem($itemId);
-        $item = is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
+        $item = is_array($raw) && is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
         if ($item !== []) {
             $hasVariations = \App\Services\MarketplaceManager\EbayLiveListingMapper::listingHasVariations($item);
             foreach (\App\Services\MarketplaceManager\Ebay2InventorySyncService::skuAliasesForPush($sku) as $alias) {
@@ -2454,9 +2454,10 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         // Single-SKU listings have no VariationSpecifics — do not send a Variations node
         // (eBay 21916587 "Missing name in name-value list").
         if ($specifics === []) {
-            return $this->reviseItemQuantity($itemId, $quantity);
+            return $this->reviseItemQuantity($itemId, $quantity, $this->soldFromItem($item, null));
         }
         $sku = $matchedSku;
+        $quantity = self::totalQtyForFixedPriceRevise($quantity, $this->soldFromItem($item, $sku));
 
         try {
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
@@ -2536,12 +2537,18 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
      *
      * @return array{success: bool, message: string, data?: array, ended?: bool, raw?: string}
      */
-    public function reviseItemQuantity(string $itemId, int $quantity): array
+    public function reviseItemQuantity(string $itemId, int $quantity, ?int $quantitySold = null): array
     {
         $itemId = trim($itemId);
         if ($itemId === '') {
             return ['success' => false, 'message' => 'ItemID is required.'];
         }
+        if ($quantitySold === null) {
+            $raw = $this->getItem($itemId);
+            $item = is_array($raw) && is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
+            $quantitySold = $this->soldFromItem($item, null);
+        }
+        $quantity = self::totalQtyForFixedPriceRevise($quantity, (int) $quantitySold);
 
         try {
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
@@ -2817,6 +2824,51 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         }
 
         return null;
+    }
+
+    /**
+     * ReviseFixedPriceItem Variation.Quantity / Item.Quantity is total
+     * (sold + available). Shopify qty is available — add sold or the
+     * listing stays short after sales.
+     */
+    public static function totalQtyForFixedPriceRevise(int $desiredAvailable, int $quantitySold): int
+    {
+        return max(0, $desiredAvailable) + max(0, $quantitySold);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    public static function soldFromItem(array $item, ?string $sku): int
+    {
+        $sku = trim((string) $sku);
+        if ($sku !== '') {
+            $vars = $item['Variations']['Variation'] ?? null;
+            if (is_array($vars) && $vars !== []) {
+                $list = isset($vars['SKU']) || isset($vars['Quantity']) || isset($vars['SellingStatus'])
+                    ? [$vars]
+                    : $vars;
+                foreach ($list as $variation) {
+                    if (! is_array($variation)) {
+                        continue;
+                    }
+                    if (! \App\Services\MarketplaceManager\EbayLiveListingMapper::skuEquals(
+                        (string) ($variation['SKU'] ?? ''),
+                        $sku
+                    )) {
+                        continue;
+                    }
+
+                    return max(0, (int) (
+                        $variation['SellingStatus']['QuantitySold']
+                        ?? $variation['QuantitySold']
+                        ?? 0
+                    ));
+                }
+            }
+        }
+
+        return max(0, (int) ($item['SellingStatus']['QuantitySold'] ?? $item['QuantitySold'] ?? 0));
     }
 
     protected function availableFromQtyAndSold(mixed $quantity, mixed $sold): int

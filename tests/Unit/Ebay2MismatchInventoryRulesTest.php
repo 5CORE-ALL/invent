@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\ShopifySku;
+use App\Services\Ebay2ApiService;
 use App\Services\MarketplaceManager\Ebay2InventorySyncService;
 use App\Services\MarketplaceManager\Ebay2LiveListingsService;
 use App\Services\MarketplaceManager\EbayLiveListingMapper;
@@ -11,6 +12,24 @@ use PHPUnit\Framework\TestCase;
 
 class Ebay2MismatchInventoryRulesTest extends TestCase
 {
+    public function test_fixed_price_revise_adds_units_already_sold(): void
+    {
+        $this->assertSame(44, Ebay2ApiService::totalQtyForFixedPriceRevise(24, 20));
+        $this->assertSame(24, Ebay2ApiService::totalQtyForFixedPriceRevise(24, 0));
+        $this->assertSame(20, Ebay2ApiService::soldFromItem([
+            'Quantity' => 24,
+            'Variations' => [
+                'Variation' => [
+                    [
+                        'SKU' => '36L BLACK OPEN BOX',
+                        'Quantity' => 24,
+                        'SellingStatus' => ['QuantitySold' => 20],
+                    ],
+                ],
+            ],
+        ], '36L BLACK OPEN BOX'));
+    }
+
     public function test_trading_limit_ignores_item_ids_that_contain_518(): void
     {
         $this->assertFalse(Ebay2InventorySyncService::looksLikeTradingLimit(
@@ -56,6 +75,20 @@ class Ebay2MismatchInventoryRulesTest extends TestCase
         ];
 
         $this->assertSame(16, EbayLiveListingMapper::quantityFromGetItem($item, 'CA10D AL BLK'));
+
+        $soldItem = [
+            'Quantity' => 44,
+            'Variations' => [
+                'Variation' => [
+                    [
+                        'SKU' => '36L BLACK OPEN BOX',
+                        'Quantity' => 44,
+                        'SellingStatus' => ['QuantitySold' => 20],
+                    ],
+                ],
+            ],
+        ];
+        $this->assertSame(24, EbayLiveListingMapper::quantityFromGetItem($soldItem, '36L BLACK OPEN BOX'));
     }
 
     public function test_normalize_sku_for_screenshot_rows(): void

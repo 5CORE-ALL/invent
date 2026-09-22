@@ -69,45 +69,7 @@ class TopDawgInventorySyncService
             $exactShopifyQty
         );
 
-        $exactMetricSkus = TopDawgProduct::query()
-            ->whereIn('sku', $skus)
-            ->pluck('sku')
-            ->map(static fn ($s) => (string) $s)
-            ->all();
-        $exactSet = array_flip($exactMetricSkus);
-
-        $wantedUppers = array_keys($wantedNorms);
-        $metrics = TopDawgProduct::query()
-            ->whereNotNull('topdawg_listing_id')
-            ->where('sku', '!=', '')
-            ->whereColumn('sku', '!=', 'topdawg_listing_id')
-            ->where(function ($q) use ($skus, $wantedUppers) {
-                $q->whereIn('sku', $skus);
-                foreach (array_chunk($wantedUppers, 80) as $chunk) {
-                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                    $q->orWhereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', $chunk);
-                }
-            })
-            ->get()
-            ->filter(function (TopDawgProduct $metric) use ($wantedNorms, $skus, $exactSet) {
-                $raw = (string) $metric->sku;
-                if (in_array($raw, $skus, true) || isset($exactSet[$raw])) {
-                    return true;
-                }
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
-                if ($norm === '' || ! isset($wantedNorms[$norm])) {
-                    return false;
-                }
-                foreach ($skus as $requested) {
-                    if (ShopifySku::normalizeSkuForShopifyLookup($requested) === $norm
-                        && isset($exactSet[$requested])) {
-                        return false;
-                    }
-                }
-
-                return true;
-            })
-            ->values();
+        $metrics = $this->metricsForRequestedSkus($skus, $wantedNorms);
 
         $inventoryRows = [];
         $skipped = 0;
@@ -125,8 +87,7 @@ class TopDawgInventorySyncService
                 if ($shopifyStock !== null) {
                     break;
                 }
-                if (ShopifySku::normalizeSkuForShopifyLookup($requested)
-                    === ShopifySku::normalizeSkuForShopifyLookup($sku)) {
+                if (ShopifySku::skusMatch($requested, $sku)) {
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
                 }
             }
@@ -295,17 +256,142 @@ class TopDawgInventorySyncService
     }
 
     /**
+     * Hyphen / space / compact aliases so mismatch rows like "C10BP 20 10 R"
+     * still find TopDawg product_code "C10BP-20-10-R".
+     *
+     * @return list<string>
+     */
+    public static function skuAliasesForPush(string $sku): array
+    {
+        $sku = trim($sku);
+        $out = [];
+        foreach ([
+            $sku,
+            strtoupper($sku),
+            ShopifySku::normalizeSkuForShopifyLookup($sku),
+            str_replace('-', ' ', $sku),
+            preg_replace('/\s+/', '-', $sku) ?: '',
+            str_replace(' ', '', $sku),
+            ShopifySku::compactSkuForLookup($sku),
+        ] as $alias) {
+            $alias = trim((string) $alias);
+            if ($alias !== '' && ! in_array($alias, $out, true)) {
+                $out[] = $alias;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, string>  $skus
+     * @param  array<string, true>  $wantedNorms
+     * @return \Illuminate\Support\Collection<int, TopDawgProduct>
+     */
+    protected function metricsForRequestedSkus(array $skus, array $wantedNorms)
+    {
+        $aliases = [];
+        $wantedCompact = [];
+        foreach ($skus as $sku) {
+            foreach (self::skuAliasesForPush($sku) as $alias) {
+                $aliases[$alias] = true;
+                $aliases[strtoupper($alias)] = true;
+            }
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            if ($compact !== '') {
+                $wantedCompact[$compact] = true;
+            }
+        }
+        $aliasList = array_keys($aliases);
+
+        $found = TopDawgProduct::query()
+            ->whereNotNull('topdawg_listing_id')
+            ->where('sku', '!=', '')
+            ->whereColumn('sku', '!=', 'topdawg_listing_id')
+            ->where(function ($q) use ($skus, $aliasList) {
+                $q->whereIn('sku', $skus);
+                foreach (array_chunk($aliasList, 80) as $chunk) {
+                    $q->orWhereIn('sku', $chunk);
+                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                    $q->orWhereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', array_map('strtoupper', $chunk));
+                }
+            })
+            ->get();
+
+        $matched = $found->filter(function (TopDawgProduct $metric) use ($wantedNorms, $wantedCompact, $skus) {
+            $raw = (string) $metric->sku;
+            if (in_array($raw, $skus, true)) {
+                return true;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+            if ($norm !== '' && isset($wantedNorms[$norm])) {
+                return true;
+            }
+            $compact = ShopifySku::compactSkuForLookup($raw);
+
+            return $compact !== '' && isset($wantedCompact[$compact]);
+        })->values();
+
+        $have = [];
+        foreach ($matched as $metric) {
+            $raw = (string) $metric->sku;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+            if ($norm !== '') {
+                $have[$norm] = true;
+            }
+            $compact = ShopifySku::compactSkuForLookup($raw);
+            if ($compact !== '') {
+                $have[$compact] = true;
+            }
+        }
+        $missingNorms = array_diff_key($wantedNorms, $have);
+        $missingCompact = array_diff_key($wantedCompact, $have);
+        if ($missingNorms === [] && $missingCompact === []) {
+            return $matched;
+        }
+
+        TopDawgProduct::query()
+            ->whereNotNull('topdawg_listing_id')
+            ->where('sku', '!=', '')
+            ->whereColumn('sku', '!=', 'topdawg_listing_id')
+            ->orderBy('id')
+            ->chunkById(1000, function ($rows) use (&$matched, &$missingNorms, &$missingCompact) {
+                foreach ($rows as $row) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    $compact = ShopifySku::compactSkuForLookup((string) $row->sku);
+                    $hit = ($norm !== '' && isset($missingNorms[$norm]))
+                        || ($compact !== '' && isset($missingCompact[$compact]));
+                    if (! $hit) {
+                        continue;
+                    }
+                    $matched->push($row);
+                    if ($norm !== '') {
+                        unset($missingNorms[$norm]);
+                    }
+                    if ($compact !== '') {
+                        unset($missingCompact[$compact]);
+                    }
+                }
+
+                return $missingNorms !== [] || $missingCompact !== [];
+            });
+
+        return $matched->unique('id')->values();
+    }
+
+    /**
      * @param  array<string, int>  $map
      */
     protected function resolveShopifyQty(array $map, string $sku): ?int
     {
-        $upper = strtoupper(trim($sku));
-        if (array_key_exists($upper, $map)) {
-            return (int) $map[$upper];
-        }
-        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-        if ($norm !== '' && array_key_exists($norm, $map)) {
-            return (int) $map[$norm];
+        foreach (self::skuAliasesForPush($sku) as $alias) {
+            if (array_key_exists($alias, $map)) {
+                return (int) $map[$alias];
+            }
+            $upper = strtoupper($alias);
+            if (array_key_exists($upper, $map)) {
+                return (int) $map[$upper];
+            }
         }
 
         return null;

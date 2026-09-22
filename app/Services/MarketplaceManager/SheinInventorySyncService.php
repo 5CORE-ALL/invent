@@ -69,28 +69,46 @@ class SheinInventorySyncService
             $exactShopifyQty
         );
 
-        // Match Shein rows by normalized SKU (Shopify often stores NBSP; Shein uses normal spaces).
-        $wantedUppers = array_keys($wantedNorms);
+        // Match Shein rows by hyphen / space / compact aliases (Shopify often has
+        // "TABLA MIC BLK" while shein_metric stores "TABLA-MIC-BLK").
+        $aliasList = [];
+        $wantedCompact = [];
+        foreach ($skus as $sku) {
+            foreach (SheinApiService::skuAliasesForLookup($sku) as $alias) {
+                $aliasList[] = $alias;
+                $aliasList[] = strtoupper($alias);
+            }
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            if ($compact !== '') {
+                $wantedCompact[$compact] = true;
+            }
+        }
+        $aliasList = array_values(array_unique(array_filter($aliasList)));
         $metrics = SheinMmMetric::query()
             ->whereNotNull('product_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'product_id')
-            ->where(function ($q) use ($skus, $wantedUppers) {
+            ->where(function ($q) use ($skus, $aliasList) {
                 $q->whereIn('sku', $skus);
-                foreach (array_chunk($wantedUppers, 80) as $chunk) {
+                foreach (array_chunk($aliasList, 80) as $chunk) {
+                    $q->orWhereIn('sku', $chunk);
                     $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                    $q->orWhereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', $chunk);
+                    $q->orWhereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', array_map('strtoupper', $chunk));
                 }
             })
             ->get()
-            ->filter(function (SheinMmMetric $metric) use ($wantedNorms, $skus) {
+            ->filter(function (SheinMmMetric $metric) use ($wantedNorms, $wantedCompact, $skus) {
                 $raw = (string) $metric->sku;
                 if (in_array($raw, $skus, true)) {
                     return true;
                 }
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+                if ($norm !== '' && isset($wantedNorms[$norm])) {
+                    return true;
+                }
+                $compact = ShopifySku::compactSkuForLookup($raw);
 
-                return $norm !== '' && isset($wantedNorms[$norm]);
+                return $compact !== '' && isset($wantedCompact[$compact]);
             })
             ->values();
 
@@ -663,6 +681,15 @@ class SheinInventorySyncService
         foreach ($shopifyQty as $key => $qty) {
             if (strtoupper(trim((string) $key)) === $needleUpper) {
                 return (int) $qty;
+            }
+        }
+
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '') {
+            foreach ($shopifyQty as $key => $qty) {
+                if (ShopifySku::compactSkuForLookup((string) $key) === $compact) {
+                    return (int) $qty;
+                }
             }
         }
 

@@ -2263,7 +2263,12 @@ class SheinApiService
     /**
      * @return list<string>
      */
-    protected function sellerSkuIndexKeys(string $sku): array
+    /**
+     * Hyphen / space / compact keys so "TABLA MIC BLK" finds "TABLA-MIC-BLK".
+     *
+     * @return list<string>
+     */
+    public static function skuAliasesForLookup(string $sku): array
     {
         $sku = trim($sku);
         if ($sku === '') {
@@ -2274,12 +2279,29 @@ class SheinApiService
         if ($norm !== '') {
             $keys[] = $norm;
         }
-        $compact = strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '', $sku));
+        foreach ([
+            str_replace(' ', '-', $sku),
+            str_replace('-', ' ', $sku),
+            preg_replace('/\s+/', '-', $sku) ?: '',
+            str_replace(' ', '', $sku),
+        ] as $alias) {
+            $alias = trim((string) $alias);
+            if ($alias !== '') {
+                $keys[] = $alias;
+                $keys[] = strtoupper($alias);
+            }
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
         if (strlen($compact) >= 6) {
             $keys[] = $compact;
         }
 
         return array_values(array_unique(array_filter($keys)));
+    }
+
+    protected function sellerSkuIndexKeys(string $sku): array
+    {
+        return self::skuAliasesForLookup($sku);
     }
 
     /**
@@ -2555,10 +2577,7 @@ class SheinApiService
                     if (! $this->isPlatformSkuCode($code, $sku)) {
                         continue;
                     }
-                    foreach (array_unique(array_filter([
-                        $sku,
-                        ShopifySku::normalizeSkuForShopifyLookup($sku),
-                    ])) as $key) {
+                    foreach ($this->sellerSkuIndexKeys($sku) as $key) {
                         if (! isset($wanted[$key])) {
                             continue;
                         }
@@ -3078,18 +3097,8 @@ class SheinApiService
 
         $expanded = [];
         foreach ($sellerSkus as $sku) {
-            $sku = trim((string) $sku);
-            if ($sku === '') {
-                continue;
-            }
-            $expanded[$sku] = true;
-            $hyphen = str_replace(' ', '-', $sku);
-            $space = str_replace('-', ' ', $sku);
-            if ($hyphen !== '') {
-                $expanded[$hyphen] = true;
-            }
-            if ($space !== '') {
-                $expanded[$space] = true;
+            foreach (self::skuAliasesForLookup((string) $sku) as $alias) {
+                $expanded[$alias] = true;
             }
         }
         $sellerSkus = array_keys($expanded);
