@@ -7191,6 +7191,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
     Route::get('/tasks/summary', [\App\Http\Controllers\TaskController::class, 'taskSummary'])->name('tasks.summary');
     Route::get('/tasks/summary-stats', [\App\Http\Controllers\TaskController::class, 'taskSummaryStats'])->name('tasks.summaryStats');
+    Route::get('/tasks/yesterday-done', [\App\Http\Controllers\TaskController::class, 'yesterdayDone'])->name('tasks.yesterdayDone');
     Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
     Route::get('/tasks/automated', [\App\Http\Controllers\TaskController::class, 'automatedIndex'])->name('tasks.automated');
     Route::get('/tasks/automated/data', [\App\Http\Controllers\TaskController::class, 'getAutomatedData'])->name('tasks.automatedData');
@@ -7264,6 +7265,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/tasks/mgr-checklist/juniors', [\App\Http\Controllers\TaskController::class, 'removeManagerJunior'])->name('tasks.mgrChecklist.juniors.remove');
     // Task Summary "Role" column — org_level dropdown + Mgr tags modal
     Route::post('/tasks/users/org-level', [\App\Http\Controllers\TaskController::class, 'updateUserOrgLevel'])->name('tasks.users.orgLevel');
+    Route::post('/tasks/users/designation', [\App\Http\Controllers\TaskController::class, 'updateUserDesignation'])->name('tasks.users.designation');
     Route::get('/tasks/mgr-tags', [\App\Http\Controllers\TaskController::class, 'getManagerJuniorsForTags'])->name('tasks.mgrTags.get');
     Route::get('/tasks/user-dashboard', [\App\Http\Controllers\TaskController::class, 'getUserDashboard'])->name('tasks.userDashboard.get');
     Route::get('/tasks/user-score-history', [\App\Http\Controllers\TaskController::class, 'getUserScoreHistory'])->name('tasks.userScoreHistory.get');

@@ -20,9 +20,95 @@
             white-space: nowrap;
             width: 1%;
         }
+        .task-summary-table th.task-summary-col-monitor,
+        .task-summary-table td.task-summary-col-monitor {
+            padding-left: 0.15rem;
+            padding-right: 0.15rem;
+        }
+        .task-summary-table th.task-summary-col-monitor .task-magnify-icon {
+            width: 16px;
+            height: 16px;
+        }
+        .task-summary-designation-btn {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+            color: inherit;
+            font: inherit;
+            line-height: inherit;
+            cursor: pointer;
+            border-radius: 0;
+        }
+        .task-summary-designation-btn:hover,
+        .task-summary-designation-btn.is-open {
+            color: #1d4ed8;
+        }
+        .task-summary-designation-btn:focus-visible {
+            outline: 2px solid #93c5fd;
+            outline-offset: 2px;
+        }
+        .task-summary-designation-btn.is-saving {
+            opacity: 0.55;
+        }
+        .task-summary-designation-btn.is-saved {
+            color: #15803d;
+        }
+        .task-summary-designation-menu {
+            position: fixed;
+            z-index: 200080;
+            min-width: 10.5rem;
+            max-width: 16rem;
+            max-height: 16rem;
+            overflow: auto;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+            padding: 0.25rem;
+        }
+        .task-summary-designation-menu[hidden] {
+            display: none !important;
+        }
+        .task-summary-designation-menu button {
+            display: block;
+            width: 100%;
+            border: 0;
+            background: transparent;
+            text-align: center;
+            font-size: 0.82rem;
+            color: #475569;
+            padding: 0.35rem 0.65rem;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .task-summary-designation-menu button[hidden] {
+            display: none !important;
+        }
+        .task-summary-designation-menu button:hover,
+        .task-summary-designation-menu button.is-current {
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
         .task-summary-table td.task-summary-col-incentive {
             overflow: visible;
-            padding-top: 0.95rem;
+            padding-top: 0.4rem;
+            padding-left: 0.2rem;
+            padding-right: 0.2rem;
+        }
+        .task-summary-incentive-btn {
+            padding: 0.05rem 0.15rem;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+        .task-summary-incentive-btn .incentive-k-amount {
+            color: #15803d;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0;
+        }
+        .task-summary-incentive-btn.is-cutoff-alert .incentive-k-amount {
+            color: #dc2626;
         }
         .task-summary-table th.task-summary-col-member,
         .task-summary-table td.task-summary-col-member {
@@ -248,6 +334,40 @@
         .task-summary-col-done {
             color: #15803d !important;
             font-weight: 600;
+        }
+        .task-summary-ydone-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.55rem;
+            height: 1.3rem;
+            padding: 0 0.4rem;
+            border-radius: 999px;
+            background: #ecfdf5;
+            color: #15803d;
+            font-size: 0.75rem;
+            font-weight: 800;
+            line-height: 1;
+            text-decoration: none;
+            font-variant-numeric: tabular-nums;
+        }
+        .task-summary-ydone-badge.has-count {
+            background: #15803d;
+            color: #fff;
+        }
+        .task-summary-ydone-badge:hover {
+            background: #166534;
+            color: #fff;
+            text-decoration: none;
+        }
+        a.task-summary-analytics-badge-ydone {
+            text-decoration: none;
+            cursor: pointer;
+            background: #15803d;
+        }
+        a.task-summary-analytics-badge-ydone:hover {
+            background: #166534;
+            color: #fff;
         }
         #ts-analytics-val-overdue {
             color: #dc2626;
@@ -1036,6 +1156,14 @@
                                     <span class="task-summary-analytics-badge-label">Done</span>
                                     <span class="task-summary-analytics-badge-value" id="ts-analytics-val-done">{{ number_format($taskDashboardStats['done']) }}</span>
                                 </span>
+                                <a href="{{ route('tasks.yesterdayDone') }}"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   class="task-summary-analytics-badge task-summary-analytics-badge-ydone"
+                                   title="Tasks completed yesterday ({{ $yDoneDate ?? '' }}). Opens the list, including deleted tasks.">
+                                    <span class="task-summary-analytics-badge-label">Y Done</span>
+                                    <span class="task-summary-analytics-badge-value" id="ts-analytics-val-ydone">{{ number_format((int) ($yDoneTotal ?? 0)) }}</span>
+                                </a>
                                 @php
                                     $incentivePageTotal = 0;
                                     foreach ($rows as $incRow) {
@@ -1133,6 +1261,33 @@
                         <span class="ts-member-restore-bar__label">Hidden members</span>
                         <div id="tsMemberRestoreChips" class="d-flex flex-wrap gap-1"></div>
                     </div>
+                    @php
+                        $compactDesignationLabel = function (string $name): string {
+                            $name = trim($name);
+                            if ($name === '') {
+                                return '—';
+                            }
+                            return preg_replace_callback(
+                                '/\b(Manager|Executive)\b/i',
+                                fn ($m) => strtolower($m[1]) === 'manager' ? 'Mgr' : 'Exc',
+                                $name
+                            );
+                        };
+                    @endphp
+                    <div id="task-summary-role-menu" class="task-summary-designation-menu" hidden>
+                        <button type="button" data-value="">—</button>
+                        <button type="button" data-value="mgr">Mgr</button>
+                        <button type="button" data-value="director">Director</button>
+                        <button type="button" data-value="exec">Exec</button>
+                    </div>
+                    <div id="task-summary-designation-menu" class="task-summary-designation-menu" hidden>
+                        <button type="button" data-value="" title="Clear designation">—</button>
+                        @foreach (($designationOptions ?? []) as $designationOption)
+                            <button type="button"
+                                    data-value="{{ $designationOption }}"
+                                    title="{{ $designationOption }}">{{ $compactDesignationLabel($designationOption) }}</button>
+                        @endforeach
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-hover table-striped table-bordered mb-0 task-summary-table">
                             <thead class="table-light">
@@ -1146,10 +1301,10 @@
                                     <th scope="col" class="task-summary-th-sort task-summary-col-member" data-sort-key="member" data-sort-type="text" title="Member — sort by team member name" role="button" tabindex="0">
                                         Member <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" title="Monitor — open Team Monitoring for this employee (new tab)">
-                                        Monitor
+                                    <th scope="col" class="task-summary-col-monitor" title="Monitor — open Team Monitoring for this employee (new tab)">
+                                        <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="Monitor" class="task-magnify-icon" aria-hidden="true">
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="designation" data-sort-type="text" title="Sort by designation" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="designation" data-sort-type="text" title="Designation — click a name to change it. Click the header to sort." role="button" tabindex="0">
                                         Designation <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="org_level" data-sort-type="text" title="Sort by org level (Mgr / Director / Exec)" role="button" tabindex="0">
@@ -1181,6 +1336,9 @@
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="done" data-sort-type="number" title="Sort by done count" role="button" tabindex="0">
                                         Done <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="y_done" data-sort-type="number" title="Y Done — tasks this member completed yesterday (PT). Click a badge to open the list." role="button" tabindex="0">
+                                        Y Done <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Overdue — number of overdue tasks (sortable)" role="button" tabindex="0">
                                         O-Due <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
@@ -1215,7 +1373,7 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="soi_count" data-sort-type="number" title="SI — Scope of Improvement count" role="button" tabindex="0">
                                         SI
                                     </th>
-                                    <th scope="col" title="Incentives — rupee bag rewards for this team member">
+                                    <th scope="col" title="Incentives — amount in thousands (K)">
                                         Inc
                                     </th>
                                     <th scope="col" class="task-summary-col-minimize" title="Minimize — hide this member until midnight PST">
@@ -1232,6 +1390,10 @@
                                         $searchBlob = strtolower(
                                             trim($row['team_member'] . ' ' . ($row['designation'] ?? ''))
                                         );
+                                        $memberFull = trim((string) ($row['team_member'] ?? ''));
+                                        $memberFirst = $memberFull === ''
+                                            ? ''
+                                            : (preg_split('/\s+/', $memberFull)[0] ?: $memberFull);
                                     @endphp
                                     <tr class="task-summary-row"
                                         data-search="{{ e($searchBlob) }}"
@@ -1251,6 +1413,7 @@
                                         data-sort-missed_p30="{{ (int) ($row['missed_p30'] ?? 0) }}"
                                         data-sort-a_task_h="{{ (int) ($row['a_task_h'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}"
+                                        data-sort-y_done="{{ (int) ($row['y_done'] ?? 0) }}"
                                         data-sort-soi_count="{{ (int) ($row['soi_count'] ?? 0) }}"
                                         data-sort-incentive_amount="{{ (float) ($row['incentive_amount'] ?? 0) }}">
                                         @php
@@ -1275,7 +1438,7 @@
                                         </td>
                                         <td class="task-summary-col-member">
                                             <span class="task-summary-member-cell-inner">
-                                                <span class="task-summary-member-name">{{ $row['team_member'] }}</span>
+                                                <span class="task-summary-member-name" @if($memberFirst !== $memberFull) title="{{ e($memberFull) }}" @endif>{{ $memberFirst }}</span>
                                             </span>
                                         </td>
                                         <td class="task-summary-col-monitor text-center">
@@ -1307,8 +1470,21 @@
                                                     fn ($m) => strtolower($m[1]) === 'manager' ? 'Mgr' : 'Exc',
                                                     $designationFull
                                                 );
+                                            $designationUserId = (int) ($row['user_id'] ?? 0);
+                                            $canEditDesignation = $designationUserId !== 0 && (bool) ($row['can_manage'] ?? false);
                                         @endphp
-                                        <td @if($designationFull !== '' && $designationCompact !== $designationFull) title="{{ e($designationFull) }}" @endif>{{ $designationCompact }}</td>
+                                        <td class="task-summary-designation-cell" @if(! $canEditDesignation && $designationFull !== '' && $designationCompact !== $designationFull) title="{{ e($designationFull) }}" @endif>
+                                            @if($canEditDesignation)
+                                                <button type="button"
+                                                        class="task-summary-designation-btn"
+                                                        data-user-id="{{ $designationUserId }}"
+                                                        data-saved-value="{{ $designationFull }}"
+                                                        title="{{ $designationFull !== '' ? $designationFull : 'Choose a designation' }}"
+                                                        aria-label="Change designation for {{ e($row['team_member']) }}">{{ $designationCompact }}</button>
+                                            @else
+                                                {{ $designationCompact }}
+                                            @endif
+                                        </td>
                                         <td class="task-summary-role-cell text-center">
                                             @php
                                                 $roleUserId = (int) ($row['user_id'] ?? 0);
@@ -1333,20 +1509,26 @@
                                                     $roleDisabledTitle = 'Only Directors (or admins) can change roles.';
                                                 }
                                             @endphp
-                                            <select class="form-select form-select-sm task-summary-role-select"
-                                                    data-user-id="{{ $roleUserId }}"
-                                                    data-user-name="{{ e($row['team_member']) }}"
-                                                    aria-label="Org role for {{ e($row['team_member']) }}"
-                                                    @if(! $roleSelectEnabled) disabled title="{{ $roleDisabledTitle }}" @endif>
-                                                <option value="" @selected($roleLevel === '')>—</option>
-                                                @if($canEditAnyRole || $roleLevel === 'mgr' || ! $viewerIsManager)
-                                                    <option value="mgr" @selected($roleLevel === 'mgr')>Mgr</option>
-                                                @endif
-                                                @if($canEditAnyRole || $roleLevel === 'director' || ! $viewerIsManager)
-                                                    <option value="director" @selected($roleLevel === 'director')>Director</option>
-                                                @endif
-                                                <option value="exec" @selected($roleLevel === 'exec')>Exec</option>
-                                            </select>
+                                            @php
+                                                $roleLabel = $roleLevel === 'mgr'
+                                                    ? 'Mgr'
+                                                    : ($roleLevel === 'director'
+                                                        ? 'Director'
+                                                        : ($roleLevel === 'exec' ? 'Exec' : '—'));
+                                                $roleOptionList = $canEditAnyRole ? ',mgr,director,exec' : ',exec';
+                                            @endphp
+                                            @if($roleSelectEnabled)
+                                                <button type="button"
+                                                        class="task-summary-role-btn"
+                                                        data-user-id="{{ $roleUserId }}"
+                                                        data-user-name="{{ e($row['team_member']) }}"
+                                                        data-saved-value="{{ $roleLevel }}"
+                                                        data-options="{{ $roleOptionList }}"
+                                                        aria-label="Change role for {{ e($row['team_member']) }}"
+                                                        title="Change role for {{ e($row['team_member']) }}">{{ $roleLabel }}</button>
+                                            @else
+                                                <span title="{{ $roleDisabledTitle }}">{{ $roleLabel }}</span>
+                                            @endif
                                             @if ($canEditTags ?? false)
                                                 <button type="button"
                                                         class="task-summary-role-mgr-dot task-summary-role-mgr-tags-btn"
@@ -1380,6 +1562,7 @@
                                                     data-user-id="{{ $rrUserId }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($rrDesignation) }}"
+                                                    @if($rrPermissionLocked || $rrUserId === 0) data-perm-locked="1" @endif
                                                     @if($rrDisabled) disabled @endif
                                                     title="{{ $rrLockedTitle }}"
                                                     aria-label="Open R&R for {{ e($row['team_member']) }}">
@@ -1399,6 +1582,7 @@
                                                     data-user-id="{{ $rrUserId }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($rrDesignation) }}"
+                                                    @if($rrPermissionLocked || $rrUserId === 0) data-perm-locked="1" @endif
                                                     @if($rrDisabled) disabled @endif
                                                     title="{{ $clrrLockedTitle }}"
                                                     aria-label="Open CL R&R for {{ e($row['team_member']) }}">
@@ -1418,6 +1602,7 @@
                                                     data-user-id="{{ $rrUserId }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($rrDesignation) }}"
+                                                    @if($rrPermissionLocked || $rrUserId === 0) data-perm-locked="1" @endif
                                                     @if($rrDisabled) disabled @endif
                                                     title="{{ $clmgrLockedTitle }}"
                                                     aria-label="Open CL Mgr for {{ e($row['team_member']) }}">
@@ -1471,6 +1656,14 @@
                                         </td>
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
                                         <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
+                                        @php $yDone = (int) ($row['y_done'] ?? 0); @endphp
+                                        <td class="text-center">
+                                            <a href="{{ route('tasks.yesterdayDone', ['user_id' => (int) ($row['user_id'] ?? 0)]) }}"
+                                               target="_blank"
+                                               rel="noopener noreferrer"
+                                               class="task-summary-ydone-badge{{ $yDone > 0 ? ' has-count' : '' }}"
+                                               title="{{ $yDone }} task{{ $yDone === 1 ? '' : 's' }} done yesterday by {{ e($row['team_member']) }}">{{ $yDone }}</a>
+                                        </td>
                                         <td class="task-summary-num task-summary-col-overdue">{{ $row['overdue'] }}</td>
                                         @php
                                             $darCount = (int) ($row['dar_l30_count'] ?? 0);
@@ -1591,26 +1784,44 @@
                                             </button>
                                         </td>
                                         <td class="text-center task-summary-col-incentive">
+                                            @php
+                                                $incAmount = (float) ($row['incentive_amount'] ?? 0);
+                                                if ($incAmount <= 0) {
+                                                    $incKLabel = '0';
+                                                } else {
+                                                    $incK = round($incAmount / 1000, 1);
+                                                    $incKLabel = (abs($incK - round($incK)) < 0.001
+                                                        ? (string) (int) round($incK)
+                                                        : number_format($incK, 1)) . 'K';
+                                                }
+                                                $incUserId = (int) ($row['user_id'] ?? 0);
+                                                $canOpenInc = $incUserId > 0 && (!empty($canViewAllIncentives) || !empty($canEditIncentives) || $incUserId === (int) auth()->id());
+                                                if ($incUserId === 0) {
+                                                    $incTitle = 'No user record found for this row';
+                                                } elseif (! $canOpenInc) {
+                                                    $incTitle = 'You can only view your own incentives';
+                                                } elseif (! empty($row['incentive_cutoff_alert'])) {
+                                                    $incTitle = 'Red alert: CutOff Date is tomorrow or sooner';
+                                                } else {
+                                                    $incTitle = (! empty($canEditIncentives) ? 'Edit' : 'View') . ' incentives for ' . $row['team_member'];
+                                                }
+                                                if ($incAmount > 0) {
+                                                    $incTitle .= ' · ' . number_format($incAmount, 0);
+                                                }
+                                            @endphp
                                             <button type="button"
                                                     class="incentive-bag-btn task-summary-incentive-btn{{ !empty($row['incentive_cutoff_alert']) ? ' is-cutoff-alert' : '' }}"
-                                                    data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
+                                                    data-user-id="{{ $incUserId }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($row['designation'] ?? '') }}"
                                                     data-org-level="{{ e($row['org_level'] ?? '') }}"
                                                     data-incentive-count="{{ (int) ($row['incentive_count'] ?? 0) }}"
-                                                    data-incentive-amount="{{ (float) ($row['incentive_amount'] ?? 0) }}"
+                                                    data-incentive-amount="{{ $incAmount }}"
                                                     data-cutoff-alert="{{ !empty($row['incentive_cutoff_alert']) ? '1' : '0' }}"
-                                                    @php
-                                                        $incUserId = (int) ($row['user_id'] ?? 0);
-                                                        $canOpenInc = $incUserId > 0 && (!empty($canViewAllIncentives) || !empty($canEditIncentives) || $incUserId === (int) auth()->id());
-                                                    @endphp
-                                                    @if($incUserId === 0) disabled title="No user record found for this row"
-                                                    @elseif(!$canOpenInc) disabled title="You can only view your own incentives"
-                                                    @elseif(!empty($row['incentive_cutoff_alert'])) title="Red alert: CutOff Date is tomorrow or sooner"
-                                                    @else title="{{ !empty($canEditIncentives) ? 'Edit' : 'View' }} incentives for {{ e($row['team_member']) }}"
-                                                    @endif
+                                                    @if($incUserId === 0 || ! $canOpenInc) disabled @endif
+                                                    title="{{ e($incTitle) }}"
                                                     aria-label="Open incentives for {{ e($row['team_member']) }}">
-                                                <span class="incentive-dollar-icon" aria-hidden="true">₹</span>@if((float) ($row['incentive_amount'] ?? 0) > 0 || (int) ($row['incentive_count'] ?? 0) > 0)<span class="incentive-bag-count">₹{{ number_format((float) ($row['incentive_amount'] ?? 0), 0) }}</span>@endif
+                                                <span class="incentive-k-amount">{{ $incKLabel }}</span>
                                             </button>
                                         </td>
                                         <td class="task-summary-col-minimize text-center">
@@ -2270,12 +2481,13 @@
                     + ':not(.is-ts-minimized)'
                     + ':not(.is-ts-snoozed)'
                 );
-                var sum = { task: 0, overdue: 0, done: 0, members: 0, incentive: 0 };
+                var sum = { task: 0, overdue: 0, done: 0, y_done: 0, members: 0, incentive: 0 };
                 rows.forEach(function (tr) {
                     var taskN = parseInt(tr.getAttribute('data-sort-task'), 10) || 0;
                     sum.task += taskN;
                     sum.overdue += parseInt(tr.getAttribute('data-sort-overdue'), 10) || 0;
                     sum.done += parseInt(tr.getAttribute('data-sort-done'), 10) || 0;
+                    sum.y_done += parseInt(tr.getAttribute('data-sort-y_done'), 10) || 0;
                     sum.incentive += parseFloat(tr.getAttribute('data-sort-incentive_amount')) || 0;
                     if (taskN > 0) sum.members += 1;
                 });
@@ -2292,6 +2504,7 @@
                     'ts-analytics-val-assigned': fmt(sum.members),
                     'ts-analytics-val-overdue': fmt(sum.overdue),
                     'ts-analytics-val-done': fmt(sum.done),
+                    'ts-analytics-val-ydone': fmt(sum.y_done),
                     'ts-analytics-val-incentive': fmtRs(sum.incentive)
                 };
                 Object.keys(pairs).forEach(function (id) {
@@ -6111,6 +6324,7 @@
 
             var endpoints = {
                 updateLevel: @json(route('tasks.users.orgLevel')),
+                updateDesignation: @json(route('tasks.users.designation')),
                 tagsGet: @json(route('tasks.mgrTags.get')),
                 juniorsAdd: @json(route('tasks.mgrChecklist.juniors.add')),
                 juniorsRemove: @json(route('tasks.mgrChecklist.juniors.remove'))
@@ -6361,48 +6575,265 @@
                     });
             }
 
-            function saveOrgLevel(selectEl) {
-                var userId = parseInt(selectEl.getAttribute('data-user-id'), 10);
-                if (!userId) return;
-                var value = selectEl.value || null;
-                var prevValue = selectEl.getAttribute('data-prev-value') || '';
-                selectEl.disabled = true;
-                postJson(endpoints.updateLevel, { user_id: userId, org_level: value })
-                    .then(function (data) {
-                        selectEl.disabled = false;
-                        selectEl.setAttribute('data-prev-value', value || '');
-                        // Update the row's data-sort attribute so sorting reflects the new value immediately.
-                        var tr = selectEl.closest('tr');
-                        if (tr) tr.setAttribute('data-sort-org_level', value || '');
-                        // Show / hide the Tags dot in this row (Mgr and Director both get the dot).
+            function saveOrgLevel(btn, value) {
+                var userId = parseInt(btn.getAttribute('data-user-id'), 10);
+                if (!userId || btn.disabled) return;
+                value = value || '';
+                var prevValue = btn.getAttribute('data-saved-value') || '';
+                if (value === prevValue) return;
+                var labels = { '': '—', mgr: 'Mgr', director: 'Director', exec: 'Exec' };
+                btn.disabled = true;
+                btn.classList.add('is-saving');
+                postJson(endpoints.updateLevel, { user_id: userId, org_level: value === '' ? null : value })
+                    .then(function () {
+                        btn.disabled = false;
+                        btn.classList.remove('is-saving');
+                        btn.setAttribute('data-saved-value', value);
+                        btn.textContent = labels[value] || '—';
+                        var tr = btn.closest('tr');
+                        if (tr) tr.setAttribute('data-sort-org_level', value);
                         var dot = tr ? tr.querySelector('.task-summary-role-mgr-tags-btn') : null;
                         if (dot) dot.style.display = (value === 'mgr' || value === 'director') ? '' : 'none';
-                        // Re-render the hierarchy view if it's currently active so the new role takes effect.
                         if (window.taskSummaryHierarchy && typeof window.taskSummaryHierarchy.rebuildIfActive === 'function') {
                             window.taskSummaryHierarchy.rebuildIfActive();
                         }
                     })
                     .catch(function (err) {
-                        selectEl.disabled = false;
-                        // Revert UI on failure.
-                        selectEl.value = prevValue;
+                        btn.disabled = false;
+                        btn.classList.remove('is-saving');
+                        btn.textContent = labels[prevValue] || '—';
                         alert('Could not save role: ' + (err.message || 'unknown error'));
                     });
             }
 
-            // Capture initial dropdown values so we can revert on failed save.
-            document.querySelectorAll('.task-summary-role-select').forEach(function (s) {
-                s.setAttribute('data-prev-value', s.value || '');
-            });
+            var roleMenu = document.getElementById('task-summary-role-menu');
+            var roleMenuBtn = null;
+            if (roleMenu && roleMenu.parentNode !== document.body) {
+                document.body.appendChild(roleMenu);
+            }
+
+            function closeRoleMenu() {
+                if (!roleMenu) return;
+                roleMenu.hidden = true;
+                if (roleMenuBtn) roleMenuBtn.classList.remove('is-open');
+                roleMenuBtn = null;
+            }
+
+            function openRoleMenu(btn) {
+                if (!roleMenu) return;
+                closeDesignationMenu();
+                if (roleMenuBtn && roleMenuBtn !== btn) roleMenuBtn.classList.remove('is-open');
+                roleMenuBtn = btn;
+                btn.classList.add('is-open');
+                var allowed = (btn.getAttribute('data-options') || '').split(',');
+                var current = btn.getAttribute('data-saved-value') || '';
+                roleMenu.hidden = false;
+                roleMenu.querySelectorAll('button[data-value]').forEach(function (opt) {
+                    var val = opt.getAttribute('data-value') || '';
+                    opt.hidden = allowed.indexOf(val) === -1;
+                    opt.classList.toggle('is-current', val === current);
+                });
+                var rect = btn.getBoundingClientRect();
+                var menuRect = roleMenu.getBoundingClientRect();
+                var top = rect.bottom + 4;
+                if (top + menuRect.height > window.innerHeight - 8) {
+                    top = Math.max(8, rect.top - menuRect.height - 4);
+                }
+                var left = rect.left + (rect.width / 2) - (menuRect.width / 2);
+                left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+                roleMenu.style.top = top + 'px';
+                roleMenu.style.left = left + 'px';
+            }
+
+            var designationMenu = document.getElementById('task-summary-designation-menu');
+            var designationMenuBtn = null;
+            if (designationMenu && designationMenu.parentNode !== document.body) {
+                document.body.appendChild(designationMenu);
+            }
+
+            function compactDesignation(full) {
+                full = (full || '').trim();
+                if (!full) return '—';
+                return full.replace(/\b(Manager|Executive)\b/gi, function (m) {
+                    return m.toLowerCase() === 'manager' ? 'Mgr' : 'Exc';
+                });
+            }
+
+            function closeDesignationMenu() {
+                if (!designationMenu) return;
+                designationMenu.hidden = true;
+                if (designationMenuBtn) designationMenuBtn.classList.remove('is-open');
+                designationMenuBtn = null;
+            }
+
+            function openDesignationMenu(btn) {
+                if (!designationMenu) return;
+                closeRoleMenu();
+                if (designationMenuBtn && designationMenuBtn !== btn) {
+                    designationMenuBtn.classList.remove('is-open');
+                }
+                designationMenuBtn = btn;
+                btn.classList.add('is-open');
+                designationMenu.hidden = false;
+                var current = (btn.getAttribute('data-saved-value') || '').toLowerCase();
+                var currentOpt = null;
+                designationMenu.querySelectorAll('button[data-value]').forEach(function (opt) {
+                    var match = (opt.getAttribute('data-value') || '').toLowerCase() === current;
+                    opt.classList.toggle('is-current', match);
+                    if (match) currentOpt = opt;
+                });
+                var rect = btn.getBoundingClientRect();
+                var menuRect = designationMenu.getBoundingClientRect();
+                var top = rect.bottom + 4;
+                if (top + menuRect.height > window.innerHeight - 8) {
+                    top = Math.max(8, rect.top - menuRect.height - 4);
+                }
+                var left = rect.left + (rect.width / 2) - (menuRect.width / 2);
+                left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+                designationMenu.style.top = top + 'px';
+                designationMenu.style.left = left + 'px';
+                if (currentOpt && currentOpt.scrollIntoView) {
+                    currentOpt.scrollIntoView({ block: 'nearest' });
+                }
+            }
+
+            function syncDesignationOnRow(tr, designation) {
+                if (!tr) return;
+                tr.setAttribute('data-sort-designation', designation);
+                var member = (tr.getAttribute('data-sort-member') || '').trim();
+                tr.setAttribute('data-search', (member + ' ' + designation).trim().toLowerCase());
+                tr.querySelectorAll('[data-designation]').forEach(function (node) {
+                    node.setAttribute('data-designation', designation);
+                });
+                var empty = designation === '';
+                tr.querySelectorAll('.task-summary-rr-btn, .task-summary-clrr-btn, .task-summary-clmgr-btn').forEach(function (btn) {
+                    if (btn.getAttribute('data-perm-locked') === '1') return;
+                    btn.disabled = empty;
+                    var name = btn.getAttribute('data-user-name') || '';
+                    if (btn.classList.contains('task-summary-clmgr-btn')) {
+                        btn.title = empty
+                            ? 'Set a designation on this user to view CL Mgr'
+                            : 'View Manager checklist & combined score for ' + name;
+                    } else if (btn.classList.contains('task-summary-clrr-btn')) {
+                        btn.title = empty
+                            ? 'Set a designation on this user to view CL R&R'
+                            : 'View CL R&R checklist & score for ' + designation;
+                    } else {
+                        btn.title = empty
+                            ? 'Set a designation on this user to view R&R'
+                            : 'View R&R for ' + designation;
+                    }
+                });
+            }
+
+            function saveDesignation(btn, value) {
+                var userId = parseInt(btn.getAttribute('data-user-id'), 10);
+                if (!userId || btn.disabled) return;
+                value = (value || '').trim();
+                var prev = btn.getAttribute('data-saved-value') || '';
+                if (value === prev) return;
+                btn.disabled = true;
+                btn.classList.add('is-saving');
+                btn.classList.remove('is-saved');
+                postJson(endpoints.updateDesignation, { user_id: userId, designation: value === '' ? null : value })
+                    .then(function (data) {
+                        var saved = (data && data.user && data.user.designation) ? String(data.user.designation) : '';
+                        btn.disabled = false;
+                        btn.classList.remove('is-saving');
+                        btn.textContent = compactDesignation(saved);
+                        btn.setAttribute('data-saved-value', saved);
+                        btn.title = saved || 'Choose a designation';
+                        btn.classList.add('is-saved');
+                        window.setTimeout(function () { btn.classList.remove('is-saved'); }, 1200);
+                        syncDesignationOnRow(btn.closest('tr'), saved);
+                        if (state.userId === userId) {
+                            state.designation = saved;
+                            var desEl = el('ts-mgrtag-modal-designation');
+                            if (desEl) {
+                                desEl.innerHTML = saved
+                                    ? '<i class="ri-briefcase-line me-1"></i>' + escapeHtml(saved)
+                                    : '';
+                            }
+                        }
+                        if (window.taskSummaryHierarchy && typeof window.taskSummaryHierarchy.rebuildIfActive === 'function') {
+                            window.taskSummaryHierarchy.rebuildIfActive();
+                        }
+                    })
+                    .catch(function (err) {
+                        btn.disabled = false;
+                        btn.classList.remove('is-saving');
+                        btn.textContent = compactDesignation(prev);
+                        alert('Could not save designation: ' + (err.message || 'unknown error'));
+                    });
+            }
 
             // (User Dashboard IIFE is registered globally below.)
 
-            // Save on change (delegated so re-rendered rows work too).
-            document.addEventListener('change', function (e) {
-                var t = e.target;
-                if (!t || !t.classList || !t.classList.contains('task-summary-role-select')) return;
-                saveOrgLevel(t);
+            document.addEventListener('click', function (e) {
+                var target = e.target;
+                if (!target || !target.closest) return;
+                var roleBtn = target.closest('.task-summary-role-btn');
+                if (roleBtn) {
+                    e.preventDefault();
+                    if (roleMenuBtn === roleBtn && roleMenu && !roleMenu.hidden) {
+                        closeRoleMenu();
+                    } else {
+                        openRoleMenu(roleBtn);
+                    }
+                    return;
+                }
+                var roleOpt = target.closest('#task-summary-role-menu button[data-value]');
+                if (roleOpt && roleMenuBtn) {
+                    e.preventDefault();
+                    var roleChosen = roleOpt.getAttribute('data-value') || '';
+                    var roleOwner = roleMenuBtn;
+                    closeRoleMenu();
+                    saveOrgLevel(roleOwner, roleChosen);
+                    return;
+                }
+                var desBtn = target.closest('.task-summary-designation-btn');
+                if (desBtn) {
+                    e.preventDefault();
+                    if (designationMenuBtn === desBtn && designationMenu && !designationMenu.hidden) {
+                        closeDesignationMenu();
+                    } else {
+                        openDesignationMenu(desBtn);
+                    }
+                    return;
+                }
+                var desOpt = target.closest('#task-summary-designation-menu button[data-value]');
+                if (desOpt && designationMenuBtn) {
+                    e.preventDefault();
+                    var chosen = desOpt.getAttribute('data-value') || '';
+                    var owner = designationMenuBtn;
+                    closeDesignationMenu();
+                    saveDesignation(owner, chosen);
+                    return;
+                }
+                if (designationMenu && !designationMenu.hidden && !target.closest('#task-summary-designation-menu')) {
+                    closeDesignationMenu();
+                }
+                if (roleMenu && !roleMenu.hidden && !target.closest('#task-summary-role-menu')) {
+                    closeRoleMenu();
+                }
             });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    closeDesignationMenu();
+                    closeRoleMenu();
+                }
+            });
+            window.addEventListener('resize', function () {
+                closeDesignationMenu();
+                closeRoleMenu();
+            });
+            window.addEventListener('scroll', function (e) {
+                if (designationMenu && e.target && designationMenu.contains(e.target)) return;
+                if (roleMenu && e.target && roleMenu.contains(e.target)) return;
+                closeDesignationMenu();
+                closeRoleMenu();
+            }, true);
 
             // Open tags modal on dot click; chip remove + add inside modal.
             // (Skips silently if the dot doesn't exist for the current viewer.)

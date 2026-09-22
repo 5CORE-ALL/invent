@@ -11,6 +11,7 @@ use App\Models\AutomateTaskChecklistForm;
 use App\Models\AutomateTaskChecklistSubmission;
 use App\Models\Badge;
 use App\Models\Dar;
+use App\Models\Designation;
 use App\Models\DesignationMgrCheckpoint;
 use App\Models\DesignationRrCheckpoint;
 use App\Models\DesignationRrItem;
@@ -609,6 +610,7 @@ class TaskController extends Controller
 
         $this->addArchivedMissedPeriodCounts($byEmail, $defaultCounts, $missedLookback, $now);
         $this->addArchivedEtcAtcLast30($byEmail, $defaultCounts, $tatCutoff);
+        $yDoneByEmail = $this->yesterdayDoneCountsByEmail();
 
         $members = $this->activeTeamUsersQuery()
             ->orderBy('name')
@@ -779,6 +781,7 @@ class TaskController extends Controller
                 'a_task_h' => (int) round($counts['a_task_h'] / 60),
                 'need_approval' => $counts['need_approval'],
                 'done' => $counts['done'],
+                'y_done' => (int) ($yDoneByEmail[strtolower((string) $email)] ?? 0),
             ], $kpiFields, [
                 'soi_count' => (int) ($soiCounts[$member->id] ?? 0),
                 'incentive_count' => (int) (optional($incentiveStats->get($member->id))->incentive_count ?? 0),
@@ -1336,10 +1339,13 @@ class TaskController extends Controller
 
         $canEditIncentives = $this->canEditIncentives($viewer);
         $canViewAllIncentives = $this->canViewAllIncentives($viewer);
+        $designationOptions = $this->taskSummaryDesignationOptions();
+        $yDoneTotal = array_sum(array_map(fn (array $r) => (int) ($r['y_done'] ?? 0), $rows));
+        $yDoneDate = $this->yesterdayDoneWindow()['label'];
 
         return view(
             'tasks.task-summary',
-            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives', 'canViewAllIncentives')
+            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives', 'canViewAllIncentives', 'designationOptions', 'yDoneTotal', 'yDoneDate')
         );
     }
 
@@ -1447,6 +1453,198 @@ class TaskController extends Controller
             'viewer' => $viewer ? $viewer->name : null,
             'shown' => $shown,
         ];
+    }
+
+    /**
+     * Yesterday in the task office timezone (PT). completion_date is stored
+     * as that same wall clock, so the window is compared as plain datetimes.
+     *
+     * @return array{date: string, start: string, end: string, label: string}
+     */
+    protected function yesterdayDoneWindow(): array
+    {
+        $day = TaskBusinessTime::today()->subDay();
+
+        return [
+            'date' => $day->toDateString(),
+            'start' => $day->copy()->startOfDay()->format('Y-m-d H:i:s'),
+            'end' => $day->copy()->endOfDay()->format('Y-m-d H:i:s'),
+            'label' => $day->format('D, M j, Y'),
+        ];
+    }
+
+    /**
+     * Tasks marked Done yesterday, one row per assignee.
+     * Live tasks are "not deleted". Archived copies in deleted_tasks are
+     * "deleted", with the person (or auto job) who removed them.
+     *
+     * @param  list<string>|null  $onlyEmails  lowercase emails; null keeps every assignee
+     * @param  array<string, string>  $nameByEmail
+     * @return list<array{title: string, email: string, assignee: string, completed_at: string, deleted: bool, deleted_by: string, deleted_at: string}>
+     */
+    protected function yesterdayDoneRecords(?array $onlyEmails = null, array $nameByEmail = []): array
+    {
+        $window = $this->yesterdayDoneWindow();
+        $only = null;
+        if ($onlyEmails !== null) {
+            $only = [];
+            foreach ($onlyEmails as $email) {
+                $email = strtolower(trim((string) $email));
+                if ($email !== '') {
+                    $only[$email] = true;
+                }
+            }
+        }
+
+        $records = [];
+        $liveIds = [];
+
+        $push = function ($task, bool $deleted) use (&$records, &$liveIds, $only, $nameByEmail): void {
+            $taskId = (int) ($deleted ? ($task->original_task_id ?? 0) : ($task->id ?? 0));
+            if ($deleted && $taskId > 0 && isset($liveIds[$taskId])) {
+                return;
+            }
+            if (! $deleted && $taskId > 0) {
+                $liveIds[$taskId] = true;
+            }
+
+            $emails = array_values(array_filter(array_map('trim', explode(',', (string) ($task->assign_to ?? '')))));
+            if ($emails === []) {
+                return;
+            }
+
+            $completed = '';
+            if (! empty($task->completion_date)) {
+                try {
+                    $completed = TaskBusinessTime::formatDisplay(TaskBusinessTime::parse($task->completion_date));
+                } catch (\Throwable $e) {
+                    $completed = '';
+                }
+            }
+
+            $deletedBy = '';
+            $deletedAt = '';
+            if ($deleted) {
+                $deletedBy = trim((string) ($task->deleted_by_name ?? ''));
+                if ($deletedBy === '') {
+                    $deletedBy = trim((string) ($task->deleted_by_email ?? ''));
+                }
+                if (strtolower($deletedBy) === 'system@auto' || strtolower((string) ($task->deleted_by_email ?? '')) === 'system@auto') {
+                    $deletedBy = 'Auto';
+                }
+                if ($deletedBy === '') {
+                    $deletedBy = 'Unknown';
+                }
+                if (! empty($task->deleted_at)) {
+                    try {
+                        $deletedAt = TaskBusinessTime::formatDisplay(TaskBusinessTime::parse($task->deleted_at));
+                    } catch (\Throwable $e) {
+                        $deletedAt = '';
+                    }
+                }
+            }
+
+            foreach ($emails as $email) {
+                $key = strtolower($email);
+                if ($only !== null && ! isset($only[$key])) {
+                    continue;
+                }
+                $assignee = $nameByEmail[$key] ?? '';
+                if ($assignee === '' && $deleted) {
+                    $assignee = trim((string) ($task->assignee_name ?? ''));
+                }
+                if ($assignee === '') {
+                    $assignee = $email;
+                }
+                $records[] = [
+                    'title' => trim((string) ($task->title ?? '')) ?: 'Untitled task',
+                    'email' => $email,
+                    'assignee' => $assignee,
+                    'completed_at' => $completed,
+                    'deleted' => $deleted,
+                    'deleted_by' => $deletedBy,
+                    'deleted_at' => $deletedAt,
+                ];
+            }
+        };
+
+        Task::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$window['start'], $window['end']])
+            ->orderBy('completion_date')
+            ->get(['id', 'title', 'assign_to', 'completion_date'])
+            ->each(fn ($task) => $push($task, false));
+
+        DeletedTask::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$window['start'], $window['end']])
+            ->orderBy('completion_date')
+            ->get(['original_task_id', 'title', 'assign_to', 'assignee_name', 'completion_date', 'deleted_by_name', 'deleted_by_email', 'deleted_at'])
+            ->each(fn ($task) => $push($task, true));
+
+        usort($records, function (array $a, array $b): int {
+            $byName = strcasecmp($a['assignee'], $b['assignee']);
+            if ($byName !== 0) {
+                return $byName;
+            }
+
+            return strcasecmp($a['title'], $b['title']);
+        });
+
+        return $records;
+    }
+
+    /**
+     * @return array<string, int> lowercase assignee email => yesterday-done count
+     */
+    protected function yesterdayDoneCountsByEmail(): array
+    {
+        $counts = [];
+        foreach ($this->yesterdayDoneRecords() as $record) {
+            $key = strtolower($record['email']);
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Tasks completed yesterday (office PT), with deleted vs still on the board.
+     */
+    public function yesterdayDone(Request $request)
+    {
+        $viewer = Auth::user();
+        $visibleIds = $this->getTaskSummaryVisibleUserIds($viewer);
+        $focusId = (int) $request->query('user_id', 0);
+
+        $usersQuery = $this->activeTeamUsersQuery()->orderBy('name');
+        if ($visibleIds !== null) {
+            $usersQuery->whereIn('id', $visibleIds ?: [0]);
+        }
+        if ($focusId > 0) {
+            if ($visibleIds !== null && ! in_array($focusId, $visibleIds, true)) {
+                abort(403);
+            }
+            $usersQuery->where('id', $focusId);
+        }
+
+        $users = $usersQuery->get(['id', 'name', 'email']);
+        $nameByEmail = [];
+        $emails = [];
+        foreach ($users as $user) {
+            $key = strtolower(trim((string) $user->email));
+            if ($key === '') {
+                continue;
+            }
+            $emails[] = $key;
+            $nameByEmail[$key] = (string) $user->name;
+        }
+
+        $window = $this->yesterdayDoneWindow();
+        $tasks = $this->yesterdayDoneRecords($emails, $nameByEmail);
+        $focusUser = $focusId > 0 ? $users->first() : null;
+
+        return view('tasks.yesterday-done', compact('tasks', 'window', 'focusUser'));
     }
 
     /**
@@ -4843,21 +5041,27 @@ class TaskController extends Controller
         }
 
         $canReviveArchivedTasks = $this->userCanReviveArchivedTasks($user);
+        $yesterdayDate = TaskBusinessTime::today()->subDay()->toDateString();
+        $yesterdayLabel = TaskBusinessTime::today()->subDay()->format('M j, Y');
 
-        return view('tasks.deleted', compact('stats', 'isAdmin', 'tatChartData', 'missedChartData', 'selectedUserName', 'canReviveArchivedTasks'));
+        return view('tasks.deleted', compact('stats', 'isAdmin', 'tatChartData', 'missedChartData', 'selectedUserName', 'canReviveArchivedTasks', 'yesterdayDate', 'yesterdayLabel'));
     }
 
     /**
      * Get deleted tasks data for table
      */
-    public function deletedData()
+    public function deletedData(Request $request)
     {
         $user = Auth::user();
         $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
-        // Show only tasks deleted in the last 30 days
+        [$windowStart, $windowEnd] = $this->deletedTasksDateWindow(
+            (string) $request->query('range', 'yesterday'),
+            $request->query('date')
+        );
+
         $query = DeletedTask::query()
-            ->where('deleted_at', '>=', now()->subDays(30));
+            ->whereBetween('deleted_at', [$windowStart, $windowEnd]);
         
         if (!$isAdmin) {
             $query->where(function($q) use ($user) {
@@ -4916,6 +5120,55 @@ class TaskController extends Controller
         });
 
         return response()->json($deletedTasks);
+    }
+
+    /**
+     * Archive-date window for /tasks/deleted.
+     * yesterday = the previous office day, 7/30 = that many calendar days through today,
+     * date = one selected office day.
+     *
+     * @return array{0: string, 1: string}
+     */
+    protected function deletedTasksDateWindow(string $range, mixed $date): array
+    {
+        $today = TaskBusinessTime::today();
+
+        if ($range === '7') {
+            return [
+                $today->copy()->subDays(6)->startOfDay()->format('Y-m-d H:i:s'),
+                $today->copy()->endOfDay()->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        if ($range === '30') {
+            return [
+                $today->copy()->subDays(29)->startOfDay()->format('Y-m-d H:i:s'),
+                $today->copy()->endOfDay()->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        if ($range === 'date') {
+            $raw = trim((string) $date);
+            try {
+                $day = $raw !== ''
+                    ? TaskBusinessTime::parse($raw.' 00:00:00')->startOfDay()
+                    : $today->copy()->subDay()->startOfDay();
+            } catch (\Throwable $e) {
+                $day = $today->copy()->subDay()->startOfDay();
+            }
+
+            return [
+                $day->format('Y-m-d H:i:s'),
+                $day->copy()->endOfDay()->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        $yesterday = $today->copy()->subDay();
+
+        return [
+            $yesterday->copy()->startOfDay()->format('Y-m-d H:i:s'),
+            $yesterday->copy()->endOfDay()->format('Y-m-d H:i:s'),
+        ];
     }
 
     /**
@@ -7753,6 +8006,75 @@ class TaskController extends Controller
             'user' => [
                 'id' => $user->id,
                 'org_level' => $user->org_level,
+            ],
+        ]);
+    }
+
+    /**
+     * Distinct designation names for the Task Summary column editor.
+     * Combines values already on active users with the designations table.
+     *
+     * @return list<string>
+     */
+    protected function taskSummaryDesignationOptions(): array
+    {
+        $fromUsers = $this->activeTeamUsersQuery()
+            ->whereNotNull('designation')
+            ->where('designation', '!=', '')
+            ->distinct()
+            ->pluck('designation');
+
+        $fromTable = collect();
+        if (Schema::hasTable('designations')) {
+            $fromTable = Designation::query()
+                ->where('is_active', true)
+                ->pluck('name');
+        }
+
+        return $fromUsers
+            ->merge($fromTable)
+            ->map(fn ($name) => trim((string) $name))
+            ->filter(fn ($name) => $name !== '')
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->sort(fn ($a, $b) => strcasecmp($a, $b))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Update a user's designation from the Task Summary column.
+     *
+     * Same row gate as the rest of Task Summary: admins, directors, and
+     * Shobha can edit anyone; a manager can edit themselves, tagged juniors,
+     * and Executives; everyone else can edit only their own row.
+     */
+    public function updateUserDesignation(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'designation' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $viewer = Auth::user();
+        $user = User::findOrFail($validated['user_id']);
+        $designation = trim((string) ($validated['designation'] ?? ''));
+        $designation = $designation === '' ? null : $designation;
+
+        if (! $this->canManageRow($viewer, $user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only change designations for yourself, your tagged juniors, or Executives.',
+            ], 403);
+        }
+
+        $user->designation = $designation;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'user' => [
+                'id' => $user->id,
+                'designation' => $user->designation,
             ],
         ]);
     }
