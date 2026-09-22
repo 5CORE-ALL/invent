@@ -12,8 +12,32 @@
         overflow: hidden;
         box-shadow: 0 24px 60px rgba(13, 148, 136, 0.24);
     }
+    #tatNudgeModal .modal-header {
+        border: 0;
+        padding: 0.85rem 1.15rem 0.75rem;
+        background: #0f766e;
+        color: #fff;
+        justify-content: center;
+        position: relative;
+    }
+    #tatNudgeModal .modal-title {
+        font-size: 0.98rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        margin: 0;
+        text-align: center;
+        width: 100%;
+    }
+    #tatNudgeModal .modal-header .btn-close {
+        position: absolute;
+        right: 0.85rem;
+        top: 50%;
+        transform: translateY(-50%);
+        filter: invert(1);
+        opacity: 0.85;
+    }
     #tatNudgeModal .modal-body {
-        padding: 2rem 1.6rem 1.5rem;
+        padding: 1.6rem 1.6rem 1.5rem;
         text-align: center;
         background: linear-gradient(180deg, #ecfdf5 0%, #fff 55%);
     }
@@ -107,6 +131,10 @@
 <div class="modal fade" id="tatNudgeModal" tabindex="-1" aria-labelledby="tatNudgeTitle" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tatNudgeTitle">Task Accomplish Time (TAT)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
             <div class="modal-body">
                 <span class="tat-nudge-emoji" aria-hidden="true">🏆</span>
                 <div class="tat-nudge-kicker" id="tatNudgeHello">Performance reminder</div>

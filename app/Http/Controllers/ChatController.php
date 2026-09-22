@@ -1001,7 +1001,7 @@ class ChatController extends Controller
     private function displayName(ChatChannel $channel, User $user): string
     {
         if ($channel->isBotInbox()) {
-            return 'Invent Bot';
+            return ChatWorkspace::BOT_NAME;
         }
 
         if ($channel->isDm() && $channel->dm_key) {
