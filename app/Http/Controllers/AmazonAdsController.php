@@ -2598,33 +2598,54 @@ class AmazonAdsController extends Controller
         $like = '%'.addcslashes($search, '%_\\').'%';
         $hasAdType = in_array('ad_type', $dbColumns, true);
 
-        $query->where(function (Builder $outer) use ($from, $to, $like, $table, $hasAdType) {
-            $outer->where(function (Builder $daily) use ($from, $to, $like) {
-                self::whereReportDateRangeDailyYmdInRange($daily, $from, $to);
-                $daily->where('campaignName', 'LIKE', $like);
-            })->orWhere(function (Builder $l30) use ($from, $to, $like, $table, $hasAdType) {
-                $l30->where('report_date_range', 'L30')
-                    ->where('campaignName', 'LIKE', $like)
-                    ->whereNotExists(function ($sub) use ($from, $to, $table, $hasAdType) {
-                        $sub->select(DB::raw('1'))
-                            ->from($table.' as amz_cal_d')
-                            ->whereColumn('amz_cal_d.campaign_id', $table.'.campaign_id');
-                        if ($hasAdType) {
-                            $sub->whereColumn('amz_cal_d.ad_type', $table.'.ad_type');
-                        }
-                        if ($from !== null && $to !== null && $from === $to) {
-                            $sub->where('amz_cal_d.report_date_range', $from);
-                        } else {
-                            $sub->whereRaw('CHAR_LENGTH(amz_cal_d.report_date_range) = 10');
-                            if ($from !== null) {
-                                $sub->where('amz_cal_d.report_date_range', '>=', $from);
-                            }
-                            if ($to !== null) {
-                                $sub->where('amz_cal_d.report_date_range', '<=', $to);
-                            }
-                        }
-                    });
-            });
+        // Two index lookups. OR + NOT EXISTS makes MySQL scan the whole report table.
+        $dailyIds = DB::table($table)->select('id');
+        self::whereReportDateRangeDailyYmdInRange($dailyIds, $from, $to);
+        $dailyIdList = $dailyIds->where('campaignName', 'LIKE', $like)->pluck('id')->all();
+
+        $present = DB::table($table)->select('campaign_id');
+        if ($hasAdType) {
+            $present->addSelect('ad_type');
+        }
+        self::whereReportDateRangeDailyYmdInRange($present, $from, $to);
+        $presentKeys = [];
+        foreach ($present->distinct()->get() as $row) {
+            $cid = trim((string) ($row->campaign_id ?? ''));
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($row->ad_type ?? '')) : '';
+            $presentKeys[$cid."\0".$ad] = true;
+        }
+
+        $l30IdList = [];
+        $l30Rows = DB::table($table)
+            ->select($hasAdType ? ['id', 'campaign_id', 'ad_type'] : ['id', 'campaign_id'])
+            ->where('report_date_range', 'L30')
+            ->where('campaignName', 'LIKE', $like)
+            ->get();
+        foreach ($l30Rows as $row) {
+            $cid = trim((string) ($row->campaign_id ?? ''));
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($row->ad_type ?? '')) : '';
+            if (isset($presentKeys[$cid."\0".$ad])) {
+                continue;
+            }
+            $l30IdList[] = $row->id;
+        }
+
+        $ids = array_values(array_unique(array_merge($dailyIdList, $l30IdList)));
+        if ($ids === []) {
+            $query->whereRaw('1 = 0');
+
+            return true;
+        }
+        $query->where(function (Builder $w) use ($ids) {
+            foreach (array_chunk($ids, 500) as $chunk) {
+                $w->orWhereIn('id', $chunk);
+            }
         });
 
         return true;
