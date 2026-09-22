@@ -15,11 +15,11 @@ use Illuminate\Support\Facades\Schema;
  *
  * Rules (per ProductMaster SKU, deleted_at null):
  * - skip PARENT SKUs
- * - skip Amazon FBA SKUs / FBA report rows (FBA is not this listing page)
+ * - skip Product Master rows whose SKU is an FBA variant ("… FBA") — those are not publish targets
  * - skip INV <= 0 (Shopify)
  * - nr_req from AmazonDataView.value.NRL (NRL → NR, else REQ)
- * - listed from FBM amazon_listings_raw + amazon_listing_statuses — ASIN present
- * - Missing L (Pending) = REQ and not listed on FBM
+ * - listed from any Amazon offer (FBM or FBA) with an ASIN — do not publish again
+ * - Missing L (Pending) = REQ and no Amazon ASIN on listings report / status / datasheet
  */
 class AmazonListingCounts
 {
@@ -244,11 +244,8 @@ class AmazonListingCounts
             ->get(['seller_sku', 'asin1', 'raw_data'])
             ->each(function (AmazonListingRaw $row) use (&$map) {
                 $sellerSku = trim((string) $row->seller_sku);
-                if ($sellerSku === '' || self::skuLooksLikeFba($sellerSku) || AmazonListingStatusHelper::reportRowIsFba($row)) {
-                    return;
-                }
                 $asin = trim((string) ($row->asin1 ?? ''));
-                if ($asin === '') {
+                if ($sellerSku === '' || $asin === '') {
                     return;
                 }
 
@@ -262,11 +259,26 @@ class AmazonListingCounts
                 ->get(['sku', 'value'])
                 ->each(function (AmazonListingStatus $row) use (&$map) {
                     $sku = trim((string) $row->sku);
-                    if ($sku === '' || self::skuLooksLikeFba($sku) || ! AmazonListingStatusHelper::isLinked($row)) {
+                    if ($sku === '' || ! AmazonListingStatusHelper::isLinked($row)) {
                         return;
                     }
                     $asin = AmazonListingStatusHelper::resolveAsin($row);
                     if ($asin === '') {
+                        return;
+                    }
+                    self::indexListing($map, $sku, $asin);
+                });
+        }
+
+        if (Schema::hasTable('amazon_datsheets')) {
+            AmazonDatasheet::query()
+                ->whereNotNull('asin')
+                ->where('asin', '!=', '')
+                ->get(['sku', 'asin'])
+                ->each(function (AmazonDatasheet $row) use (&$map) {
+                    $sku = trim((string) ($row->sku ?? ''));
+                    $asin = strtoupper(trim((string) ($row->asin ?? '')));
+                    if ($sku === '' || ! preg_match('/^[A-Z0-9]{10}$/', $asin)) {
                         return;
                     }
                     self::indexListing($map, $sku, $asin);

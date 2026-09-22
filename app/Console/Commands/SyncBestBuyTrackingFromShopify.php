@@ -8,9 +8,9 @@ use Illuminate\Console\Command;
 class SyncBestBuyTrackingFromShopify extends Command
 {
     protected $signature = 'bestbuy:sync-tracking
-                            {--limit=40 : Max orders per run}';
+                            {--limit=120 : Max Best Buy orders per run}';
 
-    protected $description = 'Push Shopify tracking to Best Buy (stub).';
+    protected $description = 'Copy unused Veeqo labels to Shopify, then push each tracking to Best Buy.';
 
     public function handle(BestBuyTrackingSyncService $sync): int
     {

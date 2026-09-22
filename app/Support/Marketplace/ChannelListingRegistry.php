@@ -956,10 +956,7 @@ class ChannelListingRegistry
     {
         $id = trim($id);
         $sku = trim($sku);
-        if ($id === '') {
-            return false;
-        }
-        if (str_starts_with(strtoupper($id), 'NE-')) {
+        if ($id === '' || ! preg_match('/^9SI/i', $id)) {
             return false;
         }
         if ($sku !== '' && strcasecmp($id, $sku) === 0) {

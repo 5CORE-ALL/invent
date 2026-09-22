@@ -275,9 +275,9 @@ class AliExpressApiService
         $productId = $this->extractPostedProductId($res['data'] ?? [])
             ?: $this->extractPostedProductId($res['result'] ?? [])
             ?: $this->extractPostedProductId($res);
-        if ($productId !== '') {
+                if ($productId !== '') {
             $res['success'] = true;
-            $res['product_id'] = $productId;
+                    $res['product_id'] = $productId;
 
             return $res;
         }
@@ -646,8 +646,8 @@ class AliExpressApiService
             }
         }
 
-        return '';
-    }
+            return '';
+        }
 
     /**
      * @param  array<string, mixed>  $res

@@ -70,7 +70,7 @@ class MarketplaceChannelFulfillmentHub
             'temu2' => [Temu2Order::class, Temu2TrackingSyncService::class, ['parent_order_sn', 'order_sn']],
             'purchasingpower' => [PurchasingPowerSale::class, PurchasingPowerTrackingSyncService::class, ['order_id', 'order_number']],
             'wayfair' => [WayfairDailyData::class, WayfairTrackingSyncService::class, ['po_number']],
-            'bestbuy' => [BestBuyOrderMetric::class, BestBuyTrackingSyncService::class, ['order_id', 'channel_order_id']],
+            'bestbuy' => [BestBuyOrderMetric::class, BestBuyTrackingSyncService::class, ['order_id', 'channel_order_id', 'order_line_id']],
             'macy' => [MacyOrderMetric::class, MacyTrackingSyncService::class, ['order_id', 'channel_order_id']],
             'doba' => [DobaDailyData::class, DobaTrackingSyncService::class, ['order_no', 'platform_order_no']],
             'ebay1' => [Ebay1OrderMetric::class, Ebay1TrackingSyncService::class, ['order_id', 'order_number']],

@@ -822,8 +822,8 @@ class VeeqoShopifyFulfillmentService
             if (! in_array($ref, $out, true)) {
                 $out[] = $ref;
             }
-            if (preg_match('/^(?:temu2?-|aliexpress-|alibaba-|PO-|TT2?-|tiktok2?-)/i', $ref, $m)) {
-                $tail = trim((string) preg_replace('/^(?:temu2?-|aliexpress-|alibaba-|PO-|TT2?-|tiktok2?-)/i', '', $ref));
+            if (preg_match('/^(?:temu2?-|aliexpress-|alibaba-|PO-|TT2?-|tiktok2?-|BBY\d{2}-)/i', $ref, $m)) {
+                $tail = trim((string) preg_replace('/^(?:temu2?-|aliexpress-|alibaba-|PO-|TT2?-|tiktok2?-|BBY\d{2}-)/i', '', $ref));
                 if (
                     $tail !== ''
                     && ! $this->isCollisionProneOrderRef($tail)
@@ -1875,6 +1875,12 @@ class VeeqoShopifyFulfillmentService
                     $candidates[] = $tail;
                 }
             }
+            if (preg_match('/^\d+_(\d{8,}-[A-Z])(?:-\d+)?$/i', $id, $m)) {
+                $tail = trim((string) ($m[1] ?? ''));
+                if ($tail !== '') {
+                    $candidates[] = $tail;
+                }
+            }
             if (preg_match('/^(?:TT2?|tiktok2?)-(.+)$/i', $id, $m)) {
                 $tail = trim((string) ($m[1] ?? ''));
                 if ($tail !== '') {
@@ -2138,7 +2144,7 @@ class VeeqoShopifyFulfillmentService
             'aliexpress' => [AliexpressOrderMetric::class, ['order_id', 'order_number']],
             'alibaba' => [AlibabaOrderMetric::class, ['order_id', 'order_number']],
             'topdawg' => [TopDawgOrderMetric::class, ['order_id', 'order_number']],
-            'bestbuy' => [BestBuyOrderMetric::class, ['order_id', 'channel_order_id']],
+            'bestbuy' => [BestBuyOrderMetric::class, ['order_id', 'channel_order_id', 'order_line_id']],
             'macy' => [MacyOrderMetric::class, ['order_id', 'channel_order_id']],
             'wayfair' => [WayfairDailyData::class, ['po_number']],
             'purchasingpower' => [PurchasingPowerSale::class, ['order_id', 'order_number']],
@@ -2364,7 +2370,7 @@ class VeeqoShopifyFulfillmentService
             'aliexpress' => [AliexpressOrderMetric::class, ['order_id', 'order_number']],
             'alibaba' => [AlibabaOrderMetric::class, ['order_id', 'order_number']],
             'topdawg' => [TopDawgOrderMetric::class, ['order_id', 'order_number']],
-            'bestbuy' => [BestBuyOrderMetric::class, ['order_id', 'channel_order_id']],
+            'bestbuy' => [BestBuyOrderMetric::class, ['order_id', 'channel_order_id', 'order_line_id']],
             'macy' => [MacyOrderMetric::class, ['order_id', 'channel_order_id']],
             'wayfair' => [WayfairDailyData::class, ['po_number']],
             'purchasingpower' => [PurchasingPowerSale::class, ['order_id', 'order_number']],
@@ -2417,6 +2423,25 @@ class VeeqoShopifyFulfillmentService
         }
 
         $skus = $this->skuListFromMarketplaceModel($marketplace, $model);
+
+        if ($marketplace === 'bestbuy' && $model instanceof BestBuyOrderMetric) {
+            $oid = trim((string) ($model->order_id ?? ''));
+            $cid = trim((string) ($model->channel_order_id ?? ''));
+            if ($oid !== '' || $cid !== '') {
+                $family = BestBuyOrderMetric::query()
+                    ->when($oid !== '', fn ($q) => $q->where('order_id', $oid))
+                    ->when($oid === '' && $cid !== '', fn ($q) => $q->where('channel_order_id', $cid))
+                    ->get(['order_id', 'channel_order_id', 'order_line_id']);
+                foreach ($family as $sibling) {
+                    foreach (['order_id', 'channel_order_id', 'order_line_id'] as $field) {
+                        $value = trim((string) ($sibling->{$field} ?? ''));
+                        if ($value !== '' && ! in_array($value, $refs, true)) {
+                            $refs[] = $value;
+                        }
+                    }
+                }
+            }
+        }
 
         return [
             'shopify_order_id' => (string) ($model->shopify_order_id ?? ''),

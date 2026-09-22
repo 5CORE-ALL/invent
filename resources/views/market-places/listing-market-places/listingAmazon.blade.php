@@ -845,9 +845,9 @@
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
-            // Missing Listing: amazon_datsheets price > 0 = Listed (same as Active Channel / amazon-tabulator)
+            // Missing Listing: Amazon ASIN on listings report / status / datasheet (FBA or FBM)
             if (data.listed === 'Listed') {
-                return `<span class="listing-listed-tick" title="Listed (amazon_datsheets price > 0)" aria-label="Listed">
+                return `<span class="listing-listed-tick" title="Listed on Amazon (ASIN present)" aria-label="Listed">
                     <i class="fas fa-check"></i>
                 </span>`;
             }

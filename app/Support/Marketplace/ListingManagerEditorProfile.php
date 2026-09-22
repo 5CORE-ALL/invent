@@ -187,9 +187,9 @@ class ListingManagerEditorProfile
                 'header_import' => 'Import from Newegg',
                 'pricing_title' => 'Price & Stock',
                 'title_heading' => 'Title & Description',
-                'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Condition is New. UPC helps Newegg match an existing catalog item.',
-                'images_help' => 'Load photos from Image Master. First image is Primary.',
-                'category_help' => 'Search Newegg Seller Portal subcategories and pick a leaf. The Subcategory ID is what Newegg uses to create the listing. You can also type a numeric Subcategory ID.',
+                'identifier_help' => 'Manufacturer must already exist in Newegg (ask Marketplace Content to add 5 Core if it is missing). Model/MPN is the SKU. Use a 12-digit UPC or 13-digit EAN.',
+                'images_help' => 'Load photos from Image Master. First image is Primary. Newegg accepts JPG/JPEG/GIF.',
+                'category_help' => 'Search Newegg Seller Portal subcategories and pick a leaf. The Subcategory ID is required to create the listing. After publish, the item appears in Pricing & Inventory only when Newegg assigns a 9SI item number.',
                 'policies_help' => 'Package size and weight come from Dim/Wt Master.',
             ],
             'mirakl' => [

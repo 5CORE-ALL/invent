@@ -2306,7 +2306,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncBestBuyTrackingJob(true, 40))
+        $schedule->job(new \App\Jobs\SyncBestBuyTrackingJob(true, 120))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('bestbuy-sync-tracking')
