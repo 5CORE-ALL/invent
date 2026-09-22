@@ -349,7 +349,13 @@
                         if (value === null || value === undefined || value === '') return '<span style="color:#adb5bd;">-</span>';
                         var d = Math.round(Number(value));
                         if (isNaN(d)) return '<span style="color:#adb5bd;">-</span>';
-                        return '<span style="font-weight:600;" title="' + d + (d === 1 ? ' day' : ' days') + '">' + d + ' D</span>';
+                        var bg = '';
+                        if (d === 1) bg = '#f06292';
+                        else if (d === 2) bg = '#28a745';
+                        else if (d > 2) bg = '#dc3545';
+                        var title = d + (d === 1 ? ' day' : ' days');
+                        if (!bg) return '<span style="font-weight:600;" title="' + title + '">' + d + ' D</span>';
+                        return '<span style="font-weight:600;background:' + bg + ';color:#fff;padding:2px 6px;border-radius:4px;" title="' + title + '">' + d + ' D</span>';
                     }
                 },
                 {
