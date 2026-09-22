@@ -25,6 +25,8 @@ class ListingManagerEditorProfile
      *   topdawg: bool,
      *   shein: bool,
      *   aliexpress: bool,
+     *   category_search: bool,
+     *   category_manual: bool,
      *   category_placeholder: string,
      *   optimize_label: string,
      *   header_quick: string,
@@ -312,7 +314,7 @@ class ListingManagerEditorProfile
                     ['id' => 'category', 'label' => 'Category'],
                 ],
                 'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
-                'category_placeholder' => 'Category ID or name',
+                'category_placeholder' => 'Search marketplace categories (e.g. light stand)',
                 'optimize_label' => 'Optimize Description',
                 'header_quick' => 'Quick/Auto List to Channel',
                 'header_import' => 'Import from Channel',
@@ -320,7 +322,7 @@ class ListingManagerEditorProfile
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Condition is New.',
                 'images_help' => 'Load photos from Image Master. First image is Primary.',
-                'category_help' => 'Enter the marketplace category ID or name.',
+                'category_help' => 'Search and select a leaf category for this marketplace, or type a category ID.',
                 'policies_help' => '',
             ],
         ];
@@ -345,6 +347,8 @@ class ListingManagerEditorProfile
             'topdawg' => $family === 'topdawg',
             'shein' => $family === 'shein',
             'aliexpress' => $family === 'aliexpress',
+            'category_search' => $family !== 'wayfair',
+            'category_manual' => in_array($family, ['temu', 'newegg', 'aliexpress', 'default'], true),
             'category_placeholder' => $base['category_placeholder'],
             'optimize_label' => $base['optimize_label'],
             'header_quick' => $base['header_quick'],
@@ -385,7 +389,7 @@ class ListingManagerEditorProfile
         if ($normalizedKey === 'shein') {
             return 'shein';
         }
-        if (in_array($normalizedKey, ['aliexpress', 'ali', 'aliexpresscom'], true)) {
+        if (str_contains($normalizedKey, 'aliexpress') || in_array($normalizedKey, ['ae', 'ali', 'aliexpresscom'], true)) {
             return 'aliexpress';
         }
         if ($normalizedKey === 'wayfair') {

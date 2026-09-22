@@ -121,6 +121,10 @@ class ListingManagerPublishDispatcherTest extends TestCase
         $this->assertContains('category', $tabIds);
         $this->assertStringContainsString('Search AliExpress', $profile['category_placeholder']);
         $this->assertStringContainsString('leaf', $profile['category_help']);
+        $this->assertTrue($profile['category_search']);
+        $this->assertTrue($profile['category_manual']);
+        $this->assertSame('aliexpress', ListingManagerEditorProfile::family('ae'));
+        $this->assertSame('aliexpress', ListingManagerEditorProfile::family('aliexpresscom'));
     }
 
     public function test_topdawg_category_search_and_resolve(): void

@@ -990,10 +990,11 @@
                     <input id="lc-secondary-category-id" class="form-control mb-2" placeholder="Optional Category ID">
                     </div>
 
+                    <label class="form-label lc-mp-category-search" id="lc-category-search-label">Search marketplace categories <span class="lc-req lc-category-star d-none">*</span></label>
                     <div class="lc-cat-box mb-3 lc-mp-category-search">
                         <div class="lc-cat-search">
                             <i class="fas fa-search"></i>
-                            <input type="text" id="lc-category-search" class="form-control form-control-sm border-0 shadow-none" placeholder="Search categories (e.g. speaker)">
+                            <input type="text" id="lc-category-search" class="form-control form-control-sm border-0 shadow-none" placeholder="Search categories (e.g. speaker)" autocomplete="off">
                         </div>
                         <div class="lc-cat-results" id="lc-category-results">
                             <div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>
@@ -3161,10 +3162,30 @@
         refreshEditorUi(currentDraft);
     }
 
+    function editorFamilyFromChannel(channel, fallback) {
+        const ch = String(channel || '').toLowerCase().replace(/[\s\-_&./']/g, '');
+        if (ch.includes('aliexpress') || ch === 'ae' || ch === 'ali') return 'aliexpress';
+        if (ch.includes('shein')) return 'shein';
+        if (ch.includes('newegg')) return 'newegg';
+        if (ch.includes('tiktok')) return 'tiktok';
+        if (ch.includes('temu')) return 'temu';
+        if (ch.includes('ebay')) return 'ebay';
+        if (ch.includes('reverb')) return 'reverb';
+        if (ch.includes('amazon')) return 'amazon';
+        if (ch.includes('faire')) return 'faire';
+        if (ch.includes('wayfair')) return 'wayfair';
+        if (ch.includes('topdawg')) return 'topdawg';
+        if (ch.includes('macy') || ch.includes('bestbuy') || ch.includes('purchasing')) return 'mirakl';
+        return fallback || 'default';
+    }
+
     function searchCategories(q) {
         const $box = $('#lc-category-results');
-        const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
         const channel = (currentDraft && currentDraft.channel) || '';
+        let family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
+        if (!family || family === 'default') {
+            family = editorFamilyFromChannel(channel, family);
+        }
         const title = String($('#lc-title').val() || (currentDraft && currentDraft.title) || '').trim();
         if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && family !== 'newegg' && family !== 'faire' && family !== 'wayfair' && family !== 'mirakl' && family !== 'topdawg' && family !== 'shein' && family !== 'aliexpress' && (!q || q.length < 2)) {
             $box.html('<div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>');
@@ -3272,6 +3293,14 @@
 
     function applyEditorProfile(draft, pane) {
         const ed = (draft && draft.editor) || { family: 'default', tabs: [] };
+        if (!ed.family || ed.family === 'default') {
+            ed.family = editorFamilyFromChannel(draft && draft.channel, ed.family || 'default');
+        }
+        if (ed.family === 'aliexpress') {
+            ed.aliexpress = true;
+            ed.category_search = true;
+            ed.category_manual = true;
+        }
         const tabIds = (ed.tabs || []).map(t => t.id);
         $('#lmListingEditorModal').attr('data-mp-family', ed.family || 'default');
         $('#lc-tabs .lc-tab').each(function () {
@@ -3311,10 +3340,12 @@
             : (ed.topdawg && !ed.amazon
                 ? 'Product made-in is required on TopDawg Create New Product. Country of origin is sent as that field.'
                 : 'Amazon will reject the listing without these. Color is taken from the SKU when possible.'));
-        $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg || ed.aliexpress));
-        $('.lc-mp-category-search').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg || ed.faire || ed.mirakl || ed.topdawg || ed.shein || ed.aliexpress) && !ed.wayfair));
-        $('.lc-mp-category-selected').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg || ed.faire || ed.mirakl || ed.topdawg || ed.shein || ed.aliexpress) && !ed.wayfair));
-        $('.lc-category-star').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.newegg || ed.faire || ed.wayfair || ed.mirakl || ed.topdawg || ed.shein || ed.aliexpress));
+        const hasCatSearch = ed.category_search !== false && !ed.wayfair;
+        const hasCatManual = ed.category_manual === true || ed.temu || ed.newegg || ed.aliexpress || ed.family === 'default';
+        $('.lc-mp-category-manual').toggleClass('d-none', !hasCatManual);
+        $('.lc-mp-category-search').toggleClass('d-none', !hasCatSearch);
+        $('.lc-mp-category-selected').toggleClass('d-none', !hasCatSearch);
+        $('.lc-category-star').toggleClass('d-none', !hasCatSearch);
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon || ed.wayfair || ed.topdawg));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
         $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.faire ? 'Faire Product Type' : (ed.wayfair ? 'Wayfair Class' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : (ed.topdawg ? 'TopDawg Category' : (ed.shein ? 'Shein Category' : (ed.aliexpress ? 'AliExpress Category' : 'Category'))))))))));
@@ -3323,6 +3354,20 @@
         $('#lc-category-manual-path-label').text('Category path / name');
         $('#lc-category-path-visible').attr('placeholder', 'Optional category name');
         $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
+        $('#lc-category-search-label').text(
+            ed.aliexpress ? 'Search AliExpress categories'
+            : (ed.newegg ? 'Search Newegg subcategories'
+            : (ed.shein ? 'Search Shein categories'
+            : (ed.tiktok ? 'Search TikTok categories'
+            : (ed.temu ? 'Search Temu categories'
+            : (ed.ebay ? 'Search eBay categories'
+            : (ed.reverb ? 'Search Reverb categories'
+            : (ed.amazon ? 'Search Amazon product types'
+            : (ed.faire ? 'Search Faire product types'
+            : (ed.mirakl ? 'Search marketplace categories'
+            : (ed.topdawg ? 'Search TopDawg categories'
+            : 'Search marketplace categories'))))))))))
+        );
         $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
         $('#lc-policies-title').text(
             ed.amazon ? 'Packaging' : (ed.ebay ? 'Business Policies' : (ed.tiktok ? 'Warehouse & Package' : (ed.temu || ed.wayfair || ed.topdawg ? 'Package' : (ed.reverb ? 'Shipping & Package' : 'Shipping'))))
