@@ -3469,6 +3469,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/chat/channels/{channel}/messages', 'messages')->whereNumber('channel')->name('chat.messages');
         Route::post('/chat/channels/{channel}/messages', 'storeMessage')->whereNumber('channel')->name('chat.messages.store');
         Route::post('/chat/channels', 'storeChannel')->name('chat.channels.store');
+        Route::delete('/chat/channels/{channel}', 'destroyChannel')->whereNumber('channel')->name('chat.channels.destroy');
         Route::post('/chat/groups', 'storeGroup')->name('chat.groups.store');
         Route::post('/chat/dms', 'storeDm')->name('chat.dms.store');
         Route::post('/chat/messages/{message}/forward', 'forward')->whereNumber('message')->name('chat.messages.forward');

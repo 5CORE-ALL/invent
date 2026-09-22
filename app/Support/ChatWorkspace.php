@@ -395,6 +395,8 @@ class ChatWorkspace
                 'online' => (bool) ($peerPresence['online'] ?? false),
                 'status' => $peerPresence['status'] ?? 'active',
                 'last_seen_label' => $peerPresence['last_seen_label'] ?? null,
+                'can_manage_members' => self::canManageMembers($user, $channel),
+                'can_delete' => self::canDeleteChannel($user, $channel),
             ];
         }
 
@@ -710,14 +712,32 @@ class ChatWorkspace
 
     public static function canManageMembers(?User $user, ChatChannel $channel): bool
     {
-        if (! $user) {
+        if (! $user || $channel->isBotInbox() || $channel->isDm()) {
+            return false;
+        }
+        if (self::canManageChannels($user)) {
+            return true;
+        }
+        if (! ($channel->isGroup() || $channel->type === ChatChannel::TYPE_PRIVATE)) {
+            return false;
+        }
+
+        return ChatChannelMember::query()
+            ->where('channel_id', $channel->id)
+            ->where('user_id', $user->id)
+            ->exists();
+    }
+
+    public static function canDeleteChannel(?User $user, ChatChannel $channel): bool
+    {
+        if (! $user || $channel->isBotInbox() || $channel->isDm() || $channel->is_archived) {
             return false;
         }
         if (self::canManageChannels($user)) {
             return true;
         }
 
-        return (int) $channel->created_by === (int) $user->id && ($channel->isGroup() || $channel->type === ChatChannel::TYPE_PRIVATE);
+        return $channel->isGroup() && (int) $channel->created_by === (int) $user->id;
     }
 
     public static function notifyMode(User $user): string
@@ -926,21 +946,36 @@ class ChatWorkspace
      */
     public static function directory(User $viewer): array
     {
-        $users = self::activeUsersQuery()
+        $query = self::activeUsersQuery()
             ->where('id', '!=', $viewer->id)
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'avatar', 'designation', 'org_level']);
+            ->orderBy('name');
+        $cols = ['id', 'name', 'email', 'avatar', 'designation', 'org_level'];
+        if (Schema::hasColumn('users', 'resource_department_id')) {
+            $cols[] = 'resource_department_id';
+            if (Schema::hasTable('resource_departments')) {
+                $query->with('resourceDepartment:id,name');
+            }
+        }
+        $users = $query->get($cols);
         $presence = ChatPresence::map($users->pluck('id')->map(fn ($id) => (int) $id)->all());
 
         return $users
             ->map(function (User $u) use ($presence) {
                 $p = $presence[(int) $u->id] ?? null;
+                $department = trim((string) ($u->resourceDepartment->name ?? ''));
+                if ($department === '') {
+                    $department = trim((string) ($u->designation ?? ''));
+                }
+                if ($department === '') {
+                    $department = 'Other';
+                }
 
                 return [
                     'id' => (int) $u->id,
                     'name' => $u->name,
                     'email' => $u->email,
                     'avatar' => self::avatarUrl($u),
+                    'department' => $department,
                     'designation' => $u->designation,
                     'org_level' => $u->org_level,
                     'online' => (bool) ($p['online'] ?? false),

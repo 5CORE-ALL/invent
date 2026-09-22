@@ -184,6 +184,44 @@
         .slack-head__tools button, .slack-head__tools select {
             border: 1px solid #ddd; background: #fff; border-radius: 6px; font-size: 12px; padding: 3px 8px;
         }
+        .slack-head__tools .is-danger { color: #e01e5a; border-color: #f3c6d0; }
+        .slack-people-search { margin-bottom: 12px; }
+        .slack-people-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px 16px;
+            max-height: min(62vh, 520px);
+            overflow: auto;
+            padding-right: 4px;
+        }
+        .slack-people-col {
+            min-width: 0;
+            background: #f8f8f8;
+            border: 1px solid #ececec;
+            border-radius: 10px;
+            padding: 10px 10px 8px;
+        }
+        .slack-people-col h6 {
+            margin: 0 0 8px;
+            font-size: 12px;
+            font-weight: 800;
+            color: #3f0e40;
+            letter-spacing: .02em;
+            text-transform: uppercase;
+        }
+        .slack-people-col label {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            font-size: 13px;
+            color: #1d1c1d;
+            margin: 0 0 6px;
+            cursor: pointer;
+        }
+        .slack-people-col label.is-in { color: #616061; }
+        .slack-people-col label.is-hidden { display: none; }
+        .slack-people-col input { margin-top: 2px; flex-shrink: 0; }
+        .slack-people-empty { color: #616061; text-align: center; padding: 24px 8px; }
         .slack-pinbar { display: none; padding: 6px 18px; border-bottom: 1px solid #eee; background: #fff8e1; font-size: 13px; }
         .slack-pinbar.is-on { display: block; }
         .slack-pinbar button { border: 0; background: transparent; color: #1d1c1d; }
@@ -323,6 +361,8 @@
                         <option value="dnd">Do not disturb</option>
                     </select>
                     <button type="button" id="slackPrefsBtn">Notify</button>
+                    <button type="button" id="slackAddPeopleBtn" hidden>Add people</button>
+                    <button type="button" id="slackDeleteRoomBtn" class="is-danger" hidden>Delete</button>
                     @if ($canManageChannels)
                         <a href="{{ route('chat.health') }}" class="btn btn-sm btn-light">Health</a>
                     @endif
@@ -359,20 +399,25 @@
     </div>
 
     <div class="modal fade" id="slackGroupModal" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-xl">
             <form class="modal-content" id="slackGroupForm">
                 <div class="modal-header">
-                    <h5 class="modal-title">New group</h5>
+                    <h5 class="modal-title" id="slackPeopleTitle">New group</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <label class="form-label">Group name</label>
-                    <input class="form-control mb-2" name="name" maxlength="80" placeholder="Ops huddle">
-                    <label class="form-label">People</label>
-                    <select class="form-select" name="member_ids[]" id="slackGroupMembers" multiple size="10"></select>
+                    <input type="hidden" id="slackPeopleMode" value="create">
+                    <div id="slackPeopleNameWrap">
+                        <label class="form-label">Group name</label>
+                        <input class="form-control mb-3" name="name" id="slackPeopleName" maxlength="80" placeholder="Ops huddle">
+                    </div>
+                    <label class="form-label" for="slackPeopleSearch">Search people</label>
+                    <input class="form-control slack-people-search" type="search" id="slackPeopleSearch" placeholder="Name, email, or department" autocomplete="off">
+                    <div class="slack-people-grid" id="slackPeopleGrid"></div>
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-success">Create</button>
+                    <span class="me-auto small text-muted" id="slackPeopleCount"></span>
+                    <button type="submit" class="btn btn-success" id="slackPeopleSubmit">Create</button>
                 </div>
             </form>
         </div>
@@ -909,6 +954,15 @@
             dot.title = isDm ? presenceTitle(src) : '';
         }
         bodyEl.placeholder = ch ? 'Message ' + name : 'Message';
+        const addBtn = document.getElementById('slackAddPeopleBtn');
+        const delBtn = document.getElementById('slackDeleteRoomBtn');
+        const canAdd = !!(src.can_manage_members || (ch && ch.can_manage_members));
+        const canDel = !!(src.can_delete || (ch && ch.can_delete));
+        if (addBtn) addBtn.hidden = !canAdd;
+        if (delBtn) {
+            delBtn.hidden = !canDel;
+            delBtn.textContent = (ch && ch.type === 'group') ? 'Delete group' : 'Delete channel';
+        }
     }
 
     function setReply(m) {
@@ -980,7 +1034,12 @@
         if (draft && !bodyEl.value) bodyEl.value = draft;
         const q = aroundId ? ('?around=' + aroundId) : '';
         const data = await api('/chat/channels/' + id + '/messages' + q);
-        if (data.channel) setHead(ch, data.channel);
+        if (data.channel) {
+            Object.assign(ch, data.channel);
+            const idx = channels.findIndex(function (c) { return c.id === id; });
+            if (idx >= 0) Object.assign(channels[idx], data.channel);
+            setHead(ch, data.channel);
+        }
         appendMessages(data.messages || [], true, false);
         applyReceipts(data.receipts || {});
         renderPins(data.pinned || []);
@@ -1284,25 +1343,138 @@
         if (!e.target.closest('.slack-nav__search')) peopleList.classList.remove('is-open');
     });
 
-    const groupMembers = document.getElementById('slackGroupMembers');
     function fillDirectorySelect(sel) {
         if (!sel) return;
         sel.innerHTML = directory.map(function (u) {
             return '<option value="' + u.id + '">' + esc(u.name) + (u.online ? ' (Active now)' : '') + '</option>';
         }).join('');
     }
-    document.getElementById('slackNewGroupBtn').addEventListener('click', function () {
-        fillDirectorySelect(groupMembers);
+    function peopleByDepartment(query) {
+        const q = String(query || '').toLowerCase().trim();
+        const groups = {};
+        directory.forEach(function (u) {
+            const hay = ((u.name || '') + ' ' + (u.email || '') + ' ' + (u.department || '')).toLowerCase();
+            if (q && hay.indexOf(q) < 0) return;
+            const dept = u.department || 'Other';
+            if (!groups[dept]) groups[dept] = [];
+            groups[dept].push(u);
+        });
+        return Object.keys(groups).sort(function (a, b) { return a.localeCompare(b); }).map(function (dept) {
+            return { department: dept, people: groups[dept] };
+        });
+    }
+    function selectedPeopleIds() {
+        return Array.from(document.querySelectorAll('#slackPeopleGrid input[type="checkbox"]:checked:not(:disabled)')).map(function (el) {
+            return Number(el.value);
+        }).filter(function (id) { return id > 0; });
+    }
+    function paintPeopleGrid(existingIds) {
+        const grid = document.getElementById('slackPeopleGrid');
+        const countEl = document.getElementById('slackPeopleCount');
+        if (!grid) return;
+        const existing = {};
+        (existingIds || []).forEach(function (id) { existing[Number(id)] = true; });
+        const cols = peopleByDepartment(document.getElementById('slackPeopleSearch').value);
+        if (!cols.length) {
+            grid.innerHTML = '<div class="slack-people-empty">No people match that search.</div>';
+            if (countEl) countEl.textContent = '';
+            return;
+        }
+        grid.innerHTML = cols.map(function (col) {
+            const rows = col.people.map(function (u) {
+                const inGroup = !!existing[u.id];
+                return '<label class="' + (inGroup ? 'is-in' : '') + '">' +
+                    '<input type="checkbox" value="' + u.id + '"' + (inGroup ? ' checked disabled' : '') + '>' +
+                    '<span>' + esc(u.name) + (u.online ? ' · Active' : '') + '</span></label>';
+            }).join('');
+            return '<div class="slack-people-col"><h6>' + esc(col.department) + '</h6>' + rows + '</div>';
+        }).join('');
+        if (countEl) {
+            const ready = selectedPeopleIds().length;
+            countEl.textContent = ready ? (ready + ' selected') : (Object.keys(existing).length ? Object.keys(existing).length + ' already in this group' : '');
+        }
+        grid.querySelectorAll('input[type="checkbox"]').forEach(function (box) {
+            box.addEventListener('change', function () { paintPeopleCount(existing); });
+        });
+    }
+    function paintPeopleCount(existing) {
+        const countEl = document.getElementById('slackPeopleCount');
+        if (!countEl) return;
+        const ready = selectedPeopleIds().length;
+        const already = Object.keys(existing || {}).length;
+        countEl.textContent = ready
+            ? (ready + ' selected')
+            : (already ? already + ' already in this group' : '');
+    }
+    function openPeopleModal(mode, existingIds) {
+        document.getElementById('slackPeopleMode').value = mode;
+        document.getElementById('slackPeopleTitle').textContent = mode === 'add' ? 'Add people' : 'New group';
+        document.getElementById('slackPeopleSubmit').textContent = mode === 'add' ? 'Add people' : 'Create';
+        document.getElementById('slackPeopleNameWrap').hidden = mode === 'add';
+        document.getElementById('slackPeopleSearch').value = '';
+        if (mode !== 'add') document.getElementById('slackPeopleName').value = '';
+        paintPeopleGrid(existingIds || []);
         window.bootstrap && window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackGroupModal')).show();
+    }
+    document.getElementById('slackPeopleSearch').addEventListener('input', function () {
+        const mode = document.getElementById('slackPeopleMode').value;
+        const ch = channels.find(function (c) { return c.id === activeId; }) || {};
+        paintPeopleGrid(mode === 'add' ? (ch.member_ids || []) : []);
+    });
+    document.getElementById('slackNewGroupBtn').addEventListener('click', function () {
+        openPeopleModal('create', []);
+    });
+    document.getElementById('slackAddPeopleBtn').addEventListener('click', function () {
+        const ch = channels.find(function (c) { return c.id === activeId; }) || {};
+        openPeopleModal('add', ch.member_ids || []);
+    });
+    document.getElementById('slackDeleteRoomBtn').addEventListener('click', async function () {
+        const ch = channels.find(function (c) { return c.id === activeId; });
+        if (!ch || !ch.can_delete) return;
+        const kind = ch.type === 'group' ? 'group' : 'channel';
+        if (!confirm('Delete this ' + kind + '? It will disappear for everyone.')) return;
+        await api('/chat/channels/' + ch.id, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' } });
+        const inbox = await api('/chat/inbox');
+        channels = inbox.channels || [];
+        if (inbox.directory) directory = inbox.directory;
+        renderNav();
+        const next = channels.find(function (c) { return c.type === 'bot'; }) || channels[0];
+        if (next) openChannel(next.id);
+        else {
+            activeId = 0;
+            feed.innerHTML = '<div class="slack-empty">Select a conversation to start messaging.</div>';
+            setHead(null);
+            composer.hidden = true;
+        }
     });
     document.getElementById('slackGroupForm').addEventListener('submit', async function (e) {
         e.preventDefault();
-        const fd = new FormData(e.target);
+        const mode = document.getElementById('slackPeopleMode').value;
+        const ids = selectedPeopleIds();
+        if (ids.length < 1) {
+            alert(mode === 'add' ? 'Select at least one person to add.' : 'Select at least one teammate.');
+            return;
+        }
+        if (mode === 'add') {
+            await api('/chat/channels/' + activeId + '/members', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ add: ids })
+            });
+            window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackGroupModal')).hide();
+            openChannel(activeId);
+            return;
+        }
+        const fd = new FormData();
+        const name = document.getElementById('slackPeopleName').value;
+        if (name) fd.append('name', name);
+        ids.forEach(function (id) { fd.append('member_ids[]', String(id)); });
         const data = await api('/chat/groups', { method: 'POST', body: fd });
         window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackGroupModal')).hide();
         e.target.reset();
         const inbox = await api('/chat/inbox');
         channels = inbox.channels || channels;
+        if (inbox.directory) directory = inbox.directory;
         renderNav();
         openChannel(data.channel_id);
     });
