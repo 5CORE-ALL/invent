@@ -24,6 +24,7 @@ class ShopifyFulfillmentTrackingMatcher
      *   tracking: ?string,
      *   carrier: ?string,
      *   tracking_url: ?string,
+     *   quantity: int,
      *   matched_order_id: ?string,
      *   matched_sku: ?string,
      *   error: ?string
@@ -42,6 +43,7 @@ class ShopifyFulfillmentTrackingMatcher
             'tracking' => null,
             'carrier' => null,
             'tracking_url' => null,
+            'quantity' => 1,
             'matched_order_id' => null,
             'matched_sku' => null,
             'error' => null,
@@ -166,6 +168,7 @@ class ShopifyFulfillmentTrackingMatcher
                     'tracking' => $number,
                     'carrier' => $this->carrierFromFulfillment($fulfillment),
                     'tracking_url' => $url,
+                    'quantity' => $this->fulfillmentSkuQuantity($fulfillment, $sku, $orderLines),
                     'matched_order_id' => $matchedOrderId,
                     'matched_sku' => $sku,
                     'error' => null,
@@ -479,6 +482,45 @@ class ShopifyFulfillmentTrackingMatcher
         }
 
         return $out;
+    }
+
+    /**
+     * Units of this SKU on one Shopify fulfillment (partial / multi-label).
+     *
+     * @param  array<string, mixed>  $fulfillment
+     * @param  list<array<string, mixed>>  $orderLines
+     */
+    public function fulfillmentSkuQuantity(array $fulfillment, string $sku, array $orderLines): int
+    {
+        $qty = 0;
+        $lines = is_array($fulfillment['line_items'] ?? null) ? $fulfillment['line_items'] : [];
+        foreach ($lines as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $matches = $this->lineSkuEquals($line, $sku);
+            if (! $matches) {
+                foreach ($this->fulfillmentLineItemIds($line) as $lineId) {
+                    foreach ($orderLines as $orderLine) {
+                        if (! is_array($orderLine)) {
+                            continue;
+                        }
+                        if ((string) ($orderLine['id'] ?? '') !== $lineId) {
+                            continue;
+                        }
+                        $matches = $this->lineSkuEquals($orderLine, $sku);
+                        if ($matches) {
+                            break 2;
+                        }
+                    }
+                }
+            }
+            if ($matches) {
+                $qty += max(1, (int) ($line['quantity'] ?? $line['fulfillable_quantity'] ?? 1));
+            }
+        }
+
+        return max(1, $qty);
     }
 
     /**

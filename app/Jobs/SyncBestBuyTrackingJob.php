@@ -29,7 +29,7 @@ class SyncBestBuyTrackingJob implements ShouldQueue, ShouldBeUnique
 
     public function __construct(
         public bool $respectSettings = true,
-        public int $limit = 40,
+        public int $limit = 120,
     ) {
         $this->onQueue(MarketplaceManagerRegistry::QUEUE_TRACKING);
     }
