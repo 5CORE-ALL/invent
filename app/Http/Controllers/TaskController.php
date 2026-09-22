@@ -1671,7 +1671,13 @@ class TaskController extends Controller
         $focusUser = $focusId > 0 ? $users->first() : null;
         $yesterdayDars = $this->yesterdayDarRows($users->pluck('id')->all(), $window['date']);
         $yesterdayActiveLabel = $this->yesterdayActiveLabel($users->pluck('id')->all(), $window['date']);
-        $attendanceUrl = route('attendance.summary', $focusId > 0 ? ['executive' => $focusId] : []);
+        $attendanceUrl = route('attendance.summary', array_filter([
+            'executive' => $focusId > 0 ? $focusId : null,
+            'range' => 'custom',
+            'from' => $window['date'],
+            'to' => $window['date'],
+            'timezone' => 'America/Los_Angeles',
+        ]));
         $taskBadges = $this->taskManagerBadgesForEmails(
             $emails,
             $focusId > 0 ? $focusId : (int) Auth::id()
@@ -1681,20 +1687,48 @@ class TaskController extends Controller
     }
 
     /**
-     * Total attendance active time for these users on the office yesterday date.
+     * Total attendance active time for these users on the Pacific yesterday.
+     * Uses the daily summary and the sessions that ran that day, same as the activity timeline.
      *
      * @param  list<int>  $userIds
      */
     protected function yesterdayActiveLabel(array $userIds, string $date): string
     {
-        $userIds = array_values(array_filter(array_map('intval', $userIds)));
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
         $seconds = 0;
-        if ($userIds !== [] && Schema::hasTable('attendance_daily_summaries')) {
-            $seconds = (int) AttendanceDailySummary::query()
-                ->whereIn('user_id', $userIds)
-                ->whereDate('work_date', $date)
-                ->sum('active_seconds');
+        if ($userIds !== []) {
+            $start = \Carbon\Carbon::parse($date, 'America/Los_Angeles')->startOfDay();
+            $end = $start->copy()->endOfDay();
+
+            $summaryByUser = [];
+            if (Schema::hasTable('attendance_daily_summaries')) {
+                $summaryByUser = AttendanceDailySummary::query()
+                    ->whereIn('user_id', $userIds)
+                    ->whereDate('work_date', $date)
+                    ->pluck('active_seconds', 'user_id')
+                    ->all();
+            }
+
+            $sessionByUser = [];
+            if (Schema::hasTable('attendance_sessions')) {
+                $sessions = AttendanceSession::query()
+                    ->whereIn('user_id', $userIds)
+                    ->where('started_at', '<=', $end)
+                    ->where(function ($query) use ($start) {
+                        $query->whereNull('ended_at')->orWhere('ended_at', '>=', $start);
+                    })
+                    ->get(['user_id', 'total_active_seconds']);
+                foreach ($sessions as $session) {
+                    $id = (int) $session->user_id;
+                    $sessionByUser[$id] = ($sessionByUser[$id] ?? 0) + (int) $session->total_active_seconds;
+                }
+            }
+
+            foreach ($userIds as $id) {
+                $seconds += max((int) ($summaryByUser[$id] ?? 0), (int) ($sessionByUser[$id] ?? 0));
+            }
         }
+
         $hours = intdiv(max(0, $seconds), 3600);
         $minutes = intdiv(max(0, $seconds) % 3600, 60);
 
