@@ -149,6 +149,45 @@ class PurchasingPowerListedPriceTest extends TestCase
         $this->assertEqualsWithDelta(123.99, $out['price'], 0.001);
     }
 
+    public function test_offer_lookup_keeps_shop_sku_case_when_push_uppercases(): void
+    {
+        $this->assertSame(
+            'GRack 9N1 OVAL',
+            PurchasingPowerController::offerLookupSku('GRACK 9N1 OVAL', 'GRack 9N1 OVAL')
+        );
+        $this->assertSame(
+            'WST 04-15 Pair',
+            PurchasingPowerController::offerLookupSku('WST 04-15 PAIR', 'WST 04-15 Pair')
+        );
+        $this->assertSame(
+            'MR6.5-4oHMX2Pcs+TW-BULLET180X2Pcs',
+            PurchasingPowerController::offerLookupSku(
+                'MR6.5-4OHMX2PCS+TW-BULLET180X2PCS',
+                'MR6.5-4oHMX2Pcs+TW-BULLET180X2Pcs'
+            )
+        );
+    }
+
+    public function test_offer_lookup_uses_request_case_when_stored_sku_is_upper(): void
+    {
+        $this->assertSame(
+            'GRack 9N1 OVAL',
+            PurchasingPowerController::offerLookupSku('GRack 9N1 OVAL', 'GRACK 9N1 OVAL')
+        );
+    }
+
+    public function test_offer_lookup_keeps_already_upper_sku(): void
+    {
+        $this->assertSame(
+            'CS 05 2W',
+            PurchasingPowerController::offerLookupSku('CS 05 2W', 'CS 05 2W')
+        );
+        $this->assertSame(
+            'WF 8140 DBL D4',
+            PurchasingPowerController::offerLookupSku('WF 8140 DBL D4', null)
+        );
+    }
+
     public function test_listing_inactive_flag(): void
     {
         $this->assertTrue(PurchasingPowerController::isListingMarkedInactive((object) [

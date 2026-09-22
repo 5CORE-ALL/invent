@@ -572,6 +572,25 @@ class PurchasingPowerController extends Controller
     }
 
     /**
+     * SKU string for the Mirakl OF21 `sku` filter. That filter is case-sensitive.
+     * Price push uppercases the grid SKU, which misses shop SKUs like "GRack" or "Pair".
+     * Prefer a stored shop SKU that still has its original case, then the request SKU.
+     */
+    public static function offerLookupSku(string $requested, ?string $storedShopSku = null): string
+    {
+        $requested = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', trim($requested));
+        $stored = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', trim((string) $storedShopSku));
+
+        foreach ([$stored, $requested] as $candidate) {
+            if ($candidate !== '' && $candidate !== strtoupper($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $stored !== '' ? $stored : $requested;
+    }
+
+    /**
      * Live listed offer — MCM row still has a site price.
      * Leftover Connect/OF21 rows are zeroed by the OF21 sync, not by a
      * global updated_at window (a later single-row touch was hiding every
@@ -1158,7 +1177,7 @@ class PurchasingPowerController extends Controller
 
     public function pushPriceTabulator(Request $request)
     {
-        $sku = strtoupper(trim((string) $request->input('sku', '')));
+        $sku = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', trim((string) $request->input('sku', '')));
         $price = $request->input('price', $request->input('sprice'));
         if ($sku === '' || ! is_numeric($price) || (float) $price <= 0) {
             return response()->json(['success' => false, 'message' => 'SKU and price required'], 422);
