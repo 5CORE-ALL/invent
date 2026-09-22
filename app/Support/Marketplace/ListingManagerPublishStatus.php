@@ -309,6 +309,7 @@ class ListingManagerPublishStatus
         $isMirakl = $family === 'mirakl';
         $isTopdawg = $family === 'topdawg';
         $isShein = $family === 'shein';
+        $isAliexpress = $family === 'aliexpress';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -388,6 +389,13 @@ class ListingManagerPublishStatus
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
             if ($categoryId === '' || ! preg_match('/^\d+$/', $categoryId)) {
                 $tabErrors['category'][] = 'Shein category is required. Search and select a leaf category.';
+            }
+        }
+
+        if ($isAliexpress) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+            if ($categoryId === '' || ! preg_match('/^\d+$/', $categoryId)) {
+                $tabErrors['category'][] = 'AliExpress category is required. Search and select a leaf category, or type a category ID.';
             }
         }
 

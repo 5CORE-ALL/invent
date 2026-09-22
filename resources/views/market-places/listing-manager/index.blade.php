@@ -2837,6 +2837,10 @@
         if (isShein && (!d.primary_category_id || !/^\d+$/.test(String(d.primary_category_id)))) {
             errors.category.push('Category');
         }
+        const isAliexpress = ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'aliexpress') || /aliexpress/.test(channel);
+        if (isAliexpress && (!d.primary_category_id || !/^\d+$/.test(String(d.primary_category_id)))) {
+            errors.category.push('Category');
+        }
         const isFaire = ((currentDraft && currentDraft.editor && currentDraft.editor.faire) || ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'faire') || /faire/.test(channel));
         if (isFaire && !d.primary_category_id) errors.category.push('Product Type');
         const isWayfair = ((currentDraft && currentDraft.editor && currentDraft.editor.wayfair) || ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'wayfair') || /wayfair/.test(channel));
@@ -2921,8 +2925,8 @@
         }
         $('#lc-banners').html(banners.map(([t, m]) => `<div class="lc-banner lc-banner-${t}">${escapeHtml(m)}</div>`).join(''));
 
-        const catOk = catId !== '' && ((family !== 'tiktok' && family !== 'shein') || /^\d+$/.test(catId));
-        $('#lc-category-id-warn').toggleClass('d-none', !['ebay', 'tiktok', 'temu', 'reverb', 'newegg', 'faire', 'wayfair', 'mirakl', 'topdawg', 'shein'].includes(family) || catOk);
+        const catOk = catId !== '' && ((family !== 'tiktok' && family !== 'shein' && family !== 'aliexpress') || /^\d+$/.test(catId));
+        $('#lc-category-id-warn').toggleClass('d-none', !['ebay', 'tiktok', 'temu', 'reverb', 'newegg', 'faire', 'wayfair', 'mirakl', 'topdawg', 'shein', 'aliexpress'].includes(family) || catOk);
         $('#lc-reverb-condition-warn').toggleClass('d-none', family !== 'reverb' || !!$('#lc-reverb-condition').val());
         $('#lc-condition-warn').toggleClass('d-none', family !== 'ebay' || !!$('#lc-condition').val());
         $('#lc-shipping-warn').toggle(family === 'ebay' && !$('#lc-shipping-policy').val());
@@ -3162,7 +3166,7 @@
         const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
         const channel = (currentDraft && currentDraft.channel) || '';
         const title = String($('#lc-title').val() || (currentDraft && currentDraft.title) || '').trim();
-        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && family !== 'newegg' && family !== 'faire' && family !== 'wayfair' && family !== 'mirakl' && family !== 'topdawg' && family !== 'shein' && (!q || q.length < 2)) {
+        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && family !== 'newegg' && family !== 'faire' && family !== 'wayfair' && family !== 'mirakl' && family !== 'topdawg' && family !== 'shein' && family !== 'aliexpress' && (!q || q.length < 2)) {
             $box.html('<div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>');
             return;
         }
@@ -3193,6 +3197,10 @@
             $box.html('<div class="text-muted small p-3">Type a keyword such as light stand to load Shein category suggestions.</div>');
             return;
         }
+        if (family === 'aliexpress' && (!q || q.length < 2) && !title) {
+            $box.html('<div class="text-muted small p-3">Type a keyword such as light stand to load AliExpress category suggestions, or type a category ID.</div>');
+            return;
+        }
         if (family === 'wayfair') {
             q = String($('#lc-wayfair-class-search').val() || q || '').trim();
         }
@@ -3207,6 +3215,7 @@
             mirakl: 'Searching marketplace categories…',
             topdawg: 'Searching TopDawg categories…',
             shein: 'Searching Shein categories…',
+            aliexpress: 'Searching AliExpress categories…',
         };
         const searchingLabel = searchingLabels[family] || 'Searching…';
         if (family === 'wayfair') {
@@ -3252,7 +3261,8 @@
                     : (family === 'temu' ? 'Temu category search timed out. Try again.'
                     : (family === 'newegg' ? 'Newegg subcategory search timed out. Try again.'
                     : (family === 'tiktok' ? 'TikTok category search timed out. Try again.'
-                    : (family === 'shein' ? 'Shein category search timed out. Try again.' : 'Category search timed out. Try again.'))));
+                    : (family === 'shein' ? 'Shein category search timed out. Try again.'
+                    : (family === 'aliexpress' ? 'AliExpress category search timed out. Try again.' : 'Category search timed out. Try again.')))));
                 const msg = (xhr.responseJSON && xhr.responseJSON.message)
                     || (status === 'timeout' ? timeoutMsg : 'Category search failed.');
                 $box.html(`<div class="text-danger small p-3">${escapeHtml(msg)}</div>`);
@@ -3301,13 +3311,13 @@
             : (ed.topdawg && !ed.amazon
                 ? 'Product made-in is required on TopDawg Create New Product. Country of origin is sent as that field.'
                 : 'Amazon will reject the listing without these. Color is taken from the SKU when possible.'));
-        $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg));
-        $('.lc-mp-category-search').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg || ed.faire || ed.mirakl || ed.topdawg || ed.shein) && !ed.wayfair));
-        $('.lc-mp-category-selected').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg || ed.faire || ed.mirakl || ed.topdawg || ed.shein) && !ed.wayfair));
-        $('.lc-category-star').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.newegg || ed.faire || ed.wayfair || ed.mirakl || ed.topdawg || ed.shein));
+        $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg || ed.aliexpress));
+        $('.lc-mp-category-search').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg || ed.faire || ed.mirakl || ed.topdawg || ed.shein || ed.aliexpress) && !ed.wayfair));
+        $('.lc-mp-category-selected').toggleClass('d-none', !((ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg || ed.faire || ed.mirakl || ed.topdawg || ed.shein || ed.aliexpress) && !ed.wayfair));
+        $('.lc-category-star').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.newegg || ed.faire || ed.wayfair || ed.mirakl || ed.topdawg || ed.shein || ed.aliexpress));
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon || ed.wayfair || ed.topdawg));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
-        $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.faire ? 'Faire Product Type' : (ed.wayfair ? 'Wayfair Class' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : (ed.topdawg ? 'TopDawg Category' : (ed.shein ? 'Shein Category' : 'Category')))))))));
+        $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.faire ? 'Faire Product Type' : (ed.wayfair ? 'Wayfair Class' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : (ed.topdawg ? 'TopDawg Category' : (ed.shein ? 'Shein Category' : (ed.aliexpress ? 'AliExpress Category' : 'Category'))))))))));
         $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
         $('#lc-category-manual-id-label').html('Category ID <span class="lc-req">*</span>');
         $('#lc-category-manual-path-label').text('Category path / name');
@@ -3495,7 +3505,7 @@
                 if (savedId) {
                     loadWayfairQuestions(savedId, d.wayfair_answers || {});
                 }
-            } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg' || family === 'faire' || family === 'topdawg' || family === 'mirakl' || family === 'shein') {
+            } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg' || family === 'faire' || family === 'topdawg' || family === 'mirakl' || family === 'shein' || family === 'aliexpress') {
                 if (family === 'topdawg' && !String($('#lc-category-id').val() || '').trim() && !String($('#lc-category-path-input').val() || '').trim()) {
                     $('#lc-category-id').val('Electronics|Music|Music Accessories');
                     $('#lc-category-path-input').val('Electronics > Music > Music Accessories');
@@ -4537,10 +4547,10 @@
             $(this).addClass('active');
             $('#lmListingEditorModal .lc-pane').removeClass('active');
             $(`#lmListingEditorModal .lc-pane[data-pane="${pane}"]`).addClass('active');
-            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb || currentDraft.editor.amazon || currentDraft.editor.temu || currentDraft.editor.newegg || currentDraft.editor.wayfair || currentDraft.editor.shein)) {
+            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb || currentDraft.editor.amazon || currentDraft.editor.temu || currentDraft.editor.newegg || currentDraft.editor.wayfair || currentDraft.editor.shein || currentDraft.editor.aliexpress)) {
                 const q = currentDraft.editor.wayfair
                     ? String($('#lc-wayfair-class-search').val() || '').trim()
-                    : String($('#lc-category-search').val() || (currentDraft.editor.amazon ? ($('#lc-amazon-product-type').val() || $('#lc-title').val() || '') : ((currentDraft.editor.temu || currentDraft.editor.newegg || currentDraft.editor.shein) ? ($('#lc-title').val() || '') : '')) || '').trim();
+                    : String($('#lc-category-search').val() || (currentDraft.editor.amazon ? ($('#lc-amazon-product-type').val() || $('#lc-title').val() || '') : ((currentDraft.editor.temu || currentDraft.editor.newegg || currentDraft.editor.shein || currentDraft.editor.aliexpress) ? ($('#lc-title').val() || '') : '')) || '').trim();
                 searchCategories(q);
             }
         });

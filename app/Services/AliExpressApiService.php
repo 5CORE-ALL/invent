@@ -466,6 +466,75 @@ class AliExpressApiService
     }
 
     /**
+     * Listing Manager category picker — forecast by keyword, or accept a numeric category ID.
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string}>, message?: string}
+     */
+    public function searchListingCategories(string $query, string $title = ''): array
+    {
+        $q = trim($query !== '' ? $query : $title);
+        if ($q === '') {
+            return ['success' => true, 'categories' => []];
+        }
+
+        if (preg_match('/^\d+$/', $q) === 1) {
+            return [
+                'success' => true,
+                'categories' => [self::listingCategoryRow((int) $q, 'AliExpress category '.$q)],
+            ];
+        }
+
+        try {
+            $candidates = $this->suggestCategoryCandidates($q);
+            if ($candidates === [] && $title !== '' && strcasecmp(trim($title), $q) !== 0) {
+                $candidates = $this->suggestCategoryCandidates(trim($title));
+            }
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'AliExpress category search failed: '.$e->getMessage(),
+            ];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($candidates as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id <= 0 || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $out[] = self::listingCategoryRow($id, (string) ($row['path'] ?? ''));
+        }
+
+        if ($out === []) {
+            return [
+                'success' => true,
+                'categories' => [],
+                'message' => 'No AliExpress categories found. Try a more specific keyword, or type a category ID.',
+            ];
+        }
+
+        return ['success' => true, 'categories' => array_slice($out, 0, 25)];
+    }
+
+    /**
+     * @return array{id: string, path: string, name: string}
+     */
+    public static function listingCategoryRow(int $id, string $path = ''): array
+    {
+        $path = trim($path);
+        $label = $path !== '' ? $path : ('Category '.$id);
+
+        return [
+            'id' => (string) $id,
+            'path' => $label,
+            'name' => $label,
+        ];
+    }
+
+    /**
      * @param  list<array{id: int, path: string}>  $candidates
      * @param  list<string>  $hints
      * @return array{id: int, path: string}

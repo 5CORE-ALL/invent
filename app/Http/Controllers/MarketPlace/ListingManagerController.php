@@ -9,6 +9,7 @@ use App\Models\ListingManagerChannelDraft;
 use App\Models\ListingManagerEnabledChannel;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\AliExpressApiService;
 use App\Services\AmazonSpApiService;
 use App\Services\EbayApiService;
 use App\Services\Ebay2ApiService;
@@ -1901,6 +1902,12 @@ class ListingManagerController extends Controller
         if ($family === 'topdawg') {
             $result = app(\App\Services\MarketplaceManager\TopDawgListingPublishService::class)
                 ->searchListingCategories($q, $title);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
+        if ($family === 'aliexpress') {
+            $result = app(AliExpressApiService::class)->searchListingCategories($q, $title);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }

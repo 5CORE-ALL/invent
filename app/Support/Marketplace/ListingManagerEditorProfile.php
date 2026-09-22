@@ -24,6 +24,7 @@ class ListingManagerEditorProfile
      *   mirakl: bool,
      *   topdawg: bool,
      *   shein: bool,
+     *   aliexpress: bool,
      *   category_placeholder: string,
      *   optimize_label: string,
      *   header_quick: string,
@@ -279,6 +280,28 @@ class ListingManagerEditorProfile
                 'category_help' => 'Search Shein leaf categories by keyword (same as Seller Center). Pick a path such as Home & Living > Lighting > Light Stands before you publish.',
                 'policies_help' => '',
             ],
+            'aliexpress' => [
+                'tabs' => [
+                    ['id' => 'identifiers', 'label' => 'Product Identifiers'],
+                    ['id' => 'variations', 'label' => 'Variations'],
+                    ['id' => 'title', 'label' => 'Title & Description'],
+                    ['id' => 'images', 'label' => 'Images'],
+                    ['id' => 'pricing', 'label' => 'Price & Stock'],
+                    ['id' => 'category', 'label' => 'AliExpress Category'],
+                    ['id' => 'policies', 'label' => 'Package'],
+                ],
+                'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
+                'category_placeholder' => 'Search AliExpress categories (e.g. light stand)',
+                'optimize_label' => 'Optimize Description for AliExpress',
+                'header_quick' => 'Quick/Auto List to AliExpress',
+                'header_import' => 'Import from AliExpress',
+                'pricing_title' => 'Price & Stock',
+                'title_heading' => 'Title & Description',
+                'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Condition is New.',
+                'images_help' => 'Load photos from Image Master. First image is Primary. AliExpress uses HTTPS images.',
+                'category_help' => 'Search AliExpress leaf categories by keyword (same as Seller Center forecast). Pick a path such as Sports & Entertainment > Musical Instruments > Guitar Parts, or type a category ID.',
+                'policies_help' => 'Package size and weight come from Dim/Wt Master and are required to create the listing.',
+            ],
             'default' => [
                 'tabs' => [
                     ['id' => 'identifiers', 'label' => 'Product Identifiers'],
@@ -321,6 +344,7 @@ class ListingManagerEditorProfile
             'mirakl' => $family === 'mirakl',
             'topdawg' => $family === 'topdawg',
             'shein' => $family === 'shein',
+            'aliexpress' => $family === 'aliexpress',
             'category_placeholder' => $base['category_placeholder'],
             'optimize_label' => $base['optimize_label'],
             'header_quick' => $base['header_quick'],
@@ -360,6 +384,9 @@ class ListingManagerEditorProfile
         }
         if ($normalizedKey === 'shein') {
             return 'shein';
+        }
+        if (in_array($normalizedKey, ['aliexpress', 'ali', 'aliexpresscom'], true)) {
+            return 'aliexpress';
         }
         if ($normalizedKey === 'wayfair') {
             return 'wayfair';
