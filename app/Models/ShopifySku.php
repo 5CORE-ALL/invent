@@ -97,6 +97,28 @@ class ShopifySku extends Model
     }
 
     /**
+     * Columns needed by verification-adjustment and listing INV (must include live qty fields).
+     *
+     * @var list<string>
+     */
+    public const LOOKUP_COLUMNS = [
+        'id',
+        'sku',
+        'variant_id',
+        'inv',
+        'quantity',
+        'shopify_l30',
+        'price',
+        'b2c_price',
+        'image_src',
+        'available_to_sell',
+        'committed',
+        'on_hand',
+        'unavailable',
+        'incoming',
+    ];
+
+    /**
      * @param  array<int, string>  $productSkus
      * @return array<string, self> normalized key => row (row with a variant id wins over a blank stub)
      */
@@ -129,9 +151,7 @@ class ShopifySku extends Model
         };
 
         if ($productSkus !== []) {
-            foreach (self::query()->whereIn('sku', $productSkus)->get([
-                'id', 'sku', 'variant_id', 'inv', 'quantity', 'shopify_l30', 'price', 'b2c_price', 'image_src',
-            ]) as $row) {
+            foreach (self::query()->whereIn('sku', $productSkus)->get(self::LOOKUP_COLUMNS) as $row) {
                 $indexRow($row);
             }
         }

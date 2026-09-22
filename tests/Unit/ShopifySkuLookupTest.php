@@ -27,4 +27,11 @@ class ShopifySkuLookupTest extends TestCase
         $this->assertContains('WF 8120 4 OHM 2PCS', $keys);
         $this->assertContains('WF81204OHM2PCS', $keys);
     }
+
+    public function test_lookup_columns_include_live_inventory_fields(): void
+    {
+        foreach (['available_to_sell', 'inv', 'on_hand', 'committed', 'unavailable', 'incoming'] as $col) {
+            $this->assertContains($col, ShopifySku::LOOKUP_COLUMNS);
+        }
+    }
 }
