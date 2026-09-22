@@ -872,9 +872,9 @@ class FetchMacyProducts extends Command
                 if ($norm === '') {
                     continue;
                 }
-                $kept = $keepExact !== []
-                    ? isset($keepExact[$exact])
-                    : isset($keepNorm[$norm]);
+                // Portal SKU casing can differ from the stored row (WoB vs WOB).
+                // Exact-only matching treated that live offer as leftover and zeroed its price.
+                $kept = isset($keepNorm[$norm]) || isset($keepExact[$exact]);
                 if ($kept) {
                     continue;
                 }
@@ -1003,16 +1003,19 @@ class FetchMacyProducts extends Command
                         continue;
                     }
 
+                    // Keep the offer even when price cannot be parsed, so the
+                    // leftover clear does not wipe a live listing to 0.
+                    $seenNormSkus[$this->normalizeMacyOfferSku($sku)] = true;
+                    $seenExactSkus[$sku] = true;
+
                     $price = $this->extractMcmOfferPrice($offer);
                     if ($price === null) {
                         continue;
                     }
 
                     $activated = array_key_exists('active', $offer)
-                        ? (bool) $offer['active']
+                        ? filter_var($offer['active'], FILTER_VALIDATE_BOOLEAN)
                         : false;
-                    $seenNormSkus[$this->normalizeMacyOfferSku($sku)] = true;
-                    $seenExactSkus[$sku] = true;
 
                     $updates[] = [
                         'sku' => $sku,
@@ -1052,10 +1055,10 @@ class FetchMacyProducts extends Command
                         $sql = $hasListingStatus
                             ? 'INSERT INTO bestbuy_usa_products (sku, price, stock, m_l30, listing_status, created_at, updated_at) VALUES '
                                 .implode(', ', $values)
-                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), listing_status = VALUES(listing_status), updated_at = VALUES(updated_at)'
+                                .' ON DUPLICATE KEY UPDATE sku = VALUES(sku), price = VALUES(price), stock = VALUES(stock), listing_status = VALUES(listing_status), updated_at = VALUES(updated_at)'
                             : 'INSERT INTO bestbuy_usa_products (sku, price, stock, m_l30, created_at, updated_at) VALUES '
                                 .implode(', ', $values)
-                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
+                                .' ON DUPLICATE KEY UPDATE sku = VALUES(sku), price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
 
                         DB::statement($sql, $bindings);
                         $totalUpdated += count($chunk);
