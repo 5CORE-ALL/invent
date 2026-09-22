@@ -179,6 +179,10 @@
             width: 100% !important;
             max-width: 100%;
             overflow: visible !important;
+            /* Tabulator's translateZ(0) traps position:fixed inside the table,
+               so the pinned header slides off and the #888 table fill shows through. */
+            transform: none !important;
+            background-color: #fff !important;
         }
         #marketplace-table.tabulator .tabulator-header,
         #marketplace-table.tabulator .tabulator-footer {
@@ -191,11 +195,16 @@
             position: sticky !important;
             top: var(--amm-header-top) !important;
             z-index: 24 !important;
+            background: #dbeafe !important;
             background-color: #dbeafe !important;
             box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
         }
         #marketplace-table.tabulator .tabulator-header.amm-header-frozen {
             position: fixed !important;
+            top: var(--amm-header-top) !important;
+            z-index: 30 !important;
+            background: #dbeafe !important;
+            background-color: #dbeafe !important;
             box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
         }
         #amm-header-freeze-spacer {
@@ -204,7 +213,17 @@
             pointer-events: none;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
-        #marketplace-table.tabulator .tabulator-header .tabulator-col {
+        #marketplace-table.tabulator .tabulator-header .tabulator-headers,
+        #marketplace-table.tabulator .tabulator-header .tabulator-col,
+        #marketplace-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content,
+        #marketplace-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title-holder,
+        #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover,
+        #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable.tabulator-col-sorter-element:hover,
+        #marketplace-table.tabulator .tabulator-header.amm-header-frozen .tabulator-header-contents,
+        #marketplace-table.tabulator .tabulator-header.amm-header-frozen .tabulator-headers,
+        #marketplace-table.tabulator .tabulator-header.amm-header-frozen .tabulator-col,
+        #marketplace-table.tabulator .tabulator-header.amm-header-frozen .tabulator-col .tabulator-col-content {
+            background: #dbeafe !important;
             background-color: #dbeafe !important;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
