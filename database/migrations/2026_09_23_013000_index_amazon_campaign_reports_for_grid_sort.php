@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -15,9 +15,12 @@ return new class extends Migration
             if (! Schema::hasTable($table) || Schema::hasIndex($table, $index)) {
                 continue;
             }
-            Schema::table($table, function (Blueprint $blueprint) use ($index) {
-                $blueprint->index(['report_date_range', 'campaign_id', 'ad_type', 'id'], $index);
-            });
+
+            // Full VARCHAR(255) columns exceed this server's 1000-byte index limit.
+            // Prefixes cover L30 / YYYY-MM-DD, Amazon campaign ids, and ad type labels.
+            DB::statement(
+                "ALTER TABLE `{$table}` ADD INDEX `{$index}` (`report_date_range`(12), `campaign_id`(40), `ad_type`(24), `id`)"
+            );
         }
     }
 
@@ -30,9 +33,8 @@ return new class extends Migration
             if (! Schema::hasTable($table) || ! Schema::hasIndex($table, $index)) {
                 continue;
             }
-            Schema::table($table, function (Blueprint $blueprint) use ($index) {
-                $blueprint->dropIndex($index);
-            });
+
+            DB::statement("ALTER TABLE `{$table}` DROP INDEX `{$index}`");
         }
     }
 };
