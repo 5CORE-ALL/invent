@@ -56,6 +56,59 @@ class NeweggListingCategorySearchTest extends TestCase
         $this->assertFalse(ChannelListingRegistry::isLiveNeweggListingId('', $sku));
         $this->assertFalse(ChannelListingRegistry::isLiveNeweggListingId($sku, $sku));
         $this->assertFalse(ChannelListingRegistry::isLiveNeweggListingId('NE-abc123def456', $sku));
+        $this->assertFalse(ChannelListingRegistry::isLiveNeweggListingId('2291326430', $sku));
+        $this->assertFalse(ChannelListingRegistry::isLiveNeweggListingId('2PQCX3SPZ3QBF', $sku));
         $this->assertTrue(ChannelListingRegistry::isLiveNeweggListingId('9SIA12345ABC', $sku));
+    }
+
+    public function test_create_item_property_xml_uses_subcategory_wrapper(): void
+    {
+        $xml = NeweggApiService::subcategoryPropertyXml('Computer Speakers', [
+            'Speaker_Brand' => '5 Core',
+            'Speaker_Model' => 'LS100-6 RED',
+        ]);
+
+        $this->assertStringContainsString('<SubCategoryProperty><ComputerSpeakers>', $xml);
+        $this->assertStringContainsString('<SpeakerBrand>5 Core</SpeakerBrand>', $xml);
+        $this->assertStringContainsString('<SpeakerModel>LS100-6 RED</SpeakerModel>', $xml);
+    }
+
+    public function test_feed_result_parser_reads_errors_and_item_number(): void
+    {
+        $parsed = NeweggApiService::parseFeedResultPayload([
+            'NeweggEnvelope' => [
+                'Message' => [
+                    'ProcessingReport' => [
+                        'ProcessingSummary' => [
+                            'SuccessCount' => '1',
+                            'WithErrorCount' => '1',
+                        ],
+                        'Result' => [
+                            [
+                                'AdditionalInfo' => [
+                                    'SellerPartNumber' => 'LS100-6 RED',
+                                    'NeweggItemNumber' => '9SIA12345ABC',
+                                ],
+                            ],
+                            [
+                                'AdditionalInfo' => [
+                                    'SellerPartNumber' => 'OTHER',
+                                ],
+                                'ErrorList' => [
+                                    'ErrorDescription' => [
+                                        'Error(s). Item not created.',
+                                        'Manufacturer - The manufacturer does not exist in our system.',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('9SIA12345ABC', $parsed['item_number']);
+        $this->assertSame(1, $parsed['success_count']);
+        $this->assertContains('Manufacturer - The manufacturer does not exist in our system.', $parsed['errors']);
     }
 }

@@ -125,7 +125,7 @@ class ListingVariationPreviewService
             return $this->shein->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb);
         }
         if ($this->isNeweggChannel($channel)) {
-            return $this->newegg->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId);
+            return $this->newegg->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId, $overrides);
         }
         if (in_array($channel, ['topdawg', 'top-dawg', 'top_dawg'], true)) {
             return $this->topdawg->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName, $overrides);

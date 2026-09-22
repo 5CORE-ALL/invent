@@ -39,7 +39,8 @@ class NeweggListingPublishService
         bool $expandSiblings = true,
         string $mode = 'variation',
         string $parentHint = '',
-        ?int $categoryId = null
+        ?int $categoryId = null,
+        array $overrides = []
     ): array {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -69,7 +70,7 @@ class NeweggListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], $channel, false, 'single', $parentHint, $categoryId);
+                $one = $this->publishSkus([$sku], $channel, false, 'single', $parentHint, $categoryId, $overrides);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -98,12 +99,14 @@ class NeweggListingPublishService
             return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
         }
 
-        $title = $this->resolveTitle($product, $sku);
+        $title = trim((string) ($overrides['title'] ?? '')) ?: $this->resolveTitle($product, $sku);
         if ($title === '') {
             return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
         }
 
-        $price = $this->resolvePrice($sku, $product);
+        $price = isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0
+            ? round((float) $overrides['price'], 2)
+            : $this->resolvePrice($sku, $product);
         if ($price === null || $price <= 0) {
             return [
                 'success' => false,
@@ -111,24 +114,38 @@ class NeweggListingPublishService
             ];
         }
 
-        $images = $this->productImages($product, $sku);
+        $images = is_array($overrides['images'] ?? null) ? array_values(array_filter(array_map(
+            static fn ($url) => trim((string) $url),
+            $overrides['images']
+        ))) : [];
+        if ($images === []) {
+            $images = $this->productImages($product, $sku);
+        }
         if ($images === []) {
             return ['success' => false, 'message' => 'No public image URL for '.$sku.'. Add an https image on CP Master (or Image Master).'];
         }
 
-        $inv = $this->shopifyInv($sku);
-        $dims = $this->resolveDimensions($product);
+        $inv = isset($overrides['quantity']) && is_numeric($overrides['quantity'])
+            ? max(0, (int) $overrides['quantity'])
+            : $this->shopifyInv($sku);
+        $dims = $this->resolveDimensions($product, $overrides);
         $subcategoryId = $categoryId !== null && $categoryId > 0
             ? (string) $categoryId
             : trim((string) config('services.newegg.default_subcategory_id', ''));
+        if ($subcategoryId === '' || ! preg_match('/^\d+$/', $subcategoryId)) {
+            return [
+                'success' => false,
+                'message' => $sku.': select a Newegg subcategory on the Category tab before Save & Publish.',
+            ];
+        }
 
         $res = $this->api->createListing([
             'sku' => $sku,
             'title' => $title,
-            'manufacturer' => $this->resolveManufacturer($product),
+            'manufacturer' => trim((string) ($overrides['manufacturer'] ?? '')) ?: $this->resolveManufacturer($product),
             'mpn' => $sku,
-            'upc' => $this->resolveUpc($product),
-            'description' => $this->resolveDescription($product, $title),
+            'upc' => trim((string) ($overrides['upc'] ?? '')) ?: $this->resolveUpc($product),
+            'description' => trim((string) ($overrides['description'] ?? '')) ?: $this->resolveDescription($product, $title),
             'bullets' => $this->resolveBullets($product),
             'images' => $images,
             'price' => $price,
@@ -311,6 +328,9 @@ class NeweggListingPublishService
     private function persistListed(string $sku, string $itemNumber, string $title, float $price, int $inv, string $channel): void
     {
         $liveId = ChannelListingRegistry::isLiveNeweggListingId($itemNumber, $sku) ? $itemNumber : '';
+        if ($liveId === '') {
+            return;
+        }
         try {
             if ($liveId !== '' && Schema::hasTable('newegg_metric')) {
                 NeweggMetric::updateOrCreate(
@@ -476,9 +496,10 @@ class NeweggListingPublishService
     }
 
     /**
+     * @param  array<string, mixed>  $overrides
      * @return array{length: float, width: float, height: float, weight: float}
      */
-    private function resolveDimensions(ProductMaster $product): array
+    private function resolveDimensions(ProductMaster $product, array $overrides = []): array
     {
         $values = is_array($product->Values) ? $product->Values : [];
         $num = static function (array $bag, array $keys, float $fallback): float {
@@ -490,12 +511,21 @@ class NeweggListingPublishService
 
             return $fallback;
         };
+        $lb = is_numeric($overrides['package_weight_lb'] ?? null) ? (float) $overrides['package_weight_lb'] : 0.0;
+        $oz = is_numeric($overrides['package_weight_oz'] ?? null) ? (float) $overrides['package_weight_oz'] : 0.0;
+        $weight = $lb + ($oz / 16);
 
         return [
-            'length' => $num($values, ['length', 'Length', 'item_length', 'L'], 1.0),
-            'width' => $num($values, ['width', 'Width', 'item_width', 'W'], 1.0),
-            'height' => $num($values, ['height', 'Height', 'item_height', 'H'], 1.0),
-            'weight' => $num($values, ['weight', 'Weight', 'item_weight', 'wt', 'lb'], 1.0),
+            'length' => is_numeric($overrides['package_length'] ?? null) && (float) $overrides['package_length'] > 0
+                ? (float) $overrides['package_length']
+                : $num($values, ['length', 'Length', 'item_length', 'L', 'l'], 1.0),
+            'width' => is_numeric($overrides['package_width'] ?? null) && (float) $overrides['package_width'] > 0
+                ? (float) $overrides['package_width']
+                : $num($values, ['width', 'Width', 'item_width', 'W', 'w'], 1.0),
+            'height' => is_numeric($overrides['package_height'] ?? null) && (float) $overrides['package_height'] > 0
+                ? (float) $overrides['package_height']
+                : $num($values, ['height', 'Height', 'item_height', 'H', 'h'], 1.0),
+            'weight' => $weight > 0 ? $weight : $num($values, ['weight', 'Weight', 'item_weight', 'wt', 'lb', 'wt_act'], 1.0),
         ];
     }
 

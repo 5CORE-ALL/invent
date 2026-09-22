@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
+use App\Support\Marketplace\ChannelListingRegistry;
 
 /**
  * Thin client for the Newegg Marketplace API.
@@ -1850,19 +1851,11 @@ class NeweggApiService
                 ];
             }
             $itemNumber = $this->extractNeweggItemNumber(is_array($inv['json'] ?? null) ? $inv['json'] : []);
-            if ($itemNumber !== '') {
+            if (ChannelListingRegistry::isLiveNeweggListingId($itemNumber, $sku)) {
                 return [
                     'success' => true,
                     'message' => 'Newegg item already exists.',
                     'item_number' => $itemNumber,
-                    'blocked_by_cloudflare' => false,
-                ];
-            }
-            if (! empty($inv['ok']) && $this->inventoryPayloadLooksListed(is_array($inv['json'] ?? null) ? $inv['json'] : [])) {
-                return [
-                    'success' => true,
-                    'message' => 'Newegg item already exists.',
-                    'item_number' => $this->listedPlaceholderId($candidate, $sku),
                     'blocked_by_cloudflare' => false,
                 ];
             }
@@ -1892,7 +1885,7 @@ class NeweggApiService
         if (! empty($existing['blocked_by_cloudflare'])) {
             return $existing;
         }
-        if (! empty($existing['success']) && trim((string) ($existing['item_number'] ?? '')) !== '') {
+        if (! empty($existing['success']) && ChannelListingRegistry::isLiveNeweggListingId((string) ($existing['item_number'] ?? ''), $sku)) {
             return [
                 'success' => true,
                 'message' => 'Connected existing Newegg listing.',
@@ -1905,50 +1898,256 @@ class NeweggApiService
         $subcategoryId = trim((string) ($fields['subcategory_id'] ?? config('services.newegg.default_subcategory_id', '')));
 
         $submitted = null;
-        if ($upc !== '') {
-            $submitted = $this->submitExistingItemFeed($sku, $fields, $platform);
-        }
-        if (($submitted === null || empty($submitted['success'])) && $subcategoryId !== '') {
+        if ($subcategoryId !== '') {
             $fields['subcategory_id'] = $subcategoryId;
-            $created = $this->submitItemCreateFeed($sku, $fields, $platform);
-            if (! empty($created['success']) || $submitted === null || empty($submitted['success'])) {
-                $submitted = $created;
-            }
+            $submitted = $this->submitItemCreateFeed($sku, $fields, $platform);
+        } elseif ($upc !== '') {
+            $submitted = $this->submitExistingItemFeed($sku, $fields, $platform);
         }
 
         if ($submitted === null) {
             return [
                 'success' => false,
-                'message' => 'Cannot create a Newegg listing without a UPC/barcode or SubCategoryID. Add a UPC on Product Master or set NEWEGG_DEFAULT_SUBCATEGORY_ID.',
+                'message' => 'Cannot create a Newegg listing without a SubCategoryID. Search and select a Newegg category before Save & Publish.',
             ];
         }
         if (empty($submitted['success'])) {
             return $submitted;
         }
 
-        $itemNumber = '';
-        for ($attempt = 0; $attempt < 3 && $itemNumber === ''; $attempt++) {
+        $requestId = trim((string) ($submitted['request_id'] ?? ''));
+        $feed = $requestId !== ''
+            ? $this->waitForFeedStatus($requestId, $platform)
+            : ['success' => true, 'status' => '', 'message' => ''];
+        $status = strtoupper(trim((string) ($feed['status'] ?? '')));
+        if (in_array($status, ['CANCELLED', 'CANCELED', 'FAILED', 'FAILURE', 'ABORTED'], true)) {
+            return [
+                'success' => false,
+                'message' => (string) ($feed['message'] ?? 'Newegg item feed was rejected.'),
+                'request_id' => $requestId,
+            ];
+        }
+
+        $report = $requestId !== ''
+            ? $this->getFeedResult($requestId, $platform)
+            : ['item_number' => '', 'errors' => [], 'success_count' => 0, 'error_count' => 0];
+        if (($report['errors'] ?? []) !== [] && (int) ($report['success_count'] ?? 0) < 1) {
+            return [
+                'success' => false,
+                'message' => implode(' ', array_slice($report['errors'], 0, 4)),
+                'request_id' => $requestId,
+            ];
+        }
+
+        $itemNumber = trim((string) ($report['item_number'] ?? ''));
+        if (! ChannelListingRegistry::isLiveNeweggListingId($itemNumber, $sku)) {
+            $itemNumber = '';
+        }
+        for ($attempt = 0; $attempt < 8 && $itemNumber === ''; $attempt++) {
             if ($attempt > 0) {
-                usleep(400000);
+                usleep(800000);
             }
             $lookup = $this->lookupSellerItem($sku);
             if (! empty($lookup['blocked_by_cloudflare'])) {
-                break;
+                return $lookup;
             }
-            $itemNumber = trim((string) ($lookup['item_number'] ?? ''));
+            $candidate = trim((string) ($lookup['item_number'] ?? ''));
+            if (ChannelListingRegistry::isLiveNeweggListingId($candidate, $sku)) {
+                $itemNumber = $candidate;
+            }
         }
-        if ($itemNumber === '') {
-            $itemNumber = trim((string) ($submitted['request_id'] ?? ''));
-        }
-        if ($itemNumber === '' || strcasecmp($itemNumber, $sku) === 0) {
-            $itemNumber = $this->listedPlaceholderId($sku, $sku);
+
+        if (! ChannelListingRegistry::isLiveNeweggListingId($itemNumber, $sku)) {
+            $hint = $requestId !== '' ? ' RequestId '.$requestId.'.' : '';
+            $stillProcessing = in_array($status, ['', 'SUBMITTED', 'IN_PROGRESS', 'UNKNOWN'], true);
+
+            return [
+                'success' => false,
+                'message' => $stillProcessing
+                    ? 'Newegg is still processing '.$sku.'.'.$hint.' Wait for Data Feeds to finish, then Save & Publish again to attach the 9SI item number.'
+                    : 'Newegg finished the item feed but '.$sku.' is not in Pricing & Inventory.'.$hint
+                        .' Open Seller Portal > Data Feeds and fix any rejected fields, then publish again.',
+                'request_id' => $requestId,
+            ];
         }
 
         return [
             'success' => true,
-            'message' => (string) ($submitted['message'] ?? 'Newegg listing feed submitted.'),
+            'message' => 'Published '.$sku.' to Newegg ('.$itemNumber.').',
             'item_number' => $itemNumber,
-            'request_id' => (string) ($submitted['request_id'] ?? ''),
+            'request_id' => $requestId,
+        ];
+    }
+
+    /**
+     * @return array{success: bool, status: string, message: string}
+     */
+    public function getFeedStatus(string $requestId, string $platform = 'b2c'): array
+    {
+        $requestId = trim($requestId);
+        if ($requestId === '') {
+            return ['success' => false, 'status' => '', 'message' => 'Feed RequestId is required.'];
+        }
+
+        $paths = $platform === 'b2b'
+            ? ['/marketplace/b2b/datafeedmgmt/feeds/status', '/marketplace/datafeedmgmt/feeds/status']
+            : ['/marketplace/datafeedmgmt/feeds/status', '/marketplace/b2b/datafeedmgmt/feeds/status'];
+        $body = [
+            'OperationType' => 'GetFeedStatusRequest',
+            'RequestBody' => [
+                'GetRequestStatus' => [
+                    'RequestIDList' => [
+                        'RequestID' => $requestId,
+                    ],
+                    'MaxCount' => 10,
+                ],
+            ],
+        ];
+
+        $last = ['success' => true, 'status' => '', 'message' => 'Newegg feed status is not ready yet.'];
+        foreach ($paths as $path) {
+            $res = $this->request('PUT', $path, [], $body);
+            if (! empty($res['blocked_by_cloudflare'])) {
+                return ['success' => false, 'status' => '', 'message' => 'Blocked by Cloudflare (managed challenge).'];
+            }
+            $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+            $row = $this->feedStatusRow($json);
+            if (! is_array($row)) {
+                $last = ['success' => true, 'status' => '', 'message' => $this->extractItemError($res)];
+                continue;
+            }
+            $status = strtoupper(trim((string) ($row['RequestStatus'] ?? $row['Status'] ?? '')));
+            $message = trim((string) ($row['Memo'] ?? $row['ProcessResult'] ?? $row['ErrorMessage'] ?? ''));
+            $errors = (int) ($row['ErrorCount'] ?? $row['TotalErrorCount'] ?? 0);
+            if (in_array($status, ['CANCELLED', 'CANCELED', 'ABORTED', 'FAILED', 'FAILURE'], true) || $errors > 0) {
+                return [
+                    'success' => false,
+                    'status' => $status !== '' ? $status : 'FAILED',
+                    'message' => $message !== '' ? $message : ('Newegg feed '.$status.($errors > 0 ? ' with '.$errors.' error(s)' : '')),
+                ];
+            }
+
+            return [
+                'success' => true,
+                'status' => $status,
+                'message' => $message,
+            ];
+        }
+
+        return $last;
+    }
+
+    /**
+     * @return array{success: bool, status: string, message: string}
+     */
+    protected function waitForFeedStatus(string $requestId, string $platform = 'b2c'): array
+    {
+        $last = ['success' => true, 'status' => 'SUBMITTED', 'message' => ''];
+        for ($attempt = 0; $attempt < 12; $attempt++) {
+            if ($attempt > 0) {
+                usleep(2000000);
+            }
+            $last = $this->getFeedStatus($requestId, $platform);
+            $status = strtoupper((string) ($last['status'] ?? ''));
+            if (in_array($status, ['FINISHED', 'COMPLETED', 'SUCCESS', 'CANCELLED', 'CANCELED', 'FAILED', 'FAILURE', 'ABORTED'], true)) {
+                return $last;
+            }
+        }
+
+        return $last;
+    }
+
+    /**
+     * @return array{item_number: string, errors: list<string>, success_count: int, error_count: int}
+     */
+    public function getFeedResult(string $requestId, string $platform = 'b2c'): array
+    {
+        $requestId = trim($requestId);
+        $empty = ['item_number' => '', 'errors' => [], 'success_count' => 0, 'error_count' => 0];
+        if ($requestId === '') {
+            return $empty;
+        }
+
+        $paths = $platform === 'b2b'
+            ? ['/marketplace/b2b/datafeedmgmt/feeds/result/'.$requestId, '/marketplace/datafeedmgmt/feeds/result/'.$requestId]
+            : ['/marketplace/datafeedmgmt/feeds/result/'.$requestId, '/marketplace/b2b/datafeedmgmt/feeds/result/'.$requestId];
+
+        foreach ($paths as $path) {
+            $res = $this->request('GET', $path);
+            if (! empty($res['blocked_by_cloudflare'])) {
+                return $empty;
+            }
+            $parsed = self::parseFeedResultPayload(is_array($res['json'] ?? null) ? $res['json'] : [], (string) ($res['raw'] ?? ''));
+            if (($parsed['item_number'] ?? '') !== '' || ($parsed['errors'] ?? []) !== [] || (int) ($parsed['success_count'] ?? 0) > 0) {
+                return $parsed;
+            }
+        }
+
+        return $empty;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $json
+     * @return array{item_number: string, errors: list<string>, success_count: int, error_count: int}
+     */
+    public static function parseFeedResultPayload(?array $json, string $raw = ''): array
+    {
+        $payload = is_array($json) ? $json : [];
+        if ($payload === [] && $raw !== '' && str_contains($raw, '<')) {
+            $xml = @simplexml_load_string($raw);
+            if ($xml !== false) {
+                $payload = json_decode(json_encode($xml), true) ?: [];
+            }
+        }
+
+        $report = data_get($payload, 'NeweggEnvelope.Message.ProcessingReport')
+            ?? data_get($payload, 'Message.ProcessingReport')
+            ?? data_get($payload, 'ProcessingReport')
+            ?? $payload;
+        $successCount = (int) (data_get($report, 'ProcessingSummary.SuccessCount') ?? 0);
+        $errorCount = (int) (data_get($report, 'ProcessingSummary.WithErrorCount') ?? 0);
+        $results = data_get($report, 'Result') ?? [];
+        if (isset($results['AdditionalInfo']) || isset($results['ErrorList'])) {
+            $results = [$results];
+        }
+        if (! is_array($results)) {
+            $results = [];
+        }
+
+        $errors = [];
+        $itemNumber = '';
+        foreach ($results as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $num = trim((string) (
+                data_get($row, 'AdditionalInfo.NeweggItemNumber')
+                ?? data_get($row, 'NeweggItemNumber')
+                ?? ''
+            ));
+            if ($num !== '' && $itemNumber === '') {
+                $itemNumber = $num;
+            }
+            $list = data_get($row, 'ErrorList.ErrorDescription') ?? data_get($row, 'ErrorDescription') ?? [];
+            if (is_string($list) && $list !== '') {
+                $list = [$list];
+            }
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $err) {
+                $err = trim((string) $err);
+                if ($err !== '' && ! in_array($err, $errors, true)) {
+                    $errors[] = $err;
+                }
+            }
+        }
+
+        return [
+            'item_number' => $itemNumber,
+            'errors' => $errors,
+            'success_count' => $successCount,
+            'error_count' => $errorCount,
         ];
     }
 
@@ -1997,8 +2196,12 @@ class NeweggApiService
         $sellerPart = htmlspecialchars($this->neweggSkuCandidates($sku)[0] ?? $sku, ENT_XML1 | ENT_COMPAT, 'UTF-8');
         $manufacturer = htmlspecialchars($this->neweggManufacturer($fields), ENT_XML1 | ENT_COMPAT, 'UTF-8');
         $mpn = htmlspecialchars(trim((string) ($fields['mpn'] ?? $sku)), ENT_XML1 | ENT_COMPAT, 'UTF-8');
-        $upc = htmlspecialchars($this->normalizeUpc((string) ($fields['upc'] ?? '')), ENT_XML1 | ENT_COMPAT, 'UTF-8');
-        $subcategoryId = htmlspecialchars(trim((string) ($fields['subcategory_id'] ?? '')), ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $upcDigits = $this->normalizeUpc((string) ($fields['upc'] ?? ''));
+        $upc = (strlen($upcDigits) === 12 || strlen($upcDigits) === 13)
+            ? htmlspecialchars($upcDigits, ENT_XML1 | ENT_COMPAT, 'UTF-8')
+            : '';
+        $subcategoryIdRaw = trim((string) ($fields['subcategory_id'] ?? ''));
+        $subcategoryId = htmlspecialchars($subcategoryIdRaw, ENT_XML1 | ENT_COMPAT, 'UTF-8');
         $title = trim((string) ($fields['title'] ?? ''));
         $safeTitle = str_replace(']]>', ']] >', $title);
         $description = trim((string) ($fields['description'] ?? $title));
@@ -2022,10 +2225,11 @@ class NeweggApiService
         $width = $this->neweggDimension((float) ($fields['width'] ?? 1));
         $height = $this->neweggDimension((float) ($fields['height'] ?? 1));
         $weight = $this->neweggDimension((float) ($fields['weight'] ?? 1));
+        $propertyXml = $this->subcategoryPropertyXmlForCreate($subcategoryIdRaw, $fields, $platform);
 
         $xml = '<?xml version="1.0" encoding="UTF-8"?>'
             .'<NeweggEnvelope>'
-            .'<Header><DocumentVersion>2.0</DocumentVersion></Header>'
+            .'<Header><DocumentVersion>1.0</DocumentVersion></Header>'
             .'<MessageType>BatchItemCreation</MessageType>'
             .'<Message><Itemfeed>'
             .'<SummaryInfo><SubCategoryID>'.$subcategoryId.'</SubCategoryID></SummaryInfo>'
@@ -2053,7 +2257,9 @@ class NeweggApiService
             .'<Inventory>'.$qty.'</Inventory>'
             .'<ActivationMark>True</ActivationMark>'
             .$imageXml
-            .'</BasicInfo></Item>'
+            .'</BasicInfo>'
+            .$propertyXml
+            .'</Item>'
             .'</Itemfeed></Message></NeweggEnvelope>';
 
         return $this->submitXmlFeed($xml, 'ITEM_DATA', $platform);
@@ -2075,12 +2281,13 @@ class NeweggApiService
                 'requesttype' => $requestType,
             ]);
             try {
-                $response = Http::withHeaders([
-                    'Authorization' => $this->apiKey,
-                    'SecretKey' => $this->secretKey,
-                    'Content-Type' => 'application/xml',
-                    'Accept' => 'application/json',
-                ])
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $this->apiKey,
+                        'SecretKey' => $this->secretKey,
+                        'Content-Type' => 'application/xml',
+                        'Accept' => 'application/json',
+                    ])
                     ->timeout($this->timeout)
                     ->connectTimeout($this->connectTimeout)
                     ->withBody($xml, 'application/xml')
@@ -2127,10 +2334,13 @@ class NeweggApiService
     {
         foreach ([
             'NeweggAPIResponse.ResponseBody.ResponseList.0.RequestId',
+            'NeweggAPIResponse.ResponseBody.ResponseList.ResponseInfo.RequestId',
             'ResponseBody.ResponseList.0.RequestId',
+            'ResponseBody.ResponseList.ResponseInfo.RequestId',
             'NeweggAPIResponse.ResponseBody.RequestId',
             'ResponseBody.RequestId',
             'RequestId',
+            'RequestID',
         ] as $path) {
             $value = trim((string) data_get($json, $path, ''));
             if ($value !== '') {
@@ -2139,6 +2349,253 @@ class NeweggApiService
         }
 
         return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     * @return array<string, mixed>|null
+     */
+    protected function feedStatusRow(array $json): ?array
+    {
+        $list = data_get($json, 'ResponseBody.ResponseList')
+            ?? data_get($json, 'NeweggAPIResponse.ResponseBody.ResponseList')
+            ?? data_get($json, 'ResponseList');
+        if (! is_array($list)) {
+            return null;
+        }
+        if (isset($list['ResponseInfo']) && is_array($list['ResponseInfo'])) {
+            $list = $list['ResponseInfo'];
+        }
+        if (isset($list['RequestId']) || isset($list['RequestStatus']) || isset($list['RequestID'])) {
+            return $list;
+        }
+        foreach ($list as $row) {
+            if (is_array($row) && (isset($row['RequestId']) || isset($row['RequestStatus']) || isset($row['RequestID']))) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     */
+    protected function subcategoryPropertyXmlForCreate(string $subcategoryId, array $fields, string $platform): string
+    {
+        $subcategoryId = trim($subcategoryId);
+        if ($subcategoryId === '' || ! preg_match('/^\d+$/', $subcategoryId)) {
+            return '';
+        }
+
+        $props = $this->getSubcategoryProperties($subcategoryId, $platform);
+        if ($props === []) {
+            return '';
+        }
+
+        $values = [];
+        $fetched = 0;
+        foreach ($props as $prop) {
+            $name = trim((string) ($prop['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $required = ! empty($prop['required']);
+            $allowed = [];
+            if ($required && $fetched < 4) {
+                $allowed = $this->getSubcategoryPropertyValues($subcategoryId, $name, $platform);
+                $fetched++;
+            }
+            $value = $this->subcategoryPropertyValue($name, $fields, $allowed);
+            if ($value === '' && $required) {
+                $value = $allowed[0] ?? trim((string) ($fields['sku'] ?? $fields['mpn'] ?? 'N/A'));
+            }
+            if ($value !== '') {
+                $values[$name] = $value;
+            }
+        }
+
+        return self::subcategoryPropertyXml((string) ($props[0]['subcategory_name'] ?? 'Item'), $values);
+    }
+
+    /**
+     * @param  array<string, string>  $properties
+     */
+    public static function subcategoryPropertyXml(string $subcategoryName, array $properties): string
+    {
+        $wrapper = preg_replace('/[^A-Za-z0-9]/', '', $subcategoryName) ?: 'Item';
+        if (! preg_match('/^[A-Za-z]/', $wrapper)) {
+            $wrapper = 'C'.$wrapper;
+        }
+        $inner = '';
+        foreach ($properties as $name => $value) {
+            $name = trim((string) $name);
+            $value = trim((string) $value);
+            if ($name === '' || $value === '') {
+                continue;
+            }
+            $el = preg_replace('/[^A-Za-z0-9]/', '', str_replace('_', '', $name)) ?: '';
+            if ($el === '') {
+                continue;
+            }
+            $inner .= '<'.$el.'>'.htmlspecialchars($value, ENT_XML1 | ENT_COMPAT, 'UTF-8').'</'.$el.'>';
+        }
+        if ($inner === '') {
+            return '';
+        }
+
+        return '<SubCategoryProperty><'.$wrapper.'>'.$inner.'</'.$wrapper.'></SubCategoryProperty>';
+    }
+
+    /**
+     * @param  list<string>  $allowed
+     */
+    protected function subcategoryPropertyValue(string $propertyName, array $fields, array $allowed): string
+    {
+        $n = strtolower($propertyName);
+        $brand = $this->neweggManufacturer($fields);
+        $sku = trim((string) ($fields['sku'] ?? $fields['mpn'] ?? ''));
+        $color = trim((string) ($fields['color'] ?? ''));
+        if ($color === '' && preg_match('/\b(red|black|white|blue|green|silver|gold|gray|grey|pink|yellow|orange|purple)\b/i', (string) ($fields['title'] ?? $sku), $m)) {
+            $color = (string) $m[1];
+        }
+
+        $candidate = '';
+        if (str_contains($n, 'brand') || str_contains($n, 'manufacturer')) {
+            $candidate = $brand;
+        } elseif (str_contains($n, 'model') || str_contains($n, 'mpn') || str_contains($n, 'part')) {
+            $candidate = $sku;
+        } elseif (str_contains($n, 'color') || str_contains($n, 'colour')) {
+            $candidate = $color !== '' ? $color : $brand;
+        } elseif (str_contains($n, 'type') || str_contains($n, 'gender') || str_contains($n, 'age')) {
+            $candidate = $allowed[0] ?? '';
+        } else {
+            $candidate = $allowed[0] ?? ($sku !== '' ? $sku : $brand);
+        }
+
+        if ($allowed !== []) {
+            foreach ($allowed as $opt) {
+                if (strcasecmp($opt, $candidate) === 0) {
+                    return $opt;
+                }
+            }
+            foreach ($allowed as $opt) {
+                if ($candidate !== '' && stripos($opt, $candidate) !== false) {
+                    return $opt;
+                }
+            }
+
+            return $allowed[0];
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * @return list<array{name: string, required: bool, subcategory_name: string}>
+     */
+    public function getSubcategoryProperties(string $subcategoryId, string $platform = 'b2c'): array
+    {
+        $subcategoryId = trim($subcategoryId);
+        if ($subcategoryId === '' || ! $this->isConfigured()) {
+            return [];
+        }
+        $platform = strtolower(trim($platform)) === 'b2b' ? 'b2b' : 'b2c';
+        $cacheKey = 'newegg.subcat.props.v1.'.$platform.'.'.$subcategoryId;
+
+        return Cache::remember($cacheKey, now()->addHours(6), function () use ($subcategoryId, $platform) {
+            $path = $platform === 'b2b'
+                ? '/marketplace/b2b/sellermgmt/seller/subcategoryproperty'
+                : '/marketplace/sellermgmt/seller/subcategoryproperty';
+            $res = $this->request('PUT', $path, [], [
+                'OperationType' => 'GetSellerSubcategoryPropertyRequest',
+                'RequestBody' => [
+                    'SubcategoryID' => $subcategoryId,
+                ],
+            ]);
+            $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+            $list = data_get($json, 'ResponseBody.SubcategoryPropertyList')
+                ?? data_get($json, 'NeweggAPIResponse.ResponseBody.SubcategoryPropertyList')
+                ?? data_get($json, 'SubcategoryPropertyList')
+                ?? [];
+            if (isset($list['SubcategoryProperty']) && is_array($list['SubcategoryProperty'])) {
+                $list = $list['SubcategoryProperty'];
+            }
+            if (isset($list['PropertyName'])) {
+                $list = [$list];
+            }
+            if (! is_array($list)) {
+                return [];
+            }
+
+            $out = [];
+            foreach ($list as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $name = trim((string) ($row['PropertyName'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+                $out[] = [
+                    'name' => $name,
+                    'required' => (int) ($row['IsRequired'] ?? 0) === 1,
+                    'subcategory_name' => trim((string) ($row['SubcategoryName'] ?? '')),
+                ];
+            }
+
+            return $out;
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getSubcategoryPropertyValues(string $subcategoryId, string $propertyName, string $platform = 'b2c'): array
+    {
+        $subcategoryId = trim($subcategoryId);
+        $propertyName = trim($propertyName);
+        if ($subcategoryId === '' || $propertyName === '' || ! $this->isConfigured()) {
+            return [];
+        }
+        $platform = strtolower(trim($platform)) === 'b2b' ? 'b2b' : 'b2c';
+        $cacheKey = 'newegg.subcat.propvals.v1.'.$platform.'.'.$subcategoryId.'.'.md5($propertyName);
+
+        return Cache::remember($cacheKey, now()->addHours(6), function () use ($subcategoryId, $propertyName, $platform) {
+            $path = $platform === 'b2b'
+                ? '/marketplace/b2b/sellermgmt/seller/propertyvalue'
+                : '/marketplace/sellermgmt/seller/propertyvalue';
+            $res = $this->request('PUT', $path, [], [
+                'OperationType' => 'GetSellerPropertyValueRequest',
+                'RequestBody' => [
+                    'SubcategoryID' => $subcategoryId,
+                    'PropertyName' => $propertyName,
+                ],
+            ]);
+            $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+            $list = data_get($json, 'ResponseBody.PropertyValueList')
+                ?? data_get($json, 'NeweggAPIResponse.ResponseBody.PropertyValueList')
+                ?? data_get($json, 'PropertyValueList')
+                ?? [];
+            if (isset($list['PropertyValue']) && is_array($list['PropertyValue'])) {
+                $list = $list['PropertyValue'];
+            }
+            if (! is_array($list)) {
+                return [];
+            }
+
+            $out = [];
+            foreach ($list as $row) {
+                $value = is_array($row)
+                    ? trim((string) ($row['PropertyValue'] ?? $row['Value'] ?? $row['Option'] ?? ''))
+                    : trim((string) $row);
+                if ($value !== '' && ! in_array($value, $out, true)) {
+                    $out[] = $value;
+                }
+            }
+
+            return $out;
+        });
     }
 
     /**
@@ -2157,10 +2614,8 @@ class NeweggApiService
             'Inventory.ItemNumber',
         ] as $path) {
             $value = trim((string) data_get($json, $path, ''));
-            if ($value !== '' && (str_starts_with(strtoupper($value), '9SI') || strcasecmp($value, '0') !== 0)) {
-                if (preg_match('/^9SI/i', $value) || (strlen($value) >= 6 && strcasecmp($value, (string) data_get($json, 'SellerPartNumber', '')) !== 0)) {
-                    return $value;
-                }
+            if (preg_match('/^9SI/i', $value)) {
+                return $value;
             }
         }
 
