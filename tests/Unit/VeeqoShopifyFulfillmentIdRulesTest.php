@@ -143,4 +143,20 @@ class VeeqoShopifyFulfillmentIdRulesTest extends TestCase
             'tracking' => '',
         ]));
     }
+
+    public function test_veeqo_assigned_fulfillment_order_needs_takeover(): void
+    {
+        $this->assertTrue(VeeqoShopifyFulfillmentService::fulfillmentOrderAssignedToService([
+            'assigned_location' => ['name' => 'Veeqo Fulfillment Service'],
+            'supported_actions' => ['request_fulfillment'],
+        ]));
+        $this->assertTrue(VeeqoShopifyFulfillmentService::fulfillmentOrderAssignedToService([
+            'request_status' => 'submitted',
+            'supported_actions' => ['cancel_fulfillment_request'],
+        ]));
+        $this->assertFalse(VeeqoShopifyFulfillmentService::fulfillmentOrderAssignedToService([
+            'assigned_location' => ['name' => '5Core Warehouse'],
+            'supported_actions' => ['create_fulfillment'],
+        ]));
+    }
 }

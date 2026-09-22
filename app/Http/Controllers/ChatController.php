@@ -468,6 +468,34 @@ class ChatController extends Controller
         return response()->json(['channel_id' => (int) $channel->id]);
     }
 
+    public function destroyChannel(int $channel): JsonResponse
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+        $row = ChatWorkspace::canManageChannels($user)
+            ? ChatChannel::query()->findOrFail($channel)
+            : ChatWorkspace::memberOrFail($user, $channel);
+        abort_unless(ChatWorkspace::canDeleteChannel($user, $row), 403, 'You cannot delete this conversation.');
+
+        $row->is_archived = true;
+        $row->save();
+
+        ChatMessage::query()->create([
+            'channel_id' => $row->id,
+            'user_id' => null,
+            'is_bot' => true,
+            'bot_name' => ChatWorkspace::BOT_NAME,
+            'body' => $user->name.' deleted this '.($row->isGroup() ? 'group' : 'channel').'.',
+            'command' => 'deleted',
+        ]);
+        ChatAudit::record($user, $row->isGroup() ? 'group.deleted' : 'channel.deleted', 'chat_channel', (int) $row->id, (int) $row->id, [
+            'name' => $row->name,
+        ]);
+        ChatWorkspace::forgetUnreadCache((int) $user->id);
+
+        return response()->json(['ok' => true]);
+    }
+
     public function forward(Request $request, int $message): JsonResponse
     {
         $user = Auth::user();
@@ -946,9 +974,11 @@ class ChatController extends Controller
             'status' => $presence['status'] ?? 'active',
             'last_seen_label' => $presence['last_seen_label'] ?? ($channel->isGroup() ? $channel->members()->count().' members' : null),
             'member_count' => (int) $channel->members()->count(),
+            'member_ids' => $channel->members()->pluck('user_id')->map(fn ($id) => (int) $id)->values()->all(),
             'last_read_message_id' => (int) ($member->last_read_message_id ?? 0),
             'notify_pref' => $member->notify_pref ?? 'all',
             'can_manage_members' => ChatWorkspace::canManageMembers($user, $channel),
+            'can_delete' => ChatWorkspace::canDeleteChannel($user, $channel),
         ];
     }
 

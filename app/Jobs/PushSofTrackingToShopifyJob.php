@@ -32,7 +32,7 @@ class PushSofTrackingToShopifyJob implements ShouldQueue, ShouldBeUnique
     public function __construct(
         public int $limit = 200,
     ) {
-        $this->onQueue(MarketplaceManagerRegistry::QUEUE_TRACKING);
+        $this->onQueue('mm-sof-shopify');
     }
 
     public function uniqueId(): string
@@ -43,10 +43,8 @@ class PushSofTrackingToShopifyJob implements ShouldQueue, ShouldBeUnique
     public function handle(VeeqoShopifyFulfillmentService $sync): void
     {
         try {
-            $fromShopify = $sync->syncUnfulfilledShopifyFromSofTracking($this->limit);
-            Log::info('PushSofTrackingToShopifyJob: shopify-unfulfilled', $fromShopify);
-            $fromRows = $sync->syncSofTrackingToUnfulfilledShopify(max(80, (int) ceil($this->limit * 0.5)));
-            Log::info('PushSofTrackingToShopifyJob: marketplace-rows', $fromRows);
+            $result = $sync->syncUnfulfilledShopifyFromSofTracking($this->limit);
+            Log::info('PushSofTrackingToShopifyJob: completed', $result);
         } catch (\Throwable $e) {
             Log::error('PushSofTrackingToShopifyJob: failed', [
                 'error' => $e->getMessage(),
