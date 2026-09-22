@@ -230,6 +230,7 @@ class AmazonTrackingSyncService
         }
 
         $limit = max(1, min(200, $limit));
+        $sizes = self::trackingBatchSizes($limit);
         $rows = AmazonOrder::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
@@ -241,16 +242,10 @@ class AmazonTrackingSyncService
                 $q->whereNull('status')
                     ->orWhereRaw("UPPER(TRIM(COALESCE(status, ''))) NOT IN (?, ?, ?, ?)", [
                         'SHIPPED', 'PARTIALLYSHIPPED', 'CANCELED', 'CANCELLED',
-                    ])
-                    ->orWhere(function ($q2) {
-                        // Label already created on Amazon — still copy Shopify/Veeqo tracking onto SOF.
-                        $q2->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
-                            ->where('order_date', '>=', now()->subDays(30));
-                    });
+                    ]);
             })
-            ->orderByRaw("CASE WHEN UPPER(TRIM(COALESCE(status, ''))) IN ('SHIPPED','PARTIALLYSHIPPED') THEN 1 ELSE 0 END")
             ->orderByDesc('id')
-            ->limit($limit)
+            ->limit($sizes['unshipped'])
             ->get();
 
         $checked = 0;
@@ -302,15 +297,24 @@ class AmazonTrackingSyncService
         $limit = max(1, min(400, $limit));
         $orders = AmazonOrder::query()
             ->with('items')
-            ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED', 'UNSHIPPED'])
+            ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
             ->where(function ($q) {
                 $q->whereNull('fulfillment_channel')
                     ->orWhereRaw("UPPER(TRIM(COALESCE(fulfillment_channel, ''))) != ?", ['AFN']);
             })
-            ->where('order_date', '>=', now()->subDays(30))
+            ->where('order_date', '>=', now()->subDays(45))
+            ->where(function ($q) {
+                $q->whereNull('raw_data')
+                    ->orWhere('raw_data', '')
+                    ->orWhere(function ($missing) {
+                        $missing->whereRaw("LOWER(CONVERT(COALESCE(raw_data, '') USING utf8mb4)) NOT LIKE ?", ['%tracking_number%'])
+                            ->whereRaw("LOWER(CONVERT(COALESCE(raw_data, '') USING utf8mb4)) NOT LIKE ?", ['%trackingnumber%']);
+                    });
+            })
+            ->orderByRaw("CASE WHEN shopify_order_id IS NULL OR shopify_order_id = '' THEN 1 ELSE 0 END")
             ->orderByDesc('order_date')
             ->orderByDesc('id')
-            ->limit(max(200, $limit * 5))
+            ->limit($limit)
             ->get();
 
         $checked = 0;
@@ -438,6 +442,22 @@ class AmazonTrackingSyncService
         return [
             'tracking' => $tn,
             'carrier' => trim((string) ($found['carrier'] ?? '')) ?: 'Other',
+        ];
+    }
+
+    /**
+     * Unshipped confirmShipment and shipped-missing-tracking must not share one
+     * 40-row queue — otherwise 25k Unshipped starves yesterday’s Shipped orders.
+     *
+     * @return array{unshipped: int, missing: int}
+     */
+    public static function trackingBatchSizes(int $limit): array
+    {
+        $limit = max(1, min(200, $limit));
+
+        return [
+            'unshipped' => $limit,
+            'missing' => max(80, $limit * 2),
         ];
     }
 

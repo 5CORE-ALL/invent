@@ -89,6 +89,7 @@
                                 <th>Items</th>
                                 <th>Qty</th>
                                 <th>Amount</th>
+                                <th>Tracking</th>
                                 <th>Shopify</th>
                                 <th>Action</th>
                             </tr>
@@ -106,6 +107,7 @@
                                     $pushBlocked = ($importPaidOrdersOnly ?? false)
                                         && ! \App\Services\MarketplaceManager\MarketplaceOrderPaidFilter::isPaid('amazon', $o);
                                     $canPush = empty($o->shopify_order_id) && ! $isFba && $o->canCreateShopifyOrder() && ! $pushBlocked;
+                                    $localTrack = $o->localTracking();
                                 @endphp
                                 <tr style="cursor: pointer;" onclick="window.location='{{ $orderUrl }}'">
                                     <td>
@@ -142,6 +144,16 @@
                                     <td>
                                         {{ $amount > 0 ? number_format($amount, 2) : '—' }}
                                         <small class="text-muted">{{ $o->currency ?: 'USD' }}</small>
+                                    </td>
+                                    <td class="small">
+                                        @if(trim((string) ($localTrack['tracking'] ?? '')) !== '')
+                                            <code>{{ $localTrack['tracking'] }}</code>
+                                            @if(trim((string) ($localTrack['carrier'] ?? '')) !== '')
+                                                <small class="d-block text-muted">{{ $localTrack['carrier'] }}</small>
+                                            @endif
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
                                     </td>
                                     <td>
                                         @if($isFba)
@@ -190,7 +202,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="9" class="text-center text-muted py-4">
+                                    <td colspan="10" class="text-center text-muted py-4">
                                         No orders yet. Click <strong>Fetch from Amz</strong>.
                                     </td>
                                 </tr>

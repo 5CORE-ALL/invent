@@ -42,7 +42,11 @@ class SyncAmazonTrackingFromShopify extends Command
             return self::SUCCESS;
         }
 
-        $result = $sync->syncFromShopify(max(1, (int) $this->option('limit')));
+        $limit = max(1, (int) $this->option('limit'));
+        $sizes = AmazonTrackingSyncService::trackingBatchSizes($limit);
+        $fill = $sync->fillMissingSofTracking($sizes['missing']);
+        $this->info($fill['message']);
+        $result = $sync->syncFromShopify($sizes['unshipped']);
         $this->info($result['message']);
 
         return ! empty($result['success']) ? self::SUCCESS : self::FAILURE;

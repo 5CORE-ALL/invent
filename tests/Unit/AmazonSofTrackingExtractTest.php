@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\AmazonOrder;
 use App\Services\GofoExpressService;
+use App\Services\MarketplaceManager\AmazonTrackingSyncService;
 use PHPUnit\Framework\TestCase;
 
 class AmazonSofTrackingExtractTest extends TestCase
@@ -49,5 +50,14 @@ class AmazonSofTrackingExtractTest extends TestCase
 
         $this->assertSame('9400111899351234567890', $hit['tracking']);
         $this->assertSame('USPS', $hit['carrier']);
+    }
+
+    public function test_tracking_batch_reserves_slots_for_missing_shipped(): void
+    {
+        $sizes = AmazonTrackingSyncService::trackingBatchSizes(40);
+
+        $this->assertSame(40, $sizes['unshipped']);
+        $this->assertSame(80, $sizes['missing']);
+        $this->assertGreaterThanOrEqual($sizes['unshipped'], $sizes['missing']);
     }
 }
