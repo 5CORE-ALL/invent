@@ -11,7 +11,7 @@
             const TEMU_LISTING_PULL_URL = ({
                 temu: '/temu/pull-price',
                 temu2: '/temu2/pull-price',
-                temu3: '',
+                temu3: '/temu3/pull-price',
             })[TEMU_LISTING_CHANNEL] || '';
             const TEMU_LISTING_PERSIST_URL = ({
                 temu: '/temu-pricing/update-price',
