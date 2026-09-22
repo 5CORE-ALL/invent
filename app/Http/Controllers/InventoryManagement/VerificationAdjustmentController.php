@@ -342,13 +342,13 @@ class VerificationAdjustmentController extends Controller
                 // for the Ohio location only (available, committed, on_hand, unavailable, incoming).
                 // ON_HAND uses Shopify on_hand; INV (Main-INV column) matches AVAILABLE_TO_SELL.
                 if ($shopify) {
-                    $item->AVAILABLE_TO_SELL = (int) ($shopify->available_to_sell ?? 0);
+                    $availableToSell = (int) ($shopify->available_to_sell ?? $shopify->inv ?? 0);
+                    $item->AVAILABLE_TO_SELL = $availableToSell;
                     $item->COMMITTED = (int) ($shopify->committed ?? 0);
                     $item->UNAVAILABLE = (int) ($shopify->getAttribute('unavailable') ?? 0);
                     $item->INCOMING = (int) ($shopify->getAttribute('incoming') ?? 0);
-                    $onHand = (int) ($shopify->on_hand ?? 0);
-                    $item->ON_HAND = $onHand;
-                    $item->INV = $item->AVAILABLE_TO_SELL;
+                    $item->ON_HAND = (int) ($shopify->on_hand ?? $shopify->inv ?? $availableToSell);
+                    $item->INV = $availableToSell;
                     $item->L30 = $shopify->quantity ?? 0;
                     $item->IMAGE_URL = $shopify->image_src ?? null;
                     $item->SHOPIFY_SKU = $shopify->sku ?? null;
@@ -495,8 +495,8 @@ class VerificationAdjustmentController extends Controller
             ];
         }
 
-        $availableToSell = (int) ($row->available_to_sell ?? 0);
-        $onHand = (int) ($row->on_hand ?? 0);
+        $availableToSell = (int) ($row->available_to_sell ?? $row->inv ?? 0);
+        $onHand = (int) ($row->on_hand ?? $row->inv ?? $availableToSell);
         $l30 = (float) ($row->quantity ?? 0);
         $inv = $availableToSell;
 
