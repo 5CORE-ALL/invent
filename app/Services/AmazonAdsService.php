@@ -540,22 +540,71 @@ class AmazonAdsService
     }
 
     /**
+     * Enabled + paused Sponsored Brands product targets.
+     * GET /sb/targets is not a list method (405). The list is POST /sb/targets/list.
+     *
      * @param  list<string>  $campaignIds
      * @return list<array<string, mixed>>
      */
     public function listSbTargetsByCampaignIds(array $campaignIds): array
     {
-        return $this->listPagedGetByCampaignIds(
-            '/sb/targets',
-            'application/vnd.sblisttargetsresponse.v3.2+json',
-            ['targets'],
-            $campaignIds,
-            'enabled,paused'
-        );
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $campaignIds
+        ), static fn (string $id) => $id !== '')));
+        if ($ids === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (array_chunk($ids, 10) as $chunk) {
+            $nextToken = null;
+            $pages = 0;
+            $seen = [];
+            do {
+                $pages++;
+                $body = [
+                    'maxResults' => 100,
+                    'filters' => [
+                        ['filterType' => 'CAMPAIGN_ID', 'values' => array_values($chunk)],
+                        ['filterType' => 'TARGETING_STATE', 'values' => ['enabled', 'paused']],
+                    ],
+                ];
+                if (is_string($nextToken) && $nextToken !== '') {
+                    $body['nextToken'] = $nextToken;
+                }
+                $response = $this->post('/sb/targets/list', $body, [
+                    'Content-Type' => 'application/vnd.sblisttargetsrequest.v3.2+json',
+                    'Accept' => 'application/vnd.sblisttargetsresponse.v3.2+json',
+                ]);
+                $batch = (isset($response['targets']) && is_array($response['targets'])) ? $response['targets'] : [];
+                $newOnPage = 0;
+                foreach ($batch as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $entityId = trim((string) ($row['targetId'] ?? $row['target_id'] ?? ''));
+                    $mark = $entityId !== '' ? $entityId : md5((string) json_encode($row));
+                    if (isset($seen[$mark])) {
+                        continue;
+                    }
+                    $seen[$mark] = true;
+                    $out[] = $row;
+                    $newOnPage++;
+                }
+                $nextToken = $response['nextToken'] ?? null;
+                if ($newOnPage === 0) {
+                    break;
+                }
+            } while (is_string($nextToken) && $nextToken !== '' && $pages < 40);
+        }
+
+        return $out;
     }
 
     /**
-     * Enabled + paused Sponsored Brands negative keywords.
+     * Enabled Sponsored Brands negative keywords.
+     * This list rejects stateFilter=paused (allowed values are enabled and archived).
      *
      * @param  list<string>  $campaignIds
      * @return list<array<string, mixed>>
@@ -567,7 +616,7 @@ class AmazonAdsService
             'application/vnd.sbnegativekeyword.v3.2+json',
             ['negativeKeywords', 'keywords'],
             $campaignIds,
-            'enabled,paused'
+            'enabled'
         );
     }
 
