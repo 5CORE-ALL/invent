@@ -1270,6 +1270,15 @@
         document.addEventListener('DOMContentLoaded', function () {
             var rawSources = @json($rawSources ?? []);
             var amazonAdsDefaultReportDates = @json($defaultReportRangeDates ?? (object) []);
+            (function () {
+                var d = amazonAdsDefaultReportDates.all_reports;
+                var fromEl = document.getElementById('amazonAdsFilterDateFrom');
+                var toEl = document.getElementById('amazonAdsFilterDateTo');
+                if (d && typeof d === 'string' && fromEl && toEl && !fromEl.value && !toEl.value) {
+                    fromEl.value = d;
+                    toEl.value = d;
+                }
+            })();
             var dataUrlTemplate = @json(url('/amazon-ads/raw-data')) + '/';
             var pushSpSbidsUrl = @json(route('amazon.ads.push-sp-sbids'));
             var pushSbSbidsUrl = @json(route('amazon.ads.push-sb-sbids'));

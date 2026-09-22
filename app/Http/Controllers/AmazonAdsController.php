@@ -1557,10 +1557,11 @@ class AmazonAdsController extends Controller
         if (! Schema::hasTable($table)) {
             return self::$latestDailyReportYmdCache[$table] = null;
         }
-        // Exact YYYY-MM-DD daily rows (indexed); avoid LEFT/TRIM/REGEXP full scans.
+        // Date labels sort before L1/L7/L30, so this range uses the report_date_range index.
         $max = DB::table($table)
+            ->where('report_date_range', '>=', '2010-01-01')
+            ->where('report_date_range', '<=', '2099-12-31')
             ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
-            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
             ->max('report_date_range');
 
         if ($max === null || $max === '') {
@@ -2747,6 +2748,14 @@ class AmazonAdsController extends Controller
         }
 
         if ($from === null && $to === null) {
+            // Calendar mode with no dates must not scan every historical row.
+            if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)) {
+                $latest = self::latestDailyReportYmdInTable($table);
+                if ($latest !== null && $latest !== '') {
+                    $query->where('report_date_range', $latest);
+                }
+            }
+
             return;
         }
         // Calendar mode: only rows where `report_date_range` is an ISO date (exclude L7, L30, L1, …).
