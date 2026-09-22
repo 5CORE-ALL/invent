@@ -1438,7 +1438,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('amazon:ads-live-bid-bgt-sync --failed-only')
+        $schedule->command('amazon:ads-live-bid-bgt-sync --limit=200')
             ->dailyAt('21:50')
             ->timezone('Asia/Kolkata')
             ->name('amazon-ads-live-bid-bgt-sync')

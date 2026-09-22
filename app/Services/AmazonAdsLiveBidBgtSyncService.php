@@ -183,7 +183,13 @@ class AmazonAdsLiveBidBgtSyncService
                 $worst = 'failed';
                 continue;
             }
-            $one = $this->syncField($channel, $field, $cid, $name, $desired, $source);
+            $pulled = is_array($prefetch) ? ($prefetch[$cid] ?? null) : null;
+            // Fresh Amazon value already matches SBID/SBGT: keep it, do not push.
+            if (is_numeric($pulled)) {
+                $one = $this->syncField($channel, $field, $cid, $name, $desired, $source, (float) $pulled);
+            } else {
+                $one = $this->syncField($channel, $field, $cid, $name, $desired, $source);
+            }
             $out['fields'][$field] = $one;
             $st = (string) ($one['status'] ?? 'failed');
             if ($st === 'failed') {
@@ -312,7 +318,7 @@ class AmazonAdsLiveBidBgtSyncService
     /**
      * @return array<string, mixed>
      */
-    public function syncField(string $channel, string $field, string $campaignId, string $campaignName, float $desired, string $source): array
+    public function syncField(string $channel, string $field, string $campaignId, string $campaignName, float $desired, string $source, ?float $knownLive = null): array
     {
         $channel = self::normalizeChannel($channel);
         $field = $field === 'bid' ? 'bid' : 'bgt';
@@ -350,7 +356,7 @@ class AmazonAdsLiveBidBgtSyncService
         }
 
         try {
-            return $this->runField($channel, $field, $campaignId, $campaignName, $desired, $source);
+            return $this->runField($channel, $field, $campaignId, $campaignName, $desired, $source, $knownLive);
         } finally {
             $this->releaseLock($lockKey);
         }
@@ -359,7 +365,7 @@ class AmazonAdsLiveBidBgtSyncService
     /**
      * @return array<string, mixed>
      */
-    private function runField(string $channel, string $field, string $campaignId, string $campaignName, float $desired, string $source): array
+    private function runField(string $channel, string $field, string $campaignId, string $campaignName, float $desired, string $source, ?float $knownLive = null): array
     {
         $base = [
             'campaign_id' => $campaignId,
@@ -375,15 +381,21 @@ class AmazonAdsLiveBidBgtSyncService
             'verify_attempts' => 0,
         ];
         $tolerance = $field === 'bid' ? self::BID_TOLERANCE : self::BGT_TOLERANCE;
-        $this->saveState($channel, $field, $campaignId, $campaignName, $desired, null, 'pending', 'pulling_live', 0, $base);
+        if ($knownLive !== null) {
+            $oldLive = $knownLive;
+            $base['pull_attempts'] = 1;
+            $base['old_live'] = $oldLive;
+        } else {
+            $this->saveState($channel, $field, $campaignId, $campaignName, $desired, null, 'pending', 'pulling_live', 0, $base);
 
-        $pull = $this->pullLiveWithRetry($channel, $field, [$campaignId]);
-        $base['pull_attempts'] = (int) ($pull['attempts'] ?? 0);
-        if (! $pull['ok']) {
-            return $this->finish($base, 'failed', 'pull_failed: '.($pull['error'] ?? 'unknown'), $source, $campaignName, $desired, null);
+            $pull = $this->pullLiveWithRetry($channel, $field, [$campaignId]);
+            $base['pull_attempts'] = (int) ($pull['attempts'] ?? 0);
+            if (! $pull['ok']) {
+                return $this->finish($base, 'failed', 'pull_failed: '.($pull['error'] ?? 'unknown'), $source, $campaignName, $desired, null);
+            }
+            $oldLive = $pull['map'][$campaignId] ?? null;
+            $base['old_live'] = $oldLive;
         }
-        $oldLive = $pull['map'][$campaignId] ?? null;
-        $base['old_live'] = $oldLive;
 
         if ($oldLive === null || ! is_numeric($oldLive)) {
             $why = $field === 'bid'

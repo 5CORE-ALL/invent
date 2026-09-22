@@ -4660,16 +4660,23 @@ class AmazonAdsController extends Controller
             }
         }
 
-        self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
-
         $requestedOrderCol = ($orderColumnIndex >= 0 && $orderColumnIndex < count($columns))
             ? (string) $columns[$orderColumnIndex]
             : '';
-        $usePhpSort = in_array($requestedOrderCol, self::PHP_SORT_DISPLAY_COLUMNS, true);
+        $lightSort = self::columnUsesLightDisplaySort($requestedOrderCol);
+        $usePhpSort = $lightSort || in_array($requestedOrderCol, self::PHP_SORT_DISPLAY_COLUMNS, true);
         $phpSortPaged = false;
 
+        // Correlated ORDER BY runs a lookup per campaign before the page can return.
+        // On a normal day the filtered set fits in one window, so rank it in PHP instead.
+        if ($usePhpSort && $recordsFiltered <= 3000 && in_array('id', $dbColumns, true)) {
+            $query->orderBy('id', 'desc');
+        } else {
+            self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
+        }
+
         if ($usePhpSort) {
-            $fetchLen = (int) min(8000, max($recordsFiltered, $start + $length));
+            $fetchLen = (int) min(3000, max($recordsFiltered, $start + $length));
             $window = $query->limit(max(1, $fetchLen))->get();
             $paged = self::pageRowsMatchingDisplaySort(
                 $window,
@@ -5383,6 +5390,14 @@ class AmazonAdsController extends Controller
         return collect($out);
     }
 
+    private static function columnUsesLightDisplaySort(string $column): bool
+    {
+        return in_array($column, [
+            'ACOS', 'cost', 'clicks', 'sales30d', 'Prchase', 'Cvr',
+            'L7spend', 'L2spend', 'L1spend', 'U7%', 'U2%', 'U1%',
+        ], true);
+    }
+
     /**
      * Sort keys for columns that can be ranked from one lookup, aligned with $rows.
      * Null means the caller must enrich the whole window.
@@ -5440,6 +5455,36 @@ class AmazonAdsController extends Controller
                 }
                 $acosRow = self::acosCalculationRowFromGridOverlays($r, $arr, $dbColumns, $map, $cid !== '' ? $lk : '');
                 $keys[] = self::computedAcosPercentFromReportRow($acosRow, $dbColumns);
+            }
+
+            return $keys;
+        }
+
+        if (in_array($column, ['cost', 'clicks', 'sales30d', 'Prchase', 'Cvr'], true)) {
+            $map = self::fetchL30SummarySliceMap($table, $dbColumns, $list);
+            $keys = [];
+            foreach ($list as $row) {
+                $r = (array) $row;
+                $cid = trim((string) ($r['campaign_id'] ?? ''));
+                $ad = $hasAd ? trim((string) ($r['ad_type'] ?? '')) : '';
+                $slice = ($cid !== '' && isset($map[$cid."\0".$ad])) ? $map[$cid."\0".$ad] : null;
+                $spend = $slice['spend'] ?? (is_numeric($r['cost'] ?? null) ? (float) $r['cost'] : null);
+                $clicks = $slice['clicks'] ?? (is_numeric($r['clicks'] ?? null) ? (float) $r['clicks'] : null);
+                $sales = $slice['sales30d'] ?? (is_numeric($r['sales30d'] ?? $r['sales'] ?? null) ? (float) ($r['sales30d'] ?? $r['sales']) : null);
+                $sold = $slice['purchases30d'] ?? (is_numeric($r['purchases30d'] ?? $r['purchases'] ?? null) ? (float) ($r['purchases30d'] ?? $r['purchases']) : null);
+                if ($column === 'cost') {
+                    $keys[] = $spend;
+                } elseif ($column === 'clicks') {
+                    $keys[] = $clicks;
+                } elseif ($column === 'sales30d') {
+                    $keys[] = $sales;
+                } elseif ($column === 'Prchase') {
+                    $keys[] = $sold;
+                } else {
+                    $keys[] = ($sold !== null && $clicks !== null && (float) $clicks > 0)
+                        ? round(((float) $sold / (float) $clicks) * 100, 2)
+                        : null;
+                }
             }
 
             return $keys;
