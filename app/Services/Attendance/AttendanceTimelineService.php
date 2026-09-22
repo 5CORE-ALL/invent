@@ -586,7 +586,7 @@ class AttendanceTimelineService
   }
 
   /**
-   * One timeline row per calendar day in the selected period.
+   * One timeline row per calendar day in the selected period, latest day first.
    *
    * @return array{days: array<int, array<string, mixed>>, axis_hours: array<int, string>, range_label: string}
    */
@@ -675,7 +675,7 @@ class AttendanceTimelineService
     }
 
     return [
-      'days' => $days,
+      'days' => array_reverse($days),
       'axis_hours' => $axisHours,
       'range_label' => $fromDate->equalTo($toDate)
         ? $fromDate->format('D, M j, Y')

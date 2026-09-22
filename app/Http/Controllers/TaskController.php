@@ -1475,14 +1475,16 @@ class TaskController extends Controller
 
     /**
      * Tasks marked Done yesterday, one row per assignee.
+     * When $includeMissed is true, tasks missed yesterday are included too
+     * (live is_missed rows, and archives that were not completed).
      * Live tasks are "not deleted". Archived copies in deleted_tasks are
      * "deleted", with the person (or auto job) who removed them.
      *
      * @param  list<string>|null  $onlyEmails  lowercase emails; null keeps every assignee
      * @param  array<string, string>  $nameByEmail
-     * @return list<array{title: string, email: string, assignee: string, completed_at: string, deleted: bool, deleted_by: string, deleted_at: string}>
+     * @return list<array{title: string, email: string, assignee: string, completed_at: string, deleted: bool, deleted_by: string, deleted_at: string, type: string}>
      */
-    protected function yesterdayDoneRecords(?array $onlyEmails = null, array $nameByEmail = []): array
+    protected function yesterdayDoneRecords(?array $onlyEmails = null, array $nameByEmail = [], bool $includeMissed = false): array
     {
         $window = $this->yesterdayDoneWindow();
         $only = null;
@@ -1499,7 +1501,7 @@ class TaskController extends Controller
         $records = [];
         $liveIds = [];
 
-        $push = function ($task, bool $deleted) use (&$records, &$liveIds, $only, $nameByEmail): void {
+        $push = function ($task, bool $deleted, string $type = 'Done') use (&$records, &$liveIds, $only, $nameByEmail): void {
             $taskId = (int) ($deleted ? ($task->original_task_id ?? 0) : ($task->id ?? 0));
             if ($deleted && $taskId > 0 && isset($liveIds[$taskId])) {
                 return;
@@ -1564,6 +1566,7 @@ class TaskController extends Controller
                     'deleted' => $deleted,
                     'deleted_by' => $deletedBy,
                     'deleted_at' => $deletedAt,
+                    'type' => $type,
                 ];
             }
         };
@@ -1581,6 +1584,27 @@ class TaskController extends Controller
             ->orderBy('completion_date')
             ->get(['original_task_id', 'title', 'assign_to', 'assignee_name', 'completion_date', 'deleted_by_name', 'deleted_by_email', 'deleted_at'])
             ->each(fn ($task) => $push($task, true));
+
+        if ($includeMissed) {
+            Task::query()
+                ->where('is_missed', 1)
+                ->whereBetween('start_date', [$window['start'], $window['end']])
+                ->orderBy('start_date')
+                ->get(['id', 'title', 'assign_to', 'completion_date'])
+                ->each(fn ($task) => $push($task, false, 'Missed'));
+
+            DeletedTask::query()
+                ->whereBetween('deleted_at', [$window['start'], $window['end']])
+                ->where(function ($q) {
+                    $q->where('is_missed', 1)
+                        ->orWhereNull('status')
+                        ->orWhere('status', '')
+                        ->orWhere('status', '!=', 'Done');
+                })
+                ->orderBy('deleted_at')
+                ->get(['original_task_id', 'title', 'assign_to', 'assignee_name', 'completion_date', 'deleted_by_name', 'deleted_by_email', 'deleted_at'])
+                ->each(fn ($task) => $push($task, true, 'Missed'));
+        }
 
         usort($records, function (array $a, array $b): int {
             $byName = strcasecmp($a['assignee'], $b['assignee']);
@@ -1641,10 +1665,382 @@ class TaskController extends Controller
         }
 
         $window = $this->yesterdayDoneWindow();
-        $tasks = $this->yesterdayDoneRecords($emails, $nameByEmail);
+        $rows = $this->yesterdayDoneGridRows($emails, $focusId);
         $focusUser = $focusId > 0 ? $users->first() : null;
+        $yesterdayDars = $this->yesterdayDarRows($users->pluck('id')->all(), $window['date']);
+        $taskBadges = $this->taskManagerBadgesForEmails(
+            $emails,
+            $focusId > 0 ? $focusId : (int) Auth::id()
+        );
 
-        return view('tasks.yesterday-done', compact('tasks', 'window', 'focusUser'));
+        return view('tasks.yesterday-done', compact('rows', 'window', 'focusUser', 'yesterdayDars', 'taskBadges'));
+    }
+
+    /**
+     * Same headline badges as /tasks, limited to these assignee emails.
+     *
+     * @param  list<string>  $emails
+     * @return array{pending: int, ca: int, overdue: int, etc_l30_h: int, atc_l30_h: int, tat: string, score: string, missed: int, pending_etc_h: int}
+     */
+    protected function taskManagerBadgesForEmails(array $emails, int $scoreUserId): array
+    {
+        $emails = array_values(array_unique(array_filter(array_map(
+            fn ($email) => strtolower(trim((string) $email)),
+            $emails
+        ))));
+
+        $empty = [
+            'pending' => 0,
+            'ca' => 0,
+            'overdue' => 0,
+            'etc_l30_h' => 0,
+            'atc_l30_h' => 0,
+            'tat' => '-',
+            'score' => '-',
+            'missed' => 0,
+            'pending_etc_h' => 0,
+        ];
+        if ($emails === []) {
+            $empty['score'] = $this->taskBadgeAverageScore($scoreUserId);
+
+            return $empty;
+        }
+
+        $q = $this->taskManagerVisibilityQuery()->where(function ($query) use ($emails) {
+            foreach ($emails as $email) {
+                $query->orWhere('assign_to', 'LIKE', '%'.$email.'%');
+            }
+        });
+
+        $agg = (clone $q)->toBase()->selectRaw("
+            COUNT(*) as total,
+            SUM(CASE WHEN COALESCE(is_corrective_action, 0) = 1 THEN 1 ELSE 0 END) as ca,
+            COALESCE(SUM(CASE WHEN status NOT IN ('Done', 'Archived') THEN eta_time ELSE 0 END), 0) as pending_etc
+        ")->first();
+
+        $overdue = $this->whereOverdueByBusinessTid(clone $q)
+            ->whereNotIn('status', ['Done', 'Archived'])
+            ->count();
+
+        $deleted = DeletedTask::query()
+            ->where('deleted_at', '>=', now()->subDays(30))
+            ->where(function ($query) use ($emails) {
+                foreach ($emails as $email) {
+                    $query->orWhere('assign_to', 'LIKE', '%'.$email.'%');
+                }
+            });
+        $deletedAgg = (clone $deleted)->toBase()->selectRaw(
+            'COALESCE(SUM(eta_time), 0) as etc_minutes, COALESCE(SUM(etc_done), 0) as atc_minutes'
+        )->first();
+
+        $doneRows = (clone $q)
+            ->where('status', 'Done')
+            ->whereNotNull('start_date')
+            ->where('completion_date', '>=', now()->subDays(30))
+            ->toBase()
+            ->get(['start_date', 'completion_date']);
+        $tatValues = [];
+        foreach ($doneRows as $task) {
+            $start = \Carbon\Carbon::parse($task->start_date);
+            $completion = \Carbon\Carbon::parse($task->completion_date);
+            $tatValues[] = abs($completion->getTimestamp() - $start->getTimestamp()) / 86400;
+        }
+
+        $missedLive = (clone $q)
+            ->whereNotNull('start_date')
+            ->where('start_date', '>=', now()->subDays(30))
+            ->whereNotIn('status', ['Done', 'Archived'])
+            ->count();
+        $missedArchived = DeletedTask::query()
+            ->where('is_missed', 1)
+            ->where('deleted_at', '>=', now()->subDays(30))
+            ->whereNotNull('start_date')
+            ->where(function ($query) use ($emails) {
+                foreach ($emails as $email) {
+                    $query->orWhere('assign_to', 'LIKE', '%'.$email.'%');
+                }
+            })
+            ->count();
+
+        return [
+            'pending' => (int) ($agg->total ?? 0),
+            'ca' => (int) ($agg->ca ?? 0),
+            'overdue' => (int) $overdue,
+            'etc_l30_h' => (int) round(((float) ($deletedAgg->etc_minutes ?? 0)) / 60),
+            'atc_l30_h' => (int) round(((float) ($deletedAgg->atc_minutes ?? 0)) / 60),
+            'tat' => $tatValues !== [] ? number_format(array_sum($tatValues) / count($tatValues), 1, '.', '') : '-',
+            'score' => $this->taskBadgeAverageScore($scoreUserId),
+            'missed' => (int) $missedLive + (int) $missedArchived,
+            'pending_etc_h' => (int) round(((float) ($agg->pending_etc ?? 0)) / 60),
+        ];
+    }
+
+    protected function taskBadgeAverageScore(int $userId): string
+    {
+        if ($userId <= 0 || ! Schema::hasTable('performance_reviews')) {
+            return '-';
+        }
+        try {
+            $avg = PerformanceReview::query()
+                ->where('employee_id', $userId)
+                ->where('is_completed', true)
+                ->avg('normalized_score');
+
+            return $avg !== null ? number_format((float) $avg, 2, '.', '') : '-';
+        } catch (\Throwable $e) {
+            return '-';
+        }
+    }
+
+    /**
+     * DAR rows for the office yesterday date, limited to the users on this page.
+     *
+     * @param  list<int>  $userIds
+     * @return list<array{user: string, group: string, task: string, time_taken: string}>
+     */
+    protected function yesterdayDarRows(array $userIds, string $reportDate): array
+    {
+        $userIds = array_values(array_filter(array_map('intval', $userIds)));
+        if ($userIds === [] || ! Schema::hasTable('dars')) {
+            return [];
+        }
+
+        return Dar::query()
+            ->with('user:id,name')
+            ->whereIn('user_id', $userIds)
+            ->whereDate('report_date', $reportDate)
+            ->orderBy('user_id')
+            ->orderBy('id')
+            ->get(['id', 'user_id', 'group', 'task', 'time_taken'])
+            ->filter(function ($row) {
+                return trim((string) $row->task) !== '' || trim((string) $row->group) !== '';
+            })
+            ->map(function ($row) {
+                $minutes = (int) round((float) $row->time_taken);
+                $hours = intdiv($minutes, 60);
+                $remain = $minutes % 60;
+                if ($hours > 0 && $remain > 0) {
+                    $time = $hours.'h '.$remain.'m';
+                } elseif ($hours > 0) {
+                    $time = $hours.'h';
+                } else {
+                    $time = $remain.'m';
+                }
+
+                return [
+                    'user' => (string) (optional($row->user)->name ?: ''),
+                    'group' => (string) ($row->group ?? ''),
+                    'task' => (string) ($row->task ?? ''),
+                    'time_taken' => $time,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * One Task Manager-shaped row per yesterday done or missed task.
+     *
+     * @param  list<string>  $onlyEmails
+     * @return list<array<string, mixed>>
+     */
+    protected function yesterdayDoneGridRows(array $onlyEmails, int $focusUserId = 0): array
+    {
+        $window = $this->yesterdayDoneWindow();
+        $only = [];
+        foreach ($onlyEmails as $email) {
+            $email = strtolower(trim($email));
+            if ($email !== '') {
+                $only[$email] = true;
+            }
+        }
+
+        $matches = function ($task) use ($only): bool {
+            if ($only === []) {
+                return false;
+            }
+            foreach (array_filter(array_map('trim', explode(',', (string) ($task->assign_to ?? '')))) as $email) {
+                if (isset($only[strtolower($email)])) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        $items = [];
+        $liveIds = [];
+
+        Task::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$window['start'], $window['end']])
+            ->orderBy('completion_date')
+            ->get()
+            ->each(function ($task) use (&$items, &$liveIds, $matches) {
+                if (! $matches($task)) {
+                    return;
+                }
+                $liveIds[(int) $task->id] = true;
+                $items[] = [$task, false, 'Done'];
+            });
+
+        DeletedTask::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$window['start'], $window['end']])
+            ->orderBy('completion_date')
+            ->get()
+            ->each(function ($task) use (&$items, $liveIds, $matches) {
+                $originalId = (int) ($task->original_task_id ?? 0);
+                if ($originalId > 0 && isset($liveIds[$originalId])) {
+                    return;
+                }
+                if (! $matches($task)) {
+                    return;
+                }
+                $items[] = [$task, true, 'Done'];
+            });
+
+        Task::query()
+            ->where('is_missed', 1)
+            ->whereBetween('start_date', [$window['start'], $window['end']])
+            ->orderBy('start_date')
+            ->get()
+            ->each(function ($task) use (&$items, &$liveIds, $matches) {
+                if (! $matches($task) || isset($liveIds[(int) $task->id])) {
+                    return;
+                }
+                $liveIds[(int) $task->id] = true;
+                $items[] = [$task, false, 'Missed'];
+            });
+
+        DeletedTask::query()
+            ->whereBetween('deleted_at', [$window['start'], $window['end']])
+            ->where(function ($q) {
+                $q->where('is_missed', 1)
+                    ->orWhereNull('status')
+                    ->orWhere('status', '')
+                    ->orWhere('status', '!=', 'Done');
+            })
+            ->orderBy('deleted_at')
+            ->get()
+            ->each(function ($task) use (&$items, $liveIds, $matches) {
+                $originalId = (int) ($task->original_task_id ?? 0);
+                if ($originalId > 0 && isset($liveIds[$originalId])) {
+                    return;
+                }
+                if (! $matches($task)) {
+                    return;
+                }
+                $items[] = [$task, true, 'Missed'];
+            });
+
+        $defaultAvatar = asset('images/users/avatar-2.jpg');
+        $teamUsers = User::query()->get(['id', 'name', 'email', 'avatar', 'designation']);
+        [$usersByEmail, $usersByName, $usersByFirst] = $this->taskUserLookupMaps($teamUsers);
+
+        $rows = [];
+        foreach ($items as [$task, $deleted, $type]) {
+            $assignorName = '-';
+            $assignorAvatar = null;
+            $assignorDesignation = null;
+            if ($task->assignor) {
+                $assignorUser = $this->findTaskUserFromMaps((string) $task->assignor, $usersByEmail, $usersByName, $usersByFirst);
+                $assignorName = $assignorUser ? $assignorUser->name : (string) $task->assignor;
+                $assignorDesignation = $assignorUser ? $assignorUser->designation : null;
+                $assignorAvatar = $assignorUser && $assignorUser->avatar
+                    ? asset('storage/'.$assignorUser->avatar)
+                    : $defaultAvatar;
+            }
+
+            $assigneeNames = [];
+            $assigneeAvatar = null;
+            $assigneeDesignation = null;
+            $assigneeId = $focusUserId > 0 ? $focusUserId : 0;
+            foreach (array_filter(array_map('trim', explode(',', (string) ($task->assign_to ?? '')))) as $email) {
+                $assigneeUser = $this->findTaskUserFromMaps($email, $usersByEmail, $usersByName, $usersByFirst);
+                if ($assigneeUser) {
+                    $assigneeNames[] = $assigneeUser->name;
+                    if ($assigneeId === 0) {
+                        $assigneeId = (int) $assigneeUser->id;
+                    }
+                    if ($assigneeAvatar === null) {
+                        $assigneeAvatar = $assigneeUser->avatar
+                            ? asset('storage/'.$assigneeUser->avatar)
+                            : $defaultAvatar;
+                        $assigneeDesignation = $assigneeUser->designation;
+                    }
+                } else {
+                    $assigneeNames[] = $email;
+                    $assigneeAvatar = $assigneeAvatar ?: $defaultAvatar;
+                }
+            }
+            if ($assigneeNames === [] && $deleted) {
+                $fallback = trim((string) ($task->assignee_name ?? ''));
+                if ($fallback !== '') {
+                    $assigneeNames[] = $fallback;
+                }
+            }
+
+            $start = $this->formatTaskWallClockDatetime($task->getRawOriginal('start_date')) ?? (string) ($task->start_date ?? '');
+            $deletedBy = '';
+            if ($deleted) {
+                $deletedBy = trim((string) ($task->deleted_by_name ?? ''));
+                if ($deletedBy === '') {
+                    $deletedBy = trim((string) ($task->deleted_by_email ?? ''));
+                }
+                if (strtolower($deletedBy) === 'system@auto' || strtolower((string) ($task->deleted_by_email ?? '')) === 'system@auto') {
+                    $deletedBy = 'Auto';
+                }
+            }
+
+            $rows[] = [
+                'id' => $deleted ? null : (int) $task->id,
+                'title' => trim((string) ($task->title ?? '')) ?: 'Untitled task',
+                'group' => (string) ($task->group ?? ''),
+                'priority' => (string) ($task->priority ?: 'normal'),
+                'status' => $type === 'Missed' ? 'Missed' : (string) ($task->status ?: 'Done'),
+                'type' => $type,
+                'is_missed' => $type === 'Missed' ? 1 : (int) ($task->is_missed ?? 0),
+                'is_automate_task' => (int) ($task->is_automate_task ?? 0),
+                'is_corrective_action' => (int) ($task->is_corrective_action ?? 0),
+                'assignor_name' => $assignorName,
+                'assignor_avatar' => $assignorAvatar,
+                'assignor_designation' => $assignorDesignation,
+                'assignee_name' => $assigneeNames !== [] ? implode(', ', $assigneeNames) : '-',
+                'assignee_id' => $assigneeId,
+                'assignee_avatar' => $assigneeAvatar,
+                'assignee_designation' => $assigneeDesignation,
+                'start_date' => $start,
+                'tid_business_date' => TaskBusinessTime::businessDateFromStart($task->start_date),
+                'eta_time' => (int) ($task->eta_time ?? 0),
+                'etc_done' => (int) ($task->etc_done ?? 0),
+                'link1' => (string) ($task->link1 ?? ''),
+                'link2' => (string) ($task->link2 ?? ''),
+                'link3' => (string) ($task->link3 ?? ''),
+                'link4' => (string) ($task->link4 ?? ''),
+                'link5' => (string) ($task->link5 ?? ''),
+                'link6' => (string) ($task->link6 ?? ''),
+                'link7' => (string) ($task->link7 ?? ''),
+                'link8' => (string) ($task->link8 ?? ''),
+                'link9' => (string) ($task->link9 ?? ''),
+                'image' => (string) ($task->image ?? ''),
+                'report' => (string) ($task->report ?? ''),
+                'parent_task_id' => $task->parent_task_id ?? null,
+                'deleted' => $deleted,
+                'deleted_by' => $deletedBy,
+            ];
+        }
+
+        usort($rows, function (array $a, array $b): int {
+            $byName = strcasecmp((string) $a['assignee_name'], (string) $b['assignee_name']);
+            if ($byName !== 0) {
+                return $byName;
+            }
+
+            return strcasecmp((string) $a['title'], (string) $b['title']);
+        });
+
+        return $rows;
     }
 
     /**
