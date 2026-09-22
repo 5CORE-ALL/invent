@@ -350,7 +350,7 @@
                         var d = Math.round(Number(value));
                         if (isNaN(d)) return '<span style="color:#adb5bd;">-</span>';
                         var bg = '';
-                        if (d === 1) bg = '#f06292';
+                        if (d <= 1) bg = '#f06292';
                         else if (d === 2) bg = '#28a745';
                         else if (d > 2) bg = '#dc3545';
                         var title = d + (d === 1 ? ' day' : ' days');
