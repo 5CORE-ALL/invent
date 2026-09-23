@@ -355,14 +355,12 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * In Transit — last 30 days (marketplace In Transit, carrier In Transit, and Received by carrier).
+     * Recd/Transit — last 30 days. Received by carrier and In Transit in one list.
      */
     public function inTransitData(): JsonResponse
     {
         try {
-            $rows = $this->annotateInTransitScanPendingAlerts(
-                $this->excludeCarrierDeliveredRows($this->inTransitOrderRows())
-            );
+            $rows = $this->recdTransitOrderRows();
 
             return response()->json([
                 'success' => true,
@@ -372,7 +370,7 @@ class SalesOrderFulfillmentController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load In Transit orders.',
+                'message' => 'Failed to load Recd/Transit orders.',
                 'data' => [],
                 'count' => 0,
             ], 500);
@@ -5324,7 +5322,22 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function inTransitOrdersCount(): int
     {
-        return count($this->excludeCarrierDeliveredRows($this->inTransitOrderRows()));
+        return count($this->recdTransitOrderRows());
+    }
+
+    /**
+     * Recd Carrier rows plus In Transit rows, one list.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function recdTransitOrderRows(): array
+    {
+        return $this->annotateInTransitScanPendingAlerts(
+            $this->mergeOrderRowsById(
+                $this->excludeCarrierDeliveredRows($this->inTransitOrderRows()),
+                $this->receivedByCarrierOrderRows()
+            )
+        );
     }
 
     protected function deliveredOrdersCount(): int
@@ -6889,8 +6902,8 @@ class SalesOrderFulfillmentController extends Controller
             'pending_total' => 'Pending',
             'fulfilled_24h' => 'Label Created / No Scan',
             'label_created_no_tracking' => 'Label Created / No Tracking',
-            'received_by_carrier_total' => 'Recd Carrier',
-            'in_transit_total' => 'In Transit',
+            'received_by_carrier_total' => 'Recd/Transit',
+            'in_transit_total' => 'Recd/Transit',
             'invoiced_total' => 'Invoiced',
             'delivered_total' => 'Delivered',
             'all_order_total' => 'All Order',
