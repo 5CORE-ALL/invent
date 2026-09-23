@@ -2118,6 +2118,48 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Carrier still has only the label: it is waiting for the package, not moving it.
+     * A blank status counts only while the order is new. Older blanks are a missed
+     * status refresh, not a confirmed "awaiting shipment".
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function carrierIsAwaitingShipment(array $row): bool
+    {
+        if (! $this->rowHasSofTrackingNumber($row)) {
+            return false;
+        }
+        if ($this->rowLooksDelivered($row) || $this->carrierStatusHasLeftLabelCreated($row['shipment_status'] ?? null)) {
+            return false;
+        }
+
+        $status = trim((string) ($row['shipment_status'] ?? ''));
+        $detail = strtolower(trim((string) ($row['shipment_status_detail'] ?? '')));
+        if (ShipmentTrackingService::isUnusableProviderFailure($detail)) {
+            return false;
+        }
+
+        if (in_array($status, [
+            ShipmentTrackingService::STATUS_INFO_RECEIVED,
+            ShipmentTrackingService::STATUS_PENDING,
+        ], true)) {
+            return true;
+        }
+
+        if ($status === ShipmentTrackingService::STATUS_EXCEPTION
+            && (str_contains($detail, 'not received the package') || str_contains($detail, 'has not received'))
+        ) {
+            return true;
+        }
+
+        if ($status === '') {
+            return ! $this->rowIsOlderThanHours($row, 36);
+        }
+
+        return false;
+    }
+
+    /**
      * True when the order date is within the last 24 hours (Eastern).
      * Date-only values are treated as the start of that EST/EDT day.
      *
@@ -2385,7 +2427,8 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Label Created / No Scan: labeled, not scanned, tracking number is present.
+     * Label Created / No Scan: tracking is present and the carrier is still
+     * awaiting the shipment (label only — no pickup scan).
      *
      * @return list<array<string, mixed>>
      */
@@ -2394,7 +2437,7 @@ class SalesOrderFulfillmentController extends Controller
         return $this->mergeOrderRowsById(
             array_values(array_filter(
                 $this->labelCreatedLabeledRows(),
-                fn (array $r) => $this->rowHasSofTrackingNumber($r)
+                fn (array $r) => $this->carrierIsAwaitingShipment($r)
             )),
             $this->invoicedTrackedForNoScan()
         );
@@ -5137,10 +5180,9 @@ class SalesOrderFulfillmentController extends Controller
         return [
             'channel_count' => (int) $channelCount,
             'pending_total' => $pendingTotal,
-            // Accurate split counts load with the Label Created tabs (avoid full row hydrate here).
-            'fulfilled_24h' => $this->countAllOrders(
-                fn (string $slug) => $this->scopedToLast30Days($this->fulfilledOrdersQuery($slug), $slug)
-            ) + $invoicedNoScan,
+            // Provisional until the No Scan tab loads and replaces this with the order count.
+            // Do not count every marketplace-fulfilled order — that includes packages already scanned.
+            'fulfilled_24h' => $this->awaitingCarrierTrackingCount() + $invoicedNoScan,
             'label_created_no_tracking' => 0,
             'scan_done_24h' => $scanDone,
             'in_transit_total' => $this->countAllOrders(
@@ -5272,7 +5314,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Tracking is present and the carrier has not scanned yet.
+     * Tracking is present and the carrier is still awaiting the shipment.
      *
      * @return list<array<string, mixed>>
      */
@@ -5280,14 +5322,41 @@ class SalesOrderFulfillmentController extends Controller
     {
         return array_values(array_filter(
             $this->invoicedRowsWithTracking(),
-            function (array $r): bool {
-                if ($this->rowLooksDelivered($r)) {
-                    return false;
-                }
-
-                return ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null);
-            }
+            fn (array $r) => $this->carrierIsAwaitingShipment($r)
         ));
+    }
+
+    /**
+     * Tracking numbers the carrier has accepted as a label but has not scanned.
+     * Used for the summary badge before the No Scan tab hydrates order rows.
+     */
+    protected function awaitingCarrierTrackingCount(): int
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return 0;
+        }
+
+        try {
+            $since = now()->subDays(30);
+
+            return (int) DB::table('carrier_tracking_statuses')
+                ->where(function ($q) {
+                    $q->whereIn('shipment_status', [
+                        ShipmentTrackingService::STATUS_INFO_RECEIVED,
+                        ShipmentTrackingService::STATUS_PENDING,
+                    ])->orWhere(function ($q2) {
+                        $q2->where('shipment_status', ShipmentTrackingService::STATUS_EXCEPTION)
+                            ->where('shipment_status_detail', 'like', '%not Received the Package%');
+                    });
+                })
+                ->where(function ($q) use ($since) {
+                    $q->where('shipment_checked_at', '>=', $since)
+                        ->orWhere('updated_at', '>=', $since);
+                })
+                ->count();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**

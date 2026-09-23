@@ -76,42 +76,7 @@ class SyncShipmentTrackingStatus extends Command
         $staleMin = $this->resolveStaleMinutes($onlyOpen, $carrierFilter, $catchUp);
         $maxPerRun = $this->resolveMaxPerRun($tracking, $onlyOpen, $staleMin, $carrierFilter, $catchUp);
 
-        $query = DB::table('carrier_tracking_statuses')
-            ->whereNotNull('tracking_number')
-            ->where('tracking_number', '!=', '');
-
-        if ($carrierFilter !== '') {
-            $this->applyCarrierFilter($query, $carrierFilter);
-        }
-
-        if ($onlyOpen) {
-            $query->where(function ($q) {
-                $q->whereNull('shipment_status')
-                    ->orWhereNotIn('shipment_status', [
-                        ShipmentTrackingService::STATUS_DELIVERED,
-                        ShipmentTrackingService::STATUS_EXPIRED,
-                    ]);
-            });
-        }
-
-        if ($staleMin > 0) {
-            $cutoff = now()->subMinutes($staleMin);
-            $query->where(function ($q) use ($cutoff) {
-                $q->whereNull('shipment_checked_at')
-                    ->orWhere('shipment_checked_at', '<', $cutoff);
-            });
-        }
-
-        $rows = $query->select(
-            'tracking_number',
-            DB::raw('MAX(carrier) as carrier'),
-            DB::raw('MAX(CASE WHEN shipment_status IS NULL OR shipment_status = \'\' THEN 1 ELSE 0 END) as needs_status')
-        )
-            ->groupBy('tracking_number')
-            ->orderByRaw('needs_status DESC')
-            ->orderByRaw('MAX(shipment_checked_at) IS NOT NULL, MAX(shipment_checked_at) ASC')
-            ->limit($maxPerRun)
-            ->get();
+        $rows = $this->selectTrackingRows($maxPerRun, $staleMin, $onlyOpen, $carrierFilter);
 
         $total = $rows->count();
         if ($total === 0) {
@@ -663,6 +628,103 @@ class SyncShipmentTrackingStatus extends Command
         }
 
         return (int) $q->distinct()->count('tracking_number');
+    }
+
+    /**
+     * Awaiting-carrier rows (label created, not picked up) are refreshed first.
+     * Otherwise a backlog of never-checked numbers keeps those statuses frozen
+     * and scanned packages stay on Label Created / No Scan.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    protected function selectTrackingRows(int $maxPerRun, int $staleMin, bool $onlyOpen, string $carrierFilter)
+    {
+        $awaitingLimit = min($maxPerRun, max(200, (int) floor($maxPerRun * 0.65)));
+        $awaitingCutoff = now()->subMinutes(45);
+        $awaiting = $this->baseTrackingQuery($carrierFilter)
+            ->where(function ($q) {
+                $q->whereIn('shipment_status', [
+                    ShipmentTrackingService::STATUS_INFO_RECEIVED,
+                    ShipmentTrackingService::STATUS_PENDING,
+                ])->orWhere(function ($q2) {
+                    $q2->where('shipment_status', ShipmentTrackingService::STATUS_EXCEPTION)
+                        ->where('shipment_status_detail', 'like', '%not Received the Package%');
+                });
+            })
+            ->where(function ($q) use ($awaitingCutoff) {
+                $q->whereNull('shipment_checked_at')
+                    ->orWhere('shipment_checked_at', '<', $awaitingCutoff);
+            })
+            ->select(
+                'tracking_number',
+                DB::raw('MAX(carrier) as carrier'),
+                DB::raw('0 as needs_status')
+            )
+            ->groupBy('tracking_number')
+            ->orderByRaw('MAX(shipment_checked_at) IS NOT NULL, MAX(shipment_checked_at) ASC')
+            ->limit($awaitingLimit)
+            ->get();
+
+        $restLimit = $maxPerRun - $awaiting->count();
+        if ($restLimit <= 0) {
+            return $awaiting;
+        }
+
+        $exclude = $awaiting->pluck('tracking_number')->filter()->values()->all();
+        $rest = $this->openTrackingQuery($staleMin, $onlyOpen, $carrierFilter);
+        if ($exclude !== []) {
+            $rest->whereNotIn('tracking_number', $exclude);
+        }
+        $restRows = $rest->select(
+            'tracking_number',
+            DB::raw('MAX(carrier) as carrier'),
+            DB::raw('MAX(CASE WHEN shipment_status IS NULL OR shipment_status = \'\' THEN 1 ELSE 0 END) as needs_status')
+        )
+            ->groupBy('tracking_number')
+            ->orderByRaw('needs_status DESC')
+            ->orderByRaw('MAX(shipment_checked_at) IS NOT NULL, MAX(shipment_checked_at) ASC')
+            ->limit($restLimit)
+            ->get();
+
+        return $awaiting->concat($restRows)->values();
+    }
+
+    protected function openTrackingQuery(int $staleMin, bool $onlyOpen, string $carrierFilter)
+    {
+        $query = $this->baseTrackingQuery($carrierFilter);
+
+        if ($onlyOpen) {
+            $query->where(function ($q) {
+                $q->whereNull('shipment_status')
+                    ->orWhereNotIn('shipment_status', [
+                        ShipmentTrackingService::STATUS_DELIVERED,
+                        ShipmentTrackingService::STATUS_EXPIRED,
+                    ]);
+            });
+        }
+
+        if ($staleMin > 0) {
+            $cutoff = now()->subMinutes($staleMin);
+            $query->where(function ($q) use ($cutoff) {
+                $q->whereNull('shipment_checked_at')
+                    ->orWhere('shipment_checked_at', '<', $cutoff);
+            });
+        }
+
+        return $query;
+    }
+
+    protected function baseTrackingQuery(string $carrierFilter)
+    {
+        $query = DB::table('carrier_tracking_statuses')
+            ->whereNotNull('tracking_number')
+            ->where('tracking_number', '!=', '');
+
+        if ($carrierFilter !== '') {
+            $this->applyCarrierFilter($query, $carrierFilter);
+        }
+
+        return $query;
     }
 
     protected function applyCarrierFilter($query, string $carrierFilter): void

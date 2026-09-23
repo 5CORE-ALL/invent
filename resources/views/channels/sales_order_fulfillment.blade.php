@@ -1202,7 +1202,7 @@
                             <span class="badge sof-summary-badge" id="sof-no-tracking-badge" data-sof-metric="label_created_no_tracking" style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d;" title="Label Created / No Tracking — labeled but missing a tracking number">
                                 Label Created / No Tracking: <span id="sof-no-tracking-total">0</span><i class="sof-hist-dot" data-sof-metric="label_created_no_tracking" style="background:#6c757d;" title="History trend"></i>
                             </span>
-                            <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan — has tracking, carrier has not scanned yet">
+                            <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan — carrier is still awaiting the shipment">
                                 Label Created / No Scan: <span id="sof-fulfilled-24h">0</span><i class="sof-hist-dot" data-sof-metric="fulfilled_24h" style="background:#6c757d;" title="History trend"></i>
                             </span>
                             <span class="badge sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="received_by_carrier_total" style="background:#cfe2ff; color:#084298; border:1px solid #9ec5fe;" title="Recd Carrier — click for history graph">
@@ -1509,7 +1509,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels that have a tracking number and the carrier has not scanned yet, including Invoiced orders in that state. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Shipments the carrier is still awaiting (label created, not picked up), including Invoiced orders in that state. Scanned, in transit, and delivered tracking is not listed here. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 

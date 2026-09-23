@@ -370,6 +370,22 @@ class GofoExpressService
         $code = trim($operationMove);
         $hay = strtolower(trim($enContext));
 
+        if ($hay !== '' && str_contains($hay, 'delivered') && ! str_contains($hay, 'not delivered')) {
+            return ShipmentTrackingService::STATUS_DELIVERED;
+        }
+        if (str_contains($hay, 'out for delivery')) {
+            return ShipmentTrackingService::STATUS_OUT_FOR_DELIV;
+        }
+        // Label exists and the carrier has not taken the package yet.
+        if (str_contains($hay, 'label created')
+            || str_contains($hay, 'shipment information')
+            || str_contains($hay, 'awaiting')
+            || str_contains($hay, 'not received the package')
+            || str_contains($hay, 'has not received')
+        ) {
+            return ShipmentTrackingService::STATUS_INFO_RECEIVED;
+        }
+
         return match ($code) {
             '205', '257' => ShipmentTrackingService::STATUS_DELIVERED,
             '208' => ShipmentTrackingService::STATUS_OUT_FOR_DELIV,

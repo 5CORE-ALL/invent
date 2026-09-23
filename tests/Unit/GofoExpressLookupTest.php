@@ -3,7 +3,9 @@
 namespace Tests\Unit;
 
 use App\Services\GofoExpressService;
+use App\Services\ShipmentTrackingService;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 class GofoExpressLookupTest extends TestCase
 {
@@ -58,5 +60,29 @@ class GofoExpressLookupTest extends TestCase
         ]);
 
         $this->assertSame('GFUSO0107321428770', $hit['tracking'] ?? null);
+    }
+
+    public function test_label_created_and_not_received_stay_awaiting_shipment(): void
+    {
+        $ref = new ReflectionClass(GofoExpressService::class);
+        $svc = $ref->newInstanceWithoutConstructor();
+        $method = $ref->getMethod('normalizeTrackStatus');
+
+        $this->assertSame(
+            ShipmentTrackingService::STATUS_INFO_RECEIVED,
+            $method->invoke($svc, '100', 'Shipping Label Created')
+        );
+        $this->assertSame(
+            ShipmentTrackingService::STATUS_INFO_RECEIVED,
+            $method->invoke($svc, '206', 'Pickup Exception, GOFO has not Received the Package from the Warehouse yet.')
+        );
+        $this->assertSame(
+            ShipmentTrackingService::STATUS_IN_TRANSIT,
+            $method->invoke($svc, '202', 'Departed facility')
+        );
+        $this->assertSame(
+            ShipmentTrackingService::STATUS_DELIVERED,
+            $method->invoke($svc, '205', 'Delivered')
+        );
     }
 }
