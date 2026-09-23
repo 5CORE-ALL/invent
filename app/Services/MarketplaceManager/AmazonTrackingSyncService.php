@@ -6,6 +6,7 @@ use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\ShopifyStoreSelector;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -17,6 +18,9 @@ use Illuminate\Support\Facades\Schema;
  */
 class AmazonTrackingSyncService
 {
+    /** True after this process already paged Amazon package tracking, so the per-order loop does not call it again. */
+    protected bool $merchantPackagesSynced = false;
+
     public function __construct(
         protected AmazonSpOrdersClient $ordersClient,
         protected VeeqoShopifyFulfillmentService $veeqoFulfillment,
@@ -296,6 +300,8 @@ class AmazonTrackingSyncService
         }
 
         $limit = max(1, min(400, $limit));
+        $bulk = $this->fillFromAmazonPackages($deadline);
+        $this->merchantPackagesSynced = (int) ($bulk['pages'] ?? 0) > 0;
         $scan = min(800, max($limit * 8, 200));
         $query = AmazonOrder::query()
             ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
@@ -356,8 +362,128 @@ class AmazonTrackingSyncService
             'checked' => $checked,
             'filled' => $filled,
             'skipped' => $skipped,
-            'message' => "Amazon SOF tracking fill: checked {$checked}, filled {$filled}, still missing {$skipped}.",
+            'message' => "Amazon SOF tracking fill: checked {$checked}, filled {$filled}, still missing {$skipped}."
+                .' Packages from Amazon: '.((int) ($bulk['filled'] ?? 0)).' saved'
+                .' ('.((int) ($bulk['pages'] ?? 0)).' pages).',
         ];
+    }
+
+    /**
+     * Copy FBM package tracking from Orders API v2026 into amazon_orders.
+     * Seller Central already has these numbers; Orders v0 does not return them.
+     *
+     * @return array{pages: int, filled: int, complete: bool, throttled: bool}
+     */
+    public function fillFromAmazonPackages(?float $deadline = null): array
+    {
+        $empty = ['pages' => 0, 'filled' => 0, 'complete' => false, 'throttled' => false];
+        if (! Schema::hasTable('amazon_orders')) {
+            return $empty;
+        }
+
+        $cacheKey = 'sof.amazon.package_sync';
+        $progress = Cache::get($cacheKey);
+        $progress = is_array($progress) ? $progress : [];
+        $nextToken = trim((string) ($progress['next_token'] ?? ''));
+        $completedAt = strtotime((string) ($progress['completed_at'] ?? ''));
+
+        if ($nextToken === '' && $completedAt !== false && $completedAt > time() - 1200) {
+            return ['pages' => 0, 'filled' => 0, 'complete' => true, 'throttled' => false];
+        }
+
+        if ($nextToken !== '') {
+            $lastUpdatedAfter = (string) ($progress['last_updated_after'] ?? '');
+        } elseif ($completedAt !== false) {
+            $lastUpdatedAfter = gmdate('c', $completedAt - 3600);
+        } else {
+            $lastUpdatedAfter = now()->subDays(45)->utc()->toIso8601String();
+        }
+        if ($lastUpdatedAfter === '') {
+            $lastUpdatedAfter = now()->subDays(45)->utc()->toIso8601String();
+        }
+
+        $pages = 0;
+        $filled = 0;
+        $complete = false;
+        $throttled = false;
+        $lastUpdatedBefore = null;
+
+        while ($pages < 20) {
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                break;
+            }
+            $page = $this->ordersClient->searchMerchantPackages($lastUpdatedAfter, $nextToken !== '' ? $nextToken : null);
+            if ($page === null) {
+                break;
+            }
+            if (! empty($page['throttled'])) {
+                $throttled = true;
+                break;
+            }
+            $pages++;
+            foreach ($page['orders'] as $remote) {
+                $amazonOrderId = trim((string) ($remote['orderId'] ?? ''));
+                $hit = AmazonSpOrdersClient::trackingFromOrderPackages($remote);
+                if ($amazonOrderId === '' || $hit === null) {
+                    continue;
+                }
+                if ($this->applyAmazonPackageTracking($amazonOrderId, $hit)) {
+                    $filled++;
+                }
+            }
+            $lastUpdatedBefore = $page['last_updated_before'] ?? $lastUpdatedBefore;
+            $nextToken = trim((string) ($page['next_token'] ?? ''));
+            if ($nextToken === '') {
+                $complete = true;
+                break;
+            }
+        }
+
+        $stored = [
+            'last_updated_after' => $lastUpdatedAfter,
+            'next_token' => $nextToken !== '' ? $nextToken : null,
+            'completed_at' => $complete ? now()->toIso8601String() : ($progress['completed_at'] ?? null),
+            'resume_after' => is_string($lastUpdatedBefore) ? $lastUpdatedBefore : ($progress['resume_after'] ?? null),
+        ];
+        if ($complete && is_string($lastUpdatedBefore) && $lastUpdatedBefore !== '') {
+            $stored['last_updated_after'] = $lastUpdatedBefore;
+        }
+        Cache::put($cacheKey, $stored, now()->addHours(6));
+
+        Log::info('AmazonTrackingSyncService: merchant package sync', [
+            'pages' => $pages,
+            'filled' => $filled,
+            'complete' => $complete,
+            'throttled' => $throttled,
+        ]);
+
+        return [
+            'pages' => $pages,
+            'filled' => $filled,
+            'complete' => $complete,
+            'throttled' => $throttled,
+        ];
+    }
+
+    /**
+     * @param  array{tracking: string, carrier: string}  $hit
+     */
+    protected function applyAmazonPackageTracking(string $amazonOrderId, array $hit): bool
+    {
+        $order = AmazonOrder::query()->where('amazon_order_id', $amazonOrderId)->first();
+        if ($order === null || $order->isFba() || $order->isCancelled()) {
+            return false;
+        }
+        if (trim((string) ($order->localTracking()['tracking'] ?? '')) !== '') {
+            return false;
+        }
+        $tracking = trim((string) ($hit['tracking'] ?? ''));
+        if ($tracking === '') {
+            return false;
+        }
+        $this->persistLocalTracking($order, $tracking, trim((string) ($hit['carrier'] ?? '')));
+
+        return true;
     }
 
     /**
@@ -428,7 +554,14 @@ class AmazonTrackingSyncService
         $amazonOrderId = trim((string) ($order->amazon_order_id ?? ''));
         $hit = ['tracking' => null, 'carrier' => null];
 
-        if ($shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual')) {
+        if (! $this->merchantPackagesSynced && $amazonOrderId !== '') {
+            $fromPackages = $this->ordersClient->getMerchantPackageTracking($amazonOrderId);
+            if ($fromPackages !== null && trim((string) ($fromPackages['tracking'] ?? '')) !== '') {
+                $hit = $fromPackages;
+            }
+        }
+
+        if (empty($hit['tracking']) && $shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual')) {
             $itemSkus = $order->items()
                 ->orderBy('id')
                 ->pluck('sku')
