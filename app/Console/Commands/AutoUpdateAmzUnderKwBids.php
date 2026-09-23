@@ -519,8 +519,9 @@ class AutoUpdateAmzUnderKwBids extends Command
             $row['ub2'] = $ub2;
 
             $bothLowKw = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
-            // Same persisted SBID rule as over-KW / grid: red+red + under band only
-            if ($row['INV'] > 0 && $row['campaignName'] !== '' && $baseBid > 0 && $bothLowKw && $bidOut['band'] === 'under'
+            // Under band includes both_low_fallback when every CPC is 0. That SBID is still pushed
+            // even when last_sbid and CPC are empty (baseBid stays 0).
+            if ($row['INV'] > 0 && $row['campaignName'] !== '' && $bothLowKw && $bidOut['band'] === 'under'
                 && $row['sbid'] !== null && is_numeric($row['sbid']) && (float) $row['sbid'] > 0
                 && ($row['campaignStatus'] ?? '') === 'ENABLED') {
                 $row['ub7'] = $ub7;

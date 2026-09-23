@@ -398,21 +398,21 @@ class AmazonAdsLiveBidBgtSyncService
         }
 
         if ($oldLive === null || ! is_numeric($oldLive)) {
-            $why = $field === 'bid'
-                ? 'pull_failed: no live Amazon keyword/target bid found'
-                : 'pull_failed: campaign budget not returned by Amazon';
+            // Budget still needs the live amount. A bid does not: zero-CPC campaigns
+            // use both_low_fallback and that SBID still has to be written onto keywords.
+            if ($field !== 'bid') {
+                return $this->finish($base, 'failed', 'pull_failed: campaign budget not returned by Amazon', $source, $campaignName, $desired, null);
+            }
+        } else {
+            if ($field === 'bgt' && AmazonAdsSbgt::isExplicitZero($desired)) {
+                return $this->syncPause($channel, $campaignId, $campaignName, $oldLive, $base, $source);
+            }
 
-            return $this->finish($base, 'failed', $why, $source, $campaignName, $desired, null);
-        }
+            if (AmazonAdsApiRetry::valuesMatch((float) $oldLive, $desired, $tolerance)) {
+                $this->persistVerifiedLive($channel, $field, $campaignId, (float) $oldLive);
 
-        if ($field === 'bgt' && AmazonAdsSbgt::isExplicitZero($desired)) {
-            return $this->syncPause($channel, $campaignId, $campaignName, $oldLive, $base, $source);
-        }
-
-        if (AmazonAdsApiRetry::valuesMatch($oldLive !== null ? (float) $oldLive : null, $desired, $tolerance)) {
-            $this->persistVerifiedLive($channel, $field, $campaignId, (float) $oldLive);
-
-            return $this->finish($base, 'synced', 'already_matched', $source, $campaignName, $desired, (float) $oldLive, 'skipped');
+                return $this->finish($base, 'synced', 'already_matched', $source, $campaignName, $desired, (float) $oldLive, 'skipped');
+            }
         }
 
         $push = $this->pushWithRetry($channel, $field, $campaignId, $desired);
