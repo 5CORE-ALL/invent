@@ -1454,7 +1454,8 @@
 
                         <div class="tab-pane fade" id="sof-doba-orders-pane" role="tabpanel" aria-labelledby="sof-doba-orders-tab">
                             <p class="small text-muted mb-2">
-                                Doba warehouse queue. Use <strong>ld</strong> to mark a label sent to dispatch.
+                                Doba warehouse queue. Orders Doba marks In Transit are on the In Transit page.
+                                Use <strong>ld</strong> to mark a label sent to dispatch.
                                 Open orders stay on <strong>Non-prepaid</strong> or <strong>Prepaid</strong>. After you mark <strong>done</strong>, the row moves to the Done tab.
                             </p>
                             <div class="sof-doba-export-bar">
@@ -1519,7 +1520,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-in-transit-pane" role="tabpanel" aria-labelledby="sof-in-transit-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range, including Recd Carrier and Invoiced orders the carrier has scanned. Delivered USPS/UPS/FedEx packages are not kept here. Scan pending more than 36 hours are in red at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range, including Doba In Transit, Recd Carrier, and Invoiced orders the carrier has scanned. Delivered USPS/UPS/FedEx packages are not kept here. Scan pending more than 36 hours are in red at the top.</p>
                             <div id="sof-in-transit-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 

@@ -48,6 +48,19 @@ class SofInTransitDeliveredRulesTest extends TestCase
         $this->assertFalse($recent);
     }
 
+    public function test_doba_in_transit_status_is_recognized(): void
+    {
+        $ref = new ReflectionClass(SalesOrderFulfillmentController::class);
+        $ctrl = $ref->newInstanceWithoutConstructor();
+        $method = $ref->getMethod('dobaStatusIsInTransit');
+
+        $this->assertTrue($method->invoke($ctrl, 'In Transit'));
+        $this->assertTrue($method->invoke($ctrl, 'IN_TRANSIT'));
+        $this->assertTrue($method->invoke($ctrl, 'InTransit'));
+        $this->assertFalse($method->invoke($ctrl, 'Unshipped'));
+        $this->assertFalse($method->invoke($ctrl, 'Completed'));
+    }
+
     public function test_no_scan_is_only_carrier_awaiting_shipment(): void
     {
         $ref = new ReflectionClass(SalesOrderFulfillmentController::class);

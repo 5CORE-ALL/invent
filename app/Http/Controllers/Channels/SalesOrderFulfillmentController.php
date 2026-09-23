@@ -678,7 +678,8 @@ class SalesOrderFulfillmentController extends Controller
         $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED']);
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED'])
+            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')');
 
         $select = [
             'id', 'order_no', 'platform_order_no', 'order_time', 'updated_at',
@@ -810,6 +811,9 @@ class SalesOrderFulfillmentController extends Controller
             $row['sku'] = implode(', ', $row['skus']);
             $row['display_title'] = implode(' · ', $row['titles']);
             unset($row['skus'], $row['titles'], $row['shipping_city'], $row['item_price']);
+            if ($this->dobaStatusIsInTransit((string) ($row['status'] ?? ''))) {
+                continue;
+            }
             if (! $row['warehouse_shipped']) {
                 $openCount++;
             }
@@ -838,6 +842,21 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Doba "In Transit" / "IN_TRANSIT" / "InTransit" — those orders belong on the In Transit tab.
+     */
+    protected function dobaStatusIsInTransit(?string $status): bool
+    {
+        $norm = str_replace([' ', '_', '-'], '', strtoupper(trim((string) $status)));
+
+        return $norm === 'INTRANSIT';
+    }
+
+    protected function dobaInTransitStatusSql(string $column = 'order_status'): string
+    {
+        return "REPLACE(REPLACE(REPLACE(UPPER(TRIM(COALESCE({$column}, ''))), ' ', ''), '_', ''), '-', '') = 'INTRANSIT'";
+    }
+
+    /**
      * One export row per Doba line item in the request date range.
      *
      * @return list<array{order_id: string, order_date: string, customer_name: string, shipping_address: string, sku: string, quantity: int}>
@@ -855,7 +874,8 @@ class SalesOrderFulfillmentController extends Controller
 
         $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%']);
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
+            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')');
 
         $columns = ['order_no', 'order_time', 'order_type', 'sku', 'quantity'];
         foreach ([
@@ -5719,10 +5739,7 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         return match ($slug) {
-            'doba' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)",
-                ['IN TRANSIT', 'IN_TRANSIT']
-            ),
+            'doba' => $base->whereRaw($this->dobaInTransitStatusSql()),
             'purchasingpower' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(status, ''))) = ?",
                 ['SHIPPING']
