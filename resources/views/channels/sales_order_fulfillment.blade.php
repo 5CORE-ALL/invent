@@ -1509,7 +1509,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels that have a tracking number and the carrier has not scanned yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels that have a tracking number and the carrier has not scanned yet, including Invoiced orders in that state. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1519,7 +1519,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-in-transit-pane" role="tabpanel" aria-labelledby="sof-in-transit-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range, including Received by carrier. Delivered USPS/UPS/FedEx packages are not kept here. Scan pending more than 36 hours are in red at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range, including Received by carrier and Invoiced orders the carrier has scanned. Delivered USPS/UPS/FedEx packages are not kept here. Scan pending more than 36 hours are in red at the top.</p>
                             <div id="sof-in-transit-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1529,7 +1529,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-delivered-pane" role="tabpanel" aria-labelledby="sof-delivered-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Delivered orders in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Delivered orders in the selected date range, including Invoiced orders whose tracking is delivered.</p>
                             <div id="sof-delivered-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 

@@ -103,6 +103,9 @@ class SalesOrderFulfillmentController extends Controller
     /** @var array<string, true>|null */
     protected ?array $gofoEmptyOnceIgnoredIds = null;
 
+    /** @var list<array<string, mixed>>|null */
+    protected ?array $cachedInvoicedRows = null;
+
     public function __construct(
         protected MarketplaceApiConfigService $apiConfig
     ) {}
@@ -428,6 +431,7 @@ class SalesOrderFulfillmentController extends Controller
                 $rows,
                 $this->onlyCarrierDeliveredRows($this->inTransitOrderRows())
             );
+            $rows = $this->mergeOrderRowsById($rows, $this->invoicedTrackedForDelivered());
 
             return response()->json([
                 'success' => true,
@@ -2387,10 +2391,13 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function labelCreatedNoScanRows(): array
     {
-        return array_values(array_filter(
-            $this->labelCreatedLabeledRows(),
-            fn (array $r) => $this->rowHasSofTrackingNumber($r)
-        ));
+        return $this->mergeOrderRowsById(
+            array_values(array_filter(
+                $this->labelCreatedLabeledRows(),
+                fn (array $r) => $this->rowHasSofTrackingNumber($r)
+            )),
+            $this->invoicedTrackedForNoScan()
+        );
     }
 
     /**
@@ -2828,7 +2835,7 @@ class SalesOrderFulfillmentController extends Controller
                 $this->mergeOrderRowsById($rows, $fromCarrier),
                 $fromOlderLabels
             ),
-            $this->receivedByCarrierOrderRows()
+            $this->mergeOrderRowsById($this->receivedByCarrierOrderRows(), $this->invoicedTrackedForInTransit())
         );
     }
 
@@ -3206,6 +3213,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         $this->cachedLabelCreatedRows = null;
         $this->cachedPendingRows = null;
+        $this->cachedInvoicedRows = null;
     }
 
     protected function carrierShipmentStatusLabel(string $shipmentStatus): ?string
@@ -5122,6 +5130,9 @@ class SalesOrderFulfillmentController extends Controller
 
         $scanDone = $this->scanDoneLast24HoursCount();
         $inReceived = $this->inReceivedOrdersCount();
+        $invoicedNoScan = count($this->invoicedTrackedForNoScan());
+        $invoicedTransit = count($this->invoicedTrackedForInTransit());
+        $invoicedDelivered = count($this->invoicedTrackedForDelivered());
 
         return [
             'channel_count' => (int) $channelCount,
@@ -5129,18 +5140,18 @@ class SalesOrderFulfillmentController extends Controller
             // Accurate split counts load with the Label Created tabs (avoid full row hydrate here).
             'fulfilled_24h' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->fulfilledOrdersQuery($slug), $slug)
-            ),
+            ) + $invoicedNoScan,
             'label_created_no_tracking' => 0,
             'scan_done_24h' => $scanDone,
             'in_transit_total' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug)
-            ) + $scanDone + $inReceived,
+            ) + $scanDone + $inReceived + $invoicedTransit,
             'in_received_total' => $inReceived,
             'received_by_carrier_total' => $scanDone + $inReceived,
             'invoiced_total' => $this->invoicedOrdersCount(),
             'delivered_total' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug)
-            ),
+            ) + $invoicedDelivered,
             'all_order_total' => $this->allOrdersCount(),
             'calculated_at' => now($this->sofTimezone())->toDateTimeString(),
         ];
@@ -5205,6 +5216,7 @@ class SalesOrderFulfillmentController extends Controller
             $rows,
             $this->onlyCarrierDeliveredRows($this->inTransitOrderRows())
         );
+        $rows = $this->mergeOrderRowsById($rows, $this->invoicedTrackedForDelivered());
 
         return count($rows);
     }
@@ -5227,6 +5239,90 @@ class SalesOrderFulfillmentController extends Controller
         return $this->countAllOrders(
             fn (string $slug) => $this->scopedToLast30Days($this->invoicedOrdersQuery($slug), $slug)
         );
+    }
+
+    /**
+     * Invoiced rows for the selected date range, with carrier shipment status attached.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedOrderRows(): array
+    {
+        if ($this->cachedInvoicedRows !== null) {
+            return $this->cachedInvoicedRows;
+        }
+
+        return $this->cachedInvoicedRows = $this->collectOrderRows(
+            fn (string $slug) => $this->scopedToLast30Days($this->invoicedOrdersQuery($slug), $slug),
+            true
+        );
+    }
+
+    /**
+     * Invoiced orders that already have a carrier tracking number.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedRowsWithTracking(): array
+    {
+        return array_values(array_filter(
+            $this->invoicedOrderRows(),
+            fn (array $r) => $this->rowHasSofTrackingNumber($r)
+        ));
+    }
+
+    /**
+     * Tracking is present and the carrier has not scanned yet.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedTrackedForNoScan(): array
+    {
+        return array_values(array_filter(
+            $this->invoicedRowsWithTracking(),
+            function (array $r): bool {
+                if ($this->rowLooksDelivered($r)) {
+                    return false;
+                }
+
+                return ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null);
+            }
+        ));
+    }
+
+    /**
+     * Carrier has the package and it is not delivered.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedTrackedForInTransit(): array
+    {
+        return array_values(array_filter(
+            $this->invoicedRowsWithTracking(),
+            function (array $r): bool {
+                if ($this->rowLooksDelivered($r)) {
+                    return false;
+                }
+                $status = (string) ($r['shipment_status'] ?? '');
+
+                return in_array($status, [
+                    ShipmentTrackingService::STATUS_IN_TRANSIT,
+                    ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
+                    ShipmentTrackingService::STATUS_PICKUP,
+                ], true);
+            }
+        ));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedTrackedForDelivered(): array
+    {
+        return array_values(array_filter(
+            $this->invoicedRowsWithTracking(),
+            fn (array $r) => $this->rowLooksDelivered($r)
+        ));
     }
 
     /**
