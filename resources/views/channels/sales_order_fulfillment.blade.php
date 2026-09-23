@@ -2359,8 +2359,16 @@
         hint.textContent = text;
     }
 
-    function sofReloadAjaxTable(t) {
+    const sofLastAjaxReload = new WeakMap();
+
+    function sofReloadAjaxTable(t, force) {
         if (!t) return;
+        const now = Date.now();
+        if (!force) {
+            const last = sofLastAjaxReload.get(t) || 0;
+            if (now - last < 1500) return;
+        }
+        sofLastAjaxReload.set(t, now);
         try {
             // Prefer setData() so Tabulator re-hits ajaxURL with current sofDateParams().
             if (typeof t.setData === 'function') {
@@ -2375,10 +2383,18 @@
         } catch (e2) {}
     }
 
+    function sofRefreshExistingOrderTable(tbl) {
+        if (!tbl) return;
+        sofReloadAjaxTable(tbl);
+        setTimeout(function () {
+            try { tbl.redraw(true); } catch (e) {}
+        }, 50);
+    }
+
     function sofReloadAllTablesForDateRange() {
         sofUpdateDateFilterHint();
-        [table, pendingTable, fulfilledTable, scanDoneTable, inTransitTable, inReceivedTable, invoicedTable, deliveredTable, allOrderTable]
-            .forEach(sofReloadAjaxTable);
+        [table, pendingTable, fulfilledTable, noTrackingTable, scanDoneTable, inTransitTable, inReceivedTable, invoicedTable, deliveredTable, notAuthorizedTable, allOrderTable, lossMakingTable]
+            .forEach(function (t) { sofReloadAjaxTable(t, true); });
         loadDobaOrdersData();
         // Carrier is client-side; re-apply after reload starts completing via dataLoaded.
         sofApplyAllCarrierFilters();
@@ -4078,6 +4094,102 @@
         updateSummaryStats();
     }
 
+    function sofSummarySkipsActive(metric) {
+        const map = {
+            pending: ['#sof-pending-tab', '#sof-pending-pane'],
+            noScan: ['#sof-fulfilled-tab', '#sof-fulfilled-pane'],
+            scan: ['#sof-scan-done-tab', '#sof-scan-done-pane'],
+            transit: ['#sof-in-transit-tab', '#sof-in-transit-pane'],
+            invoiced: ['#sof-invoiced-tab', '#sof-invoiced-pane'],
+            delivered: ['#sof-delivered-tab', '#sof-delivered-pane'],
+            notAuthorized: ['#sof-not-authorized-tab', '#sof-not-authorized-pane'],
+            allOrder: ['#sof-all-order-tab', '#sof-all-order-pane'],
+        };
+        const pair = map[metric];
+        return !!(pair && sofOrderTabIsActive(pair[0], pair[1]));
+    }
+
+    function sofSetCountText(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = Number(value || 0).toLocaleString();
+    }
+
+    function sofApplySummaryTotals(response, opts) {
+        const channelCount = (response && response.channel_count != null)
+            ? Number(response.channel_count)
+            : allRows.length;
+        const pendingTotal = (response && response.pending_total != null)
+            ? Number(response.pending_total)
+            : sumPending(allRows);
+        const fulfilled24h = (response && response.fulfilled_24h != null)
+            ? Number(response.fulfilled_24h)
+            : 0;
+        const noTrackingTotal = (response && response.label_created_no_tracking != null)
+            ? Number(response.label_created_no_tracking)
+            : 0;
+        const scanDone24h = (response && response.received_by_carrier_total != null)
+            ? Number(response.received_by_carrier_total)
+            : ((response && response.scan_done_24h != null ? Number(response.scan_done_24h) : 0)
+                + (response && response.in_received_total != null ? Number(response.in_received_total) : 0));
+        const inTransitTotal = (response && response.in_transit_total != null)
+            ? Number(response.in_transit_total)
+            : 0;
+        const invoicedTotal = (response && response.invoiced_total != null)
+            ? Number(response.invoiced_total)
+            : 0;
+        const deliveredTotal = (response && response.delivered_total != null)
+            ? Number(response.delivered_total)
+            : 0;
+        const notAuthorizedTotal = (response && response.not_authorized_total != null)
+            ? Number(response.not_authorized_total)
+            : 0;
+        const allOrderTotal = (response && response.all_order_total != null)
+            ? Number(response.all_order_total)
+            : 0;
+
+        sofSetCountText('sof-channel-count', channelCount);
+        if (!sofSummarySkipsActive('pending')) {
+            sofSetCountText('sof-pending-total', pendingTotal);
+            sofSetCountText('sof-pending-tab-count', pendingTotal);
+        }
+        if (!noTrackingTableLoaded || noTrackingTotal > 0) {
+            sofSetCountText('sof-no-tracking-total', noTrackingTotal);
+            sofSetCountText('sof-no-tracking-tab-count', noTrackingTotal);
+        }
+        if (!sofSummarySkipsActive('noScan')) {
+            sofSetCountText('sof-fulfilled-24h', fulfilled24h);
+            sofSetCountText('sof-fulfilled-tab-count', fulfilled24h);
+        }
+        if (!sofSummarySkipsActive('scan')) {
+            sofSetCountText('sof-scan-done-24h', scanDone24h);
+            sofSetCountText('sof-scan-done-tab-count', scanDone24h);
+        }
+        if (!sofSummarySkipsActive('transit')) {
+            sofSetCountText('sof-in-transit-total', inTransitTotal);
+            sofSetCountText('sof-in-transit-tab-count', inTransitTotal);
+        }
+        if (!sofSummarySkipsActive('invoiced')) {
+            sofSetCountText('sof-invoiced-total', invoicedTotal);
+            sofSetCountText('sof-invoiced-tab-count', invoicedTotal);
+        }
+        if (!sofSummarySkipsActive('delivered')) {
+            sofSetCountText('sof-delivered-total', deliveredTotal);
+            sofSetCountText('sof-delivered-tab-count', deliveredTotal);
+        }
+        if (!sofSummarySkipsActive('notAuthorized')) {
+            sofSetCountText('sof-not-authorized-total', notAuthorizedTotal);
+            sofSetCountText('sof-not-authorized-tab-count', notAuthorizedTotal);
+        }
+        if (!sofSummarySkipsActive('allOrder')) {
+            sofSetCountText('sof-all-order-total', allOrderTotal);
+            sofSetCountText('sof-all-order-tab-count', allOrderTotal);
+        }
+        if (!opts || opts.history !== false) {
+            loadSofHistoryDots();
+        }
+        sofReconcilePendingLabels();
+    }
+
     table = new Tabulator('#sales-order-fulfillment-table', Object.assign({}, sofLocalTableOpts, {
         layout: 'fitColumns',
         placeholder: 'Loading channels…',
@@ -4104,97 +4216,7 @@
                 ? response.data
                 : [];
 
-            // Set badges immediately from API totals (table may still be empty here).
-            const channelCount = (response && response.channel_count != null)
-                ? Number(response.channel_count)
-                : allRows.length;
-            const pendingTotal = (response && response.pending_total != null)
-                ? Number(response.pending_total)
-                : sumPending(allRows);
-            const fulfilled24h = (response && response.fulfilled_24h != null)
-                ? Number(response.fulfilled_24h)
-                : 0;
-            const noTrackingTotal = (response && response.label_created_no_tracking != null)
-                ? Number(response.label_created_no_tracking)
-                : 0;
-            const scanDone24h = (response && response.received_by_carrier_total != null)
-                ? Number(response.received_by_carrier_total)
-                : ((response && response.scan_done_24h != null ? Number(response.scan_done_24h) : 0)
-                    + (response && response.in_received_total != null ? Number(response.in_received_total) : 0));
-            const inTransitTotal = (response && response.in_transit_total != null)
-                ? Number(response.in_transit_total)
-                : 0;
-            const invoicedTotal = (response && response.invoiced_total != null)
-                ? Number(response.invoiced_total)
-                : 0;
-            const deliveredTotal = (response && response.delivered_total != null)
-                ? Number(response.delivered_total)
-                : 0;
-            const notAuthorizedTotal = (response && response.not_authorized_total != null)
-                ? Number(response.not_authorized_total)
-                : 0;
-            const allOrderTotal = (response && response.all_order_total != null)
-                ? Number(response.all_order_total)
-                : 0;
-
-            const channelEl = document.getElementById('sof-channel-count');
-            const pendingEl = document.getElementById('sof-pending-total');
-            const noTrackingEl = document.getElementById('sof-no-tracking-total');
-            const fulfilledEl = document.getElementById('sof-fulfilled-24h');
-            const scanDoneEl = document.getElementById('sof-scan-done-24h');
-            const inTransitEl = document.getElementById('sof-in-transit-total');
-            const invoicedEl = document.getElementById('sof-invoiced-total');
-            const deliveredEl = document.getElementById('sof-delivered-total');
-            const notAuthorizedEl = document.getElementById('sof-not-authorized-total');
-            const allOrderEl = document.getElementById('sof-all-order-total');
-            if (channelEl) channelEl.textContent = channelCount.toLocaleString();
-            if (pendingEl) pendingEl.textContent = pendingTotal.toLocaleString();
-            if (noTrackingEl && !noTrackingTableLoaded) noTrackingEl.textContent = noTrackingTotal.toLocaleString();
-            if (fulfilledEl && !fulfilledTableLoaded) fulfilledEl.textContent = fulfilled24h.toLocaleString();
-            if (scanDoneEl && !scanDoneTableLoaded) scanDoneEl.textContent = scanDone24h.toLocaleString();
-            if (inTransitEl && !inTransitTableLoaded) inTransitEl.textContent = inTransitTotal.toLocaleString();
-            if (invoicedEl && !invoicedTableLoaded) invoicedEl.textContent = invoicedTotal.toLocaleString();
-            if (deliveredEl && !deliveredTableLoaded) deliveredEl.textContent = deliveredTotal.toLocaleString();
-            if (notAuthorizedEl && !notAuthorizedTableLoaded) notAuthorizedEl.textContent = notAuthorizedTotal.toLocaleString();
-            if (allOrderEl && !allOrderTableLoaded) allOrderEl.textContent = allOrderTotal.toLocaleString();
-            loadSofHistoryDots();
-            const pendingTabCount = document.getElementById('sof-pending-tab-count');
-            if (pendingTabCount && !pendingTableLoaded) {
-                pendingTabCount.textContent = pendingTotal.toLocaleString();
-            }
-            const noTrackingTabCount = document.getElementById('sof-no-tracking-tab-count');
-            if (noTrackingTabCount && !noTrackingTableLoaded) {
-                noTrackingTabCount.textContent = noTrackingTotal.toLocaleString();
-            }
-            const fulfilledTabCount = document.getElementById('sof-fulfilled-tab-count');
-            if (fulfilledTabCount && !fulfilledTableLoaded) {
-                fulfilledTabCount.textContent = fulfilled24h.toLocaleString();
-            }
-            const scanDoneTabCount = document.getElementById('sof-scan-done-tab-count');
-            if (scanDoneTabCount && !scanDoneTableLoaded) {
-                scanDoneTabCount.textContent = scanDone24h.toLocaleString();
-            }
-            const inTransitTabCount = document.getElementById('sof-in-transit-tab-count');
-            if (inTransitTabCount && !inTransitTableLoaded) {
-                inTransitTabCount.textContent = inTransitTotal.toLocaleString();
-            }
-            const invoicedTabCount = document.getElementById('sof-invoiced-tab-count');
-            if (invoicedTabCount && !invoicedTableLoaded) {
-                invoicedTabCount.textContent = invoicedTotal.toLocaleString();
-            }
-            const deliveredTabCount = document.getElementById('sof-delivered-tab-count');
-            if (deliveredTabCount && !deliveredTableLoaded) {
-                deliveredTabCount.textContent = deliveredTotal.toLocaleString();
-            }
-            const notAuthorizedTabCount = document.getElementById('sof-not-authorized-tab-count');
-            if (notAuthorizedTabCount && !notAuthorizedTableLoaded) {
-                notAuthorizedTabCount.textContent = notAuthorizedTotal.toLocaleString();
-            }
-            const allOrderTabCount = document.getElementById('sof-all-order-tab-count');
-            if (allOrderTabCount && !allOrderTableLoaded) {
-                allOrderTabCount.textContent = allOrderTotal.toLocaleString();
-            }
-            sofReconcilePendingLabels();
+            sofApplySummaryTotals(response);
 
             return allRows;
         },
@@ -4591,9 +4613,7 @@
 
     function ensurePendingTable() {
         if (pendingTable || pendingTableLoading) {
-            if (pendingTable) {
-                setTimeout(function () { pendingTable.redraw(true); }, 50);
-            }
+            sofRefreshExistingOrderTable(pendingTable);
             return;
         }
         pendingTableLoading = true;
@@ -4690,12 +4710,7 @@
         const pane = document.getElementById('sof-no-tracking-pane');
         const paneReady = !pane || pane.classList.contains('show') || pane.classList.contains('active');
         if (noTrackingTable) {
-            setTimeout(function () {
-                try { noTrackingTable.redraw(true); } catch (e) {}
-                if (!noTrackingTableLoaded) {
-                    try { noTrackingTable.replaceData(); } catch (e2) {}
-                }
-            }, 50);
+            sofRefreshExistingOrderTable(noTrackingTable);
             return;
         }
         if (noTrackingTableLoading || !paneReady) {
@@ -4806,12 +4821,7 @@
         const pane = document.getElementById('sof-fulfilled-pane');
         const paneReady = !pane || pane.classList.contains('show') || pane.classList.contains('active');
         if (fulfilledTable) {
-            setTimeout(function () {
-                try { fulfilledTable.redraw(true); } catch (e) {}
-                if (!fulfilledTableLoaded) {
-                    try { fulfilledTable.replaceData(); } catch (e2) {}
-                }
-            }, 50);
+            sofRefreshExistingOrderTable(fulfilledTable);
             return;
         }
         if (fulfilledTableLoading || !paneReady) {
@@ -4908,9 +4918,7 @@
 
     function ensureScanDoneTable() {
         if (scanDoneTable || scanDoneTableLoading) {
-            if (scanDoneTable) {
-                setTimeout(function () { scanDoneTable.redraw(true); }, 50);
-            }
+            sofRefreshExistingOrderTable(scanDoneTable);
             return;
         }
         scanDoneTableLoading = true;
@@ -4979,9 +4987,7 @@
 
     function ensureInTransitTable() {
         if (inTransitTable || inTransitTableLoading) {
-            if (inTransitTable) {
-                setTimeout(function () { inTransitTable.redraw(true); }, 50);
-            }
+            sofRefreshExistingOrderTable(inTransitTable);
             return;
         }
         inTransitTableLoading = true;
@@ -5093,9 +5099,7 @@
 
     function ensureNotAuthorizedTable() {
         if (notAuthorizedTable || notAuthorizedTableLoading) {
-            if (notAuthorizedTable) {
-                setTimeout(function () { notAuthorizedTable.redraw(true); }, 50);
-            }
+            sofRefreshExistingOrderTable(notAuthorizedTable);
             return;
         }
         notAuthorizedTableLoading = true;
@@ -5170,9 +5174,7 @@
 
     function ensureInvoicedTable() {
         if (invoicedTable || invoicedTableLoading) {
-            if (invoicedTable) {
-                setTimeout(function () { invoicedTable.redraw(true); }, 50);
-            }
+            sofRefreshExistingOrderTable(invoicedTable);
             return;
         }
         invoicedTableLoading = true;
@@ -5245,7 +5247,7 @@
         }
         if (deliveredTable) {
             if (deliveredTableLoaded) {
-                setTimeout(function () { deliveredTable.redraw(true); }, 50);
+                sofRefreshExistingOrderTable(deliveredTable);
                 return;
             }
             // Previous load failed — rebuild so user can retry by re-opening the tab.
@@ -5330,9 +5332,7 @@
 
     function ensureAllOrderTable() {
         if (allOrderTable || allOrderTableLoading) {
-            if (allOrderTable) {
-                setTimeout(function () { allOrderTable.redraw(true); }, 50);
-            }
+            sofRefreshExistingOrderTable(allOrderTable);
             return;
         }
         allOrderTableLoading = true;
@@ -5422,9 +5422,7 @@
 
     function ensureLossMakingTable() {
         if (lossMakingTable || lossMakingTableLoading) {
-            if (lossMakingTable) {
-                setTimeout(function () { lossMakingTable.redraw(true); }, 50);
-            }
+            sofRefreshExistingOrderTable(lossMakingTable);
             return;
         }
         lossMakingTableLoading = true;
@@ -6008,6 +6006,38 @@
         switchToDobaOrdersTab();
     });
     loadDobaOrdersData();
+
+    let sofLiveRefreshBusy = false;
+    function sofRefreshLive() {
+        if (document.hidden) return;
+        const active = sofActiveOrderTable();
+        if (active) sofReloadAjaxTable(active);
+        if (!dobaOrdersTableLoading) loadDobaOrdersData();
+        if (sofLiveRefreshBusy) return;
+        sofLiveRefreshBusy = true;
+        $.ajax({
+            url: '{{ route("sales.order.fulfillment.data") }}',
+            type: 'GET',
+            data: sofDateParams(),
+            timeout: 120000,
+            success: function (response) {
+                if (!response || response.success === false) return;
+                sofApplySummaryTotals(response, { history: false });
+                if (sofOrderTabIsActive('#sof-channels-tab', '#sof-channels-pane') && table && Array.isArray(response.data)) {
+                    allRows = response.data;
+                    try { table.replaceData(allRows); } catch (e) {}
+                    applyFilters();
+                }
+            },
+            complete: function () {
+                sofLiveRefreshBusy = false;
+            },
+        });
+    }
+    setInterval(sofRefreshLive, 60000);
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) sofRefreshLive();
+    });
     $('#sof-search').on('keyup', function (e) {
         if (e.key === 'Enter') {
             applyFilters();
