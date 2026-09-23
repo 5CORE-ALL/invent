@@ -450,7 +450,7 @@ class EbaySellFulfillmentTracking
      *
      * @return array{success: bool, message: string, checked: int, filled: int, skipped: int}
      */
-    public function fillMissingSofTracking(int $limit = 200): array
+    public function fillMissingSofTracking(int $limit = 200, ?float $deadline = null): array
     {
         $limit = max(1, min(400, $limit));
         $checked = 0;
@@ -476,6 +476,9 @@ class EbaySellFulfillmentTracking
 
             foreach ($orders as $order) {
                 if ($checked >= $limit) {
+                    break 2;
+                }
+                if ($deadline !== null && microtime(true) >= $deadline) {
                     break 2;
                 }
                 $raw = is_array($order->raw_payload ?? null) ? $order->raw_payload : [];

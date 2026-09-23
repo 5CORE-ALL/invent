@@ -283,7 +283,7 @@ class AmazonTrackingSyncService
      *
      * @return array{success: bool, message: string, checked: int, filled: int, skipped: int}
      */
-    public function fillMissingSofTracking(int $limit = 80): array
+    public function fillMissingSofTracking(int $limit = 80, ?float $deadline = null): array
     {
         if (! Schema::hasTable('amazon_orders')) {
             return [
@@ -330,6 +330,9 @@ class AmazonTrackingSyncService
 
         foreach ($orders as $order) {
             if ($checked >= $limit) {
+                break;
+            }
+            if ($deadline !== null && microtime(true) >= $deadline) {
                 break;
             }
             if ($order->isFba() || $order->isCancelled()) {

@@ -237,6 +237,13 @@ class VeeqoApiService
         try {
             $pending = Http::withoutVerifying()
                 ->timeout($this->timeout)
+                ->connectTimeout(min(5, $this->timeout))
+                ->withOptions([
+                    'curl' => [
+                        CURLOPT_LOW_SPEED_LIMIT => 100,
+                        CURLOPT_LOW_SPEED_TIME => min(20, max(8, $this->timeout)),
+                    ],
+                ])
                 ->acceptJson()
                 ->withHeaders([
                     'x-api-key' => $this->apiKey,

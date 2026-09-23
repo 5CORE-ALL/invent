@@ -392,6 +392,14 @@ class GofoExpressService
 
         try {
             $pending = Http::timeout($this->timeout)
+                ->connectTimeout(min(5, $this->timeout))
+                ->withOptions([
+                    'curl' => [
+                        // A stalled GOFO socket otherwise sits in poll() for hours; Http::timeout does not abort it.
+                        CURLOPT_LOW_SPEED_LIMIT => 100,
+                        CURLOPT_LOW_SPEED_TIME => min(20, max(8, $this->timeout)),
+                    ],
+                ])
                 ->withoutVerifying()
                 ->acceptJson()
                 ->withBasicAuth($this->username, $this->password);

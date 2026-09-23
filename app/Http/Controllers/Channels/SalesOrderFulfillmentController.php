@@ -3915,7 +3915,7 @@ class SalesOrderFulfillmentController extends Controller
      *
      * @return array{checked: int, updated: int, with_tracking: int, message: string, candidates: int}
      */
-    public function pullMissingLabelCreatedTracking(int $limit = 80): array
+    public function pullMissingLabelCreatedTracking(int $limit = 80, ?float $deadline = null): array
     {
         $limit = max(1, min(400, $limit));
         $candidates = $this->missingLabelTrackingRows();
@@ -3931,11 +3931,44 @@ class SalesOrderFulfillmentController extends Controller
             $filtered[] = $row;
         }
 
+        // Each run used to start at the same first 400, so the rest of the red
+        // rows never got a lookup. Skip orders checked in the last 45 minutes.
+        $recent = Cache::get('sof.pull.recently_checked', []);
+        if (! is_array($recent)) {
+            $recent = [];
+        }
+        $now = time();
+        $fresh = [];
+        $deferred = [];
+        foreach ($filtered as $row) {
+            $key = $this->sofPullRowKey($row);
+            $seenAt = ($key !== '' && isset($recent[$key])) ? (int) $recent[$key] : 0;
+            if ($seenAt > 0 && ($now - $seenAt) < 2700) {
+                $deferred[] = $row;
+            } else {
+                $fresh[] = $row;
+            }
+        }
+        $ordered = array_merge($fresh, $deferred);
+
         $result = $this->pullLabelTrackingFromApis(
-            $filtered,
+            $ordered,
             $limit,
-            app(VeeqoShopifyFulfillmentService::class)
+            app(VeeqoShopifyFulfillmentService::class),
+            $deadline,
+            true
         );
+        foreach ((array) ($result['processed_keys'] ?? []) as $key) {
+            $key = trim((string) $key);
+            if ($key !== '') {
+                $recent[$key] = $now;
+            }
+        }
+        if (count($recent) > 4000) {
+            asort($recent);
+            $recent = array_slice($recent, -2500, null, true);
+        }
+        Cache::put('sof.pull.recently_checked', $recent, now()->addHours(6));
         $result['candidates'] = count($filtered);
 
         return $result;

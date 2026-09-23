@@ -2903,12 +2903,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Pull missing SOF tracking (eBay/Veeqo/GOFO + Temu) every 15 minutes.
-        $schedule->command('sof:pull-missing-tracking --limit=400 --temu-limit=40')
+        // Pull missing SOF tracking every 15 minutes.
+        // `timeout` is the hard stop: a stalled GOFO/Shopify socket ignores PHP's
+        // HTTP timeout and used to stay in poll() for hours. withoutOverlapping(14)
+        // then expired and cron started another copy, until dozens were stuck.
+        // 13m + SIGKILL at 13m30s. The command also holds a file lock and alarms itself.
+        $php = escapeshellarg(PHP_BINARY);
+        $artisan = escapeshellarg(base_path('artisan'));
+        $schedule->exec("timeout -k 30 780 {$php} {$artisan} sof:pull-missing-tracking --limit=400 --temu-limit=40")
             ->everyFifteenMinutes()
             ->timezone('America/Los_Angeles')
             ->name('sof-pull-missing-tracking')
-            ->withoutOverlapping(14)
+            ->withoutOverlapping(18)
             ->runInBackground()
             ->appendOutputTo($log);
 
