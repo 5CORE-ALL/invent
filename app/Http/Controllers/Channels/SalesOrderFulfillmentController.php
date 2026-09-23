@@ -6358,7 +6358,12 @@ class SalesOrderFulfillmentController extends Controller
                 'import_status' => (string) ($order->import_status ?? ''),
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
                 'raw_payload' => $order->raw_payload ?? null,
-                'tracking_number' => null,
+                'tracking_number' => is_array($order->raw_payload ?? null)
+                    ? (trim((string) ($order->raw_payload['tracking_number'] ?? '')) ?: null)
+                    : null,
+                'tracking_company' => is_array($order->raw_payload ?? null)
+                    ? (trim((string) ($order->raw_payload['tracking_company'] ?? '')) ?: null)
+                    : null,
                 'show_id' => (int) $order->id,
             ],
             'doba' => [

@@ -38,6 +38,124 @@ class AliexpressTrackingSyncService
      *   service_name?: string|null
      * }
      */
+    /**
+     * Copy logistics numbers already on AliExpress onto local order rows.
+     *
+     * @return array{success: bool, message: string, checked: int, filled: int, skipped: int}
+     */
+    public function fillMissingSofTracking(int $limit = 30, ?float $deadline = null): array
+    {
+        $limit = max(1, min(60, $limit));
+        $rows = AliexpressOrderMetric::query()
+            ->where('order_date', '>=', now()->subDays(45))
+            ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) NOT IN ('IN_CANCEL', 'ORDER_CANCEL', 'CANCEL')")
+            ->where(function ($q) {
+                $q->whereNull('raw_payload')
+                    ->orWhere(function ($q2) {
+                        $q2->whereRaw("IFNULL(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.order.tracking_number')), '') = ''")
+                            ->whereRaw("IFNULL(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.order.logistics_no')), '') = ''")
+                            ->whereRaw("IFNULL(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.order.logistic_info_list[0].logistics_no')), '') = ''");
+                    });
+            })
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
+            ->limit($limit * 6)
+            ->get(['id', 'order_id']);
+
+        $orderIds = [];
+        foreach ($rows as $row) {
+            $id = trim((string) $row->order_id);
+            if ($id === '' || isset($orderIds[$id])) {
+                continue;
+            }
+            $orderIds[$id] = true;
+            if (count($orderIds) >= $limit) {
+                break;
+            }
+        }
+
+        $checked = 0;
+        $filled = 0;
+        $skipped = 0;
+        foreach (array_keys($orderIds) as $orderId) {
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                break;
+            }
+            $checked++;
+            $info = $this->aliExpressApi->getOrderInfo($orderId);
+            $data = (! empty($info['success']) && is_array($info['data'] ?? null)) ? $info['data'] : [];
+            $hit = $this->trackingFromAeOrder($data);
+            if ($hit === null) {
+                $skipped++;
+                usleep(120000);
+                continue;
+            }
+            $lines = AliexpressOrderMetric::query()->where('order_id', $orderId)->get();
+            foreach ($lines as $line) {
+                $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
+                $order = is_array($raw['order'] ?? null) ? $raw['order'] : [];
+                if ($order === [] && $raw !== [] && ! isset($raw['line'])) {
+                    $order = $raw;
+                }
+                $order['tracking_number'] = $hit['tracking'];
+                $order['logistics_no'] = $hit['tracking'];
+                if ($hit['carrier'] !== '') {
+                    $order['tracking_company'] = $hit['carrier'];
+                }
+                if (! empty($hit['list'])) {
+                    $order['logistic_info_list'] = $hit['list'];
+                }
+                $raw['order'] = $order;
+                $line->raw_payload = $raw;
+                $line->save();
+            }
+            $filled++;
+            usleep(120000);
+        }
+
+        return [
+            'success' => true,
+            'checked' => $checked,
+            'filled' => $filled,
+            'skipped' => $skipped,
+            'message' => "AliExpress SOF tracking: checked {$checked}, filled {$filled}, still missing {$skipped}.",
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array{tracking: string, carrier: string, list: array<int, mixed>}|null
+     */
+    protected function trackingFromAeOrder(array $order): ?array
+    {
+        $list = $order['logistic_info_list'] ?? null;
+        $items = is_array($list) ? (array_is_list($list) ? $list : [$list]) : [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tn = trim((string) ($item['logistics_no'] ?? $item['tracking_number'] ?? ''));
+            if ($tn !== '' && strlen($tn) >= 6) {
+                return [
+                    'tracking' => $tn,
+                    'carrier' => trim((string) ($item['logistics_service_name'] ?? $item['logistics_type_code'] ?? '')),
+                    'list' => $items,
+                ];
+            }
+        }
+
+        $tn = trim((string) ($order['logistics_no'] ?? $order['tracking_number'] ?? ''));
+        if ($tn === '' || strlen($tn) < 6) {
+            return null;
+        }
+
+        return [
+            'tracking' => $tn,
+            'carrier' => trim((string) ($order['logistics_service_name'] ?? '')),
+            'list' => $items,
+        ];
+    }
+
     public function pushTrackingForOrder(AliexpressOrderMetric $line): array
     {
         if (empty($this->aliExpressApi->getAccessToken())) {

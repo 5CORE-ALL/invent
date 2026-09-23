@@ -204,6 +204,39 @@ class FetchWayfairDailyData extends Command
     }
 
     /**
+     * @param  array<string, mixed>  $order
+     * @return array<string, mixed>
+     */
+    protected function keepStoredWayfairTracking(array $order, mixed $existingPayload): array
+    {
+        if (is_string($existingPayload)) {
+            $decoded = json_decode($existingPayload, true);
+            $existingPayload = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($existingPayload)) {
+            return $order;
+        }
+        $tn = trim((string) ($existingPayload['tracking_number'] ?? ''));
+        if ($tn === '') {
+            return $order;
+        }
+        $payload = json_decode((string) ($order['raw_payload'] ?? ''), true);
+        if (! is_array($payload)) {
+            $payload = [];
+        }
+        if (trim((string) ($payload['tracking_number'] ?? '')) === '') {
+            $payload['tracking_number'] = $tn;
+            $carrier = trim((string) ($existingPayload['tracking_company'] ?? ''));
+            if ($carrier !== '') {
+                $payload['tracking_company'] = $carrier;
+            }
+            $order['raw_payload'] = json_encode($payload);
+        }
+
+        return $order;
+    }
+
+    /**
      * Bulk upsert orders using database transaction
      */
     protected function bulkUpsertOrders(array $orders): void
@@ -215,10 +248,12 @@ class FetchWayfairDailyData extends Command
         try {
             DB::transaction(function () use ($orders) {
                 foreach ($orders as $order) {
-                    $exists = DB::table('wayfair_daily_data')
+                    $existing = DB::table('wayfair_daily_data')
                         ->where('po_number', $order['po_number'])
                         ->where('sku', $order['sku'])
-                        ->exists();
+                        ->first(['raw_payload']);
+                    $order = $this->keepStoredWayfairTracking($order, $existing->raw_payload ?? null);
+                    $exists = $existing !== null;
                     if (! $exists && empty($order['id'])) {
                         $order['id'] = ((int) DB::table('wayfair_daily_data')->max('id')) + 1;
                     }

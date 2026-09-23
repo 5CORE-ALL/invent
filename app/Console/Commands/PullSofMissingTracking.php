@@ -5,8 +5,10 @@ namespace App\Console\Commands;
 use App\Http\Controllers\Channels\SalesOrderFulfillmentController;
 use App\Services\FourSellerApiService;
 use App\Services\GofoExpressService;
+use App\Services\MarketplaceManager\AliexpressTrackingSyncService;
 use App\Services\MarketplaceManager\AmazonTrackingSyncService;
 use App\Services\MarketplaceManager\EbaySellFulfillmentTracking;
+use App\Services\MarketplaceManager\WayfairTrackingSyncService;
 use App\Services\MarketplaceManager\Temu2OrderTrackingPullService;
 use App\Services\MarketplaceManager\TemuOrderTrackingPullService;
 use App\Services\VeeqoApiService;
@@ -44,6 +46,8 @@ class PullSofMissingTracking extends Command
         $started = microtime(true);
         $amazonDeadline = $started + 180;
         $ebayDeadline = $started + 360;
+        $wayfairDeadline = $started + 450;
+        $aliexpressDeadline = $started + 540;
         $labelDeadline = $started + 680;
         try {
             app(VeeqoApiService::class)->setTimeout(8);
@@ -85,6 +89,22 @@ class PullSofMissingTracking extends Command
         } catch (\Throwable $e) {
             $this->warn('eBay SOF tracking fill failed: '.$e->getMessage());
             Log::warning('sof:pull-missing-tracking eBay failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            $wayfair = app(WayfairTrackingSyncService::class)->fillMissingSofTracking(min(40, $limit), $wayfairDeadline);
+            $this->info('Wayfair: '.((string) ($wayfair['message'] ?? 'done')));
+        } catch (\Throwable $e) {
+            $this->warn('Wayfair SOF tracking fill failed: '.$e->getMessage());
+            Log::warning('sof:pull-missing-tracking Wayfair failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            $aliexpress = app(AliexpressTrackingSyncService::class)->fillMissingSofTracking(min(30, $limit), $aliexpressDeadline);
+            $this->info('AliExpress: '.((string) ($aliexpress['message'] ?? 'done')));
+        } catch (\Throwable $e) {
+            $this->warn('AliExpress SOF tracking fill failed: '.$e->getMessage());
+            Log::warning('sof:pull-missing-tracking AliExpress failed', ['error' => $e->getMessage()]);
         }
 
         $label = [
