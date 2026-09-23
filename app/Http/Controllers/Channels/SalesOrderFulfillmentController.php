@@ -240,6 +240,7 @@ class SalesOrderFulfillmentController extends Controller
                 'received_by_carrier_total' => 0,
                 'invoiced_total' => 0,
                 'delivered_total' => 0,
+                'not_authorized_total' => 0,
                 'all_order_total' => 0,
             ], 500);
         }
@@ -444,6 +445,32 @@ class SalesOrderFulfillmentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load Delivered orders.',
+                'data' => [],
+                'count' => 0,
+            ], 500);
+        }
+    }
+
+    /**
+     * Tracking numbers the carrier API refused (USPS MID "not authorized").
+     * These are not a real package status, so they are listed on their own tab.
+     */
+    public function notAuthorizedData(): JsonResponse
+    {
+        try {
+            $rows = $this->notAuthorizedTrackingRows();
+
+            return response()->json([
+                'success' => true,
+                'data' => $rows,
+                'count' => count($rows),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load Not Authorized tracking.',
                 'data' => [],
                 'count' => 0,
             ], 500);
@@ -5214,6 +5241,7 @@ class SalesOrderFulfillmentController extends Controller
             'delivered_total' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug)
             ) + $invoicedDelivered,
+            'not_authorized_total' => $this->notAuthorizedTrackingCount(),
             'all_order_total' => $this->allOrdersCount(),
             'calculated_at' => now($this->sofTimezone())->toDateTimeString(),
         ];
@@ -5344,6 +5372,73 @@ class SalesOrderFulfillmentController extends Controller
             $this->invoicedRowsWithTracking(),
             fn (array $r) => $this->carrierIsAwaitingShipment($r)
         ));
+    }
+
+    protected function notAuthorizedTrackingCount(): int
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return 0;
+        }
+
+        try {
+            return (int) $this->notAuthorizedTrackingQuery()->count();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function notAuthorizedTrackingRows(): array
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($this->notAuthorizedTrackingQuery()->orderByDesc('shipment_checked_at')->get() as $record) {
+            $tn = trim((string) ($record->tracking_number ?? ''));
+            if ($tn === '') {
+                continue;
+            }
+            $detail = trim((string) ($record->shipment_status_detail ?? ''));
+            if (! ShipmentTrackingService::isUnusableProviderFailure($detail)) {
+                continue;
+            }
+            $carrier = trim((string) ($record->carrier ?? ''));
+            $checked = $this->formatOrderDate($record->shipment_checked_at ?? null);
+            $rows[] = [
+                'id' => 'not-auth-'.$tn,
+                'mm_slug' => 'usps',
+                'channel_label' => $carrier !== '' ? $carrier : 'USPS',
+                'order_id' => $tn,
+                'order_number' => $tn,
+                'order_date' => $checked,
+                'updated_at' => $checked,
+                'status' => 'Not Authorized',
+                'status_label' => 'Not Authorized',
+                'sku' => '',
+                'display_title' => $detail,
+                'quantity' => '',
+                'amount' => null,
+                'tracking_number' => $tn,
+                'tracking_company' => $carrier !== '' ? $carrier : 'USPS',
+                'shipment_status' => (string) ($record->shipment_status ?? ''),
+                'shipment_status_detail' => $detail,
+            ];
+        }
+
+        return $rows;
+    }
+
+    protected function notAuthorizedTrackingQuery()
+    {
+        return DB::table('carrier_tracking_statuses')
+            ->where(function ($q) {
+                $q->where('shipment_status_detail', 'like', '%not authorized%')
+                    ->orWhere('shipment_status_detail', 'like', '%Tracking API Access%');
+            });
     }
 
     /**

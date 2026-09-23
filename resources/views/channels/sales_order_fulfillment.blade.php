@@ -1217,6 +1217,9 @@
                             <span class="badge sof-summary-badge" id="sof-delivered-badge" data-sof-metric="delivered_total" style="background:#cff4fc; color:#055160; border:1px solid #9eeaf9;" title="Delivered — click for history graph">
                                 Delivered: <span id="sof-delivered-total">0</span><i class="sof-hist-dot" data-sof-metric="delivered_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
+                            <span class="badge sof-summary-badge" id="sof-not-authorized-badge" style="background:#fde8e8; color:#9b1c1c; border:1px solid #f8b4b4;" title="USPS tracking the carrier API refused — not a real package status">
+                                Not Authorized: <span id="sof-not-authorized-total">0</span>
+                            </span>
                             <span class="badge sof-summary-badge" id="sof-all-order-badge" data-sof-metric="all_order_total" style="background:#e9ecef; color:#343a40; border:1px solid #ced4da;" title="All Order — click for history graph">
                                 All Order: <span id="sof-all-order-total">0</span><i class="sof-hist-dot" data-sof-metric="all_order_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
@@ -1421,6 +1424,13 @@
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="sof-not-authorized-tab" data-bs-toggle="tab"
+                                    data-bs-target="#sof-not-authorized-pane" type="button" role="tab"
+                                    aria-controls="sof-not-authorized-pane" aria-selected="false">
+                                Not Authorized <span class="badge ms-1" id="sof-not-authorized-tab-count" style="background:#fde8e8;color:#9b1c1c;border:1px solid #f8b4b4;">0</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
                             <button class="nav-link" id="sof-loss-making-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-loss-making-pane" type="button" role="tab"
                                     aria-controls="sof-loss-making-pane" aria-selected="false">
@@ -1532,6 +1542,11 @@
                         <div class="tab-pane fade" id="sof-delivered-pane" role="tabpanel" aria-labelledby="sof-delivered-tab">
                             <p class="small text-muted mb-2 sof-date-scope-hint">Delivered orders in the selected date range, including Invoiced orders whose tracking is delivered.</p>
                             <div id="sof-delivered-table" style="height: calc(100vh - 400px);"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="sof-not-authorized-pane" role="tabpanel" aria-labelledby="sof-not-authorized-tab">
+                            <p class="small text-muted mb-2">USPS refused these tracking numbers (MID not authorized). This is not a carrier scan, in-transit, or delivery status.</p>
+                            <div id="sof-not-authorized-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-loss-making-pane" role="tabpanel" aria-labelledby="sof-loss-making-tab">
@@ -1877,6 +1892,10 @@
     let deliveredRows = [];
     let deliveredTableLoaded = false;
     let deliveredTableLoading = false;
+    let notAuthorizedTable = null;
+    let notAuthorizedRows = [];
+    let notAuthorizedTableLoaded = false;
+    let notAuthorizedTableLoading = false;
     let allOrderTable = null;
     let allOrderRows = [];
     let allOrderTableLoaded = false;
@@ -2211,6 +2230,7 @@
         applyInReceivedFilters();
         applyInvoicedFilters();
         applyDeliveredFilters();
+        applyNotAuthorizedFilters();
         applyAllOrderFilters();
         applyDobaOrdersFilters();
         applyFilters();
@@ -2243,6 +2263,7 @@
             ['#sof-in-transit-tab', '#sof-in-transit-pane', function () { return inTransitRows; }],
             ['#sof-invoiced-tab', '#sof-invoiced-pane', function () { return invoicedRows; }],
             ['#sof-delivered-tab', '#sof-delivered-pane', function () { return deliveredRows; }],
+            ['#sof-not-authorized-tab', '#sof-not-authorized-pane', function () { return notAuthorizedRows; }],
             ['#sof-all-order-tab', '#sof-all-order-pane', function () { return allOrderRows; }],
             ['#sof-loss-making-tab', '#sof-loss-making-pane', function () { return lossMakingRows; }],
             ['#sof-doba-orders-tab', '#sof-doba-orders-pane', function () { return sofActiveDobaRows(); }],
@@ -2266,6 +2287,7 @@
         if (tbl === inReceivedTable) return inReceivedRows;
         if (tbl === invoicedTable) return invoicedRows;
         if (tbl === deliveredTable) return deliveredRows;
+        if (tbl === notAuthorizedTable) return notAuthorizedRows;
         if (tbl === allOrderTable) return allOrderRows;
         if (tbl === lossMakingTable) return lossMakingRows;
         if (tbl === dobaNonprepaidTable) return dobaNonprepaidRows;
@@ -2461,6 +2483,7 @@
             ['#sof-in-transit-tab', '#sof-in-transit-pane', inTransitTable],
             ['#sof-invoiced-tab', '#sof-invoiced-pane', invoicedTable],
             ['#sof-delivered-tab', '#sof-delivered-pane', deliveredTable],
+            ['#sof-not-authorized-tab', '#sof-not-authorized-pane', notAuthorizedTable],
             ['#sof-all-order-tab', '#sof-all-order-pane', allOrderTable],
             ['#sof-loss-making-tab', '#sof-loss-making-pane', lossMakingTable],
             ['#sof-doba-orders-tab', '#sof-doba-orders-pane', sofActiveDobaTable()],
@@ -3264,6 +3287,7 @@
                 [inReceivedTable, '#sof-order-search'],
                 [invoicedTable, '#sof-order-search'],
                 [deliveredTable, '#sof-order-search'],
+                [notAuthorizedTable, '#sof-order-search'],
                 [allOrderTable, '#sof-order-search'],
             ];
             for (let i = 0; i < searchMap.length; i++) {
@@ -4101,6 +4125,9 @@
             const deliveredTotal = (response && response.delivered_total != null)
                 ? Number(response.delivered_total)
                 : 0;
+            const notAuthorizedTotal = (response && response.not_authorized_total != null)
+                ? Number(response.not_authorized_total)
+                : 0;
             const allOrderTotal = (response && response.all_order_total != null)
                 ? Number(response.all_order_total)
                 : 0;
@@ -4113,6 +4140,7 @@
             const inTransitEl = document.getElementById('sof-in-transit-total');
             const invoicedEl = document.getElementById('sof-invoiced-total');
             const deliveredEl = document.getElementById('sof-delivered-total');
+            const notAuthorizedEl = document.getElementById('sof-not-authorized-total');
             const allOrderEl = document.getElementById('sof-all-order-total');
             if (channelEl) channelEl.textContent = channelCount.toLocaleString();
             if (pendingEl) pendingEl.textContent = pendingTotal.toLocaleString();
@@ -4122,6 +4150,7 @@
             if (inTransitEl && !inTransitTableLoaded) inTransitEl.textContent = inTransitTotal.toLocaleString();
             if (invoicedEl && !invoicedTableLoaded) invoicedEl.textContent = invoicedTotal.toLocaleString();
             if (deliveredEl && !deliveredTableLoaded) deliveredEl.textContent = deliveredTotal.toLocaleString();
+            if (notAuthorizedEl && !notAuthorizedTableLoaded) notAuthorizedEl.textContent = notAuthorizedTotal.toLocaleString();
             if (allOrderEl && !allOrderTableLoaded) allOrderEl.textContent = allOrderTotal.toLocaleString();
             loadSofHistoryDots();
             const pendingTabCount = document.getElementById('sof-pending-tab-count');
@@ -4151,6 +4180,10 @@
             const deliveredTabCount = document.getElementById('sof-delivered-tab-count');
             if (deliveredTabCount && !deliveredTableLoaded) {
                 deliveredTabCount.textContent = deliveredTotal.toLocaleString();
+            }
+            const notAuthorizedTabCount = document.getElementById('sof-not-authorized-tab-count');
+            if (notAuthorizedTabCount && !notAuthorizedTableLoaded) {
+                notAuthorizedTabCount.textContent = notAuthorizedTotal.toLocaleString();
             }
             const allOrderTabCount = document.getElementById('sof-all-order-tab-count');
             if (allOrderTabCount && !allOrderTableLoaded) {
@@ -5039,6 +5072,93 @@
         ensureScanDoneTable();
     }
 
+    function applyNotAuthorizedFilters() {
+        sofApplyOrderTableFilter(notAuthorizedTable, '#sof-order-search');
+    }
+
+    function switchToNotAuthorizedTab() {
+        const tabBtn = document.getElementById('sof-not-authorized-tab');
+        if (tabBtn && typeof bootstrap !== 'undefined') {
+            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+        } else if (tabBtn) {
+            tabBtn.click();
+        }
+        setTimeout(function () { ensureNotAuthorizedTable(); }, 80);
+    }
+
+    function ensureNotAuthorizedTable() {
+        if (notAuthorizedTable || notAuthorizedTableLoading) {
+            if (notAuthorizedTable) {
+                setTimeout(function () { notAuthorizedTable.redraw(true); }, 50);
+            }
+            return;
+        }
+        notAuthorizedTableLoading = true;
+
+        notAuthorizedTable = new Tabulator('#sof-not-authorized-table', Object.assign({}, sofOrderTableOpts, {
+            layout: 'fitColumns',
+            placeholder: 'Loading Not Authorized tracking…',
+            initialSort: [
+                { column: 'updated_at', dir: 'desc' },
+            ],
+            ajaxURL: '{{ route("sales.order.fulfillment.not.authorized.data") }}',
+            ajaxConfig: 'GET',
+            ajaxRequestFunc: function (url, config, params) {
+                return new Promise(function (resolve, reject) {
+                    $.ajax({
+                        url: url,
+                        type: 'GET',
+                        data: params || {},
+                        timeout: 0,
+                        success: resolve,
+                        error: reject,
+                    });
+                });
+            },
+            ajaxResponse: function (url, params, response) {
+                notAuthorizedRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
+                    ? response.data
+                    : []);
+                notAuthorizedTableLoaded = true;
+                notAuthorizedTableLoading = false;
+                const count = (response && response.count != null)
+                    ? Number(response.count)
+                    : notAuthorizedRows.length;
+                const tabCount = document.getElementById('sof-not-authorized-tab-count');
+                if (tabCount) tabCount.textContent = count.toLocaleString();
+                const badgeEl = document.getElementById('sof-not-authorized-total');
+                if (badgeEl) badgeEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(notAuthorizedRows);
+                return notAuthorizedRows;
+            },
+            ajaxError: function () {
+                notAuthorizedTableLoading = false;
+                notAuthorizedTableLoaded = false;
+            },
+            dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(notAuthorizedRows);
+                applyNotAuthorizedFilters();
+            },
+            columns: (function () {
+                const cols = orderListColumns('sof-not-authorized-badge');
+                cols.forEach(function (c) {
+                    if (c.field === 'status_label') {
+                        c.title = 'Status';
+                        c.headerTooltip = 'USPS refused this tracking number';
+                    }
+                    if (c.field === 'order_id') {
+                        c.title = 'Tracking';
+                    }
+                });
+                const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
+                const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
+                return cols;
+            })(),
+        }));
+        sofWireOrderTable(notAuthorizedTable);
+    }
+
     function applyInvoicedFilters() {
         sofApplyOrderTableFilter(invoicedTable, '#sof-order-search');
     }
@@ -5839,6 +5959,9 @@
     document.getElementById('sof-delivered-tab')?.addEventListener('shown.bs.tab', function () {
         ensureDeliveredTable();
     });
+    document.getElementById('sof-not-authorized-tab')?.addEventListener('shown.bs.tab', function () {
+        ensureNotAuthorizedTable();
+    });
 
     document.getElementById('sof-pending-total-badge')?.addEventListener('click', function () {
         switchToPendingTab();
@@ -5866,6 +5989,9 @@
     });
     document.getElementById('sof-delivered-badge')?.addEventListener('click', function () {
         switchToDeliveredTab();
+    });
+    document.getElementById('sof-not-authorized-badge')?.addEventListener('click', function () {
+        switchToNotAuthorizedTab();
     });
     document.getElementById('sof-all-order-badge')?.addEventListener('click', function () {
         switchToAllOrderTab();
