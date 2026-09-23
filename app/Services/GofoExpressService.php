@@ -264,6 +264,8 @@ class GofoExpressService
         }
         if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $plain) === 1) {
             $variants[] = str_replace('-', '', $plain);
+            $variants[] = 'Amz'.$plain;
+            $variants[] = '#Amz'.$plain;
         }
 
         return $variants;

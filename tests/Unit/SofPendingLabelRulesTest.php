@@ -118,4 +118,27 @@ class SofPendingLabelRulesTest extends TestCase
         $this->assertCount(0, $pendingAfterLabel);
         $this->assertCount(1, $labeled);
     }
+
+    public function test_shopify_cache_prefers_line_with_tracking_over_empty_fulfilled(): void
+    {
+        $emptyFulfilled = [
+            'tracking_number' => '',
+            'tracking_company' => null,
+            'fulfillment_status' => 'fulfilled',
+        ];
+        $withTracking = [
+            'tracking_number' => 'GFU1234567890123456',
+            'tracking_company' => 'GOFO',
+            'fulfillment_status' => 'fulfilled',
+        ];
+
+        $this->assertSame(
+            $withTracking,
+            SalesOrderFulfillmentController::preferShopifyTrackingHit($emptyFulfilled, $withTracking)
+        );
+        $this->assertSame(
+            $withTracking,
+            SalesOrderFulfillmentController::preferShopifyTrackingHit($withTracking, $emptyFulfilled)
+        );
+    }
 }

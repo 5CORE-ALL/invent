@@ -6,6 +6,7 @@ use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\ShopifyStoreSelector;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -409,7 +410,7 @@ class AmazonTrackingSyncService
     /**
      * @return array{success: bool, tracking: ?string, carrier: ?string, message?: string}
      */
-    public function fillTrackingForOrder(AmazonOrder $order): array
+    public function fillTrackingForOrder(AmazonOrder $order, bool $fast = false): array
     {
         $existing = $order->localTracking();
         if (trim((string) ($existing['tracking'] ?? '')) !== '') {
@@ -420,7 +421,7 @@ class AmazonTrackingSyncService
             ];
         }
 
-        $shopifyOrderId = trim((string) ($order->shopify_order_id ?? ''));
+        $shopifyOrderId = $this->resolveShopifyOrderId($order);
         $amazonOrderId = trim((string) ($order->amazon_order_id ?? ''));
         $hit = ['tracking' => null, 'carrier' => null];
 
@@ -443,13 +444,13 @@ class AmazonTrackingSyncService
         }
 
         if (empty($hit['tracking'])) {
-            $warehouse = $this->lookupWarehouseTracking($order);
+            $warehouse = $this->lookupWarehouseTracking($order, $fast);
             if ($warehouse !== null) {
                 $hit = $warehouse;
             }
         }
 
-        if (empty($hit['tracking'])) {
+        if (empty($hit['tracking']) && ! $fast) {
             $fromAmazon = $this->ordersClient->lookupTrackingForOrder($amazonOrderId);
             if ($fromAmazon !== null && trim((string) ($fromAmazon['tracking'] ?? '')) !== '') {
                 $hit = $fromAmazon;
@@ -480,7 +481,7 @@ class AmazonTrackingSyncService
     /**
      * @return array{tracking: string, carrier: string}|null
      */
-    protected function lookupWarehouseTracking(AmazonOrder $order): ?array
+    protected function lookupWarehouseTracking(AmazonOrder $order, bool $fast = false): ?array
     {
         $refs = $order->trackingLookupRefs();
         $shopifyOrderId = trim((string) ($order->shopify_order_id ?? ''));
@@ -489,16 +490,9 @@ class AmazonTrackingSyncService
         }
         $local = $order->localTracking();
         $localHit = trim((string) ($local['tracking'] ?? '')) !== '' ? $local : null;
-        $sku = '';
-        $items = $order->relationLoaded('items') ? $order->items : $order->items()->orderBy('id')->get();
-        foreach ($items as $item) {
-            $one = trim((string) ($item->sku ?? ''));
-            if ($one !== '' && ! in_array($one, ['__order__', '__unknown__'], true)) {
-                $sku = $one;
-                break;
-            }
-        }
-        $found = $this->veeqoFulfillment->lookupLabelTracking($refs, $localHit, false, $sku);
+        // Do not filter Veeqo/GOFO by Amazon child SKU (6-51080 L D1 vs 6-51080-L-D1
+        // misses the only label on the order).
+        $found = $this->veeqoFulfillment->lookupLabelTracking($refs, $localHit, $fast, '');
         $tn = trim((string) ($found['tracking'] ?? ''));
         if ($tn === '') {
             return null;
@@ -531,6 +525,38 @@ class AmazonTrackingSyncService
         $settings ??= MarketplaceSyncSettings::getFor('amazon');
 
         return (bool) ($settings['order']['push_tracking_to_amazon'] ?? true);
+    }
+
+    protected function resolveShopifyOrderId(AmazonOrder $order): string
+    {
+        $sid = trim((string) ($order->shopify_order_id ?? ''));
+        if ($sid !== '' && ! str_starts_with($sid, 'manual')) {
+            return $sid;
+        }
+        $amazonId = trim((string) ($order->amazon_order_id ?? ''));
+        if ($amazonId === '' || ! Schema::hasTable('shopify_raw_orders')) {
+            return '';
+        }
+
+        try {
+            $found = DB::table('shopify_raw_orders')
+                ->whereIn('order_number', AmazonOrder::warehouseOrderRefs($amazonId))
+                ->where('order_id', '>', 0)
+                ->value('order_id');
+        } catch (\Throwable) {
+            return '';
+        }
+        $found = trim((string) ($found ?? ''));
+        if ($found === '') {
+            return '';
+        }
+        try {
+            $order->shopify_order_id = $found;
+            $order->save();
+        } catch (\Throwable) {
+        }
+
+        return $found;
     }
 
     /**

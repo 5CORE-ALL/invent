@@ -38,6 +38,16 @@ class AmazonSofTrackingExtractTest extends TestCase
 
         $this->assertContains('113-1234567-1234567', $variants);
         $this->assertContains('11312345671234567', $variants);
+        $this->assertContains('Amz113-1234567-1234567', $variants);
+    }
+
+    public function test_warehouse_refs_include_amz_shopify_name(): void
+    {
+        $refs = AmazonOrder::warehouseOrderRefs('111-6015777-6213066');
+
+        $this->assertContains('111-6015777-6213066', $refs);
+        $this->assertContains('Amz111-6015777-6213066', $refs);
+        $this->assertContains('#Amz111-6015777-6213066', $refs);
     }
 
     public function test_reads_tracking_from_order_item_payload(): void

@@ -162,10 +162,8 @@ class AmazonOrder extends Model
         $refs = [];
         $amazonId = trim((string) ($this->amazon_order_id ?? ''));
         if ($amazonId !== '') {
-            $refs[] = $amazonId;
-            $plain = str_replace('-', '', $amazonId);
-            if ($plain !== $amazonId) {
-                $refs[] = $plain;
+            foreach (self::warehouseOrderRefs($amazonId) as $ref) {
+                $refs[] = $ref;
             }
         }
         $raw = $this->rawPayload();
@@ -177,6 +175,33 @@ class AmazonOrder extends Model
         }
 
         return $refs;
+    }
+
+    /**
+     * Shopify/Veeqo/GOFO store Amazon copies as Amz111-… as well as the raw 3-7-7 id.
+     *
+     * @return list<string>
+     */
+    public static function warehouseOrderRefs(string $amazonOrderId): array
+    {
+        $amazonOrderId = trim($amazonOrderId);
+        if ($amazonOrderId === '') {
+            return [];
+        }
+        $plain = ltrim($amazonOrderId, '#');
+        $refs = [$plain];
+        if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $plain) === 1) {
+            $compact = str_replace('-', '', $plain);
+            $refs[] = $compact;
+            $refs[] = 'Amz'.$plain;
+            $refs[] = '#Amz'.$plain;
+            $refs[] = 'Amz'.$compact;
+        } elseif (! str_starts_with(strtolower($plain), 'amz')) {
+            $refs[] = 'Amz'.$plain;
+            $refs[] = '#Amz'.$plain;
+        }
+
+        return array_values(array_unique($refs));
     }
 
     /**

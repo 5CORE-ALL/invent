@@ -2866,11 +2866,10 @@ class VeeqoShopifyFulfillmentService
 
             return [
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
-                'refs' => array_values(array_filter(array_unique([
-                    (string) $order->amazon_order_id,
-                    str_replace('-', '', (string) $order->amazon_order_id),
-                    $seller,
-                ]))),
+                'refs' => array_values(array_filter(array_unique(array_merge(
+                    AmazonOrder::warehouseOrderRefs((string) $order->amazon_order_id),
+                    [$seller]
+                )))),
                 'sku' => (string) ($amazonSkus[0] ?? ''),
                 'skus' => $amazonSkus,
                 'local_tracking' => $this->trackingFromMixed($raw),
