@@ -1511,7 +1511,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-invoiced-pane" role="tabpanel" aria-labelledby="sof-invoiced-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Invoiced orders in the selected date range. Orders whose status is Delivered are on the Delivered tab.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Invoiced orders in the selected date range. In Transit orders are on Recd/Transit. Delivered orders are on the Delivered tab.</p>
                             <div id="sof-invoiced-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -5218,7 +5218,7 @@
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
                         c.title = 'Status';
-                        c.headerTooltip = 'Status. Delivered orders are on the Delivered tab.';
+                        c.headerTooltip = 'Status. In Transit orders are on Recd/Transit. Delivered orders are on the Delivered tab.';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });

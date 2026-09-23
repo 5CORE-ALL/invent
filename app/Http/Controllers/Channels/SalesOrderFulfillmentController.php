@@ -392,7 +392,9 @@ class SalesOrderFulfillmentController extends Controller
     public function invoicedData(): JsonResponse
     {
         try {
-            $rows = $this->excludeDisplayedDeliveredRows($this->invoicedOrderRows());
+            $rows = $this->excludeDisplayedInTransitRows(
+                $this->excludeDisplayedDeliveredRows($this->invoicedOrderRows())
+            );
 
             return response()->json([
                 'success' => true,
@@ -2370,6 +2372,7 @@ class SalesOrderFulfillmentController extends Controller
         return array_values(array_filter(
             $this->labelCreatedOrderRows(),
             fn (array $r) => ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null)
+                && ! $this->rowDisplayedAsInTransit($r)
         ));
     }
 
@@ -2559,7 +2562,9 @@ class SalesOrderFulfillmentController extends Controller
         // Prepaid Doba labels belong here until a real status moves them.
         $prepaidLabels = array_values(array_filter(
             $labeled,
-            fn (array $r) => ! empty($r['doba_prepaid_label']) && ! $this->rowLooksDelivered($r)
+            fn (array $r) => ! empty($r['doba_prepaid_label'])
+                && ! $this->rowLooksDelivered($r)
+                && ! $this->rowDisplayedAsInTransit($r)
         ));
 
         return $this->mergeOrderRowsById(
@@ -2961,6 +2966,40 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Visible status is In Transit. Those rows belong on Recd/Transit.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowDisplayedAsInTransit(array $row): bool
+    {
+        if ($this->rowDisplayedAsDelivered($row)) {
+            return false;
+        }
+        if (strtolower(trim((string) ($row['status_label'] ?? ''))) === 'in transit') {
+            return true;
+        }
+        if (strtolower(trim((string) ($row['shipment_status'] ?? ''))) === strtolower(ShipmentTrackingService::STATUS_IN_TRANSIT)) {
+            return true;
+        }
+
+        $mp = strtolower(str_replace([' ', '-', '_'], '', trim((string) ($row['status'] ?? ''))));
+
+        return $mp === 'intransit';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function excludeDisplayedInTransitRows(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            fn (array $r) => ! $this->rowDisplayedAsInTransit($r)
+        ));
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
@@ -3081,6 +3120,9 @@ class SalesOrderFulfillmentController extends Controller
         $fromCarrier = array_values(array_filter(
             $this->labelCreatedOrderRows(),
             function (array $r) {
+                if ($this->rowDisplayedAsInTransit($r)) {
+                    return true;
+                }
                 $s = (string) ($r['shipment_status'] ?? '');
 
                 return in_array($s, [
@@ -5441,7 +5483,9 @@ class SalesOrderFulfillmentController extends Controller
             ) + $scanDone + $inReceived + $invoicedTransit,
             'in_received_total' => $inReceived,
             'received_by_carrier_total' => $scanDone + $inReceived,
-            'invoiced_total' => count($this->excludeDisplayedDeliveredRows($this->invoicedOrderRows())),
+            'invoiced_total' => count($this->excludeDisplayedInTransitRows(
+                $this->excludeDisplayedDeliveredRows($this->invoicedOrderRows())
+            )),
             'delivered_total' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug)
             ) + $invoicedDelivered,
@@ -5717,7 +5761,7 @@ class SalesOrderFulfillmentController extends Controller
                 }
                 $status = (string) ($r['shipment_status'] ?? '');
 
-                return in_array($status, [
+                return $this->rowDisplayedAsInTransit($r) || in_array($status, [
                     ShipmentTrackingService::STATUS_IN_TRANSIT,
                     ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
                     ShipmentTrackingService::STATUS_PICKUP,
