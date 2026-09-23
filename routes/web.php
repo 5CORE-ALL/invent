@@ -7682,6 +7682,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::prefix('reviews')->name('reviews.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'index'])->name('index');
         Route::get('/data', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'getData'])->name('data');
+        Route::get('/counts', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'counts'])->name('counts');
         Route::get('/sku/{sku}/detail', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'skuDetail'])->name('sku.detail');
         Route::get('/supplier-intelligence', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'supplierIntelligence'])->name('supplier-intelligence');
         Route::get('/ai-insights', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'aiInsights'])->name('ai-insights');

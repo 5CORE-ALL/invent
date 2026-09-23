@@ -3129,6 +3129,7 @@
                     sorter: 'number',
                     headerTooltip: 'Same as /temu1-data Views: SUM(temu_view_data.product_clicks) by Goods ID; Ads API fallback when the sheet has no row'
                 },
+                @include('partials.analytics-sku-reviews-column', ['marketplace' => 'temu'])
                 {
                     title: 'CVR',
                     field: 'cvr_percent',

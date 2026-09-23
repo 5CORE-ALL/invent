@@ -1839,6 +1839,7 @@
                             return `<span style="font-weight:700;">${parseInt(cell.getValue(), 10) || 0}</span>`;
                         }
                     },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'shein'])
                     {
                         title: "Dil",
                         field: "dil_percent",

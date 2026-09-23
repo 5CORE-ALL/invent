@@ -4441,6 +4441,7 @@
                             return `<span style="color: ${color}; font-weight: 600;">${num}</span> ${arrowBtn}`.trim();
                         }
                     },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'ebay'])
                     {
                         title: "Growth",
                         field: "growth_percent",

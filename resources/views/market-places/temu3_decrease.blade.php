@@ -3864,7 +3864,7 @@
                         return `${value.toLocaleString()} ${dotBtn}`.trim();
                     }
                 },
-               
+                @include('partials.analytics-sku-reviews-column', ['marketplace' => 'temu3'])
                 //  {
                 //     title: "CTR",
                 //     field: "ctr",
