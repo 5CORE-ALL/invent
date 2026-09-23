@@ -16,7 +16,7 @@ class AmazonSpOrdersClient
 
     public function getAccessToken(): ?string
     {
-        $res = Http::asForm()->timeout(30)->post('https://api.amazon.com/auth/o2/token', [
+        $res = Http::withoutVerifying()->asForm()->timeout(30)->post('https://api.amazon.com/auth/o2/token', [
             'grant_type' => 'refresh_token',
             'refresh_token' => config('services.amazon_sp.refresh_token'),
             'client_id' => config('services.amazon_sp.client_id'),
@@ -136,7 +136,7 @@ class AmazonSpOrdersClient
             return null;
         }
 
-        $response = Http::timeout(30)->withHeaders([
+        $response = Http::timeout(30)->withoutVerifying()->withHeaders([
             'x-amz-access-token' => $token,
             'accept' => 'application/json',
         ])->get($this->endpoint.'/orders/v0/orders/'.$orderId);
@@ -165,7 +165,7 @@ class AmazonSpOrdersClient
             return null;
         }
 
-        $response = Http::timeout(30)->withHeaders([
+        $response = Http::timeout(30)->withoutVerifying()->withHeaders([
             'x-amz-access-token' => $token,
             'accept' => 'application/json',
         ])->get($this->endpoint.'/orders/v0/orders/'.$orderId.'/orderItems');
@@ -194,7 +194,7 @@ class AmazonSpOrdersClient
             return null;
         }
 
-        $response = Http::timeout(30)->withHeaders([
+        $response = Http::timeout(30)->withoutVerifying()->withHeaders([
             'x-amz-access-token' => $token,
             'accept' => 'application/json',
         ])->get($this->endpoint.'/easyShip/2022-03-23/packages', [

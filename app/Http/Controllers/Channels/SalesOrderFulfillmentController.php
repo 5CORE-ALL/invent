@@ -227,6 +227,7 @@ class SalesOrderFulfillmentController extends Controller
                 'channel_count' => 0,
                 'pending_total' => 0,
                 'fulfilled_24h' => 0,
+                'label_created_no_tracking' => 0,
                 'scan_done_24h' => 0,
                 'in_transit_total' => 0,
                 'in_received_total' => 0,
@@ -270,21 +271,51 @@ class SalesOrderFulfillmentController extends Controller
      * Older labeled rows stay here (red triangle after 24h). They are not moved
      * to In Transit just because the label is older than a day.
      */
+    public function labelCreatedNoTrackingData(): JsonResponse
+    {
+        try {
+            @set_time_limit(90);
+            $rows = $this->labelCreatedNoTrackingRows();
+            // Pull GOFO/4Seller/Veeqo for every marketplace (not Amazon-only), persist
+            // onto SOF, and fulfill the linked Shopify order when a number is found.
+            if ($rows !== []) {
+                $this->pullLabelTrackingFromApis(
+                    $rows,
+                    6,
+                    app(VeeqoShopifyFulfillmentService::class),
+                    microtime(true) + 22.0,
+                    true
+                );
+                $rows = $this->labelCreatedNoTrackingRows();
+            }
+            $this->queueAmazonSofTrackingFillForRows($rows);
+
+            return response()->json(array_merge([
+                'success' => true,
+                'data' => $rows,
+                'count' => count($rows),
+            ], $this->labelCreatedSplitCounts()));
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load Label Created / No Tracking orders.',
+                'data' => [],
+                'count' => 0,
+            ], 500);
+        }
+    }
+
     public function fulfilledData(): JsonResponse
     {
         try {
             @set_time_limit(90);
-            // Return rows immediately. Live Veeqo/GOFO pulls belong on Pull Tracking —
-            // blocking this endpoint left the tab empty while the badge still showed a count.
             $rows = $this->labelCreatedNoScanRows();
-            $rows = $this->fillRecentAmazonMissingTrackingOnRows($rows);
-            $this->queueAmazonSofTrackingFillForRows($rows);
 
-            return response()->json([
+            return response()->json(array_merge([
                 'success' => true,
                 'data' => $rows,
                 'count' => count($rows),
-            ]);
+            ], $this->labelCreatedSplitCounts()));
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -2166,16 +2197,63 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Label Created / No Scan: selected date range, carrier has not scanned yet.
+     * Label Created, carrier has not scanned yet (with or without a tracking number).
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function labelCreatedLabeledRows(): array
+    {
+        return array_values(array_filter(
+            $this->labelCreatedOrderRows(),
+            fn (array $r) => ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null)
+        ));
+    }
+
+    /**
+     * Label Created / No Tracking: labeled, not scanned, no carrier tracking number.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function labelCreatedNoTrackingRows(): array
+    {
+        return array_values(array_filter(
+            $this->labelCreatedLabeledRows(),
+            fn (array $r) => ! $this->rowHasSofTrackingNumber($r)
+        ));
+    }
+
+    /**
+     * Label Created / No Scan: labeled, not scanned, tracking number is present.
      *
      * @return list<array<string, mixed>>
      */
     protected function labelCreatedNoScanRows(): array
     {
         return array_values(array_filter(
-            $this->labelCreatedOrderRows(),
-            fn (array $r) => ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null)
+            $this->labelCreatedLabeledRows(),
+            fn (array $r) => $this->rowHasSofTrackingNumber($r)
         ));
+    }
+
+    /**
+     * @return array{no_tracking_count: int, no_scan_count: int}
+     */
+    protected function labelCreatedSplitCounts(): array
+    {
+        return [
+            'no_tracking_count' => count($this->labelCreatedNoTrackingRows()),
+            'no_scan_count' => count($this->labelCreatedNoScanRows()),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    public function rowHasSofTrackingNumber(array $row): bool
+    {
+        $tn = trim((string) ($row['tracking_number'] ?? ''));
+
+        return $tn !== '' && $this->looksLikeCarrierTrackingNumber($tn);
     }
 
     /**
@@ -3558,6 +3636,8 @@ class SalesOrderFulfillmentController extends Controller
             app(VeeqoApiService::class)->setTimeout(6);
             app(GofoExpressService::class)->setTimeout(6);
             app(FourSellerApiService::class)->setTimeout(5);
+            // Prior SSL poison must not block GOFO/Veeqo for this request.
+            \Illuminate\Support\Facades\Cache::forget('mm.label_ssl_broken');
         } catch (\Throwable $e) {
             // Timeouts are best-effort; continue with service defaults.
         }
@@ -3955,6 +4035,7 @@ class SalesOrderFulfillmentController extends Controller
                     ) ?? '';
                     $showId = (int) $amazonOrder->id;
                     $this->persistPulledChannelTracking($slug, $showId, $row, $tn, $carrier);
+                    $this->fulfillShopifyAfterPulledTracking($labels, $slug, $showId);
                     $withTracking++;
                     $updated++;
                     $outRows[] = [
@@ -4031,6 +4112,7 @@ class SalesOrderFulfillmentController extends Controller
             $source = (string) ($found['source'] ?? 'label');
 
             $this->persistPulledChannelTracking($slug, $showId, $row, $tn, $carrier);
+            $this->fulfillShopifyAfterPulledTracking($labels, $slug, $showId);
             $withTracking++;
             $updated++;
             $outRows[] = [
@@ -4070,6 +4152,26 @@ class SalesOrderFulfillmentController extends Controller
             'truncated' => $truncated,
             'processed_keys' => array_values(array_unique(array_filter($processedKeys))),
         ];
+    }
+
+    /**
+     * After SOF finds a GOFO/4Seller/Veeqo tracking number, copy it onto the
+     * linked Shopify order (all marketplaces — not Amazon-only).
+     */
+    protected function fulfillShopifyAfterPulledTracking(
+        VeeqoShopifyFulfillmentService $labels,
+        string $slug,
+        int $showId
+    ): void {
+        $slug = strtolower(trim($slug));
+        if ($slug === '' || $showId <= 0) {
+            return;
+        }
+        try {
+            $labels->fulfillMarketplaceOrder($slug, $showId);
+        } catch (\Throwable $e) {
+            // SOF already has the number; Shopify retry happens on the next pull/job.
+        }
     }
 
     /**
@@ -4819,9 +4921,11 @@ class SalesOrderFulfillmentController extends Controller
         return [
             'channel_count' => (int) $channelCount,
             'pending_total' => $pendingTotal,
+            // Accurate split counts load with the Label Created tabs (avoid full row hydrate here).
             'fulfilled_24h' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->fulfilledOrdersQuery($slug), $slug)
             ),
+            'label_created_no_tracking' => 0,
             'scan_done_24h' => $scanDone,
             'in_transit_total' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug)
@@ -6151,6 +6255,7 @@ class SalesOrderFulfillmentController extends Controller
             'channel_count' => (int) $channelCount,
             'pending_total' => $pendingTotal,
             'fulfilled_24h' => $this->fulfilledLast24HoursCount(),
+            'label_created_no_tracking' => count($this->labelCreatedNoTrackingRows()),
             'scan_done_24h' => $scanDone,
             'in_transit_total' => $this->inTransitOrdersCount(),
             'in_received_total' => $inReceived,
@@ -6247,6 +6352,7 @@ class SalesOrderFulfillmentController extends Controller
             'channel_count' => 'Channels',
             'pending_total' => 'Pending',
             'fulfilled_24h' => 'Label Created / No Scan',
+            'label_created_no_tracking' => 'Label Created / No Tracking',
             'received_by_carrier_total' => 'Received by carrier',
             'in_transit_total' => 'In Transit',
             'invoiced_total' => 'Invoiced',

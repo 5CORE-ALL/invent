@@ -166,7 +166,7 @@ class GofoExpressService
             return null;
         }
 
-        $candidates = self::orderNoCandidates($refs, $fast ? 2 : 8);
+        $candidates = self::orderNoCandidates($refs, $fast ? 4 : 8);
 
         foreach ($candidates as $orderNo) {
             $fromTrack = null;
@@ -216,7 +216,8 @@ class GofoExpressService
      */
     public static function orderNoCandidates(array $refs, int $max = 8): array
     {
-        $out = [];
+        $amzFirst = [];
+        $rest = [];
         foreach ($refs as $ref) {
             foreach (self::orderNoVariants((string) $ref) as $candidate) {
                 $plain = strtolower(ltrim($candidate, '#'));
@@ -227,13 +228,21 @@ class GofoExpressService
                 if (preg_match('/^\d{5,10}$/', $plain)) {
                     continue;
                 }
-                if (! in_array($candidate, $out, true)) {
-                    $out[] = $candidate;
+                // 4Seller buys Amazon labels with Amz111-… as GOFO orderNo — try those first.
+                $bucket = preg_match('/^#?amz\d{3}-\d{7}-\d{7}$/i', $candidate) === 1
+                    ? 'amzFirst'
+                    : 'rest';
+                if ($bucket === 'amzFirst') {
+                    if (! in_array($candidate, $amzFirst, true)) {
+                        $amzFirst[] = $candidate;
+                    }
+                } elseif (! in_array($candidate, $rest, true) && ! in_array($candidate, $amzFirst, true)) {
+                    $rest[] = $candidate;
                 }
             }
         }
 
-        return array_slice($out, 0, max(1, $max));
+        return array_slice(array_merge($amzFirst, $rest), 0, max(1, $max));
     }
 
     /**
@@ -383,6 +392,7 @@ class GofoExpressService
 
         try {
             $pending = Http::timeout($this->timeout)
+                ->withoutVerifying()
                 ->acceptJson()
                 ->withBasicAuth($this->username, $this->password);
 
