@@ -17601,19 +17601,18 @@ class ChannelMasterController extends Controller
                         }
                     }
                 } elseif ($isAll && $metric !== 'cvr') {
+                    // Pin only the last point. Scaling the whole series kept the
+                    // snapshot-to-snapshot slope, so the last point could be green
+                    // while the badge dot (live vs previous day) was red.
                     $badgeValue = $request->input('badge_value');
                     $hasBadge = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue));
                     $tableRef = $hasBadge
                         ? (float) $badgeValue
                         : $this->getAllChannelsTableReference($metric);
                     if ($tableRef !== null && $tableRef != 0) {
-                        $chartLatest = (float) end($chartData)['value'];
-                        if ($chartLatest != 0 && abs($chartLatest - $tableRef) > 0.01) {
-                            $sf = $tableRef / $chartLatest;
-                            foreach ($chartData as &$pt) {
-                                $pt['value'] = round($pt['value'] * $sf, 2);
-                            }
-                            unset($pt);
+                        $lastIdx = array_key_last($chartData);
+                        if ($lastIdx !== null) {
+                            $chartData[$lastIdx]['value'] = round((float) $tableRef, 2);
                         }
                     }
                 } elseif (! $isAll) {

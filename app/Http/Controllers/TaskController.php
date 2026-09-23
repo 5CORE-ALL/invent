@@ -1456,21 +1456,28 @@ class TaskController extends Controller
     }
 
     /**
-     * Yesterday on the Pacific clock. Task datetimes are stored as business-TZ
-     * wall clock (IST), so the PST day bounds are converted into that clock
-     * before they are compared. The date itself stays the Pacific calendar day.
+     * Yesterday on the Pacific calendar.
      *
-     * @return array{date: string, start: string, end: string, label: string}
+     * completion_date and deleted_at are written with now() in the app timezone
+     * (America/Los_Angeles), so those bounds stay on that clock. start_date is
+     * the office wall clock (IST), so the same Pacific instants are converted
+     * before they are compared to a TID.
+     *
+     * @return array{date: string, start: string, end: string, tid_start: string, tid_end: string, label: string}
      */
     protected function yesterdayDoneWindow(): array
     {
         $day = \Carbon\Carbon::today('America/Los_Angeles')->subDay();
         $storageTz = TaskBusinessTime::tz();
+        $start = $day->copy()->startOfDay();
+        $end = $day->copy()->endOfDay();
 
         return [
             'date' => $day->toDateString(),
-            'start' => $day->copy()->startOfDay()->timezone($storageTz)->format('Y-m-d H:i:s'),
-            'end' => $day->copy()->endOfDay()->timezone($storageTz)->format('Y-m-d H:i:s'),
+            'start' => $start->format('Y-m-d H:i:s'),
+            'end' => $end->format('Y-m-d H:i:s'),
+            'tid_start' => $start->copy()->timezone($storageTz)->format('Y-m-d H:i:s'),
+            'tid_end' => $end->copy()->timezone($storageTz)->format('Y-m-d H:i:s'),
             'label' => $day->format('D, M j, Y'),
         ];
     }
@@ -1590,7 +1597,7 @@ class TaskController extends Controller
         if ($includeMissed) {
             Task::query()
                 ->where('is_missed', 1)
-                ->whereBetween('start_date', [$window['start'], $window['end']])
+                ->whereBetween('start_date', [$window['tid_start'], $window['tid_end']])
                 ->orderBy('start_date')
                 ->get(['id', 'title', 'assign_to', 'completion_date'])
                 ->each(fn ($task) => $push($task, false, 'Missed'));
@@ -2057,7 +2064,7 @@ class TaskController extends Controller
 
         Task::query()
             ->where('is_missed', 1)
-            ->whereBetween('start_date', [$window['start'], $window['end']])
+            ->whereBetween('start_date', [$window['tid_start'], $window['tid_end']])
             ->orderBy('start_date')
             ->get()
             ->each(function ($task) use (&$items, &$liveIds, $matches) {

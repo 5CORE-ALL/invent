@@ -9,6 +9,7 @@ use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignNameMatcher;
 use App\Support\GoogleShoppingCampaignsRawRule;
+use App\Support\GoogleShoppingPushWindow;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -75,26 +76,9 @@ class UpdateSBIDCronCommand extends Command
             $customerId = config('services.google_ads.login_customer_id');
             $this->info("Customer ID: {$customerId}");
 
-            // Calculate date ranges - same logic as GoogleAdsDateRangeTrait
-            // Google Ads data is fetched daily at 12 PM via cron
-            // If it's before 12 PM, yesterday's data won't be available yet
-            $today = now();
-            $currentHour = (int) $today->format('H');
-            $endDateDaysBack = ($currentHour < 12) ? 2 : 1; // Use 2 days ago if before 12 PM, otherwise yesterday
-            $l1DaysBack = $endDateDaysBack;
-            $endDate = $today->copy()->subDays($endDateDaysBack)->format('Y-m-d');
-
-            $dateRanges = [
-                'L1' => [
-                    'start' => $today->copy()->subDays($l1DaysBack)->format('Y-m-d'),
-                    'end' => $today->copy()->subDays($l1DaysBack)->format('Y-m-d'),
-                ],
-                'L7' => [
-                    // L7 = last 7 days including end date (end date - 6 days = 7 days total)
-                    'start' => $today->copy()->subDays($endDateDaysBack + 6)->format('Y-m-d'),
-                    'end' => $endDate,
-                ],
-            ];
+            // Same end date as the shopping grid (latest stored campaign date).
+            // The 17:48 IST push runs after the morning fetch, so that date is already yesterday.
+            $dateRanges = GoogleShoppingPushWindow::fromCampaignTable();
 
             $this->info("Date ranges - L1: {$dateRanges['L1']['start']} to {$dateRanges['L1']['end']}");
             $this->info("Date ranges - L7: {$dateRanges['L7']['start']} to {$dateRanges['L7']['end']}");
@@ -131,7 +115,7 @@ class UpdateSBIDCronCommand extends Command
             $this->info('Found '.$parentMasters->count().' PARENT product masters (out of '.$productMasters->count().' total)');
 
             // Stream SHOPPING campaigns (L30 range) and aggregate L1/L7 in memory to avoid OOM
-            $l30Start = $today->copy()->subDays($endDateDaysBack + 29)->format('Y-m-d');
+            $l30Start = $dateRanges['L30']['start'];
             $l1Start = $dateRanges['L1']['start'];
             $l1End = $dateRanges['L1']['end'];
             $l7Start = $dateRanges['L7']['start'];

@@ -780,7 +780,7 @@
                             Today Sales: <span id="total-today-sales">$0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % is P-Sales vs Sales.">
-                            <span class="summary-trend-dot none" data-metric="p_sales" title="P-Sales vs Sales"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
+                            <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amz = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amz Daily Sales); other channels vary.">
                             <span class="summary-trend-dot none" data-metric="l30_orders" title="Rolling history"></span>Orders: <span id="total-l30-orders">0</span>
@@ -820,7 +820,7 @@
                             <span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>P-Npft%: <span id="avg-p-npft">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft_amt" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is last-7-day pace × 30; spend is current L30 ad spend. % is P NPFT $ vs NPFT $.">
-                            <span class="summary-trend-dot none" data-metric="p_npft_amt" title="P NPFT $ vs NPFT $"></span>P NPFT: <span id="total-p-npft">$0</span><span id="total-p-npft-vs-npft"></span>
+                            <span class="summary-trend-dot none" data-metric="p_npft_amt" title="Rolling history"></span>P NPFT: <span id="total-p-npft">$0</span><span id="total-p-npft-vs-npft"></span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="yNprft% = blended NPFT% weighted by Y Sales: sum(Y Sales × NPFT%) ÷ sum(Y Sales). Same rate used for the Y NPFT $ column.">
                             <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>yNprft%: <span id="avg-y-npft">0.0%</span>
@@ -2082,24 +2082,24 @@
                 document.querySelectorAll('i.metric-chart-icon, i.ad-chart-icon').forEach(function(el) {
                     var ch = el.getAttribute('data-channel');
                     var metric = el.getAttribute('data-metric');
-                    if (metric === 'p_sales') {
+                    if (metric === 'p_sales' && el.hasAttribute('data-p-sales')) {
                         var p = parseFloat(el.getAttribute('data-p-sales'));
                         var s = parseFloat(el.getAttribute('data-l30-sales'));
                         if (!isNaN(p) && !isNaN(s)) {
-                            var pct = pSalesVsL30Pct(p, s);
+                            var growthPct = pSalesVsL30Pct(p, s);
                             el.style.color = pSalesVsL30Color(p, s);
                             el.style.display = '';
-                            el.title = pSalesVsL30Title(pct);
+                            el.title = pSalesVsL30Title(growthPct);
                             return;
                         }
                     }
-                    if (metric === 'p_npft_amt') {
+                    if (metric === 'p_npft_amt' && el.hasAttribute('data-p-npft')) {
                         var pAmt = parseFloat(el.getAttribute('data-p-npft'));
                         var nAmt = parseFloat(el.getAttribute('data-npft-amt'));
-                        var pct = pNpftAmtVsNpftPct(pAmt, nAmt);
+                        var npftPct = pNpftAmtVsNpftPct(pAmt, nAmt);
                         el.style.color = pNpftAmtVsNpftColor(pAmt, nAmt);
                         el.style.display = '';
-                        el.title = pNpftAmtVsNpftTitle(pct);
+                        el.title = pNpftAmtVsNpftTitle(npftPct);
                         return;
                     }
                     var color = getMetricDotColor(ch, metric || 'ad_spend');
@@ -5079,52 +5079,6 @@
                 $('#summary-stats .summary-trend-dot[data-metric]').each(function() {
                     var metric = $(this).attr('data-metric');
                     if (!metric) return;
-                    if (metric === 'p_sales') {
-                        var rows = [];
-                        try {
-                            rows = (table && table.getData) ? (table.getData('active') || table.getData() || []) : [];
-                        } catch (e) {
-                            rows = (table && table.getData) ? (table.getData() || []) : [];
-                        }
-                        var pSum = 0, sSum = 0;
-                        rows.forEach(function(row) {
-                            pSum += pSalesFromRow(row);
-                            sSum += parseNumber(row['L30 Sales'] || 0);
-                        });
-                        var pCls = 'none';
-                        if (sSum > 0) {
-                            if (Math.abs(pSum - sSum) < 0.5) pCls = 'flat';
-                            else pCls = pSum > sSum ? 'up' : 'down';
-                        } else if (pSum > 0) {
-                            pCls = 'up';
-                        }
-                        $(this).removeClass('up down flat none').addClass(pCls);
-                        return;
-                    }
-                    if (metric === 'p_npft_amt') {
-                        var npftRows = [];
-                        try {
-                            npftRows = (table && table.getData) ? (table.getData('active') || table.getData() || []) : [];
-                        } catch (e) {
-                            npftRows = (table && table.getData) ? (table.getData() || []) : [];
-                        }
-                        var pAmtSum = 0, nAmtSum = 0;
-                        npftRows.forEach(function(row) {
-                            pAmtSum += pNetPftFromRow(row);
-                            nAmtSum += rowNetPftFromRow(row);
-                        });
-                        var nCls = 'none';
-                        if (Math.abs(nAmtSum) > 0.5) {
-                            if (Math.abs(pAmtSum - nAmtSum) < 0.5) nCls = 'flat';
-                            else nCls = pAmtSum > nAmtSum ? 'up' : 'down';
-                        } else if (pAmtSum > 0) {
-                            nCls = 'up';
-                        } else if (pAmtSum < 0) {
-                            nCls = 'down';
-                        }
-                        $(this).removeClass('up down flat none').addClass(nCls);
-                        return;
-                    }
                     // Prefer the blended All pair. Only treat it as settled when
                     // both values exist — a leftover gray hex must not lock Every
                     // summary badge to flat.
@@ -5359,25 +5313,20 @@
                     $el.text(toCompact(val));
                     const pct = pSalesVsL30Pct(totalPSales, totalL30Sales);
                     const $pct = $('#total-p-sales-vs-sales');
-                    const $dot = $('#summary-stats .summary-trend-dot[data-metric="p_sales"]');
-                    $dot.removeClass('up down flat none');
                     if (pct == null || !isFinite(pct)) {
                         $pct.text('');
-                        $dot.addClass(totalPSales > 0 && totalL30Sales <= 0 ? 'up' : 'none');
                     } else if (Math.abs(pct) < 0.1) {
-                        $pct.text('0%').css('color', '#e5e7eb');
-                        $dot.addClass('flat');
+                        $pct.text(' 0%').css('color', '#e5e7eb');
                     } else {
                         const isUp = pct > 0;
-                        $pct.text((isUp ? '+' : '−') + Math.abs(pct).toFixed(0) + '%')
+                        $pct.text(' ' + (isUp ? '+' : '−') + Math.abs(pct).toFixed(0) + '%')
                             .css('color', isUp ? '#86efac' : '#fecaca');
-                        $dot.addClass(isUp ? 'up' : 'down');
                     }
                     const pctLabel = (pct != null && isFinite(pct))
                         ? (' ' + (pct > 0 ? '+' : (pct < 0 ? '−' : '')) + Math.abs(pct).toFixed(0) + '% vs Sales')
                         : '';
                     $el.closest('.badge').attr('title',
-                        'Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. $' + val.toLocaleString('en-US') + pctLabel + '. Green/red = P-Sales vs Sales.');
+                        'Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. $' + val.toLocaleString('en-US') + pctLabel + '. Dot matches the chart (vs previous day).');
                     setBadgeExact($el, val);
                 })();
                 (function() {
@@ -5502,25 +5451,20 @@
                     $el.text(toCompact(val));
                     const pct = pNpftAmtVsNpftPct(totalPNet, netProfit);
                     const $pct = $('#total-p-npft-vs-npft');
-                    const $dot = $('#summary-stats .summary-trend-dot[data-metric="p_npft_amt"]');
-                    $dot.removeClass('up down flat none');
                     if (pct == null || !isFinite(pct)) {
                         $pct.text('');
-                        $dot.addClass(totalPNet > 0 && Math.abs(netProfit) <= 0.5 ? 'up' : (totalPNet < 0 && Math.abs(netProfit) <= 0.5 ? 'down' : 'none'));
                     } else if (Math.abs(pct) < 0.1) {
-                        $pct.text('0%').css('color', '#e5e7eb');
-                        $dot.addClass('flat');
+                        $pct.text(' 0%').css('color', '#e5e7eb');
                     } else {
                         const isUp = pct > 0;
-                        $pct.text((isUp ? '+' : '−') + Math.abs(pct).toFixed(0) + '%')
+                        $pct.text(' ' + (isUp ? '+' : '−') + Math.abs(pct).toFixed(0) + '%')
                             .css('color', isUp ? '#86efac' : '#fecaca');
-                        $dot.addClass(isUp ? 'up' : 'down');
                     }
                     const pctLabel = (pct != null && isFinite(pct))
                         ? (' ' + (pct > 0 ? '+' : (pct < 0 ? '−' : '')) + Math.abs(pct).toFixed(0) + '% vs NPFT $')
                         : '';
                     $el.closest('.badge').attr('title',
-                        'Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is (L7 ÷ 7) × 30. $' + val.toLocaleString('en-US') + pctLabel + '. Green/red = P NPFT $ vs NPFT $.');
+                        'Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is (L7 ÷ 7) × 30. $' + val.toLocaleString('en-US') + pctLabel + '. Dot matches the chart (vs previous day).');
                     setBadgeExact($el, val);
                 })();
                 (function() {
