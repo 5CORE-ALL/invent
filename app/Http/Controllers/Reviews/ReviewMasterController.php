@@ -134,7 +134,7 @@ class ReviewMasterController extends Controller
                     'id'             => (int) $r->id,
                     'sku'            => $r->sku,
                     'product_name'   => $r->product_name,
-                    'marketplace'    => $r->marketplace,
+                    'marketplace'    => SkuReviewMarketplace::label((string) ($r->marketplace ?? '')),
                     'rating'         => $r->rating !== null ? (int) $r->rating : null,
                     'review_title'   => $r->review_title,
                     'review_text'    => $r->review_text,

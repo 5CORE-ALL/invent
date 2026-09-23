@@ -49,4 +49,66 @@ class SkuReviewMarketplace
 
         return $out;
     }
+
+    /**
+     * One display name per channel. temu / temu1 / temu 1 all become Temu.
+     */
+    public static function label(string $marketplace): string
+    {
+        $compact = strtolower(preg_replace('/\s+/', '', trim($marketplace)) ?? '');
+        if ($compact === '') {
+            return '';
+        }
+
+        return match (true) {
+            $compact === 'amazon' => 'Amazon',
+            in_array($compact, ['ebay', 'ebay1', 'ebayone'], true) => 'Ebay',
+            in_array($compact, ['ebay2', 'ebaytwo', 'ebay2op'], true) => 'Ebay 2',
+            in_array($compact, ['ebay3', 'ebaythree'], true) => 'Ebay 3',
+            in_array($compact, ['temu', 'temu1'], true) => 'Temu',
+            $compact === 'temu2' => 'Temu 2',
+            $compact === 'temu3' => 'Temu 3',
+            in_array($compact, ['tiktok', 'tiktok1', 'tiktokshop'], true) => 'TikTok',
+            in_array($compact, ['tiktok2', 'tiktokshop2'], true) => 'TikTok 2',
+            in_array($compact, ['shopify', 'sb2c', 'shopifyb2c', 'b2c'], true) => 'Shopify B2C',
+            in_array($compact, ['sb2b', 'shopifyb2b', 'b2b'], true) => 'Shopify B2B',
+            in_array($compact, ['newegg', 'neweggb2c'], true) => 'Newegg',
+            in_array($compact, ['macy', 'macys'], true) => 'Macys',
+            in_array($compact, ['aliexpress', 'ali'], true) => 'Aliexpress',
+            $compact === 'walmart' => 'Walmart',
+            $compact === 'reverb' => 'Reverb',
+            $compact === 'faire' => 'Faire',
+            $compact === 'shein' => 'Shein',
+            default => trim($marketplace),
+        };
+    }
+
+    /**
+     * Filter options. Includes channels that may have no reviews yet.
+     *
+     * @return list<string>
+     */
+    public static function options(): array
+    {
+        return [
+            'Aliexpress',
+            'Amazon',
+            'Ebay',
+            'Ebay 2',
+            'Ebay 3',
+            'Faire',
+            'Macys',
+            'Newegg',
+            'Reverb',
+            'Shein',
+            'Shopify B2C',
+            'Shopify B2B',
+            'Temu',
+            'Temu 2',
+            'Temu 3',
+            'TikTok',
+            'TikTok 2',
+            'Walmart',
+        ];
+    }
 }

@@ -673,6 +673,7 @@
                       } },
                     { title: 'L7 Views', field: 'l7_views', width: 80, hozAlign: 'right' },
                     { title: 'L30 Views', field: 'l30_views', width: 80, hozAlign: 'right' },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'amazon'])
                     { title: 'Ad Present', field: 'ad_present', width: 90, hozAlign: 'center',
                       headerTooltip: 'Yes if this parent/SKU has a campaign on amazon-ads/missing',
                       formatter: c => {

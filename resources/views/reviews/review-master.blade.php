@@ -391,13 +391,45 @@
             const empty  = '☆'.repeat(5 - v);
             return `<span class="stars">${filled}<span class="text-muted">${empty}</span></span>`;
         }
+        const REVIEW_MARKETPLACES = @json(\App\Support\SkuReviewMarketplace::options());
+
+        function marketplaceFilterValues(rows) {
+            const extras = [];
+            (rows || []).forEach(function (r) {
+                const m = r && r.marketplace;
+                if (m && REVIEW_MARKETPLACES.indexOf(m) === -1 && extras.indexOf(m) === -1) extras.push(m);
+            });
+            const values = { '': 'All' };
+            REVIEW_MARKETPLACES.concat(extras).forEach(function (m) { values[m] = m; });
+            return values;
+        }
+
+        function fillMarketplaceSelect(rows) {
+            const sel = document.getElementById('filter_marketplace');
+            if (!sel) return;
+            const cur = sel.value;
+            const values = marketplaceFilterValues(rows);
+            sel.innerHTML = Object.keys(values).map(function (key) {
+                const label = key === '' ? 'All Marketplaces' : values[key];
+                return '<option value="' + escapeHtml(key) + '">' + escapeHtml(label) + '</option>';
+            }).join('');
+            sel.value = cur;
+        }
+
         function marketplaceFmt(cell) {
             const v = cell.getValue();
             if (!v) return '<span class="text-muted">—</span>';
-            const colors = { amazon:'primary', ebay:'warning', ebay1:'warning', ebay2:'warning', ebay3:'warning',
-                             walmart:'info', temu:'success', 'temu 1':'success', shopify:'dark', csv:'secondary' };
-            const c = colors[v.toLowerCase()] || 'secondary';
-            return `<span class="badge bg-${c} bg-opacity-25 text-${c} text-capitalize">${escapeHtml(v)}</span>`;
+            const key = String(v).toLowerCase();
+            const colors = {
+                amazon: 'primary',
+                ebay: 'warning', 'ebay 2': 'warning', 'ebay 3': 'warning',
+                walmart: 'info',
+                temu: 'success', 'temu 2': 'success', 'temu 3': 'success',
+                'shopify b2c': 'dark', 'shopify b2b': 'dark',
+                newegg: 'danger', reverb: 'primary',
+            };
+            const c = colors[key] || 'secondary';
+            return `<span class="badge bg-${c} bg-opacity-25 text-${c}">${escapeHtml(v)}</span>`;
         }
         function reviewTextFmt(cell) {
             const row  = cell.getRow().getData();
@@ -439,8 +471,8 @@
                   return v ? `<span title="${escapeHtml(v)}">${escapeHtml(v.length > 30 ? v.substring(0,30)+'…' : v)}</span>`
                            : '<span class="text-muted">—</span>';
               } },
-            { title: 'Marketplace',  field: 'marketplace',   width: 110, formatter: marketplaceFmt,
-              headerFilter: 'list', headerFilterParams: { valuesLookup: true, clearable: true } },
+            { title: 'Marketplace',  field: 'marketplace',   width: 120, formatter: marketplaceFmt,
+              headerFilter: 'list', headerFilterParams: { values: marketplaceFilterValues([]), clearable: true, autocomplete: true } },
             { title: 'Rating',       field: 'rating',        width: 110, hozAlign: 'center', sorter: 'number',
               formatter: ratingFmt,
               headerFilter: 'list', headerFilterParams: { values: { '': 'All', '1':'1', '2':'2', '3':'3', '4':'4', '5':'5' } } },
@@ -572,14 +604,13 @@
                 paginationCounter: 'rows',
                 placeholder: 'No reviews yet. Click <strong>Import CSV</strong> above to load data.',
                 ajaxResponse: function (url, params, response) {
-                    // Populate marketplace dropdown from data
-                    const mps = [...new Set(response.map(r => r.marketplace).filter(Boolean))].sort();
-                    const sel = document.getElementById('filter_marketplace');
-                    if (sel) {
-                        const cur = sel.value;
-                        sel.innerHTML = '<option value="">All Marketplaces</option>' +
-                            mps.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
-                        sel.value = cur;
+                    const rows = Array.isArray(response) ? response : [];
+                    fillMarketplaceSelect(rows);
+                    const col = table.getColumn('marketplace');
+                    if (col) {
+                        col.updateDefinition({
+                            headerFilterParams: { values: marketplaceFilterValues(rows), clearable: true, autocomplete: true },
+                        });
                     }
                     return response;
                 },

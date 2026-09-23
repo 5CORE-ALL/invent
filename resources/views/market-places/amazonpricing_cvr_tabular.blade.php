@@ -1821,6 +1821,7 @@
                             return Math.round(value || 0);
                         }
                     },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'amazon'])
 
                     {
                         title: "CVR L60",

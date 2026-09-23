@@ -4260,6 +4260,7 @@
                             return formatted;
                         }
                     },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'amazon'])
 
                     {
                         title: "Std Prc",
