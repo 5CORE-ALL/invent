@@ -1223,7 +1223,7 @@
                             <span class="badge sof-summary-badge" id="sof-all-order-badge" data-sof-metric="all_order_total" style="background:#e9ecef; color:#343a40; border:1px solid #ced4da;" title="All Order — click for history graph">
                                 All Order: <span id="sof-all-order-total">0</span><i class="sof-hist-dot" data-sof-metric="all_order_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
-                            <span class="badge sof-summary-badge" id="sof-loss-making-badge" title="Loss-making orders in the last 7 days — click to open the tab">
+                            <span class="badge sof-summary-badge" id="sof-loss-making-badge" title="Loss-making orders in the last 30 days — click to open the tab">
                                 Loss Making: <span id="sof-loss-making-total">0</span>
                             </span>
                             <span class="badge sof-summary-badge" id="sof-doba-orders-badge" title="Pending Doba labels still on Send label — click to open the tab">
@@ -1545,12 +1545,12 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-not-authorized-pane" role="tabpanel" aria-labelledby="sof-not-authorized-tab">
-                            <p class="small text-muted mb-2">USPS refused these tracking numbers (MID not authorized). This is not a carrier scan, in-transit, or delivery status.</p>
+                            <p class="small text-muted mb-2">Last 30 Eastern days. USPS refused these tracking numbers (MID not authorized). This is not a carrier scan, in-transit, or delivery status.</p>
                             <div id="sof-not-authorized-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-loss-making-pane" role="tabpanel" aria-labelledby="sof-loss-making-tab">
-                            <p class="small text-muted mb-2">Last 7 Eastern days. Lowest SKU profit (NPFT%, then GPFT%) is at the top. Negative profit rows are highlighted.</p>
+                            <p class="small text-muted mb-2">Last 30 Eastern days. Lowest SKU profit (NPFT%, then GPFT%) is at the top. Negative profit rows are highlighted.</p>
                             <div id="sof-loss-making-table" style="height: calc(100vh - 400px);"></div>
                         </div>
                     </div>
@@ -2082,6 +2082,11 @@
         let to = toEl ? (toEl.value || '') : '';
         if (!from) from = sofDefaultDateFrom();
         if (!to) to = sofDefaultDateTo();
+        const earliest = sofDefaultDateFrom();
+        if (from < earliest) {
+            from = earliest;
+            if (fromEl) fromEl.value = earliest;
+        }
         return {
             date_from: from,
             date_to: to,
@@ -5108,7 +5113,7 @@
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params || {},
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,
@@ -5426,7 +5431,7 @@
 
         lossMakingTable = new Tabulator('#sof-loss-making-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
-            placeholder: 'Loading last 7 days of lowest-profit orders…',
+            placeholder: 'Loading last 30 days of lowest-profit orders…',
             initialSort: [
                 { column: 'npft_pct', dir: 'asc' },
                 { column: 'gpft_pct', dir: 'asc' },
@@ -5438,7 +5443,7 @@
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params || {},
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,

@@ -5434,11 +5434,16 @@ class SalesOrderFulfillmentController extends Controller
 
     protected function notAuthorizedTrackingQuery()
     {
+        [$from, $to] = $this->resolveOrderDateRange();
+        $bounds = $this->californiaSqlBounds($from, $to);
+
         return DB::table('carrier_tracking_statuses')
             ->where(function ($q) {
                 $q->where('shipment_status_detail', 'like', '%not authorized%')
                     ->orWhere('shipment_status_detail', 'like', '%Tracking API Access%');
-            });
+            })
+            ->where('created_at', '>=', $bounds['from_dt'])
+            ->where('created_at', '<=', $bounds['to_dt']);
     }
 
     /**
@@ -5550,6 +5555,11 @@ class SalesOrderFulfillmentController extends Controller
 
         if ($from->gt($to)) {
             [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
+        }
+
+        $earliest = now($tz)->subDays(30)->startOfDay();
+        if ($from->lt($earliest)) {
+            $from = $earliest;
         }
 
         return [$from, $to];

@@ -86,7 +86,7 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
     }
 
     /**
-     * Last 7 Eastern days of marketplace orders, lowest SKU-site profit first.
+     * Last 30 Eastern days of marketplace orders, lowest SKU-site profit first.
      */
     public function lossMakingData(): JsonResponse
     {
@@ -94,7 +94,7 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
             @set_time_limit(120);
 
             $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->scopedToLast7Days($this->allOrdersQuery($slug), $slug),
+                fn (string $slug) => $this->scopedToLast30Days($this->allOrdersQuery($slug), $slug),
                 false,
                 true
             );
@@ -124,22 +124,6 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
                 'loss_count' => 0,
             ], 500);
         }
-    }
-
-    /**
-     * Inclusive last 7 Eastern calendar days (today and the 6 days before).
-     */
-    protected function scopedToLast7Days(?Builder $query, string $slug): ?Builder
-    {
-        if ($query === null) {
-            return null;
-        }
-
-        $tz = self::SOF_TIMEZONE;
-        $from = now($tz)->subDays(6)->startOfDay();
-        $to = now($tz)->endOfDay();
-
-        return $this->applyOrderDateRangeFilter($query, $from, $to, $slug);
     }
 
     /**
