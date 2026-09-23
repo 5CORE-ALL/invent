@@ -3074,6 +3074,66 @@ class TikTokShopService
             || str_contains($message, 'keep the submitted identifier');
     }
 
+    public static function isPackageDimensionsError(string $message): bool
+    {
+        $message = strtolower($message);
+
+        return str_contains($message, 'package_dimensions')
+            || str_contains($message, 'package dimensions');
+    }
+
+    /**
+     * TikTok rejects inventory Partial Edit when a LIVE listing has 0 / blank box size.
+     * Keep any positive values already on the product; fill the rest with a shippable default.
+     *
+     * @param  array<string, mixed>  $product
+     * @return array{package_dimensions: array{length: string, width: string, height: string, unit: string}, package_weight: array{value: string, unit: string}}
+     */
+    public static function positivePackageFields(array $product): array
+    {
+        $dims = is_array($product['package_dimensions'] ?? null) ? $product['package_dimensions'] : [];
+        $unit = strtoupper(trim((string) ($dims['unit'] ?? 'INCH')));
+        if (! in_array($unit, ['INCH', 'CENTIMETER'], true)) {
+            $unit = 'INCH';
+        }
+        $defaults = $unit === 'CENTIMETER'
+            ? ['length' => '25.00', 'width' => '20.00', 'height' => '15.00']
+            : ['length' => '10.00', 'width' => '8.00', 'height' => '6.00'];
+
+        $weight = is_array($product['package_weight'] ?? null) ? $product['package_weight'] : [];
+        $weightUnit = strtoupper(trim((string) ($weight['unit'] ?? 'POUND')));
+        if (! in_array($weightUnit, ['POUND', 'KILOGRAM', 'GRAM'], true)) {
+            $weightUnit = 'POUND';
+        }
+        $weightDefault = match ($weightUnit) {
+            'KILOGRAM' => '0.45',
+            'GRAM' => '450',
+            default => '1.00',
+        };
+
+        return [
+            'package_dimensions' => [
+                'length' => self::positivePackageNumber($dims['length'] ?? null, $defaults['length']),
+                'width' => self::positivePackageNumber($dims['width'] ?? null, $defaults['width']),
+                'height' => self::positivePackageNumber($dims['height'] ?? null, $defaults['height']),
+                'unit' => $unit,
+            ],
+            'package_weight' => [
+                'value' => self::positivePackageNumber($weight['value'] ?? null, $weightDefault),
+                'unit' => $weightUnit,
+            ],
+        ];
+    }
+
+    protected static function positivePackageNumber(mixed $value, string $fallback): string
+    {
+        if (is_numeric($value) && (float) $value > 0) {
+            return number_format((float) $value, 2, '.', '');
+        }
+
+        return $fallback;
+    }
+
     /**
      * Keep the GTIN/EAN/UPC TikTok already accepted. Omitting it on Partial Edit
      * is treated as a change and LIVE listings reject the qty push.
@@ -3495,6 +3555,26 @@ class TikTokShopService
     }
 
     /**
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    protected function withPositivePackageSize(string $productId, array $body): array
+    {
+        $product = $this->searchProductDataById($productId);
+        if ($product === []) {
+            try {
+                $fetched = $this->fetchProductData($productId);
+                $product = is_array($fetched) ? $fetched : [];
+            } catch (\Throwable $e) {
+                $this->rememberIpAllowList($e->getMessage());
+                $product = [];
+            }
+        }
+
+        return array_merge($body, self::positivePackageFields($product));
+    }
+
+    /**
      * @param  array<string, mixed>  $params
      * @return array{success: bool, message: string, retry?: bool}
      */
@@ -3571,6 +3651,9 @@ class TikTokShopService
         }
 
         $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows);
+        if (self::isPackageDimensionsError($lastMessage)) {
+            $partialParams = $this->withPositivePackageSize($productId, $partialParams);
+        }
         if ($this->partialEditSkuHasSellerSku($partialParams)) {
         $result = $this->invokeSdkInventory($productId, $partialParams, '202309', 'partial');
         if (! empty($result['success'])) {
@@ -3588,10 +3671,13 @@ class TikTokShopService
             'error' => $lastMessage,
         ]);
 
-            if ($this->isSalesAttributesError($lastMessage) || self::isIdentifierCodeLockedError($lastMessage)) {
+            if ($this->isSalesAttributesError($lastMessage) || self::isIdentifierCodeLockedError($lastMessage) || self::isPackageDimensionsError($lastMessage)) {
             $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
                 if (self::isIdentifierCodeLockedError($lastMessage)) {
                     $partialParams = $this->partialEditParamsWithoutSalesAttributes($partialParams);
+                }
+                if (self::isPackageDimensionsError($lastMessage)) {
+                    $partialParams = $this->withPositivePackageSize($productId, $partialParams);
                 }
                 if ($this->partialEditSkuHasSellerSku($partialParams)) {
             $retry = $this->invokeSdkInventory($productId, $partialParams, '202309', 'partial');
@@ -3683,6 +3769,10 @@ class TikTokShopService
                         'base' => $host,
                         'error' => $lastError,
                     ]);
+                    if (self::isPackageDimensionsError($lastError)) {
+                        $this->rememberSkipInventoryUpdateApi();
+                        break;
+                    }
                     if ($this->isProductStatusRestrictionError($lastError)) {
                         $this->rememberSkipInventoryUpdateApi();
                         break;
@@ -3692,6 +3782,9 @@ class TikTokShopService
         }
 
         $full = $this->partialEditInventoryParams($productId, $skuId, $rows);
+        if (self::isPackageDimensionsError($lastError)) {
+            $full = $this->withPositivePackageSize($productId, $full);
+        }
         if (! $this->partialEditSkuHasSellerSku($full)) {
             $full = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
         }
@@ -3736,6 +3829,26 @@ class TikTokShopService
                     ]);
                 if ($this->isEnforcementBlockedError($lastError)) {
                     return ['success' => false, 'message' => $lastError];
+                }
+                if (self::isPackageDimensionsError($lastError) && ! isset($full['package_dimensions'])) {
+                    $full = $this->withPositivePackageSize($productId, $full);
+                    try {
+                        $this->tiktokOpenApi('POST', $path, [], $full, 20, false, $host);
+                        $this->workingInventoryPath = str_contains($path, '202509') ? '202509|partial' : '202309|partial';
+                        Log::info('TikTok inventory updated after package dimension repair', [
+                            'product_id' => $productId,
+                            'sku_id' => $skuId,
+                            'path' => $path,
+                        ]);
+
+                        return ['success' => true, 'message' => 'Inventory updated.'];
+                    } catch (\Throwable $dimEx) {
+                        $lastError = $dimEx->getMessage();
+                        $this->rememberIpAllowList($lastError);
+                        if ($this->ipAllowListBlocked || $this->isEnforcementBlockedError($lastError)) {
+                            return ['success' => false, 'message' => $lastError];
+                        }
+                    }
                 }
                 if (! $triedForceSearch && ($this->isSalesAttributesError($lastError) || self::isIdentifierCodeLockedError($lastError))) {
                     $triedForceSearch = true;

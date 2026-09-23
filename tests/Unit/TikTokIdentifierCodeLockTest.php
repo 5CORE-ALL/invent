@@ -76,4 +76,43 @@ class TikTokIdentifierCodeLockTest extends TestCase
         $this->assertTrue(TikTokShopService::isIdentifierCodeLockedError($message));
         $this->assertFalse(TikTokShopService::isIdentifierCodeLockedError('12052901 Operation not allowed for this product status'));
     }
+
+    public function test_zero_package_dimensions_are_replaced_with_positive_defaults(): void
+    {
+        $fields = TikTokShopService::positivePackageFields([
+            'package_dimensions' => [
+                'length' => '0',
+                'width' => 0,
+                'height' => '',
+                'unit' => 'INCH',
+            ],
+            'package_weight' => ['value' => '0', 'unit' => 'POUND'],
+        ]);
+
+        $this->assertSame('10.00', $fields['package_dimensions']['length']);
+        $this->assertSame('8.00', $fields['package_dimensions']['width']);
+        $this->assertSame('6.00', $fields['package_dimensions']['height']);
+        $this->assertSame('1.00', $fields['package_weight']['value']);
+        $this->assertTrue(TikTokShopService::isPackageDimensionsError(
+            "Invalid Parameter. Parameter `package_dimensions` is invalid because all package dimensions must be positive numeric values."
+        ));
+    }
+
+    public function test_existing_positive_package_size_is_kept(): void
+    {
+        $fields = TikTokShopService::positivePackageFields([
+            'package_dimensions' => [
+                'length' => '12.5',
+                'width' => '4',
+                'height' => '3.25',
+                'unit' => 'INCH',
+            ],
+            'package_weight' => ['value' => '2.2', 'unit' => 'POUND'],
+        ]);
+
+        $this->assertSame('12.50', $fields['package_dimensions']['length']);
+        $this->assertSame('4.00', $fields['package_dimensions']['width']);
+        $this->assertSame('3.25', $fields['package_dimensions']['height']);
+        $this->assertSame('2.20', $fields['package_weight']['value']);
+    }
 }
