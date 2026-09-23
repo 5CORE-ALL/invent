@@ -1454,7 +1454,7 @@
 
                         <div class="tab-pane fade" id="sof-doba-orders-pane" role="tabpanel" aria-labelledby="sof-doba-orders-tab">
                             <p class="small text-muted mb-2">
-                                Prepaid Doba labels only. Non-prepaid orders are on Pending, Recd/Transit, or Delivered by their Doba status.
+                                Prepaid Doba labels stay on this tab and also show on Label Created / No Scan until the carrier or Doba status moves them. Non-prepaid orders are on Pending, Recd/Transit, or Delivered by their Doba status.
                                 Use <strong>ld</strong> to mark a label sent to dispatch. After you mark <strong>done</strong>, the row moves to the Done tab.
                             </p>
                             <div class="sof-doba-export-bar">

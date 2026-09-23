@@ -2173,7 +2173,10 @@ class SalesOrderFulfillmentController extends Controller
             $row['status_label'] = 'Label Created';
             $fromPendingLabeled[] = $row;
         }
-        $this->cachedLabelCreatedRows = $this->mergeOrderRowsById($fromMarketplace, $fromPendingLabeled);
+        $this->cachedLabelCreatedRows = $this->mergeOrderRowsById(
+            $this->mergeOrderRowsById($fromMarketplace, $fromPendingLabeled),
+            $this->dobaPrepaidLabelOrderRows()
+        );
 
         return $this->cachedLabelCreatedRows;
     }
@@ -2548,13 +2551,84 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function labelCreatedNoScanRows(): array
     {
+        $labeled = $this->labelCreatedLabeledRows();
+        $awaiting = array_values(array_filter(
+            $labeled,
+            fn (array $r) => $this->carrierIsAwaitingShipment($r)
+        ));
+        // Prepaid Doba labels belong here until a real status moves them.
+        $prepaidLabels = array_values(array_filter(
+            $labeled,
+            fn (array $r) => ! empty($r['doba_prepaid_label']) && ! $this->rowLooksDelivered($r)
+        ));
+
         return $this->mergeOrderRowsById(
-            array_values(array_filter(
-                $this->labelCreatedLabeledRows(),
-                fn (array $r) => $this->carrierIsAwaitingShipment($r)
-            )),
+            $this->mergeOrderRowsById($awaiting, $prepaidLabels),
             $this->invoicedTrackedForNoScan()
         );
+    }
+
+    /**
+     * Open Prepaid Doba orders. They stay on the Prepaid tab and also start on
+     * Label Created / No Scan. In Transit, Delivered, and carrier scans use the
+     * same movement rules as every other order.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function dobaPrepaidLabelOrderRows(): array
+    {
+        $rows = $this->collectOrderRows(
+            fn (string $slug) => $slug === 'doba'
+                ? $this->scopedToLast30Days($this->dobaPrepaidLabelOrdersQuery(), 'doba')
+                : null,
+            true
+        );
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $grouped[$this->marketplaceOrderDedupeKey($row)][] = $row;
+        }
+
+        $out = [];
+        foreach ($grouped as $lines) {
+            $row = $this->mergeMarketplaceOrderLines($lines);
+            $row['doba_prepaid_label'] = true;
+            $row['has_shipping_label'] = true;
+            if (! $this->carrierStatusHasLeftLabelCreated($row['shipment_status'] ?? null)
+                && ! $this->rowLooksDelivered($row)
+            ) {
+                $row['status_label'] = 'Label Created';
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    protected function dobaPrepaidLabelOrdersQuery(): ?Builder
+    {
+        $base = $this->allOrdersQuery('doba');
+        if ($base === null || ! Schema::hasColumn('doba_daily_data', 'order_type')) {
+            return null;
+        }
+
+        $base->whereRaw('LOWER(TRIM(COALESCE(order_type, \'\'))) = ?', [self::DOBA_PREPAID_ORDER_TYPE])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED'])
+            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')');
+
+        if (Schema::hasTable('doba_warehouse_ships') && Schema::hasColumn('doba_daily_data', 'order_no')) {
+            $base->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('doba_warehouse_ships')
+                    ->whereColumn('doba_warehouse_ships.order_no', 'doba_daily_data.order_no')
+                    ->where('doba_warehouse_ships.shipped', true);
+            });
+        }
+
+        return $base;
     }
 
     /**
@@ -6039,6 +6113,9 @@ class SalesOrderFulfillmentController extends Controller
             'doba' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)",
                 ['CLOSED', 'SHIPPED']
+            )->whereRaw(
+                'LOWER(TRIM(COALESCE(order_type, \'\'))) != ?',
+                [self::DOBA_PREPAID_ORDER_TYPE]
             ),
             default => null,
         };
@@ -6217,7 +6294,11 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(status, ''))) = ?",
                 ['AWAITING_SHIPMENT']
             ),
-            'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED']),
+            'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED'])
+                ->whereRaw(
+                    'LOWER(TRIM(COALESCE(order_type, \'\'))) != ?',
+                    [self::DOBA_PREPAID_ORDER_TYPE]
+                ),
             // AWAITING_COLLECTION / PARTIALLY_SHIPPING already have a label or a shipment.
             'tiktok', 'tiktok2' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(order_status, ''))) = ?",
