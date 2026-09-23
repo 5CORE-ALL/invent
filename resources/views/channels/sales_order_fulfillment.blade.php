@@ -1454,9 +1454,8 @@
 
                         <div class="tab-pane fade" id="sof-doba-orders-pane" role="tabpanel" aria-labelledby="sof-doba-orders-tab">
                             <p class="small text-muted mb-2">
-                                Doba warehouse queue. Orders Doba marks In Transit are on the Recd/Transit page.
-                                Use <strong>ld</strong> to mark a label sent to dispatch.
-                                Open orders stay on <strong>Non-prepaid</strong> or <strong>Prepaid</strong>. After you mark <strong>done</strong>, the row moves to the Done tab.
+                                Prepaid Doba labels only. Non-prepaid orders are on Pending, Recd/Transit, or Delivered by their Doba status.
+                                Use <strong>ld</strong> to mark a label sent to dispatch. After you mark <strong>done</strong>, the row moves to the Done tab.
                             </p>
                             <div class="sof-doba-export-bar">
                                 <div>
@@ -1476,12 +1475,7 @@
                             </div>
                             <ul class="nav nav-pills sof-doba-subnav mb-2" role="tablist">
                                 <li class="nav-item" role="presentation">
-                                    <button class="nav-link active" id="sof-doba-sub-nonprepaid-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-nonprepaid-pane" type="button" role="tab" aria-controls="sof-doba-sub-nonprepaid-pane" aria-selected="true">
-                                        Non-prepaid <span class="badge ms-1" id="sof-doba-nonprepaid-count" style="background:#fff3cd;color:#856404;border:1px solid #ffe69c;">0</span>
-                                    </button>
-                                </li>
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link" id="sof-doba-sub-prepaid-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-prepaid-pane" type="button" role="tab" aria-controls="sof-doba-sub-prepaid-pane" aria-selected="false">
+                                    <button class="nav-link active" id="sof-doba-sub-prepaid-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-prepaid-pane" type="button" role="tab" aria-controls="sof-doba-sub-prepaid-pane" aria-selected="true">
                                         Prepaid <span class="badge ms-1" id="sof-doba-prepaid-count" style="background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;">0</span>
                                     </button>
                                 </li>
@@ -1492,10 +1486,7 @@
                                 </li>
                             </ul>
                             <div class="tab-content">
-                                <div class="tab-pane fade show active" id="sof-doba-sub-nonprepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-nonprepaid-tab">
-                                    <div id="sof-doba-nonprepaid-table" class="sof-doba-table"></div>
-                                </div>
-                                <div class="tab-pane fade" id="sof-doba-sub-prepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-prepaid-tab">
+                                <div class="tab-pane fade show active" id="sof-doba-sub-prepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-prepaid-tab">
                                     <div id="sof-doba-prepaid-table" class="sof-doba-table"></div>
                                 </div>
                                 <div class="tab-pane fade" id="sof-doba-sub-done-pane" role="tabpanel" aria-labelledby="sof-doba-sub-done-tab">
@@ -2399,9 +2390,8 @@
     $('#sof-date-from, #sof-date-to').on('change', sofApplyDateFilterFromInputs);
 
     function sofActiveDobaExportType() {
-        if (sofOrderTabIsActive('#sof-doba-sub-prepaid-tab', '#sof-doba-sub-prepaid-pane')) return 'prepaid';
         if (sofOrderTabIsActive('#sof-doba-sub-done-tab', '#sof-doba-sub-done-pane')) return 'done';
-        return 'non_prepaid';
+        return 'prepaid';
     }
 
     function sofActiveDobaRows() {
@@ -5898,9 +5888,6 @@
     }
 
     function ensureDobaOrdersTables() {
-        if (!dobaNonprepaidTable) {
-            dobaNonprepaidTable = makeDobaOrdersTable('#sof-doba-nonprepaid-table', 'No open non-prepaid Doba orders in this date range.');
-        }
         if (!dobaPrepaidTable) {
             dobaPrepaidTable = makeDobaOrdersTable('#sof-doba-prepaid-table', 'No open prepaid Doba orders in this date range.', { includeLabel: true });
         }
@@ -5930,7 +5917,7 @@
     document.getElementById('sof-doba-orders-tab')?.addEventListener('shown.bs.tab', function () {
         ensureDobaOrdersTables();
     });
-    ['sof-doba-sub-nonprepaid-tab', 'sof-doba-sub-prepaid-tab', 'sof-doba-sub-done-tab'].forEach(function (id) {
+    ['sof-doba-sub-prepaid-tab', 'sof-doba-sub-done-tab'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('shown.bs.tab', function () {
             sofRedrawDobaTables();
             sofUpdateTrackingFilterCounts(sofActiveDobaRows());

@@ -847,6 +847,9 @@ class SalesOrderFulfillmentController extends Controller
             if ($this->dobaStatusIsInTransit((string) ($row['status'] ?? ''))) {
                 continue;
             }
+            if (! $row['is_prepaid'] && ! $row['warehouse_shipped']) {
+                continue;
+            }
             if (! $row['warehouse_shipped']) {
                 $openCount++;
             }
@@ -854,11 +857,7 @@ class SalesOrderFulfillmentController extends Controller
                 $done[] = $row;
                 continue;
             }
-            if ($row['is_prepaid']) {
-                $prepaid[] = $row;
-            } else {
-                $nonPrepaid[] = $row;
-            }
+            $prepaid[] = $row;
         }
 
         return [
@@ -6037,6 +6036,10 @@ class SalesOrderFulfillmentController extends Controller
                 ['SHIPPED']
             ),
             'bestbuy', 'macy' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['SHIPPED']),
+            'doba' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)",
+                ['CLOSED', 'SHIPPED']
+            ),
             default => null,
         };
     }
