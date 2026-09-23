@@ -351,7 +351,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * In Transit — last 30 days (marketplace In Transit + carrier In Transit from Label Created).
+     * In Transit — last 30 days (marketplace In Transit, carrier In Transit, and Received by carrier).
      */
     public function inTransitData(): JsonResponse
     {
@@ -2824,8 +2824,11 @@ class SalesOrderFulfillmentController extends Controller
         $fromOlderLabels = $this->labelCreatedAssumedScannedRows();
 
         return $this->mergeOrderRowsById(
-            $this->mergeOrderRowsById($rows, $fromCarrier),
-            $fromOlderLabels
+            $this->mergeOrderRowsById(
+                $this->mergeOrderRowsById($rows, $fromCarrier),
+                $fromOlderLabels
+            ),
+            $this->receivedByCarrierOrderRows()
         );
     }
 
@@ -5131,7 +5134,7 @@ class SalesOrderFulfillmentController extends Controller
             'scan_done_24h' => $scanDone,
             'in_transit_total' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug)
-            ),
+            ) + $scanDone + $inReceived,
             'in_received_total' => $inReceived,
             'received_by_carrier_total' => $scanDone + $inReceived,
             'invoiced_total' => $this->invoicedOrdersCount(),
