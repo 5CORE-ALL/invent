@@ -381,34 +381,74 @@ class AmazonTrackingSyncService
             return $empty;
         }
 
-        $cacheKey = 'sof.amazon.package_sync';
+        $recent = $this->walkMerchantPackages(
+            'sof.amazon.package_recent',
+            now()->subHours(6)->utc()->toIso8601String(),
+            2,
+            $deadline,
+            600
+        );
+        $history = $this->walkMerchantPackages(
+            'sof.amazon.package_history',
+            now()->subDays(45)->utc()->toIso8601String(),
+            12,
+            $deadline,
+            7200
+        );
+
+        $pages = $recent['pages'] + $history['pages'];
+        $filled = $recent['filled'] + $history['filled'];
+        $throttled = $recent['throttled'] || $history['throttled'];
+
+        Log::info('AmazonTrackingSyncService: merchant package sync', [
+            'pages' => $pages,
+            'filled' => $filled,
+            'recent_pages' => $recent['pages'],
+            'history_pages' => $history['pages'],
+            'history_complete' => $history['complete'],
+            'throttled' => $throttled,
+        ]);
+
+        return [
+            'pages' => $pages,
+            'filled' => $filled,
+            'complete' => $history['complete'],
+            'throttled' => $throttled,
+        ];
+    }
+
+    /**
+     * @return array{pages: int, filled: int, complete: bool, throttled: bool}
+     */
+    protected function walkMerchantPackages(
+        string $cacheKey,
+        string $startAfter,
+        int $maxPages,
+        ?float $deadline,
+        int $cooldownSeconds
+    ): array {
         $progress = Cache::get($cacheKey);
         $progress = is_array($progress) ? $progress : [];
         $nextToken = trim((string) ($progress['next_token'] ?? ''));
         $completedAt = strtotime((string) ($progress['completed_at'] ?? ''));
 
-        if ($nextToken === '' && $completedAt !== false && $completedAt > time() - 1200) {
+        if ($nextToken === '' && $completedAt !== false && $completedAt > time() - $cooldownSeconds) {
             return ['pages' => 0, 'filled' => 0, 'complete' => true, 'throttled' => false];
         }
 
-        if ($nextToken !== '') {
-            $lastUpdatedAfter = (string) ($progress['last_updated_after'] ?? '');
-        } elseif ($completedAt !== false) {
-            $lastUpdatedAfter = gmdate('c', $completedAt - 3600);
-        } else {
-            $lastUpdatedAfter = now()->subDays(45)->utc()->toIso8601String();
-        }
+        $lastUpdatedAfter = $nextToken !== ''
+            ? (string) ($progress['last_updated_after'] ?? $startAfter)
+            : $startAfter;
         if ($lastUpdatedAfter === '') {
-            $lastUpdatedAfter = now()->subDays(45)->utc()->toIso8601String();
+            $lastUpdatedAfter = $startAfter;
         }
 
         $pages = 0;
         $filled = 0;
         $complete = false;
         $throttled = false;
-        $lastUpdatedBefore = null;
 
-        while ($pages < 20) {
+        while ($pages < $maxPages) {
             if ($deadline !== null && microtime(true) >= $deadline) {
                 break;
             }
@@ -431,7 +471,6 @@ class AmazonTrackingSyncService
                     $filled++;
                 }
             }
-            $lastUpdatedBefore = $page['last_updated_before'] ?? $lastUpdatedBefore;
             $nextToken = trim((string) ($page['next_token'] ?? ''));
             if ($nextToken === '') {
                 $complete = true;
@@ -439,23 +478,11 @@ class AmazonTrackingSyncService
             }
         }
 
-        $stored = [
+        Cache::put($cacheKey, [
             'last_updated_after' => $lastUpdatedAfter,
             'next_token' => $nextToken !== '' ? $nextToken : null,
-            'completed_at' => $complete ? now()->toIso8601String() : ($progress['completed_at'] ?? null),
-            'resume_after' => is_string($lastUpdatedBefore) ? $lastUpdatedBefore : ($progress['resume_after'] ?? null),
-        ];
-        if ($complete && is_string($lastUpdatedBefore) && $lastUpdatedBefore !== '') {
-            $stored['last_updated_after'] = $lastUpdatedBefore;
-        }
-        Cache::put($cacheKey, $stored, now()->addHours(6));
-
-        Log::info('AmazonTrackingSyncService: merchant package sync', [
-            'pages' => $pages,
-            'filled' => $filled,
-            'complete' => $complete,
-            'throttled' => $throttled,
-        ]);
+            'completed_at' => $complete ? now()->toIso8601String() : null,
+        ], now()->addDays(2));
 
         return [
             'pages' => $pages,
