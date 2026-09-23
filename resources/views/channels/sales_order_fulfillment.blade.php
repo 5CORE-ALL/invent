@@ -4743,7 +4743,7 @@
                 cols.unshift(sofOver24hHiddenColumn());
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Created';
+                        c.title = 'Status';
                         c.headerTooltip = 'Label Created / No Tracking';
                     }
                     if (c.field === 'order_date') {
@@ -4846,7 +4846,7 @@
                 cols.unshift(sofOver24hHiddenColumn());
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Created';
+                        c.title = 'Status';
                         c.headerTooltip = 'Label Created / No Scan';
                     }
                     if (c.field === 'order_date') {
