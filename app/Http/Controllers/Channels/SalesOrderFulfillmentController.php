@@ -46,6 +46,7 @@ use App\Services\SheinApiService;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Support\Marketplace\SofOrderCancelDetector;
+use App\Support\DobaTrackingNumber;
 use App\Support\TrackingCarrierGuesser;
 use App\Services\FourSellerApiService;
 use App\Services\TemuShopifySalesService;
@@ -799,11 +800,14 @@ class SalesOrderFulfillmentController extends Controller
             if (is_numeric($amt)) {
                 $row['amount'] = max((float) ($row['amount'] ?? 0), (float) $amt);
             }
-            $tn = trim((string) ($line->tracking_number ?? ''));
+            $fromLabel = $this->dobaTrackingFromStoredOrder($line);
+            $tn = $fromLabel['tracking'];
             if ($tn !== '' && trim((string) ($row['tracking_number'] ?? '')) === '') {
                 $row['tracking_number'] = $tn;
             }
-            $carrier = trim((string) ($line->carrier_name ?? ''));
+            $carrier = $fromLabel['carrier'] !== ''
+                ? $fromLabel['carrier']
+                : trim((string) ($line->carrier_name ?? ''));
             if ($carrier !== '' && trim((string) ($row['tracking_company'] ?? '')) === '') {
                 $row['tracking_company'] = $carrier;
             }
@@ -863,6 +867,64 @@ class SalesOrderFulfillmentController extends Controller
             'done' => $done,
             'open_count' => $openCount,
         ];
+    }
+
+    /**
+     * Doba keeps the waybill on buyerPrepaidLabelList, not the empty order trackingNumber.
+     *
+     * @return array{tracking: string, carrier: string}
+     */
+    protected function dobaTrackingFromStoredOrder(object $line): array
+    {
+        $tracking = DobaTrackingNumber::sanitize((string) ($line->tracking_number ?? ''));
+        $carrier = $this->dobaCarrierName(trim((string) ($line->carrier_name ?? '')), $tracking);
+        if ($tracking !== '') {
+            return ['tracking' => $tracking, 'carrier' => $carrier];
+        }
+
+        $payload = $line->order_json ?? null;
+        if (is_string($payload)) {
+            $decoded = json_decode($payload, true);
+            $payload = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($payload)) {
+            return ['tracking' => '', 'carrier' => $carrier];
+        }
+
+        $hit = DobaTrackingNumber::fromOrderPayload($payload);
+        if ($hit['tracking'] === '') {
+            return ['tracking' => '', 'carrier' => $carrier];
+        }
+
+        $carrier = $this->dobaCarrierName($hit['carrier'] !== '' ? $hit['carrier'] : $carrier, $hit['tracking']);
+        $orderNo = trim((string) ($line->order_no ?? ''));
+        if ($orderNo !== '') {
+            try {
+                DobaDailyData::query()
+                    ->where('order_no', $orderNo)
+                    ->where(function ($q) {
+                        $q->whereNull('tracking_number')->orWhere('tracking_number', '');
+                    })
+                    ->update([
+                        'tracking_number' => substr($hit['tracking'], 0, 100),
+                        'carrier_name' => $carrier !== '' ? substr($carrier, 0, 50) : null,
+                    ]);
+            } catch (\Throwable) {
+                // Display still uses the label number if the column write fails.
+            }
+        }
+
+        return ['tracking' => $hit['tracking'], 'carrier' => $carrier];
+    }
+
+    protected function dobaCarrierName(string $carrier, string $tracking): string
+    {
+        $carrier = trim($carrier);
+        if (str_contains(strtolower($carrier), 'seller') && str_contains(strtolower($carrier), 'own')) {
+            $carrier = '';
+        }
+
+        return (string) (TrackingCarrierGuesser::fill($carrier, $tracking) ?? '');
     }
 
     protected function dobaOrderTypeIsPrepaid(string $orderType): bool
@@ -6430,9 +6492,9 @@ class SalesOrderFulfillmentController extends Controller
                 'order_number' => (string) ($order->platform_order_no ?: $order->order_no ?: ''),
                 'import_status' => (string) ($order->import_status ?? ''),
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
-                'raw_payload' => $order->raw_payload ?? null,
-                'tracking_number' => isset($order->tracking_number) ? trim((string) $order->tracking_number) : null,
-                'tracking_company' => isset($order->carrier_name) ? trim((string) $order->carrier_name) ?: null : null,
+                'raw_payload' => $order->order_json ?? $order->raw_payload ?? null,
+                'tracking_number' => ($dobaTrack = $this->dobaTrackingFromStoredOrder($order))['tracking'] ?: null,
+                'tracking_company' => $dobaTrack['carrier'] !== '' ? $dobaTrack['carrier'] : null,
                 'show_id' => (int) $order->id,
             ],
             default => (function () use ($order) {
