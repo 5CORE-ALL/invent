@@ -166,7 +166,13 @@ class GofoExpressService
             return null;
         }
 
-        $candidates = self::orderNoCandidates($refs, $fast ? 4 : 8);
+        // 4Seller buys the label. GOFO's orderNo is the GFUS waybill it returns,
+        // not the Amazon/Shopify id. Track-by-marketplace-id is always "No data"
+        // (code 305), including for orders that already have a GFUS number.
+        $candidates = array_values(array_filter(
+            self::orderNoCandidates($refs, $fast ? 4 : 8),
+            static fn (string $orderNo): bool => self::isGofoOrderNo($orderNo)
+        ));
 
         foreach ($candidates as $orderNo) {
             $fromTrack = null;
@@ -206,6 +212,18 @@ class GofoExpressService
         }
 
         return null;
+    }
+
+    /**
+     * True when the value is a GOFO waybill (GFUS…) or a 4Seller GOFO order number (S…).
+     * Marketplace ids such as 114-3841207-4168263 and Amz114-… are not GOFO order numbers.
+     */
+    public static function isGofoOrderNo(string $value): bool
+    {
+        $v = strtoupper(ltrim(trim($value), '#'));
+
+        return preg_match('/^GF[A-Z]{2,4}\d{8,}$/', $v) === 1
+            || preg_match('/^S\d{10,}$/', $v) === 1;
     }
 
     /**

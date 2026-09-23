@@ -100,6 +100,9 @@ class SalesOrderFulfillmentController extends Controller
     /** @var list<array<string, mixed>>|null */
     protected ?array $cachedPendingRows = null;
 
+    /** @var array<string, true>|null */
+    protected ?array $gofoEmptyOnceIgnoredIds = null;
+
     public function __construct(
         protected MarketplaceApiConfigService $apiConfig
     ) {}
@@ -279,6 +282,7 @@ class SalesOrderFulfillmentController extends Controller
         try {
             @set_time_limit(60);
             @ini_set('memory_limit', '512M');
+            $this->ignoreShopifyFulfilledEmptyTrackingOnce();
             $rows = $this->labelCreatedNoTrackingRows();
             try {
                 $this->queueAmazonSofTrackingFillForRows($rows);
@@ -2213,10 +2217,167 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function labelCreatedNoTrackingRows(): array
     {
+        $ignored = $this->gofoEmptyOnceIgnoredIds();
+
         return array_values(array_filter(
             $this->labelCreatedLabeledRows(),
-            fn (array $r) => ! $this->rowHasSofTrackingNumber($r)
+            function (array $r) use ($ignored): bool {
+                if ($this->rowHasSofTrackingNumber($r)) {
+                    return false;
+                }
+                $id = trim((string) ($r['id'] ?? ''));
+
+                return $id === '' || ! isset($ignored[$id]);
+            }
         ));
+    }
+
+    /**
+     * Shopify-fulfilled orders with no tracking number cannot be found on GOFO:
+     * GOFO's orderNo is the GFUS waybill, and 4Seller has no API to translate
+     * the marketplace id. Record the current set once and leave them out of
+     * Label Created / No Tracking and out of later GOFO pulls.
+     *
+     * @return array{success: bool, message: string, matched: int, written: int, already?: bool}
+     */
+    public function ignoreShopifyFulfilledEmptyTrackingOnce(): array
+    {
+        if (! Schema::hasTable('sof_shipment_status_overrides') || ! Schema::hasTable('shopify_raw_orders')) {
+            return [
+                'success' => false,
+                'message' => 'Required tables are missing.',
+                'matched' => 0,
+                'written' => 0,
+            ];
+        }
+
+        $already = DB::table('sof_shipment_status_overrides')
+            ->where('mm_slug', self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG)
+            ->where('order_key', self::SOF_GOFO_EMPTY_ONCE_SENTINEL_KEY)
+            ->exists();
+        if ($already) {
+            return [
+                'success' => true,
+                'message' => 'Already ignored the Shopify-fulfilled empty-tracking set once.',
+                'matched' => 0,
+                'written' => 0,
+                'already' => true,
+            ];
+        }
+
+        $rows = array_values(array_filter(
+            $this->labelCreatedLabeledRows(),
+            fn (array $r): bool => ! $this->rowHasSofTrackingNumber($r)
+        ));
+        $shopifyIds = [];
+        foreach ($rows as $row) {
+            $sid = $this->shopifyNumericOrderId(trim((string) ($row['shopify_order_id'] ?? '')));
+            if ($sid !== null) {
+                $shopifyIds[$sid] = true;
+            }
+        }
+
+        $fulfilledEmpty = [];
+        foreach (array_chunk(array_keys($shopifyIds), 500) as $chunk) {
+            $lines = DB::table('shopify_raw_orders')
+                ->whereIn('order_id', $chunk)
+                ->get(['order_id', 'fulfillment_status', 'tracking_number']);
+            $byOrder = [];
+            foreach ($lines as $line) {
+                $byOrder[(int) $line->order_id][] = $line;
+            }
+            foreach ($byOrder as $orderId => $orderLines) {
+                $fulfilled = false;
+                $hasTracking = false;
+                foreach ($orderLines as $line) {
+                    $ff = strtolower(trim((string) ($line->fulfillment_status ?? '')));
+                    if (in_array($ff, ['fulfilled', 'partial', 'partially_fulfilled'], true)) {
+                        $fulfilled = true;
+                    }
+                    if (trim((string) ($line->tracking_number ?? '')) !== '') {
+                        $hasTracking = true;
+                    }
+                }
+                if ($fulfilled && ! $hasTracking) {
+                    $fulfilledEmpty[$orderId] = true;
+                }
+            }
+        }
+
+        $now = now();
+        $written = 0;
+        foreach ($rows as $row) {
+            $id = trim((string) ($row['id'] ?? ''));
+            $sid = $this->shopifyNumericOrderId(trim((string) ($row['shopify_order_id'] ?? '')));
+            if ($id === '' || $sid === null || ! isset($fulfilledEmpty[$sid])) {
+                continue;
+            }
+            DB::table('sof_shipment_status_overrides')->updateOrInsert(
+                [
+                    'mm_slug' => self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG,
+                    'order_key' => self::SOF_GOFO_EMPTY_ONCE_KEY_PREFIX.$id,
+                ],
+                [
+                    'order_id' => mb_substr((string) ($row['order_id'] ?? ''), 0, 128) ?: null,
+                    'shipment_status' => '',
+                    'shipment_status_detail' => 'One-time: Shopify fulfilled, tracking empty, GOFO has no lookup by marketplace id.',
+                    'updated_at' => $now,
+                    'created_at' => $now,
+                ]
+            );
+            $written++;
+        }
+
+        DB::table('sof_shipment_status_overrides')->updateOrInsert(
+            [
+                'mm_slug' => self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG,
+                'order_key' => self::SOF_GOFO_EMPTY_ONCE_SENTINEL_KEY,
+            ],
+            [
+                'order_id' => null,
+                'shipment_status' => '',
+                'shipment_status_detail' => 'Sentinel: ignored '.$written.' Shopify-fulfilled empty-tracking order(s) once.',
+                'updated_at' => $now,
+                'created_at' => $now,
+            ]
+        );
+        $this->gofoEmptyOnceIgnoredIds = null;
+        $this->forgetSofOrderRowCaches();
+
+        return [
+            'success' => true,
+            'message' => 'Ignored '.$written.' Shopify-fulfilled order(s) with empty tracking. This will not run again.',
+            'matched' => count($fulfilledEmpty),
+            'written' => $written,
+        ];
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected function gofoEmptyOnceIgnoredIds(): array
+    {
+        if ($this->gofoEmptyOnceIgnoredIds !== null) {
+            return $this->gofoEmptyOnceIgnoredIds;
+        }
+        $ids = [];
+        if (! Schema::hasTable('sof_shipment_status_overrides')) {
+            return $this->gofoEmptyOnceIgnoredIds = $ids;
+        }
+        $prefix = self::SOF_GOFO_EMPTY_ONCE_KEY_PREFIX;
+        $keys = DB::table('sof_shipment_status_overrides')
+            ->where('mm_slug', self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG)
+            ->where('order_key', 'like', $prefix.'%')
+            ->where('order_key', '!=', self::SOF_GOFO_EMPTY_ONCE_SENTINEL_KEY)
+            ->pluck('order_key');
+        foreach ($keys as $key) {
+            $id = substr((string) $key, strlen($prefix));
+            if ($id !== '') {
+                $ids[$id] = true;
+            }
+        }
+
+        return $this->gofoEmptyOnceIgnoredIds = $ids;
     }
 
     /**
@@ -2442,6 +2603,11 @@ class SalesOrderFulfillmentController extends Controller
     public const SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG = '_system';
 
     public const SOF_ONE_TIME_NO_TRACKING_SENTINEL_KEY = 'in_transit_no_tracking_v1';
+
+    /** One-time: Shopify fulfilled + empty tracking are not queried on GOFO again. */
+    public const SOF_GOFO_EMPTY_ONCE_SENTINEL_KEY = 'gofo_shopify_fulfilled_empty_v1';
+
+    public const SOF_GOFO_EMPTY_ONCE_KEY_PREFIX = 'gofo_empty_once:';
 
     /**
      * Overlay one-time / manual SOF shipment statuses (including orders with no tracking).
@@ -3918,6 +4084,8 @@ class SalesOrderFulfillmentController extends Controller
     public function pullMissingLabelCreatedTracking(int $limit = 80, ?float $deadline = null): array
     {
         $limit = max(1, min(400, $limit));
+        $this->ignoreShopifyFulfilledEmptyTrackingOnce();
+        $ignored = $this->gofoEmptyOnceIgnoredIds();
         $candidates = $this->missingLabelTrackingRows();
         $filtered = [];
         foreach ($candidates as $row) {
@@ -3926,6 +4094,10 @@ class SalesOrderFulfillmentController extends Controller
             }
             $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
             if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
+                continue;
+            }
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($id !== '' && isset($ignored[$id])) {
                 continue;
             }
             $filtered[] = $row;

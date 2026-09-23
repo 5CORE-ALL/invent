@@ -30,6 +30,16 @@ class GofoExpressLookupTest extends TestCase
         $this->assertContains('#TT-577572569413617223', $candidates);
     }
 
+    public function test_marketplace_order_ids_are_not_gofo_order_numbers(): void
+    {
+        $this->assertFalse(GofoExpressService::isGofoOrderNo('114-3841207-4168263'));
+        $this->assertFalse(GofoExpressService::isGofoOrderNo('Amz114-3841207-4168263'));
+        $this->assertFalse(GofoExpressService::isGofoOrderNo('amazon-114-3841207-4168263'));
+        $this->assertFalse(GofoExpressService::isGofoOrderNo('#342032'));
+        $this->assertTrue(GofoExpressService::isGofoOrderNo('GFUS01074141474180'));
+        $this->assertTrue(GofoExpressService::isGofoOrderNo('S201234567890'));
+    }
+
     public function test_extracts_gfuso_from_tracking_id_field(): void
     {
         $hit = GofoExpressService::extractTracking([
