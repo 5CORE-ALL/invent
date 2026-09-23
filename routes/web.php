@@ -262,6 +262,7 @@ use App\Http\Controllers\ProductMaster\DescriptionMasterController;
 use App\Http\Controllers\ProductMaster\ImagesAPlusContentController;
 use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
+use App\Http\Controllers\ProductMaster\ImageAuditController;
 use App\Http\Controllers\ProductMaster\ImageMasterController;
 use App\Http\Controllers\ProductMaster\VariationNameThumbnailController;
 use App\Http\Controllers\ProductMaster\RawImagesController;
@@ -4288,6 +4289,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/variation-name-thumbnail/push', [VariationNameThumbnailController::class, 'pushVariationNames'])->name('variation.name.thumbnail.push');
     Route::get('/variation-name-thumbnail/template', [VariationNameThumbnailController::class, 'downloadTemplate'])->name('variation.name.thumbnail.template');
     Route::post('/variation-name-thumbnail/import', [VariationNameThumbnailController::class, 'import'])->name('variation.name.thumbnail.import');
+
+    Route::get('/image-audit', [ImageAuditController::class, 'index'])->name('image.audit');
+    Route::get('/image-audit/data', [ImageAuditController::class, 'data'])->name('image.audit.data');
+    Route::post('/image-audit/save', [ImageAuditController::class, 'save'])->name('image.audit.save');
 
     Route::get('/image-master', [ImageMasterController::class, 'index'])->name('image.master');
     Route::get('/image-master-data', [ImageMasterController::class, 'getData'])->name('image.master.data');

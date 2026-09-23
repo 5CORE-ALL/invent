@@ -184,6 +184,9 @@
                                 <a href="{{ route('image.master') }}">PM Image Master</a>
                             </li>
                             <li>
+                                <a href="{{ route('image.audit') }}">PM Image Audit</a>
+                            </li>
+                            <li>
                                 <a href="{{ route('bullet.points') }}">PM Bullet Points</a>
                                 <a href="{{ route('product.description') }}">PM Description Master</a>
                             </li>

@@ -3487,6 +3487,8 @@
                 : CHANNEL_PROMO_CHANNEL === 'bestbuy') {
                 return true;
             }
+            // Shopify B2C: same as Temu — LMP cap applies, including 0 Sold. No eBay price.
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') return true;
             // 0 Sold (AL30 = 0): keep Target GROI% S PRC — do not cap at LMP.
             return !(typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d));
         }
@@ -3654,10 +3656,9 @@
         window.chPromoFinalSpriceToSave = chPromoFinalSpriceToSave;
         window.chPromoWipeSpriceRow = chPromoWipeSpriceRow;
         window.chPromoBatchClearThenSave = chPromoBatchClearThenSave;
-        /** Shopify B2C + Newegg + Macys + Purchasing Power + Best Buy: if S PRC is below A Price, raise it to Amz. Above Amz is kept. */
+        /** Newegg + Macys + Purchasing Power + Best Buy: if S PRC is below A Price, raise it to Amz. Above Amz is kept. Shopify B2C caps down instead. */
         function chPromoUsesAmzSpriceFloor() {
-            return CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                || CHANNEL_PROMO_CHANNEL === 'newegg'
+            return CHANNEL_PROMO_CHANNEL === 'newegg'
                 || CHANNEL_PROMO_CHANNEL === 'macys'
                 || CHANNEL_PROMO_CHANNEL === 'macy'
                 || CHANNEL_PROMO_CHANNEL === 'purchasing_power'
@@ -3670,9 +3671,9 @@
             if (s > 0 && amz > 0 && s < amz) return amz;
             return s;
         }
-        /** Unused: Macys now floors to Amz (see chPromoUsesAmzSpriceFloor), it does not cap down. */
+        /** Shopify B2C: same as Temu, without eBay. If S PRC is above A Price, cap it down to Amz. */
         function chPromoUsesAmzSpriceCap() {
-            return false;
+            return CHANNEL_PROMO_CHANNEL === 'shopify_b2c';
         }
         function chPromoCapSpriceToAmz(d, sprice) {
             if (!chPromoUsesAmzSpriceCap()) return chPromoRound2(sprice);

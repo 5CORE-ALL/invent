@@ -93,7 +93,6 @@
                 ebay2: '/push-ebay2-price',
                 ebay2op: '/push-ebay2-price',
                 ebay3: '/push-ebay3-price-tabulator',
-                newegg: '/newegg-pricing-push',
             })[CH_PUSH_SPRICE_CHANNEL] || '';
             const CH_PUSH_SPRICE_CLIENT_MAX = 2;
             let chPushSpriceBuf = {};

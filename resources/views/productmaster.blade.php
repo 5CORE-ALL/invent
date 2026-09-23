@@ -12,6 +12,7 @@
             border: 1px solid #e9ecef;
             border-radius: 10px;
             max-height: 600px;
+            overflow-x: auto;
             overflow-y: auto;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
             background-color: white;
@@ -36,6 +37,48 @@
 
         .table-responsive thead th:hover {
             background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%) !important;
+        }
+
+        /* Keep CP$ visible while the rest of the table scrolls horizontally.
+           Avoid transition:all on these cells — it breaks position:sticky. */
+        #row-callback-datatable th.pm-freeze-cp,
+        #row-callback-datatable td.pm-freeze-cp {
+            position: sticky;
+            left: 0;
+            min-width: 92px;
+            white-space: nowrap;
+            background: #fff !important;
+            background-clip: padding-box;
+            box-shadow: 2px 0 6px rgba(15, 23, 42, 0.14);
+            transition: background-color 0.2s ease, color 0.2s ease !important;
+        }
+
+        #row-callback-datatable td.pm-freeze-cp {
+            z-index: 5;
+        }
+
+        #row-callback-datatable thead th.pm-freeze-cp {
+            left: 0 !important;
+            z-index: 20 !important;
+            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
+            color: #fff !important;
+            box-shadow: 2px 0 6px rgba(15, 23, 42, 0.18), 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        #row-callback-datatable thead th.pm-freeze-cp:hover {
+            background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%) !important;
+        }
+
+        #row-callback-datatable tbody tr:nth-child(even) td.pm-freeze-cp {
+            background: #f8fafc !important;
+        }
+
+        #row-callback-datatable tbody tr.pm-parent-row td.pm-freeze-cp {
+            background: #fffef2 !important;
+        }
+
+        #row-callback-datatable tbody tr:hover td.pm-freeze-cp {
+            background: #e8f0fe !important;
         }
 
         .table-responsive thead input {
@@ -308,8 +351,6 @@
 
         .table-responsive tbody tr:hover {
             background-color: #e8f0fe;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
         }
 
         .table-responsive tbody tr:hover td {
@@ -1520,7 +1561,7 @@
                                     <th>L30</th>
                                     <th>DIL</th>
                                     <th>Unit</th>
-                                    <th>CP$</th>
+                                    <th class="pm-freeze-cp">CP$</th>
                                     <th title="Freight">FRG</th>
                                     <th>LP</th>
                                     <th>SHIP</th>
@@ -2012,6 +2053,7 @@
 
                     // Parent row
                     if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
+                        row.classList.add('pm-parent-row');
                         row.style.backgroundColor = '#fffef2';
                         row.style.fontWeight = '500';
                         const totals = parentTotals[item.Parent] || {
@@ -2099,7 +2141,7 @@
                                     cell.textContent = '-';
                                     break;
                                 case "CP$":
-                                    cell.className = 'text-center';
+                                    cell.className = 'text-center pm-freeze-cp';
                                     cell.innerHTML = `${formatNumber(item.cp, 2)}${cpMasterHistoryDotHtml(item.SKU, item.cp)}`;
                                     break;
                                 case "FRGHT":
@@ -2363,7 +2405,7 @@
                                 }
                                 break;
                             case "CP$": {
-                                cell.className = 'text-center';
+                                cell.className = 'text-center pm-freeze-cp';
                                 isMissing = isDataMissing(item.cp, true);
                                 const cpFormatted = formatNumber(item.cp, 2);
                                 const cpValid = !isMissing && cpFormatted !== '-';
@@ -3221,6 +3263,10 @@
 
                         if (colName === "MOQ") {
                             th.title = "Minimum Order Quantity";
+                        }
+
+                        if (colName === "CP$") {
+                            th.classList.add('pm-freeze-cp');
                         }
 
                         thead.appendChild(th);
@@ -7267,7 +7313,7 @@
                     cell.className = 'text-center';
                     cell.innerHTML = newValue ? `<a href="${escapeHtml(newValue)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` : createMissingDataButton(sku, 'l2_url', 'Url');
                 } else if (isNumeric) {
-                    cell.className = 'text-center';
+                    cell.className = fieldName === 'cp' ? 'text-center pm-freeze-cp' : 'text-center';
                     const numValue = parseFloat(newValue);
                     if (isNaN(numValue) || numValue === 0) {
                         cell.innerHTML = createMissingDataButton(sku, fieldName, columnName);

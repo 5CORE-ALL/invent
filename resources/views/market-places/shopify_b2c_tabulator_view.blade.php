@@ -721,12 +721,12 @@
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-blue-triangle-badge"
                             data-metric="blue_triangle_count" data-invert="1" data-format="number" data-live-value="0"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: INV > 0 and S PRC ≠ Price (needs push). Click to show only those SKUs. Push on reload skips INV=0, Amz-raised, and Price = S PRC.">
+                            title="Blue triangle: INV > 0 and S PRC ≠ Price (needs push). S PRC is the lowest of the suggestion, A Price, and LMP. Click to show only those SKUs. Push on reload skips INV=0 and Price = S PRC.">
                             <span class="summary-trend-dot none" data-metric="blue_triangle_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-purple-triangle-badge"
                             data-metric="purple_triangle_count" data-invert="1" data-format="number" data-live-value="0"
                             style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Amz: S PRC was below A Price and was raised to Amz. Click badge to filter. Click dot for rolling history.">
+                            title="Amz: suggested S PRC was above A Price and was capped to Amz. Click badge to filter. Click dot for rolling history.">
                             <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span>Amz 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2c-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2c'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price'])
@@ -884,7 +884,7 @@
         total_l30: 'L30', total_views: 'Views', cvr_percent: 'CVR%', total_b2b_l30: 'B2C L30',
         zero_sold_count: '0 Sold', sold_count: '> 0 Sold',
         less_amz_count: '< Amz', more_amz_count: '> Amz',
-        blue_triangle_count: 'S PRC ≠ Price', purple_triangle_count: 'S PRC raised to Amz',
+        blue_triangle_count: 'S PRC ≠ Price', purple_triangle_count: 'S PRC capped to Amz',
         lmp_missing_count: 'LMP M.', prc_gt_lmp_count: 'Price > LMP', price_lt80_lmp_count: 'Price < 80% LMP',
         avg_price: 'Price', total_inv: 'INV'
     };
@@ -1285,11 +1285,16 @@
         return parseFloat(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0;
     }
 
-    /** Raise S PRC to A Price when it is below Amz; keep S PRC when it is above. */
-    function shopifyB2cApplyAmzFloor(data, sprice) {
-        const s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
-        const amz = shopifyB2cAmzPrice(data);
-        if (s > 0 && amz > 0 && s < amz) return Math.round(amz * 100) / 100;
+    /** Same as Temu, without eBay: lowest of the suggestion, A Price, and LMP. A price below Amazon stays there. */
+    function shopifyB2cCapLikeTemu(data, sprice) {
+        let s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
+        if (!(s > 0)) return 0;
+        const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        if (amz > 0 && s > amz) s = amz;
+        if (window.SpriceLmpCap) {
+            const capped = SpriceLmpCap.prepare(data, s);
+            if (capped > 0) s = Math.round(capped * 100) / 100;
+        }
         return s > 0 ? s : 0;
     }
 
@@ -1312,17 +1317,30 @@
         return Math.round(value * 100) / 100;
     }
 
-    /** Cell / SGROI: saved SPRICE. Dil / Amz floor stay on flags + Apply. */
+    /** Shown / pushed S PRC. Lowest of suggestion, A Price, and LMP. */
     function shopifyB2cShownSprice(data) {
-        return shopifyB2cDisplayedSprice(data);
+        const suggested = shopifyB2cDisplayedSprice(data);
+        if (!(suggested > 0)) return 0;
+        if (typeof ebayDilGroiMetaForRow === 'function') {
+            const meta = ebayDilGroiMetaForRow(data);
+            const raw = Number(meta && (meta.rawSprc > 0 ? meta.rawSprc : 0)) || 0;
+            if (raw > 0) return shopifyB2cCapLikeTemu(data, raw);
+        }
+        return shopifyB2cCapLikeTemu(data, suggested);
     }
     window.shopifyB2cShownSprice = shopifyB2cShownSprice;
 
     function shopifyB2cHasAmzFloor(data) {
         if (!data || isShopifyB2cParentRow(data)) return false;
-        const before = shopifyB2cPriceBeforeAmzFloor(data);
-        const amz = shopifyB2cAmzPrice(data);
-        return before > 0 && amz > 0 && before < amz;
+        let raw = 0;
+        if (typeof ebayDilGroiMetaForRow === 'function') {
+            const meta = ebayDilGroiMetaForRow(data);
+            raw = Number(meta && (meta.rawSprc > 0 ? meta.rawSprc : 0)) || 0;
+        }
+        if (!(raw > 0)) raw = shopifyB2cDisplayedSprice(data);
+        const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        const shown = shopifyB2cShownSprice(data);
+        return raw > amz + 0.004 && amz > 0 && shown > 0 && Math.abs(shown - amz) < 0.015;
     }
 
     function shopifyB2cShowAmzLabel(data) {
@@ -1338,14 +1356,13 @@
         // Same as Amazon / Push on reload: INV=0 is not a live listing price.
         if (!(parseFloat(data.INV) > 0)) return false;
         if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
-        if (shopifyB2cShowAmzLabel(data)) return false;
         const sprice = shopifyB2cShownSprice(data);
         const price = parseFloat(data.Price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
     window.shopifyB2cHasBlueTriangle = shopifyB2cHasBlueTriangle;
 
-    /** Badge / filter: S PRC was below A Price and was raised to Amz. */
+    /** Badge / filter: suggested S PRC was above A Price and the shown price is Amz. */
     function shopifyB2cHasPurpleTriangle(data) {
         return shopifyB2cHasAmzFloor(data);
     }
@@ -1353,9 +1370,14 @@
     function shopifyB2cAmzLabelHtml(data) {
         if (!shopifyB2cShowAmzLabel(data)) return '';
         const amz = shopifyB2cAmzPrice(data);
-        const before = shopifyB2cPriceBeforeAmzFloor(data);
+        let before = 0;
+        if (typeof ebayDilGroiMetaForRow === 'function') {
+            const meta = ebayDilGroiMetaForRow(data);
+            before = Number(meta && meta.rawSprc) || 0;
+        }
+        if (!(before > 0)) before = shopifyB2cDisplayedSprice(data);
         const title = shopifyB2cHasAmzFloor(data)
-            ? ('S PRC $' + before.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — raised to Amz')
+            ? ('S PRC $' + before.toFixed(2) + ' &gt; A Price $' + amz.toFixed(2) + ' — capped to Amz')
             : ('S PRC set to A Price $' + amz.toFixed(2));
         return '<span class="shopifyb2c-sprice-amz-lbl" title="' + title + '">Amz</span>';
     }
@@ -1500,11 +1522,7 @@
     function shopifyB2cFinalSprice(data, sprice) {
         let s = parseFloat(sprice) || 0;
         if (!(s > 0)) return 0;
-        if (typeof chPromoFinalSpriceToSave === 'function') {
-            s = chPromoFinalSpriceToSave(data, s);
-        } else {
-            s = shopifyB2cApplyAmzFloor(data, s);
-        }
+        s = shopifyB2cCapLikeTemu(data, s);
         return s > 0 ? Math.round(s * 100) / 100 : 0;
     }
 
@@ -2158,6 +2176,7 @@
                         showToast('Shopify push failed: ' + (response.errors[0].message || 'Unknown error'), 'error');
                     } else if (shopifyPush.ok) {
                         finalStatus = 'pushed';
+                        if (response.price > 0) price = response.price;
                         showToast('Shopify: ' + (shopifyPush.message || 'Pushed successfully') + ' for SKU: ' + sku, 'success');
                     } else {
                         showToast('Shopify: ' + (shopifyPush.message || 'Push failed'), 'error');
@@ -2452,9 +2471,9 @@
                         // Apply retail price rounding (round to .99 endings)
                         newSprice = roundToRetailPrice(newSprice);
 
-                        // Ensure minimum price, then raise to Amz when below A Price
+                        // Ensure minimum price, then lowest of that price, A Price, and LMP.
                         newSprice = Math.max(0.99, newSprice);
-                        newSprice = shopifyB2cApplyAmzFloor(rowData, newSprice);
+                        newSprice = shopifyB2cCapLikeTemu(rowData, newSprice);
 
                         // Calculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
                         const percentage = 0.95; // Shopify B2C margin
@@ -3333,7 +3352,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. Below A Price is raised to Amz. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. The S PRC cell then takes the lowest of this price, A Price, and LMP. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
@@ -3342,17 +3361,17 @@
                         if (!meta || !(meta.sprc > 0)) return '';
                         const raw = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || meta.sprc;
                         const amz = shopifyB2cAmzPrice(rowData);
-                        const raised = amz > 0 && raw > 0 && raw + 0.001 < amz;
-                        const tipMeta = raised ? Object.assign({}, meta, { sprc: raw }) : meta;
+                        const cappedToAmz = amz > 0 && raw > amz + 0.004 && Math.abs(meta.sprc - amz) < 0.015;
+                        const tipMeta = meta;
                         let tip = (typeof ebayDilGroiTipText === 'function')
                             ? ebayDilGroiTipText(tipMeta, { zeroSoldLabel: '0 Sold B2C L30 → min Target NROI' })
                             : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
                                 + ' → GROI ' + meta.groi + '%'
                                 + ' → $' + Number(raw).toFixed(2));
-                        if (raised) tip += ' → Amz $' + amz.toFixed(2);
-                        const amzLbl = raised
-                            ? ' <span class="shopifyb2c-sprice-amz-lbl" title="Dil $' + Number(raw).toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — raised to Amz">Amz</span>'
+                        if (cappedToAmz) tip += ' → capped to Amz $' + amz.toFixed(2);
+                        const amzLbl = cappedToAmz
+                            ? ' <span class="shopifyb2c-sprice-amz-lbl" title="Dil $' + Number(raw).toFixed(2) + ' &gt; A Price $' + amz.toFixed(2) + ' — capped to Amz">Amz</span>'
                             : '';
                         return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                             + meta.sprc.toFixed(2) + '</span>' + amzLbl;
@@ -3365,14 +3384,14 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab or 0 Sold min NROI, then CVR overlay), then raised to Amz when below A Price. Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP.",
+                    headerTooltip: "Not editable. Sprc Dil, then the lowest of that price, A Price, and LMP — same as Temu, without eBay. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP. Amz = capped to A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
                             return '';
                         }
                         const amzSugg = shopifyB2cIsAmzSuggApplied(rowData);
-                        let value = shopifyB2cDisplayedSprice(rowData);
+                        let value = shopifyB2cShownSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData.Price) || 0;
@@ -3398,12 +3417,6 @@
                             redTri = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Amazon suggested price is at/above LMP $'
                                 + lmp.toFixed(2) + ' — not capped"></i>';
                         }
-                        const amzFloor = shopifyB2cHasAmzFloor(rowData);
-                        if (amzFloor && lmp > 0 && value + 0.0001 >= lmp) {
-                            overLmp = true;
-                            redTri = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC raised to Amz $'
-                                + value.toFixed(2) + ' — at/above LMP $' + lmp.toFixed(2) + '"></i>';
-                        }
                         if (!(value > 0)) {
                             return '';
                         }
@@ -3412,9 +3425,8 @@
                         if (overLmp) {
                             priceHtml = `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         }
-                        const showAmz = shopifyB2cShowAmzLabel(rowData);
                         const amzLbl = shopifyB2cAmzLabelHtml(rowData);
-                        const blueTri = (!showAmz && live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';

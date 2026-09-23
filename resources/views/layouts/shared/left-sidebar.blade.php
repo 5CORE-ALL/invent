@@ -2652,6 +2652,9 @@
                             <a href="{{ route('image.master') }}">PM Image Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('image.audit') }}">PM Image Audit</a>
+                        </li>
+                        <li>
                             <a href="{{ route('variation.name.thumbnail') }}">PM variation name / thumbnail</a>
                         </li>
                         <li>

@@ -2140,6 +2140,7 @@ class OverallAmazonController extends Controller
             
             return response()->json([
                 'shopify_push' => $shopifyPush,
+                'price' => $priceFloat,
                 'S_STATUS' => ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error',
             ]);
         } catch (\Exception $e) {

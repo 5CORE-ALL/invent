@@ -289,7 +289,7 @@
                         </ul>
                     </div>
                     <button id="push-all-sprice-btn" class="btn btn-sm btn-dark flex-shrink-0"
-                        title="Push every currently-visible row that has a SPRICE live to Newegg (chunked)">
+                        title="Queue visible blue-triangle S PRC, including rows raised to Amz. Same background push as Temu 1 analytics.">
                         <i class="fas fa-cloud-upload-alt"></i> Push All
                     </button>
 
@@ -893,8 +893,8 @@
             // Row payload uses `inv` (Shopify stock). `INV` is only a leftover alias.
             const inv = parseFloat(data.inv != null ? data.inv : data.INV);
             if (!(inv > 0)) return false;
-            // Amz label means the shown S PRC was raised to A Price. Still push when
-            // that shown price does not match the live Newegg price.
+            // Amz label means the shown S PRC was raised to A Price. Queue that
+            // shown price the same way Temu 1 analytics queues a blue triangle.
             const sprice = neRowSpriceForAlert(data);
             const price = parseFloat(data.price) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
@@ -1779,9 +1779,8 @@
                                 priceHtml = '<span style="font-weight:600;padding:2px 6px;border-radius:3px;">'
                                     + formatted + '</span>';
                             }
-                            const showAmz = neShowAmzLabel(d);
                             const amzLbl = neAmzLabelHtml(d);
-                            const blueTri = (!showAmz && live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
@@ -1795,7 +1794,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         width: 52,
-                        headerTooltip: "S PRC push to Newegg. Double tick = S PRC matches Price. Upload = needs push. Cross = last push failed. Click to push this SKU.",
+                        headerTooltip: "Queues the shown S PRC (Amz-raised price included) on the same background push as Temu 1 analytics. Double tick = S PRC matches Price. Upload = needs push. Cross = last push failed. Click to queue this SKU. Checked rows queue together.",
                         sorter: function(a, b, aRow, bRow) {
                             const rank = function(d) {
                                 const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
@@ -2658,18 +2657,56 @@
                 });
             }
 
+            function neShownPushPrice(d) {
+                const shown = typeof neShownSprice === 'function' ? neShownSprice(d) : 0;
+                return shown > 0 ? +shown.toFixed(2) : 0;
+            }
+
+            // Same queue as Temu 1 analytics: POST /channel-push-sprice/newegg, then poll.
+            // The shown S PRC already includes the Amazon floor, so an Amz row sends A Price.
+            function neQueueShownSprice(items) {
+                if (!items || !items.length) {
+                    showToast('Nothing to push', 'error');
+                    return;
+                }
+                if (window._chPushSpriceLiveAllowed === false) {
+                    showToast('Live S PRC push is disabled on this environment', 'error');
+                    return;
+                }
+                if (typeof enqueueChannelPushSprice !== 'function') {
+                    pushUpdatesInChunks(items, null);
+                    return;
+                }
+                items.forEach(function(item) { neMarkPushStatus(item.sku, 'queued'); });
+                enqueueChannelPushSprice(items, { immediate: true });
+            }
+
             function pushOneNeweggRow(row) {
                 const d = row && typeof row.getData === 'function' ? (row.getData() || {}) : {};
                 const sku = String(d.sku || '').trim();
-                const shown = neShownSprice(d);
-                if (!sku || !(shown > 0)) {
+                const price = neShownPushPrice(d);
+                if (!sku || !(price > 0)) {
                     showToast('No S PRC to push', 'error');
                     return;
                 }
-                const price = +shown.toFixed(2);
-                if (!confirm('Push $' + price.toFixed(2) + ' to Newegg for ' + sku + '?')) return;
-                neMarkPushStatus(sku, 'queued');
-                pushUpdatesInChunks([{ sku: sku, price: price }], null);
+                const selected = [];
+                if (selectedSkus && selectedSkus.size) {
+                    selectedSkus.forEach(function(sel) {
+                        const rows = table.searchRows('sku', '=', sel);
+                        if (!rows.length) return;
+                        const rowData = rows[0].getData() || {};
+                        const rowPrice = neShownPushPrice(rowData);
+                        if (rowData.sku && rowPrice > 0) {
+                            selected.push({ sku: rowData.sku, price: rowPrice });
+                        }
+                    });
+                }
+                if (selected.length) {
+                    neQueueShownSprice(selected);
+                    showToast('Queued S PRC for ' + selected.length + ' selected SKU(s)', 'success');
+                    return;
+                }
+                neQueueShownSprice([{ sku: sku, price: price }]);
             }
 
             function pushUpdatesInChunks(updates, $btn) {
@@ -2765,7 +2802,7 @@
                 next(0);
             }
 
-            // Live-push each SELECTED SKU's SPRICE (or current Newegg price as fallback).
+            // Queue each selected SKU's shown S PRC, including the Amazon floor.
             function pushSelectedToNewegg() {
                 if (selectedSkus.size === 0) { showToast('Please select SKUs first', 'error'); return; }
 
@@ -2775,44 +2812,38 @@
                     const rows = table.searchRows('sku', '=', sku);
                     if (rows.length === 0) return;
                     const d = rows[0].getData();
-                    const shown = typeof neShownSprice === 'function' ? neShownSprice(d) : 0;
-                    const price = shown > 0 ? shown
-                                : (parseFloat(d.sprice) > 0 ? parseFloat(d.sprice)
-                                : (parseFloat(d.price) > 0 ? parseFloat(d.price) : 0));
+                    const price = neShownPushPrice(d);
                     if (price <= 0) { skipped.push(sku); return; }
-                    updates.push({ sku: sku, price: +price.toFixed(2) });
+                    updates.push({ sku: sku, price: price });
                 });
 
                 if (updates.length === 0) {
-                    showToast('No selected SKU has a positive SPRICE or Price to push', 'error');
+                    showToast('No selected SKU has a positive S PRC to push', 'error');
                     return;
                 }
-
-                const summary = `Push ${updates.length} price${updates.length !== 1 ? 's' : ''} live to Newegg?`
-                    + (skipped.length ? `\n(${skipped.length} skipped — no SPRICE/Price)` : '');
-                if (!confirm(summary)) return;
-                pushUpdatesInChunks(updates, $('#push-newegg-btn'));
+                neQueueShownSprice(updates);
+                showToast('Queued S PRC for ' + updates.length + ' selected SKU(s)'
+                    + (skipped.length ? ' (' + skipped.length + ' skipped)' : ''), 'success');
             }
 
-            // Live-push EVERY currently-visible row that has a SPRICE > 0.
-            // Honours all active filters (INV, PFT, ROI, DIL, NR, Status, badges, search).
+            // Queue every visible row whose shown S PRC differs from live Price.
+            // Same set Temu 1 analytics queues on reload: blue triangle, including Amz.
             function pushAllSpriceVisible() {
-                const visible = table.getData('active'); // active = post-filter, post-sort
+                const visible = table.getData('active');
                 const updates = [];
                 visible.forEach(d => {
-                    if (!d.sku) return;
-                    const shown = typeof neShownSprice === 'function' ? neShownSprice(d) : 0;
-                    const sp = shown > 0 ? shown : parseFloat(d.sprice);
-                    if (!(sp > 0)) return;
-                    updates.push({ sku: d.sku, price: +sp.toFixed(2) });
+                    if (!d.sku || !neHasBlueTriangle(d)) return;
+                    const price = neShownPushPrice(d);
+                    if (!(price > 0)) return;
+                    updates.push({ sku: d.sku, price: price });
                 });
 
                 if (updates.length === 0) {
-                    showToast('No visible row has a SPRICE to push', 'error');
+                    showToast('No visible row has an S PRC that differs from Price', 'error');
                     return;
                 }
-                if (!confirm(`Push SPRICE for ${updates.length} visible SKU${updates.length !== 1 ? 's' : ''} live to Newegg?`)) return;
-                pushUpdatesInChunks(updates, $('#push-all-sprice-btn'));
+                neQueueShownSprice(updates);
+                showToast('Queued S PRC for ' + updates.length + ' SKU(s)', 'success');
             }
 
             // Bulk save through one HTTP request (mirrors reverb-save-sprice pattern).
