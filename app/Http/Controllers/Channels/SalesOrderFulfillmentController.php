@@ -346,7 +346,7 @@ class SalesOrderFulfillmentController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load Received by carrier orders.',
+                'message' => 'Failed to load Recd Carrier orders.',
                 'data' => [],
                 'count' => 0,
             ], 500);
@@ -6654,7 +6654,7 @@ class SalesOrderFulfillmentController extends Controller
             'pending_total' => 'Pending',
             'fulfilled_24h' => 'Label Created / No Scan',
             'label_created_no_tracking' => 'Label Created / No Tracking',
-            'received_by_carrier_total' => 'Received by carrier',
+            'received_by_carrier_total' => 'Recd Carrier',
             'in_transit_total' => 'In Transit',
             'invoiced_total' => 'Invoiced',
             'delivered_total' => 'Delivered',

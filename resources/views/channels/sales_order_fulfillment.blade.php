@@ -1205,8 +1205,8 @@
                             <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan — has tracking, carrier has not scanned yet">
                                 Label Created / No Scan: <span id="sof-fulfilled-24h">0</span><i class="sof-hist-dot" data-sof-metric="fulfilled_24h" style="background:#6c757d;" title="History trend"></i>
                             </span>
-                            <span class="badge sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="received_by_carrier_total" style="background:#cfe2ff; color:#084298; border:1px solid #9ec5fe;" title="Received by carrier — click for history graph">
-                                Received by carrier: <span id="sof-scan-done-24h">0</span><i class="sof-hist-dot" data-sof-metric="received_by_carrier_total" style="background:#6c757d;" title="History trend"></i>
+                            <span class="badge sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="received_by_carrier_total" style="background:#cfe2ff; color:#084298; border:1px solid #9ec5fe;" title="Recd Carrier — click for history graph">
+                                Recd Carrier: <span id="sof-scan-done-24h">0</span><i class="sof-hist-dot" data-sof-metric="received_by_carrier_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
                             <span class="badge sof-summary-badge" id="sof-in-transit-badge" data-sof-metric="in_transit_total" style="background:#ffe5d0; color:#9a3412; border:1px solid #fdba74;" title="In Transit — click for history graph">
                                 In Transit: <span id="sof-in-transit-total">0</span><i class="sof-hist-dot" data-sof-metric="in_transit_total" style="background:#6c757d;" title="History trend"></i>
@@ -1396,7 +1396,7 @@
                             <button class="nav-link" id="sof-scan-done-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-scan-done-pane" type="button" role="tab"
                                     aria-controls="sof-scan-done-pane" aria-selected="false">
-                                Received by carrier <span class="badge ms-1" id="sof-scan-done-tab-count" style="background:#cfe2ff;color:#084298;border:1px solid #9ec5fe;">0</span>
+                                Recd Carrier <span class="badge ms-1" id="sof-scan-done-tab-count" style="background:#cfe2ff;color:#084298;border:1px solid #9ec5fe;">0</span>
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -1514,12 +1514,12 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-scan-done-pane" role="tabpanel" aria-labelledby="sof-scan-done-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Received by carrier (Shipped / Received) in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Recd Carrier (Shipped / Received) in the selected date range.</p>
                             <div id="sof-scan-done-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-in-transit-pane" role="tabpanel" aria-labelledby="sof-in-transit-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range, including Received by carrier and Invoiced orders the carrier has scanned. Delivered USPS/UPS/FedEx packages are not kept here. Scan pending more than 36 hours are in red at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range, including Recd Carrier and Invoiced orders the carrier has scanned. Delivered USPS/UPS/FedEx packages are not kept here. Scan pending more than 36 hours are in red at the top.</p>
                             <div id="sof-in-transit-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -4878,7 +4878,7 @@
 
         scanDoneTable = new Tabulator('#sof-scan-done-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
-            placeholder: 'Loading Received by carrier orders…',
+            placeholder: 'Loading Recd Carrier orders…',
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -4921,8 +4921,8 @@
                 const cols = orderListColumns('sof-scan-done-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Received by carrier';
-                        c.headerTooltip = 'Shipped / Received by carrier';
+                        c.title = 'Recd Carrier';
+                        c.headerTooltip = 'Shipped / Recd Carrier';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -6350,7 +6350,7 @@
         pending_total: 'Pending',
         label_created_no_tracking: 'Label Created / No Tracking',
         fulfilled_24h: 'Label Created / No Scan',
-        received_by_carrier_total: 'Received by carrier',
+        received_by_carrier_total: 'Recd Carrier',
         in_transit_total: 'In Transit',
         invoiced_total: 'Invoiced',
         delivered_total: 'Delivered',
