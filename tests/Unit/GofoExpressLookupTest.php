@@ -7,6 +7,18 @@ use PHPUnit\Framework\TestCase;
 
 class GofoExpressLookupTest extends TestCase
 {
+    public function test_amazon_amz_prefixed_order_nos_are_tried_before_raw_ids(): void
+    {
+        $candidates = GofoExpressService::orderNoCandidates([
+            '112-8790563-9423418',
+            'Amz112-8790563-9423418',
+        ], 4);
+
+        $this->assertSame('Amz112-8790563-9423418', $candidates[0] ?? null);
+        $this->assertContains('#Amz112-8790563-9423418', $candidates);
+        $this->assertContains('112-8790563-9423418', $candidates);
+    }
+
     public function test_order_no_candidates_strip_tiktok_prefixes(): void
     {
         $candidates = GofoExpressService::orderNoCandidates([

@@ -3636,6 +3636,8 @@ class SalesOrderFulfillmentController extends Controller
             app(VeeqoApiService::class)->setTimeout(6);
             app(GofoExpressService::class)->setTimeout(6);
             app(FourSellerApiService::class)->setTimeout(5);
+            // Prior SSL poison must not block GOFO/Veeqo for this request.
+            \Illuminate\Support\Facades\Cache::forget('mm.label_ssl_broken');
         } catch (\Throwable $e) {
             // Timeouts are best-effort; continue with service defaults.
         }

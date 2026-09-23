@@ -760,7 +760,10 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        if (! $fast && $this->fourSeller->isConfigured()) {
+        // Always try 4Seller — labels bought there often use S20… as GOFO orderNo
+        // while the platform id only exists in 4Seller. Fast pulls used to skip this
+        // and left Amazon/eBay Label Created rows blank.
+        if ($this->fourSeller->isConfigured()) {
             $fs = $this->fourSeller->findShipment($gofoRefs);
             if ($fs !== null && trim((string) ($fs['tracking'] ?? '')) !== '') {
                 $hit = [
