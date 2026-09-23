@@ -1705,6 +1705,15 @@ class SalesOrderFulfillmentController extends Controller
                 if (in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true)) {
                     $dateSource = $this->ebayDisplayedOrderDate($order, $n);
                     $dateTz = null;
+                } elseif ($slug === 'amazon') {
+                    // PurchaseDate is stored as a UTC wall clock, same as eBay creationDate.
+                    $dateSource = $this->utcWallClockDisplayedDate(
+                        $order,
+                        'order_date',
+                        $n['raw_payload'] ?? null,
+                        ['PurchaseDate', 'purchaseDate']
+                    );
+                    $dateTz = null;
                 }
 
                 $rows[] = [
@@ -3728,22 +3737,39 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function ebayDisplayedOrderDate(object $order, array $normalized): mixed
     {
-        $payload = $normalized['raw_payload'] ?? null;
+        return $this->utcWallClockDisplayedDate(
+            $order,
+            'order_date',
+            $normalized['raw_payload'] ?? null,
+            ['creationDate']
+        ) ?? ($normalized['order_date'] ?? null);
+    }
+
+    /**
+     * Datetime columns that store a UTC wall clock (Z stripped). Read that instant,
+     * do not treat the clock as Pacific.
+     *
+     * @param  list<string>  $payloadKeys
+     */
+    protected function utcWallClockDisplayedDate(object $order, string $column, mixed $payload, array $payloadKeys): mixed
+    {
         if (is_string($payload)) {
             $decoded = json_decode($payload, true);
             $payload = is_array($decoded) ? $decoded : null;
         }
         if (is_array($payload)) {
-            $created = trim((string) ($payload['creationDate'] ?? ''));
-            if ($created !== '') {
-                return $created;
+            foreach ($payloadKeys as $key) {
+                $created = trim((string) ($payload[$key] ?? ''));
+                if ($created !== '') {
+                    return $created;
+                }
             }
         }
 
-        $raw = method_exists($order, 'getRawOriginal') ? $order->getRawOriginal('order_date') : null;
+        $raw = method_exists($order, 'getRawOriginal') ? $order->getRawOriginal($column) : null;
         $raw = trim((string) $raw);
         if ($raw === '') {
-            return $normalized['order_date'] ?? null;
+            return null;
         }
         if (preg_match('/(?:[zZ]|[+-]\d{2}:?\d{2})$/', $raw) === 1) {
             return $raw;
@@ -5893,8 +5919,9 @@ class SalesOrderFulfillmentController extends Controller
         $toDt = $b['to_dt'];
 
         return match ($slug) {
-            'amazon' => $query->whereDate('order_date', '>=', $fromDate)
-                ->whereDate('order_date', '<=', $toDate),
+            'amazon', 'ebay1', 'ebay2', 'ebay3' => $query
+                ->where('order_date', '>=', $from->copy()->utc()->format('Y-m-d H:i:s'))
+                ->where('order_date', '<=', $to->copy()->utc()->format('Y-m-d H:i:s')),
             'temu', 'temu2' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
                 $q->where(function (Builder $q2) use ($fromDt, $toDt) {
                     $q2->where('parent_order_time', '>=', $fromDt)
@@ -5924,9 +5951,6 @@ class SalesOrderFulfillmentController extends Controller
                     ->where('order_date', '<=', $shein['to_dt']);
             })(),
             'doba' => $query->where('order_time', '>=', $fromDt)->where('order_time', '<=', $toDt),
-            'ebay1', 'ebay2', 'ebay3' => $query
-                ->where('order_date', '>=', $from->copy()->utc()->format('Y-m-d H:i:s'))
-                ->where('order_date', '<=', $to->copy()->utc()->format('Y-m-d H:i:s')),
             'tiktok', 'tiktok2' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
                 $q->where(function (Builder $q2) use ($fromDt, $toDt) {
                     $q2->where('order_created_at', '>=', $fromDt)
