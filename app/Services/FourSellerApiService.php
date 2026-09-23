@@ -85,6 +85,11 @@ class FourSellerApiService
                 if (! in_array($plainAmz, $out, true)) {
                     $out[] = $plainAmz;
                 }
+                foreach (['Amz'.$ref, '#Amz'.$ref] as $amzRef) {
+                    if (! in_array($amzRef, $out, true)) {
+                        $out[] = $amzRef;
+                    }
+                }
             }
         }
 
@@ -162,28 +167,14 @@ class FourSellerApiService
 
     /**
      * @param  array<string, mixed>  $payload
-     * @return array{tracking: string, carrier: string}|null
+     * @return array{tracking: string, carrier: string, gofo_order_no?: string}|null
      */
     protected function extractShipment(array $payload): ?array
     {
-        $tracking = $this->firstTracking($payload);
-        if ($tracking === null) {
-            return null;
-        }
-
-        return [
-            'tracking' => $tracking,
-            'carrier' => $this->firstCarrier($payload) ?: 'Other',
-        ];
-    }
-
-    protected function firstTracking(array $data): ?string
-    {
-        $found = null;
-        $walk = static function ($value, $key = '') use (&$walk, &$found): void {
-            if ($found !== null) {
-                return;
-            }
+        $tracking = null;
+        $carrier = '';
+        $gofoOrderNo = '';
+        $walk = static function ($value, $key = '') use (&$walk, &$tracking, &$carrier, &$gofoOrderNo): void {
             if (is_array($value)) {
                 foreach ($value as $k => $v) {
                     $walk($v, (string) $k);
@@ -192,47 +183,44 @@ class FourSellerApiService
                 return;
             }
             $k = strtolower((string) $key);
+            $s = trim((string) $value);
+            if ($s === '') {
+                return;
+            }
+            if ($gofoOrderNo === '' && preg_match('/^(order.?no|orderno|gofo.?order|seller.?order.?no)$/', $k)
+                && preg_match('/^S\d{10,}$/i', $s) === 1) {
+                $gofoOrderNo = $s;
+            }
+            if ($carrier === '' && preg_match('/carrier|logistics.?company|shipping.?company|ship.?method/', $k) && ! is_numeric($s)) {
+                $carrier = $s;
+            }
+            if ($tracking !== null) {
+                return;
+            }
             if (! preg_match('/track|waybill|mail.?no|logistics.?no|ship.?code/', $k)) {
                 return;
             }
             if (preg_match('/url|link|status|time|date|id$/', $k)) {
                 return;
             }
-            $tn = strtoupper(preg_replace('/\s+/', '', (string) $value) ?? '');
+            $tn = strtoupper(preg_replace('/\s+/', '', $s) ?? '');
             if (strlen($tn) >= 8 && ! preg_match('/^\d{3}-\d{7}-\d{7}$/', $tn)) {
-                $found = $tn;
+                $tracking = $tn;
             }
         };
-        $walk($data);
+        $walk($payload);
+        if ($tracking === null) {
+            return null;
+        }
 
-        return $found;
-    }
+        $out = [
+            'tracking' => $tracking,
+            'carrier' => $carrier !== '' ? $carrier : 'Other',
+        ];
+        if ($gofoOrderNo !== '') {
+            $out['gofo_order_no'] = $gofoOrderNo;
+        }
 
-    protected function firstCarrier(array $data): string
-    {
-        $found = '';
-        $walk = static function ($value, $key = '') use (&$walk, &$found): void {
-            if ($found !== '') {
-                return;
-            }
-            if (is_array($value)) {
-                foreach ($value as $k => $v) {
-                    $walk($v, (string) $k);
-                }
-
-                return;
-            }
-            $k = strtolower((string) $key);
-            if (! preg_match('/carrier|logistics.?company|shipping.?company|ship.?method/', $k)) {
-                return;
-            }
-            $name = trim((string) $value);
-            if ($name !== '' && ! is_numeric($name)) {
-                $found = $name;
-            }
-        };
-        $walk($data);
-
-        return $found;
+        return $out;
     }
 }

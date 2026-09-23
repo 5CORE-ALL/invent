@@ -207,7 +207,9 @@ class VeeqoShopifyFulfillmentService
                 $last = $result;
                 $action = (string) ($result['action'] ?? '');
                 $tn = strtoupper(trim((string) ($result['tracking'] ?? '')));
-                if ($tn !== '' && in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true) && ! isset($pushed[$tn])) {
+                // Always save onto the marketplace order + SOF even when Shopify
+                // fulfill fails — Label Created must show the GOFO/4Seller number.
+                if ($tn !== '' && strlen($tn) >= 8 && ! isset($pushed[$tn])) {
                     $this->persistTrackingOntoMarketplaceOrder(
                         $marketplace,
                         $orderId,
@@ -215,8 +217,10 @@ class VeeqoShopifyFulfillmentService
                         $tn,
                         (string) ($result['carrier'] ?? '')
                     );
-                    $this->pushChannelTrackingAfterShopify($marketplace, $orderId, $result);
                     $pushed[$tn] = true;
+                }
+                if ($tn !== '' && in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
+                    $this->pushChannelTrackingAfterShopify($marketplace, $orderId, $result);
                 }
                 if (! empty($result['success']) || $action === 'shopify_fulfilled') {
                     $ok = $result;
@@ -704,38 +708,22 @@ class VeeqoShopifyFulfillmentService
             }
             $clean[] = $ref;
         }
-        $marketRefs = $this->marketplaceLookupRefs($clean, $fast ? 3 : 8);
+        $marketRefs = $this->marketplaceLookupRefs($clean, $fast ? 4 : 10);
 
-        if ($fast) {
-            // Label Created eBay/Amazon labels are usually bought in GOFO/4Seller.
-            // Hitting Veeqo first burned the HTTP deadline and left most rows blank.
-            if ($this->gofo->isConfigured() && $marketRefs !== []) {
-                $gofo = $this->gofo->findShipment($marketRefs, true);
-                if ($gofo !== null && trim((string) ($gofo['tracking'] ?? '')) !== '') {
-                    return [
-                        'tracking' => (string) $gofo['tracking'],
-                        'carrier' => (string) ($gofo['carrier'] ?? 'GOFO'),
-                        'source' => 'gofo',
-                    ];
-                }
-            }
-            if ($this->veeqo->isConfigured() && $marketRefs !== []) {
-                $veeqo = $this->findVeeqoShipment(array_slice($marketRefs, 0, 2), true, $sku, $excludeTrackings);
-                if ($veeqo !== null && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
-                    return [
-                        'tracking' => (string) $veeqo['tracking'],
-                        'carrier' => (string) ($veeqo['carrier'] ?? 'Veeqo'),
-                        'source' => 'veeqo',
-                    ];
-                }
-            }
-
-            return $localHit;
+        // Labels are usually bought in 4Seller/GOFO (all marketplaces). Try those
+        // before Veeqo so Amazon/eBay/Temu Shopify copies get fulfilled first.
+        $labelHit = $this->lookupWarehouseLabelTracking($marketRefs !== [] ? $marketRefs : $clean, $fast);
+        if ($labelHit !== null) {
+            return $labelHit;
         }
 
         if ($this->veeqo->isConfigured()) {
-            $veeqoRefs = $this->strongMarketplaceRefs($marketRefs !== [] ? $marketRefs : $clean);
-            $veeqo = $veeqoRefs === [] ? null : $this->findVeeqoShipment($veeqoRefs, false, $sku, $excludeTrackings);
+            $veeqoRefs = $fast
+                ? array_slice($marketRefs !== [] ? $marketRefs : $clean, 0, 2)
+                : $this->strongMarketplaceRefs($marketRefs !== [] ? $marketRefs : $clean);
+            $veeqo = $veeqoRefs === []
+                ? null
+                : $this->findVeeqoShipment($veeqoRefs, $fast, $sku, $excludeTrackings);
             if ($veeqo !== null && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
                 return [
                     'tracking' => (string) $veeqo['tracking'],
@@ -745,9 +733,24 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
+        return $localHit;
+    }
+
+    /**
+     * 4Seller/GOFO label lookup by marketplace platform order id (all channels).
+     *
+     * @param  list<string>  $refs
+     * @return array{tracking: string, carrier: string, source: string}|null
+     */
+    protected function lookupWarehouseLabelTracking(array $refs, bool $fast = false): ?array
+    {
+        $gofoRefs = $this->strongMarketplaceRefs($refs);
+        if ($gofoRefs === []) {
+            return null;
+        }
+
         if ($this->gofo->isConfigured()) {
-            $gofoRefs = $this->strongMarketplaceRefs($marketRefs !== [] ? $marketRefs : $clean);
-            $gofo = $gofoRefs === [] ? null : $this->gofo->findShipment($gofoRefs);
+            $gofo = $this->gofo->findShipment($gofoRefs, $fast);
             if ($gofo !== null && trim((string) ($gofo['tracking'] ?? '')) !== '') {
                 return [
                     'tracking' => (string) $gofo['tracking'],
@@ -757,18 +760,32 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        if ($this->fourSeller->isConfigured()) {
-            $fs = $this->fourSeller->findShipment($this->strongMarketplaceRefs($clean));
+        if (! $fast && $this->fourSeller->isConfigured()) {
+            $fs = $this->fourSeller->findShipment($gofoRefs);
             if ($fs !== null && trim((string) ($fs['tracking'] ?? '')) !== '') {
-                return [
+                $hit = [
                     'tracking' => (string) $fs['tracking'],
                     'carrier' => (string) ($fs['carrier'] ?? 'GOFO'),
                     'source' => '4seller',
                 ];
+                // 4Seller often stores GOFO orderNo as S20… — retry GOFO with that id.
+                $gofoOrderNo = trim((string) ($fs['gofo_order_no'] ?? $fs['order_no'] ?? ''));
+                if ($gofoOrderNo !== '' && $this->gofo->isConfigured()) {
+                    $viaGofo = $this->gofo->findShipment([$gofoOrderNo], true);
+                    if ($viaGofo !== null && trim((string) ($viaGofo['tracking'] ?? '')) !== '') {
+                        return [
+                            'tracking' => (string) $viaGofo['tracking'],
+                            'carrier' => (string) ($viaGofo['carrier'] ?? $hit['carrier']),
+                            'source' => 'gofo',
+                        ];
+                    }
+                }
+
+                return $hit;
             }
         }
 
-        return $localHit;
+        return null;
     }
 
     /**
@@ -814,6 +831,22 @@ class VeeqoShopifyFulfillmentService
             }
             if (! in_array($ref, $out, true)) {
                 $out[] = $ref;
+            }
+            $plain = ltrim($ref, '#');
+            // Shopify/4Seller/GOFO Amazon copies: Amz111-… and hyphenless 3-7-7.
+            if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $plain) === 1) {
+                foreach (['Amz'.$plain, '#Amz'.$plain, str_replace('-', '', $plain)] as $amzRef) {
+                    if (! in_array($amzRef, $out, true)) {
+                        $out[] = $amzRef;
+                    }
+                }
+            } elseif (preg_match('/^Amz(\d{3}-\d{7}-\d{7})$/i', $plain, $amz) === 1) {
+                $oid = (string) $amz[1];
+                foreach ([$oid, str_replace('-', '', $oid)] as $amzRef) {
+                    if (! in_array($amzRef, $out, true)) {
+                        $out[] = $amzRef;
+                    }
+                }
             }
             if (preg_match('/^(?:temu2?-|aliexpress-|alibaba-|PO-|TT2?-|tiktok2?-|BBY\d{2}-)/i', $ref, $m)) {
                 $tail = trim((string) preg_replace('/^(?:temu2?-|aliexpress-|alibaba-|PO-|TT2?-|tiktok2?-|BBY\d{2}-)/i', '', $ref));
@@ -5195,6 +5228,7 @@ class VeeqoShopifyFulfillmentService
                 ->where(function ($q) use ($since) {
                     $q->where('order_date', '>=', $since)->orWhere('created_at', '>=', $since);
                 })
+                ->orderByRaw("CASE WHEN UPPER(TRIM(COALESCE(status, ''))) IN ('SHIPPED','PARTIALLYSHIPPED') THEN 0 ELSE 1 END")
                 ->orderByDesc('order_date')
                 ->orderByDesc('id')
                 ->limit(max(80, $limit * 40))
@@ -5282,9 +5316,23 @@ class VeeqoShopifyFulfillmentService
                 $ids = [];
                 $seen = [];
                 $skuCol = $this->marketplaceSkuColumn($marketplace, $table);
+                $statusCol = null;
+                foreach (['order_status', 'status', 'fulfillment_status', 'shipping_status', 'package_status'] as $col) {
+                    if (Schema::hasColumn($table, $col)) {
+                        $statusCol = $col;
+                        break;
+                    }
+                }
                 $select = ['id', $uniqueCol];
                 if ($skuCol !== null) {
                     $select[] = $skuCol;
+                }
+                if ($statusCol !== null) {
+                    $select[] = $statusCol;
+                    // Prefer channel-shipped / labeled rows so Shopify copies get fulfilled first.
+                    $query->orderByRaw(
+                        "CASE WHEN UPPER(TRIM(COALESCE(`{$statusCol}`, ''))) REGEXP 'SHIP|TRANSIT|DELIVER|COMPLETE|FULFILL|DISPATCH|PACKAGE|RTS|COLLECT' THEN 0 ELSE 1 END"
+                    );
                 }
                 if (Schema::hasColumn($table, $dateCol)) {
                     $query->orderByDesc($dateCol);
@@ -5376,6 +5424,12 @@ class VeeqoShopifyFulfillmentService
         if ($action === 'already_on_shopify') {
             // Shopify has a label — keep retrying the marketplace declare.
             Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'done'), 1, now()->addMinutes(20));
+
+            return;
+        }
+        // Tracking found but Shopify write failed — retry soon (SOF already has the number).
+        if ($action === 'shopify_fulfill_failed' && strlen(trim((string) ($result['tracking'] ?? ''))) >= 8) {
+            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'miss'), 1, now()->addMinutes(2));
 
             return;
         }

@@ -613,6 +613,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-order-fulfillment', [SalesOrderFulfillmentController::class, 'index'])->name('sales.order.fulfillment');
     Route::get('/sales-order-fulfillment/data', [SalesOrderFulfillmentController::class, 'data'])->name('sales.order.fulfillment.data');
     Route::get('/sales-order-fulfillment/pending-data', [SalesOrderFulfillmentController::class, 'pendingData'])->name('sales.order.fulfillment.pending.data');
+    Route::get('/sales-order-fulfillment/no-tracking-data', [SalesOrderFulfillmentController::class, 'labelCreatedNoTrackingData'])->name('sales.order.fulfillment.no.tracking.data');
     Route::get('/sales-order-fulfillment/fulfilled-data', [SalesOrderFulfillmentController::class, 'fulfilledData'])->name('sales.order.fulfillment.fulfilled.data');
     Route::get('/sales-order-fulfillment/scan-done-data', [SalesOrderFulfillmentController::class, 'scanDoneData'])->name('sales.order.fulfillment.scan.done.data');
     Route::get('/sales-order-fulfillment/in-transit-data', [SalesOrderFulfillmentController::class, 'inTransitData'])->name('sales.order.fulfillment.in.transit.data');

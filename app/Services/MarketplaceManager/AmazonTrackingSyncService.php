@@ -470,6 +470,16 @@ class AmazonTrackingSyncService
         $carrier = trim((string) ($hit['carrier'] ?? ''));
         $this->persistLocalTracking($order, $tn, $carrier);
 
+        // Also fulfill the linked Shopify copy — Amazon SHIPPED must not block this.
+        $shopifyId = trim((string) ($order->shopify_order_id ?? ''));
+        if ($shopifyId !== '' && ! str_starts_with($shopifyId, 'manual')) {
+            try {
+                $this->veeqoFulfillment->fulfillMarketplaceOrder('amazon', (int) $order->id);
+            } catch (\Throwable) {
+                // SOF already has the number; Shopify retry is best-effort.
+            }
+        }
+
         return [
             'success' => true,
             'tracking' => $tn,

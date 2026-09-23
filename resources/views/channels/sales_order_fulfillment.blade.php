@@ -50,6 +50,7 @@
         #sales-order-fulfillment-table.tabulator .tabulator-col .tabulator-col-sorter,
         #sof-pending-table.tabulator .tabulator-col .tabulator-col-sorter,
         #sof-fulfilled-table.tabulator .tabulator-col .tabulator-col-sorter,
+        #sof-no-tracking-table.tabulator .tabulator-col .tabulator-col-sorter,
         #sof-scan-done-table.tabulator .tabulator-col .tabulator-col-sorter,
         #sof-in-transit-table.tabulator .tabulator-col .tabulator-col-sorter,
         #sof-in-received-table.tabulator .tabulator-col .tabulator-col-sorter,
@@ -560,6 +561,7 @@
 
         #sof-pending-table.tabulator .tabulator-header .tabulator-col,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col,
+        #sof-no-tracking-table.tabulator .tabulator-header .tabulator-col,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col,
         #sof-in-transit-table.tabulator .tabulator-header .tabulator-col,
         #sof-in-received-table.tabulator .tabulator-header .tabulator-col,
@@ -570,6 +572,7 @@
         }
         #sof-pending-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
+        #sof-no-tracking-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
         #sof-in-transit-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
         #sof-in-received-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
@@ -594,6 +597,7 @@
         /* Select-all checkbox: keep horizontal + clickable (vertical headers break header tickbox) */
         #sof-pending-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
+        #sof-no-tracking-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
         #sof-in-transit-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
         #sof-in-received-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
@@ -610,6 +614,7 @@
         }
         #sof-pending-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+        #sof-no-tracking-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
         #sof-in-transit-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
         #sof-in-received-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
@@ -621,6 +626,7 @@
         /* Ensure header/row tickboxes always receive clicks despite vertical-header CSS */
         #sof-pending-table.tabulator .tabulator-header input[type="checkbox"],
         #sof-fulfilled-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-no-tracking-table.tabulator .tabulator-header input[type="checkbox"],
         #sof-scan-done-table.tabulator .tabulator-header input[type="checkbox"],
         #sof-in-transit-table.tabulator .tabulator-header input[type="checkbox"],
         #sof-in-received-table.tabulator .tabulator-header input[type="checkbox"],
@@ -629,6 +635,7 @@
         #sof-all-order-table.tabulator .tabulator-header input[type="checkbox"],
         #sof-pending-table.tabulator .tabulator-cell input[type="checkbox"],
         #sof-fulfilled-table.tabulator .tabulator-cell input[type="checkbox"],
+        #sof-no-tracking-table.tabulator .tabulator-cell input[type="checkbox"],
         #sof-scan-done-table.tabulator .tabulator-cell input[type="checkbox"],
         #sof-in-transit-table.tabulator .tabulator-cell input[type="checkbox"],
         #sof-in-received-table.tabulator .tabulator-cell input[type="checkbox"],
@@ -642,6 +649,7 @@
         }
         #sof-pending-table.tabulator .tabulator-header .tabulator-col,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col,
+        #sof-no-tracking-table.tabulator .tabulator-header .tabulator-col,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col,
         #sof-in-transit-table.tabulator .tabulator-header .tabulator-col,
         #sof-in-received-table.tabulator .tabulator-header .tabulator-col,
@@ -653,6 +661,7 @@
         }
         #sof-pending-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
+        #sof-no-tracking-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
         #sof-in-transit-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
         #sof-in-received-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
@@ -663,6 +672,7 @@
         }
         #sof-pending-table .tabulator-row .tabulator-cell,
         #sof-fulfilled-table .tabulator-row .tabulator-cell,
+        #sof-no-tracking-table .tabulator-row .tabulator-cell,
         #sof-scan-done-table .tabulator-row .tabulator-cell,
         #sof-in-transit-table .tabulator-row .tabulator-cell,
         #sof-in-received-table .tabulator-row .tabulator-cell,
@@ -673,6 +683,7 @@
         }
         #sof-pending-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-fulfilled-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
+        #sof-no-tracking-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-scan-done-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-in-transit-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-in-received-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
@@ -681,6 +692,7 @@
         #sof-all-order-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-pending-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-fulfilled-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
+        #sof-no-tracking-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-scan-done-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-in-transit-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-in-received-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
@@ -691,6 +703,7 @@
         }
         #sof-pending-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-fulfilled-table .tabulator-row:has(.sof-order-id-wrap:hover),
+        #sof-no-tracking-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-scan-done-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-in-transit-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-in-received-table .tabulator-row:has(.sof-order-id-wrap:hover),
@@ -699,6 +712,7 @@
         #sof-all-order-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-pending-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-fulfilled-table .tabulator-row:has(.sof-text-dot-wrap:hover),
+        #sof-no-tracking-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-scan-done-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-in-transit-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-in-received-table .tabulator-row:has(.sof-text-dot-wrap:hover),
@@ -950,12 +964,14 @@
         #sof-in-transit-table .tabulator-row.sof-scan-pending-late .tabulator-cell,
         #sof-pending-table .tabulator-row.sof-order-over-24h .tabulator-cell,
         #sof-fulfilled-table .tabulator-row.sof-order-over-24h .tabulator-cell {
+        #sof-no-tracking-table .tabulator-row.sof-order-over-24h .tabulator-cell {
             background-color: #f8d7da !important;
             color: #842029;
         }
         #sof-in-transit-table .tabulator-row.sof-scan-pending-late.tabulator-selected .tabulator-cell,
         #sof-pending-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell,
         #sof-fulfilled-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell {
+        #sof-no-tracking-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell {
             background-color: #f1aeb5 !important;
         }
         .sof-in-transit-late-badge {
@@ -1183,7 +1199,10 @@
                             <span class="badge sof-summary-badge" id="sof-pending-total-badge" data-sof-metric="pending_total" style="background:#fff3cd; color:#856404; border:1px solid #ffe69c;" title="Pending — click for history graph">
                                 Pending: <span id="sof-pending-total">0</span><i class="sof-hist-dot" data-sof-metric="pending_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
-                            <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan — red triangle if more than 24 hours since the order time. Click for history graph">
+                            <span class="badge sof-summary-badge" id="sof-no-tracking-badge" data-sof-metric="label_created_no_tracking" style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d;" title="Label Created / No Tracking — labeled but missing a tracking number">
+                                Label Created / No Tracking: <span id="sof-no-tracking-total">0</span><i class="sof-hist-dot" data-sof-metric="label_created_no_tracking" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan — has tracking, carrier has not scanned yet">
                                 Label Created / No Scan: <span id="sof-fulfilled-24h">0</span><i class="sof-hist-dot" data-sof-metric="fulfilled_24h" style="background:#6c757d;" title="History trend"></i>
                             </span>
                             <span class="badge sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="received_by_carrier_total" style="background:#cfe2ff; color:#084298; border:1px solid #9ec5fe;" title="Received by carrier — click for history graph">
@@ -1360,6 +1379,13 @@
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="sof-no-tracking-tab" data-bs-toggle="tab"
+                                    data-bs-target="#sof-no-tracking-pane" type="button" role="tab"
+                                    aria-controls="sof-no-tracking-pane" aria-selected="false">
+                                Label Created / No Tracking <span class="badge ms-1" id="sof-no-tracking-tab-count" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">0</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
                             <button class="nav-link" id="sof-fulfilled-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-fulfilled-pane" type="button" role="tab"
                                     aria-controls="sof-fulfilled-pane" aria-selected="false">
@@ -1477,8 +1503,13 @@
                             </div>
                         </div>
 
+                        <div class="tab-pane fade" id="sof-no-tracking-pane" role="tabpanel" aria-labelledby="sof-no-tracking-tab">
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Label created but no tracking number yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
+                            <div id="sof-no-tracking-table" style="height: calc(100vh - 400px);"></div>
+                        </div>
+
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels in the selected date range that the carrier has not scanned yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels that have a tracking number and the carrier has not scanned yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1821,6 +1852,10 @@
     let fulfilledRows = [];
     let fulfilledTableLoaded = false;
     let fulfilledTableLoading = false;
+    let noTrackingTable = null;
+    let noTrackingRows = [];
+    let noTrackingTableLoaded = false;
+    let noTrackingTableLoading = false;
     let scanDoneTable = null;
     let scanDoneRows = [];
     let scanDoneTableLoaded = false;
@@ -2168,6 +2203,7 @@
 
     function sofApplyAllCarrierFilters() {
         applyPendingFilters();
+        applyNoTrackingFilters();
         applyFulfilledFilters();
         applyScanDoneFilters();
         applyInTransitFilters();
@@ -2200,6 +2236,7 @@
     function sofCachedRowsForActiveOrderTab() {
         const pairs = [
             ['#sof-pending-tab', '#sof-pending-pane', function () { return pendingRows; }],
+            ['#sof-no-tracking-tab', '#sof-no-tracking-pane', function () { return noTrackingRows; }],
             ['#sof-fulfilled-tab', '#sof-fulfilled-pane', function () { return fulfilledRows; }],
             ['#sof-scan-done-tab', '#sof-scan-done-pane', function () { return scanDoneRows; }],
             ['#sof-in-transit-tab', '#sof-in-transit-pane', function () { return inTransitRows; }],
@@ -2221,6 +2258,7 @@
     function sofRowsForTable(tbl) {
         if (!tbl) return null;
         if (tbl === pendingTable) return pendingRows;
+        if (tbl === noTrackingTable) return noTrackingRows;
         if (tbl === fulfilledTable) return fulfilledRows;
         if (tbl === scanDoneTable) return scanDoneRows;
         if (tbl === inTransitTable) return inTransitRows;
@@ -2237,7 +2275,7 @@
 
     function sofAnyLoadedOrderRows() {
         const caches = [
-            pendingRows, fulfilledRows, scanDoneRows, inTransitRows,
+            pendingRows, noTrackingRows, fulfilledRows, scanDoneRows, inTransitRows,
             inReceivedRows, invoicedRows, deliveredRows, allOrderRows, lossMakingRows,
             dobaNonprepaidRows, dobaPrepaidRows, dobaDoneRows,
         ];
@@ -2416,6 +2454,7 @@
     function sofOrderTablePairs() {
         return [
             ['#sof-pending-tab', '#sof-pending-pane', pendingTable],
+            ['#sof-no-tracking-tab', '#sof-no-tracking-pane', noTrackingTable],
             ['#sof-fulfilled-tab', '#sof-fulfilled-pane', fulfilledTable],
             ['#sof-scan-done-tab', '#sof-scan-done-pane', scanDoneTable],
             ['#sof-in-transit-tab', '#sof-in-transit-pane', inTransitTable],
@@ -3173,6 +3212,7 @@
         }
 
         pendingRows = patchCache(pendingRows);
+        noTrackingRows = patchCache(noTrackingRows);
         fulfilledRows = patchCache(fulfilledRows);
         scanDoneRows = patchCache(scanDoneRows);
         inTransitRows = patchCache(inTransitRows);
@@ -3183,7 +3223,7 @@
 
         let updated = 0;
         [
-            pendingTable, fulfilledTable, scanDoneTable, inTransitTable,
+            pendingTable, noTrackingTable, fulfilledTable, scanDoneTable, inTransitTable,
             inReceivedTable, invoicedTable, deliveredTable, allOrderTable,
         ].forEach(function (tbl) {
             if (!tbl || typeof tbl.getRows !== 'function') return;
@@ -3216,6 +3256,7 @@
         if (active) {
             const searchMap = [
                 [pendingTable, '#sof-order-search'],
+                [noTrackingTable, '#sof-order-search'],
                 [fulfilledTable, '#sof-order-search'],
                 [scanDoneTable, '#sof-order-search'],
                 [inTransitTable, '#sof-order-search'],
@@ -3234,6 +3275,7 @@
         sofUpdateTrackingFilterCounts();
         sofUpdateDateFilterHint();
         sofStripLabeledPendingRows();
+        sofPromoteTrackedNoTrackingRows();
         return updated;
     }
 
@@ -4042,6 +4084,9 @@
             const fulfilled24h = (response && response.fulfilled_24h != null)
                 ? Number(response.fulfilled_24h)
                 : 0;
+            const noTrackingTotal = (response && response.label_created_no_tracking != null)
+                ? Number(response.label_created_no_tracking)
+                : 0;
             const scanDone24h = (response && response.received_by_carrier_total != null)
                 ? Number(response.received_by_carrier_total)
                 : ((response && response.scan_done_24h != null ? Number(response.scan_done_24h) : 0)
@@ -4061,6 +4106,7 @@
 
             const channelEl = document.getElementById('sof-channel-count');
             const pendingEl = document.getElementById('sof-pending-total');
+            const noTrackingEl = document.getElementById('sof-no-tracking-total');
             const fulfilledEl = document.getElementById('sof-fulfilled-24h');
             const scanDoneEl = document.getElementById('sof-scan-done-24h');
             const inTransitEl = document.getElementById('sof-in-transit-total');
@@ -4069,6 +4115,7 @@
             const allOrderEl = document.getElementById('sof-all-order-total');
             if (channelEl) channelEl.textContent = channelCount.toLocaleString();
             if (pendingEl) pendingEl.textContent = pendingTotal.toLocaleString();
+            if (noTrackingEl && !noTrackingTableLoaded) noTrackingEl.textContent = noTrackingTotal.toLocaleString();
             if (fulfilledEl && !fulfilledTableLoaded) fulfilledEl.textContent = fulfilled24h.toLocaleString();
             if (scanDoneEl && !scanDoneTableLoaded) scanDoneEl.textContent = scanDone24h.toLocaleString();
             if (inTransitEl && !inTransitTableLoaded) inTransitEl.textContent = inTransitTotal.toLocaleString();
@@ -4079,6 +4126,10 @@
             const pendingTabCount = document.getElementById('sof-pending-tab-count');
             if (pendingTabCount && !pendingTableLoaded) {
                 pendingTabCount.textContent = pendingTotal.toLocaleString();
+            }
+            const noTrackingTabCount = document.getElementById('sof-no-tracking-tab-count');
+            if (noTrackingTabCount && !noTrackingTableLoaded) {
+                noTrackingTabCount.textContent = noTrackingTotal.toLocaleString();
             }
             const fulfilledTabCount = document.getElementById('sof-fulfilled-tab-count');
             if (fulfilledTabCount && !fulfilledTableLoaded) {
@@ -4574,6 +4625,129 @@
         sofWireOrderTable(pendingTable);
     }
 
+    function applyNoTrackingFilters() {
+        sofApplyOrderTableFilter(noTrackingTable, '#sof-order-search');
+    }
+
+    function sofApplyLabelCreatedSplitCounts(response) {
+        if (!response || typeof response !== 'object') return;
+        if (response.no_tracking_count != null) {
+            const n = Number(response.no_tracking_count);
+            const el = document.getElementById('sof-no-tracking-total');
+            const tab = document.getElementById('sof-no-tracking-tab-count');
+            if (el) el.textContent = n.toLocaleString();
+            if (tab) tab.textContent = n.toLocaleString();
+        }
+        if (response.no_scan_count != null) {
+            const n = Number(response.no_scan_count);
+            const el = document.getElementById('sof-fulfilled-24h');
+            const tab = document.getElementById('sof-fulfilled-tab-count');
+            if (el) el.textContent = n.toLocaleString();
+            if (tab) tab.textContent = n.toLocaleString();
+        }
+    }
+
+    function ensureNoTrackingTable() {
+        const pane = document.getElementById('sof-no-tracking-pane');
+        const paneReady = !pane || pane.classList.contains('show') || pane.classList.contains('active');
+        if (noTrackingTable) {
+            setTimeout(function () {
+                try { noTrackingTable.redraw(true); } catch (e) {}
+                if (!noTrackingTableLoaded) {
+                    try { noTrackingTable.replaceData(); } catch (e2) {}
+                }
+            }, 50);
+            return;
+        }
+        if (noTrackingTableLoading || !paneReady) {
+            return;
+        }
+        noTrackingTableLoading = true;
+
+        noTrackingTable = new Tabulator('#sof-no-tracking-table', Object.assign({}, sofOrderTableOpts, {
+            layout: 'fitColumns',
+            placeholder: 'Loading Label Created / No Tracking orders…',
+            initialSort: [
+                { column: 'order_over_24h', dir: 'desc' },
+                { column: 'updated_at', dir: 'desc' },
+            ],
+            rowFormatter: function (row) {
+                const el = row.getElement();
+                const data = row.getData() || {};
+                el.classList.toggle('sof-order-over-24h', sofIsOrderOver24h(data));
+            },
+            ajaxURL: '{{ route("sales.order.fulfillment.no.tracking.data") }}',
+            ajaxConfig: 'GET',
+            ajaxParams: sofDateParams,
+            ajaxRequestFunc: function (url, config, params) {
+                return new Promise(function (resolve, reject) {
+                    $.ajax({
+                        url: url,
+                        type: 'GET',
+                        data: Object.assign({}, params || {}, sofDateParams()),
+                        timeout: 0,
+                        success: resolve,
+                        error: reject,
+                    });
+                });
+            },
+            ajaxResponse: function (url, params, response) {
+                noTrackingRows = sofAnnotateOrderOver24h(sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
+                    ? response.data
+                    : []));
+                noTrackingTableLoaded = true;
+                noTrackingTableLoading = false;
+                sofApplyLabelCreatedSplitCounts(response);
+                const count = (response && response.count != null)
+                    ? Number(response.count)
+                    : noTrackingRows.length;
+                const tabCount = document.getElementById('sof-no-tracking-tab-count');
+                if (tabCount) tabCount.textContent = count.toLocaleString();
+                const totalEl = document.getElementById('sof-no-tracking-total');
+                if (totalEl) totalEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(noTrackingRows);
+                return noTrackingRows;
+            },
+            ajaxError: function () {
+                noTrackingTableLoading = false;
+                noTrackingTableLoaded = false;
+            },
+            dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(noTrackingRows);
+                applyNoTrackingFilters();
+                sofPinOrderOver24h(noTrackingTable);
+                setTimeout(function () {
+                    if (noTrackingTable) {
+                        try { noTrackingTable.redraw(true); } catch (e) {}
+                    }
+                    sofAutoFillMissingLabelTracking(noTrackingRows, 0);
+                    sofRefreshAmazonTrackingAfterFill(noTrackingRows);
+                }, 50);
+            },
+            dataSorted: function () {
+                sofPinOrderOver24h(noTrackingTable);
+            },
+            columns: (function () {
+                const cols = orderListColumns('sof-fulfilled-badge');
+                cols.unshift(sofOver24hHiddenColumn());
+                cols.forEach(function (c) {
+                    if (c.field === 'status_label') {
+                        c.title = 'Created';
+                        c.headerTooltip = 'Label Created / No Tracking';
+                    }
+                    if (c.field === 'order_date') {
+                        c.headerTooltip = 'Red triangle = more than 24 hours since the order time';
+                    }
+                });
+                const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
+                const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
+                return cols;
+            })(),
+        }));
+        sofWireOrderTable(noTrackingTable);
+    }
+
     function applyFulfilledFilters() {
         sofApplyOrderTableFilter(fulfilledTable, '#sof-order-search');
     }
@@ -4628,6 +4802,7 @@
                     : []));
                 fulfilledTableLoaded = true;
                 fulfilledTableLoading = false;
+                sofApplyLabelCreatedSplitCounts(response);
                 const count = (response && response.count != null)
                     ? Number(response.count)
                     : fulfilledRows.length;
@@ -4650,8 +4825,6 @@
                     if (fulfilledTable) {
                         try { fulfilledTable.redraw(true); } catch (e) {}
                     }
-                    sofAutoFillMissingLabelTracking(fulfilledRows, 0);
-                    sofRefreshAmazonTrackingAfterFill(fulfilledRows);
                 }, 50);
             },
             dataSorted: function () {
@@ -5636,6 +5809,9 @@
     document.getElementById('sof-pending-tab')?.addEventListener('shown.bs.tab', function () {
         ensurePendingTable();
     });
+    document.getElementById('sof-no-tracking-tab')?.addEventListener('shown.bs.tab', function () {
+        ensureNoTrackingTable();
+    });
     document.getElementById('sof-fulfilled-tab')?.addEventListener('shown.bs.tab', function () {
         ensureFulfilledTable();
     });
@@ -5654,6 +5830,15 @@
 
     document.getElementById('sof-pending-total-badge')?.addEventListener('click', function () {
         switchToPendingTab();
+    });
+    document.getElementById('sof-no-tracking-badge')?.addEventListener('click', function () {
+        const tabBtn = document.getElementById('sof-no-tracking-tab');
+        if (tabBtn && typeof bootstrap !== 'undefined') {
+            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+        } else if (tabBtn) {
+            tabBtn.click();
+        }
+        setTimeout(function () { ensureNoTrackingTable(); }, 80);
     });
     document.getElementById('sof-fulfilled-24h-badge')?.addEventListener('click', function () {
         switchToFulfilledTab();
@@ -5736,6 +5921,51 @@
         }
     }
 
+    /** Move No Tracking rows that now have a TN into Label Created / No Scan caches. */
+    function sofPromoteTrackedNoTrackingRows() {
+        if (!Array.isArray(noTrackingRows) || !noTrackingRows.length) return;
+        const stillMissing = [];
+        const promoted = [];
+        noTrackingRows.forEach(function (r) {
+            if (String(r.tracking_number || '').trim()) {
+                promoted.push(r);
+            } else {
+                stillMissing.push(r);
+            }
+        });
+        if (!promoted.length) return;
+        noTrackingRows = stillMissing;
+        const seen = {};
+        (fulfilledRows || []).forEach(function (r) {
+            const id = String(r.id || '').trim();
+            if (id) seen[id] = true;
+        });
+        promoted.forEach(function (r) {
+            const id = String(r.id || '').trim();
+            if (id && seen[id]) return;
+            if (id) seen[id] = true;
+            fulfilledRows = (fulfilledRows || []).concat([r]);
+        });
+        const ntEl = document.getElementById('sof-no-tracking-total');
+        const ntTab = document.getElementById('sof-no-tracking-tab-count');
+        if (ntEl) ntEl.textContent = noTrackingRows.length.toLocaleString();
+        if (ntTab) ntTab.textContent = noTrackingRows.length.toLocaleString();
+        const nsEl = document.getElementById('sof-fulfilled-24h');
+        const nsTab = document.getElementById('sof-fulfilled-tab-count');
+        if (nsEl) nsEl.textContent = (fulfilledRows || []).length.toLocaleString();
+        if (nsTab) nsTab.textContent = (fulfilledRows || []).length.toLocaleString();
+        if (noTrackingTable && noTrackingTableLoaded) {
+            try { noTrackingTable.replaceData(noTrackingRows); } catch (e) {
+                try { noTrackingTable.setData(noTrackingRows); } catch (e2) {}
+            }
+        }
+        if (fulfilledTable && fulfilledTableLoaded) {
+            try { fulfilledTable.replaceData(fulfilledRows); } catch (e) {
+                try { fulfilledTable.setData(fulfilledRows); } catch (e2) {}
+            }
+        }
+    }
+
     function sofReconcilePendingLabels() {
         if (window.__sofReconcilePendingStarted) return;
         window.__sofReconcilePendingStarted = true;
@@ -5769,7 +5999,7 @@
     function sofMissingPullTargetsFromCache() {
         const seen = {};
         const out = [];
-        [].concat(fulfilledRows || [], pendingRows || []).forEach(function (r) {
+        [].concat(noTrackingRows || [], fulfilledRows || [], pendingRows || []).forEach(function (r) {
             if (String(r.tracking_number || '').trim()) return;
             const mapped = sofMapPullTarget(r);
             if (!mapped) return;
@@ -5819,13 +6049,15 @@
         window.__sofAmazonTrackingRefreshQueued = true;
         setTimeout(function () {
             window.__sofAmazonTrackingRefreshQueued = false;
-            if (!fulfilledTable || typeof fulfilledTable.replaceData !== 'function') return;
-            const stillMissing = (fulfilledRows || []).some(function (r) {
+            const target = noTrackingTable || fulfilledTable;
+            const cache = noTrackingTable ? noTrackingRows : fulfilledRows;
+            if (!target || typeof target.replaceData !== 'function') return;
+            const stillMissing = (cache || []).some(function (r) {
                 return String(r.mm_slug || '').toLowerCase() === 'amazon'
                     && !String(r.tracking_number || '').trim();
             });
             if (!stillMissing) return;
-            try { fulfilledTable.replaceData(); } catch (e) {}
+            try { target.replaceData(); } catch (e) {}
         }, 12000);
     }
 
@@ -5856,6 +6088,7 @@
                 }
                 window.__sofAutoFillTrackingBusy = false;
                 sofStripLabeledPendingRows();
+                sofPromoteTrackedNoTrackingRows();
                 const processed = {};
                 (j.processed_keys || []).forEach(function (k) {
                     if (k) processed[String(k)] = true;
@@ -5866,6 +6099,7 @@
                     processed[sofPullTargetKey(t)] = true;
                 });
                 const next = []
+                    .concat(noTrackingRows || [])
                     .concat(fulfilledRows || [])
                     .concat(pendingRows || [])
                     .filter(function (r) {
@@ -6103,6 +6337,7 @@
     const sofHistoryLabels = {
         channel_count: 'Channels',
         pending_total: 'Pending',
+        label_created_no_tracking: 'Label Created / No Tracking',
         fulfilled_24h: 'Label Created / No Scan',
         received_by_carrier_total: 'Received by carrier',
         in_transit_total: 'In Transit',
