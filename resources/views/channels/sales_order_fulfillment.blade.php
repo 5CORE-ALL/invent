@@ -2153,10 +2153,25 @@
         return '';
     }
 
+    function sofCarrierNameIsPlaceholder(name) {
+        const n = String(name || '').trim().toLowerCase();
+        if (!n || n === '-' || n === '—' || n === 'n/a' || n === 'na' || n === 'none' || n === 'null' || n === 'unknown' || n === 'other' || n === 'others') {
+            return true;
+        }
+        return n.indexOf('seller') !== -1 && n.indexOf('own') !== -1;
+    }
+
+    function sofDisplayCarrier(data) {
+        const stored = String((data && data.tracking_company) || '').trim();
+        const guessed = guessCarrierFromTrackingNumber(data && data.tracking_number);
+        if (guessed && sofCarrierNameIsPlaceholder(stored)) return guessed;
+        return stored;
+    }
+
     function sofRowMatchesCarrier(data) {
         const selected = sofCarrierFilterValue();
         if (!selected) return true;
-        return sofCarrierKeyFromName(data && data.tracking_company) === selected;
+        return sofCarrierKeyFromName(sofDisplayCarrier(data)) === selected;
     }
 
     function sofRowMatchesTracking(data) {
@@ -2175,7 +2190,7 @@
             || String(data.status_label || data.status || '').toLowerCase().includes(q)
             || String(sofDisplayStatusLabel(data.status_label || data.status || '')).toLowerCase().includes(q)
             || String(data.tracking_number || '').toLowerCase().includes(q)
-            || String(data.tracking_company || '').toLowerCase().includes(q)
+            || String(sofDisplayCarrier(data) || '').toLowerCase().includes(q)
             || String(data.display_title || '').toLowerCase().includes(q);
     }
 
@@ -3121,13 +3136,10 @@
     }
 
     function formatCarrierCell(cell) {
-        let v = String(cell.getValue() || '').trim();
-        if (!v) {
-            const row = cell.getRow && cell.getRow() ? cell.getRow().getData() : null;
-            v = guessCarrierFromTrackingNumber(row && row.tracking_number);
-            if (v && row && typeof row === 'object') {
-                row.tracking_company = v;
-            }
+        const row = cell.getRow && cell.getRow() ? cell.getRow().getData() : null;
+        let v = sofDisplayCarrier(row || { tracking_company: cell.getValue(), tracking_number: '' });
+        if (v && row && typeof row === 'object' && sofCarrierNameIsPlaceholder(row.tracking_company)) {
+            row.tracking_company = v;
         }
         return formatCarrierBadgeHtml(v);
     }
