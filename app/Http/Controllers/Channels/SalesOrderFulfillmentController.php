@@ -391,10 +391,7 @@ class SalesOrderFulfillmentController extends Controller
     public function invoicedData(): JsonResponse
     {
         try {
-            $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->scopedToLast30Days($this->invoicedOrdersQuery($slug), $slug),
-                true
-            );
+            $rows = $this->excludeDisplayedDeliveredRows($this->invoicedOrderRows());
 
             return response()->json([
                 'success' => true,
@@ -431,6 +428,13 @@ class SalesOrderFulfillmentController extends Controller
                 $this->onlyCarrierDeliveredRows($this->inTransitOrderRows())
             );
             $rows = $this->mergeOrderRowsById($rows, $this->invoicedTrackedForDelivered());
+            $rows = $this->mergeOrderRowsById(
+                $rows,
+                array_values(array_filter(
+                    $this->invoicedOrderRows(),
+                    fn (array $r) => $this->rowDisplayedAsDelivered($r)
+                ))
+            );
 
             return response()->json([
                 'success' => true,
@@ -2787,6 +2791,37 @@ class SalesOrderFulfillmentController extends Controller
         return array_values(array_filter(
             $rows,
             fn (array $r) => ! $this->rowLooksDelivered($r)
+        ));
+    }
+
+    /**
+     * Visible status is Delivered (carrier or marketplace). Those rows belong on the Delivered tab only.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowDisplayedAsDelivered(array $row): bool
+    {
+        if (strtolower(trim((string) ($row['status_label'] ?? ''))) === 'delivered') {
+            return true;
+        }
+        if (strtolower(trim((string) ($row['shipment_status'] ?? ''))) === strtolower(ShipmentTrackingService::STATUS_DELIVERED)) {
+            return true;
+        }
+
+        $mp = strtolower(str_replace([' ', '-', '_'], '', trim((string) ($row['status'] ?? ''))));
+
+        return $mp === 'delivered';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function excludeDisplayedDeliveredRows(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            fn (array $r) => ! $this->rowDisplayedAsDelivered($r)
         ));
     }
 
@@ -5271,7 +5306,7 @@ class SalesOrderFulfillmentController extends Controller
             ) + $scanDone + $inReceived + $invoicedTransit,
             'in_received_total' => $inReceived,
             'received_by_carrier_total' => $scanDone + $inReceived,
-            'invoiced_total' => $this->invoicedOrdersCount(),
+            'invoiced_total' => count($this->excludeDisplayedDeliveredRows($this->invoicedOrderRows())),
             'delivered_total' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug)
             ) + $invoicedDelivered,
@@ -5333,9 +5368,13 @@ class SalesOrderFulfillmentController extends Controller
     protected function recdTransitOrderRows(): array
     {
         return $this->annotateInTransitScanPendingAlerts(
-            $this->mergeOrderRowsById(
-                $this->excludeCarrierDeliveredRows($this->inTransitOrderRows()),
-                $this->receivedByCarrierOrderRows()
+            $this->excludeDisplayedDeliveredRows(
+                $this->excludeCarrierDeliveredRows(
+                    $this->mergeOrderRowsById(
+                        $this->inTransitOrderRows(),
+                        $this->receivedByCarrierOrderRows()
+                    )
+                )
             )
         );
     }

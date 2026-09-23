@@ -1520,7 +1520,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-invoiced-pane" role="tabpanel" aria-labelledby="sof-invoiced-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Invoiced orders in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Invoiced orders in the selected date range. Orders whose status is Delivered are on the Delivered tab.</p>
                             <div id="sof-invoiced-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -4953,7 +4953,7 @@
                 const cols = orderListColumns('sof-scan-done-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Recd Carrier';
+                        c.title = 'Status';
                         c.headerTooltip = 'Shipped / Recd Carrier';
                     }
                 });
@@ -5215,8 +5215,8 @@
                 const cols = orderListColumns('sof-invoiced-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Invoiced';
-                        c.headerTooltip = 'Invoiced status';
+                        c.title = 'Status';
+                        c.headerTooltip = 'Status. Delivered orders are on the Delivered tab.';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -5304,7 +5304,7 @@
                 const cols = orderListColumns('sof-delivered-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Delivered';
+                        c.title = 'Status';
                         c.headerTooltip = 'Delivered status (last 30 days)';
                     }
                 });
