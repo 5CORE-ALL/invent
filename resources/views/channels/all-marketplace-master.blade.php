@@ -6723,19 +6723,6 @@
 
                 const labels = data.map(d => d.date);
                 const values = data.map(d => d.value);
-                // Last segment uses the same pair as the badge/row dot, so a red
-                // dot cannot sit on a green rising point (or the reverse).
-                (function alignLastStepToDotPair() {
-                    if (currentChartMode !== 'metric' || !values.length) return;
-                    var metric = currentMetricKey || currentChartMetric;
-                    var pair = lastDotPairByKey[(currentChartChannel || '') + '_' + metric];
-                    if (!pair || pair[0] == null || pair[1] == null || isNaN(pair[0]) || isNaN(pair[1])) return;
-                    var last = values.length - 1;
-                    var latest = (currentCellValue != null && isFinite(currentCellValue)) ? currentCellValue : pair[1];
-                    var prev = pair[0] + (latest - pair[1]);
-                    values[last] = latest;
-                    if (last >= 1) values[last - 1] = prev;
-                })();
 
                 // --- Compute stats ---
                 const dataMin = Math.min(...values);

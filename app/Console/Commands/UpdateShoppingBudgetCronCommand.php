@@ -13,6 +13,7 @@ use App\Support\GoogleShoppingBgtParts;
 use App\Support\GoogleShoppingBgtSkuMetrics;
 use App\Support\GoogleShoppingCampaignNameMatcher;
 use App\Support\GoogleShoppingCampaignsRawRule;
+use App\Support\GoogleShoppingPushWindow;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -80,19 +81,8 @@ class UpdateShoppingBudgetCronCommand extends Command
             $customerId = config('services.google_ads.login_customer_id');
             $this->info("Customer ID: {$customerId}");
 
-            // Calculate date ranges - same logic as GoogleAdsDateRangeTrait
-            $today = now();
-            $currentHour = (int) $today->format('H');
-            $endDateDaysBack = ($currentHour < 12) ? 2 : 1;
-            $endDate = $today->copy()->subDays($endDateDaysBack)->format('Y-m-d');
-
-            $dateRanges = [
-                'L30' => [
-                    // L30 = last 30 days including end date (end date - 29 days = 30 days total)
-                    'start' => $today->copy()->subDays($endDateDaysBack + 29)->format('Y-m-d'),
-                    'end' => $endDate,
-                ],
-            ];
+            // Same L30 end date as the shopping grid (latest stored campaign date).
+            $dateRanges = GoogleShoppingPushWindow::fromCampaignTable();
 
             $this->info("Date range - L30: {$dateRanges['L30']['start']} to {$dateRanges['L30']['end']}");
 

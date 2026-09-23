@@ -1698,8 +1698,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Queue one Google Ads read for Shopping LBid/LBgt after the daily SBID and budget pushes.
-        // The command only dispatches the job. The shopping page never starts this.
+        // Read Shopping LBid/LBgt from Google Ads after the daily SBID and budget pushes.
+        // Runs in this process. The shopping page never starts this.
         $schedule->command('google-shopping:sync-live-bid-bgt')
             ->dailyAt('18:00')
             ->timezone('Asia/Kolkata')
