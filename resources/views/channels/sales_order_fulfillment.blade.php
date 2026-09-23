@@ -2383,14 +2383,6 @@
         } catch (e2) {}
     }
 
-    function sofRefreshExistingOrderTable(tbl) {
-        if (!tbl) return;
-        sofReloadAjaxTable(tbl);
-        setTimeout(function () {
-            try { tbl.redraw(true); } catch (e) {}
-        }, 50);
-    }
-
     function sofReloadAllTablesForDateRange() {
         sofUpdateDateFilterHint();
         [table, pendingTable, fulfilledTable, noTrackingTable, scanDoneTable, inTransitTable, inReceivedTable, invoicedTable, deliveredTable, notAuthorizedTable, allOrderTable, lossMakingTable]
@@ -4613,7 +4605,9 @@
 
     function ensurePendingTable() {
         if (pendingTable || pendingTableLoading) {
-            sofRefreshExistingOrderTable(pendingTable);
+            if (pendingTable) {
+                setTimeout(function () { pendingTable.redraw(true); }, 50);
+            }
             return;
         }
         pendingTableLoading = true;
@@ -4710,7 +4704,12 @@
         const pane = document.getElementById('sof-no-tracking-pane');
         const paneReady = !pane || pane.classList.contains('show') || pane.classList.contains('active');
         if (noTrackingTable) {
-            sofRefreshExistingOrderTable(noTrackingTable);
+            setTimeout(function () {
+                try { noTrackingTable.redraw(true); } catch (e) {}
+                if (!noTrackingTableLoaded) {
+                    try { noTrackingTable.replaceData(); } catch (e2) {}
+                }
+            }, 50);
             return;
         }
         if (noTrackingTableLoading || !paneReady) {
@@ -4821,7 +4820,12 @@
         const pane = document.getElementById('sof-fulfilled-pane');
         const paneReady = !pane || pane.classList.contains('show') || pane.classList.contains('active');
         if (fulfilledTable) {
-            sofRefreshExistingOrderTable(fulfilledTable);
+            setTimeout(function () {
+                try { fulfilledTable.redraw(true); } catch (e) {}
+                if (!fulfilledTableLoaded) {
+                    try { fulfilledTable.replaceData(); } catch (e2) {}
+                }
+            }, 50);
             return;
         }
         if (fulfilledTableLoading || !paneReady) {
@@ -4918,7 +4922,9 @@
 
     function ensureScanDoneTable() {
         if (scanDoneTable || scanDoneTableLoading) {
-            sofRefreshExistingOrderTable(scanDoneTable);
+            if (scanDoneTable) {
+                setTimeout(function () { scanDoneTable.redraw(true); }, 50);
+            }
             return;
         }
         scanDoneTableLoading = true;
@@ -4987,7 +4993,9 @@
 
     function ensureInTransitTable() {
         if (inTransitTable || inTransitTableLoading) {
-            sofRefreshExistingOrderTable(inTransitTable);
+            if (inTransitTable) {
+                setTimeout(function () { inTransitTable.redraw(true); }, 50);
+            }
             return;
         }
         inTransitTableLoading = true;
@@ -5099,7 +5107,9 @@
 
     function ensureNotAuthorizedTable() {
         if (notAuthorizedTable || notAuthorizedTableLoading) {
-            sofRefreshExistingOrderTable(notAuthorizedTable);
+            if (notAuthorizedTable) {
+                setTimeout(function () { notAuthorizedTable.redraw(true); }, 50);
+            }
             return;
         }
         notAuthorizedTableLoading = true;
@@ -5174,7 +5184,9 @@
 
     function ensureInvoicedTable() {
         if (invoicedTable || invoicedTableLoading) {
-            sofRefreshExistingOrderTable(invoicedTable);
+            if (invoicedTable) {
+                setTimeout(function () { invoicedTable.redraw(true); }, 50);
+            }
             return;
         }
         invoicedTableLoading = true;
@@ -5247,7 +5259,7 @@
         }
         if (deliveredTable) {
             if (deliveredTableLoaded) {
-                sofRefreshExistingOrderTable(deliveredTable);
+                setTimeout(function () { deliveredTable.redraw(true); }, 50);
                 return;
             }
             // Previous load failed — rebuild so user can retry by re-opening the tab.
@@ -5332,7 +5344,9 @@
 
     function ensureAllOrderTable() {
         if (allOrderTable || allOrderTableLoading) {
-            sofRefreshExistingOrderTable(allOrderTable);
+            if (allOrderTable) {
+                setTimeout(function () { allOrderTable.redraw(true); }, 50);
+            }
             return;
         }
         allOrderTableLoading = true;
@@ -5422,7 +5436,9 @@
 
     function ensureLossMakingTable() {
         if (lossMakingTable || lossMakingTableLoading) {
-            sofRefreshExistingOrderTable(lossMakingTable);
+            if (lossMakingTable) {
+                setTimeout(function () { lossMakingTable.redraw(true); }, 50);
+            }
             return;
         }
         lossMakingTableLoading = true;
@@ -6006,38 +6022,6 @@
         switchToDobaOrdersTab();
     });
     loadDobaOrdersData();
-
-    let sofLiveRefreshBusy = false;
-    function sofRefreshLive() {
-        if (document.hidden) return;
-        const active = sofActiveOrderTable();
-        if (active) sofReloadAjaxTable(active);
-        if (!dobaOrdersTableLoading) loadDobaOrdersData();
-        if (sofLiveRefreshBusy) return;
-        sofLiveRefreshBusy = true;
-        $.ajax({
-            url: '{{ route("sales.order.fulfillment.data") }}',
-            type: 'GET',
-            data: sofDateParams(),
-            timeout: 120000,
-            success: function (response) {
-                if (!response || response.success === false) return;
-                sofApplySummaryTotals(response, { history: false });
-                if (sofOrderTabIsActive('#sof-channels-tab', '#sof-channels-pane') && table && Array.isArray(response.data)) {
-                    allRows = response.data;
-                    try { table.replaceData(allRows); } catch (e) {}
-                    applyFilters();
-                }
-            },
-            complete: function () {
-                sofLiveRefreshBusy = false;
-            },
-        });
-    }
-    setInterval(sofRefreshLive, 60000);
-    document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) sofRefreshLive();
-    });
     $('#sof-search').on('keyup', function (e) {
         if (e.key === 'Enter') {
             applyFilters();
