@@ -2918,6 +2918,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Full 30-day pass for every marketplace. The 15-minute pull only continues
+        // a cursor, which is how Amazon tracking stopped updating.
+        $schedule->exec("timeout -k 60 3000 {$php} {$artisan} sof:sync-marketplaces-daily")
+            ->dailyAt('03:14')
+            ->timezone('America/Los_Angeles')
+            ->name('sof-sync-marketplaces-daily')
+            ->withoutOverlapping(70)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('cc:pull-pending-messages')
             ->everyFifteenMinutes()
             ->timezone('America/Los_Angeles')
