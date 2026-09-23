@@ -267,28 +267,23 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Label Created / No Scan — selected date range, carrier has not scanned yet.
-     * Older labeled rows stay here (red triangle after 24h). They are not moved
-     * to In Transit just because the label is older than a day.
+     * Label Created / No Tracking — labeled in the selected date range, carrier
+     * has not scanned, and there is still no tracking number.
+     * Return the grid immediately. GOFO/4Seller/Veeqo lookups run after render
+     * (the page already calls pull-tracking-numbers). Doing them inside this
+     * request rebuilt every order row and often hit the proxy timeout, so the
+     * tab stayed on "Loading…" with a 0 count.
      */
     public function labelCreatedNoTrackingData(): JsonResponse
     {
         try {
-            @set_time_limit(90);
+            @set_time_limit(60);
+            @ini_set('memory_limit', '512M');
             $rows = $this->labelCreatedNoTrackingRows();
-            // Pull GOFO/4Seller/Veeqo for every marketplace (not Amazon-only), persist
-            // onto SOF, and fulfill the linked Shopify order when a number is found.
-            if ($rows !== []) {
-                $this->pullLabelTrackingFromApis(
-                    $rows,
-                    6,
-                    app(VeeqoShopifyFulfillmentService::class),
-                    microtime(true) + 22.0,
-                    true
-                );
-                $rows = $this->labelCreatedNoTrackingRows();
+            try {
+                $this->queueAmazonSofTrackingFillForRows($rows);
+            } catch (\Throwable) {
             }
-            $this->queueAmazonSofTrackingFillForRows($rows);
 
             return response()->json(array_merge([
                 'success' => true,
@@ -296,6 +291,8 @@ class SalesOrderFulfillmentController extends Controller
                 'count' => count($rows),
             ], $this->labelCreatedSplitCounts()));
         } catch (\Throwable $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load Label Created / No Tracking orders.',

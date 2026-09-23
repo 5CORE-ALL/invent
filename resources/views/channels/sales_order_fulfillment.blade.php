@@ -4706,11 +4706,22 @@
                 const totalEl = document.getElementById('sof-no-tracking-total');
                 if (totalEl) totalEl.textContent = count.toLocaleString();
                 sofUpdateTrackingFilterCounts(noTrackingRows);
+                if (!noTrackingRows.length && noTrackingTable) {
+                    try {
+                        noTrackingTable.options.placeholder = 'No Label Created / No Tracking orders in this date range.';
+                    } catch (e) {}
+                }
                 return noTrackingRows;
             },
             ajaxError: function () {
                 noTrackingTableLoading = false;
                 noTrackingTableLoaded = false;
+                if (noTrackingTable) {
+                    try {
+                        noTrackingTable.options.placeholder = 'Could not load Label Created / No Tracking orders. Open this tab again to retry.';
+                        noTrackingTable.setData([]);
+                    } catch (e) {}
+                }
             },
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(noTrackingRows);
