@@ -1635,6 +1635,13 @@ class SalesOrderFulfillmentController extends Controller
                     }
                 }
 
+                $dateSource = $n['order_date'] ?? null;
+                $dateTz = $slug === 'shein' ? SheinApiService::API_TIMEZONE : null;
+                if (in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true)) {
+                    $dateSource = $this->ebayDisplayedOrderDate($order, $n);
+                    $dateTz = null;
+                }
+
                 $rows[] = [
                     'id' => $slug.'-'.$order->id,
                     'row_id' => (int) $order->id,
@@ -1645,10 +1652,7 @@ class SalesOrderFulfillmentController extends Controller
                     'order_id' => $displayOrderId,
                     'order_id_api' => $apiOrderId,
                     'order_number' => $orderNumber !== '' ? $orderNumber : null,
-                    'order_date' => $this->formatOrderDate(
-                        $n['order_date'] ?? null,
-                        $slug === 'shein' ? SheinApiService::API_TIMEZONE : null
-                    ),
+                    'order_date' => $this->formatOrderDate($dateSource, $dateTz),
                     'updated_at' => $this->formatOrderDate($n['updated_at'] ?? null),
                     'tracking_number' => $tracking,
                     'tracking_company' => $company,
@@ -3504,6 +3508,38 @@ class SalesOrderFulfillmentController extends Controller
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * eBay stores creationDate as a UTC wall clock with the Z removed.
+     * Prefer the payload instant so the page does not read that clock as Pacific.
+     *
+     * @param  array<string, mixed>  $normalized
+     */
+    protected function ebayDisplayedOrderDate(object $order, array $normalized): mixed
+    {
+        $payload = $normalized['raw_payload'] ?? null;
+        if (is_string($payload)) {
+            $decoded = json_decode($payload, true);
+            $payload = is_array($decoded) ? $decoded : null;
+        }
+        if (is_array($payload)) {
+            $created = trim((string) ($payload['creationDate'] ?? ''));
+            if ($created !== '') {
+                return $created;
+            }
+        }
+
+        $raw = method_exists($order, 'getRawOriginal') ? $order->getRawOriginal('order_date') : null;
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return $normalized['order_date'] ?? null;
+        }
+        if (preg_match('/(?:[zZ]|[+-]\d{2}:?\d{2})$/', $raw) === 1) {
+            return $raw;
+        }
+
+        return str_replace(' ', 'T', $raw).'Z';
     }
 
     protected function formatOrderDate(mixed $value, ?string $valueTz = null): ?string
@@ -5657,6 +5693,9 @@ class SalesOrderFulfillmentController extends Controller
                     ->where('order_date', '<=', $shein['to_dt']);
             })(),
             'doba' => $query->where('order_time', '>=', $fromDt)->where('order_time', '<=', $toDt),
+            'ebay1', 'ebay2', 'ebay3' => $query
+                ->where('order_date', '>=', $from->copy()->utc()->format('Y-m-d H:i:s'))
+                ->where('order_date', '<=', $to->copy()->utc()->format('Y-m-d H:i:s')),
             'tiktok', 'tiktok2' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
                 $q->where(function (Builder $q2) use ($fromDt, $toDt) {
                     $q2->where('order_created_at', '>=', $fromDt)
