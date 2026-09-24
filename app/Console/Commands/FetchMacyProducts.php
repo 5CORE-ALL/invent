@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\MarketPlace\BestBuyPricingController;
 use App\Models\BestbuyUsaProduct;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -1013,17 +1014,17 @@ class FetchMacyProducts extends Command
                         continue;
                     }
 
-                    $activated = array_key_exists('active', $offer)
-                        ? filter_var($offer['active'], FILTER_VALIDATE_BOOLEAN)
-                        : false;
+                    // Sold out (ZERO_QUANTITY) is still a listed offer. Mirakl sets
+                    // active=false for that case, but the offer price stays.
+                    $keepsPrice = BestBuyPricingController::mcmOfferKeepsListedPrice($offer);
 
                     $updates[] = [
                         'sku' => $sku,
-                        'price' => $activated ? $price : 0,
+                        'price' => $keepsPrice ? $price : 0,
                         'stock' => isset($offer['quantity']) && is_numeric($offer['quantity'])
                             ? (int) $offer['quantity']
                             : 0,
-                        'listing_status' => $activated ? 'active' : 'inactive',
+                        'listing_status' => $keepsPrice ? 'active' : 'inactive',
                     ];
                 }
 

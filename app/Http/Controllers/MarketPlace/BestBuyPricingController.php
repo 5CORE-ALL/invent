@@ -673,6 +673,50 @@ class BestBuyPricingController extends Controller
     }
 
     /**
+     * OF21 sets active=false when quantity is 0 (inactivity_reasons=ZERO_QUANTITY)
+     * even though the offer price is still the listed price. Only that sold-out
+     * case keeps the price. Any other inactivity reason is not a live listing.
+     *
+     * @param  array<string, mixed>  $offer
+     */
+    public static function mcmOfferKeepsListedPrice(array $offer): bool
+    {
+        if (self::mcmFlagIsTrue($offer['active'] ?? null)) {
+            return true;
+        }
+
+        $reasons = $offer['inactivity_reasons'] ?? null;
+        if (is_string($reasons)) {
+            $reasons = $reasons === '' ? [] : explode(',', $reasons);
+        }
+        if (! is_array($reasons)) {
+            return false;
+        }
+
+        $normalized = [];
+        foreach ($reasons as $reason) {
+            if (is_array($reason)) {
+                continue;
+            }
+            $code = strtoupper(trim((string) $reason));
+            if ($code !== '') {
+                $normalized[$code] = true;
+            }
+        }
+
+        return array_keys($normalized) === ['ZERO_QUANTITY'];
+    }
+
+    private static function mcmFlagIsTrue($value): bool
+    {
+        if (is_array($value) || $value === null) {
+            return false;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
      * listing_status=active only counts when the row was written by the latest OF21 pull.
      * Until OF21 tags a row, a Connect price > 0 stays visible (sold-out stock=0 included).
      */

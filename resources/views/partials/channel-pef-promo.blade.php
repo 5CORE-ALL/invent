@@ -3526,12 +3526,14 @@
                         : (window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function'
                             ? function(row) { return LmpIgnore.effectiveLmp(row); }
                             : undefined)));
-            if (window.SpriceLmpCap) {
+                if (window.SpriceLmpCap) {
                 const capped = SpriceLmpCap.prepare(d, sprice, getLmp);
-                // Best Buy: LMP below A Price does not replace S PRC. Keep Amazon.
-                if (typeof chPromoIsBestbuyPromoChannel === 'function'
+                // Best Buy / Shopify B2C: LMP below A Price does not replace S PRC. Keep Amazon.
+                const keepAmzOverLowLmp = (typeof chPromoIsBestbuyPromoChannel === 'function'
                     ? chPromoIsBestbuyPromoChannel()
-                    : CHANNEL_PROMO_CHANNEL === 'bestbuy') {
+                    : CHANNEL_PROMO_CHANNEL === 'bestbuy')
+                    || CHANNEL_PROMO_CHANNEL === 'shopify_b2c';
+                if (keepAmzOverLowLmp) {
                     const amz = chPromoRound2(chPromoAmazonPrice(d));
                     if (amz > 0 && capped > 0 && capped + 0.0001 < amz) return amz;
                 }
@@ -3540,7 +3542,7 @@
             const lmp = chPromoLmp(d);
             let s = chPromoRound2(sprice);
             if (lmp > 0 && s + 0.0001 >= lmp) s = chPromoRound2(lmp);
-            if (chPromoIsBestbuyPromoChannel()) {
+            if (chPromoIsBestbuyPromoChannel() || CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
                 const amz = chPromoRound2(chPromoAmazonPrice(d));
                 if (amz > 0 && s > 0 && s + 0.0001 < amz) return amz;
             }
@@ -3575,6 +3577,11 @@
                     if (v > 0) return chPromoRound2(v);
                 }
                 return chPromoRound2(requested);
+            }
+            if (d && CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
+                const amzKeep = chPromoRound2(chPromoAmazonPrice(d));
+                const lmpKeep = chPromoRound2(chPromoLmp(d));
+                if (amzKeep > 0 && lmpKeep > 0 && lmpKeep + 0.0001 < amzKeep) return amzKeep;
             }
             if (d && (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' || CHANNEL_PROMO_CHANNEL === 'newegg')) {
                 const raw = chPromoRound2(fill);

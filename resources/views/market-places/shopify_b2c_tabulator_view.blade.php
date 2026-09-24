@@ -721,7 +721,7 @@
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-blue-triangle-badge"
                             data-metric="blue_triangle_count" data-invert="1" data-format="number" data-live-value="0"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: INV > 0 and S PRC ≠ Price (needs push). S PRC is the lowest of the suggestion, A Price, and LMP. Click to show only those SKUs. Push on reload skips INV=0 and Price = S PRC.">
+                            title="Blue triangle: INV > 0 and S PRC ≠ Price (needs push). If LMP is below A Price, S PRC uses A Price. Otherwise S PRC is Sprc Dil, raised to A Price when Sprc Dil is lower, then capped at LMP. Click to show only those SKUs. Push on reload skips INV=0 and Price = S PRC.">
                             <span class="summary-trend-dot none" data-metric="blue_triangle_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-purple-triangle-badge"
                             data-metric="purple_triangle_count" data-invert="1" data-format="number" data-live-value="0"
@@ -1282,17 +1282,35 @@
         return parseFloat(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0;
     }
 
-    /** Sprc Dil below A Price rises to Amz. Sprc Dil above A Price is the S PRC. Then LMP only when not above A Price. */
+    function shopifyB2cRowLmp(data) {
+        if (window.SpriceLmpCap && typeof SpriceLmpCap.lmpOf === 'function') {
+            const n = Number(SpriceLmpCap.lmpOf(data));
+            if (n > 0) return Math.round(n * 100) / 100;
+        }
+        const raw = parseFloat(data && data.lmp_price) || 0;
+        return raw > 0 ? Math.round(raw * 100) / 100 : 0;
+    }
+
+    /** Non-ignored LMP is below A Price, so S PRC uses A Price. */
+    function shopifyB2cLmpBelowAmz(data) {
+        const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        const lmp = shopifyB2cRowLmp(data);
+        return amz > 0 && lmp > 0 && lmp + 0.0001 < amz;
+    }
+
+    /** Sprc Dil below A Price rises to Amz. Sprc Dil above A Price stays, unless LMP is below A Price — then S PRC is Amz. Otherwise cap at LMP. */
     function shopifyB2cCapLikeTemu(data, sprice) {
         let s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
         if (!(s > 0)) return 0;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        if (amz > 0 && shopifyB2cLmpBelowAmz(data)) return amz;
         if (amz > 0 && s > amz) return s;
         if (amz > 0 && s < amz) s = amz;
         if (window.SpriceLmpCap) {
             const capped = SpriceLmpCap.prepare(data, s);
             if (capped > 0) s = Math.round(capped * 100) / 100;
         }
+        if (amz > 0 && s > 0 && s + 0.0001 < amz) s = amz;
         return s > 0 ? s : 0;
     }
 
@@ -1315,16 +1333,18 @@
         return Math.round(value * 100) / 100;
     }
 
-    /** Shown / pushed S PRC. Sprc Dil below A Price uses A Price. Sprc Dil above A Price stays. Then LMP. */
+    /** Shown / pushed S PRC. LMP below A Price uses A Price. Otherwise Sprc Dil below A Price uses A Price, Sprc Dil above A Price stays, then LMP. */
     function shopifyB2cShownSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        if (shopifyB2cLmpBelowAmz(data)) return amz;
         if (shopifyB2cIsAmzSuggApplied(data) && amz > 0) {
             let s = amz;
             if (window.SpriceLmpCap) {
                 const capped = SpriceLmpCap.prepare(data, s);
                 if (capped > 0) s = Math.round(capped * 100) / 100;
             }
+            if (s > 0 && s + 0.0001 < amz) s = amz;
             return s > 0 ? s : 0;
         }
         let suggested = 0;
@@ -1370,6 +1390,7 @@
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
         const shown = shopifyB2cShownSprice(data);
         if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) >= 0.015) return false;
+        if (shopifyB2cLmpBelowAmz(data)) return true;
         return shopifyB2cHasAmzFloor(data) || shopifyB2cRaisedToAmz(data) || shopifyB2cIsAmzSuggApplied(data);
     }
 
@@ -1412,11 +1433,14 @@
             before = Number(meta && meta.rawSprc) || 0;
         }
         if (!(before > 0)) before = shopifyB2cDisplayedSprice(data);
-        const title = shopifyB2cHasAmzFloor(data)
-            ? ('S PRC $' + before.toFixed(2) + ' &gt; A Price $' + amz.toFixed(2) + ' — capped to Amz')
-            : (shopifyB2cRaisedToAmz(data)
-                ? ('Sprc Dil $' + before.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — using Amz')
-                : ('S PRC set to A Price $' + amz.toFixed(2)));
+        const lmp = shopifyB2cRowLmp(data);
+        const title = shopifyB2cLmpBelowAmz(data)
+            ? ('LMP $' + lmp.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — using Amz')
+            : (shopifyB2cHasAmzFloor(data)
+                ? ('S PRC $' + before.toFixed(2) + ' &gt; A Price $' + amz.toFixed(2) + ' — capped to Amz')
+                : (shopifyB2cRaisedToAmz(data)
+                    ? ('Sprc Dil $' + before.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — using Amz')
+                    : ('S PRC set to A Price $' + amz.toFixed(2))));
         return '<span class="shopifyb2c-sprice-amz-lbl" title="' + title + '">Amz</span>';
     }
 
@@ -2528,7 +2552,7 @@
                         // Apply retail price rounding (round to .99 endings)
                         newSprice = roundToRetailPrice(newSprice);
 
-                        // Ensure minimum price. Below A Price rises to Amz. Above A Price keeps Sprc Dil. Then LMP.
+                        // Ensure minimum price. LMP below A Price uses Amz. Otherwise below A Price rises to Amz, above A Price keeps Sprc Dil, then LMP.
                         newSprice = Math.max(0.99, newSprice);
                         newSprice = shopifyB2cCapLikeTemu(rowData, newSprice);
 
@@ -3344,7 +3368,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. If it is below A Price, S PRC uses A Price. If it is above A Price, S PRC keeps this Sprc Dil. Then LMP if that is lower. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. If LMP is below A Price, S PRC uses A Price. Otherwise if this is below A Price, S PRC uses A Price, and if it is above A Price, S PRC keeps this Sprc Dil, then LMP if that is lower. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
@@ -3370,7 +3394,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. If Sprc Dil is below A Price, S PRC uses A Price. If Sprc Dil is above A Price, S PRC keeps Sprc Dil. Then LMP if that is lower. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP. Amz = raised to A Price.",
+                    headerTooltip: "Not editable. If LMP is below A Price, S PRC uses A Price. Otherwise if Sprc Dil is below A Price, S PRC uses A Price, and if Sprc Dil is above A Price, S PRC keeps Sprc Dil, then LMP if that is lower. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP. Amz = using A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
@@ -3381,7 +3405,9 @@
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData.Price) || 0;
-                        const lmp = parseFloat(rowData.lmp_price) || 0;
+                        const lmp = shopifyB2cRowLmp(rowData);
+                        const amzNow = Math.round(shopifyB2cAmzPrice(rowData) * 100) / 100;
+                        const lmpBelowAmz = amzNow > 0 && lmp > 0 && lmp + 0.0001 < amzNow;
                         
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
@@ -3393,9 +3419,9 @@
                             return '';
                         }
 
-                        let overLmp = lmp > 0 && value + 0.0001 >= lmp;
+                        let overLmp = !lmpBelowAmz && lmp > 0 && value + 0.0001 >= lmp;
                         let redTri = '';
-                        if (!amzSugg) {
+                        if (!amzSugg && !lmpBelowAmz) {
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
                             overLmp = cap ? cap.alert : overLmp;
                             redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
