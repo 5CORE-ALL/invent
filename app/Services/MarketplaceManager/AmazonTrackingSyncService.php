@@ -21,6 +21,9 @@ class AmazonTrackingSyncService
     /** True after this process already paged Amazon package tracking, so the per-order loop does not call it again. */
     protected bool $merchantPackagesSynced = false;
 
+    /** Direct package lookups still allowed after the bulk walk, for orders that walk has not reached. */
+    protected int $directPackageLookupsLeft = 0;
+
     public function __construct(
         protected AmazonSpOrdersClient $ordersClient,
         protected VeeqoShopifyFulfillmentService $veeqoFulfillment,
@@ -300,6 +303,8 @@ class AmazonTrackingSyncService
         }
 
         $limit = max(1, min(400, $limit));
+        $this->directPackageLookupsLeft = 25;
+        $monday = $this->fillPackageTrackingForRecentShipped(20);
         $bulk = $this->fillFromAmazonPackages($deadline);
         $this->merchantPackagesSynced = (int) ($bulk['pages'] ?? 0) > 0;
         $scan = min(800, max($limit * 8, 200));
@@ -363,9 +368,59 @@ class AmazonTrackingSyncService
             'filled' => $filled,
             'skipped' => $skipped,
             'message' => "Amazon SOF tracking fill: checked {$checked}, filled {$filled}, still missing {$skipped}."
+                .' Monday-first package lookups: '.((int) ($monday['filled'] ?? 0)).' saved.'
                 .' Packages from Amazon: '.((int) ($bulk['filled'] ?? 0)).' saved'
                 .' ('.((int) ($bulk['pages'] ?? 0)).' pages).',
         ];
+    }
+
+    /**
+     * Shipped orders from the last 4 days, oldest first, so Monday is not stuck
+     * behind a newer backlog. Each hit is saved and the Shopify copy is fulfilled.
+     *
+     * @return array{checked: int, filled: int}
+     */
+    protected function fillPackageTrackingForRecentShipped(int $limit): array
+    {
+        $limit = max(1, min(40, $limit));
+        $since = now('America/Los_Angeles')->subDays(4)->startOfDay();
+        $orders = AmazonOrder::query()
+            ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
+            ->where(function ($q) {
+                $q->whereNull('fulfillment_channel')
+                    ->orWhereRaw("UPPER(TRIM(COALESCE(fulfillment_channel, ''))) != ?", ['AFN']);
+            })
+            ->where('order_date', '>=', $since)
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->where('shopify_order_id', 'not like', 'manual%')
+            ->where(function ($q) {
+                $q->whereNull('raw_data')
+                    ->orWhereRaw("IFNULL(JSON_UNQUOTE(JSON_EXTRACT(raw_data, '$.tracking_number')), '') = ''");
+            })
+            ->orderBy('order_date')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+
+        $checked = 0;
+        $filled = 0;
+        foreach ($orders as $order) {
+            if ($order->isFba() || $order->isCancelled()) {
+                continue;
+            }
+            if (trim((string) ($order->localTracking()['tracking'] ?? '')) !== '') {
+                continue;
+            }
+            $checked++;
+            $result = $this->fillTrackingForOrder($order);
+            if (! empty($result['success']) && trim((string) ($result['tracking'] ?? '')) !== '') {
+                $filled++;
+            }
+            usleep(120000);
+        }
+
+        return ['checked' => $checked, 'filled' => $filled];
     }
 
     /**
@@ -382,16 +437,16 @@ class AmazonTrackingSyncService
         }
 
         $recent = $this->walkMerchantPackages(
-            'sof.amazon.package_recent',
-            now()->subHours(6)->utc()->toIso8601String(),
-            2,
+            'sof.amazon.package_recent_7d',
+            now()->subDays(7)->utc()->toIso8601String(),
+            8,
             $deadline,
-            600
+            180
         );
         $history = $this->walkMerchantPackages(
             'sof.amazon.package_history',
             now()->subDays(45)->utc()->toIso8601String(),
-            12,
+            ! empty($recent['complete']) ? 8 : 2,
             $deadline,
             7200
         );
@@ -581,7 +636,11 @@ class AmazonTrackingSyncService
         $amazonOrderId = trim((string) ($order->amazon_order_id ?? ''));
         $hit = ['tracking' => null, 'carrier' => null];
 
-        if (! $this->merchantPackagesSynced && $amazonOrderId !== '') {
+        $tryPackage = $amazonOrderId !== '' && (! $this->merchantPackagesSynced || $this->directPackageLookupsLeft > 0);
+        if ($tryPackage) {
+            if ($this->merchantPackagesSynced) {
+                $this->directPackageLookupsLeft--;
+            }
             $fromPackages = $this->ordersClient->getMerchantPackageTracking($amazonOrderId);
             if ($fromPackages !== null && trim((string) ($fromPackages['tracking'] ?? '')) !== '') {
                 $hit = $fromPackages;

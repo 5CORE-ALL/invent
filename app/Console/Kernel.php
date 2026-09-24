@@ -958,7 +958,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Shopify B2C Dil→NROI / PRMT / CVR Disc / 0 Sold → save SPRICE (page not required).
+        // Shopify B2C Dil→SNROI → save SPRICE (page not required).
         $schedule->command('shopify-b2c:rule-sprice-apply')
             ->dailyAt('04:10')
             ->timezone('America/New_York')

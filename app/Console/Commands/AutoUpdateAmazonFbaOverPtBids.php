@@ -364,7 +364,7 @@ class AutoUpdateAmazonFbaOverPtBids extends Command
 
                 $baseSkuUpper = strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string) $fba->seller_sku)));
                 $shopify = $shopifyData[$baseSkuUpper] ?? null;
-                $inv = (int) ($shopify->inv ?? 0);
+                $inv = $this->fbaInventoryForBid($fba, $shopify);
                 if ($inv <= 0) {
                     continue;
                 }

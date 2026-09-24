@@ -23,11 +23,12 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
 
         $this->assertNotNull($out);
+        // GROI 50 → (10 × 1.50) / 0.95 = 15.79, below A Price 80, so S PRC uses Amz.
         $this->assertEqualsWithDelta(80.0, $out['sprice'], 0.001);
         $this->assertFalse($out['amz_sugg']);
     }
 
-    public function test_keeps_dil_sprice_when_already_above_amazon(): void
+    public function test_caps_dil_sprice_to_amazon_when_above_a_price(): void
     {
         $out = $this->compute([
             'inv' => 10,
@@ -41,10 +42,12 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(31.58, $out['sprice'], 0.01);
+        // Dil $ is 31.58, above A Price 10, so S PRC caps to Amz.
+        $this->assertEqualsWithDelta(10.0, $out['sprice'], 0.001);
+        $this->assertFalse($out['amz_sugg']);
     }
 
-    public function test_zero_sold_uses_min_groi_then_amz_floor(): void
+    public function test_zero_sold_min_groi_rises_to_amazon_when_below_a_price(): void
     {
         $out = $this->compute([
             'inv' => 8,
@@ -54,13 +57,15 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
             'ship' => 0,
             'std' => 100,
             'amz' => 50,
-            'cvr' => 0,
+            'cvr' => 8,
+            'cvr_60' => 8,
         ], [
             AmazonDilGroiRule::make(0.1, 5, 40),
             AmazonDilGroiRule::make(5, 10, 70),
         ]);
 
         $this->assertNotNull($out);
+        // Min Target NROI 40 → (10 × 1.40) / 0.95 = 14.74, below A Price 50, so S PRC uses Amz.
         $this->assertEqualsWithDelta(50.0, $out['sprice'], 0.001);
     }
 
@@ -93,8 +98,9 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
             'lp' => 20,
             'ship' => 0,
             'std' => 100,
-            'amz' => 1,
+            'amz' => 0,
             'cvr' => 6.9,
+            'cvr_60' => 8,
         ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
 
         $this->assertNotNull($out);
@@ -111,7 +117,7 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
             'lp' => 20,
             'ship' => 0,
             'std' => 100,
-            'amz' => 1,
+            'amz' => 0,
             'cvr' => 10.1,
         ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
 
@@ -129,7 +135,7 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
             'lp' => 20,
             'ship' => 0,
             'std' => 100,
-            'amz' => 1,
+            'amz' => 0,
             'cvr' => 8,
         ], [AmazonDilGroiRule::make(0.1, 25, 50)], 10.0);
 

@@ -64,6 +64,20 @@ trait CalculatesAmazonFbaBidUpdates
     }
 
     /**
+     * FBA stock lives in fba_table. Shopify inv is often 0 for the same SKU.
+     * A zero Shopify count must not block the fallback SBID push when Amazon still has units.
+     */
+    protected function fbaInventoryForBid(object $fba, ?object $shopify): int
+    {
+        $fbaQty = (int) ($fba->quantity_available ?? 0);
+        if ($fbaQty > 0) {
+            return $fbaQty;
+        }
+
+        return (int) ($shopify->inv ?? 0);
+    }
+
+    /**
      * FBA KW/PT: same U2/U1 + SBID path as non-FBA jobs (`fba_kw` / `fba_pt` utilization keys).
      *
      * @param  'fba_kw'|'fba_pt'  $fbaUtilType

@@ -79,6 +79,7 @@ class AutoUpdateAmzUnderPtBids extends Command
                 $sbid = $campaign->sbid ?? 0;
                 if (!empty($cid) && is_numeric($sbid) && $sbid > 0 && !isset($campaignBudgetMap[$cid])) {
                     $campaignBudgetMap[$cid] = $sbid;
+                    AmazonBidUtilizationService::persistSuggestedSbidForCampaign('amazon_sp_campaign_reports', (string) $cid, (float) $sbid);
                 }
             }
 
@@ -377,19 +378,11 @@ class AutoUpdateAmzUnderPtBids extends Command
             $campaignId = $row['campaign_id'];
             $avgCpc = 0;
             try {
-                $avgCpcRecord = DB::table('amazon_sp_campaign_reports')
-                    ->select(DB::raw('AVG(costPerClick) as avg_cpc'))
-                    ->where('campaign_id', $campaignId)
-                    ->where('ad_type', 'SPONSORED_PRODUCTS')
-                    ->where('campaignStatus', '!=', 'ARCHIVED')
-                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-                    ->where('costPerClick', '>', 0)
-                    ->whereNotNull('campaign_id')
-                    ->first();
-                
-                if ($avgCpcRecord && $avgCpcRecord->avg_cpc > 0) {
-                    $avgCpc = floatval($avgCpcRecord->avg_cpc);
-                }
+                $avgCpc = AmazonBidUtilizationService::lifetimeAvgCpcFromDaily(
+                    'amazon_sp_campaign_reports',
+                    (string) $campaignId,
+                    'SPONSORED_PRODUCTS'
+                );
             } catch (\Exception $e) {
                 // Continue without avg_cpc if there's an error
             }

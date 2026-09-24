@@ -5,6 +5,7 @@ namespace App\Support\Badges;
 use App\Contracts\PageBadgeCalculator;
 use App\Models\CcMessagesPending;
 use App\Models\CustomerFollowup;
+use App\Support\CustomerCareDepartments;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -45,12 +46,15 @@ class CustomerCareBadgeCalculator implements PageBadgeCalculator
             'active_issues' => self::activeCount('orders_on_hold_issues'),
             'dispatch_issues' => self::activeCount('dispatch_issue_issues'),
             'qc_issues' => self::activeCount('qc_and_packing_issues'),
-            'label_issues' => self::activeCount('label_issue_issues'),
+            'label_issues' => self::activeCount('label_issue_issues', ['Label', 'Shipping']),
             'l30_issue_rows' => self::l30IssueRows('orders_on_hold_issues'),
         ];
     }
 
-    private static function activeCount(string $table): int
+    /**
+     * @param  string|list<string>|null  $department
+     */
+    private static function activeCount(string $table, string|array|null $department = null): int
     {
         if (! Schema::hasTable($table)) {
             return 0;
@@ -64,6 +68,16 @@ class CustomerCareBadgeCalculator implements PageBadgeCalculator
         }
         if (Schema::hasColumn($table, 'archived_at')) {
             $q->whereNull('archived_at');
+        }
+        if ($department !== null && Schema::hasColumn($table, 'department')) {
+            $departments = is_array($department) ? $department : [$department];
+            $q->where(function ($outer) use ($departments) {
+                foreach ($departments as $dept) {
+                    $outer->orWhere(function ($inner) use ($dept) {
+                        CustomerCareDepartments::applyWhereDepartmentMatches($inner, 'department', $dept);
+                    });
+                }
+            });
         }
 
         return (int) $q->count();

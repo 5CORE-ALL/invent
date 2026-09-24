@@ -69,9 +69,7 @@
         default => 'E L30',
     };
     $ebaySprcDilTargetNroi = true;
-    $ebaySprcDilTargetLabel = $ebaySprcDilChannel === 'purchasing_power'
-        ? 'SNROI'
-        : ($ebaySprcDilTargetNroi ? 'NROI' : 'GROI');
+    $ebaySprcDilTargetLabel = $ebaySprcDilTargetNroi ? 'SNROI' : 'GROI';
     $ebaySprcDilPageLabel = match ($ebaySprcDilChannel) {
         'temu' => 'Temu',
         'temu2' => 'Temu 2',
@@ -1335,17 +1333,9 @@
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;
             let amzApplied = false;
-            if (ebayDgIsShopifyB2c()) {
-                const floored = (typeof chPromoFinalSpriceToSave === 'function')
-                    ? Number(chPromoFinalSpriceToSave(d, rawSprc))
-                    : ((typeof chPromoFloorShopifySpriceToAmz === 'function')
-                        ? Number(chPromoFloorShopifySpriceToAmz(d, rawSprc))
-                        : rawSprc);
-                if (floored > 0) {
-                    amzApplied = floored > rawSprc + 0.001;
-                    sprc = ebayDgRound2(floored);
-                }
-            } else if (ebayDgUsesAmzFloor()) {
+            // Shopify B2C Sprc Dil stays the Dil suggestion. S PRC uses A Price
+            // when that suggestion is below Amz, and caps to A Price when it is above.
+            if (ebayDgUsesAmzFloor()) {
                 const amz = (typeof chPromoAmazonPrice === 'function')
                     ? ebayDgRound2(chPromoAmazonPrice(d))
                     : ebayDgRound2(d && (d['A Price'] != null ? d['A Price'] : (d.a_price || d.amazon_price)));
@@ -2041,8 +2031,14 @@
         }
         /** Exact $ the S PRC cell paints — this is what we persist to the table. */
         function ebayDgCellSpriceToSave(d) {
-            if (typeof ebayDisplayedSprice === 'function') {
-                const shown = Number(ebayDisplayedSprice(d)) || 0;
+            const painters = [
+                typeof ebayDisplayedSprice === 'function' ? ebayDisplayedSprice : null,
+                typeof ebay2DisplayedSprice === 'function' ? ebay2DisplayedSprice : null,
+                typeof ebay3DisplayedSprice === 'function' ? ebay3DisplayedSprice : null,
+            ];
+            for (let i = 0; i < painters.length; i++) {
+                if (typeof painters[i] !== 'function') continue;
+                const shown = Number(painters[i](d)) || 0;
                 if (shown > 0) return shown;
             }
             const live = Number(ebayTiktokRuleDiscount(d)) || 0;
@@ -2709,7 +2705,10 @@
                     await saveEbayDilGroiRules();
                     ebayDgToast('success', 'Sprc Dil saved and applied');
                 } catch (xhr) {
-                    ebayDgToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                    ebayDgToast('error', 'Save failed: ' + (
+                        (xhr && xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                        || (xhr && xhr.status ? ('HTTP ' + xhr.status) : 'error')
+                    ));
                 } finally {
                     $btn.prop('disabled', false).html(html);
                 }

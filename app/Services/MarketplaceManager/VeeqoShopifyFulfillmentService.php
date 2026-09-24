@@ -600,6 +600,13 @@ class VeeqoShopifyFulfillmentService
         }
 
         if ($found === null) {
+            $saved = self::sofLocalTrackingIfReady(is_array($localTracking) ? $localTracking : null);
+            if ($saved !== null) {
+                $found = $saved;
+            }
+        }
+
+        if ($found === null) {
             $checked = [];
             if ($this->veeqo->isConfigured()) {
                 $checked[] = 'Veeqo';
@@ -624,7 +631,6 @@ class VeeqoShopifyFulfillmentService
         }
 
         $carrier = $this->shopifyCarrierName((string) ($found['carrier'] ?? 'Other'), (string) ($found['tracking'] ?? ''));
-        $this->cacheTrackingOnShopifyRawOrder($shopifyOrderId, (string) $found['tracking'], $carrier);
         $written = $this->createShopifyFulfillment(
             $shopifyConfig,
             $shopifyOrderId,
@@ -633,6 +639,19 @@ class VeeqoShopifyFulfillmentService
             $sku,
             ((string) ($found['source'] ?? '') === 'shopify' && $openQty > 0) ? $openQty : 0
         );
+        if (empty($written['success']) && trim($sku) !== '') {
+            $written = $this->createShopifyFulfillment(
+                $shopifyConfig,
+                $shopifyOrderId,
+                $found['tracking'],
+                $carrier,
+                '',
+                0
+            );
+        }
+        if (! empty($written['success'])) {
+            $this->cacheTrackingOnShopifyRawOrder($shopifyOrderId, (string) $found['tracking'], $carrier);
+        }
         if (strtolower(trim($marketplace)) === 'doba') {
             $this->rewriteDobaShopifyPrepaidNote($shopifyConfig, $shopifyOrderId);
         }
@@ -1483,7 +1502,7 @@ class VeeqoShopifyFulfillmentService
     public function syncUnfulfilledShopifyFromSofTracking(int $limit = 200): array
     {
         $limit = max(1, min(500, $limit));
-        $pagePush = $this->pushSofPageTrackingToShopify($limit);
+        $pagePush = $this->pushSofPageTrackingToShopify((int) max(40, (int) floor($limit / 2)));
         $checked = (int) ($pagePush['checked'] ?? 0);
         $fulfilled = (int) ($pagePush['fulfilled'] ?? 0);
         $skipped = (int) ($pagePush['skipped'] ?? 0);
@@ -5197,7 +5216,8 @@ class VeeqoShopifyFulfillmentService
                     return is_array($order) ? $order : null;
                 }
                 if ($response->status() === 429) {
-                    usleep(800000 * ($attempt + 1));
+                    $wait = (int) ($response->header('Retry-After') ?: (2 * ($attempt + 1)));
+                    sleep(max(2, min(15, $wait)));
                     continue;
                 }
             } catch (\Throwable) {
@@ -5685,9 +5705,6 @@ class VeeqoShopifyFulfillmentService
             ];
             if (Schema::hasColumn('shopify_raw_orders', 'tracking_company') && trim($carrier) !== '') {
                 $payload['tracking_company'] = trim($carrier);
-            }
-            if (Schema::hasColumn('shopify_raw_orders', 'fulfillment_status')) {
-                $payload['fulfillment_status'] = 'fulfilled';
             }
             $query = DB::table('shopify_raw_orders');
             $numericId = $this->shopifyNumericId($sid);

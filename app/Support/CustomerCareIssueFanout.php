@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Mirror All Issues (`dispatch_issue_issues`) rows onto the department boards
- * that still use their own tables (Listing, Label, QC PKG, C-care, Other).
+ * that still use their own tables (Listing, Label/Shipping, QC PKG, C-care, Other).
  */
 class CustomerCareIssueFanout
 {
@@ -19,6 +19,7 @@ class CustomerCareIssueFanout
     private const DEPT_TO_ISSUES = [
         'Listing' => 'listing_issue_issues',
         'Label' => 'label_issue_issues',
+        'Shipping' => 'label_issue_issues',
         'QC' => 'qc_and_packing_issues',
         'Packaging' => 'qc_and_packing_issues',
         'Customer Care' => 'c_care_issue_issues',

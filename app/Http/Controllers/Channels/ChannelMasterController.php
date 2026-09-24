@@ -17229,31 +17229,12 @@ class ChannelMasterController extends Controller
                             $totalAdSold += floatval($sd['ad_sold'] ?? 0);
                             $totalClicks += floatval($sd['clicks'] ?? 0);
                         } elseif ($metric === 'cvr') {
-                            // Prefer listing_cvr (Shopify OV L30 ÷ Views). Otherwise qty/views.
-                            // Derive implied units from listing_cvr × views so Σ still works.
-                            $viewsForCvr = floatval($sd['total_views'] ?? 0);
-                            $chName = (string) ($row->channel ?? '');
-                            if ($this->ebayWhichFromChannelName($chName) === 2) {
-                                $cvr2 = $this->resolveListingCvrPercentFromSummary($sd, $chName, false);
-                                if ($cvr2 !== null && $viewsForCvr > 0) {
-                                    $totalQtyCvr += ($cvr2 / 100.0) * $viewsForCvr;
-                                    $totalViewsCvr += $viewsForCvr;
-                                }
-                            } elseif (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '' && $viewsForCvr > 0) {
-                                $totalQtyCvr += (floatval($sd['listing_cvr']) / 100.0) * $viewsForCvr;
-                                $totalViewsCvr += $viewsForCvr;
-                            } else {
-                                // Shopify/Temu order-qty ÷ product-views disagrees with page CVR badges.
-                                if ($this->channelRequiresPersistedListingCvr((string) ($row->channel ?? ''))) {
-                                    continue;
-                                }
-                                $qtyForCvr = floatval($sd['total_quantity'] ?? 0);
-                                if ($qtyForCvr <= 0) {
-                                    $qtyForCvr = floatval($sd['l30_orders'] ?? 0);
-                                }
-                                $totalQtyCvr += $qtyForCvr;
-                                $totalViewsCvr += $viewsForCvr;
+                            $part = $this->cvrUnitsAndViewsForAllBlend((string) ($row->channel ?? ''), $sd);
+                            if ($part === null) {
+                                continue;
                             }
+                            $totalQtyCvr += $part['units'];
+                            $totalViewsCvr += $part['views'];
                         } elseif ($metric === 'gprofit' || $metric === 'npft' || $metric === 'pft') {
                             $totalPft += $channelPft;
                             $totalSales += $channelL30Sales;
@@ -17488,13 +17469,25 @@ class ChannelMasterController extends Controller
                         }
                         $value = $clicks > 0 ? round(($adSold / $clicks) * 100, 1) : 0;
                     } elseif ($metric === 'cvr') {
-                        $cvrResolved = $this->resolveListingCvrPercentFromSummary($summaryData, $channel);
-                        // Shopify/Temu days before listing_cvr used order qty ÷ views and
-                        // disagreed with page badges — skip those so the chart stays honest.
-                        if ($cvrResolved === null) {
-                            continue;
+                        if ($this->allMarketplaceSnapshotKey($channel) === 'amazon') {
+                            $views = (float) ($summaryData['total_views'] ?? 0);
+                            $qty = (float) ($summaryData['total_quantity'] ?? 0);
+                            if ($qty <= 0) {
+                                $qty = (float) ($summaryData['l30_orders'] ?? 0);
+                            }
+                            if ($views <= 0) {
+                                continue;
+                            }
+                            $value = round(($qty / $views) * 100, 2);
+                        } else {
+                            $cvrResolved = $this->resolveListingCvrPercentFromSummary($summaryData, $channel);
+                            // Shopify/Temu days before listing_cvr used order qty ÷ views and
+                            // disagreed with page badges — skip those so the chart stays honest.
+                            if ($cvrResolved === null) {
+                                continue;
+                            }
+                            $value = $cvrResolved;
                         }
-                        $value = $cvrResolved;
                     } elseif ($metric === 'pft') {
                         $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
                         $sales = floatval($summaryData['l30_sales'] ?? 0);
@@ -17600,10 +17593,10 @@ class ChannelMasterController extends Controller
                             $chartData[$lastIdx]['value'] = round((float) $tableRef, 2);
                         }
                     }
-                } elseif ($isAll && $metric !== 'cvr') {
-                    // Pin only the last point. Scaling the whole series kept the
-                    // snapshot-to-snapshot slope, so the last point could be green
-                    // while the badge dot (live vs previous day) was red.
+                } elseif ($isAll) {
+                    // Pin only the last point, including CVR. The badge is the live
+                    // blend (Amazon = Sold qty ÷ Views). Leaving CVR unpinned showed
+                    // a different last point than the badge.
                     $badgeValue = $request->input('badge_value');
                     $hasBadge = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue));
                     $tableRef = $hasBadge
@@ -18297,25 +18290,10 @@ class ChannelMasterController extends Controller
                 $totalSales += $sales;
                 $hasMetric = true;
             } elseif ($metric === 'cvr') {
-                $views = (float) ($sd['total_views'] ?? 0);
-                if ($this->ebayWhichFromChannelName((string) $channel) === 2) {
-                    $cvr2 = $this->resolveListingCvrPercentFromSummary($sd, (string) $channel, false);
-                    if ($cvr2 !== null && $views > 0) {
-                        $totalQtyCvr += ($cvr2 / 100.0) * $views;
-                        $totalViewsCvr += $views;
-                        $hasMetric = true;
-                    }
-                } elseif (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '' && $views > 0) {
-                    $totalQtyCvr += ((float) $sd['listing_cvr'] / 100.0) * $views;
-                    $totalViewsCvr += $views;
-                    $hasMetric = true;
-                } elseif (! $this->channelRequiresPersistedListingCvr((string) $channel)) {
-                    $qty = (float) ($sd['total_quantity'] ?? 0);
-                    if ($qty <= 0) {
-                        $qty = (float) ($sd['l30_orders'] ?? 0);
-                    }
-                    $totalQtyCvr += $qty;
-                    $totalViewsCvr += $views;
+                $part = $this->cvrUnitsAndViewsForAllBlend((string) $channel, $sd);
+                if ($part !== null) {
+                    $totalQtyCvr += $part['units'];
+                    $totalViewsCvr += $part['views'];
                     $hasMetric = true;
                 }
             } elseif ($metric === 'acos' || $metric === 'ad_sales') {
@@ -18513,6 +18491,51 @@ class ChannelMasterController extends Controller
         $views = floatval($sd['total_views'] ?? 0);
 
         return $views > 0 ? round(($qty / $views) * 100, 2) : 0.0;
+    }
+
+    /**
+     * Units and views for the All CVR badge blend.
+     * Amazon is Sold qty ÷ Views (the CVR column). listing_cvr on Amazon snapshots
+     * is A_L30 ÷ sessions and must not be mixed into this total.
+     *
+     * @param  array<string, mixed>  $sd
+     * @return array{units: float, views: float}|null
+     */
+    private function cvrUnitsAndViewsForAllBlend(string $channel, array $sd): ?array
+    {
+        $sd = $this->scaleReverbSnapshotViewsAndCvrIfNeeded($channel, $sd);
+        $views = (float) ($sd['total_views'] ?? 0);
+        if ($views <= 0) {
+            return null;
+        }
+        if ($this->allMarketplaceSnapshotKey($channel) === 'amazon') {
+            $qty = (float) ($sd['total_quantity'] ?? 0);
+            if ($qty <= 0) {
+                $qty = (float) ($sd['l30_orders'] ?? 0);
+            }
+
+            return ['units' => $qty, 'views' => $views];
+        }
+        if ($this->ebayWhichFromChannelName($channel) === 2) {
+            $cvr2 = $this->resolveListingCvrPercentFromSummary($sd, $channel, false);
+            if ($cvr2 === null) {
+                return null;
+            }
+
+            return ['units' => ($cvr2 / 100.0) * $views, 'views' => $views];
+        }
+        if (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '') {
+            return ['units' => ((float) $sd['listing_cvr'] / 100.0) * $views, 'views' => $views];
+        }
+        if ($this->channelRequiresPersistedListingCvr($channel)) {
+            return null;
+        }
+        $qty = (float) ($sd['total_quantity'] ?? 0);
+        if ($qty <= 0) {
+            $qty = (float) ($sd['l30_orders'] ?? 0);
+        }
+
+        return ['units' => $qty, 'views' => $views];
     }
 
     /** Channels whose listing CVR must not be recomputed from order qty ÷ views. */
@@ -20925,6 +20948,9 @@ class ChannelMasterController extends Controller
                 : ($views > 0 ? round(($qty / $views) * 100, 2) : null);
             if ($ch === 'reverb') {
                 $views = $views / self::REVERB_MASTER_VIEWS_DIVISOR;
+                $units = $qty > 0 ? $qty : (float) ($row->l30_orders ?? 0);
+                $cvr = $views > 0 ? round(($units / $views) * 100, 2) : null;
+            } elseif ($ch === 'amazon') {
                 $units = $qty > 0 ? $qty : (float) ($row->l30_orders ?? 0);
                 $cvr = $views > 0 ? round(($units / $views) * 100, 2) : null;
             }

@@ -250,6 +250,16 @@ class AmazonAdsController extends Controller
             }
         }
 
+        // Alert sits beside SBID. Hover shows why a bid or budget was not pushed.
+        if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)
+            && in_array('sbid', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'pushAlert'));
+            $idxAlert = array_search('sbid', $ordered, true);
+            if ($idxAlert !== false) {
+                array_splice($ordered, $idxAlert + 1, 0, ['pushAlert']);
+            }
+        }
+
         // Display "bgt" after campaign name (same value as campaignBudgetAmount; hide duplicate DB column).
         $idxCn = array_search('campaignName', $ordered, true);
         if ($idxCn !== false && in_array('campaignBudgetAmount', $ordered, true)) {
@@ -4833,6 +4843,8 @@ class AmazonAdsController extends Controller
             ? self::prefetchLifetimeAcosForPageRows($table, $dbColumns, $rows)
             : [];
         $data = [];
+        $suggestedSbidByRowId = [];
+        $suggestedSbidByCampaign = [];
         foreach ($rows as $row) {
             $rowArr = (array) $row;
             $arr = array_merge($empty, $rowArr);
@@ -4917,6 +4929,18 @@ class AmazonAdsController extends Controller
                 }
             }
             self::applyGridSbidFromUb2Ub1AndCpc($arr, $u, $rowArr, $dbColumns, $table);
+            $suggestedRowId = $rowArr['id'] ?? null;
+            if ($suggestedRowId !== null && $suggestedRowId !== ''
+                && in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
+                $wantSbid = AmazonBidUtilizationService::suggestedSbidStorageValue($arr['sbid'] ?? null);
+                $cidSave = trim((string) ($rowArr['campaign_id'] ?? ''));
+                if ($cidSave !== '') {
+                    $suggestedSbidByCampaign[$cidSave] = $wantSbid;
+                }
+                if (! AmazonBidUtilizationService::storedSbidMatches($rowArr['sbid'] ?? null, $wantSbid)) {
+                    $suggestedSbidByRowId[$suggestedRowId] = $wantSbid;
+                }
+            }
             if (in_array('bgt', $columns, true)) {
                 $bgtVal = $rowArr['campaignBudgetAmount'] ?? null;
                 if ($bgtVal === null || $bgtVal === '') {
@@ -5156,6 +5180,10 @@ class AmazonAdsController extends Controller
             self::roundAmazonAdsDisplayNumericFields($arr, $columns);
             unset($arr['pink_dil_paused_at'], $arr['campaignBudgetCurrencyCode']);
             $data[] = $arr;
+        }
+
+        if ($suggestedSbidByRowId !== [] || $suggestedSbidByCampaign !== []) {
+            AmazonBidUtilizationService::persistSuggestedSbidByRowId($table, $suggestedSbidByRowId, $suggestedSbidByCampaign);
         }
 
         if ($usePhpSort && ! $phpSortPaged) {

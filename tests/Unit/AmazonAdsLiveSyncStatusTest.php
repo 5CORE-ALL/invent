@@ -183,6 +183,95 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
         $this->assertSame('Pending — another sync is already running for this BID', $out['tip']);
     }
 
+    public function test_red_bid_verify_failed_includes_skipped_push_reason(): void
+    {
+        $out = AmazonAdsLiveSyncStatus::present('bid', [
+            'status' => 'failed',
+            'reason' => 'verify_failed: live null !== desired 0.75',
+            'desired_value' => 0.75,
+            'detail' => [
+                'push_attempts' => 1,
+                'push_response' => [
+                    'status' => 200,
+                    'skipped' => [
+                        ['campaign_id' => '535475101593680', 'reason' => 'no_ad_groups'],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('red', $out['color']);
+        $this->assertStringContainsString('Not pushed: No enabled ad group, so the bid was not written.', $out['tip']);
+    }
+
+    public function test_alert_column_shows_failed_bid_reason_and_stays_blank_when_synced(): void
+    {
+        $failed = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '111', 'sbid' => 0.75, 'last_sbid' => null]],
+            [
+                'bid' => [
+                    '111' => [
+                        'status' => 'failed',
+                        'reason' => 'verify_failed: live null !== desired 0.75',
+                        'desired_value' => 0.75,
+                        'detail' => [
+                            'push_response' => [
+                                'skipped' => [['reason' => 'no_keywords']],
+                            ],
+                        ],
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertStringContainsString('SBID:', $failed[0]['pushAlert']);
+        $this->assertStringContainsString('No keywords and no product targets', $failed[0]['pushAlert']);
+
+        $synced = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '222', 'sbid' => 0.75, 'last_sbid' => 0.75, 'sbgt' => 4]],
+            [
+                'bid' => [
+                    '222' => [
+                        'status' => 'synced',
+                        'reason' => 'already_matched',
+                        'desired_value' => 0.75,
+                        'live_value' => 0.75,
+                    ],
+                ],
+                'bgt' => [
+                    '222' => [
+                        'status' => 'synced',
+                        'reason' => 'already_matched',
+                        'desired_value' => 4,
+                        'live_value' => 4,
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertSame('', $synced[0]['pushAlert']);
+    }
+
+    public function test_alert_column_explains_zero_sbgt_pause(): void
+    {
+        $rows = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '333', 'sbgt' => 0]],
+            [
+                'bgt' => [
+                    '333' => [
+                        'status' => 'synced',
+                        'reason' => 'paused_zero_sbgt',
+                        'desired_value' => 0,
+                        'live_value' => 4,
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertStringContainsString('SBGT:', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('PAUSED', $rows[0]['pushAlert']);
+    }
+
     public function test_red_bid_verify_failed_is_independent_of_bgt(): void
     {
         $out = AmazonAdsLiveSyncStatus::present('bid', [

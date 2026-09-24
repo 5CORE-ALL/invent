@@ -37,6 +37,9 @@ class EbayThreeController extends Controller
 {
     protected $apiController;
 
+    /** Reused while a Dil batch save writes many SKUs in one request. */
+    private ?float $ebay3BatchAdsPercent = null;
+
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
@@ -2253,6 +2256,11 @@ class EbayThreeController extends Controller
 
     public function saveSpriceToDatabase(Request $request)
     {
+        $updates = $request->input('updates');
+        if (! $request->filled('sku') && (is_array($updates) || is_object($updates))) {
+            return $this->saveEbay3SpriceUpdates(is_array($updates) ? $updates : (array) $updates);
+        }
+
         Log::info('Saving eBay3 pricing data', $request->all());
         $sku = strtoupper(trim($request->input('sku', '')));
         $sprice = $request->input('sprice');
@@ -2320,7 +2328,8 @@ class EbayThreeController extends Controller
 
         // Channel Ads% (TACOS) — same source as /ebay3-tabulator-view Ads badge /
         // /all-marketplace-master EbayThree Ads% (not per-SKU ACOS).
-        $adPercent = (float) app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+        $adPercent = $this->ebay3BatchAdsPercent
+            ?? (float) app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
 
         // SNPFT = SGPFT − Ads%
         $spft = round($sgpft - $adPercent, 2);
@@ -2361,6 +2370,49 @@ class EbayThreeController extends Controller
             'sroi_percent' => $sroi,
             'sgroi_percent' => $sgroi,
             'sgpft_percent' => $sgpft,
+        ]);
+    }
+
+    /**
+     * Dil Save sends { updates: [{ sku, sprice }, ...] }. Same SPRICE write as one SKU.
+     *
+     * @param  array<int, mixed>  $updates
+     */
+    private function saveEbay3SpriceUpdates(array $updates)
+    {
+        $saved = 0;
+        $skipped = 0;
+        $this->ebay3BatchAdsPercent = (float) app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+        try {
+        foreach ($updates as $update) {
+            $update = (array) $update;
+            $sku = strtoupper(trim((string) ($update['sku'] ?? '')));
+            $sprice = $update['sprice'] ?? $update['price'] ?? null;
+            if ($sku === '' || $sprice === null || $sprice === '') {
+                $skipped++;
+                continue;
+            }
+            $sub = Request::create('/ebay3/save-sprice', 'POST', [
+                'sku' => $sku,
+                'sprice' => $sprice,
+                'skip_push' => 1,
+            ]);
+            $response = $this->saveSpriceToDatabase($sub);
+            if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
+                $saved++;
+            } else {
+                $skipped++;
+            }
+        }
+        } finally {
+            $this->ebay3BatchAdsPercent = null;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'SPRICE saved for '.$saved.' SKU(s)',
+            'saved' => $saved,
+            'skipped' => $skipped,
         ]);
     }
 
