@@ -531,35 +531,6 @@
                             : ('Built-in attendance logger (' + range + ')'));
                     return '<span title="' + esc(tip) + '">' + Math.round(v) + 'h</span>';
                 } },
-            { title: 'Final Hour', field: 'final_hours', hozAlign: 'center', width: 120,
-                headerTooltip: 'From September 2026: Team Logger + New Logger. Earlier: 18 days TeamLogger + remaining New Logger',
-                formatter: (c) => {
-                    const d = c.getRow().getData();
-                    const v = parseFloat(c.getValue());
-                    if (isNaN(v)) return '—';
-                    if (d.attendance_only) {
-                        const team = parseFloat(d.team_logger_hours);
-                        const neu = parseFloat(d.new_logger_hours);
-                        const teamH = isNaN(team) ? 0 : Math.round(team);
-                        const neuH = isNaN(neu) ? 0 : Math.round(neu);
-                        const tip = teamH + 'h Team Logger + ' + neuH + 'h New Logger';
-                        return '<strong title="' + esc(tip) + '">' + Math.round(v) + 'h</strong>';
-                    }
-                    const team = parseFloat(d.team_logger_split_hours ?? d.team_logger_15_hours);
-                    const neu = parseFloat(d.new_logger_hours);
-                    const second = parseFloat(d.final_second_hours);
-                    const secondH = !isNaN(second) ? Math.round(second) : (isNaN(neu) ? 0 : Math.round(neu));
-                    const secondSrc = (!isNaN(neu) && neu > 0) ? 'New Logger' : 'TeamLogger';
-                    const teamRange = (d.logger_team_from && d.logger_team_to)
-                        ? (d.logger_team_from + ' – ' + d.logger_team_to)
-                        : 'first 18 days';
-                    const afterRange = (d.logger_new_from && d.logger_new_to)
-                        ? (d.logger_new_from + ' – ' + d.logger_new_to)
-                        : 'after day 18';
-                    const tip = (isNaN(team) ? 0 : Math.round(team)) + 'h TeamLogger (' + teamRange + ') + '
-                        + secondH + 'h ' + secondSrc + ' (' + afterRange + ')';
-                    return '<strong title="' + esc(tip) + '">' + Math.round(v) + 'h</strong>';
-                } },
             { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Other', field: 'other', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
