@@ -248,7 +248,7 @@ class TopDawgApiService
 
             $pagination = $data['pagination'] ?? [];
             $currentPage = (int) ($pagination['current_page'] ?? $page);
-            $lastPage = (int) ($pagination['last_page'] ?? $currentPage);
+            $lastPage = self::lastPageFromPagination($pagination, $currentPage, $perPage);
             $totalFromApi = (int) ($pagination['total'] ?? count($all));
 
             if ($onPage !== null) {
@@ -265,6 +265,27 @@ class TopDawgApiService
         } while (true);
 
         return ['data' => $all, 'total' => count($all)];
+    }
+
+    /**
+     * TopDawg list payloads use total_pages. last_page is not always present.
+     *
+     * @param  array<string, mixed>  $pagination
+     */
+    public static function lastPageFromPagination(array $pagination, int $currentPage, int $perPage): int
+    {
+        foreach (['last_page', 'total_pages'] as $key) {
+            if (isset($pagination[$key]) && is_numeric($pagination[$key]) && (int) $pagination[$key] > 0) {
+                return (int) $pagination[$key];
+            }
+        }
+        $total = (int) ($pagination['total'] ?? 0);
+        $size = (int) ($pagination['per_page'] ?? $perPage);
+        if ($total > 0 && $size > 0) {
+            return (int) ceil($total / $size);
+        }
+
+        return max(1, $currentPage);
     }
 
     /**
@@ -421,7 +442,7 @@ class TopDawgApiService
 
             $pagination = $data['pagination'] ?? [];
             $currentPage = (int) ($pagination['current_page'] ?? $page);
-            $lastPage = (int) ($pagination['last_page'] ?? $currentPage);
+            $lastPage = self::lastPageFromPagination($pagination, $currentPage, $perPage);
 
             if (count($items) < $perPage || $currentPage >= $lastPage || $page >= $maxPages) {
                 break;

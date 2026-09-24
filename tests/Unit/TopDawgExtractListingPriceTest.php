@@ -7,6 +7,16 @@ use Tests\TestCase;
 
 class TopDawgExtractListingPriceTest extends TestCase
 {
+    public function test_pagination_uses_total_pages_when_last_page_is_missing(): void
+    {
+        $this->assertSame(2, TopDawgApiService::lastPageFromPagination([
+            'total' => 1061,
+            'per_page' => 1000,
+            'current_page' => 1,
+            'total_pages' => 2,
+        ], 1, 1000));
+    }
+
     public function test_prefers_site_cost_over_a_different_price_key(): void
     {
         $this->assertSame(12.08, TopDawgApiService::extractListingPrice([

@@ -118,6 +118,16 @@
             border-right: 1px solid #f1f5f9;
             vertical-align: middle;
         }
+        /* Keep SKU text selection inside the cell. Row click-select would otherwise highlight the whole row. */
+        #mercariwoshipListing-table .tabulator-row {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #mercariwoshipListing-table .tabulator-cell[tabulator-field="sku"] {
+            -webkit-user-select: text;
+            user-select: text;
+            cursor: text;
+        }
 
         #mercariwoship-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
         #mercariwoship-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
@@ -967,6 +977,14 @@
                     }
                 ]
             });
+
+            // Copying the SKU must not select the row. Tabulator's row click clears the
+            // text selection and toggles the whole row; stop that click on the SKU cell.
+            document.getElementById('mercariwoshipListing-table').addEventListener('click', function (e) {
+                if (e.target.closest && e.target.closest('.tabulator-cell[tabulator-field="sku"]')) {
+                    e.stopPropagation();
+                }
+            }, true);
 
             mercariwoshipListingTable.on('dataProcessed', function () {
                 hideLoader();
