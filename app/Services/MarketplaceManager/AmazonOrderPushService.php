@@ -223,6 +223,7 @@ class AmazonOrderPushService
         $this->lastFailureReason = null;
 
         if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
+            $this->clearAmazonTaxRefundOwed((string) $order->shopify_order_id);
             $this->fulfillShopifyForImportedMarketplaceOrder('amazon', (int) $order->id, [
                 'amazon_order_id' => (string) $order->amazon_order_id,
             ]);
@@ -296,6 +297,7 @@ class AmazonOrderPushService
                     'error' => $e->getMessage(),
                 ]);
             }
+            $this->clearAmazonTaxRefundOwed((string) $existing['id']);
             $this->fulfillShopifyForImportedMarketplaceOrder('amazon', (int) $order->id, [
                 'amazon_order_id' => $amazonOrderId,
             ]);
@@ -768,6 +770,226 @@ class AmazonOrderPushService
 
             return null;
         }
+    }
+
+    /**
+     * Amazon marketplace tax was recorded as a Shopify payment on top of the
+     * item price, so Shopify shows a refund owed. Add that amount back as a
+     * non-shipping tax line so the order balances. Does not refund the buyer.
+     *
+     * @return array{success: bool, skipped?: bool, message: string}
+     */
+    public function clearAmazonTaxRefundOwed(string $shopifyOrderId): array
+    {
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($shopifyOrderId === '' || str_starts_with($shopifyOrderId, 'manual')) {
+            return ['success' => false, 'skipped' => true, 'message' => 'No Shopify order id.'];
+        }
+
+        $config = $this->shopifyConfig();
+        $storeUrl = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        if ($storeUrl === '' || $token === '') {
+            return ['success' => false, 'skipped' => true, 'message' => 'Shopify credentials missing.'];
+        }
+
+        try {
+            $response = Http::withoutVerifying()->withHeaders([
+                'X-Shopify-Access-Token' => $token,
+            ])->timeout(30)->get(
+                'https://'.$storeUrl.'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json',
+                ['fields' => 'id,note,currency,total_outstanding,refunds,financial_status']
+            );
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        if (! $response->successful()) {
+            return ['success' => false, 'message' => 'Shopify order lookup failed (HTTP '.$response->status().').'];
+        }
+
+        $order = $response->json('order');
+        if (! is_array($order)) {
+            return ['success' => false, 'message' => 'Shopify order payload missing.'];
+        }
+
+        $note = (string) ($order['note'] ?? '');
+        if (! str_contains($note, 'Imported from Amazon')) {
+            return ['success' => false, 'skipped' => true, 'message' => 'Not an Amazon import.'];
+        }
+
+        $refunds = $order['refunds'] ?? [];
+        if (is_array($refunds) && $refunds !== []) {
+            return ['success' => false, 'skipped' => true, 'message' => 'Order already has a refund record.'];
+        }
+
+        $owed = round((float) ($order['total_outstanding'] ?? 0), 2);
+        if ($owed >= -0.009) {
+            return ['success' => false, 'skipped' => true, 'message' => 'No refund owed.'];
+        }
+
+        $amount = number_format(abs($owed), 2, '.', '');
+        $currency = strtoupper(trim((string) ($order['currency'] ?? 'USD'))) ?: 'USD';
+        $gid = 'gid://shopify/Order/'.$shopifyOrderId;
+
+        $began = $this->shopifyGraphql($storeUrl, $token, <<<'GQL'
+mutation($id: ID!) {
+  orderEditBegin(id: $id) {
+    calculatedOrder { id }
+    userErrors { field message }
+  }
+}
+GQL, ['id' => $gid]);
+        $calcId = (string) data_get($began, 'data.orderEditBegin.calculatedOrder.id', '');
+        $beginErrors = data_get($began, 'data.orderEditBegin.userErrors', []);
+        if ($calcId === '' || (is_array($beginErrors) && $beginErrors !== [])) {
+            return ['success' => false, 'message' => 'Could not start Shopify order edit.'];
+        }
+
+        $added = $this->shopifyGraphql($storeUrl, $token, <<<'GQL'
+mutation($id: ID!, $price: MoneyInput!) {
+  orderEditAddCustomItem(id: $id, title: "Amazon tax", quantity: 1, price: $price, taxable: false, requiresShipping: false) {
+    calculatedOrder { id }
+    userErrors { field message }
+  }
+}
+GQL, [
+            'id' => $calcId,
+            'price' => ['amount' => $amount, 'currencyCode' => $currency],
+        ]);
+        $addErrors = data_get($added, 'data.orderEditAddCustomItem.userErrors', []);
+        if (is_array($addErrors) && $addErrors !== []) {
+            return ['success' => false, 'message' => (string) data_get($addErrors, '0.message', 'Could not add Amazon tax line.')];
+        }
+
+        $committed = $this->shopifyGraphql($storeUrl, $token, <<<'GQL'
+mutation($id: ID!) {
+  orderEditCommit(id: $id, notifyCustomer: false, staffNote: "Balanced Amazon marketplace tax. Not a customer refund.") {
+    order { id }
+    userErrors { field message }
+  }
+}
+GQL, ['id' => $calcId]);
+        $commitErrors = data_get($committed, 'data.orderEditCommit.userErrors', []);
+        if (is_array($commitErrors) && $commitErrors !== []) {
+            return ['success' => false, 'message' => (string) data_get($commitErrors, '0.message', 'Could not save Shopify order edit.')];
+        }
+
+        Log::info('AmazonOrderPushService: cleared tax refund owed', [
+            'shopify_order_id' => $shopifyOrderId,
+            'amount' => $amount,
+        ]);
+
+        return ['success' => true, 'message' => 'Cleared refund owed of '.$amount.' by recording Amazon tax. Buyer was not refunded.'];
+    }
+
+    /**
+     * Recent Amazon Shopify copies that were paid the tax-inclusive Amazon total
+     * show "you owe the customer a refund". Record that tax on the order.
+     * Does not refund the buyer.
+     *
+     * @return array{checked: int, cleared: int, skipped: int, failed: int, message: string}
+     */
+    public function balanceRecentAmazonTaxRefunds(int $limit = 40): array
+    {
+        $limit = max(1, min(80, $limit));
+        $config = $this->shopifyConfig();
+        $storeUrl = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        if ($storeUrl === '' || $token === '') {
+            return ['checked' => 0, 'cleared' => 0, 'skipped' => 0, 'failed' => 0, 'message' => 'Shopify credentials missing.'];
+        }
+
+        $checked = 0;
+        $cleared = 0;
+        $skipped = 0;
+        $failed = 0;
+        $since = now()->subDays(21)->toIso8601String();
+
+        try {
+            $response = Http::withoutVerifying()->withHeaders([
+                'X-Shopify-Access-Token' => $token,
+            ])->timeout(45)->get(
+                'https://'.$storeUrl.'/admin/api/2024-01/orders.json',
+                [
+                    'status' => 'any',
+                    'limit' => 250,
+                    'created_at_min' => $since,
+                    'fields' => 'id,name,note,total_outstanding,financial_status',
+                ]
+            );
+        } catch (\Throwable $e) {
+            return ['checked' => 0, 'cleared' => 0, 'skipped' => 0, 'failed' => 1, 'message' => $e->getMessage()];
+        }
+
+        if (! $response->successful()) {
+            return [
+                'checked' => 0,
+                'cleared' => 0,
+                'skipped' => 0,
+                'failed' => 1,
+                'message' => 'Shopify order list failed (HTTP '.$response->status().').',
+            ];
+        }
+
+        foreach ($response->json('orders') ?? [] as $order) {
+            if ($checked >= $limit) {
+                break;
+            }
+            if (! is_array($order)) {
+                continue;
+            }
+            $note = (string) ($order['note'] ?? '');
+            if (! str_contains($note, 'Imported from Amazon')) {
+                continue;
+            }
+            $owed = round((float) ($order['total_outstanding'] ?? 0), 2);
+            if ($owed >= -0.009) {
+                continue;
+            }
+            $checked++;
+            $result = $this->clearAmazonTaxRefundOwed((string) ($order['id'] ?? ''));
+            if (! empty($result['success'])) {
+                $cleared++;
+            } elseif (! empty($result['skipped'])) {
+                $skipped++;
+            } else {
+                $failed++;
+                Log::warning('AmazonOrderPushService: tax balance failed', [
+                    'shopify_order_id' => $order['id'] ?? null,
+                    'name' => $order['name'] ?? null,
+                    'message' => $result['message'] ?? null,
+                ]);
+            }
+            usleep(250000);
+        }
+
+        return [
+            'checked' => $checked,
+            'cleared' => $cleared,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "Amazon tax balance: checked {$checked}, cleared {$cleared}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>
+     */
+    protected function shopifyGraphql(string $storeUrl, string $token, string $query, array $variables): array
+    {
+        $response = Http::withoutVerifying()->withHeaders([
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type' => 'application/json',
+        ])->timeout(30)->post(
+            'https://'.$storeUrl.'/admin/api/2024-10/graphql.json',
+            ['query' => $query, 'variables' => $variables]
+        );
+
+        $json = $response->json();
+
+        return is_array($json) ? $json : [];
     }
 
     protected function findShopifyVariantIdBySku(string $sku): ?int

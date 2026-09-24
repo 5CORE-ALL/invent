@@ -261,13 +261,14 @@ class AmazonDetailFormatter
 
         $payload['line_items'] = $lineItems;
 
-        $paid = (float) ($amounts['total'] ?? 0);
-        if ($paid <= 0) {
-            foreach ($lineItems as $item) {
-                $paid += ((float) ($item['price'] ?? 0)) * max(1, (int) ($item['quantity'] ?? 1));
-            }
-            $paid += $shippingCost;
-        }
+        // Amazon OrderTotal includes marketplace-facilitator tax. The Shopify
+        // lines are item price only. Paying the tax-inclusive total makes
+        // Shopify show "you owe the customer a refund" for that tax.
+        $paid = self::shopifySaleAmount(
+            (float) ($amounts['total'] ?? 0),
+            $lineItems,
+            $shippingCost
+        );
         if ($paid > 0) {
             $payload['transactions'] = [[
                 'kind' => 'sale',
@@ -279,6 +280,26 @@ class AmazonDetailFormatter
         }
 
         return $payload;
+    }
+
+    /**
+     * Payment recorded on Shopify. Uses item + shipping, not Amazon's
+     * tax-inclusive OrderTotal, so marketplace tax is not a refund owed.
+     *
+     * @param  list<array<string, mixed>>  $lineItems
+     */
+    public static function shopifySaleAmount(float $amazonOrderTotal, array $lineItems, float $shippingCost): float
+    {
+        $goods = round(max(0, $shippingCost), 2);
+        foreach ($lineItems as $item) {
+            $goods += round(((float) ($item['price'] ?? 0)) * max(1, (int) ($item['quantity'] ?? 1)), 2);
+        }
+        $goods = round($goods, 2);
+        if ($goods > 0) {
+            return $goods;
+        }
+
+        return round(max(0, $amazonOrderTotal), 2);
     }
 
     /**

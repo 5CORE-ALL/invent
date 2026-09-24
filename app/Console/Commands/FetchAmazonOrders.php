@@ -1524,6 +1524,11 @@ class FetchAmazonOrders extends Command
     private function queueShopifyImportsIfEnabled(): void
     {
         try {
+            $balanced = app(\App\Services\MarketplaceManager\AmazonOrderPushService::class)
+                ->balanceRecentAmazonTaxRefunds(40);
+            if ((int) ($balanced['cleared'] ?? 0) > 0) {
+                $this->info((string) ($balanced['message'] ?? 'Balanced Amazon tax on Shopify.'));
+            }
             if (! MarketplaceSyncSettings::canAutoImportToShopify('amazon')) {
                 return;
             }
