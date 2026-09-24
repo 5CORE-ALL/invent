@@ -1662,7 +1662,7 @@ class SalesOrderFulfillmentController extends Controller
                         ? trim((string) $n['tracking_company'])
                         : $this->extractCarrierFromPayload($n['raw_payload'] ?? null);
                 }
-                $company = TrackingCarrierGuesser::fill($company, $tracking);
+                // Carrier is decided from the tracking number after channel-specific fields below.
                 $apiOrderId = trim((string) ($n['order_id'] ?? ''));
                 $orderNumber = trim((string) ($n['order_number'] ?? ''));
                 // Prefer human-readable order number (e.g. Faire display_id N8PA3FG3F8)
@@ -1680,6 +1680,7 @@ class SalesOrderFulfillmentController extends Controller
                         $company = $carrierCode;
                     }
                 }
+                $company = TrackingCarrierGuesser::fill($company, $tracking);
 
                 $dateSource = $n['order_date'] ?? null;
                 $updatedSource = $n['updated_at'] ?? null;
@@ -5187,6 +5188,102 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Fetch one tracking number from its carrier and store the status.
+     */
+    public function refreshShipmentStatusRow(Request $request, ShipmentTrackingService $tracking): JsonResponse
+    {
+        $number = trim((string) $request->input('tracking_number', ''));
+        $carrier = trim((string) $request->input('carrier', ''));
+        $normalized = strtoupper((string) preg_replace('/\s+/', '', $number));
+        if ($normalized === '' || ! $this->looksLikeCarrierTrackingNumber($normalized)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This row has no carrier tracking number to refresh.',
+            ], 422);
+        }
+        if (! $tracking->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tracking provider configured. Add USPS / UPS credentials or TRACKING_API_KEY in .env.',
+            ], 422);
+        }
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Carrier status storage is not available.',
+            ], 422);
+        }
+
+        try {
+            $results = $tracking->track([
+                ['number' => $number, 'carrier' => $carrier !== '' ? $carrier : null],
+            ], ['prefer_native' => true]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Carrier lookup failed: '.$e->getMessage(),
+            ], 500);
+        }
+
+        $res = $results[$number] ?? $results[$normalized] ?? null;
+        if ($res === null) {
+            foreach ($results as $key => $value) {
+                $keyNorm = strtoupper((string) preg_replace('/\s+/', '', (string) $key));
+                if ($keyNorm === $normalized) {
+                    $res = $value;
+                    break;
+                }
+            }
+        }
+
+        if (! ShipmentTrackingService::isPersistableResult(is_array($res) ? $res : null)) {
+            $detail = trim((string) (is_array($res) ? ($res['detail'] ?? $res['message'] ?? '') : ''));
+
+            return response()->json([
+                'success' => false,
+                'message' => $detail !== '' ? $detail : 'The carrier did not return a status for this tracking number.',
+            ], 422);
+        }
+
+        $status = (string) $res['status'];
+        $detail = trim((string) ($res['detail'] ?? ''));
+        $now = now();
+        $storedNumber = $number;
+        $existing = DB::table('carrier_tracking_statuses')
+            ->where('tracking_number', $number)
+            ->orWhere('tracking_number', $normalized)
+            ->first();
+        if ($existing && trim((string) ($existing->tracking_number ?? '')) !== '') {
+            $storedNumber = (string) $existing->tracking_number;
+        }
+
+        DB::table('carrier_tracking_statuses')->updateOrInsert(
+            ['tracking_number' => $storedNumber],
+            [
+                'carrier' => $carrier !== '' ? mb_substr($carrier, 0, 128) : ($existing->carrier ?? null),
+                'shipment_status' => $status,
+                'shipment_status_detail' => $detail !== '' ? mb_substr($detail, 0, 512) : null,
+                'shipment_checked_at' => $now,
+                'updated_at' => $now,
+                'created_at' => $existing->created_at ?? $now,
+            ]
+        );
+
+        $label = $this->carrierShipmentStatusLabel($status) ?? $status;
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Updated from the carrier: '.$label.'.',
+            'shipment_status' => $status,
+            'shipment_status_detail' => $detail !== '' ? $detail : null,
+            'status_label' => $label,
+            'tracking_company' => $carrier !== '' ? $carrier : null,
+        ]);
+    }
+
+    /**
      * DISABLED: SOF must not call Shopify Admin API for tracking.
      * Use channel API pull (Temu / ChannelTrackingApiFallbackService) instead.
      *
@@ -7316,6 +7413,138 @@ class SalesOrderFulfillmentController extends Controller
                 'data' => [],
             ], 500);
         }
+    }
+
+    /**
+     * Manual carrier + shipment status for one tracking number.
+     */
+    public function saveRowCarrierStatus(Request $request): JsonResponse
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return response()->json(['success' => false, 'message' => 'Carrier status storage is not available.'], 422);
+        }
+
+        $tracking = trim((string) $request->input('tracking_number', ''));
+        $carrier = trim((string) $request->input('carrier', ''));
+        $status = trim((string) $request->input('shipment_status', ''));
+        $normalized = strtoupper((string) preg_replace('/\s+/', '', $tracking));
+        if ($normalized === '' || ! $this->looksLikeCarrierTrackingNumber($normalized)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This row has no tracking number to update.',
+            ], 422);
+        }
+
+        $allowedStatuses = [
+            ShipmentTrackingService::STATUS_PENDING,
+            ShipmentTrackingService::STATUS_INFO_RECEIVED,
+            ShipmentTrackingService::STATUS_IN_TRANSIT,
+            ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
+            ShipmentTrackingService::STATUS_PICKUP,
+            ShipmentTrackingService::STATUS_DELIVERED,
+            ShipmentTrackingService::STATUS_EXCEPTION,
+            ShipmentTrackingService::STATUS_FAILED,
+            ShipmentTrackingService::STATUS_EXPIRED,
+            ShipmentTrackingService::STATUS_NOT_FOUND,
+        ];
+        if (! in_array($status, $allowedStatuses, true)) {
+            return response()->json(['success' => false, 'message' => 'Choose a status.'], 422);
+        }
+
+        $allowedCarriers = ['USPS', 'UPS', 'FedEx', 'DHL', 'GOFO', 'OnTrac', 'Amazon', 'LaserShip', 'Other'];
+        if ($carrier === '' || (mb_strlen($carrier) > 64)) {
+            return response()->json(['success' => false, 'message' => 'Choose a carrier.'], 422);
+        }
+        if (! in_array($carrier, $allowedCarriers, true)) {
+            $carrier = mb_substr($carrier, 0, 64);
+        }
+
+        $now = now();
+        $existing = DB::table('carrier_tracking_statuses')
+            ->where('tracking_number', $tracking)
+            ->orWhere('tracking_number', $normalized)
+            ->first();
+        $storedNumber = ($existing && trim((string) ($existing->tracking_number ?? '')) !== '')
+            ? (string) $existing->tracking_number
+            : $normalized;
+
+        DB::table('carrier_tracking_statuses')->updateOrInsert(
+            ['tracking_number' => $storedNumber],
+            [
+                'carrier' => $carrier,
+                'shipment_status' => $status,
+                'shipment_checked_at' => $now,
+                'updated_at' => $now,
+                'created_at' => $existing->created_at ?? $now,
+            ]
+        );
+
+        if (Schema::hasTable('shopify_raw_orders')) {
+            try {
+                DB::table('shopify_raw_orders')
+                    ->where('tracking_number', $storedNumber)
+                    ->orWhere('tracking_number', $tracking)
+                    ->orWhere('tracking_number', $normalized)
+                    ->update([
+                        'tracking_company' => $carrier,
+                        'shipment_status' => $status,
+                        'shipment_checked_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+            } catch (\Throwable) {
+                // The carrier status table is what Sales Order Fulfillment reads first.
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Carrier and status saved.',
+            'tracking_company' => $carrier,
+            'shipment_status' => $status,
+            'status_label' => $this->carrierShipmentStatusLabel($status) ?? $status,
+        ]);
+    }
+
+    /**
+     * Add or replace the tracking number on one Sales Order Fulfillment row.
+     */
+    public function saveRowTrackingNumber(Request $request): JsonResponse
+    {
+        $tracking = strtoupper((string) preg_replace('/\s+/', '', trim((string) $request->input('tracking_number', ''))));
+        if ($tracking === '' || ! $this->looksLikeCarrierTrackingNumber($tracking)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enter a carrier tracking number.',
+            ], 422);
+        }
+
+        $slug = strtolower(trim((string) $request->input('mm_slug', '')));
+        $showId = (int) $request->input('show_id', 0);
+        if ($showId <= 0) {
+            $showId = (int) $request->input('row_id', 0);
+        }
+        if ($slug === '' || $showId <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This order cannot be updated.',
+            ], 422);
+        }
+
+        $carrier = TrackingCarrierGuesser::fill(null, $tracking) ?? '';
+        $sofRow = [
+            'shopify_order_id' => trim((string) $request->input('shopify_order_id', '')),
+            'order_number' => trim((string) $request->input('order_number', '')),
+            'order_id' => trim((string) $request->input('order_id', '')),
+            'order_id_api' => trim((string) $request->input('order_id_api', '')),
+        ];
+        $this->persistPulledChannelTracking($slug, $showId, $sofRow, $tracking, $carrier);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tracking number saved.',
+            'tracking_number' => $tracking,
+            'tracking_company' => $carrier,
+        ]);
     }
 
     /**
