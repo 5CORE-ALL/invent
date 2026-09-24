@@ -90,24 +90,64 @@ class TrackingCarrierGuesser
             return true;
         }
 
-        return str_contains($carrier, 'seller') && str_contains($carrier, 'own');
+        if (str_contains($carrier, 'seller') || str_contains($carrier, 'marketplace')) {
+            return true;
+        }
+
+        return str_contains($carrier, 'shipping') && str_contains($carrier, 'local');
     }
 
     /**
-     * Use the tracking number when the stored carrier is empty or a placeholder
-     * such as "Other" or "Seller's Own Logistics".
+     * A carrier we recognize. Marketplace method names are not included.
      */
-    public static function fill(?string $carrier, ?string $trackingNumber): ?string
+    public static function knownLabel(?string $carrier): ?string
     {
-        $carrier = trim((string) $carrier);
-        $guess = self::labelFromNumber((string) $trackingNumber);
-        if (($carrier === '' || self::isPlaceholder($carrier)) && $guess !== null && $guess !== '') {
-            return $guess;
-        }
+        $carrier = strtolower(trim((string) $carrier));
         if ($carrier === '' || self::isPlaceholder($carrier)) {
             return null;
         }
+        if (str_contains($carrier, 'usps') || str_contains($carrier, 'united states postal') || str_contains($carrier, 'postal service')) {
+            return 'USPS';
+        }
+        if (str_contains($carrier, 'fedex') || str_contains($carrier, 'federal express')) {
+            return 'FedEx';
+        }
+        if (preg_match('/\bups\b/', $carrier) === 1 || str_contains($carrier, 'united parcel')) {
+            return 'UPS';
+        }
+        if (str_contains($carrier, 'dhl')) {
+            return 'DHL';
+        }
+        if (str_contains($carrier, 'gofo')) {
+            return 'GOFO';
+        }
+        if (str_contains($carrier, 'ontrac') || str_contains($carrier, 'on trac') || str_contains($carrier, 'lasership') || str_contains($carrier, 'laser ship')) {
+            return str_contains($carrier, 'laser') ? 'LaserShip' : 'OnTrac';
+        }
+        if (str_contains($carrier, 'amazon') || $carrier === 'amz' || str_contains($carrier, 'amzl')) {
+            return 'Amazon';
+        }
+        if (str_contains($carrier, 'uniuni') || str_contains($carrier, 'uni uni')) {
+            return 'UniUni';
+        }
+        if (str_contains($carrier, 'veeqo')) {
+            return 'Veeqo';
+        }
 
-        return $carrier;
+        return null;
+    }
+
+    /**
+     * Carrier comes from the tracking number. Marketplace names such as
+     * "Seller Shipping local" are never kept when the number identifies a carrier.
+     */
+    public static function fill(?string $carrier, ?string $trackingNumber): ?string
+    {
+        $guess = self::labelFromNumber((string) $trackingNumber);
+        if ($guess !== null && $guess !== '') {
+            return $guess;
+        }
+
+        return self::knownLabel($carrier);
     }
 }

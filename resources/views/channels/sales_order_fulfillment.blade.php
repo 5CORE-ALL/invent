@@ -1139,6 +1139,71 @@
         .sof-sku-cell code {
             white-space: nowrap;
         }
+        .sof-status-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            max-width: 100%;
+        }
+        .sof-status-refresh {
+            border: 0;
+            background: transparent;
+            color: #6c757d;
+            padding: 0 2px;
+            line-height: 1;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .sof-status-refresh:hover,
+        .sof-status-refresh:focus {
+            color: #0d6efd;
+        }
+        .sof-status-refresh:disabled {
+            cursor: wait;
+            opacity: 0.7;
+        }
+        .sof-status-edit {
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #334155;
+            width: 28px;
+            height: 26px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0;
+        }
+        .sof-status-edit:hover,
+        .sof-status-edit:focus {
+            color: #0d6efd;
+            border-color: #0d6efd;
+        }
+        .sof-track-link {
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #334155;
+            width: 28px;
+            height: 26px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0;
+            text-decoration: none;
+        }
+        .sof-track-link:hover,
+        .sof-track-link:focus {
+            color: #0d6efd;
+            border-color: #0d6efd;
+        }
+        .sof-track-link:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+        }
         .sof-sku-copy {
             border: none;
             background: #f1f5f9;
@@ -1730,6 +1795,77 @@
         </div>
     </div>
 
+    <div class="modal fade" id="sofCarrierStatusModal" tabindex="-1" aria-labelledby="sofCarrierStatusModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold mb-0" id="sofCarrierStatusModalLabel">Edit carrier and status</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small text-muted mb-3" id="sof-carrier-status-hint"></div>
+                    <div class="mb-3">
+                        <label class="form-label small mb-1" for="sof-carrier-status-carrier">Carrier</label>
+                        <select class="form-select form-select-sm" id="sof-carrier-status-carrier">
+                            <option value="">Choose a carrier</option>
+                            <option value="USPS">USPS</option>
+                            <option value="UPS">UPS</option>
+                            <option value="FedEx">FedEx</option>
+                            <option value="DHL">DHL</option>
+                            <option value="GOFO">GOFO</option>
+                            <option value="OnTrac">OnTrac</option>
+                            <option value="Amazon">Amazon</option>
+                            <option value="LaserShip">LaserShip</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label small mb-1" for="sof-carrier-status-status">Status</label>
+                        <select class="form-select form-select-sm" id="sof-carrier-status-status">
+                            <option value="">Choose a status</option>
+                            <option value="Pending">Pending</option>
+                            <option value="InfoReceived">Label Created</option>
+                            <option value="InTransit">In Transit</option>
+                            <option value="OutForDelivery">Out for Delivery</option>
+                            <option value="AvailableForPickup">Available for Pickup</option>
+                            <option value="Delivered">Delivered</option>
+                            <option value="Exception">Exception</option>
+                            <option value="DeliveryFailure">Delivery Failure</option>
+                            <option value="Expired">Expired</option>
+                            <option value="NotFound">Not Found</option>
+                        </select>
+                    </div>
+                    <div class="small text-danger mt-2 d-none" id="sof-carrier-status-error"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="sof-carrier-status-save">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="sofTrackingNumberModal" tabindex="-1" aria-labelledby="sofTrackingNumberModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold mb-0" id="sofTrackingNumberModalLabel">Edit tracking number</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small text-muted mb-3" id="sof-tracking-number-hint"></div>
+                    <label class="form-label small mb-1" for="sof-tracking-number-input">Tracking number</label>
+                    <input type="text" class="form-control form-control-sm" id="sof-tracking-number-input" autocomplete="off" placeholder="Paste or type the tracking number">
+                    <div class="small text-danger mt-2 d-none" id="sof-tracking-number-error"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="sof-tracking-number-save">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="sofLabelDimsModal" tabindex="-1" aria-labelledby="sofLabelDimsModalLabel" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -2178,14 +2314,30 @@
         if (!n || n === '-' || n === '—' || n === 'n/a' || n === 'na' || n === 'none' || n === 'null' || n === 'unknown' || n === 'other' || n === 'others') {
             return true;
         }
-        return n.indexOf('seller') !== -1 && n.indexOf('own') !== -1;
+        if (n.indexOf('seller') !== -1 || n.indexOf('marketplace') !== -1) return true;
+        return n.indexOf('shipping') !== -1 && n.indexOf('local') !== -1;
+    }
+
+    function sofKnownCarrierLabel(name) {
+        const n = String(name || '').trim().toLowerCase();
+        if (!n || sofCarrierNameIsPlaceholder(n)) return '';
+        if (n.indexOf('usps') !== -1 || n.indexOf('united states postal') !== -1 || n.indexOf('postal service') !== -1) return 'USPS';
+        if (n.indexOf('fedex') !== -1 || n.indexOf('federal express') !== -1) return 'FedEx';
+        if (/\bups\b/.test(n) || n.indexOf('united parcel') !== -1) return 'UPS';
+        if (n.indexOf('dhl') !== -1) return 'DHL';
+        if (n.indexOf('gofo') !== -1) return 'GOFO';
+        if (n.indexOf('laser') !== -1) return 'LaserShip';
+        if (n.indexOf('ontrac') !== -1 || n.indexOf('on trac') !== -1) return 'OnTrac';
+        if (n.indexOf('amazon') !== -1 || n === 'amz' || n.indexOf('amzl') !== -1) return 'Amazon';
+        if (n.indexOf('uniuni') !== -1 || n.indexOf('uni uni') !== -1) return 'UniUni';
+        if (n.indexOf('veeqo') !== -1) return 'Veeqo';
+        return '';
     }
 
     function sofDisplayCarrier(data) {
-        const stored = String((data && data.tracking_company) || '').trim();
         const guessed = guessCarrierFromTrackingNumber(data && data.tracking_number);
-        if (guessed && sofCarrierNameIsPlaceholder(stored)) return guessed;
-        return stored;
+        if (guessed) return guessed;
+        return sofKnownCarrierLabel(data && data.tracking_company);
     }
 
     function sofRowMatchesCarrier(data) {
@@ -2750,6 +2902,8 @@
     }
 
     $('#sof-ship-edit-save').on('click', sofSaveShipmentEdit);
+    $('#sof-carrier-status-save').on('click', sofSaveCarrierStatusEdit);
+    $('#sof-tracking-number-save').on('click', sofSaveTrackingNumberEdit);
     $('#sof-bulk-edit-btn').on('click', function () {
         const tbl = sofActiveOrderTable();
         if (!tbl) return;
@@ -3055,6 +3209,7 @@
                 headerTooltip: 'Green = tracking number available · Red = missing · Click copy to copy the number',
                 formatter: formatTrackingCell,
             },
+            sofTrackingEditColumn(),
             {
                 title: 'Carrier',
                 field: 'tracking_company',
@@ -3062,7 +3217,7 @@
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofStringSorter,
-                headerTooltip: 'Carrier / tracking company for this tracking number',
+                headerTooltip: 'Identified from the tracking number. Marketplace carrier names are not used.',
                 formatter: formatCarrierCell,
             },
         ];
@@ -3141,8 +3296,8 @@
 
     function formatCarrierCell(cell) {
         const row = cell.getRow && cell.getRow() ? cell.getRow().getData() : null;
-        let v = sofDisplayCarrier(row || { tracking_company: cell.getValue(), tracking_number: '' });
-        if (v && row && typeof row === 'object' && sofCarrierNameIsPlaceholder(row.tracking_company)) {
+        let v = sofDisplayCarrier(row || { tracking_company: cell.getValue(), tracking_number: row && row.tracking_number });
+        if (v && row && typeof row === 'object' && String(row.tracking_company || '') !== v) {
             row.tracking_company = v;
         }
         return formatCarrierBadgeHtml(v);
@@ -3158,7 +3313,7 @@
             body += '<tr>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;white-space:nowrap;">' + escapeHtml(r.order_number || r.shopify_order_id || '—') + '</td>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;"><code style="font-size:0.75rem;">' + escapeHtml(r.tracking_number || '—') + '</code></td>'
-                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + formatCarrierBadgeHtml(r.tracking_company) + '</td>'
+                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + formatCarrierBadgeHtml(sofDisplayCarrier(r)) + '</td>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + escapeHtml(r.fulfillment_status || '—') + '</td>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + escapeHtml(r.shipment_status || '—') + '</td>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;font-size:0.75rem;color:#64748b;">' + escapeHtml(r.note || '') + '</td>'
@@ -3199,7 +3354,7 @@
             if (!r || typeof r !== 'object') return;
             const tn = String(r.tracking_number || '').trim();
             if (!tn) return;
-            const carrier = String(r.tracking_company || '').trim() || guessCarrierFromTrackingNumber(tn);
+            const carrier = sofDisplayCarrier({ tracking_number: tn, tracking_company: r.tracking_company });
             const patch = {
                 tracking_number: tn,
                 tracking_company: carrier,
@@ -3234,7 +3389,7 @@
                 if (!hit) return row;
                 return Object.assign({}, row, {
                     tracking_number: hit.tracking_number,
-                    tracking_company: hit.tracking_company || row.tracking_company || '',
+                    tracking_company: hit.tracking_company || sofDisplayCarrier({ tracking_number: hit.tracking_number, tracking_company: row.tracking_company }) || '',
                 });
             });
         }
@@ -3263,14 +3418,14 @@
                     try {
                         tabRow.update({
                             tracking_number: hit.tracking_number,
-                            tracking_company: hit.tracking_company || data.tracking_company || '',
+                            tracking_company: hit.tracking_company || sofDisplayCarrier({ tracking_number: hit.tracking_number, tracking_company: data.tracking_company }) || '',
                         });
                         updated += 1;
                     } catch (e) {
                         try {
                             tbl.updateData([Object.assign({ id: data.id }, {
                                 tracking_number: hit.tracking_number,
-                                tracking_company: hit.tracking_company || data.tracking_company || '',
+                                tracking_company: hit.tracking_company || sofDisplayCarrier({ tracking_number: hit.tracking_number, tracking_company: data.tracking_company }) || '',
                             })]);
                             updated += 1;
                         } catch (e2) {}
@@ -3728,6 +3883,436 @@
         return label || '—';
     }
 
+    function sofRefreshRowCarrierStatus(cell, btn) {
+        const row = (cell.getRow && cell.getRow()) ? cell.getRow() : null;
+        const data = row ? (row.getData() || {}) : {};
+        const tracking = String(data.tracking_number || '').trim();
+        const carrier = String(data.tracking_company || '').trim();
+        if (!tracking) {
+            btn.title = 'No tracking number on this row';
+            return;
+        }
+        if (btn.disabled) return;
+        btn.disabled = true;
+        const icon = btn.querySelector('i');
+        if (icon) icon.classList.add('fa-spin');
+        fetch('{{ route("sales.order.fulfillment.refresh.shipment.status.row") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                tracking_number: tracking,
+                carrier: carrier,
+            }),
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                const payload = res.json || {};
+                if (!res.ok || !payload.success) {
+                    btn.title = payload.message || 'Carrier refresh failed';
+                    return;
+                }
+                const next = {
+                    shipment_status: payload.shipment_status || data.shipment_status,
+                    shipment_status_detail: payload.shipment_status_detail || '',
+                    status_label: payload.status_label || data.status_label,
+                };
+                if (payload.tracking_company) {
+                    next.tracking_company = payload.tracking_company;
+                }
+                if (row && typeof row.update === 'function') {
+                    row.update(next);
+                }
+                btn.title = payload.message || 'Refreshed from the carrier';
+            })
+            .catch(function () {
+                btn.title = 'Carrier refresh failed';
+            })
+            .finally(function () {
+                btn.disabled = false;
+                if (icon) icon.classList.remove('fa-spin');
+            });
+    }
+
+    function sofFormatStatusCell(cell, badgeClass) {
+        const row = (cell.getRow && cell.getRow()) ? (cell.getRow().getData() || {}) : {};
+        const raw = cell.getValue() || row.status || '—';
+        const wrap = document.createElement('span');
+        wrap.className = 'sof-status-cell';
+        const badge = document.createElement('span');
+        badge.className = badgeClass || 'sof-pending-badge';
+        badge.textContent = sofDisplayStatusLabel(raw);
+        wrap.appendChild(badge);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sof-status-refresh';
+        btn.title = 'Refresh this status from the carrier';
+        btn.setAttribute('aria-label', 'Refresh status from the carrier');
+        btn.innerHTML = '<i class="fas fa-sync-alt" aria-hidden="true"></i>';
+        btn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            sofRefreshRowCarrierStatus(cell, btn);
+        });
+        wrap.appendChild(btn);
+        return wrap;
+    }
+
+    let sofCarrierStatusCtx = null;
+
+    function sofCarrierOptionValue(name) {
+        const raw = String(name || '').trim();
+        const key = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const map = {
+            usps: 'USPS',
+            ups: 'UPS',
+            fedex: 'FedEx',
+            dhl: 'DHL',
+            gofo: 'GOFO',
+            ontrac: 'OnTrac',
+            amazon: 'Amazon',
+            amz: 'Amazon',
+            lasership: 'LaserShip',
+            other: 'Other',
+        };
+        return map[key] || raw;
+    }
+
+    function sofStatusOptionValue(row) {
+        const raw = String((row && (row.shipment_status || row.status_label || row.status)) || '').trim();
+        const key = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const map = {
+            pending: 'Pending',
+            pendingscan: 'Pending',
+            inforeceived: 'InfoReceived',
+            labelcreated: 'InfoReceived',
+            labelcreatednoscan: 'InfoReceived',
+            created: 'InfoReceived',
+            intransit: 'InTransit',
+            outfordelivery: 'OutForDelivery',
+            availableforpickup: 'AvailableForPickup',
+            delivered: 'Delivered',
+            exception: 'Exception',
+            deliveryfailure: 'DeliveryFailure',
+            expired: 'Expired',
+            notfound: 'NotFound',
+            notfoundcarrier: 'NotFound',
+        };
+        return map[key] || '';
+    }
+
+    function sofEnsureSelectOption(select, value) {
+        if (!select || !value) return;
+        const exists = Array.prototype.some.call(select.options, function (opt) {
+            return opt.value === value;
+        });
+        if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value;
+            select.appendChild(opt);
+        }
+    }
+
+    function sofOpenCarrierStatusEdit(cell) {
+        const row = cell.getRow();
+        const data = row.getData() || {};
+        sofCarrierStatusCtx = { row: row, data: data };
+        const carrierSelect = document.getElementById('sof-carrier-status-carrier');
+        const statusSelect = document.getElementById('sof-carrier-status-status');
+        const hint = document.getElementById('sof-carrier-status-hint');
+        const err = document.getElementById('sof-carrier-status-error');
+        const carrier = sofCarrierOptionValue(sofDisplayCarrier(data));
+        sofEnsureSelectOption(carrierSelect, carrier);
+        if (carrierSelect) carrierSelect.value = carrier || '';
+        if (statusSelect) statusSelect.value = sofStatusOptionValue(data);
+        if (hint) {
+            const order = data.order_id || data.order_number || data.id || '';
+            const tn = String(data.tracking_number || '').trim();
+            hint.textContent = tn
+                ? ('Order ' + order + ' · ' + tn)
+                : ('Order ' + order + ' has no tracking number.');
+        }
+        if (err) {
+            err.textContent = '';
+            err.classList.add('d-none');
+        }
+        const modalEl = document.getElementById('sofCarrierStatusModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+    }
+
+    function sofSaveCarrierStatusEdit() {
+        if (!sofCarrierStatusCtx || !sofCarrierStatusCtx.row) return;
+        const data = sofCarrierStatusCtx.data || {};
+        const carrierSelect = document.getElementById('sof-carrier-status-carrier');
+        const statusSelect = document.getElementById('sof-carrier-status-status');
+        const err = document.getElementById('sof-carrier-status-error');
+        const saveBtn = document.getElementById('sof-carrier-status-save');
+        const carrier = carrierSelect ? String(carrierSelect.value || '').trim() : '';
+        const status = statusSelect ? String(statusSelect.value || '').trim() : '';
+        if (!carrier || !status) {
+            if (err) {
+                err.textContent = 'Choose a carrier and a status.';
+                err.classList.remove('d-none');
+            }
+            return;
+        }
+        if (err) {
+            err.textContent = '';
+            err.classList.add('d-none');
+        }
+        if (saveBtn) saveBtn.disabled = true;
+        fetch('{{ route("sales.order.fulfillment.save.carrier.status") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': sofCsrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                tracking_number: data.tracking_number || '',
+                carrier: carrier,
+                shipment_status: status,
+            }),
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                if (!res.ok || !res.json || !res.json.success) {
+                    throw new Error((res.json && res.json.message) || 'Update failed.');
+                }
+                const payload = res.json;
+                sofCarrierStatusCtx.row.update({
+                    tracking_company: payload.tracking_company || carrier,
+                    shipment_status: payload.shipment_status || status,
+                    status_label: payload.status_label || status,
+                });
+                const modalEl = document.getElementById('sofCarrierStatusModal');
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                }
+            })
+            .catch(function (e) {
+                if (err) {
+                    err.textContent = (e && e.message) ? e.message : 'Update failed.';
+                    err.classList.remove('d-none');
+                }
+            })
+            .finally(function () {
+                if (saveBtn) saveBtn.disabled = false;
+            });
+    }
+
+    let sofTrackingNumberCtx = null;
+
+    function sofOpenTrackingNumberEdit(cell) {
+        const row = cell.getRow();
+        const data = row.getData() || {};
+        sofTrackingNumberCtx = { row: row, data: data };
+        const input = document.getElementById('sof-tracking-number-input');
+        const hint = document.getElementById('sof-tracking-number-hint');
+        const err = document.getElementById('sof-tracking-number-error');
+        if (input) input.value = String(data.tracking_number || '').trim();
+        if (hint) {
+            const order = data.order_id || data.order_number || data.id || '';
+            hint.textContent = order ? ('Order ' + order) : 'Add a tracking number for this order.';
+        }
+        if (err) {
+            err.textContent = '';
+            err.classList.add('d-none');
+        }
+        const modalEl = document.getElementById('sofTrackingNumberModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+        if (input) {
+            setTimeout(function () { input.focus(); input.select(); }, 150);
+        }
+    }
+
+    function sofSaveTrackingNumberEdit() {
+        if (!sofTrackingNumberCtx || !sofTrackingNumberCtx.row) return;
+        const data = sofTrackingNumberCtx.data || {};
+        const input = document.getElementById('sof-tracking-number-input');
+        const err = document.getElementById('sof-tracking-number-error');
+        const saveBtn = document.getElementById('sof-tracking-number-save');
+        const tracking = input ? String(input.value || '').replace(/\s+/g, '').trim() : '';
+        if (!tracking) {
+            if (err) {
+                err.textContent = 'Enter a tracking number.';
+                err.classList.remove('d-none');
+            }
+            return;
+        }
+        if (err) {
+            err.textContent = '';
+            err.classList.add('d-none');
+        }
+        if (saveBtn) saveBtn.disabled = true;
+        fetch('{{ route("sales.order.fulfillment.save.tracking.number") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': sofCsrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                tracking_number: tracking,
+                mm_slug: data.mm_slug || '',
+                show_id: data.show_id || data.row_id || 0,
+                row_id: data.row_id || 0,
+                shopify_order_id: data.shopify_order_id || '',
+                order_number: data.order_number || '',
+                order_id: data.order_id || '',
+                order_id_api: data.order_id_api || '',
+            }),
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                if (!res.ok || !res.json || !res.json.success) {
+                    throw new Error((res.json && res.json.message) || 'Update failed.');
+                }
+                const payload = res.json;
+                sofTrackingNumberCtx.row.update({
+                    tracking_number: payload.tracking_number || tracking,
+                    tracking_company: payload.tracking_company || sofDisplayCarrier({
+                        tracking_number: payload.tracking_number || tracking,
+                        tracking_company: '',
+                    }),
+                });
+                const modalEl = document.getElementById('sofTrackingNumberModal');
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                }
+            })
+            .catch(function (e) {
+                if (err) {
+                    err.textContent = (e && e.message) ? e.message : 'Update failed.';
+                    err.classList.remove('d-none');
+                }
+            })
+            .finally(function () {
+                if (saveBtn) saveBtn.disabled = false;
+            });
+    }
+
+    function sofTrackingEditColumn() {
+        return {
+            title: 'Edit',
+            field: '__sof_tracking_edit',
+            width: 72,
+            minWidth: 72,
+            hozAlign: 'center',
+            headerHozAlign: 'center',
+            headerSort: false,
+            headerTooltip: 'Add or change the tracking number',
+            formatter: function (cell) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'sof-status-edit';
+                btn.title = 'Edit tracking number';
+                btn.setAttribute('aria-label', 'Edit tracking number');
+                btn.innerHTML = '<i class="fas fa-pen" aria-hidden="true"></i>';
+                btn.addEventListener('click', function (ev) {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    sofOpenTrackingNumberEdit(cell);
+                });
+                return btn;
+            },
+        };
+    }
+
+    function sofCarrierTrackingPageUrl(data) {
+        const tn = String((data && data.tracking_number) || '').replace(/\s+/g, '');
+        if (!tn) return '';
+        const carrier = sofDisplayCarrier(data);
+        const key = sofCarrierKeyFromName(carrier);
+        const q = encodeURIComponent(tn);
+        if (key === 'usps') return 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + q;
+        if (key === 'ups') return 'https://www.ups.com/track?loc=en_US&tracknum=' + q;
+        if (key === 'fedex') return 'https://www.fedex.com/fedextrack/?trknbr=' + q;
+        if (key === 'dhl') return 'https://www.dhl.com/us-en/home/tracking.html?submit=1&tracking-id=' + q;
+        if (key === 'gofo') return 'https://www.gofo.com/us/track?searchID=' + q;
+        if (key === 'ontrac') return 'https://www.ontrac.com/tracking/?number=' + q;
+        if (key === 'amazon') return 'https://track.amazon.com/tracking/' + q;
+        if (key === 'uniuni') return 'https://www.uniuni.com/tracking/?no=' + q;
+        if (String(carrier || '').toLowerCase().indexOf('laser') !== -1) {
+            return 'https://www.ontrac.com/tracking/?number=' + q;
+        }
+        return '';
+    }
+
+    function sofCarrierLinkColumn() {
+        return {
+            title: 'Link',
+            field: '__sof_track_link',
+            width: 64,
+            minWidth: 64,
+            hozAlign: 'center',
+            headerHozAlign: 'center',
+            headerSort: false,
+            headerTooltip: 'Open this tracking number on the carrier website',
+            formatter: function (cell) {
+                const data = cell.getRow().getData() || {};
+                const url = sofCarrierTrackingPageUrl(data);
+                const carrier = sofDisplayCarrier(data) || 'carrier';
+                const el = document.createElement(url ? 'a' : 'button');
+                el.className = 'sof-track-link';
+                el.title = url
+                    ? ('Track ' + String(data.tracking_number || '').trim() + ' on ' + carrier)
+                    : 'No carrier tracking page for this row';
+                el.setAttribute('aria-label', el.title);
+                el.innerHTML = '<i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>';
+                if (url) {
+                    el.href = url;
+                    el.target = '_blank';
+                    el.rel = 'noopener noreferrer';
+                } else {
+                    el.type = 'button';
+                    el.disabled = true;
+                }
+                el.addEventListener('click', function (ev) {
+                    ev.stopPropagation();
+                });
+                return el;
+            },
+        };
+    }
+
+    function sofStatusEditColumn() {
+        return {
+            title: 'Edit',
+            field: '__sof_status_edit',
+            width: 72,
+            minWidth: 72,
+            hozAlign: 'center',
+            headerHozAlign: 'center',
+            headerSort: false,
+            formatter: function (cell) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'sof-status-edit';
+                btn.title = 'Edit carrier and status';
+                btn.setAttribute('aria-label', 'Edit carrier and status');
+                btn.innerHTML = '<i class="fas fa-pen" aria-hidden="true"></i>';
+                btn.addEventListener('click', function (ev) {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    sofOpenCarrierStatusEdit(cell);
+                });
+                return btn;
+            },
+        };
+    }
+
     function orderListColumns(statusBadgeClass) {
         return [
             {
@@ -3856,17 +4441,18 @@
             {
                 title: 'Status',
                 field: 'status_label',
-                minWidth: 90,
+                minWidth: 118,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofStringSorter,
+                headerTooltip: 'Refresh icon loads the latest status from this row’s carrier',
                 formatter: function (cell) {
-                    const raw = cell.getValue() || cell.getRow().getData().status || '—';
-                    const label = escapeHtml(sofDisplayStatusLabel(raw));
-                    return `<span class="${statusBadgeClass}">${label}</span>`;
+                    return sofFormatStatusCell(cell, statusBadgeClass);
                 },
             },
+            sofCarrierLinkColumn(),
+            sofStatusEditColumn(),
             {
                 title: 'SKU',
                 field: 'sku',
@@ -4659,6 +5245,12 @@
                         c.headerSortStartingDir = 'asc';
                     }
                 });
+                const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
+                const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
+                const trackingCols = sofTrackingColumns().filter(function (c) {
+                    return c.field === 'tracking_number' || c.field === '__sof_tracking_edit';
+                });
+                if (trackingCols.length) cols.splice(insertAt, 0, ...trackingCols);
                 return cols;
             })(),
         }));
@@ -5047,9 +5639,8 @@
                         c.headerTooltip = 'Recd/Transit. Red = scan pending more than 36 hours.';
                         c.formatter = function (cell) {
                             const row = cell.getRow().getData() || {};
-                            const label = escapeHtml(sofDisplayStatusLabel(cell.getValue() || row.status || '—'));
                             const cls = sofIsScanPendingOver36h(row) ? 'sof-in-transit-late-badge' : 'sof-in-transit-badge';
-                            return '<span class="' + cls + '">' + label + '</span>';
+                            return sofFormatStatusCell(cell, cls);
                         };
                     }
                     if (c.field === 'order_date') {
@@ -5729,15 +6320,17 @@
             {
                 title: 'Status',
                 field: 'status_label',
-                minWidth: 110,
+                minWidth: 118,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: sofStringSorter,
+                headerTooltip: 'Refresh icon loads the latest status from this row’s carrier',
                 formatter: function (cell) {
-                    const label = escapeHtml(cell.getValue() || '—');
-                    return '<span class="sof-pending-badge">' + label + '</span>';
+                    return sofFormatStatusCell(cell, 'sof-pending-badge');
                 },
             },
+            sofCarrierLinkColumn(),
+            sofStatusEditColumn(),
             {
                 title: 'SKU',
                 field: 'sku',
@@ -5790,6 +6383,7 @@
                 sorter: sofStringSorter,
                 formatter: formatTrackingCell,
             },
+            sofTrackingEditColumn(),
             {
                 title: 'Carrier',
                 field: 'tracking_company',
