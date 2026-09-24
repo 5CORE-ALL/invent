@@ -9963,9 +9963,13 @@
         function chPromoUsesAmazonStyleRuleApply() {
             return chPromoIsEbayChannel() || CHANNEL_PROMO_CHANNEL === 'shopify_b2c';
         }
-        /** Live Dil S PRC for Shopify B2C, including the Amz floor. Ignores stored SPRICE. */
+        /** Live Dil S PRC for Shopify B2C. Same dollar the S PRC cell paints. */
         function chPromoB2cLiveSprice(d) {
             if (!d) return 0;
+            if (typeof shopifyB2cShownSprice === 'function') {
+                const shown = Number(shopifyB2cShownSprice(d)) || 0;
+                if (shown > 0) return chPromoRound2(shown);
+            }
             let raw = 0;
             if (typeof ebayDilGroiMetaForRow === 'function') {
                 const meta = ebayDilGroiMetaForRow(d);
