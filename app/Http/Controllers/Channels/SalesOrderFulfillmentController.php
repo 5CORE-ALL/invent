@@ -5497,15 +5497,12 @@ class SalesOrderFulfillmentController extends Controller
 
         $scanDone = $this->scanDoneLast24HoursCount();
         $inReceived = $this->inReceivedOrdersCount();
-        $invoicedNoScan = count($this->invoicedTrackedForNoScan());
         $invoicedTransit = count($this->invoicedTrackedForInTransit());
 
         return [
             'channel_count' => (int) $channelCount,
             'pending_total' => $pendingTotal,
-            // Provisional until the No Scan tab loads and replaces this with the order count.
-            // Do not count every marketplace-fulfilled order — that includes packages already scanned.
-            'fulfilled_24h' => $this->awaitingCarrierTrackingCount() + $invoicedNoScan,
+            'fulfilled_24h' => count($this->labelCreatedNoScanRows()),
             'label_created_no_tracking' => 0,
             'scan_done_24h' => $scanDone,
             'in_transit_total' => $this->countAllOrders(
