@@ -722,8 +722,8 @@
                 const cols = [
                     { title: '#', field: main ? 'id' : 'issue_ref', width: main ? 55 : 70, frozen: true, formatter: main ? undefined : function (c) { return dash(c.getValue() || c.getData().orders_on_hold_issue_id || c.getData().id); } },
                     { title: '', field: 'image_url', width: 56, frozen: true, formatter: fmtImage, headerSort: false },
-                    { title: 'SKU', field: 'sku', width: 140, frozen: true, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + escapeHtml(c.getValue()) + '</span>'; } },
-                    { title: 'Parent', field: 'parent', width: 140, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + dash(c.getValue()) + '</span>'; } },
+                    { title: 'Parent', field: 'parent', width: 140, frozen: true, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + dash(c.getValue()) + '</span>'; } },
+                    { title: 'SKU', field: 'sku', width: 140, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + escapeHtml(c.getValue()) + '</span>'; } },
                     { title: 'Supplier', field: 'supplier', width: 160, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + dash(c.getValue()) + '</span>'; } },
                 ];
                 if (main) cols.push({ title: 'Loss $', field: 'total_loss', width: 90, formatter: fmtLoss, headerSort: false, tooltip: false });
@@ -1152,9 +1152,9 @@
                     }
                 });
                 document.getElementById('qc-export').addEventListener('click', function () {
-                    const headers = ['#', 'SKU', 'Parent', 'Supplier', 'Loss $', 'Order QTY', 'MKT', 'Issue?', 'Action', 'Action Remark', 'Track R', 'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed', 'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'];
+                    const headers = ['#', 'Parent', 'SKU', 'Supplier', 'Loss $', 'Order QTY', 'MKT', 'Issue?', 'Action', 'Action Remark', 'Track R', 'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed', 'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'];
                     const rows = table.getData().map(function (r) {
-                        return [r.id, r.sku, r.parent || '', r.supplier || '', r.total_loss ?? '', r.order_qty, r.marketplace_1, r.what_happened, r.action_1, r.action_1_remark, r.replacement_tracking, r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark, deptLabel(r), r.created_by, r.created_at];
+                        return [r.id, r.parent || '', r.sku, r.supplier || '', r.total_loss ?? '', r.order_qty, r.marketplace_1, r.what_happened, r.action_1, r.action_1_remark, r.replacement_tracking, r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark, deptLabel(r), r.created_by, r.created_at];
                     });
                     downloadCsv([headers.map(csvEscape).join(',')].concat(rows.map(function (r) { return r.map(csvEscape).join(','); })).join('\r\n'), 'qc_pkg_issues_active_' + new Date().toISOString().slice(0, 10) + '.csv');
                 });
