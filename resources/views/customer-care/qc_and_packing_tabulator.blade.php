@@ -19,25 +19,199 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        .tabulator-col .tabulator-col-sorter { display: none !important; }
-        #qc-pkg-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
-        #qc-pkg-history.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        .qc-grid-card,
+        .qc-grid-card .card-body { min-width: 0; max-width: 100%; }
+        .qc-grid-card { overflow-x: clip; }
+        .qc-grid-card .card-body { overflow-x: visible; }
+        .qc-grid {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            overflow: visible;
+            padding-bottom: 56px;
+        }
+        .qc-grid .tabulator {
+            border: 1px solid #dee2e6;
+            border-radius: 0 0 8px 8px;
+            font-size: 13px;
+            width: 100% !important;
+            max-width: 100%;
+            min-width: 0;
+            overflow: visible !important;
+        }
+        .qc-grid .tabulator .tabulator-header,
+        .qc-grid .tabulator .tabulator-tableholder,
+        .qc-grid .tabulator .tabulator-footer { max-width: 100%; min-width: 0; }
+        .qc-grid .tabulator .tabulator-tableholder {
+            overflow-x: auto !important;
+            overflow-y: visible !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        .qc-grid .tabulator .tabulator-header {
+            position: sticky !important;
+            top: var(--tz-topbar-height, 70px) !important;
+            z-index: 24 !important;
+            background: #dbeafe;
+            border-bottom: 1px solid #dee2e6;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-frozen {
+            background-color: #dbeafe !important;
+            z-index: 12 !important;
+        }
+        .qc-grid .tabulator-row .tabulator-frozen {
+            background-color: #fff !important;
+            z-index: 11 !important;
+        }
+        .qc-grid .tabulator-row.tabulator-selectable:hover .tabulator-frozen { background-color: #bbb !important; }
+        .qc-grid .tabulator .tabulator-header .tabulator-col.tabulator-sortable { cursor: pointer; }
+        .qc-grid .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: flex !important;
+            align-items: center;
+            visibility: visible !important;
+            position: absolute !important;
+            top: auto !important;
+            bottom: 2px !important;
+            left: 50% !important;
+            right: auto !important;
+            width: auto !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            opacity: 0.4;
+            transform: translateX(-50%);
+            justify-content: center;
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter .tabulator-arrow {
+            display: inline-block !important;
+            visibility: visible !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            border-left: 4px solid transparent !important;
+            border-right: 4px solid transparent !important;
+            border-bottom: 5px solid #64748b !important;
+            border-top: 0 !important;
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="desc"] .tabulator-col-sorter .tabulator-arrow {
+            border-bottom: 0 !important;
+            border-top: 5px solid #334155 !important;
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="asc"] .tabulator-col-sorter .tabulator-arrow {
+            border-top: 0 !important;
+            border-bottom: 5px solid #334155 !important;
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover .tabulator-col-sorter,
+        .qc-grid .tabulator .tabulator-header .tabulator-col[aria-sort="asc"] .tabulator-col-sorter,
+        .qc-grid .tabulator .tabulator-header .tabulator-col[aria-sort="desc"] .tabulator-col-sorter { opacity: 1; }
+        .qc-grid .tabulator .tabulator-header .tabulator-col {
+            height: 118px !important;
+            min-height: 118px;
+            vertical-align: bottom;
+            overflow: visible;
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            height: 118px !important;
+            min-height: 118px;
+            padding: 0 0 14px !important;
+            display: flex !important;
+            align-items: flex-end;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
             text-orientation: mixed;
-            white-space: nowrap;
             transform: rotate(180deg);
-            height: 80px;
+            white-space: nowrap !important;
+            height: 100px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
+            line-height: 1.15;
+            padding: 4px 0;
+            text-align: center;
+            overflow: visible;
         }
-        #qc-pkg-table.tabulator .tabulator-header .tabulator-col,
-        #qc-pkg-history.tabulator .tabulator-header .tabulator-col { height: 80px !important; }
-        #qc-pkg-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title,
-        #qc-pkg-history.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title { padding-right: 0 !important; }
-        .tabulator-paginator label { margin-right: 5px; }
+        .qc-grid .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title { padding-right: 0 !important; }
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="id"] .tabulator-col-title,
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="issue_ref"] .tabulator-col-title,
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="image_url"] .tabulator-col-title,
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="sku"] .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            height: auto !important;
+            padding: 5px 3px;
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="id"] .tabulator-col-content,
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="issue_ref"] .tabulator-col-content,
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="image_url"] .tabulator-col-content,
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="sku"] .tabulator-col-content {
+            align-items: center;
+            padding-bottom: 0 !important;
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="sku"] .tabulator-col-sorter {
+            top: 0 !important;
+            bottom: 0 !important;
+            left: auto !important;
+            right: 4px !important;
+            transform: none !important;
+        }
+        .qc-grid .tabulator .tabulator-header .tabulator-col[tabulator-field="sku"].tabulator-sortable .tabulator-col-title { padding-right: 14px !important; }
+        .qc-grid .tabulator .tabulator-row { min-height: 32px; }
+        .qc-grid .tabulator .tabulator-row .tabulator-cell { padding: 3px 2px !important; }
+        .qc-grid .tabulator .tabulator-footer {
+            background: #f8fafc !important;
+            border-top: 1px solid #e2e8f0 !important;
+            padding: 10px 16px !important;
+            overflow-x: auto;
+        }
+        .qc-grid .tabulator .tabulator-footer .tabulator-paginator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .qc-grid .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            min-width: 36px !important;
+            height: 36px !important;
+            line-height: 36px !important;
+            padding: 0 10px !important;
+            border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important;
+            background: #fff !important;
+            color: #475569 !important;
+            cursor: pointer;
+            text-align: center !important;
+        }
+        .qc-grid .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover { background: #f1f5f9 !important; border-color: #cbd5e1 !important; color: #1e293b !important; }
+        .qc-grid .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #4361ee !important;
+            border-color: #4361ee !important;
+            color: #fff !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
+        }
+        .qc-grid .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] { opacity: 0.4 !important; cursor: not-allowed !important; }
+        .qc-grid .tabulator .tabulator-footer .tabulator-page-counter { margin: 0 0.5rem; font-size: 12px; color: #334155; }
+        @media (max-width: 767.98px) {
+            .qc-grid .tabulator { font-size: 12px; }
+            .qc-grid .tabulator .tabulator-footer { padding: 8px 10px !important; }
+            .qc-grid .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+                min-width: 32px !important;
+                height: 32px !important;
+                line-height: 32px !important;
+                font-size: 13px !important;
+            }
+            .qc-grid .tabulator .tabulator-header { top: var(--tz-topbar-height, 56px) !important; }
+        }
         .sku-thumb, .sku-thumb-placeholder, .sku-image-preview {
             width: 36px; height: 36px; object-fit: contain; border-radius: 3px;
             background: #f8f9fa; border: 1px solid #dee2e6;
@@ -87,7 +261,7 @@
                 </div>
             </div>
 
-            <div class="card mt-3 shadow-sm">
+            <div class="card mt-3 shadow-sm qc-grid-card">
                 <div class="card-body py-2">
                     <div class="d-flex flex-wrap align-items-center gap-2">
                         <h4 class="mb-0 me-2">QC And Packing Records</h4>
@@ -117,20 +291,20 @@
                     </div>
                 </div>
                 <div class="card-body p-0">
-                    <div id="qc-pkg-wrapper" style="height: calc(100vh - 220px); display: flex; flex-direction: column;">
-                        <div id="qc-pkg-table" style="flex:1;"></div>
+                    <div id="qc-pkg-wrap" class="qc-grid">
+                        <div id="qc-pkg-table"></div>
                     </div>
                 </div>
             </div>
 
-            <div class="card mt-3 d-none" id="qc-history-card">
+            <div class="card mt-3 d-none qc-grid-card" id="qc-history-card">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <h5 class="mb-0">Order History</h5>
                     <span class="badge bg-light text-dark" id="qc-history-count">0</span>
                 </div>
                 <div class="card-body p-0">
-                    <div style="height: 420px;">
-                        <div id="qc-pkg-history" style="height:100%;"></div>
+                    <div id="qc-history-wrap" class="qc-grid">
+                        <div id="qc-pkg-history"></div>
                     </div>
                 </div>
             </div>
@@ -453,11 +627,27 @@
             const fmtCreatedMain = function (cell) { const d = cell.getData(); return createdByHtml(d.created_by, d.created_at); };
             const fmtCreatedHistory = function (cell) { const d = cell.getData(); return createdByHtml(d.created_by, d.logged_at); };
 
+            function gridOptions(columns, extra) {
+                return Object.assign({
+                    columns: columns,
+                    height: false,
+                    layout: 'fitDataFill',
+                    layoutColumnsOnNewData: true,
+                    pagination: true,
+                    paginationSize: 100,
+                    paginationSizeSelector: [25, 50, 100, 250, 500, 1000],
+                    paginationCounter: 'rows',
+                    paginationButtonCount: 10,
+                    headerSortClickElement: 'icon',
+                    columnDefaults: { tooltip: true },
+                    index: 'id',
+                }, extra || {});
+            }
             function dataColumns(main) {
                 const cols = [
-                    { title: '#', field: main ? 'id' : 'issue_ref', width: main ? 55 : 70, formatter: main ? undefined : function (c) { return dash(c.getValue() || c.getData().orders_on_hold_issue_id || c.getData().id); } },
-                    { title: '', field: 'image_url', width: 56, formatter: fmtImage, headerSort: false },
-                    { title: 'SKU', field: 'sku', width: 140, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + escapeHtml(c.getValue()) + '</span>'; } },
+                    { title: '#', field: main ? 'id' : 'issue_ref', width: main ? 55 : 70, frozen: true, formatter: main ? undefined : function (c) { return dash(c.getValue() || c.getData().orders_on_hold_issue_id || c.getData().id); } },
+                    { title: '', field: 'image_url', width: 56, frozen: true, formatter: fmtImage, headerSort: false },
+                    { title: 'SKU', field: 'sku', width: 140, frozen: true, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + escapeHtml(c.getValue()) + '</span>'; } },
                 ];
                 if (main) cols.push({ title: 'Loss $', field: 'total_loss', width: 90, formatter: fmtLoss, headerSort: false, tooltip: false });
                 cols.push(
@@ -628,11 +818,10 @@
                 const data = await res.json();
                 const rows = Array.isArray(data && data.data) ? data.data : [];
                 if (!historyTable) {
-                    historyTable = new Tabulator('#qc-pkg-history', {
-                        layout: 'fitDataStretch', height: '100%', placeholder: 'No history found.', index: 'id',
-                        pagination: true, paginationSize: 50, paginationSizeSelector: [25, 50, 100],
-                        columnDefaults: { tooltip: true }, columns: dataColumns(false), data: rows,
-                    });
+                    historyTable = new Tabulator('#qc-pkg-history', gridOptions(dataColumns(false), {
+                        placeholder: 'No history found.',
+                        data: rows,
+                    }));
                 } else await historyTable.setData(rows);
                 document.getElementById('qc-history-count').textContent = String(rows.length);
             }
@@ -703,18 +892,9 @@
             document.addEventListener('DOMContentLoaded', function () {
                 buildDeptMenu();
                 modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('qc-issue-modal'));
-                table = new Tabulator('#qc-pkg-table', {
-                    layout: 'fitDataStretch',
-                    height: '100%',
+                table = new Tabulator('#qc-pkg-table', gridOptions(dataColumns(true), {
                     placeholder: 'No records found.',
-                    index: 'id',
-                    pagination: true,
-                    paginationSize: 100,
-                    paginationSizeSelector: [25, 50, 100, 200],
-                    paginationCounter: 'rows',
-                    columnDefaults: { tooltip: true },
-                    columns: dataColumns(true),
-                });
+                }));
                 table.on('tableBuilt', async function () {
                     try {
                         const res = await fetch(URLS.colVisGet + '?channel=' + encodeURIComponent(COLVIS_CHANNEL), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
