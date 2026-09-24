@@ -560,7 +560,7 @@
                             <a href="{{ route('customer.care.qc.packing') }}">QC / Packaging</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.label.issues') }}">Label/Shipping</a>
+                            <a href="{{ route('customer.care.label.issues') }}">Label/ Shipping Issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.dispatch.issues') }}">All Issues</a>

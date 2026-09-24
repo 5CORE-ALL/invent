@@ -1,5 +1,5 @@
-@extends('layouts.vertical', ['title' => 'Label/Shipping', 'sidenav' => 'condensed'])
-{{-- Label/Shipping (Tabulator) — Label and Shipping department records. --}}
+@extends('layouts.vertical', ['title' => 'Label/ Shipping Issues', 'sidenav' => 'condensed'])
+{{-- Label/ Shipping Issues (Tabulator) — Label and Shipping department records. --}}
 
 @php
     $importCsvHeaders = [
@@ -82,7 +82,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Label/Shipping',
+        'page_title' => 'Label/ Shipping Issues',
         'sub_title' => 'Customer Care',
     ])
 
@@ -97,7 +97,7 @@
             <div class="card mt-3 shadow-sm">
                 <div class="card-header py-2">
                     <div class="d-flex flex-wrap align-items-center gap-2">
-                        <h5 class="mb-0 me-2">Label/Shipping Records</h5>
+                        <h5 class="mb-0 me-2">Label/ Shipping Issues</h5>
                         <button type="button" class="btn btn-primary btn-sm" id="li-add">
                             <i class="bi bi-plus-lg me-1"></i> Add Issue
                         </button>
@@ -190,7 +190,7 @@
             <div class="modal-content">
                 <form id="li-issue-form" autocomplete="off">
                     <div class="modal-header">
-                        <h5 class="modal-title" id="li-issue-modal-title">Label/Shipping</h5>
+                        <h5 class="modal-title" id="li-issue-modal-title">Label/ Shipping Issues</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
@@ -600,7 +600,7 @@
                     : String(record.department || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
                 setDepartments(depts.filter(function (d) { return d === 'Label' || d === 'Shipping'; }));
                 document.getElementById('li-save').textContent = 'Update';
-                document.getElementById('li-issue-modal-title').textContent = 'Label/Shipping';
+                document.getElementById('li-issue-modal-title').textContent = 'Label/ Shipping Issues';
                 toggleOtherFields();
             }
 
@@ -860,7 +860,7 @@
                     const data = cell.getRow().getData();
                     if (editBtn) {
                         fillForm(data);
-                        document.getElementById('li-issue-modal-title').textContent = 'Label/Shipping';
+                        document.getElementById('li-issue-modal-title').textContent = 'Label/ Shipping Issues';
                         modal.show();
                     } else {
                         archiveRow(data.id);
@@ -878,7 +878,7 @@
 
                 document.getElementById('li-add').addEventListener('click', function () {
                     resetForm();
-                    document.getElementById('li-issue-modal-title').textContent = 'Label/Shipping';
+                    document.getElementById('li-issue-modal-title').textContent = 'Label/ Shipping Issues';
                     modal.show();
                 });
                 document.getElementById('li-history').addEventListener('click', function () {
