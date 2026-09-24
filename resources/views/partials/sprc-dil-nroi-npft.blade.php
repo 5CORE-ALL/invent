@@ -51,6 +51,19 @@
                 const shown = Number(plsVisibleSprice(d)) || 0;
                 if (shown > 0) return shown;
             }
+            // Same dollar the SGROI / SGPFT cells paint (live Dil), not only a saved SPRICE.
+            if (typeof chPromoPageDisplayedSprice === 'function') {
+                const shown = Number(chPromoPageDisplayedSprice(d)) || 0;
+                if (shown > 0) return shown;
+            }
+            if (typeof ebay3DisplayedSprice === 'function') {
+                const shown = Number(ebay3DisplayedSprice(d)) || 0;
+                if (shown > 0) return shown;
+            }
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(d)) || 0;
+                if (dil > 0) return dil;
+            }
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(d));
                 if (saved > 0) return saved;
@@ -150,6 +163,7 @@
                 if (d.is_parent || d.is_parent_summary) {
                     return '<span style="color:#6c757d;">–</span>';
                 }
+                if (!(ebayDilRowSprice(d) > 0)) return '';
                 const v = kind === 'snpft' ? ebayDilComputedSnpft(d) : ebayDilComputedSnroi(d);
                 if (!isFinite(v)) return '';
                 const ads = (typeof ebayDilAdsPct === 'function') ? ebayDilAdsPct() : 0;

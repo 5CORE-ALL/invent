@@ -2041,8 +2041,14 @@
         }
         /** Exact $ the S PRC cell paints — this is what we persist to the table. */
         function ebayDgCellSpriceToSave(d) {
-            if (typeof ebayDisplayedSprice === 'function') {
-                const shown = Number(ebayDisplayedSprice(d)) || 0;
+            const painters = [
+                typeof ebayDisplayedSprice === 'function' ? ebayDisplayedSprice : null,
+                typeof ebay2DisplayedSprice === 'function' ? ebay2DisplayedSprice : null,
+                typeof ebay3DisplayedSprice === 'function' ? ebay3DisplayedSprice : null,
+            ];
+            for (let i = 0; i < painters.length; i++) {
+                if (typeof painters[i] !== 'function') continue;
+                const shown = Number(painters[i](d)) || 0;
                 if (shown > 0) return shown;
             }
             const live = Number(ebayTiktokRuleDiscount(d)) || 0;
