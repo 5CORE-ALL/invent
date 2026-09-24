@@ -1682,6 +1682,7 @@ class SalesOrderFulfillmentController extends Controller
                 }
 
                 $dateSource = $n['order_date'] ?? null;
+                $updatedSource = $n['updated_at'] ?? null;
                 $dateTz = $slug === 'shein' ? SheinApiService::API_TIMEZONE : null;
                 if (in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true)) {
                     $dateSource = $this->ebayDisplayedOrderDate($order, $n);
@@ -1694,6 +1695,12 @@ class SalesOrderFulfillmentController extends Controller
                         $n['raw_payload'] ?? null,
                         ['PurchaseDate', 'purchaseDate']
                     );
+                    $dateTz = null;
+                } elseif (in_array($slug, ['bestbuy', 'macy'], true)) {
+                    // mirakl_daily_data stores created_at as a UTC wall clock.
+                    // Reading those digits as Pacific shows the order ~3 hours ahead in EDT.
+                    $dateSource = $this->utcWallClockDisplayedDate($order, 'order_created_at', null, []);
+                    $updatedSource = $this->utcWallClockDisplayedDate($order, 'order_updated_at', null, []);
                     $dateTz = null;
                 }
 
@@ -1708,7 +1715,7 @@ class SalesOrderFulfillmentController extends Controller
                     'order_id_api' => $apiOrderId,
                     'order_number' => $orderNumber !== '' ? $orderNumber : null,
                     'order_date' => $this->formatOrderDate($dateSource, $dateTz),
-                    'updated_at' => $this->formatOrderDate($n['updated_at'] ?? null),
+                    'updated_at' => $this->formatOrderDate($updatedSource),
                     'tracking_number' => $tracking,
                     'tracking_company' => $company,
                     'tracking_url' => null,

@@ -78,23 +78,54 @@ class FaireTrackingSyncService
                 );
             }
         }
-        if (empty($shopifyFulfillment['tracking'])) {
-            return [
-                'success' => false,
-                'skipped' => true,
-                'message' => $shopifyFulfillment['error']
-                    ?: 'No tracking number on Shopify yet. Buy/download a shipping label in Shopify first.',
-                'shopify_tracking' => null,
-                'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
-            ];
-        }
-
-        $shopifyTracking = (string) $shopifyFulfillment['tracking'];
+        $shopifyTracking = trim((string) ($shopifyFulfillment['tracking'] ?? ''));
         $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
 
         $faireShipment = $this->resolveFaireShipment($orderId, $line);
         $faireTracking = trim((string) ($faireShipment['tracking'] ?? ''));
         $faireCarrier = trim((string) ($faireShipment['service'] ?? ''));
+        $direction = ReverbTrackingSyncService::trackingSyncAction($shopifyTracking, $faireTracking);
+
+        if ($direction === 'pull_from_reverb') {
+            $provider = $faireCarrier !== '' ? $faireCarrier : 'Other';
+            $applied = app(ShopifyFulfillmentTrackingWriter::class)->apply(
+                $this->shopifyConfig(),
+                $shopifyOrderId,
+                $faireTracking,
+                $provider
+            );
+            if (empty($applied['success'])) {
+                return [
+                    'success' => false,
+                    'action' => 'pull_from_faire',
+                    'message' => $applied['message'] ?? 'Faire has a tracking number, but Shopify was not updated.',
+                    'shopify_tracking' => $shopifyTracking !== '' ? $shopifyTracking : null,
+                    'faire_tracking' => $faireTracking,
+                    'ship_carrier' => $provider,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'action' => 'pulled_from_faire',
+                'message' => "Updated Shopify with Faire tracking {$faireTracking} ({$provider}).",
+                'shopify_tracking' => $faireTracking,
+                'shopify_carrier' => $provider,
+                'faire_tracking' => $faireTracking,
+                'ship_carrier' => $provider,
+            ];
+        }
+
+        if ($direction === 'none') {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => $shopifyFulfillment['error']
+                    ?: 'No tracking number on Faire or Shopify yet.',
+                'shopify_tracking' => null,
+                'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+            ];
+        }
 
         if ($faireTracking !== '' && $this->trackingEquals($faireTracking, $shopifyTracking)) {
             return [
@@ -214,6 +245,8 @@ class FaireTrackingSyncService
         $rows = FaireOrderMetric::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
+            ->orderByRaw("CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN ('pre_transit', 'in_transit', 'delivered', 'shipped') THEN 0 ELSE 1 END")
+            ->orderByDesc('order_date')
             ->orderByDesc('id')
             ->limit($limit * 5)
             ->get(['id', 'order_id', 'order_number', 'sku', 'shopify_order_id', 'status']);
@@ -340,6 +373,28 @@ class FaireTrackingSyncService
 
         $tracking = trim((string) ($shipment['tracking'] ?? ''));
         $service = trim((string) ($shipment['service'] ?? ''));
+        if ($tracking === '') {
+            $sources = [$orderRoot];
+            if (is_array($orderRoot['_faire_raw'] ?? null)) {
+                $sources[] = $orderRoot['_faire_raw'];
+            }
+            foreach ($sources as $source) {
+                foreach ((array) ($source['shipments'] ?? []) as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $code = trim((string) ($row['tracking_code'] ?? $row['tracking_number'] ?? ''));
+                    if ($code === '') {
+                        continue;
+                    }
+                    $tracking = $code;
+                    if ($service === '') {
+                        $service = trim((string) ($row['carrier'] ?? ''));
+                    }
+                    break 2;
+                }
+            }
+        }
 
         return [
             'tracking' => $tracking !== '' ? $tracking : null,

@@ -28,7 +28,7 @@ trait PushesTikTokShopifyTracking
         }
 
         $status = $this->normalizeTrackingStatus((string) ($line->order_status ?? ''));
-        if ($status !== '' && ! in_array($status, static::TRACKING_ELIGIBLE_STATUSES, true)) {
+        if (in_array($status, ['CANCELLED', 'CANCELED'], true)) {
             return [
                 'success' => true,
                 'skipped' => true,
@@ -82,7 +82,49 @@ trait PushesTikTokShopifyTracking
             }
         }
 
-        if (empty($shopifyFulfillment['tracking'])) {
+        $shopifyTracking = trim((string) ($shopifyFulfillment['tracking'] ?? ''));
+        $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
+        $channel = $this->resolveChannelTracking($line);
+        $direction = ReverbTrackingSyncService::trackingSyncAction($shopifyTracking, $channel['tracking']);
+
+        if ($direction === 'pull_from_reverb') {
+            $provider = $channel['carrier'] !== '' ? $channel['carrier'] : 'Other';
+            $applied = app(ShopifyFulfillmentTrackingWriter::class)->apply(
+                $this->shopifyConfig(),
+                $shopifyOrderId,
+                $channel['tracking'],
+                $provider
+            );
+            if (empty($applied['success'])) {
+                return [
+                    'success' => false,
+                    'action' => 'pull_from_tiktok',
+                    'message' => $applied['message'] ?? $this->trackingShopLabel().' has a tracking number, but Shopify was not updated.',
+                    'shopify_tracking' => $shopifyTracking !== '' ? $shopifyTracking : null,
+                ];
+            }
+
+            $model::query()
+                ->where('order_id', $orderId)
+                ->update(['tracking_pushed_at' => now()]);
+
+            return [
+                'success' => true,
+                'action' => 'pulled_from_tiktok',
+                'message' => 'Updated Shopify with '.$this->trackingShopLabel()." tracking {$channel['tracking']} ({$provider}).",
+                'shopify_tracking' => $channel['tracking'],
+            ];
+        }
+
+        if ($status !== '' && ! in_array($status, static::TRACKING_ELIGIBLE_STATUSES, true)) {
+            return [
+                'success' => true,
+                'skipped' => true,
+                'message' => "Skip tracking push for status {$status}.",
+            ];
+        }
+
+        if ($shopifyTracking === '') {
             $error = trim((string) ($shopifyFulfillment['error'] ?? ''));
             if ($error !== '' && $this->matcherErrorIsHardFail($error)) {
                 return [
@@ -97,13 +139,10 @@ trait PushesTikTokShopifyTracking
                 'skipped' => true,
                 'message' => $error !== ''
                     ? $error
-                    : 'No tracking number on Shopify yet. Buy/download a shipping label in Shopify first.',
+                    : 'No tracking number on '.$this->trackingShopLabel().' or Shopify yet.',
                 'shopify_tracking' => null,
             ];
         }
-
-        $shopifyTracking = (string) $shopifyFulfillment['tracking'];
-        $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
         $deliveryOptionId = $this->extractDeliveryOptionId($line);
         $shippingProviderId = $this->resolveShippingProviderId($orderId, $shopifyCarrier, $deliveryOptionId, $line);
         if ($shippingProviderId === '') {
@@ -175,6 +214,7 @@ trait PushesTikTokShopifyTracking
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
             ->whereNull('tracking_pushed_at')
+            ->orderByRaw("CASE WHEN UPPER(TRIM(COALESCE(order_status, ''))) IN ('DELIVERED', 'COMPLETED', 'IN_TRANSIT', 'SHIPPED', 'AWAITING_COLLECTION') THEN 0 ELSE 1 END")
             ->orderByRaw('pushed_to_shopify_at IS NULL')
             ->orderBy('pushed_to_shopify_at')
             ->orderBy('id')
@@ -188,7 +228,7 @@ trait PushesTikTokShopifyTracking
                 continue;
             }
             $status = $this->normalizeTrackingStatus((string) ($row->order_status ?? ''));
-            if ($status !== '' && ! in_array($status, static::TRACKING_ELIGIBLE_STATUSES, true)) {
+            if (in_array($status, ['CANCELLED', 'CANCELED'], true)) {
                 continue;
             }
             $unique[$ref] = $row;
@@ -229,6 +269,84 @@ trait PushesTikTokShopifyTracking
      * @param  list<string>  $extraOrderIds
      * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string, error?: ?string}
      */
+    /**
+     * Tracking already stored on the TikTok order (packages[].tracking_number).
+     *
+     * @return array{tracking: string, carrier: string}
+     */
+    protected function resolveChannelTracking(object $line): array
+    {
+        $raw = $line->raw_json ?? null;
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (is_array($raw)) {
+            [$tracking, $carrier] = $this->trackingFromTikTokOrder($raw);
+            if ($tracking !== '') {
+                return ['tracking' => $tracking, 'carrier' => $carrier];
+            }
+        }
+
+        $orderId = trim((string) ($line->order_id ?? ''));
+        if ($orderId === '') {
+            return ['tracking' => '', 'carrier' => ''];
+        }
+
+        try {
+            $details = $this->trackingApi()->getOrderDetails([$orderId]);
+        } catch (\Throwable $e) {
+            $details = null;
+        }
+        $orders = [];
+        if (is_array($details)) {
+            $orders = $details['data']['orders'] ?? $details['orders'] ?? [];
+        }
+        if (is_array($orders)) {
+            foreach ($orders as $order) {
+                if (! is_array($order)) {
+                    continue;
+                }
+                [$tracking, $carrier] = $this->trackingFromTikTokOrder($order);
+                if ($tracking !== '') {
+                    return ['tracking' => $tracking, 'carrier' => $carrier];
+                }
+            }
+        }
+
+        return ['tracking' => '', 'carrier' => ''];
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array{0: string, 1: string}
+     */
+    protected function trackingFromTikTokOrder(array $order): array
+    {
+        $packages = $order['packages'] ?? $order['package_list'] ?? [];
+        if (is_array($packages)) {
+            foreach ($packages as $pkg) {
+                if (! is_array($pkg)) {
+                    continue;
+                }
+                $tracking = trim((string) ($pkg['tracking_number'] ?? ''));
+                if ($tracking === '' && isset($pkg['tracking_number_list']) && is_array($pkg['tracking_number_list'])) {
+                    $tracking = trim((string) ($pkg['tracking_number_list'][0] ?? ''));
+                }
+                if ($tracking !== '') {
+                    $carrier = trim((string) ($pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? ''));
+
+                    return [$tracking, $carrier];
+                }
+            }
+        }
+
+        $tracking = trim((string) ($order['tracking_number'] ?? ''));
+        $carrier = trim((string) ($order['shipping_provider'] ?? $order['shipping_provider_name'] ?? ''));
+
+        return [$tracking, $carrier];
+    }
+
     public function fetchShopifyTracking(
         string $shopifyOrderId,
         string $marketplaceOrderId = '',

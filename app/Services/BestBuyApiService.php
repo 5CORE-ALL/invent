@@ -973,4 +973,84 @@ class BestBuyApiService
             'status' => $status,
         ];
     }
+
+    /**
+     * Shipments already created on Best Buy / Mirakl Connect.
+     *
+     * @return array{success: bool, message?: string, shipments: list<array{tracking: string, carrier: string, order_line_id: string}>}
+     */
+    public function listOrderShipments(string $connectOrderId): array
+    {
+        $connectOrderId = trim($connectOrderId);
+        if ($connectOrderId === '') {
+            return ['success' => false, 'message' => 'Best Buy order id is missing.', 'shipments' => []];
+        }
+
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Best Buy / Mirakl Connect is not connected.', 'shipments' => []];
+        }
+
+        try {
+            $response = Http::withoutVerifying()
+                ->withToken($token)
+                ->timeout(45)
+                ->get('https://miraklconnect.com/api/v2/orders/'.rawurlencode($connectOrderId));
+            if (! $response->successful()) {
+                $response = Http::withoutVerifying()
+                    ->withToken($token)
+                    ->timeout(45)
+                    ->get('https://miraklconnect.com/api/v2/orders/'.rawurlencode($connectOrderId).'/shipments');
+            }
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage(), 'shipments' => []];
+        }
+
+        if (! $response->successful()) {
+            return [
+                'success' => false,
+                'message' => 'Best Buy shipments HTTP '.$response->status(),
+                'shipments' => [],
+            ];
+        }
+
+        $json = $response->json() ?? [];
+        $rows = $json['shipments'] ?? $json['data']['shipments'] ?? null;
+        if (! is_array($rows)) {
+            $rows = is_array($json['data'] ?? null) && array_is_list($json['data']) ? $json['data'] : [$json];
+        }
+
+        $shipments = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $tracking = $row['tracking'] ?? null;
+            $trackingNumber = trim((string) (
+                (is_array($tracking) ? ($tracking['tracking_number'] ?? $tracking['number'] ?? '') : '')
+                ?: ($row['tracking_number'] ?? $row['tracking_code'] ?? '')
+            ));
+            if ($trackingNumber === '') {
+                continue;
+            }
+            $carrier = trim((string) (
+                (is_array($tracking) ? ($tracking['carrier'] ?? $tracking['carrier_name'] ?? '') : '')
+                ?: ($row['carrier'] ?? $row['carrier_name'] ?? '')
+            ));
+            $lineId = '';
+            foreach ((array) ($row['items'] ?? $row['order_lines'] ?? []) as $item) {
+                if (is_array($item) && trim((string) ($item['order_line_id'] ?? '')) !== '') {
+                    $lineId = trim((string) $item['order_line_id']);
+                    break;
+                }
+            }
+            $shipments[] = [
+                'tracking' => $trackingNumber,
+                'carrier' => $carrier,
+                'order_line_id' => $lineId,
+            ];
+        }
+
+        return ['success' => true, 'shipments' => $shipments];
+    }
 }

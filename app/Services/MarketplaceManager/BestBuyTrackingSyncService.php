@@ -80,6 +80,8 @@ class BestBuyTrackingSyncService
             $order->refresh();
         }
 
+        $pulled = $this->pullBestBuyTrackingOntoShopify($order, $shopifyOrderId);
+
         $last = [
             'success' => false,
             'skipped' => true,
@@ -108,6 +110,16 @@ class BestBuyTrackingSyncService
                 'shopify_tracking' => $last['shopify_tracking'] ?? null,
                 'shopify_carrier' => $last['shopify_carrier'] ?? null,
                 'ship_carrier' => $last['ship_carrier'] ?? null,
+            ];
+        }
+
+        if (! empty($pulled['updated'])) {
+            return [
+                'success' => ! empty($pulled['success']),
+                'action' => 'pulled_from_bestbuy',
+                'message' => (string) ($pulled['message'] ?? 'Updated Shopify from Best Buy tracking.'),
+                'shopify_tracking' => $pulled['tracking'] ?? null,
+                'ship_carrier' => $pulled['carrier'] ?? null,
             ];
         }
 
@@ -458,6 +470,84 @@ class BestBuyTrackingSyncService
     /**
      * @return array{store_url: string, token: string, store_key?: string}
      */
+    /**
+     * @return array{success: bool, updated: bool, message: string, tracking?: string, carrier?: string}
+     */
+    protected function pullBestBuyTrackingOntoShopify(BestBuyOrderMetric $order, string $shopifyOrderId): array
+    {
+        $connectOrderId = trim((string) ($order->order_id ?? ''));
+        $listed = $this->bestBuyApi->listOrderShipments($connectOrderId);
+        if (empty($listed['success'])) {
+            return [
+                'success' => false,
+                'updated' => false,
+                'message' => (string) ($listed['message'] ?? 'Could not read Best Buy shipments.'),
+            ];
+        }
+
+        $updated = 0;
+        $lastTracking = '';
+        $lastCarrier = '';
+        $lastMessage = '';
+        foreach ($listed['shipments'] as $shipment) {
+            $tracking = trim((string) ($shipment['tracking'] ?? ''));
+            $carrier = trim((string) ($shipment['carrier'] ?? '')) ?: 'USPS';
+            if ($tracking === '') {
+                continue;
+            }
+
+            $lineId = trim((string) ($shipment['order_line_id'] ?? ''));
+            $target = null;
+            foreach ($this->siblingLines($order) as $row) {
+                if ($lineId !== '' && trim((string) ($row->order_line_id ?? '')) === $lineId) {
+                    $target = $row;
+                    break;
+                }
+            }
+            $target ??= $this->siblingLines($order)->first() ?? $order;
+            if ($this->alreadyPushedLocally($target, $tracking)) {
+                continue;
+            }
+
+            $shopify = $this->shopifyTrackingForLine($target, $shopifyOrderId, (string) ($target->sku ?? ''), $connectOrderId);
+            $direction = ReverbTrackingSyncService::trackingSyncAction((string) ($shopify['tracking'] ?? ''), $tracking);
+            if ($direction !== 'pull_from_reverb') {
+                $this->markTrackingPushed($target, $tracking, $carrier, max(1, (int) ($target->quantity ?? 1)));
+                continue;
+            }
+
+            $applied = app(ShopifyFulfillmentTrackingWriter::class)->apply(
+                $this->shopifyConfig(),
+                $shopifyOrderId,
+                $tracking,
+                $carrier
+            );
+            if (empty($applied['success'])) {
+                return [
+                    'success' => false,
+                    'updated' => $updated > 0,
+                    'message' => (string) ($applied['message'] ?? 'Best Buy tracking was not written to Shopify.'),
+                    'tracking' => $tracking,
+                    'carrier' => $carrier,
+                ];
+            }
+
+            $this->markTrackingPushed($target, $tracking, $carrier, max(1, (int) ($target->quantity ?? 1)));
+            $updated++;
+            $lastTracking = $tracking;
+            $lastCarrier = $carrier;
+            $lastMessage = "Updated Shopify with Best Buy tracking {$tracking} ({$carrier}).";
+        }
+
+        return [
+            'success' => true,
+            'updated' => $updated > 0,
+            'message' => $lastMessage,
+            'tracking' => $lastTracking,
+            'carrier' => $lastCarrier,
+        ];
+    }
+
     protected function shopifyConfig(): array
     {
         $settings = MarketplaceSyncSettings::getFor('bestbuy');

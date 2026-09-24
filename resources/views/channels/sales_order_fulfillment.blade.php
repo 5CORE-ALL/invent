@@ -2883,6 +2883,13 @@
         return instant;
     }
 
+    /** True when the order's own Eastern clock is before the 3:30 PM shipping cutoff. */
+    function sofOrderBeforeShippingCutoff(raw) {
+        const m = String(raw || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+        if (!m) return false;
+        return (Number(m[4]) * 60 + Number(m[5])) < (15 * 60 + 30);
+    }
+
     /** True when order Date is before yesterday 3:00 PM Eastern (overdue vs 3pm ET cutoff). */
     function sofOrderDatePastYesterday3pmEt(raw) {
         if (!raw) return false;
@@ -2923,19 +2930,18 @@
         const over24h = (onPending || onFulfilled) && sofIsOrderOver24h(row);
         const scanLate = onInTransit && sofIsScanPendingOver36h(row);
         const dateLate = !onPending && !onFulfilled && !onInTransit && sofOrderDatePastYesterday3pmEt(v);
-        if (over24h || scanLate || dateLate) {
+        const beforeCutoff = sofOrderBeforeShippingCutoff(v);
+        if (beforeCutoff || over24h || scanLate || dateLate) {
+            const reasons = [];
+            if (beforeCutoff) reasons.push('Placed before 3:30 PM EDT shipping cutoff');
+            if (over24h) reasons.push('More than 24 hours since the order time');
+            if (scanLate) reasons.push('Scan pending more than 36 hours');
+            if (dateLate) reasons.push('Date is before yesterday 3:00 PM ET');
+            const tip = reasons.join('. ');
             const alert = document.createElement('span');
             alert.className = 'sof-date-late-alert';
-            alert.title = over24h
-                ? 'More than 24 hours since the order time'
-                : (scanLate
-                    ? 'Scan pending more than 36 hours'
-                    : 'Alert: Date is before yesterday 3:00 PM ET');
-            alert.setAttribute('aria-label', over24h
-                ? 'More than 24 hours since the order time'
-                : (scanLate
-                    ? 'Scan pending more than 36 hours'
-                    : 'Older than yesterday 3:00 PM Eastern'));
+            alert.title = tip;
+            alert.setAttribute('aria-label', tip);
             alert.innerHTML = '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>';
             wrap.appendChild(alert);
         }
@@ -3027,7 +3033,7 @@
                 return { column: s.field, dir: s.dir };
             }));
             if (!rest.length && fallbackField) {
-                next.push({ column: fallbackField, dir: 'desc' });
+                next.push({ column: fallbackField, dir: field === 'order_over_24h' ? 'asc' : 'desc' });
             }
             table.setSort(next);
         } catch (e2) {}
@@ -3865,7 +3871,8 @@
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofDateSorter,
-                headerTooltip: 'Red triangle = order date is before yesterday 3:00 PM ET',
+                headerTooltip: 'Red triangle = placed before 3:30 PM EDT shipping cutoff. Oldest first.',
+                headerSortStartingDir: 'asc',
                 formatter: sofFormatOrderDateCell,
             },
             {
@@ -4618,7 +4625,7 @@
             placeholder: 'Loading pending orders…',
             initialSort: [
                 { column: 'order_over_24h', dir: 'desc' },
-                { column: 'order_date', dir: 'desc' },
+                { column: 'order_date', dir: 'asc' },
             ],
             rowFormatter: function (row) {
                 const el = row.getElement();
@@ -4670,7 +4677,8 @@
                 cols.unshift(sofOver24hHiddenColumn());
                 cols.forEach(function (c) {
                     if (c.field === 'order_date') {
-                        c.headerTooltip = 'Red triangle = more than 24 hours since the order time';
+                        c.headerTooltip = 'Red triangle = placed before 3:30 PM EDT shipping cutoff. Oldest first.';
+                        c.headerSortStartingDir = 'asc';
                     }
                 });
                 return cols;
@@ -4801,7 +4809,7 @@
                         c.headerTooltip = 'Label Created / No Tracking';
                     }
                     if (c.field === 'order_date') {
-                        c.headerTooltip = 'Red triangle = more than 24 hours since the order time';
+                        c.headerTooltip = 'Red triangle = placed before 3:30 PM EDT shipping cutoff, or more than 24 hours since the order time';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -4904,7 +4912,7 @@
                         c.headerTooltip = 'Label Created / No Scan';
                     }
                     if (c.field === 'order_date') {
-                        c.headerTooltip = 'Red triangle = more than 24 hours since the order time';
+                        c.headerTooltip = 'Red triangle = placed before 3:30 PM EDT shipping cutoff, or more than 24 hours since the order time';
                     }
                 });
                 // After Date (index 3 after Channel, Ch Orders, Order ID, Date) insert Updated + Tracking
@@ -5067,7 +5075,7 @@
                         };
                     }
                     if (c.field === 'order_date') {
-                        c.headerTooltip = 'Red triangle = scan pending more than 36 hours (Recd/Transit)';
+                        c.headerTooltip = 'Red triangle = placed before 3:30 PM EDT shipping cutoff, or scan pending more than 36 hours';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
