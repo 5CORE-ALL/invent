@@ -57,21 +57,24 @@ final class AmazonAdsLiveSyncStatus
         }
 
         if ($status === 'failed') {
+            $tip = self::redTip(
+                $label,
+                $suggested,
+                $reason,
+                $live ?? $oldLive,
+                $desired,
+                $pullAttempts,
+                $pushAttempts,
+                $verifyAttempts,
+                $attempts
+            );
+            $tip = self::appendNotPushedReason($tip, $detail);
+
             return [
                 'color' => self::RED,
                 'status' => 'failed',
                 'reason' => $reason !== '' ? $reason : 'failed',
-                'tip' => self::redTip(
-                    $label,
-                    $suggested,
-                    $reason,
-                    $live ?? $oldLive,
-                    $desired,
-                    $pullAttempts,
-                    $pushAttempts,
-                    $verifyAttempts,
-                    $attempts
-                ),
+                'tip' => $tip,
             ];
         }
 
@@ -116,11 +119,36 @@ final class AmazonAdsLiveSyncStatus
                 $row[$field.'_sync_color'] = $presented['color'];
                 $row[$field.'_sync_tip'] = $presented['tip'];
                 $row[$field.'_sync_status'] = $presented['status'];
+                $row[$field.'_sync_reason'] = $presented['reason'];
             }
+            $row['pushAlert'] = self::pushAlertText($row);
         }
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * Hover text for the Alert column. Empty when nothing failed to push.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public static function pushAlertText(array $row): string
+    {
+        $parts = [];
+        foreach (['bid' => 'SBID', 'bgt' => 'SBGT'] as $field => $label) {
+            $tip = trim((string) ($row[$field.'_sync_tip'] ?? ''));
+            if ($tip === '') {
+                continue;
+            }
+            $color = (string) ($row[$field.'_sync_color'] ?? '');
+            $reason = (string) ($row[$field.'_sync_reason'] ?? '');
+            if ($color === self::RED || $reason === 'paused_zero_sbgt') {
+                $parts[] = $label.': '.$tip;
+            }
+        }
+
+        return implode(' | ', $parts);
     }
 
     /**
@@ -351,6 +379,62 @@ final class AmazonAdsLiveSyncStatus
         }
 
         return trim($reason);
+    }
+
+    /**
+     * @param  array<string, mixed>  $detail
+     */
+    private static function appendNotPushedReason(string $tip, array $detail): string
+    {
+        $reasons = self::skippedPushReasons($detail);
+        if ($reasons === []) {
+            return $tip;
+        }
+        $plain = array_map([self::class, 'humanSkipReason'], $reasons);
+
+        return $tip.' Not pushed: '.implode('; ', $plain).'.';
+    }
+
+    /**
+     * @param  array<string, mixed>  $detail
+     * @return list<string>
+     */
+    private static function skippedPushReasons(array $detail): array
+    {
+        $reasons = [];
+        $response = $detail['push_response'] ?? null;
+        if (! is_array($response)) {
+            return [];
+        }
+        foreach (['skipped', 'failed'] as $bucket) {
+            $items = $response[$bucket] ?? [];
+            if (! is_array($items)) {
+                continue;
+            }
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $reason = trim((string) ($item['reason'] ?? $item['error'] ?? ''));
+                if ($reason !== '') {
+                    $reasons[$reason] = true;
+                }
+            }
+        }
+
+        return array_keys($reasons);
+    }
+
+    private static function humanSkipReason(string $reason): string
+    {
+        return match ($reason) {
+            'no_ad_groups' => 'No enabled ad group, so the bid was not written',
+            'no_keywords' => 'No keywords and no product targets, so the bid was not written',
+            'targets_update_failed' => 'Product target bid update failed',
+            'invalid_bid' => 'Bid was missing or not greater than 0',
+            'no_desired_sbid_or_sbgt' => 'No SBID or SBGT to push',
+            default => $reason,
+        };
     }
 
     private static function isRateLimited(string $reason): bool

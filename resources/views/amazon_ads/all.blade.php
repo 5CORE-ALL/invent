@@ -207,6 +207,20 @@
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
         }
         .amz-sync-dot.is-green { background: #16a34a; }
+        .amz-push-alert {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #dc2626;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: help;
+        }
         .amz-active-again-dot {
             display: inline-block;
             width: 9px;
@@ -1324,7 +1338,7 @@
             var amzU7PieRefreshTimer = null;
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value'];
-            var NON_ORDERABLE_COLUMNS = [];
+            var NON_ORDERABLE_COLUMNS = ['pushAlert'];
             var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
@@ -1533,6 +1547,20 @@
                 var n = parseInt(v, 10);
                 if (isNaN(n)) return amzDash();
                 return '<span class="fw-semibold">' + n.toLocaleString() + '</span>';
+            }
+            function fmtPushAlert(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || String(v).trim() === '') return '';
+                var tip = String(v);
+                return '<span class="amz-push-alert" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '">!</span>';
+            }
+            function amzPushAlertText(row) {
+                var parts = [];
+                if (!row) return '';
+                if (row.bid_sync_color === 'red' && row.bid_sync_tip) parts.push('SBID: ' + row.bid_sync_tip);
+                if (row.bgt_sync_color === 'red' && row.bgt_sync_tip) parts.push('SBGT: ' + row.bgt_sync_tip);
+                else if (row.bgt_sync_reason === 'paused_zero_sbgt' && row.bgt_sync_tip) parts.push('SBGT: ' + row.bgt_sync_tip);
+                return parts.join(' | ');
             }
             function fmtTargets(cell) {
                 var v = cell.getValue();
@@ -2037,6 +2065,15 @@
                     col.width = 72;
                     return;
                 }
+                if (c === 'pushAlert') {
+                    col.title = 'Alert';
+                    col.headerTooltip = 'Shown when SBID or SBGT was not pushed. Hover the mark for the reason.';
+                    col.formatter = fmtPushAlert;
+                    col.headerSort = false;
+                    col.width = 48;
+                    col.minWidth = 44;
+                    return;
+                }
                 if (c === 'sbid') {
                     col.title = 'SBID';
                     col.formatter = fmtSbid;
@@ -2382,6 +2419,7 @@
                         if (r.fields.bgt.status === 'synced' && r.fields.bgt.verified_live != null) {
                             patch.bgt = r.fields.bgt.verified_live;
                         }
+                        patch.bgt_sync_reason = r.fields.bgt.reason || '';
                         if (r.fields.bgt.reason === 'paused_zero_sbgt') patch.campaignStatus = 'PAUSED';
                     }
                     if (r.fields.bid) {
@@ -2397,10 +2435,15 @@
                             patch.bid_sync_tip = r.fields.bid.sync_tip || '';
                             patch.bid_sync_status = r.fields.bid.status || '';
                         }
+                        patch.bid_sync_reason = r.fields.bid.reason || '';
                         if (r.fields.bid.status === 'synced' && r.fields.bid.verified_live != null) {
                             patch.last_sbid = r.fields.bid.verified_live;
                         }
                     }
+                    var next = {};
+                    Object.keys(d).forEach(function (k) { next[k] = d[k]; });
+                    Object.keys(patch).forEach(function (k) { next[k] = patch[k]; });
+                    patch.pushAlert = amzPushAlertText(next);
                     if (Object.keys(patch).length) row.update(patch);
                 });
             }

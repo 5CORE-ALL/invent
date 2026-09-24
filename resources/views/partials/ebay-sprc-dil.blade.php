@@ -2715,7 +2715,10 @@
                     await saveEbayDilGroiRules();
                     ebayDgToast('success', 'Sprc Dil saved and applied');
                 } catch (xhr) {
-                    ebayDgToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                    ebayDgToast('error', 'Save failed: ' + (
+                        (xhr && xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                        || (xhr && xhr.status ? ('HTTP ' + xhr.status) : 'error')
+                    ));
                 } finally {
                     $btn.prop('disabled', false).html(html);
                 }

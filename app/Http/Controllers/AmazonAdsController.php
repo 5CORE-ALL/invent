@@ -250,6 +250,16 @@ class AmazonAdsController extends Controller
             }
         }
 
+        // Alert sits beside SBID. Hover shows why a bid or budget was not pushed.
+        if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)
+            && in_array('sbid', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'pushAlert'));
+            $idxAlert = array_search('sbid', $ordered, true);
+            if ($idxAlert !== false) {
+                array_splice($ordered, $idxAlert + 1, 0, ['pushAlert']);
+            }
+        }
+
         // Display "bgt" after campaign name (same value as campaignBudgetAmount; hide duplicate DB column).
         $idxCn = array_search('campaignName', $ordered, true);
         if ($idxCn !== false && in_array('campaignBudgetAmount', $ordered, true)) {
