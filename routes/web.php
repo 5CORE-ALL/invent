@@ -2393,6 +2393,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'showLossColumn' => true,
         ]));
     })->name('customer.care.qc.and.packing');
+    Route::get('/customer-care/qc-packing', function () {
+        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
+            ->whereNotNull('marketplace')
+            ->where('marketplace', '!=', '')
+            ->orderBy('marketplace')
+            ->pluck('marketplace')
+            ->map(fn ($m) => trim((string) $m))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return view('customer-care.qc_packing_tabulator', compact('marketplaces'));
+    })->name('customer.care.qc.packing');
     Route::get('/customer-care/qc-and-packing/sku-details', function (\Illuminate\Http\Request $request) {
         $sku = trim((string) $request->query('sku', ''));
         if ($sku === '') {
