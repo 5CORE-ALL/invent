@@ -963,14 +963,14 @@
         }
         #sof-in-transit-table .tabulator-row.sof-scan-pending-late .tabulator-cell,
         #sof-pending-table .tabulator-row.sof-order-over-24h .tabulator-cell,
-        #sof-fulfilled-table .tabulator-row.sof-order-over-24h .tabulator-cell {
+        #sof-fulfilled-table .tabulator-row.sof-order-over-24h .tabulator-cell,
         #sof-no-tracking-table .tabulator-row.sof-order-over-24h .tabulator-cell {
             background-color: #f8d7da !important;
             color: #842029;
         }
         #sof-in-transit-table .tabulator-row.sof-scan-pending-late.tabulator-selected .tabulator-cell,
         #sof-pending-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell,
-        #sof-fulfilled-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell {
+        #sof-fulfilled-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell,
         #sof-no-tracking-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell {
             background-color: #f1aeb5 !important;
         }
@@ -3022,7 +3022,7 @@
         return {
             field: 'order_over_24h',
             visible: false,
-            headerSort: false,
+            headerSort: true,
             sorter: 'number',
         };
     }
@@ -4819,7 +4819,7 @@
             placeholder: 'Loading Label Created / No Scan orders…',
             initialSort: [
                 { column: 'order_over_24h', dir: 'desc' },
-                { column: 'updated_at', dir: 'desc' },
+                { column: 'order_date', dir: 'asc' },
             ],
             rowFormatter: function (row) {
                 const el = row.getElement();

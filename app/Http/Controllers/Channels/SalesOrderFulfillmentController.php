@@ -316,7 +316,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         try {
             @set_time_limit(90);
-            $rows = $this->labelCreatedNoScanRows();
+            $rows = $this->pinOrdersOlderThanHours($this->labelCreatedNoScanRows(), 24);
 
             return response()->json(array_merge([
                 'success' => true,
@@ -2301,6 +2301,32 @@ class SalesOrderFulfillmentController extends Controller
      *
      * @param  array<string, mixed>  $row
      */
+    /**
+     * Orders older than $hours first, oldest order date at the top of that group.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function pinOrdersOlderThanHours(array $rows, int $hours): array
+    {
+        usort($rows, function (array $a, array $b) use ($hours): int {
+            $aLate = $this->rowIsOlderThanHours($a, $hours) ? 1 : 0;
+            $bLate = $this->rowIsOlderThanHours($b, $hours) ? 1 : 0;
+            if ($aLate !== $bLate) {
+                return $bLate <=> $aLate;
+            }
+            $ak = (string) ($a['order_date'] ?? '');
+            $bk = (string) ($b['order_date'] ?? '');
+            if ($ak === '' || $bk === '') {
+                return ($ak === '' ? 1 : 0) <=> ($bk === '' ? 1 : 0);
+            }
+
+            return strcmp($ak, $bk);
+        });
+
+        return array_values($rows);
+    }
+
     protected function rowIsOlderThanHours(array $row, int $hours): bool
     {
         $raw = trim((string) ($row['order_date'] ?? ''));
