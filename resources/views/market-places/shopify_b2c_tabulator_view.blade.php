@@ -1282,11 +1282,12 @@
         return parseFloat(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0;
     }
 
-    /** Same as Temu, without eBay: lowest of the suggestion, A Price, and LMP. A price below Amazon stays there. */
+    /** Sprc Dil vs A Price, then LMP. Below A Price rises to Amz. Above A Price drops to Amz. */
     function shopifyB2cCapLikeTemu(data, sprice) {
         let s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
         if (!(s > 0)) return 0;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        if (amz > 0 && s < amz) s = amz;
         if (amz > 0 && s > amz) s = amz;
         if (window.SpriceLmpCap) {
             const capped = SpriceLmpCap.prepare(data, s);
@@ -1314,7 +1315,7 @@
         return Math.round(value * 100) / 100;
     }
 
-    /** Shown / pushed S PRC. Amz cap uses the A Prc column. Then the lowest of that and LMP. */
+    /** Shown / pushed S PRC. Sprc Dil below A Price uses A Price. Above A Price caps to A Price. Then LMP. */
     function shopifyB2cShownSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
@@ -1350,12 +1351,26 @@
         return raw > amz + 0.004 && amz > 0 && shown > 0 && Math.abs(shown - amz) < 0.015;
     }
 
+    /** Sprc Dil was below A Price and the shown S PRC is A Price. */
+    function shopifyB2cRaisedToAmz(data) {
+        if (!data || isShopifyB2cParentRow(data)) return false;
+        let raw = 0;
+        if (typeof ebayDilGroiMetaForRow === 'function') {
+            const meta = ebayDilGroiMetaForRow(data);
+            raw = Number(meta && (meta.rawSprc > 0 ? meta.rawSprc : 0)) || 0;
+        }
+        if (!(raw > 0)) raw = shopifyB2cDisplayedSprice(data);
+        const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        const shown = shopifyB2cShownSprice(data);
+        return raw > 0 && amz > 0 && raw + 0.004 < amz && shown > 0 && Math.abs(shown - amz) < 0.015;
+    }
+
     function shopifyB2cShowAmzLabel(data) {
         if (!data || isShopifyB2cParentRow(data)) return false;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
         const shown = shopifyB2cShownSprice(data);
         if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) >= 0.015) return false;
-        return shopifyB2cHasAmzFloor(data) || shopifyB2cIsAmzSuggApplied(data);
+        return shopifyB2cHasAmzFloor(data) || shopifyB2cRaisedToAmz(data) || shopifyB2cIsAmzSuggApplied(data);
     }
 
     function shopifyB2cHasBlueTriangle(data) {
@@ -1387,7 +1402,9 @@
         if (!(before > 0)) before = shopifyB2cDisplayedSprice(data);
         const title = shopifyB2cHasAmzFloor(data)
             ? ('S PRC $' + before.toFixed(2) + ' &gt; A Price $' + amz.toFixed(2) + ' — capped to Amz')
-            : ('S PRC set to A Price $' + amz.toFixed(2));
+            : (shopifyB2cRaisedToAmz(data)
+                ? ('Sprc Dil $' + before.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — using Amz')
+                : ('S PRC set to A Price $' + amz.toFixed(2)));
         return '<span class="shopifyb2c-sprice-amz-lbl" title="' + title + '">Amz</span>';
     }
 
@@ -2475,7 +2492,7 @@
                         // Apply retail price rounding (round to .99 endings)
                         newSprice = roundToRetailPrice(newSprice);
 
-                        // Ensure minimum price, then lowest of that price, A Price, and LMP.
+                        // Ensure minimum price. Below A Price rises to Amz; above A Price caps to Amz; then LMP.
                         newSprice = Math.max(0.99, newSprice);
                         newSprice = shopifyB2cCapLikeTemu(rowData, newSprice);
 
@@ -3291,7 +3308,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. S PRC then takes the lowest of this price, A Price, and LMP. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. If it is below A Price, S PRC uses A Price. If it is above A Price, S PRC caps to A Price. Then LMP if that is lower. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
@@ -3317,7 +3334,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Sprc Dil, then the lowest of that price, A Price, and LMP — same as Temu, without eBay. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP. Amz = capped to A Price.",
+                    headerTooltip: "Not editable. If Sprc Dil is below A Price, S PRC uses A Price. If Sprc Dil is above A Price, S PRC caps to A Price. Then LMP if that is lower. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP. Amz = set to A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {

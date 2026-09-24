@@ -1333,8 +1333,8 @@
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;
             let amzApplied = false;
-            // Shopify B2C Sprc Dil stays the Dil suggestion. S PRC caps to A Price
-            // when that suggestion is above Amz (shopifyB2cCapLikeTemu).
+            // Shopify B2C Sprc Dil stays the Dil suggestion. S PRC uses A Price
+            // when that suggestion is below Amz, and caps to A Price when it is above.
             if (ebayDgUsesAmzFloor()) {
                 const amz = (typeof chPromoAmazonPrice === 'function')
                     ? ebayDgRound2(chPromoAmazonPrice(d))

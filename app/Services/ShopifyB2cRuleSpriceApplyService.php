@@ -19,7 +19,7 @@ use Throwable;
 
 /**
  * Page-less Sprc Dil → S PRC (same as /shopify-b2c-pricing / new-temuone).
- * Sprc Dil stays the Dil suggestion. S PRC caps to A Price when that suggestion is above Amz.
+ * Sprc Dil stays the Dil suggestion. S PRC uses A Price when that suggestion is below Amz, and caps to A Price when it is above.
  * Dil slabs are Target SNROI (Ads% = Shopify TCOS / page Ads badge).
  * Writes shopifyb2c_data_view SPRICE even if /shopify-b2c-pricing is closed.
  */
@@ -294,7 +294,7 @@ class ShopifyB2cRuleSpriceApplyService
                 $sprice = round($std, 2);
             }
 
-            if ($sprice > 0 && $amz > 0 && $sprice > $amz) {
+            if ($sprice > 0 && $amz > 0) {
                 $sprice = round($amz, 2);
             }
         }

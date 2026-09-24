@@ -2372,27 +2372,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/customer-care/other-issues/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'dropdownOptionsDelete'])
         ->name('customer.care.other.issues.dropdown.options.delete');
 
-    Route::get('/customer-care/qc-and-packing', function () {
-        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
-            ->whereNotNull('marketplace')
-            ->where('marketplace', '!=', '')
-            ->orderBy('marketplace')
-            ->pluck('marketplace')
-            ->map(fn ($m) => trim((string) $m))
-            ->filter()
-            ->unique()
-            ->values();
-
-        return view('customer-care.qc_and_packing_tabulator', array_merge(compact('marketplaces'), [
-            'importUrl' => route('customer.care.qc.and.packing.issues.import'),
-            // Merge Created At into Created By (name + short date; full ts on hover)
-            // for the main list and the Order History card.
-            'mergeCreatedAtIntoCreatedBy' => true,
-            // Shrink columns to content width; center all cell values.
-            'autofitTableColumns' => true,
-            'showLossColumn' => true,
-        ]));
-    })->name('customer.care.qc.and.packing');
+    Route::redirect('/customer-care/qc-and-packing', '/customer-care/qc-packing')->name('customer.care.qc.and.packing');
     Route::get('/customer-care/qc-packing', function () {
         $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
             ->whereNotNull('marketplace')

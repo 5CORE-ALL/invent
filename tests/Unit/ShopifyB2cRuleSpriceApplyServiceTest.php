@@ -9,7 +9,7 @@ use Tests\TestCase;
 
 class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
 {
-    public function test_keeps_dil_sprice_when_below_amazon(): void
+    public function test_raises_dil_sprice_to_amazon_when_below_a_price(): void
     {
         $out = $this->compute([
             'inv' => 10,
@@ -23,8 +23,8 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
 
         $this->assertNotNull($out);
-        // GROI 50 → (10 × 1.50) / 0.95. Below A Price, so S PRC stays the Dil $.
-        $this->assertEqualsWithDelta(15.79, $out['sprice'], 0.001);
+        // GROI 50 → (10 × 1.50) / 0.95 = 15.79, below A Price 80, so S PRC uses Amz.
+        $this->assertEqualsWithDelta(80.0, $out['sprice'], 0.001);
         $this->assertFalse($out['amz_sugg']);
     }
 
@@ -47,7 +47,7 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         $this->assertFalse($out['amz_sugg']);
     }
 
-    public function test_zero_sold_uses_min_groi_without_amz_floor(): void
+    public function test_zero_sold_min_groi_rises_to_amazon_when_below_a_price(): void
     {
         $out = $this->compute([
             'inv' => 8,
@@ -65,8 +65,8 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         ]);
 
         $this->assertNotNull($out);
-        // Min Target NROI 40 → (10 × 1.40) / 0.95. Below A Price, so it is not raised.
-        $this->assertEqualsWithDelta(14.74, $out['sprice'], 0.001);
+        // Min Target NROI 40 → (10 × 1.40) / 0.95 = 14.74, below A Price 50, so S PRC uses Amz.
+        $this->assertEqualsWithDelta(50.0, $out['sprice'], 0.001);
     }
 
     public function test_sugg_amz_tracks_current_amazon_price(): void
