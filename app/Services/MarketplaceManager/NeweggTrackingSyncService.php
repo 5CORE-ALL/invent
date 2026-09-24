@@ -68,12 +68,8 @@ class NeweggTrackingSyncService
         }
 
         $sku = trim((string) ($line->sku ?? ''));
-        if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
-            return [
-                'success' => false,
-                'skipped' => true,
-                'message' => 'Marketplace SKU missing — tracking not attached.',
-            ];
+        if (in_array(strtolower($sku), ['__order__', '__unknown__'], true)) {
+            $sku = '';
         }
 
         $extraIds = array_values(array_filter([
@@ -281,7 +277,7 @@ class NeweggTrackingSyncService
         foreach ($rows as $row) {
             $ref = trim((string) $row->order_id);
             $sku = trim((string) ($row->sku ?? ''));
-            if ($ref === '' || $sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+            if ($ref === '') {
                 continue;
             }
             if ($this->isClosedNeweggStatus((string) ($row->status ?? ''))) {
@@ -290,6 +286,16 @@ class NeweggTrackingSyncService
             if ($this->alreadyPushedLocally($row)) {
                 continue;
             }
+            $placeholder = $sku === '' || in_array(strtolower($sku), ['__order__', '__unknown__'], true);
+            if ($placeholder) {
+                $unique[$ref.'|__order__'] = $unique[$ref.'|__order__'] ?? $row;
+                if (count($unique) >= $limit) {
+                    break;
+                }
+
+                continue;
+            }
+            unset($unique[$ref.'|__order__']);
             $key = $ref.'|'.$sku;
             if (isset($unique[$key])) {
                 continue;
@@ -419,6 +425,55 @@ class NeweggTrackingSyncService
             ];
         }
 
+        if ($items === []) {
+            $items = $this->shipItemsFromOrderPayload($orderId, $onlySku);
+        }
+
+        return $items;
+    }
+
+    /**
+     * @return list<array{seller_part_number: string, quantity: int, newegg_item_number?: string|null}>
+     */
+    protected function shipItemsFromOrderPayload(string $orderId, string $onlySku): array
+    {
+        $raw = NeweggOrderMetric::query()->where('order_id', $orderId)->value('raw_payload');
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+        $order = is_array($raw['order'] ?? null) ? $raw['order'] : $raw;
+        $list = $order['ItemInfoList'] ?? $order['ItemList'] ?? [];
+        if (isset($list['SellerPartNumber']) || isset($list['NeweggItemNumber'])) {
+            $list = [$list];
+        }
+        if (! is_array($list)) {
+            return [];
+        }
+
+        $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+        $items = [];
+        foreach ($list as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $sku = trim((string) ($item['SellerPartNumber'] ?? $item['seller_part_number'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            if ($onlySku !== '' && ! $matcher->skusEqual($sku, $onlySku)) {
+                continue;
+            }
+            $items[] = [
+                'seller_part_number' => $sku,
+                'quantity' => max(1, (int) ($item['OrderedQty'] ?? $item['Quantity'] ?? 1)),
+                'newegg_item_number' => trim((string) ($item['NeweggItemNumber'] ?? '')) ?: null,
+            ];
+        }
+
         return $items;
     }
 
@@ -468,6 +523,7 @@ class NeweggTrackingSyncService
         }
 
         $map = [
+            'gofo' => 'Other Carrier',
             'usps' => 'USPS',
             'united states postal service' => 'USPS',
             'ups' => 'UPS',

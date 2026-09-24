@@ -184,12 +184,8 @@ class AliexpressTrackingSyncService
         }
 
         $sku = trim((string) ($line->sku ?? ''));
-        if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
-            return [
-                'success' => false,
-                'skipped' => true,
-                'message' => 'Marketplace SKU missing — tracking not attached.',
-            ];
+        if (in_array(strtolower($sku), ['__order__', '__unknown__'], true)) {
+            $sku = '';
         }
 
         $extraIds = array_values(array_filter([
@@ -366,9 +362,19 @@ class AliexpressTrackingSyncService
         foreach ($rows as $row) {
             $ref = trim((string) $row->order_id);
             $sku = trim((string) ($row->sku ?? ''));
-            if ($ref === '' || $sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+            if ($ref === '') {
                 continue;
             }
+            $placeholder = $sku === '' || in_array(strtolower($sku), ['__order__', '__unknown__'], true);
+            if ($placeholder) {
+                $unique[$ref.'|__order__'] = $unique[$ref.'|__order__'] ?? $row;
+                if (count($unique) >= $limit) {
+                    break;
+                }
+
+                continue;
+            }
+            unset($unique[$ref.'|__order__']);
             $key = $ref.'|'.$sku;
             if (isset($unique[$key])) {
                 continue;
@@ -504,6 +510,7 @@ class AliexpressTrackingSyncService
         }
 
         $map = [
+            'gofo' => 'GOFO',
             'usps' => 'USPS',
             'ups' => 'UPS',
             'ups®' => 'UPS',
