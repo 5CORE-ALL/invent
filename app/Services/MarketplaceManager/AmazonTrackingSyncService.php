@@ -21,6 +21,12 @@ class AmazonTrackingSyncService
     /** True after this process already paged Amazon package tracking, so the per-order loop does not call it again. */
     protected bool $merchantPackagesSynced = false;
 
+    /** Direct package lookups still allowed after the bulk walk, for orders that walk has not reached. */
+    protected int $directPackageLookupsLeft = 0;
+
+    /** Shopify fulfills to run as soon as a package number is saved. */
+    protected int $shopifyFulfillsFromPackagesLeft = 0;
+
     public function __construct(
         protected AmazonSpOrdersClient $ordersClient,
         protected VeeqoShopifyFulfillmentService $veeqoFulfillment,
@@ -300,6 +306,8 @@ class AmazonTrackingSyncService
         }
 
         $limit = max(1, min(400, $limit));
+        $this->directPackageLookupsLeft = 25;
+        $this->shopifyFulfillsFromPackagesLeft = 60;
         $bulk = $this->fillFromAmazonPackages($deadline);
         $this->merchantPackagesSynced = (int) ($bulk['pages'] ?? 0) > 0;
         $scan = min(800, max($limit * 8, 200));
@@ -382,16 +390,16 @@ class AmazonTrackingSyncService
         }
 
         $recent = $this->walkMerchantPackages(
-            'sof.amazon.package_recent',
-            now()->subHours(6)->utc()->toIso8601String(),
-            2,
+            'sof.amazon.package_recent_7d',
+            now()->subDays(7)->utc()->toIso8601String(),
+            8,
             $deadline,
-            600
+            180
         );
         $history = $this->walkMerchantPackages(
             'sof.amazon.package_history',
             now()->subDays(45)->utc()->toIso8601String(),
-            12,
+            ! empty($recent['complete']) ? 8 : 2,
             $deadline,
             7200
         );
@@ -509,8 +517,29 @@ class AmazonTrackingSyncService
             return false;
         }
         $this->persistLocalTracking($order, $tracking, trim((string) ($hit['carrier'] ?? '')));
+        $this->fulfillShopifyFromSavedPackage($order);
 
         return true;
+    }
+
+    /**
+     * A shipped Amazon order that just received its package number should leave Shopify Unfulfilled.
+     */
+    protected function fulfillShopifyFromSavedPackage(AmazonOrder $order): void
+    {
+        if ($this->shopifyFulfillsFromPackagesLeft < 1) {
+            return;
+        }
+        $shopifyId = trim((string) ($order->shopify_order_id ?? ''));
+        if ($shopifyId === '' || str_starts_with($shopifyId, 'manual')) {
+            return;
+        }
+        $this->shopifyFulfillsFromPackagesLeft--;
+        try {
+            $this->veeqoFulfillment->fulfillMarketplaceOrder('amazon', (int) $order->id);
+        } catch (\Throwable) {
+            // The number is saved. The Shopify push retries it.
+        }
     }
 
     /**
@@ -581,7 +610,11 @@ class AmazonTrackingSyncService
         $amazonOrderId = trim((string) ($order->amazon_order_id ?? ''));
         $hit = ['tracking' => null, 'carrier' => null];
 
-        if (! $this->merchantPackagesSynced && $amazonOrderId !== '') {
+        $tryPackage = $amazonOrderId !== '' && (! $this->merchantPackagesSynced || $this->directPackageLookupsLeft > 0);
+        if ($tryPackage) {
+            if ($this->merchantPackagesSynced) {
+                $this->directPackageLookupsLeft--;
+            }
             $fromPackages = $this->ordersClient->getMerchantPackageTracking($amazonOrderId);
             if ($fromPackages !== null && trim((string) ($fromPackages['tracking'] ?? '')) !== '') {
                 $hit = $fromPackages;

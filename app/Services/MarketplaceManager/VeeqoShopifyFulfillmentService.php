@@ -1483,7 +1483,7 @@ class VeeqoShopifyFulfillmentService
     public function syncUnfulfilledShopifyFromSofTracking(int $limit = 200): array
     {
         $limit = max(1, min(500, $limit));
-        $pagePush = $this->pushSofPageTrackingToShopify($limit);
+        $pagePush = $this->pushSofPageTrackingToShopify((int) max(40, (int) floor($limit / 2)));
         $checked = (int) ($pagePush['checked'] ?? 0);
         $fulfilled = (int) ($pagePush['fulfilled'] ?? 0);
         $skipped = (int) ($pagePush['skipped'] ?? 0);
