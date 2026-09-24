@@ -69,9 +69,7 @@
         default => 'E L30',
     };
     $ebaySprcDilTargetNroi = true;
-    $ebaySprcDilTargetLabel = $ebaySprcDilChannel === 'purchasing_power'
-        ? 'SNROI'
-        : ($ebaySprcDilTargetNroi ? 'NROI' : 'GROI');
+    $ebaySprcDilTargetLabel = $ebaySprcDilTargetNroi ? 'SNROI' : 'GROI';
     $ebaySprcDilPageLabel = match ($ebaySprcDilChannel) {
         'temu' => 'Temu',
         'temu2' => 'Temu 2',
