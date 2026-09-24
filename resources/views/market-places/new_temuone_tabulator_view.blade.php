@@ -1286,40 +1286,18 @@
         return updates.length;
     }
     /**
-     * Dil Save (persist+push): wipe stored S PRC, then reload so PHP back-solves
-     * SNROI and writes the new NTO_SPRICE — same clear-then-save as Amazon.
-     * Dil GET / slab edit (persist only): write the painted cell $ immediately.
+     * Dil Save writes the painted S PRC cell into NTO_SPRICE.
+     * Push queues that same cell dollar (S Base of the cell), not a second solve.
      */
     async function chPromoClearThenApplyAllRules(opts) {
         opts = opts || {};
         if (opts.persist !== true) return 0;
-        if (opts.push !== true) {
-            return await ntoPersistDisplayedSprice();
+        const n = await ntoPersistDisplayedSprice();
+        if (opts.push === true) {
+            window._ntoReloadPushQueued = false;
+            if (typeof ntoTryQueuePushOnReload === 'function') ntoTryQueuePushOnReload();
         }
-        const items = [];
-        chPromoEachTableRow(function(row, d) {
-            if (!chPromoIsChildRow(d) || !(chPromoInv(d) > 0)) return;
-            const sku = chPromoSku(d);
-            if (!sku) return;
-            items.push({ row: row, d: d, sku: sku });
-        });
-        if (!items.length) return 0;
-        const blocked = table && typeof table.blockRedraw === 'function';
-        if (blocked) table.blockRedraw();
-        try {
-            items.forEach(function(item) { chPromoWipeSpriceRow(item.row); });
-        } finally {
-            if (blocked) table.restoreRedraw();
-        }
-        temuClearCapMemo();
-        await ntoSaveSpriceChunks(items.map(function(i) { return { sku: i.sku, sprice: 0 }; }));
-        if (table && typeof table.replaceData === 'function') {
-            await table.replaceData();
-        }
-        if (typeof updateSummary === 'function') {
-            try { updateSummary(); } catch (e) { /* ignore */ }
-        }
-        return items.length;
+        return n;
     }
     window.chPromoSku = chPromoSku;
     window.chPromoGetSprice = chPromoGetSprice;

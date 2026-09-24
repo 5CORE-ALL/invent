@@ -5064,6 +5064,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/new-temu2', [NewTemutwoController::class, 'index'])->name('newtemutwo.index');
     Route::get('/new-temu2-data-json', [NewTemutwoController::class, 'dataJson'])->name('newtemutwo.data.json');
     Route::post('/new-temu2-save-links', [NewTemutwoController::class, 'saveLinks'])->name('newtemutwo.save.links');
+    Route::post('/new-temu2-save-sprice', [NewTemutwoController::class, 'saveSprice'])->name('newtemutwo.save.sprice');
 
     // Temu Tabulator View
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');

@@ -999,6 +999,96 @@
     window.chPromoDil = chPromoDil;
     window.chPromoListingDil = chPromoListingDil;
 
+    function chPromoSku(d) {
+        return String((d && (d['(Child) sku'] || d.sku || d.SKU)) || '').trim();
+    }
+    function chPromoGetSprice(d) {
+        return ntoSavedSprice(d);
+    }
+    function chPromoSpricePatch(price) {
+        const n = +Number(price || 0).toFixed(2);
+        return {
+            SPRICE: n,
+            sprice: n,
+            has_custom_sprice: n > 0,
+            nto_use_saved: n > 0
+        };
+    }
+    function chPromoEachTableRow(fn) {
+        if (!table || typeof table.getRows !== 'function') return;
+        (table.getRows('all') || []).forEach(function(row) {
+            fn(row, row.getData() || {});
+        });
+    }
+    async function ntoSaveSpriceChunks(updates) {
+        const size = 200;
+        for (let i = 0; i < updates.length; i += size) {
+            const chunk = updates.slice(i, i + size);
+            await $.ajax({
+                url: '{{ route("newtemutwo.save.sprice") }}',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': ntoPushCsrf(),
+                    'Accept': 'application/json'
+                },
+                data: { updates: chunk, _token: ntoPushCsrf() }
+            });
+        }
+    }
+    /** Write the painted S PRC cell into NT2_SPRICE. Skip rows already on that dollar. */
+    async function ntoPersistDisplayedSprice() {
+        const updates = [];
+        const rows = [];
+        chPromoEachTableRow(function(row, d) {
+            if (!chPromoIsChildRow(d) || !(chPromoInv(d) > 0)) return;
+            const sku = chPromoSku(d);
+            if (!sku) return;
+            const price = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
+            if (!(price > 0)) return;
+            const current = ntoSavedSprice(d);
+            if (Math.abs(current - price) < 0.015) return;
+            const live = typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(d) : price;
+            const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(d) : null;
+            updates.push({
+                sku: sku,
+                sprice: price,
+                lp: parseFloat(d.lp) || 0,
+                ship: parseFloat(d.temu_ship) || 0,
+                sprc_dil: live,
+                labels: (cap && cap.labels) || []
+            });
+            rows.push({ row: row, price: price, labels: (cap && cap.labels) || [], sprcDil: live });
+        });
+        if (!updates.length) return 0;
+        await ntoSaveSpriceChunks(updates);
+        rows.forEach(function(item) {
+            if (item.row && typeof item.row.update === 'function') {
+                item.row.update(Object.assign(chPromoSpricePatch(item.price), {
+                    sprc_dil: item.sprcDil > 0 ? item.sprcDil : item.price,
+                    sprice_labels: item.labels || []
+                }));
+            }
+        });
+        if (typeof temuClearCapMemo === 'function') temuClearCapMemo();
+        return updates.length;
+    }
+    async function chPromoClearThenApplyAllRules(opts) {
+        opts = opts || {};
+        if (opts.persist !== true) return 0;
+        const n = await ntoPersistDisplayedSprice();
+        if (opts.push === true) {
+            window._ntoReloadPushQueued = false;
+            if (typeof ntoTryQueuePushOnReload === 'function') ntoTryQueuePushOnReload();
+        }
+        return n;
+    }
+    window.chPromoSku = chPromoSku;
+    window.chPromoGetSprice = chPromoGetSprice;
+    window.chPromoSpricePatch = chPromoSpricePatch;
+    window.chPromoEachTableRow = chPromoEachTableRow;
+    window.chPromoUsesClearThenApply = function() { return true; };
+    window.chPromoClearThenApplyAllRules = chPromoClearThenApplyAllRules;
+
     @include('partials.ebay-sprc-dil', [
         'ebaySprcDilPart' => 'script',
         'ebaySprcDilChannel' => 'temu',

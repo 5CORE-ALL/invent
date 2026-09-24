@@ -3076,19 +3076,21 @@
                     if (!d || (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(d))) return;
                     const sku = String(d.sku || '').trim();
                     if (!sku) return;
+                    const shown = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
+                    const fill = shown > 0
+                        ? shown
+                        : (typeof temuRuleSprice === 'function' ? temuRuleSprice(d) : 0);
                     if (typeof row.update === 'function') {
                         row.update({ sprice: null, SPRICE: null });
                     } else {
                         d.sprice = null;
                         d.SPRICE = null;
                     }
-                    const live = (typeof row.getData === 'function') ? (row.getData() || d) : d;
-                    const fill = typeof temuRuleSprice === 'function' ? temuRuleSprice(live) : 0;
                     if (typeof row.update === 'function') {
                         row.update({ sprice: fill > 0 ? fill : null, SPRICE: fill > 0 ? fill : null, has_custom_sprice: fill > 0 });
                     } else {
-                        live.sprice = fill > 0 ? fill : null;
-                        live.SPRICE = fill > 0 ? fill : null;
+                        d.sprice = fill > 0 ? fill : null;
+                        d.SPRICE = fill > 0 ? fill : null;
                     }
                     if (typeof temuPatchLoadedSprice === 'function') temuPatchLoadedSprice(sku, fill > 0 ? fill : null);
                     updates.push({ sku: sku, sprice: fill > 0 ? fill : 0 });
