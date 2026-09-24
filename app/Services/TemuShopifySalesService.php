@@ -213,12 +213,31 @@ class TemuShopifySalesService
             return 0.0;
         }
         $base = $targetSR > 26.99 ? $targetSR : max(0.01, $targetSR - 2.99);
-        $full = self::computeFullTemuPrice($base);
-        if (! ($full > 0) || ! is_finite($full)) {
-            return 0.0;
+        $candidates = [
+            round(self::computeFullTemuPrice($base), 2),
+            round($base * self::FULL_PRICE_MULT + 2.99, 2),
+            round($base * self::FULL_PRICE_MULT, 2),
+        ];
+        $best = 0.0;
+        $bestErr = INF;
+        foreach (array_unique($candidates) as $full) {
+            if (! ($full > 0) || ! is_finite($full)) {
+                continue;
+            }
+            $sr = self::computeRPrice(self::computeBaseFromFullTemuPrice($full));
+            if (! ($sr > 0)) {
+                continue;
+            }
+            $err = abs($sr - $targetSR);
+            // base×1.1364 just above $26.99 drops the +$2.99, and invert then
+            // picks the other base. Keep the full price whose S R matches.
+            if ($err < $bestErr - 0.001) {
+                $bestErr = $err;
+                $best = $full;
+            }
         }
 
-        return round($full, 2);
+        return $best > 0 ? $best : 0.0;
     }
 
     /**

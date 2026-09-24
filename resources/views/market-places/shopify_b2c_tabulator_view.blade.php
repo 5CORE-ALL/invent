@@ -729,7 +729,7 @@
                             title="Amz: suggested S PRC was above A Price and was capped to Amz. Click badge to filter. Click dot for rolling history.">
                             <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span>Amz 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2c-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2c'])
-                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price'])
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price', 'pglTitle' => 'Price or S PRC > non-ignored LMP (red triangle), INV > 0 only. Click badge to filter. Click dot for rolling history.'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shopifyb2c-price-lt80-lmp-badge', 'pltChannelKey' => 'shopifyb2c', 'pltPriceField' => 'Price'])
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="more-sold-count-badge" data-metric="sold_count" data-format="number" data-live-value="0" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter B2B L30 &gt; 0. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="sold_count" title="Rolling history"></span>&gt;0 Sold: 0</span>
                         <span class="badge bg-info fs-6 p-2 d-none shopifyb2c-badge-chart" id="total-cogs-badge" data-metric="total_cogs" data-format="money" data-live-value="{{ (float) ($shopifyDirectTotalCogs ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;"><span class="summary-trend-dot none" data-metric="total_cogs" title="Rolling history"></span>COGS: $0</span>
@@ -1385,6 +1385,18 @@
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
     window.shopifyB2cHasBlueTriangle = shopifyB2cHasBlueTriangle;
+
+    /** Red-triangle badge: live Price or S PRC is above the non-ignored LMP. */
+    function shopifyB2cLmpCompareRow(row) {
+        if (!row) return row;
+        const price = parseFloat(row.Price) || 0;
+        const sprice = (typeof shopifyB2cShownSprice === 'function' ? shopifyB2cShownSprice(row) : 0) || 0;
+        const compare = Math.max(price, sprice);
+        if (!(compare > price)) return row;
+        const copy = Object.assign({}, row);
+        copy.Price = compare;
+        return copy;
+    }
 
     /** Badge / filter: suggested S PRC was above A Price and the shown price is Amz. */
     function shopifyB2cHasPurpleTriangle(data) {
@@ -3749,7 +3761,7 @@
             }
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
-                    return PriceGtLmpBadge.hasRedTriangle(data, 'Price');
+                    return PriceGtLmpBadge.hasRedTriangle(shopifyB2cLmpCompareRow(data), 'Price');
                 });
             }
             if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
@@ -4014,7 +4026,15 @@
                 LmpMissingBadge.update('#shopifyb2c-lmp-missing-badge', data, 'shopifyb2c');
             }
             if (window.PriceGtLmpBadge) {
-                PriceGtLmpBadge.update('#shopifyb2c-price-gt-lmp-badge', allData, 'shopifyb2c', 'Price');
+                const pglSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                    ? allTableData
+                    : allData;
+                PriceGtLmpBadge.update(
+                    '#shopifyb2c-price-gt-lmp-badge',
+                    pglSrc.map(shopifyB2cLmpCompareRow),
+                    'shopifyb2c',
+                    'Price'
+                );
                 PriceGtLmpBadge.setOutline(document.getElementById('shopifyb2c-price-gt-lmp-badge'), priceGtLmpFilterActive);
             }
             if (window.PriceLt80LmpBadge) {

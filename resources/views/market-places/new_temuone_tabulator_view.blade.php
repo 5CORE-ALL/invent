@@ -875,14 +875,51 @@
         if (!(ads > 0) || !(s > 0) || !(cost > 0)) return sgroi;
         return sgroi - ((s * ads / 100) / cost) * 100;
     }
-    /** Full Temu Price from target S R (same as PHP spriceFromTargetSR). */
+    /** Inverted S R of a full Temu price. Same base pick as S Base Prc / SGROI. */
+    function chPromoTemuInvertSrAtSprice(sprice) {
+        const s = Number(sprice);
+        if (!(s > 0) || !isFinite(s)) return 0;
+        const mult = 1.1364;
+        const candidates = [(s - 2.99) / mult, s / mult];
+        let best = 0;
+        let bestErr = Infinity;
+        candidates.forEach(function(base) {
+            if (!(base > 0)) return;
+            let full = base * mult;
+            if (full <= 26.99) full += 2.99;
+            const err = Math.abs(full - s);
+            if (err < bestErr - 1e-6) {
+                bestErr = err;
+                best = base;
+            } else if (Math.abs(err - bestErr) <= 1e-6 && (best <= 0 || base < best)) {
+                best = base;
+            }
+        });
+        if (!(best > 0)) return 0;
+        return best <= 26.99 ? best + 2.99 : best;
+    }
+    /** Full Temu Price whose inverted S R matches the target (same as PHP spriceFromTargetSR). */
     function chPromoTemuSpriceFromTargetSR(targetSR) {
         const sr = Number(targetSR);
         if (!(sr > 0) || !isFinite(sr)) return 0;
+        const mult = 1.1364;
         const base = sr > 26.99 ? sr : Math.max(0.01, sr - 2.99);
-        let full = base * 1.1364;
-        if (full <= 26.99) full += 2.99;
-        return chPromoRound2(full);
+        let official = base * mult;
+        if (official <= 26.99) official += 2.99;
+        const cands = [chPromoRound2(official), chPromoRound2(base * mult + 2.99), chPromoRound2(base * mult)];
+        let best = 0;
+        let bestErr = Infinity;
+        cands.forEach(function(full) {
+            if (!(full > 0)) return;
+            const inv = chPromoTemuInvertSrAtSprice(full);
+            if (!(inv > 0)) return;
+            const err = Math.abs(inv - sr);
+            if (err < bestErr - 0.001) {
+                bestErr = err;
+                best = full;
+            }
+        });
+        return best > 0 ? best : 0;
     }
     /** Back-solve S PRC so SNROI (Dil + CVR Target NROI) matches, using Temu S R math. */
     function chPromoSpriceFromTargetRoi(d, roiPct) {
