@@ -1317,15 +1317,25 @@
         return Math.round(value * 100) / 100;
     }
 
-    /** Shown / pushed S PRC. Lowest of suggestion, A Price, and LMP. */
+    /** Shown / pushed S PRC. Amz cap uses the A Prc column. Then the lowest of that and LMP. */
     function shopifyB2cShownSprice(data) {
-        const suggested = shopifyB2cDisplayedSprice(data);
-        if (!(suggested > 0)) return 0;
+        if (!data || isShopifyB2cParentRow(data)) return 0;
+        const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        if (shopifyB2cIsAmzSuggApplied(data) && amz > 0) {
+            let s = amz;
+            if (window.SpriceLmpCap) {
+                const capped = SpriceLmpCap.prepare(data, s);
+                if (capped > 0) s = Math.round(capped * 100) / 100;
+            }
+            return s > 0 ? s : 0;
+        }
+        let suggested = 0;
         if (typeof ebayDilGroiMetaForRow === 'function') {
             const meta = ebayDilGroiMetaForRow(data);
-            const raw = Number(meta && (meta.rawSprc > 0 ? meta.rawSprc : 0)) || 0;
-            if (raw > 0) return shopifyB2cCapLikeTemu(data, raw);
+            suggested = Number(meta && (meta.rawSprc > 0 ? meta.rawSprc : meta.sprc)) || 0;
         }
+        if (!(suggested > 0)) suggested = shopifyB2cDisplayedSprice(data);
+        if (!(suggested > 0)) return 0;
         return shopifyB2cCapLikeTemu(data, suggested);
     }
     window.shopifyB2cShownSprice = shopifyB2cShownSprice;
@@ -1345,8 +1355,10 @@
 
     function shopifyB2cShowAmzLabel(data) {
         if (!data || isShopifyB2cParentRow(data)) return false;
-        return shopifyB2cHasAmzFloor(data)
-            || (shopifyB2cIsAmzSuggApplied(data) && shopifyB2cAmzPrice(data) > 0);
+        const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        const shown = shopifyB2cShownSprice(data);
+        if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) >= 0.015) return false;
+        return shopifyB2cHasAmzFloor(data) || shopifyB2cIsAmzSuggApplied(data);
     }
 
     function shopifyB2cHasBlueTriangle(data) {
