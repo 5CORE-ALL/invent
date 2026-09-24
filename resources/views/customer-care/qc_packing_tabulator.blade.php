@@ -352,6 +352,7 @@
                                 <label class="form-label small mb-1" for="qc-date-to">To</label>
                                 <input type="date" id="qc-date-to" class="form-control form-control-sm" aria-label="To date">
                             </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="qc-filter-clear">Clear</button>
                         </div>
                         <div id="qc-pkg-table"></div>
                     </div>
@@ -980,32 +981,39 @@
                 if (Number.isNaN(parsed.getTime())) return null;
                 return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
             }
+            function updateCount() {
+                const total = table.getDataCount();
+                const shown = table.getDataCount('active');
+                document.getElementById('qc-count').textContent = shown === total ? String(total) : (shown + ' of ' + total);
+            }
             function applyFilters() {
                 if (!table) return;
                 const term = document.getElementById('qc-search').value.trim().toLowerCase();
                 const fromValue = document.getElementById('qc-date-from').value;
                 const toValue = document.getElementById('qc-date-to').value;
-                const from = fromValue ? new Date(fromValue + 'T00:00:00') : null;
-                const to = toValue ? new Date(toValue + 'T00:00:00') : null;
+                const from = fromValue ? rowDay(fromValue) : null;
+                const to = toValue ? rowDay(toValue) : null;
                 if (!term && !from && !to) {
                     table.clearFilter();
-                    document.getElementById('qc-count').textContent = String(table.getDataCount('active'));
+                    if (table.getPage && table.getPage() > 1) table.setPage(1);
+                    updateCount();
                     return;
                 }
                 table.setFilter(function (row) {
                     if (term) {
-                        const hay = [row.id, row.sku, row.supplier, row.parent, row.order_qty, row.replacement_tracking, row.what_happened, row.action_1, row.action_1_remark, row.issue, row.issue_remark, row.c_action_1, row.c_action_1_remark, row.marketplace_1, deptLabel(row), row.total_loss, row.created_by].map(function (v) { return String(v ?? '').toLowerCase(); }).join(' | ');
+                        const hay = [row.id, row.sku, row.parent, row.supplier, row.order_qty, row.replacement_tracking, row.what_happened, row.action_1, row.action_1_remark, row.issue, row.issue_remark, row.c_action_1, row.c_action_1_remark, row.marketplace_1, deptLabel(row), row.total_loss, row.created_by, row.created_at_display, row.created_at].map(function (v) { return String(v ?? '').toLowerCase(); }).join(' | ');
                         if (!hay.includes(term)) return false;
                     }
                     if (from || to) {
-                        const day = rowDay(row.created_at);
+                        const day = rowDay(row.created_at_display || row.created_at);
                         if (!day) return false;
                         if (from && day < from) return false;
                         if (to && day > to) return false;
                     }
                     return true;
                 });
-                document.getElementById('qc-count').textContent = String(table.getDataCount('active'));
+                if (table.getPage && table.getPage() > 1) table.setPage(1);
+                updateCount();
             }
 
             document.addEventListener('DOMContentLoaded', function () {
@@ -1073,6 +1081,12 @@
                 document.getElementById('qc-search').addEventListener('input', applyFilters);
                 document.getElementById('qc-date-from').addEventListener('change', applyFilters);
                 document.getElementById('qc-date-to').addEventListener('change', applyFilters);
+                document.getElementById('qc-filter-clear').addEventListener('click', function () {
+                    document.getElementById('qc-search').value = '';
+                    document.getElementById('qc-date-from').value = '';
+                    document.getElementById('qc-date-to').value = '';
+                    applyFilters();
+                });
                 const skuInput = document.getElementById('qc-sku');
                 skuInput.addEventListener('input', function () { clearTimeout(skuTimer); skuTimer = setTimeout(function () { refreshSkuSuggestions(skuInput.value); }, 220); });
                 skuInput.addEventListener('change', fillSkuDetails);
