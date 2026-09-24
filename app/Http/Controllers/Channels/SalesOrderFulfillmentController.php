@@ -7231,6 +7231,7 @@ class SalesOrderFulfillmentController extends Controller
     public function historyChartData(Request $request): JsonResponse
     {
         try {
+            @set_time_limit(120);
             $metric = trim((string) $request->input('metric', 'pending_total'));
             $days = (int) $request->input('days', 30);
             $labels = self::historyMetricKeys();
@@ -7238,28 +7239,61 @@ class SalesOrderFulfillmentController extends Controller
                 return response()->json(['success' => false, 'message' => 'Unknown metric'], 400);
             }
 
-            if (! Schema::hasTable('sales_order_fulfillment_daily_data')) {
-                return response()->json(['success' => true, 'data' => [], 'label' => $labels[$metric]]);
+            $tz = $this->sofTimezone();
+            $end = now($tz)->startOfDay();
+            $byDate = [];
+            if (Schema::hasTable('sales_order_fulfillment_daily_data')) {
+                $query = SalesOrderFulfillmentDailySummary::query()->orderBy('snapshot_date', 'asc');
+                if ($days > 0) {
+                    $query->where('snapshot_date', '>=', $end->copy()->subDays(max(0, $days - 1))->toDateString());
+                }
+                foreach ($query->get() as $row) {
+                    $value = $this->historyMetricValue($row->summary_data ?? [], $metric);
+                    if ($value === null) {
+                        continue;
+                    }
+                    $key = Carbon::parse($row->snapshot_date)->timezone($tz)->toDateString();
+                    $byDate[$key] = $value;
+                }
             }
 
-            $query = SalesOrderFulfillmentDailySummary::query()->orderBy('snapshot_date', 'asc');
-            if ($days > 0) {
-                $start = now($this->sofTimezone())->subDays($days)->toDateString();
-                $query->where('snapshot_date', '>=', $start);
-            }
+            $start = $days > 0
+                ? $end->copy()->subDays(max(0, $days - 1))
+                : (! empty($byDate)
+                    ? Carbon::parse(array_key_first($byDate), $tz)->startOfDay()
+                    : $end->copy());
 
             $chartData = [];
-            foreach ($query->get() as $row) {
-                $sd = $row->summary_data ?? [];
-                $value = $this->historyMetricValue($sd, $metric);
-                if ($value === null) {
+            $last = null;
+            for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
+                $key = $cursor->toDateString();
+                if (array_key_exists($key, $byDate)) {
+                    $last = $byDate[$key];
+                }
+                if ($last === null) {
                     continue;
                 }
                 $chartData[] = [
-                    'date' => Carbon::parse($row->snapshot_date, $this->sofTimezone())->format('M d'),
-                    'value' => $value,
-                    'snapshot_date' => Carbon::parse($row->snapshot_date)->toDateString(),
+                    'date' => $cursor->format('M d'),
+                    'value' => $last,
+                    'snapshot_date' => $key,
                 ];
+            }
+
+            $live = $this->liveHistoryMetric($metric);
+            if ($live !== null) {
+                if ($chartData === []) {
+                    $chartData[] = [
+                        'date' => $end->format('M d'),
+                        'value' => $live,
+                        'snapshot_date' => $end->toDateString(),
+                    ];
+                } else {
+                    $lastIdx = array_key_last($chartData);
+                    $chartData[$lastIdx]['value'] = $live;
+                    $chartData[$lastIdx]['date'] = $end->format('M d');
+                    $chartData[$lastIdx]['snapshot_date'] = $end->toDateString();
+                }
             }
 
             return response()->json([
@@ -7275,6 +7309,32 @@ class SalesOrderFulfillmentController extends Controller
                 'data' => [],
             ], 500);
         }
+    }
+
+    /**
+     * Today's badge count — the last point on each history graph.
+     */
+    protected function liveHistoryMetric(string $metric): ?float
+    {
+        return match ($metric) {
+            'channel_count' => (float) (Schema::hasTable('channel_master')
+                ? ChannelMaster::query()
+                    ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                    ->whereNotNull('channel')
+                    ->where('channel', '!=', '')
+                    ->count()
+                : 0),
+            'pending_total' => (float) count($this->warehousePendingOrderRows()),
+            'fulfilled_24h' => (float) count($this->labelCreatedNoScanRows()),
+            'label_created_no_tracking' => (float) count($this->labelCreatedNoTrackingRows()),
+            'in_transit_total', 'received_by_carrier_total' => (float) $this->inTransitOrdersCount(),
+            'invoiced_total' => (float) count($this->excludeDisplayedInTransitRows(
+                $this->excludeDisplayedDeliveredRows($this->invoicedOrderRows())
+            )),
+            'delivered_total' => (float) $this->deliveredOrdersCount(),
+            'all_order_total' => (float) $this->allOrdersCount(),
+            default => null,
+        };
     }
 
     /**
