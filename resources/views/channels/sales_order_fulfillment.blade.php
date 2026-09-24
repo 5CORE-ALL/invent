@@ -219,8 +219,28 @@
         .sof-summary-badge:hover {
             filter: brightness(0.97);
         }
+        #sofHistoryChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
         #sofHistoryChartModal .modal-dialog {
-            max-width: 920px;
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #sofHistoryChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
+        #sofHistoryChartModal .modal-body {
+            position: relative;
+        }
+        #sofHistoryChartLoading {
+            min-height: 28vh;
+            background: #fff;
         }
         #sofHistoryChartContainer {
             height: 28vh;
@@ -963,14 +983,14 @@
         }
         #sof-in-transit-table .tabulator-row.sof-scan-pending-late .tabulator-cell,
         #sof-pending-table .tabulator-row.sof-order-over-24h .tabulator-cell,
-        #sof-fulfilled-table .tabulator-row.sof-order-over-24h .tabulator-cell {
+        #sof-fulfilled-table .tabulator-row.sof-order-over-24h .tabulator-cell,
         #sof-no-tracking-table .tabulator-row.sof-order-over-24h .tabulator-cell {
             background-color: #f8d7da !important;
             color: #842029;
         }
         #sof-in-transit-table .tabulator-row.sof-scan-pending-late.tabulator-selected .tabulator-cell,
         #sof-pending-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell,
-        #sof-fulfilled-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell {
+        #sof-fulfilled-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell,
         #sof-no-tracking-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell {
             background-color: #f1aeb5 !important;
         }
@@ -1776,8 +1796,8 @@
     </div>
 
     {{-- History graph (same idea as Active Channel Master) --}}
-    <div class="modal fade" id="sofHistoryChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+    <div class="modal fade p-0" id="sofHistoryChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0">
             <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-2 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
@@ -1815,9 +1835,9 @@
                             </div>
                         </div>
                     </div>
-                    <div id="sofHistoryChartLoading" class="text-center py-3" style="display: none;">
+                    <div id="sofHistoryChartLoading" class="text-center py-5" style="display: none;">
                         <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                        <p class="mt-1 text-muted small mb-0">Loading history…</p>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
                     </div>
                     <div id="sofHistoryChartNoData" class="text-center py-3" style="display: none;">
                         <p class="text-muted small mb-0">No daily history yet. Snapshots save automatically at 00:00 PST.</p>
@@ -3022,7 +3042,7 @@
         return {
             field: 'order_over_24h',
             visible: false,
-            headerSort: false,
+            headerSort: true,
             sorter: 'number',
         };
     }
@@ -4819,7 +4839,7 @@
             placeholder: 'Loading Label Created / No Scan orders…',
             initialSort: [
                 { column: 'order_over_24h', dir: 'desc' },
-                { column: 'updated_at', dir: 'desc' },
+                { column: 'order_date', dir: 'asc' },
             ],
             rowFormatter: function (row) {
                 const el = row.getElement();
@@ -4985,8 +5005,7 @@
             layout: 'fitColumns',
             placeholder: 'Loading Recd/Transit orders…',
             initialSort: [
-                { column: 'scan_pending_over_36h', dir: 'desc' },
-                { column: 'updated_at', dir: 'desc' },
+                { column: 'order_date', dir: 'asc' },
             ],
             rowFormatter: function (row) {
                 const el = row.getElement();
@@ -5027,10 +5046,6 @@
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(inTransitRows);
                 applyInTransitFilters();
-                sofPinInTransitScanPendingLate(inTransitTable);
-            },
-            dataSorted: function () {
-                sofPinInTransitScanPendingLate(inTransitTable);
             },
             columns: (function () {
                 const cols = orderListColumns('sof-in-transit-badge');
@@ -5140,7 +5155,9 @@
                 applyNotAuthorizedFilters();
             },
             columns: (function () {
-                const cols = orderListColumns('sof-not-authorized-badge');
+                const cols = orderListColumns('sof-not-authorized-badge').filter(function (c) {
+                    return c.field !== 'sku';
+                });
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
                         c.title = 'Status';
@@ -6524,11 +6541,45 @@
         loadSofHistoryChart();
     }
 
+    function sofHistoryDotColors(values) {
+        const gray = '#6c757d';
+        const green = '#28a745';
+        const red = '#dc3545';
+        return values.map(function (v, i) {
+            if (i === 0) return gray;
+            const prev = values[i - 1];
+            if (Math.abs(v - prev) <= 0.01) return gray;
+            return v > prev ? green : red;
+        });
+    }
+
+    function sofHistoryBadgeValue(metric) {
+        const ids = {
+            channel_count: 'sof-channel-count',
+            pending_total: 'sof-pending-total',
+            label_created_no_tracking: 'sof-no-tracking-total',
+            fulfilled_24h: 'sof-fulfilled-24h',
+            received_by_carrier_total: 'sof-in-transit-total',
+            in_transit_total: 'sof-in-transit-total',
+            invoiced_total: 'sof-invoiced-total',
+            delivered_total: 'sof-delivered-total',
+            all_order_total: 'sof-all-order-total',
+        };
+        const el = document.getElementById(ids[metric] || '');
+        if (!el) return '';
+        const n = String(el.textContent || '').replace(/,/g, '').trim();
+        return /^-?\d+(\.\d+)?$/.test(n) ? n : '';
+    }
+
     function loadSofHistoryChart() {
         $('#sofHistoryChartContainer').hide();
         $('#sofHistoryChartNoData').hide();
         $('#sofHistoryChartLoading').show();
-        const qs = new URLSearchParams({ metric: sofHistoryMetric, days: String(sofHistoryDays) });
+        const qs = new URLSearchParams({
+            metric: sofHistoryMetric,
+            days: String(sofHistoryDays),
+            badge_value: sofHistoryBadgeValue(sofHistoryMetric),
+        });
         fetch(sofChartDataUrl + '?' + qs.toString(), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function (r) { return r.json(); })
             .then(function (res) {
@@ -6553,12 +6604,76 @@
                     ? sorted[mid]
                     : (sorted[mid - 1] + sorted[mid]) / 2;
                 const fmt = function (v) { return Math.round(v).toLocaleString('en-US'); };
-                $('#sofHistoryHighest').text(fmt(dataMax));
-                $('#sofHistoryMedian').text(fmt(median));
-                $('#sofHistoryLowest').text(fmt(dataMin));
+                const range = (dataMax - dataMin) || 1;
+                const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
+                const yMin = Math.max(0, dataMin - range * 0.12);
+                const yMax = dataMax + yPad;
+                const dotColors = sofHistoryDotColors(values);
+                let maxIdx = 0;
+                let minIdx = 0;
+                values.forEach(function (v, i) {
+                    if (v >= values[maxIdx]) maxIdx = i;
+                    if (v <= values[minIdx]) minIdx = i;
+                });
+                const highestEl = document.getElementById('sofHistoryHighest');
+                const medianEl = document.getElementById('sofHistoryMedian');
+                const lowestEl = document.getElementById('sofHistoryLowest');
+                if (highestEl) {
+                    highestEl.textContent = fmt(dataMax);
+                    highestEl.style.color = dotColors[maxIdx] || '#6c757d';
+                }
+                if (medianEl) {
+                    medianEl.textContent = fmt(median);
+                    medianEl.style.color = '#6c757d';
+                }
+                if (lowestEl) {
+                    lowestEl.textContent = fmt(dataMin);
+                    lowestEl.style.color = dotColors[minIdx] || '#6c757d';
+                }
                 const ctx = document.getElementById('sofHistoryChart').getContext('2d');
                 if (sofHistoryChartInstance) sofHistoryChartInstance.destroy();
-                const range = (dataMax - dataMin) || 1;
+                const medianLinePlugin = {
+                    id: 'sofMedianLine',
+                    afterDraw: function (chart) {
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const c = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+                        c.save();
+                        c.setLineDash([6, 4]);
+                        c.strokeStyle = '#6c757d';
+                        c.lineWidth = 1.2;
+                        c.beginPath();
+                        c.moveTo(xScale.left, yPixel);
+                        c.lineTo(xScale.right, yPixel);
+                        c.stroke();
+                        c.restore();
+                    },
+                };
+                const valueLabelsPlugin = {
+                    id: 'sofValueLabels',
+                    afterDraw: function (chart) {
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const c = chart.ctx;
+                        const lastIdx = meta.data.length - 1;
+                        c.save();
+                        c.font = 'bold 10px Inter, system-ui, sans-serif';
+                        c.textAlign = 'left';
+                        c.textBaseline = 'middle';
+                        meta.data.forEach(function (point, i) {
+                            if (labels.length > 20 && i % 2 !== 0 && i !== lastIdx) return;
+                            const offsetY = (i % 2 === 0) ? -12 : -26;
+                            c.save();
+                            c.fillStyle = dotColors[i] || '#6c757d';
+                            c.translate(point.x, point.y + offsetY);
+                            c.rotate(-Math.PI / 5);
+                            c.fillText(fmt(dataset.data[i]), 2, 0);
+                            c.restore();
+                        });
+                        c.restore();
+                    },
+                };
                 sofHistoryChartInstance = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -6566,31 +6681,60 @@
                         datasets: [{
                             label: sofHistoryLabels[sofHistoryMetric] || sofHistoryMetric,
                             data: values,
-                            borderColor: '#0d6efd',
-                            backgroundColor: 'rgba(13,110,253,0.12)',
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderColor: '#adb5bd',
+                            borderWidth: 1.5,
                             fill: true,
-                            tension: 0.25,
+                            tension: 0.3,
                             pointRadius: 3,
                             pointHoverRadius: 5,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointHoverBackgroundColor: dotColors,
+                            pointHoverBorderColor: dotColors,
+                            pointBorderWidth: 1.5,
                         }],
                     },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        clip: false,
+                        layout: { padding: { top: 44, left: 4, right: 22, bottom: 8 } },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
                                 callbacks: {
-                                    label: function (ctx) { return fmt(ctx.parsed.y); },
+                                    label: function (context) {
+                                        const idx = context.dataIndex;
+                                        const parts = ['Value: ' + fmt(context.raw)];
+                                        if (idx > 0) {
+                                            const diff = context.raw - values[idx - 1];
+                                            const arrow = diff < 0 ? '▼' : (diff > 0 ? '▲' : '▬');
+                                            parts.push('vs Yesterday: ' + arrow + ' ' + fmt(Math.abs(diff)));
+                                        }
+                                        return parts;
+                                    },
                                 },
                             },
                         },
                         scales: {
                             y: {
-                                beginAtZero: dataMin === 0,
-                                suggestedMin: Math.max(0, dataMin - range * 0.1),
-                                suggestedMax: dataMax + range * 0.1,
-                                ticks: { callback: function (v) { return fmt(v); } },
+                                min: yMin,
+                                max: yMax,
+                                ticks: {
+                                    font: { size: 9 },
+                                    callback: function (v) { return fmt(v); },
+                                },
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 60,
+                                    minRotation: 60,
+                                    autoSkip: false,
+                                    maxTicksLimit: Math.max(labels.length, 31),
+                                    font: { size: 8 },
+                                },
                             },
                         },
                     },

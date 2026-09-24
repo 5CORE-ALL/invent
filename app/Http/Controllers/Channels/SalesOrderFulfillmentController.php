@@ -316,7 +316,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         try {
             @set_time_limit(90);
-            $rows = $this->labelCreatedNoScanRows();
+            $rows = $this->pinOrdersOlderThanHours($this->labelCreatedNoScanRows(), 24);
 
             return response()->json(array_merge([
                 'success' => true,
@@ -2301,6 +2301,32 @@ class SalesOrderFulfillmentController extends Controller
      *
      * @param  array<string, mixed>  $row
      */
+    /**
+     * Orders older than $hours first, oldest order date at the top of that group.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function pinOrdersOlderThanHours(array $rows, int $hours): array
+    {
+        usort($rows, function (array $a, array $b) use ($hours): int {
+            $aLate = $this->rowIsOlderThanHours($a, $hours) ? 1 : 0;
+            $bLate = $this->rowIsOlderThanHours($b, $hours) ? 1 : 0;
+            if ($aLate !== $bLate) {
+                return $bLate <=> $aLate;
+            }
+            $ak = (string) ($a['order_date'] ?? '');
+            $bk = (string) ($b['order_date'] ?? '');
+            if ($ak === '' || $bk === '') {
+                return ($ak === '' ? 1 : 0) <=> ($bk === '' ? 1 : 0);
+            }
+
+            return strcmp($ak, $bk);
+        });
+
+        return array_values($rows);
+    }
+
     protected function rowIsOlderThanHours(array $row, int $hours): bool
     {
         $raw = trim((string) ($row['order_date'] ?? ''));
@@ -2338,15 +2364,13 @@ class SalesOrderFulfillmentController extends Controller
         unset($row);
 
         usort($rows, static function (array $a, array $b): int {
-            $aLate = (int) ($a['scan_pending_over_36h'] ?? 0);
-            $bLate = (int) ($b['scan_pending_over_36h'] ?? 0);
-            if ($aLate !== $bLate) {
-                return $bLate <=> $aLate;
+            $ak = (string) ($a['order_date'] ?? '');
+            $bk = (string) ($b['order_date'] ?? '');
+            if ($ak === '' || $bk === '') {
+                return ($ak === '' ? 1 : 0) <=> ($bk === '' ? 1 : 0);
             }
-            $ak = (string) ($a['updated_at'] ?? $a['order_date'] ?? '');
-            $bk = (string) ($b['updated_at'] ?? $b['order_date'] ?? '');
 
-            return strcmp($bk, $ak);
+            return strcmp($ak, $bk);
         });
 
         return array_values($rows);
@@ -5473,15 +5497,12 @@ class SalesOrderFulfillmentController extends Controller
 
         $scanDone = $this->scanDoneLast24HoursCount();
         $inReceived = $this->inReceivedOrdersCount();
-        $invoicedNoScan = count($this->invoicedTrackedForNoScan());
         $invoicedTransit = count($this->invoicedTrackedForInTransit());
 
         return [
             'channel_count' => (int) $channelCount,
             'pending_total' => $pendingTotal,
-            // Provisional until the No Scan tab loads and replaces this with the order count.
-            // Do not count every marketplace-fulfilled order — that includes packages already scanned.
-            'fulfilled_24h' => $this->awaitingCarrierTrackingCount() + $invoicedNoScan,
+            'fulfilled_24h' => count($this->labelCreatedNoScanRows()),
             'label_created_no_tracking' => 0,
             'scan_done_24h' => $scanDone,
             'in_transit_total' => $this->countAllOrders(
@@ -7217,28 +7238,62 @@ class SalesOrderFulfillmentController extends Controller
                 return response()->json(['success' => false, 'message' => 'Unknown metric'], 400);
             }
 
-            if (! Schema::hasTable('sales_order_fulfillment_daily_data')) {
-                return response()->json(['success' => true, 'data' => [], 'label' => $labels[$metric]]);
+            $tz = $this->sofTimezone();
+            $end = now($tz)->startOfDay();
+            $byDate = [];
+            if (Schema::hasTable('sales_order_fulfillment_daily_data')) {
+                $query = SalesOrderFulfillmentDailySummary::query()->orderBy('snapshot_date', 'asc');
+                if ($days > 0) {
+                    $query->where('snapshot_date', '>=', $end->copy()->subDays(max(0, $days - 1))->toDateString());
+                }
+                foreach ($query->get() as $row) {
+                    $value = $this->historyMetricValue($row->summary_data ?? [], $metric);
+                    if ($value === null) {
+                        continue;
+                    }
+                    $key = Carbon::parse($row->snapshot_date)->timezone($tz)->toDateString();
+                    $byDate[$key] = $value;
+                }
             }
 
-            $query = SalesOrderFulfillmentDailySummary::query()->orderBy('snapshot_date', 'asc');
-            if ($days > 0) {
-                $start = now($this->sofTimezone())->subDays($days)->toDateString();
-                $query->where('snapshot_date', '>=', $start);
-            }
+            $start = $days > 0
+                ? $end->copy()->subDays(max(0, $days - 1))
+                : (! empty($byDate)
+                    ? Carbon::parse(array_key_first($byDate), $tz)->startOfDay()
+                    : $end->copy());
 
             $chartData = [];
-            foreach ($query->get() as $row) {
-                $sd = $row->summary_data ?? [];
-                $value = $this->historyMetricValue($sd, $metric);
-                if ($value === null) {
+            $last = null;
+            for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
+                $key = $cursor->toDateString();
+                if (array_key_exists($key, $byDate)) {
+                    $last = $byDate[$key];
+                }
+                if ($last === null) {
                     continue;
                 }
                 $chartData[] = [
-                    'date' => Carbon::parse($row->snapshot_date, $this->sofTimezone())->format('M d'),
-                    'value' => $value,
-                    'snapshot_date' => Carbon::parse($row->snapshot_date)->toDateString(),
+                    'date' => $cursor->format('M d'),
+                    'value' => $last,
+                    'snapshot_date' => $key,
                 ];
+            }
+
+            $badgeValue = $request->input('badge_value');
+            if ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue)) {
+                $live = (float) $badgeValue;
+                if ($chartData === []) {
+                    $chartData[] = [
+                        'date' => $end->format('M d'),
+                        'value' => $live,
+                        'snapshot_date' => $end->toDateString(),
+                    ];
+                } else {
+                    $lastIdx = array_key_last($chartData);
+                    $chartData[$lastIdx]['value'] = $live;
+                    $chartData[$lastIdx]['date'] = $end->format('M d');
+                    $chartData[$lastIdx]['snapshot_date'] = $end->toDateString();
+                }
             }
 
             return response()->json([
