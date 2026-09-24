@@ -10,8 +10,10 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Push Shopify fulfillment tracking numbers back to Reverb
- * (POST /my/orders/selling/{order_number}/ship).
+ * Keep Reverb and Shopify tracking in step.
+ * Reverb's shipping_code is the tracking number after the order is shipped on Reverb.
+ * When that field is set, copy it onto the Shopify fulfillment.
+ * When only Shopify has a number, push it to Reverb.
  */
 class ReverbTrackingSyncService
 {
@@ -74,23 +76,66 @@ class ReverbTrackingSyncService
                 $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderRef, (string) ($line->sku ?? ''));
             }
         }
-        if (empty($shopifyFulfillment['tracking'])) {
-            return [
-                'success' => false,
-                'skipped' => true,
-                'message' => $shopifyFulfillment['error']
-                    ?: 'No tracking number on Shopify yet. Buy/download a shipping label in Shopify first.',
-                'shopify_tracking' => null,
-                'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
-            ];
-        }
 
-        $shopifyTracking = (string) $shopifyFulfillment['tracking'];
+        $shopifyTracking = trim((string) ($shopifyFulfillment['tracking'] ?? ''));
         $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
 
         $reverbShipment = $this->resolveReverbShipment($orderRef, $line);
         $reverbTracking = trim((string) ($reverbShipment['tracking'] ?? ''));
         $reverbProvider = trim((string) ($reverbShipment['service'] ?? ''));
+        $direction = self::trackingSyncAction($shopifyTracking, $reverbTracking);
+
+        if ($direction === 'pull_from_reverb') {
+            $provider = $reverbProvider !== '' ? $reverbProvider : 'Other';
+            $applied = $this->applyReverbTrackingToShopify($shopifyOrderId, $reverbTracking, $provider);
+            if (empty($applied['success'])) {
+                Log::warning('ReverbTrackingSyncService: Shopify update from Reverb failed', [
+                    'order_id' => $orderRef,
+                    'shopify_order_id' => $shopifyOrderId,
+                    'reverb_tracking' => $reverbTracking,
+                    'message' => $applied['message'] ?? null,
+                ]);
+
+                return [
+                    'success' => false,
+                    'action' => 'pull_from_reverb',
+                    'message' => $applied['message'] ?? 'Reverb has a tracking number, but Shopify was not updated.',
+                    'shopify_tracking' => $shopifyTracking !== '' ? $shopifyTracking : null,
+                    'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+                    'reverb_tracking' => $reverbTracking,
+                    'provider' => $provider,
+                ];
+            }
+
+            Log::info('ReverbTrackingSyncService: Shopify tracking updated from Reverb', [
+                'order_id' => $orderRef,
+                'shopify_order_id' => $shopifyOrderId,
+                'reverb_tracking' => $reverbTracking,
+                'provider' => $provider,
+            ]);
+
+            return [
+                'success' => true,
+                'action' => 'pulled_from_reverb',
+                'message' => "Updated Shopify with Reverb tracking {$reverbTracking} ({$provider}).",
+                'shopify_tracking' => $reverbTracking,
+                'shopify_carrier' => $provider,
+                'reverb_tracking' => $reverbTracking,
+                'provider' => $provider,
+            ];
+        }
+
+        if ($direction === 'none') {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => $shopifyFulfillment['error']
+                    ?: 'No tracking number on Reverb or Shopify yet.',
+                'shopify_tracking' => null,
+                'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+                'reverb_tracking' => null,
+            ];
+        }
 
         if ($reverbTracking !== '' && $this->trackingEquals($reverbTracking, $shopifyTracking)) {
             return [
@@ -167,6 +212,7 @@ class ReverbTrackingSyncService
         $rows = ReverbOrderMetric::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
+            ->orderByRaw("CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN ('shipped', 'received', 'picked_up') THEN 0 ELSE 1 END")
             ->orderByDesc('order_date')
             ->orderByDesc('id')
             ->limit($limit * 12)
@@ -210,6 +256,26 @@ class ReverbTrackingSyncService
             'failed' => $failed,
             'message' => "Tracking sync: checked {$checked}, pushed {$pushed}, skipped {$skipped}, failed {$failed}.",
         ];
+    }
+
+    /**
+     * Reverb shipping_code wins once it is set. Shopify is pushed only when Reverb has none.
+     */
+    public static function trackingSyncAction(string $shopifyTracking, string $reverbTracking): string
+    {
+        $shopify = self::normalizeTracking($shopifyTracking);
+        $reverb = self::normalizeTracking($reverbTracking);
+        if ($reverb !== '' && $reverb !== $shopify) {
+            return 'pull_from_reverb';
+        }
+        if ($reverb !== '' && $shopify !== '') {
+            return 'already_synced';
+        }
+        if ($shopify !== '') {
+            return 'push_to_reverb';
+        }
+
+        return 'none';
     }
 
     public static function canAutoPush(?array $settings = null): bool
@@ -259,6 +325,28 @@ class ReverbTrackingSyncService
 
         $tracking = trim((string) ($shipment['tracking'] ?? ''));
         $service = trim((string) ($shipment['service'] ?? ''));
+        if ($tracking === '') {
+            $tracking = trim((string) ($orderRoot['shipping_code'] ?? ''));
+        }
+        if ($tracking === '') {
+            $href = $orderRoot['_links']['web_tracking']['href'] ?? '';
+            if (is_string($href) && $href !== '') {
+                foreach ([
+                    '/tracknumbers=([A-Za-z0-9]+)/i',
+                    '/qtc_tLabels1=([A-Za-z0-9]+)/i',
+                    '/tracknum=([A-Za-z0-9]+)/i',
+                    '/tracking_numbers?=([A-Za-z0-9]+)/i',
+                ] as $pattern) {
+                    if (preg_match($pattern, $href, $match) === 1) {
+                        $tracking = $match[1];
+                        break;
+                    }
+                }
+            }
+        }
+        if ($service === '') {
+            $service = trim((string) ($orderRoot['shipping_provider'] ?? ''));
+        }
 
         return [
             'tracking' => $tracking !== '' ? $tracking : null,
@@ -374,16 +462,128 @@ class ReverbTrackingSyncService
 
     protected function trackingEquals(string $a, string $b): bool
     {
-        $normalize = static function (string $value): string {
-            $value = strtoupper(trim($value));
-            if (str_contains($value, ',')) {
-                $value = trim(explode(',', $value, 2)[0]);
+        return self::normalizeTracking($a) === self::normalizeTracking($b);
+    }
+
+    protected static function normalizeTracking(string $value): string
+    {
+        $value = strtoupper(trim($value));
+        if (str_contains($value, ',')) {
+            $value = trim(explode(',', $value, 2)[0]);
+        }
+
+        return preg_replace('/[\s\-]/', '', $value) ?? $value;
+    }
+
+    /**
+     * Write Reverb's shipping_code onto the linked Shopify order.
+     *
+     * @return array{success: bool, message: string}
+     */
+    protected function applyReverbTrackingToShopify(string $shopifyOrderId, string $tracking, string $carrier): array
+    {
+        $tracking = trim($tracking);
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($tracking === '' || $shopifyOrderId === '') {
+            return ['success' => false, 'message' => 'Shopify order id or Reverb tracking number is missing.'];
+        }
+
+        $config = $this->shopifyConfig();
+        $storeUrl = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        if ($storeUrl === '' || $token === '') {
+            return ['success' => false, 'message' => 'Shopify store credentials are missing.'];
+        }
+
+        $carrier = trim($carrier) !== '' ? trim($carrier) : 'Other';
+        $headers = [
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type' => 'application/json',
+        ];
+
+        try {
+            $orders = Http::withHeaders($headers)
+                ->timeout(30)
+                ->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}/fulfillment_orders.json");
+
+            $open = [];
+            if ($orders->successful()) {
+                foreach ($orders->json('fulfillment_orders') ?? [] as $fo) {
+                    if (! is_array($fo) || empty($fo['id'])) {
+                        continue;
+                    }
+                    $status = strtolower((string) ($fo['status'] ?? ''));
+                    if (in_array($status, ['closed', 'cancelled'], true)) {
+                        continue;
+                    }
+                    $open[] = ['fulfillment_order_id' => $fo['id']];
+                }
             }
 
-            return preg_replace('/[\s\-]/', '', $value) ?? $value;
-        };
+            if ($open !== []) {
+                $created = Http::withHeaders($headers)
+                    ->timeout(30)
+                    ->post("https://{$storeUrl}/admin/api/2024-01/fulfillments.json", [
+                        'fulfillment' => [
+                            'line_items_by_fulfillment_order' => $open,
+                            'tracking_info' => [
+                                'number' => $tracking,
+                                'company' => mb_substr($carrier, 0, 100),
+                            ],
+                            'notify_customer' => false,
+                        ],
+                    ]);
+                if ($created->successful()) {
+                    return ['success' => true, 'message' => 'Shopify fulfillment created from Reverb tracking.'];
+                }
+            }
 
-        return $normalize($a) === $normalize($b);
+            $order = Http::withHeaders($headers)
+                ->timeout(30)
+                ->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}.json", [
+                    'fields' => 'id,fulfillments',
+                ]);
+            if (! $order->successful()) {
+                return ['success' => false, 'message' => 'Could not load Shopify fulfillments to update tracking.'];
+            }
+
+            $want = self::normalizeTracking($tracking);
+            foreach ($order->json('order.fulfillments') ?? [] as $fulfillment) {
+                if (! is_array($fulfillment) || empty($fulfillment['id'])) {
+                    continue;
+                }
+                $status = strtolower((string) ($fulfillment['status'] ?? ''));
+                if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
+                    continue;
+                }
+                $existing = trim((string) ($fulfillment['tracking_number'] ?? ''));
+                if ($existing === '' && ! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
+                    $existing = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
+                }
+                if ($existing !== '' && self::normalizeTracking($existing) === $want) {
+                    return ['success' => true, 'message' => 'Shopify already has this Reverb tracking number.'];
+                }
+
+                $updated = Http::withHeaders($headers)
+                    ->timeout(30)
+                    ->post("https://{$storeUrl}/admin/api/2024-01/fulfillments/".((int) $fulfillment['id']).'/update_tracking.json', [
+                        'fulfillment' => [
+                            'notify_customer' => false,
+                            'tracking_info' => [
+                                'number' => $tracking,
+                                'company' => mb_substr($carrier, 0, 100),
+                            ],
+                        ],
+                    ]);
+                if ($updated->successful()) {
+                    return ['success' => true, 'message' => 'Shopify fulfillment tracking updated from Reverb.'];
+                }
+            }
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        return ['success' => false, 'message' => 'Reverb tracking could not be written onto the Shopify order.'];
     }
 
     /**

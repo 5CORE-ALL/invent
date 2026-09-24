@@ -79,11 +79,16 @@ class ReverbOrderDetailService
             if (is_array($raw['line'] ?? null)) {
                 // keep per-line snapshot
             }
-            $line->update([
+            $update = [
                 'raw_payload' => $raw,
                 'order_id' => $canonicalId,
                 'order_number' => $canonicalId,
-            ]);
+            ];
+            $status = trim((string) ($order['status'] ?? $order['order_status'] ?? ''));
+            if ($status !== '') {
+                $update['status'] = $status;
+            }
+            $line->update($update);
         }
 
         Log::info('ReverbOrderDetailService: persisted order detail', [

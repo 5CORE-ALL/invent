@@ -77,19 +77,53 @@ class Temu2TrackingSyncService
                 );
             }
         }
-        if (empty($shopifyFulfillment['tracking'])) {
+        $shopifyTracking = trim((string) ($shopifyFulfillment['tracking'] ?? ''));
+        $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
+
+        $temuPull = app(Temu2OrderTrackingPullService::class)->pullForParentOrder($parentOrderSn, true);
+        $line->refresh();
+        $temuTracking = trim((string) ($temuPull['tracking_number'] ?? $line->tracking_number ?? ''));
+        $temuCarrier = trim((string) ($temuPull['carrier'] ?? $line->carrier ?? ''));
+        $direction = ReverbTrackingSyncService::trackingSyncAction($shopifyTracking, $temuTracking);
+
+        if ($direction === 'pull_from_reverb') {
+            $provider = $temuCarrier !== '' ? $temuCarrier : 'Other';
+            $applied = app(ShopifyFulfillmentTrackingWriter::class)->apply(
+                $this->shopifyConfig(),
+                $shopifyOrderId,
+                $temuTracking,
+                $provider
+            );
+            if (empty($applied['success'])) {
+                return [
+                    'success' => false,
+                    'action' => 'pull_from_temu2',
+                    'message' => $applied['message'] ?? 'Temu 2 has a tracking number, but Shopify was not updated.',
+                    'shopify_tracking' => $shopifyTracking !== '' ? $shopifyTracking : null,
+                    'ship_carrier' => $provider,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'action' => 'pulled_from_temu2',
+                'message' => "Updated Shopify with Temu 2 tracking {$temuTracking} ({$provider}).",
+                'shopify_tracking' => $temuTracking,
+                'shopify_carrier' => $provider,
+                'ship_carrier' => $provider,
+            ];
+        }
+
+        if ($direction === 'none') {
             return [
                 'success' => false,
                 'skipped' => true,
                 'message' => $shopifyFulfillment['error']
-                    ?: 'No tracking number on Shopify yet. Buy/download a shipping label in Shopify first.',
+                    ?: 'No tracking number on Temu 2 or Shopify yet.',
                 'shopify_tracking' => null,
-                'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
+                'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
             ];
         }
-
-        $shopifyTracking = (string) $shopifyFulfillment['tracking'];
-        $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
 
         $regionId = (int) (
             $line->region_id
@@ -193,6 +227,7 @@ class Temu2TrackingSyncService
         $rows = Temu2Order::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
+            ->orderByRaw("CASE WHEN UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN ('SHIPPED', 'PARTIALLY_SHIPPED', 'DELIVERED', 'PARTIALLY_DELIVERED') THEN 0 ELSE 1 END")
             ->orderByDesc('id')
             ->limit($limit * 5)
             ->get(['id', 'parent_order_sn', 'shopify_order_id']);
@@ -358,6 +393,17 @@ class Temu2TrackingSyncService
             $extraOrderIds,
             'Temu2TrackingSyncService'
         );
+    }
+
+    /**
+     * @return array{store_url: string, token: string, store_key?: string}
+     */
+    protected function shopifyConfig(): array
+    {
+        $settings = MarketplaceSyncSettings::getFor('temu2');
+        $storeKey = (string) ($settings['order']['shopify_store'] ?? 'main');
+
+        return app(ShopifyStoreSelector::class)->getConfigForStore($storeKey);
     }
 
     protected function looksLikeAlreadyShipped(string $message): bool

@@ -6498,14 +6498,14 @@ class AliExpressApiService
         $table = app(\App\Services\Support\MarketplaceMetricsTableResolver::class)
             ->table($this->channelImageMetricsMarketplaceKey())
             ?? ($this->channelImageMetricsMarketplaceKey() === 'alibaba' ? 'alibaba_metrics' : 'aliexpress_metric');
-        $this->saveImageUrlsToMetricsRow($table, $sku, $images);
+                $this->saveImageUrlsToMetricsRow($table, $sku, $images);
 
-        return [
-            'success' => true,
+                return [
+                    'success' => true,
             'message' => (string) ($res['message'] ?? $this->channelLabel.' product images updated.'),
-            'normalized_urls' => $images,
-        ];
-    }
+                    'normalized_urls' => $images,
+                ];
+            }
 
     protected function channelImageMetricsMarketplaceKey(): string
     {
@@ -6545,7 +6545,7 @@ class AliExpressApiService
         }
 
         return $this->findChannelProductIdFromDataView($trim);
-    }
+        }
 
     protected function findChannelProductIdFromDataView(string $trim): ?string
     {
