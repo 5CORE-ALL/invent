@@ -684,7 +684,7 @@
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
 
-                    {{-- Sprc Dil (Dil → Target NROI, same as Amazon / eBay) + CVR Disc --}}
+                    {{-- Sprc Dil (Dil → Target SNROI, same as Amazon / eBay) --}}
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shopify_b2c'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2c'])
                 </div>
@@ -756,9 +756,6 @@
                     <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
                         placeholder="Enter %" step="0.01" style="width: 100px;">
                     <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply Decrease</button>
-                    <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-copy"></i> Sugg Amz Prc
-                    </button>
                     <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                         <i class="fas fa-eraser"></i> Clear SPRICE
                     </button>
@@ -1261,7 +1258,7 @@
         return f === true || f === 1 || f === '1' || f === 'true';
     }
 
-    /** S PRC to show / push. Sprc Dil wins (same as /tiktok-2-pricing), then CVR Disc / 0-sold / Std. Sugg Amz tracks live A Price. */
+    /** S PRC to show / push. Sprc Dil wins (same as /tiktok-2-pricing), then saved SPRICE. */
     function shopifyB2cDisplayedSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const stored = parseFloat(data.SPRICE) || 0;
@@ -2047,11 +2044,6 @@
             }
         });
 
-        // Sugg Amz Prc button
-        $('#sugg-amz-prc-btn').on('click', function() {
-            applySuggestAmazonPrice();
-        });
-
         // Clear SPRICE button
         $('#clear-sprice-btn').on('click', function() {
             clearSpriceForSelected();
@@ -2530,81 +2522,6 @@
             const action = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
             showToast(`${action} applied to ${updatedCount} SKU(s)`, 'success');
             $('#discount-percentage-input').val('');
-            if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
-        }
-
-        // Apply Amazon suggested price
-        function applySuggestAmazonPrice() {
-            if (selectedSkus.size === 0) {
-                showToast('Please select SKUs first', 'error');
-                return;
-            }
-
-            let updatedCount = 0;
-            let noAmazonPriceCount = 0;
-            const updates = []; // Store updates for backend saving
-
-            // Loop through selected SKUs
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows("(Child) sku", "=", sku);
-                
-                if (rows.length > 0) {
-                    const row = rows[0];
-                    const rowData = row.getData();
-                    const amazonPrice = parseFloat(rowData['A Price']);
-                    
-                    if (amazonPrice && amazonPrice > 0) {
-                        // Calculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
-                        const percentage = 0.95; // Shopify B2C margin
-                        const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                        const ads = shopifyChannelAdsPct();
-                        
-                        const grossProfit = (amazonPrice * percentage) - lp - ship;
-                        const sgpft = amazonPrice > 0 ? (grossProfit / amazonPrice) * 100 : 0;
-                        const snpft = sgpft - ads;
-                        const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
-                        const snroi = shopifyComputeSnroi(amazonPrice, lp, ship, ads);
-                        
-                        // Keep A Price on S PRC — do not let live promo / LMP cap replace it
-                        row.update({
-                            SPRICE: amazonPrice,
-                            SGPFT: sgpft,
-                            SNPFT: snpft,
-                            SROI: sroi,
-                            SNROI: snroi,
-                            has_custom_sprice: true,
-                            AMZ_SUGG_APPLIED: true,
-                            SPRICE_STATUS: 'applied'
-                        });
-                        
-                        // Store update for backend saving
-                        updates.push({
-                            sku: sku,
-                            sprice: amazonPrice,
-                            amz_sugg: 1
-                        });
-                        
-                        updatedCount++;
-                    } else {
-                        noAmazonPriceCount++;
-                    }
-                } else {
-                    noAmazonPriceCount++;
-                }
-            });
-            
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
-            }
-            
-            let message = `Amz price applied to ${updatedCount} SKU(s)`;
-            if (noAmazonPriceCount > 0) {
-                message += ` (${noAmazonPriceCount} SKU(s) had no Amz price or not found)`;
-            }
-            
-            showToast(message, updatedCount > 0 ? 'success' : 'warning');
             if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
         }
 

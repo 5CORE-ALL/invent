@@ -4843,6 +4843,8 @@ class AmazonAdsController extends Controller
             ? self::prefetchLifetimeAcosForPageRows($table, $dbColumns, $rows)
             : [];
         $data = [];
+        $suggestedSbidByRowId = [];
+        $suggestedSbidByCampaign = [];
         foreach ($rows as $row) {
             $rowArr = (array) $row;
             $arr = array_merge($empty, $rowArr);
@@ -4927,6 +4929,18 @@ class AmazonAdsController extends Controller
                 }
             }
             self::applyGridSbidFromUb2Ub1AndCpc($arr, $u, $rowArr, $dbColumns, $table);
+            $suggestedRowId = $rowArr['id'] ?? null;
+            if ($suggestedRowId !== null && $suggestedRowId !== ''
+                && in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
+                $wantSbid = AmazonBidUtilizationService::suggestedSbidStorageValue($arr['sbid'] ?? null);
+                $cidSave = trim((string) ($rowArr['campaign_id'] ?? ''));
+                if ($cidSave !== '') {
+                    $suggestedSbidByCampaign[$cidSave] = $wantSbid;
+                }
+                if (! AmazonBidUtilizationService::storedSbidMatches($rowArr['sbid'] ?? null, $wantSbid)) {
+                    $suggestedSbidByRowId[$suggestedRowId] = $wantSbid;
+                }
+            }
             if (in_array('bgt', $columns, true)) {
                 $bgtVal = $rowArr['campaignBudgetAmount'] ?? null;
                 if ($bgtVal === null || $bgtVal === '') {
@@ -5166,6 +5180,10 @@ class AmazonAdsController extends Controller
             self::roundAmazonAdsDisplayNumericFields($arr, $columns);
             unset($arr['pink_dil_paused_at'], $arr['campaignBudgetCurrencyCode']);
             $data[] = $arr;
+        }
+
+        if ($suggestedSbidByRowId !== [] || $suggestedSbidByCampaign !== []) {
+            AmazonBidUtilizationService::persistSuggestedSbidByRowId($table, $suggestedSbidByRowId, $suggestedSbidByCampaign);
         }
 
         if ($usePhpSort && ! $phpSortPaged) {

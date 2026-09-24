@@ -102,6 +102,7 @@ class AutoUpdateAmazonHlBids extends Command
                         $bothHigh = AmazonAdsSbidRule::isBothAboveUtilHigh($ub7, $ub1, $sbidRuleLog);
                         $bothLow = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRuleLog);
                         $campaignBudgetMap[$campaignId] = $sbid;
+                        AmazonBidUtilizationService::persistSuggestedSbidForCampaign('amazon_sb_campaign_reports', (string) $campaignId, (float) $sbid);
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
                             'bid' => $sbid,
@@ -399,18 +400,11 @@ class AutoUpdateAmazonHlBids extends Command
             // Calculate avg_cpc (lifetime average from daily records)
             $avgCpc = 0;
             try {
-                $avgCpcRecord = DB::table('amazon_sb_campaign_reports')
-                    ->select(DB::raw('AVG(CASE WHEN clicks > 0 THEN cost / clicks ELSE 0 END) as avg_cpc'))
-                    ->where('campaign_id', $campaignId)
-                    ->where('ad_type', 'SPONSORED_BRANDS')
-                    ->where('campaignStatus', '!=', 'ARCHIVED')
-                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-                    ->whereNotNull('campaign_id')
-                    ->first();
-                
-                if ($avgCpcRecord && $avgCpcRecord->avg_cpc > 0) {
-                    $avgCpc = floatval($avgCpcRecord->avg_cpc);
-                }
+                $avgCpc = AmazonBidUtilizationService::lifetimeAvgCpcFromDaily(
+                    'amazon_sb_campaign_reports',
+                    (string) $campaignId,
+                    'SPONSORED_BRANDS'
+                );
             } catch (\Exception $e) {
                 // Continue without avg_cpc if there's an error
             }

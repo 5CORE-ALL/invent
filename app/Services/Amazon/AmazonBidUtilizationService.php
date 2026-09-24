@@ -6,6 +6,7 @@ use App\Models\AmazonUtilizationCount;
 use App\Support\AmazonAdsSbidRule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AmazonBidUtilizationService
 {
@@ -54,6 +55,187 @@ class AmazonBidUtilizationService
             'ub1' => $ub1,
             'source' => 'computed',
         ];
+    }
+
+    /**
+     * Same lifetime CPC as the Amazon Ads All SBID cell: total daily cost ÷ total daily clicks.
+     */
+    public static function lifetimeAvgCpcFromDaily(string $table, string $campaignId, ?string $adType = null): float
+    {
+        $campaignId = trim($campaignId);
+        if ($campaignId === '' || ! Schema::hasTable($table)) {
+            return 0.0;
+        }
+        $costCol = Schema::hasColumn($table, 'cost') ? 'cost' : (Schema::hasColumn($table, 'spend') ? 'spend' : null);
+        if ($costCol === null || ! Schema::hasColumn($table, 'clicks')) {
+            return 0.0;
+        }
+        $q = DB::table($table)
+            ->where('campaign_id', $campaignId)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10');
+        if ($adType !== null && $adType !== '' && Schema::hasColumn($table, 'ad_type')) {
+            $q->where('ad_type', $adType);
+        }
+        $row = $q->selectRaw('SUM(`'.$costCol.'`) as life_cost, SUM(`clicks`) as life_clicks')->first();
+        $clicks = (float) ($row->life_clicks ?? 0);
+        $cost = (float) ($row->life_cost ?? 0);
+        if ($clicks <= 0 || $cost <= 0) {
+            return 0.0;
+        }
+        $n = $cost / $clicks;
+
+        return is_finite($n) && $n > 0 ? $n : 0.0;
+    }
+
+    public static function suggestedSbidStorageValue(mixed $computed): ?string
+    {
+        if (! is_numeric($computed)) {
+            return null;
+        }
+        $n = round((float) $computed, 2);
+        if (! is_finite($n) || $n <= 0) {
+            return null;
+        }
+
+        return number_format($n, 2, '.', '');
+    }
+
+    public static function storedSbidMatches(mixed $stored, ?string $want): bool
+    {
+        $have = self::suggestedSbidStorageValue($stored);
+        if ($have === null && is_numeric($stored) && (float) $stored == 0.0) {
+            $have = null;
+        }
+
+        return $have === $want;
+    }
+
+    /**
+     * Write the SBID cell suggestion onto the visible report rows and the latest
+     * daily row the morning push reads. Does not touch last_sbid (the live Amazon bid).
+     *
+     * @param  array<int|string, float|string|null>  $sbidByRowId
+     * @param  array<string, float|string|null>  $sbidByCampaignId
+     */
+    public static function persistSuggestedSbidByRowId(string $table, array $sbidByRowId, array $sbidByCampaignId = []): void
+    {
+        if (! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
+            return;
+        }
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sbid')) {
+            return;
+        }
+        if ($sbidByCampaignId !== []) {
+            foreach (self::latestDailyRowIds($table, array_keys($sbidByCampaignId)) as $campaignId => $latest) {
+                $want = self::suggestedSbidStorageValue($sbidByCampaignId[$campaignId] ?? null);
+                if (! self::storedSbidMatches($latest['sbid'] ?? null, $want)) {
+                    $sbidByRowId[$latest['id']] = $want;
+                }
+            }
+        }
+        if ($sbidByRowId === []) {
+            return;
+        }
+        $normalized = [];
+        foreach ($sbidByRowId as $id => $sbid) {
+            $normalized[$id] = self::suggestedSbidStorageValue($sbid);
+        }
+        foreach (array_chunk($normalized, 100, true) as $chunk) {
+            $cases = [];
+            $bindings = [];
+            $ids = [];
+            foreach ($chunk as $id => $sbid) {
+                $ids[] = $id;
+                if ($sbid === null) {
+                    $cases[] = 'WHEN ? THEN NULL';
+                    $bindings[] = $id;
+                } else {
+                    $cases[] = 'WHEN ? THEN ?';
+                    $bindings[] = $id;
+                    $bindings[] = $sbid;
+                }
+            }
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            DB::update(
+                'UPDATE `'.$table.'` SET `sbid` = CASE `id` '.implode(' ', $cases).' ELSE `sbid` END WHERE `id` IN ('.$placeholders.')',
+                array_merge($bindings, $ids)
+            );
+        }
+    }
+
+    /**
+     * @param  array<int, string>  $campaignIds
+     * @return array<string, array{id: int|string, sbid: mixed}>
+     */
+    private static function latestDailyRowIds(string $table, array $campaignIds): array
+    {
+        $out = [];
+        foreach (array_chunk(array_values(array_unique($campaignIds)), 200) as $chunk) {
+            $chunk = array_values(array_filter($chunk, static fn ($id) => trim((string) $id) !== ''));
+            if ($chunk === []) {
+                continue;
+            }
+            $maxes = DB::table($table)
+                ->select('campaign_id', DB::raw('MAX(report_date_range) as latest'))
+                ->whereIn('campaign_id', $chunk)
+                ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+                ->groupBy('campaign_id')
+                ->get();
+            if ($maxes->isEmpty()) {
+                continue;
+            }
+            $rows = DB::table($table)
+                ->select('id', 'campaign_id', 'sbid')
+                ->where(function ($q) use ($maxes) {
+                    foreach ($maxes as $max) {
+                        $q->orWhere(function ($w) use ($max) {
+                            $w->where('campaign_id', $max->campaign_id)
+                                ->where('report_date_range', $max->latest);
+                        });
+                    }
+                })
+                ->get();
+            foreach ($rows as $row) {
+                $out[(string) $row->campaign_id] = [
+                    'id' => $row->id,
+                    'sbid' => $row->sbid,
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Keep L1/L7/L30 and the latest daily row on the suggestion that will be pushed.
+     */
+    public static function persistSuggestedSbidForCampaign(string $table, string $campaignId, float $sbid): void
+    {
+        $campaignId = trim($campaignId);
+        $stored = self::suggestedSbidStorageValue($sbid);
+        if ($campaignId === '' || $stored === null || ! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
+            return;
+        }
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sbid')) {
+            return;
+        }
+        $latest = DB::table($table)
+            ->where('campaign_id', $campaignId)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->max('report_date_range');
+        $ranges = ['L1', 'L7', 'L30'];
+        if (is_string($latest) && $latest !== '') {
+            $ranges[] = $latest;
+        }
+        DB::table($table)
+            ->where('campaign_id', $campaignId)
+            ->whereIn('report_date_range', $ranges)
+            ->where(function ($q) use ($stored) {
+                $q->whereNull('sbid')
+                    ->orWhere('sbid', '=', '')
+                    ->orWhereRaw('ROUND(`sbid` + 0, 2) <> ?', [(float) $stored]);
+            })
+            ->update(['sbid' => $stored]);
     }
 
     public static function persistSpSbidM(string $campaignId, float $sbidM): int

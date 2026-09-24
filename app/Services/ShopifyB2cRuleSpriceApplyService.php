@@ -19,16 +19,11 @@ use Throwable;
 
 /**
  * Page-less Sprc Dil → S PRC (same as /shopify-b2c-pricing), then raise to A Price when below Amz.
- * Dil slabs are Target NROI (Ads% = Shopify TCOS / page Ads badge).
- * CVR Disc is the fallback when Dil does not match and B2C L30 > 0.
- * Writes shopifyb2c_data_view SPRICE + PEF_CPN_PCT even if /shopify-b2c-pricing is closed.
+ * Dil slabs are Target SNROI (Ads% = Shopify TCOS / page Ads badge).
+ * Writes shopifyb2c_data_view SPRICE even if /shopify-b2c-pricing is closed.
  */
 class ShopifyB2cRuleSpriceApplyService
 {
-    public function __construct(
-        private readonly PefCvrCpnAutoApplyService $cvrCpnRules
-    ) {}
-
     /**
      * @param  list<string>|null  $onlySkus
      * @param  callable(string): void|null  $logger
@@ -36,7 +31,6 @@ class ShopifyB2cRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
-        $cvrRules = $this->loadCvrRules();
         $dilStore = $this->loadDilGroiStore();
         $dilRules = $dilStore['rules'];
         $cvrAdj = $dilStore['cvr_adj'];
@@ -48,8 +42,8 @@ class ShopifyB2cRuleSpriceApplyService
         }
         $adsPct = $this->channelAdsPercent();
 
-        $this->log($logger, 'Loaded Dil slabs='.count($dilRules).' CVR slabs='.count($cvrRules)
-            .' ads%='.$adsPct.' target=NROI');
+        $this->log($logger, 'Loaded Dil slabs='.count($dilRules)
+            .' ads%='.$adsPct.' target=SNROI');
 
         $stats = [
             'candidates' => 0,
@@ -85,7 +79,6 @@ class ShopifyB2cRuleSpriceApplyService
                 })
                 ->orderBy('id')
                 ->chunkById(150, function ($rows) use (
-                    $cvrRules,
                     $dilRules,
                     $cvrAdj,
                     $zeroRules,
@@ -110,7 +103,7 @@ class ShopifyB2cRuleSpriceApplyService
                             return false;
                         }
                         try {
-                            $computed = $this->computeTarget($row, $cvrRules, $zeroRules, $zeroMinRoi, $margin, $dilRules, $cvrAdj, $adsPct);
+                            $computed = $this->computeTarget($row, [], $zeroRules, $zeroMinRoi, $margin, $dilRules, $cvrAdj, $adsPct);
                             if ($computed === null) {
                                 $stats['skipped']++;
                                 continue;
@@ -265,13 +258,12 @@ class ShopifyB2cRuleSpriceApplyService
      */
     protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin, array $dilRules = [], ?array $cvrAdj = null, float $adsPct = 0.0): ?array
     {
-        $inv = (float) ($row['inv'] ?? 0);
         $dil = (float) ($row['dil'] ?? 0);
         $cvr = (float) ($row['cvr'] ?? 0);
         $sold = (float) ($row['b2c_l30'] ?? 0);
         $zeroSold = $sold <= 0;
         $prmt = 0.0;
-        $cpn = $inv > 0 ? $this->cvrCpnRules->cpnForCvr($cvr, $cvrRules) : 0.0;
+        $cpn = 0.0;
         $amz = (float) ($row['amz'] ?? 0);
         $amzSugg = ! empty($row['amz_sugg']) && $amz > 0;
 
@@ -298,8 +290,7 @@ class ShopifyB2cRuleSpriceApplyService
                 if (! ($std > 0)) {
                     return null;
                 }
-                $t = min(99.99, max(0, $prmt + $cpn));
-                $sprice = $t > 0 ? round($std * (1 - $t / 100), 2) : round($std, 2);
+                $sprice = round($std, 2);
             }
 
             if ($sprice > 0 && $amz > 0 && $sprice < $amz) {
@@ -376,25 +367,6 @@ class ShopifyB2cRuleSpriceApplyService
 
         $view->value = $existing;
         $view->save();
-    }
-
-    /** @return list<array{key:string,label:string,cpn:float}> */
-    protected function loadCvrRules(): array
-    {
-        $defaults = [
-            ['key' => '0.01-1', 'label' => '0.01–1%', 'cpn' => 9],
-            ['key' => '1-1.5', 'label' => '1–1.5%', 'cpn' => 8],
-            ['key' => '1.5-2', 'label' => '1.5–2%', 'cpn' => 7],
-            ['key' => '2-3', 'label' => '2–3%', 'cpn' => 6],
-            ['key' => '3-4', 'label' => '3–4%', 'cpn' => 5],
-            ['key' => '4-5', 'label' => '4–5%', 'cpn' => 4],
-            ['key' => '5-6', 'label' => '5–6%', 'cpn' => 3],
-            ['key' => '6-6.5', 'label' => '6–6.5%', 'cpn' => 2],
-            ['key' => '6.5-7', 'label' => '6.5–7%', 'cpn' => 1],
-            ['key' => 'gt-7', 'label' => '> 7%', 'cpn' => 0],
-        ];
-
-        return $this->loadStoredRules('shopify_b2c_cvr_vs_cpn', $defaults, 'cpn');
     }
 
     /**

@@ -589,7 +589,6 @@ class AmazonSpCampaignReports extends Command
             'suggestedBid',
             'currentSpBidPrice',
             'effectiveBid',
-            'costPerClick', // last-resort fallback when explicit bid is missing
         ]);
 
         $lastSbid = $this->extractBidValue($row, [

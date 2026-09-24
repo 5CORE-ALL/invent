@@ -562,7 +562,6 @@ class AmazonSbCampaignReports extends Command
             'keywordBid',
             'suggestedBid',
             'effectiveBid',
-            'costPerClick', // fallback when explicit bid key is missing
         ]);
 
         $lastSbid = $this->extractBidValue($row, [

@@ -8,9 +8,8 @@
 @php
     $channelPromoPart = $channelPromoPart ?? 'all';
     $channelPromoChannel = $channelPromoChannel ?? 'ebay1';
-    // CVR vs CPN rule + cvr % column removed from every channel page.
-    // Shopify B2C keeps CVR Disc. (Amazon discount slabs), which shares this flag.
-    $channelPromoHideCvrCpn = $channelPromoChannel !== 'shopify_b2c';
+    // CVR vs CPN / CVR Disc button, modal, and column are off on every channel page.
+    $channelPromoHideCvrCpn = true;
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
@@ -22,7 +21,7 @@
     $channelPromoZeroSoldSoldLabel = $channelPromoChannel === 'shopify_b2c' ? 'B2C L30' : 'L30';
     $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'depop', 'vinted', 'instagram'], true);
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'fb_marketplace'], true);
-    $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
+    $channelPromoUsesAmazonCvrDisc = false;
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
     $channelPromoTakehome = ($channelPromoPart === 'script' || $channelPromoPart === 'all')
         ? \App\Models\MarketplacePercentage::takeHomeForPromoChannel($channelPromoChannel)

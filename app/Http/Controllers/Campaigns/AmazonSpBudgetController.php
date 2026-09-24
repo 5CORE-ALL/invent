@@ -2173,20 +2173,19 @@ class AmazonSpBudgetController extends Controller
         try {
             if ($campaignType === 'HL') {
                 $dailyRecords = DB::table('amazon_sb_campaign_reports')
-                    ->select('campaign_id', DB::raw('AVG(CASE WHEN clicks > 0 THEN cost / clicks ELSE 0 END) as avg_cpc'))
+                    ->select('campaign_id', DB::raw('CASE WHEN SUM(clicks) > 0 THEN SUM(cost) / SUM(clicks) ELSE 0 END as avg_cpc'))
                     ->where('ad_type', 'SPONSORED_BRANDS')
                     ->where('campaignStatus', '!=', 'ARCHIVED')
-                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
                     ->whereNotNull('campaign_id')
                     ->groupBy('campaign_id')
                     ->get();
             } else {
                 $dailyRecords = DB::table('amazon_sp_campaign_reports')
-                    ->select('campaign_id', DB::raw('AVG(costPerClick) as avg_cpc'))
+                    ->select('campaign_id', DB::raw('CASE WHEN SUM(clicks) > 0 THEN SUM(cost) / SUM(clicks) ELSE 0 END as avg_cpc'))
                     ->where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('campaignStatus', '!=', 'ARCHIVED')
-                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-                    ->where('costPerClick', '>', 0)
+                    ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
                     ->whereNotNull('campaign_id')
                     ->groupBy('campaign_id')
                     ->get();
