@@ -125,6 +125,18 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ]);
     }
 
+    /** Same All Issues Tabulator board, locked to the "Pricing" department. */
+    public function pricingIssuesBoard()
+    {
+        return view('customer-care.all_issues', $this->issueBoardIndexData() + [
+            'pageTitle' => 'Pricing Issues',
+            'addIssueButtonText' => 'Pricing Issues',
+            'lockedDepartment' => 'Pricing',
+            'hideDepartmentColumnAndFilter' => true,
+            'colVisChannel' => 'pricing_issues',
+        ]);
+    }
+
     protected function issuesTable(): string
     {
         return 'dispatch_issue_issues';

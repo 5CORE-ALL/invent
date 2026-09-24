@@ -315,6 +315,7 @@ class AuditMasterController extends Controller
 
         return [
             'tz'          => self::SHIPPING_CLEAR_TZ,
+            'tz_label'    => 'EST',
             'from_hour'   => $fromHour,
             'to_hour'     => $toHour,
             'label'       => $label,
@@ -358,19 +359,22 @@ class AuditMasterController extends Controller
     private function ccShippingHistoryAggregates(array $channelIds): array
     {
         $tz    = self::SHIPPING_CLEAR_TZ;
-        $today = \Carbon\Carbon::now($tz)->startOfDay();
+        $now   = \Carbon\Carbon::now($tz);
+        $today = $now->copy()->startOfDay();
 
-        // Build the list of eligible EST dates: 30 calendar days back
-        // (inclusive of today), excluding Sundays.
-        $eligibleDates = [];
+        // 30 Ohio calendar days back, including today, excluding Sundays.
+        // Today is removed per workflow until that window has closed, so
+        // a day is not counted missed before 10:00 (9AM Clear) or 16:00
+        // (3 PM Clear).
+        $allDates = [];
         for ($i = 0; $i < 30; $i++) {
             $d = $today->copy()->subDays($i);
             if ($d->dayOfWeek === \Carbon\Carbon::SUNDAY) continue;
-            $eligibleDates[$d->toDateString()] = true;
+            $allDates[$d->toDateString()] = true;
         }
+        $todayKey = $today->toDateString();
 
         $channelCount = count($channelIds);
-        $slotsPerKind = $channelCount * count($eligibleDates);
 
         // Lower bound for the SQL filter. Bias by 32 hours so a submission
         // logged just before midnight EST that maps to "today" doesn't get
@@ -379,11 +383,17 @@ class AuditMasterController extends Controller
 
         $out = [];
         $tables = [
-            'nine_am_clear'  => 'cc_shipping_checklists',
-            'three_pm_clear' => 'cc_shipping_returns_checklists',
+            'nine_am_clear'  => ['table' => 'cc_shipping_checklists', 'close_hour' => self::SHIPPING_CLEAR_WINDOW_TO],
+            'three_pm_clear' => ['table' => 'cc_shipping_returns_checklists', 'close_hour' => self::SHIPPING_RETURNS_WINDOW_TO],
         ];
 
-        foreach ($tables as $key => $table) {
+        foreach ($tables as $key => $spec) {
+            $table = $spec['table'];
+            $eligibleDates = $allDates;
+            if ((int) $now->hour < (int) $spec['close_hour']) {
+                unset($eligibleDates[$todayKey]);
+            }
+            $slotsPerKind = $channelCount * count($eligibleDates);
             $base = [
                 'success'  => 0,
                 'missed'  => $slotsPerKind,
@@ -1087,7 +1097,7 @@ class AuditMasterController extends Controller
                     . sprintf('%02d:00', self::SHIPPING_CLEAR_WINDOW_FROM)
                     . ' and '
                     . sprintf('%02d:00', self::SHIPPING_CLEAR_WINDOW_TO)
-                    . ' ' . self::SHIPPING_CLEAR_TZ
+                    . ' EST'
                     . '. It is currently ' . $nowEst->format('H:i') . ' there.',
                 'window_open' => false,
             ], 422);
@@ -1205,7 +1215,7 @@ class AuditMasterController extends Controller
                     . sprintf('%02d:00', self::SHIPPING_RETURNS_WINDOW_FROM)
                     . ' and '
                     . sprintf('%02d:00', self::SHIPPING_RETURNS_WINDOW_TO)
-                    . ' ' . self::SHIPPING_CLEAR_TZ
+                    . ' EST'
                     . '. It is currently ' . $nowEst->format('H:i') . ' there.',
                 'window_open' => false,
             ], 422);

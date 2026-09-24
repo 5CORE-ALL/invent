@@ -765,15 +765,13 @@
             // Shipping page "R Next" — writes to cc_shipping_returns_channel_next.
             const urlRNextValueSave = @json(route('customer.care.cc.shipping.r.next.store'));
 
-            // Daily-submission window snapshots — server-side state at
-            // page render. Each modal open re-evaluates the open/closed
-            // flag client-side from the user's wall clock against the
-            // same EST hour range, so a tab left open across the upper
-            // bound auto-locks.
-            //   - 9AM Clear (Messages side):  09:00–10:00 EST
-            //   - 3 PM Clear (Returns side):  15:00–16:00 EST
+            // Daily-submission windows, evaluated in Ohio time and labeled EST.
+            //   - 9AM Clear (Messages side):  09:00–10:00 EST — missed only after 10:00
+            //   - 3 PM Clear (Returns side):  15:00–16:00 EST — missed only after 16:00
             const NINE_AM_CLEAR_WINDOW = @json($nineAmClearWindow ?? null);
             const THREE_PM_CLEAR_WINDOW = @json($threePmClearWindow ?? null);
+            const EST_TZ = 'America/New_York';
+            const EST_LABEL = 'EST';
 
             // Windows keyed by checklist kind. Add more entries here if a
             // future workflow also needs a time gate.
@@ -1134,9 +1132,10 @@
                     const hh = parseInt((parts.find(p => p.type === 'hour') || {}).value || '0', 10);
                     const mm = (parts.find(p => p.type === 'minute') || {}).value || '00';
                     const open = hh >= win.from_hour && hh < win.to_hour;
+                    const zone = win.tz_label || EST_LABEL;
                     return {
                         open,
-                        label: String(hh).padStart(2, '0') + ':' + mm + ' ' + win.tz,
+                        label: String(hh).padStart(2, '0') + ':' + mm + ' ' + zone,
                     };
                 } catch (e) {
                     return {
@@ -1159,6 +1158,7 @@
                 const state = currentWindowState(win);
                 windowBannerEl.classList.remove('d-none', 'is-open', 'is-closed');
                 windowBannerEl.classList.add(state.open ? 'is-open' : 'is-closed');
+                const zone = win.tz_label || EST_LABEL;
                 const winLabel = String(win.from_hour).padStart(2, '0') + ':00'
                     + '–'
                     + String(win.to_hour).padStart(2, '0') + ':00';
@@ -1166,12 +1166,12 @@
                 windowBannerEl.innerHTML = state.open
                     ? '<i class="fa-solid fa-clock"></i>'
                         + '<span>' + escHtml(title) + ' window OPEN · '
-                        + winLabel + ' ' + win.tz
+                        + winLabel + ' ' + zone
                         + ' · now ' + state.label
                         + '</span>'
                     : '<i class="fa-solid fa-lock"></i>'
                         + '<span>' + escHtml(title) + ' window CLOSED · only '
-                        + winLabel + ' ' + win.tz
+                        + winLabel + ' ' + zone
                         + ' submissions allowed · now ' + state.label
                         + '</span>';
                 if (checklistSubmitBtn) {
@@ -1311,13 +1311,35 @@
             const historyEmptyEl   = document.getElementById('ccmrHistoryEmpty');
             const historyKindEl    = document.getElementById('ccmrHistoryKind');
 
+            function fmtEstDate(iso) {
+                if (!iso) return '—';
+                const d = new Date(iso);
+                if (isNaN(d.getTime())) return '—';
+                return d.toLocaleDateString('en-US', {
+                    timeZone: EST_TZ,
+                    year: 'numeric',
+                    month: 'short',
+                    day: '2-digit',
+                });
+            }
+
             function fmtDateTime(iso) {
                 if (!iso) return '—';
                 const d = new Date(iso);
                 if (isNaN(d.getTime())) return '—';
-                const date = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
-                const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
-                return date + ' ' + time;
+                const date = d.toLocaleDateString('en-US', {
+                    timeZone: EST_TZ,
+                    year: 'numeric',
+                    month: 'short',
+                    day: '2-digit',
+                });
+                const time = d.toLocaleTimeString('en-US', {
+                    timeZone: EST_TZ,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true,
+                });
+                return date + ' ' + time + ' EST';
             }
 
             function fmtRelative(iso) {
@@ -1387,11 +1409,7 @@
                                 // and no checklist booleans — render them
                                 // distinctively so the gap is obvious.
                                 if (r && r.status === 'missed') {
-                                    const when = r.submitted_at
-                                        ? new Date(r.submitted_at).toLocaleDateString(undefined, {
-                                            year: 'numeric', month: 'short', day: '2-digit'
-                                          })
-                                        : '—';
+                                    const when = fmtEstDate(r.submitted_at);
                                     return '<tr class="is-missed">' +
                                         '<td>' + escHtml(when) + '</td>' +
                                         '<td colspan="7" class="text-center">' +

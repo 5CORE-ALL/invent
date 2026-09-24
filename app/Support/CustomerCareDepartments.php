@@ -47,6 +47,11 @@ class CustomerCareDepartments
         'qc pkg' => 'QC',
         'qc packaging' => 'QC',
         'qc and packing' => 'QC',
+        'pricing' => 'Pricing',
+        'pricing issue' => 'Pricing',
+        'pricing issues' => 'Pricing',
+        'pricing error' => 'Pricing',
+        'pricing errors' => 'Pricing',
     ];
 
     public static function canonicalDepartment(string $value): string
