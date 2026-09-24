@@ -1333,17 +1333,9 @@
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;
             let amzApplied = false;
-            if (ebayDgIsShopifyB2c()) {
-                const floored = (typeof chPromoFinalSpriceToSave === 'function')
-                    ? Number(chPromoFinalSpriceToSave(d, rawSprc))
-                    : ((typeof chPromoFloorShopifySpriceToAmz === 'function')
-                        ? Number(chPromoFloorShopifySpriceToAmz(d, rawSprc))
-                        : rawSprc);
-                if (floored > 0) {
-                    amzApplied = floored > rawSprc + 0.001;
-                    sprc = ebayDgRound2(floored);
-                }
-            } else if (ebayDgUsesAmzFloor()) {
+            // Shopify B2C Sprc Dil stays the Dil suggestion. S PRC caps to A Price
+            // when that suggestion is above Amz (shopifyB2cCapLikeTemu).
+            if (ebayDgUsesAmzFloor()) {
                 const amz = (typeof chPromoAmazonPrice === 'function')
                     ? ebayDgRound2(chPromoAmazonPrice(d))
                     : ebayDgRound2(d && (d['A Price'] != null ? d['A Price'] : (d.a_price || d.amazon_price)));

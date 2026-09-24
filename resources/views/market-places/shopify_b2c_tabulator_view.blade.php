@@ -3282,29 +3282,23 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. The S PRC cell then takes the lowest of this price, A Price, and LMP. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. S PRC then takes the lowest of this price, A Price, and LMP. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                         const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta || !(meta.sprc > 0)) return '';
-                        const raw = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || meta.sprc;
-                        const amz = shopifyB2cAmzPrice(rowData);
-                        const cappedToAmz = amz > 0 && raw > amz + 0.004 && Math.abs(meta.sprc - amz) < 0.015;
-                        const tipMeta = meta;
-                        let tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(tipMeta, { zeroSoldLabel: '0 Sold B2C L30 → min Target NROI' })
+                        if (!meta) return '';
+                        const shown = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
+                        if (!(shown > 0)) return '';
+                        const tip = (typeof ebayDilGroiTipText === 'function')
+                            ? ebayDilGroiTipText(Object.assign({}, meta, { sprc: shown }), { zeroSoldLabel: '0 Sold B2C L30 → min Target NROI' })
                             : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
                                 + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + Number(raw).toFixed(2));
-                        if (cappedToAmz) tip += ' → capped to Amz $' + amz.toFixed(2);
-                        const amzLbl = cappedToAmz
-                            ? ' <span class="shopifyb2c-sprice-amz-lbl" title="Dil $' + Number(raw).toFixed(2) + ' &gt; A Price $' + amz.toFixed(2) + ' — capped to Amz">Amz</span>'
-                            : '';
+                                + ' → $' + shown.toFixed(2));
                         return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>' + amzLbl;
+                            + shown.toFixed(2) + '</span>';
                     },
                     width: 78
                 },
