@@ -4985,8 +4985,7 @@
             layout: 'fitColumns',
             placeholder: 'Loading Recd/Transit orders…',
             initialSort: [
-                { column: 'scan_pending_over_36h', dir: 'desc' },
-                { column: 'updated_at', dir: 'desc' },
+                { column: 'order_date', dir: 'asc' },
             ],
             rowFormatter: function (row) {
                 const el = row.getElement();
@@ -5027,10 +5026,6 @@
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(inTransitRows);
                 applyInTransitFilters();
-                sofPinInTransitScanPendingLate(inTransitTable);
-            },
-            dataSorted: function () {
-                sofPinInTransitScanPendingLate(inTransitTable);
             },
             columns: (function () {
                 const cols = orderListColumns('sof-in-transit-badge');

@@ -2338,15 +2338,13 @@ class SalesOrderFulfillmentController extends Controller
         unset($row);
 
         usort($rows, static function (array $a, array $b): int {
-            $aLate = (int) ($a['scan_pending_over_36h'] ?? 0);
-            $bLate = (int) ($b['scan_pending_over_36h'] ?? 0);
-            if ($aLate !== $bLate) {
-                return $bLate <=> $aLate;
+            $ak = (string) ($a['order_date'] ?? '');
+            $bk = (string) ($b['order_date'] ?? '');
+            if ($ak === '' || $bk === '') {
+                return ($ak === '' ? 1 : 0) <=> ($bk === '' ? 1 : 0);
             }
-            $ak = (string) ($a['updated_at'] ?? $a['order_date'] ?? '');
-            $bk = (string) ($b['updated_at'] ?? $b['order_date'] ?? '');
 
-            return strcmp($bk, $ak);
+            return strcmp($ak, $bk);
         });
 
         return array_values($rows);
