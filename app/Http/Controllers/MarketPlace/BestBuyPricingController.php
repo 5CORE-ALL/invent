@@ -395,6 +395,31 @@ class BestBuyPricingController extends Controller
                 : null;
             $row['SPRICE_PUSHED_BY'] = is_array($raw ?? null) ? ($raw['SPRICE_PUSHED_BY'] ?? null) : null;
 
+            $pushedVal = (float) ($row['SPRICE_PUSHED_VALUE'] ?? 0);
+            $savedForPush = (float) ($row['SPRICE'] ?? 0);
+            if (($row['SPRICE_STATUS'] ?? '') === 'pushed'
+                && $pushedVal > 0
+                && $savedForPush > 0
+                && abs($pushedVal - $savedForPush) < 0.005
+                && ! ($row['is_missing_bb'] ?? false)
+                && (float) ($row['BB Price'] ?? 0) > 0
+            ) {
+                $row['BB Price'] = $pushedVal;
+                $row['Price Source'] = 'pushed';
+                $price = $pushedVal;
+                $row['Total_pft'] = round(($price * $percentage - $lp - $ship) * $units_ordered_l30, 2);
+                $row['Profit'] = $row['Total_pft'];
+                $row['T_Sale_l30'] = round($price * $units_ordered_l30, 2);
+                $row['Sales L30'] = $row['T_Sale_l30'];
+                $gpft = $price > 0 ? (($price * $percentage - $ship - $lp) / $price) * 100 : 0;
+                $row['GPFT%'] = round($gpft, 2);
+                $row['PFT %'] = round($gpft, 2);
+                $row['ROI%'] = round(
+                    $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) * 100 : 0,
+                    2
+                );
+            }
+
             // Calculate SGPFT based on SPRICE
             $sprice = $row['SPRICE'] ?? 0;
             $sgpft = round(
@@ -1191,10 +1216,19 @@ class BestBuyPricingController extends Controller
             $pricePushSuccess = 0;
             $pricePushFailed = 0;
             $pricePushErrors = [];
+            $pricePushResults = [];
             $singlePushResult = null;
             $skipPush = $request->boolean('skip_push');
             foreach ($skipPush ? [] : $pricePushQueue as $pushItem) {
                 $pushResult = $this->pushPriceToBestBuy($pushItem['sku'], (float) $pushItem['sprice']);
+                $pricePushResults[] = [
+                    'sku' => $pushItem['sku'],
+                    'success' => (bool) ($pushResult['success'] ?? false),
+                    'price' => $pushResult['price'] ?? null,
+                    'capped' => (bool) ($pushResult['capped'] ?? false),
+                    'amazon_price' => $pushResult['amazon_price'] ?? null,
+                    'message' => (string) ($pushResult['message'] ?? ''),
+                ];
                 if (count($pricePushQueue) === 1) {
                     $singlePushResult = $pushResult;
                 }
@@ -1212,6 +1246,8 @@ class BestBuyPricingController extends Controller
                 'message' => "Successfully saved {$updated} SPRICE update(s)",
                 'price_push_success_count' => $pricePushSuccess,
                 'price_push_failed_count' => $pricePushFailed,
+                'price_push_skipped' => $skipPush,
+                'price_push_results' => $pricePushResults,
             ];
 
             // Include calculated metrics for single updates (manual cell edits)

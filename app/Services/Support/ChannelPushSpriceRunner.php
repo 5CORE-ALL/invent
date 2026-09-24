@@ -308,7 +308,7 @@ class ChannelPushSpriceRunner
                     }
                     if ($this->channel === 'topdawg') {
                         $pulled = $this->pullLivePriceAfterPush($sku, $stamp);
-                        if ($pulled > 0 && abs($pulled - $stamp) < 0.05) {
+                        if ($pulled > 0) {
                             $live = $pulled;
                         }
                     }

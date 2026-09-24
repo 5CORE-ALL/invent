@@ -518,6 +518,39 @@
         } catch (e) { /* ignore */ }
         return found;
     }
+    function bestbuyApplyLivePriceToRow(row, price) {
+        if (!row || typeof row.getData !== 'function') return;
+        const live = Number(price) || 0;
+        if (!(live > 0)) return;
+        const d = row.getData() || {};
+        const percentage = parseFloat(d.percentage) || 0.80;
+        const lp = parseFloat(d.LP_productmaster) || 0;
+        const ship = parseFloat(d.Ship_productmaster) || 0;
+        const units = parseFloat(d['BB L30']) || 0;
+        const gpft = ((live * percentage - ship - lp) / live) * 100;
+        const profit = (live * percentage - lp - ship) * units;
+        const patch = {
+            SPRICE_STATUS: 'pushed',
+            push_status: 'pushed',
+            SPRICE_PUSHED_VALUE: live,
+            SPRICE: live,
+            price: live,
+            is_missing_bb: false,
+            'Price Source': 'pushed',
+            'GPFT%': Math.round(gpft * 100) / 100,
+            'PFT %': Math.round(gpft * 100) / 100,
+            'ROI%': lp > 0 ? Math.round(((live * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0,
+            Profit: Math.round(profit * 100) / 100,
+            Total_pft: Math.round(profit * 100) / 100,
+            'Sales L30': Math.round(live * units * 100) / 100,
+            T_Sale_l30: Math.round(live * units * 100) / 100,
+        };
+        patch['BB Price'] = live;
+        try { row.update(patch); } catch (e) { /* ignore */ }
+        try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
+    }
+    window.bestbuyApplyLivePriceToRow = bestbuyApplyLivePriceToRow;
+
     function bestbuyApplyPushResults(results) {
         (results || []).forEach(function(r) {
             if (!r || !r.sku) return;
@@ -525,14 +558,14 @@
             if (!row) return;
             const ok = !!r.success;
             const live = Number(r.price) || 0;
-            const patch = {
-                SPRICE_STATUS: ok ? 'pushed' : 'error',
-                push_status: ok ? 'pushed' : 'error',
-            };
-            if (ok && live > 0 && isBbListed(row.getData() || {})) {
-                patch.SPRICE_PUSHED_VALUE = live;
-                patch['BB Price'] = live;
+            if (ok && live > 0) {
+                bestbuyApplyLivePriceToRow(row, live);
+                return;
             }
+            const patch = {
+                SPRICE_STATUS: 'error',
+                push_status: 'error',
+            };
             try { row.update(patch); } catch (e) { /* ignore */ }
             try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
         });
@@ -1198,21 +1231,14 @@
                             } else if (pushOk > 0) {
                                 showToast(`BestBuy price push successful for ${pushOk} SKU(s)`, 'success');
                             }
-                            if (typeof table !== 'undefined' && table) {
+                            if (Array.isArray(response.price_push_results) && response.price_push_results.length) {
+                                bestbuyApplyPushResults(response.price_push_results);
+                            } else if (typeof table !== 'undefined' && table && pushOk > 0 && pushFail === 0) {
                                 (updates || []).forEach(function(u) {
                                     const price = Number(u && u.sprice);
                                     if (!u || !u.sku || !(price > 0)) return;
-                                    const rows = table.searchRows('(Child) sku', '=', u.sku);
-                                    if (!rows || !rows[0]) return;
-                                    const patch = {
-                                        SPRICE_STATUS: pushFail > 0 ? 'error' : (pushOk > 0 ? 'pushed' : 'error'),
-                                        push_status: pushFail > 0 ? 'error' : (pushOk > 0 ? 'pushed' : 'error'),
-                                    };
-                                    if (pushOk > 0 && pushFail === 0) {
-                                        patch['BB Price'] = price;
-                                        patch.SPRICE_PUSHED_VALUE = price;
-                                    }
-                                    try { rows[0].update(patch); } catch (e) { /* ignore */ }
+                                    const row = bestbuyFindRowBySku(u.sku);
+                                    if (row) bestbuyApplyLivePriceToRow(row, price);
                                 });
                             }
                         }

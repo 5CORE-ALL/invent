@@ -59,8 +59,9 @@ class TopDawgApiService
     /**
      * Live storefront / portal price from a SupplierProduct row.
      *
-     * TopDawg create/list uses `cost` (and often `msrp`) as the listing price.
-     * The `price` key is frequently 0 or omitted, so `??` must not win on 0.
+     * The supplier site price is `cost`. `msrp` is retail and must not win.
+     * A non-zero `price` key is not the site amount (S PRC pushes use that
+     * name), so `cost` is read first. Zero / blank amounts are skipped.
      *
      * @param  array<string, mixed>  $item
      */
@@ -72,7 +73,7 @@ class TopDawgApiService
         }
 
         foreach ($bags as $bag) {
-            foreach (['price', 'selling_price', 'retail_price', 'unit_price', 'cost', 'list_price', 'msrp'] as $key) {
+            foreach (['cost', 'price', 'selling_price', 'retail_price', 'unit_price', 'list_price', 'msrp'] as $key) {
                 $n = self::positiveMoneyValue($bag[$key] ?? null);
                 if ($n !== null) {
                     return $n;
@@ -134,16 +135,14 @@ class TopDawgApiService
         $expected = $expected !== null && $expected > 0 ? round((float) $expected, 2) : null;
         $stale = $expected !== null && abs($price - $expected) >= 0.05;
 
-        // Review-queue list/cost must not overwrite the just-pushed S PRC.
-        if (! $stale) {
-            try {
-                ChannelLivePriceSync::writeLive('topdawg', $sku, $price);
-            } catch (\Throwable $e) {
-                Log::warning('TopDawg live price persist after pull failed', [
-                    'sku' => $sku,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+        // Price column is the live site cost, including while a push is still in review.
+        try {
+            ChannelLivePriceSync::writeLive('topdawg', $sku, $price);
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg live price persist after pull failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return [

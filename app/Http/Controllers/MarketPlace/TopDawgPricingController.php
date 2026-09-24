@@ -15,7 +15,6 @@ use App\Services\ChannelLivePriceSync;
 use App\Services\ChannelPromoPricingService;
 use App\Services\ChannelPushedPricePullService;
 use App\Services\TopDawgApiService;
-use App\Support\PushedListingPrice;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -214,13 +213,6 @@ class TopDawgPricingController extends Controller
                     $row['SPRICE_PUSHED_VALUE'] = $dvValue['SPRICE_PUSHED_VALUE'] ?? null;
                     $row['SPRICE_STATUS_UPDATED_AT'] = $dvValue['SPRICE_STATUS_UPDATED_AT'] ?? $dvValue['PUSH_STATUS_UPDATED_AT'] ?? null;
                     $row['SPRICE_PUSHED_BY'] = $dvValue['SPRICE_PUSHED_BY'] ?? null;
-                    if ($tdPrice <= 0) {
-                        $pushed = PushedListingPrice::fromValue($dvValue);
-                        if ($pushed !== null) {
-                            $tdPrice = $pushed;
-                            $row['TD Price'] = $tdPrice;
-                        }
-                    }
                 }
             }
 
@@ -663,14 +655,15 @@ class TopDawgPricingController extends Controller
     }
 
     /**
-     * Amazon-style: stamp S PRC into TD Price, then confirm with a live list pull.
+     * Record the submitted S PRC, then read the live site cost.
+     * TD Price stays the site cost until TopDawg actually lists that amount.
      *
-     * @return array{price: float, from_live: bool}
+     * @return array{price: float, from_live: bool, site_price: bool}
      */
     private function confirmAndPullAfterPush(string $sku, float $price): array
     {
         $price = round($price, 2);
-        $out = ['price' => $price, 'from_live' => false];
+        $out = ['price' => $price, 'from_live' => false, 'site_price' => false];
         try {
             ChannelLivePriceSync::confirmAfterPush('topdawg', $sku, $price);
         } catch (\Throwable $e) {
@@ -685,9 +678,10 @@ class TopDawgPricingController extends Controller
                 ->pullSkus('topdawg', [$sku], [strtoupper(trim($sku)) => $price]);
             $row = $rows[0] ?? [];
             $live = (float) ($row['price'] ?? 0);
-            if (! empty($row['success']) && $live > 0 && abs($live - $price) < 0.05) {
+            if ($live > 0) {
                 $out['price'] = round($live, 2);
-                $out['from_live'] = true;
+                $out['site_price'] = true;
+                $out['from_live'] = ! empty($row['success']) && abs($live - $price) < 0.05;
             }
         } catch (\Throwable $e) {
             Log::warning('TopDawg live price pull after push failed', [
@@ -784,6 +778,7 @@ class TopDawgPricingController extends Controller
                     'status'  => $r['status'],
                     'live_price' => $pulled['price'] ?? null,
                     'from_live' => $pulled['from_live'] ?? false,
+                    'site_price' => $pulled['site_price'] ?? false,
                     'message' => is_array($r['response'])
                         ? ($r['response']['message']
                             ?? ($r['response']['error'] ?? json_encode($r['response'])))

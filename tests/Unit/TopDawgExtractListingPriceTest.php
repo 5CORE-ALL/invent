@@ -7,6 +7,15 @@ use Tests\TestCase;
 
 class TopDawgExtractListingPriceTest extends TestCase
 {
+    public function test_prefers_site_cost_over_a_different_price_key(): void
+    {
+        $this->assertSame(12.08, TopDawgApiService::extractListingPrice([
+            'price' => 35.99,
+            'cost' => '12.08',
+            'msrp' => 41.60,
+        ]));
+    }
+
     public function test_uses_cost_when_price_is_zero(): void
     {
         $this->assertSame(29.99, TopDawgApiService::extractListingPrice([

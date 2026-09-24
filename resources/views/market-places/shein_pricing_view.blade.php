@@ -1087,6 +1087,142 @@
             return $('#ae-row-type-filter').val() || 'skus';
         }
 
+        /** Shopify INV. Untracked / negative (-1) counts as 0 so INV > 0 hides it. */
+        function sheinInvQty(d) {
+            if (!d) return 0;
+            if (typeof d.getData === 'function') {
+                try { d = d.getData() || {}; } catch (e) { /* use original */ }
+            }
+            if (!d) return 0;
+            const raw = (d.inv != null && d.inv !== '') ? d.inv
+                : (d.INV != null && d.INV !== '' ? d.INV : d.inventory);
+            const n = parseFloat(raw);
+            if (!isFinite(n) || n <= 0) return 0;
+            return n;
+        }
+
+        function sheinRowMatchesFilters(d) {
+            if (!d) return false;
+            if (typeof d.getData === 'function') {
+                try { d = d.getData() || {}; } catch (e) { /* use original */ }
+            }
+            if (!d) return false;
+
+            const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
+            const parentSearch = ($('#pricing-parent-search').val() || '').toLowerCase().trim();
+            const rowType    = sheinCurrentRowType();
+            const invFilter  = $('#ae-inv-filter').val() || 'more';
+            const stockFilter= $('#ae-stock-filter').val();
+            const gpftFilter = $('#ae-gpft-filter').val();
+            const roiFilter  = $('#ae-roi-filter').val();
+            const al30Filter = $('#ae-al30-filter').val();
+            const nrlFilter  = $('#ae-nrl-filter').val() || 'all';
+            const spriceFilter = $('#ae-sprice-filter').val() || 'all';
+            const dilColor   = $('#ae-dil-filter').val() || 'all';
+            const isParent   = sheinIsParentRow(d);
+            const invQty     = sheinInvQty(d);
+
+            if (isShPlayActive && shPlayUniqueParents.length > 0 && currentShPlayParentIndex >= 0) {
+                const currentKey = shPlayUniqueParents[currentShPlayParentIndex];
+                if (currentKey) {
+                    const p = normalizeShParentKey(d.parent);
+                    if (!(p === currentKey || p === ('PARENT ' + currentKey))) return false;
+                }
+            }
+
+            if (skuSearch && !(String(d.sku || '').toLowerCase().includes(skuSearch))) return false;
+            if (parentSearch && !String(d.parent || '').toLowerCase().includes(parentSearch)) return false;
+
+            if (rowType === 'parents' && !isParent) return false;
+            if (rowType === 'skus' && isParent) return false;
+
+            if (invFilter === 'zero' && invQty !== 0) return false;
+            if (invFilter === 'more' && !(invQty > 0)) return false;
+
+            if (stockFilter === 'zero' || stockFilter === 'more') {
+                if (isParent) {
+                    if (rowType === 'skus') return false;
+                } else {
+                    const stock = parseInt(d.shein_stock, 10) || 0;
+                    if (stockFilter === 'zero' && stock !== 0) return false;
+                    if (stockFilter === 'more' && !(stock > 0)) return false;
+                }
+            }
+
+            if (nrlFilter === 'REQ' || nrlFilter === 'NR') {
+                if (isParent) {
+                    if (rowType === 'skus') return false;
+                } else if (sheinNrReq(d) !== nrlFilter) {
+                    return false;
+                }
+            }
+
+            if (gpftFilter && gpftFilter !== 'all') {
+                const gpft = parseFloat(d.gpft) || 0;
+                if (gpftFilter === 'negative' && !(gpft < 0)) return false;
+                if (gpftFilter === '0-10' && !(gpft >= 0 && gpft < 10)) return false;
+                if (gpftFilter === '10-20' && !(gpft >= 10 && gpft < 20)) return false;
+                if (gpftFilter === '20-30' && !(gpft >= 20 && gpft < 30)) return false;
+                if (gpftFilter === '30-40' && !(gpft >= 30 && gpft < 40)) return false;
+                if (gpftFilter === '40plus' && !(gpft >= 40)) return false;
+            }
+
+            if (roiFilter && roiFilter !== 'all') {
+                if (isParent) {
+                    if (rowType === 'skus') return false;
+                } else {
+                    const roi = parseFloat(d.groi) || 0;
+                    if (roiFilter === 'lt40' && !(roi < 40)) return false;
+                    if (roiFilter === '40-75' && !(roi >= 40 && roi < 75)) return false;
+                    if (roiFilter === '75-125' && !(roi >= 75 && roi < 125)) return false;
+                    if (roiFilter === 'gt125' && !(roi >= 125)) return false;
+                }
+            }
+
+            if (al30Filter && al30Filter !== 'all') {
+                if (isParent) {
+                    if (rowType === 'skus') return false;
+                } else if (!(invQty > 0)) {
+                    return false;
+                } else {
+                    const al30 = parseFloat(d.al30) || 0;
+                    if (al30Filter === '0' && al30 !== 0) return false;
+                    if (al30Filter === 'more' && !(al30 > 0)) return false;
+                }
+            }
+
+            if (spriceFilter === 'blank') {
+                if (isParent) {
+                    if (rowType === 'skus') return false;
+                } else if (sheinVisibleSprice(d) > 0) {
+                    return false;
+                }
+            }
+
+            if (dilColor && dilColor !== 'all') {
+                if (isParent) {
+                    if (rowType === 'skus') return false;
+                } else {
+                    const ovL30 = parseFloat(d.ov_l30) || 0;
+                    const dil = invQty === 0 ? 0 : (ovL30 / invQty) * 100;
+                    if (dilColor === 'red' && !(dil < 25)) return false;
+                    if (dilColor === 'green' && !(dil >= 25 && dil < 50)) return false;
+                    if (dilColor === 'pink' && !(dil >= 50)) return false;
+                }
+            }
+
+            if (aeZeroSoldActive && (parseFloat(d.al30) || 0) !== 0) return false;
+            if (aeMoreSoldActive && !((parseFloat(d.al30) || 0) > 0)) return false;
+            if (blueTriangleFilterActive && !sheinHasBlueTriangle(d)) return false;
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge && !PriceGtLmpBadge.hasRedTriangle(d, 'special_offer', sheinEffectiveLmp)) return false;
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(d, 'special_offer')) return false;
+
+            return true;
+        }
+
+        let sheinApplyingFilters = false;
+        let sheinOwnDataLoad = false;
+
         function sheinMarkParentFlags(rows) {
             (Array.isArray(rows) ? rows : []).forEach(function(r) {
                 if (!r || typeof r !== 'object') return;
@@ -1154,158 +1290,58 @@
         $('#play-forward').on('click', nextShParent);
         $('#play-backward').on('click', previousShParent);
 
+        function sheinSyncTableEditsToCache() {
+            if (!table || !allTableData.length || typeof table.getData !== 'function') return;
+            let current = [];
+            try { current = table.getData('all') || []; } catch (e) { return; }
+            if (!current.length) return;
+            const bySku = {};
+            current.forEach(function(r) {
+                const sku = String((r && r.sku) || '').trim().toUpperCase();
+                if (sku) bySku[sku] = r;
+            });
+            allTableData.forEach(function(r, i) {
+                const sku = String((r && r.sku) || '').trim().toUpperCase();
+                if (sku && bySku[sku]) allTableData[i] = bySku[sku];
+            });
+        }
+
         function applyFilters() {
+            if (sheinApplyingFilters) return;
             if (window.ParentExpand && ParentExpand.isExpanded()) {
                 ParentExpand.beforeFilters(function(){ applyFilters(); });
                 return;
             }
             if (!table) return;
-            applyMetricFilters();
-        }
 
-        function applyMetricFilters() {
-            if (!table) return;
-            table.clearFilter();
+            sheinSyncTableEditsToCache();
+            const source = (allTableData && allTableData.length)
+                ? allTableData
+                : (table.getData('all') || []);
+            const filtered = source.filter(sheinRowMatchesFilters);
 
-            const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
-            const parentSearch = ($('#pricing-parent-search').val() || '').toLowerCase().trim();
-            const rowType    = sheinCurrentRowType();
-            const invFilter  = $('#ae-inv-filter').val();
-            const stockFilter= $('#ae-stock-filter').val();
-            const gpftFilter = $('#ae-gpft-filter').val();
-            const roiFilter  = $('#ae-roi-filter').val();
-            const al30Filter = $('#ae-al30-filter').val();
-            const nrlFilter  = $('#ae-nrl-filter').val() || 'all';
-            const spriceFilter = $('#ae-sprice-filter').val() || 'all';
-            const dilColor   = $('#ae-dil-filter').val() || 'all';
-
-            if (isShPlayActive && shPlayUniqueParents.length > 0 && currentShPlayParentIndex >= 0) {
-                const currentKey = shPlayUniqueParents[currentShPlayParentIndex];
-                if (currentKey) {
-                    table.addFilter(function(d) {
-                        const p = normalizeShParentKey(d.parent);
-                        return p === currentKey || p === ('PARENT ' + currentKey);
-                    });
-                }
+            sheinApplyingFilters = true;
+            sheinOwnDataLoad = true;
+            try { table.clearFilter(); } catch (e) {}
+            const finish = function() {
+                sheinApplyingFilters = false;
+                sheinOwnDataLoad = false;
+            };
+            let pending;
+            try {
+                pending = table.setData(filtered);
+            } catch (e) {
+                finish();
+                return;
             }
-
-            if (skuSearch) {
-                table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
-            }
-            if (parentSearch) {
-                table.addFilter(d => String(d.parent || '').toLowerCase().includes(parentSearch));
-            }
-
-            if (rowType === 'parents') {
-                table.addFilter(function(d) { return sheinIsParentRow(d); });
-            } else if (rowType === 'skus') {
-                table.addFilter(function(d) { return !sheinIsParentRow(d); });
-            }
-
-            if (invFilter === 'zero') {
-                table.addFilter(function(d) {
-                    if (sheinIsParentRow(d)) return rowType !== 'skus';
-                    return (parseInt(d.inv, 10) || 0) === 0;
-                });
-            } else if (invFilter === 'more') {
-                table.addFilter(function(d) {
-                    if (sheinIsParentRow(d)) return rowType !== 'skus';
-                    return (parseInt(d.inv, 10) || 0) > 0;
-                });
-            }
-
-            if (stockFilter === 'zero') {
-                table.addFilter(function(d) {
-                    if (sheinIsParentRow(d)) return rowType !== 'skus';
-                    return (parseInt(d.shein_stock, 10) || 0) === 0;
-                });
-            } else if (stockFilter === 'more') {
-                table.addFilter(function(d) {
-                    if (sheinIsParentRow(d)) return rowType !== 'skus';
-                    return (parseInt(d.shein_stock, 10) || 0) > 0;
-                });
-            }
-
-            if (nrlFilter === 'REQ' || nrlFilter === 'NR') {
-                table.addFilter(function(d) {
-                    if (sheinIsParentRow(d)) return rowType !== 'skus';
-                    return sheinNrReq(d) === nrlFilter;
-                });
-            }
-
-            if (gpftFilter !== 'all') {
-                table.addFilter(function(d) {
-                    const gpft = parseFloat(d.gpft) || 0;
-                    if (gpftFilter === 'negative') return gpft < 0;
-                    if (gpftFilter === '0-10')     return gpft >= 0 && gpft < 10;
-                    if (gpftFilter === '10-20')    return gpft >= 10 && gpft < 20;
-                    if (gpftFilter === '20-30')    return gpft >= 20 && gpft < 30;
-                    if (gpftFilter === '30-40')    return gpft >= 30 && gpft < 40;
-                    if (gpftFilter === '40plus')   return gpft >= 40;
-                    return true;
-                });
-            }
-
-            if (roiFilter !== 'all') {
-                table.addFilter(function(d) {
-                    if (sheinIsParentRow(d)) return rowType !== 'skus';
-                    const roi = parseFloat(d.groi) || 0;
-                    if (roiFilter === 'lt40')    return roi < 40;
-                    if (roiFilter === '40-75')   return roi >= 40 && roi < 75;
-                    if (roiFilter === '75-125')  return roi >= 75 && roi < 125;
-                    if (roiFilter === 'gt125')   return roi >= 125;
-                    return true;
-                });
-            }
-
-            if (al30Filter !== 'all') {
-                table.addFilter(function(d) {
-                    if (sheinIsParentRow(d)) return rowType !== 'skus';
-                    if ((parseInt(d.inv, 10) || 0) <= 0) return false;
-                    const al30 = parseFloat(d.al30) || 0;
-                    if (al30Filter === '0')    return al30 === 0;
-                    if (al30Filter === 'more') return al30 > 0;
-                    return true;
-                });
-            }
-
-            if (spriceFilter === 'blank') {
-                table.addFilter(function(d) {
-                    if (sheinIsParentRow(d)) return rowType !== 'skus';
-                    const sp = sheinVisibleSprice(d);
-                    return !(sp > 0);
-                });
-            }
-
-            if (dilColor !== 'all') {
-                table.addFilter(function(d) {
-                    if (sheinIsParentRow(d)) return rowType !== 'skus';
-                    const inv   = parseFloat(d.inv)    || 0;
-                    const ovL30 = parseFloat(d.ov_l30) || 0;
-                    const dil   = inv === 0 ? 0 : (ovL30 / inv) * 100;
-                    if (dilColor === 'red')   return dil < 25;
-                    if (dilColor === 'green') return dil >= 25 && dil < 50;
-                    if (dilColor === 'pink')  return dil >= 50;
-                    return true;
-                });
-            }
-
-            if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
-            if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
-            if (blueTriangleFilterActive) {
-                table.addFilter(function(data) {
-                    return sheinHasBlueTriangle(data);
-                });
-            }
-            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
-                table.addFilter(function(data) {
-                    return PriceGtLmpBadge.hasRedTriangle(data, 'special_offer', sheinEffectiveLmp);
-                });
-            }
-            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
-                table.addFilter(function(data) {
-                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'special_offer');
-                });
+            if (pending && typeof pending.then === 'function') {
+                pending.then(function() {
+                    finish();
+                    try { table.setPage(1); } catch (e) {}
+                }).catch(finish);
+            } else {
+                finish();
+                try { table.setPage(1); } catch (e) {}
             }
         }
 
@@ -1600,6 +1636,9 @@
             initSkuLinkLmpModal();
             table = new Tabulator("#shein-pricing-table", {
                 ajaxURL: "/shein/pricing-data",
+                filterMode: "local",
+                paginationMode: "local",
+                initialFilter: function(data) { return sheinRowMatchesFilters(data); },
                 ajaxResponse: function(url, params, response) {
                     // New shape: { data: rows[], sales_page: {...} } — same Sales/GPFT/GROI as /shein-tabulator
                     let rows = response;
@@ -1616,7 +1655,7 @@
                     summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
-                    return rows;
+                    return rows.filter(sheinRowMatchesFilters);
                 },
                 layout: "fitDataStretch",
                 height: "calc(100vh - 260px)",
@@ -1798,8 +1837,8 @@
                         width: 55,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            if (d.is_parent) return `<span style="font-weight:700;">${cell.getValue()}</span>`;
-                            const val = parseInt(cell.getValue(), 10) || 0;
+                            const val = Math.floor(sheinInvQty(d));
+                            if (d.is_parent) return `<span style="font-weight:700;">${val}</span>`;
                             if (val === 0) return `<span style="color:#dc3545;font-weight:600;">0</span>`;
                             return `<span style="font-weight:600;">${val}</span>`;
                         }
@@ -2275,15 +2314,22 @@
                     },
                 ],
                 dataLoaded: function(data) {
+                    if (sheinOwnDataLoad) {
+                        sheinOwnDataLoad = false;
+                        updateSummary(allTableData.length ? allTableData : data);
+                        return;
+                    }
                     if (!allTableData.length && Array.isArray(data)) {
                         sheinMarkParentFlags(data);
                         allTableData = data;
                         if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     }
                     updateSummary(allTableData.length ? allTableData : data);
-                    if (typeof applyFilters === 'function') {
-                        applyFilters();
-                    }
+                    // After Tabulator applies the ajax payload. setData() also fires dataLoaded,
+                    // so sheinOwnDataLoad skips that second pass.
+                    setTimeout(function() {
+                        if (!sheinApplyingFilters && typeof applyFilters === 'function') applyFilters();
+                    }, 0);
                 },
                 dataFiltered: function(filters, rows) {
                     updateSummary(rows);
