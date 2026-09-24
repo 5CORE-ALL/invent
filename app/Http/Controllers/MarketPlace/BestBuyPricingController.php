@@ -516,7 +516,8 @@ class BestBuyPricingController extends Controller
 
         if (is_object($product)) {
             $status = strtolower(trim((string) ($product->listing_status ?? '')));
-            if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
+            if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)
+                && ! self::soldOutOfferKeepsStoredPrice($product)) {
                 return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
             }
         }
@@ -727,7 +728,9 @@ class BestBuyPricingController extends Controller
         }
 
         $status = strtolower(trim((string) ($product->listing_status ?? '')));
-        if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
+        $inactive = in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true);
+        $soldOutListed = $inactive && self::soldOutOfferKeepsStoredPrice($product);
+        if ($inactive && ! $soldOutListed) {
             return false;
         }
         if ((float) ($product->price ?? 0) <= 0) {
@@ -743,11 +746,24 @@ class BestBuyPricingController extends Controller
             $inLatestPull = $product->updated_at->gte($freshAfter);
         }
 
-        if ($status === 'active') {
+        if ($status === 'active' || $soldOutListed) {
             return $inLatestPull;
         }
 
         return $inLatestPull && (int) ($product->stock ?? 0) > 0;
+    }
+
+    /**
+     * Mirakl sets active=false and listing_status=inactive when quantity is 0.
+     * The offer price is still the listed price. A real delist stores price 0.
+     */
+    public static function soldOutOfferKeepsStoredPrice($product): bool
+    {
+        if (! is_object($product)) {
+            return false;
+        }
+
+        return (float) ($product->price ?? 0) > 0 && (int) ($product->stock ?? 0) === 0;
     }
 
     public static function isListingMarkedInactive($listingStatus): bool

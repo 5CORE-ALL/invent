@@ -1229,13 +1229,18 @@ class FetchMacyProducts extends Command
                         }
                         
                         if ($hasListingStatus) {
-                            // Macy listed price comes from MCM OF21, not Connect catalog.
+                            // Macy / Best Buy listed price comes from MCM OF21, not Connect catalog.
                             $priceUpdate = in_array($tableName, ['macy_products', 'bestbuy_usa_products'], true)
                                 ? 'price = price'
                                 : 'price = COALESCE(VALUES(price), price)';
+                            // Connect marks sold-out Best Buy offers inactive. That hides the
+                            // OF21 price on the analytics page. MCM owns listing_status.
+                            $listingStatusUpdate = $tableName === 'bestbuy_usa_products'
+                                ? 'listing_status = listing_status'
+                                : 'listing_status = COALESCE(VALUES(listing_status), listing_status)';
                             $sql = "INSERT INTO {$tableName} (sku, price, stock, m_l30, listing_status, created_at, updated_at) VALUES "
                                  . implode(', ', $values)
-                                 . " ON DUPLICATE KEY UPDATE {$priceUpdate}, stock = VALUES(stock), m_l30 = VALUES(m_l30), listing_status = COALESCE(VALUES(listing_status), listing_status), updated_at = VALUES(updated_at)";
+                                 . " ON DUPLICATE KEY UPDATE {$priceUpdate}, stock = VALUES(stock), m_l30 = VALUES(m_l30), {$listingStatusUpdate}, updated_at = VALUES(updated_at)";
                         } else {
                             $sql = "INSERT INTO {$tableName} (sku, price, stock, m_l30, created_at, updated_at) VALUES "
                                  . implode(', ', $values)
