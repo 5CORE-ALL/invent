@@ -245,7 +245,8 @@ class PayrollController extends Controller
         $this->authorizeSheetAdmin();
         $this->ensureUnlocked($payrollMonth);
 
-        // Only refresh login hours from TeamLogger — leave salary and other fields as-is.
+        // Only refresh login hours — leave salary and other fields as-is.
+        // From September 2026 those hours come from the new attendance system.
         $this->payroll->ensureSheetPopulated($payrollMonth);
         $stats = $this->payroll->refreshLiveHours($payrollMonth, freshFromApi: true);
         $this->payroll->removeEmployeesWithoutHours($payrollMonth);
@@ -285,7 +286,7 @@ class PayrollController extends Controller
         ]);
     }
 
-    /** @param  array<string, int|bool>  $stats */
+    /** @param  array<string, int|bool|string>  $stats */
     protected function syncHoursMessage(array $stats, string $monthLabel): string
     {
         if (! empty($stats['locked'])) {
@@ -293,6 +294,10 @@ class PayrollController extends Controller
         }
 
         if (($stats['teamlogger_users'] ?? 0) === 0) {
+            if (($stats['hours_source'] ?? '') === 'attendance') {
+                return "No new attendance hours found for {$monthLabel}.";
+            }
+
             return "No TeamLogger data returned for {$monthLabel}. Check TEAM_LOGGER_API_TOKEN and try again.";
         }
 
@@ -300,12 +305,18 @@ class PayrollController extends Controller
         $unchanged = (int) ($stats['unchanged'] ?? 0);
         $skippedOverride = (int) ($stats['skipped_overridden'] ?? 0);
         $skippedNoData = (int) ($stats['skipped_no_data'] ?? 0);
+        $fromAttendance = ($stats['hours_source'] ?? '') === 'attendance';
+        $source = $fromAttendance ? 'the new attendance system' : 'TeamLogger';
 
         if ($updated === 0 && $unchanged === 0 && $skippedNoData > 0) {
+            if ($fromAttendance) {
+                return "Attendance has {$stats['teamlogger_users']} user(s) for {$monthLabel}, but none matched payroll employees.";
+            }
+
             return "TeamLogger has {$stats['teamlogger_users']} user(s) for {$monthLabel}, but none matched payroll employees. Check email mapping.";
         }
 
-        $parts = ["{$updated} employee hour row(s) updated from TeamLogger."];
+        $parts = ["{$updated} employee hour row(s) updated from {$source}."];
         if ($unchanged > 0) {
             $parts[] = "{$unchanged} already up to date.";
         }
@@ -313,7 +324,9 @@ class PayrollController extends Controller
             $parts[] = "{$skippedOverride} skipped (manually edited — use Sync Hours to overwrite).";
         }
         if ($skippedNoData > 0) {
-            $parts[] = "{$skippedNoData} had no TeamLogger match.";
+            $parts[] = $fromAttendance
+                ? "{$skippedNoData} had no new attendance or TeamLogger match."
+                : "{$skippedNoData} had no TeamLogger match.";
         }
 
         return implode(' ', $parts);
@@ -537,6 +550,7 @@ class PayrollController extends Controller
             'team_logger_15_hours' => $teamHours,
             'final_second_hours' => $secondHours,
             'final_hours' => $finalHours,
+            'attendance_only' => (bool) ($logger['attendance_only'] ?? false),
             'logger_team_from' => $logger['team_from'] ?? null,
             'logger_team_to' => $logger['team_to'] ?? null,
             'logger_new_from' => $logger['new_from'] ?? null,

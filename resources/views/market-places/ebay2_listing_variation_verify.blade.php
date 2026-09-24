@@ -171,9 +171,9 @@
                             </div>
                             <div class="ms-auto d-flex flex-wrap align-items-center gap-2 small">
                                 <span class="ebay2-lvv-sku-chip ebay2-lvv-sku-chip--missing">Missing</span>
-                                <span class="text-muted">in CP Master, not listed on eBay 2, INV &gt; 0</span>
+                                <span class="text-muted">not on the live eBay 2 listing, INV &gt; 0 (NRL, Coming, INV ≤ 0 excluded)</span>
                                 <span class="ebay2-lvv-sku-chip ebay2-lvv-sku-chip--extra">Excess</span>
-                                <span class="text-muted">listed on eBay 2, not in CP Master (Open Box exempt)</span>
+                                <span class="text-muted">on the latest eBay 2 pull, not in CP Master (Open Box and USED exempt)</span>
                             </div>
                         </div>
                     </div>
@@ -325,8 +325,11 @@
             const extraCount = parseInt(d.extra_count, 10) || 0;
 
             let cls = 'ebay2-lvv-avail-partial';
-            if (total > 0 && avail === total && extraCount === 0) cls = 'ebay2-lvv-avail-yes';
-            else if (avail === 0) cls = 'ebay2-lvv-avail-no';
+            if (label === 'Missing' || label === 'Excess') cls = 'ebay2-lvv-avail-no';
+            else if (label === 'Listed') cls = 'ebay2-lvv-avail-yes';
+            else if (label === 'NRL' || label === 'Coming' || label.indexOf('INV') === 0) cls = 'ebay2-lvv-avail-na';
+            else if (total > 0 && avail === total && extraCount === 0) cls = 'ebay2-lvv-avail-yes';
+            else if (avail === 0 && extraCount === 0) cls = 'ebay2-lvv-avail-no';
 
             return `<span class="fw-semibold ${cls}">${ebay2LvvEscapeHtml(label)}</span>`;
         }

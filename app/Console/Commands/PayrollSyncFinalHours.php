@@ -11,7 +11,7 @@ class PayrollSyncFinalHours extends Command
     protected $signature = 'payroll:sync-final-hours
                             {--month= : Payroll month label, e.g. "August 2026"}';
 
-    protected $description = 'Copy Final Hour (18d TeamLogger + remaining New Logger) into Hours LM';
+    protected $description = 'Copy Final Hour into Hours LM (18-day split before Sep 2026; new attendance hours from Sep 2026)';
 
     public function handle(PayrollService $payroll): int
     {

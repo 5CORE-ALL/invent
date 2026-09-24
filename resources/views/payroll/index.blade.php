@@ -501,7 +501,7 @@
                     return txt;
                 } },
             { title: 'New Logger', field: 'new_logger_hours', hozAlign: 'center', width: 120,
-                headerTooltip: 'Built-in logger hours after the first 18 days',
+                headerTooltip: 'New attendance hours. From September 2026 this is the full month. Earlier months are the days after the first 18.',
                 formatter: (c) => {
                     const d = c.getRow().getData();
                     const v = parseFloat(c.getValue());
@@ -509,18 +509,30 @@
                     const days = parseInt(d.new_logger_days, 10);
                     const range = (d.logger_new_from && d.logger_new_to)
                         ? (d.logger_new_from + ' – ' + d.logger_new_to)
-                        : 'after day 18';
-                    const tip = (!isNaN(days) && days > 0)
-                        ? (days + ' day' + (days === 1 ? '' : 's') + ' from built-in logger (' + range + ')')
-                        : ('Built-in attendance logger (' + range + ')');
+                        : (d.attendance_only ? 'full month' : 'after day 18');
+                    const dayLabel = (!isNaN(days) && days > 0)
+                        ? (days + ' day' + (days === 1 ? '' : 's') + ' ')
+                        : '';
+                    const tip = d.attendance_only
+                        ? (dayLabel + 'from the new attendance system (' + range + ')')
+                        : (dayLabel
+                            ? (dayLabel + 'from built-in logger (' + range + ')')
+                            : ('Built-in attendance logger (' + range + ')'));
                     return '<span title="' + esc(tip) + '">' + Math.round(v) + 'h</span>';
                 } },
             { title: 'Final Hour', field: 'final_hours', hozAlign: 'center', width: 120,
-                headerTooltip: '18 days TeamLogger + remaining days New Logger',
+                headerTooltip: 'From September 2026: new attendance hours for the month. Earlier: 18 days TeamLogger + remaining New Logger',
                 formatter: (c) => {
                     const d = c.getRow().getData();
                     const v = parseFloat(c.getValue());
                     if (isNaN(v)) return '—';
+                    const newRange = (d.logger_new_from && d.logger_new_to)
+                        ? (d.logger_new_from + ' – ' + d.logger_new_to)
+                        : 'full month';
+                    if (d.attendance_only) {
+                        const tip = Math.round(v) + 'h from the new attendance system (' + newRange + ')';
+                        return '<strong title="' + esc(tip) + '">' + Math.round(v) + 'h</strong>';
+                    }
                     const team = parseFloat(d.team_logger_split_hours ?? d.team_logger_15_hours);
                     const neu = parseFloat(d.new_logger_hours);
                     const second = parseFloat(d.final_second_hours);
@@ -529,11 +541,11 @@
                     const teamRange = (d.logger_team_from && d.logger_team_to)
                         ? (d.logger_team_from + ' – ' + d.logger_team_to)
                         : 'first 18 days';
-                    const newRange = (d.logger_new_from && d.logger_new_to)
+                    const afterRange = (d.logger_new_from && d.logger_new_to)
                         ? (d.logger_new_from + ' – ' + d.logger_new_to)
                         : 'after day 18';
                     const tip = (isNaN(team) ? 0 : Math.round(team)) + 'h TeamLogger (' + teamRange + ') + '
-                        + secondH + 'h ' + secondSrc + ' (' + newRange + ')';
+                        + secondH + 'h ' + secondSrc + ' (' + afterRange + ')';
                     return '<strong title="' + esc(tip) + '">' + Math.round(v) + 'h</strong>';
                 } },
             { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
@@ -866,7 +878,7 @@
             // Hours field is intentionally read-only in this modal so saving
             // other salary fields never carries the current hours value to the
             // server (which would mark the row as a manual override and stop
-            // the live TeamLogger refresh). Hours editing lives on the table
+            // the live hours refresh). Hours editing lives on the table
             // row's pen icon — that flow already toggles override correctly.
             if (f.hours_worked) {
                 f.hours_worked.disabled = true;
