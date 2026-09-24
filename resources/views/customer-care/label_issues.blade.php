@@ -1,5 +1,5 @@
-@extends('layouts.vertical', ['title' => 'Label Issues', 'sidenav' => 'condensed'])
-{{-- Label Issues (Tabulator) — same records and actions as the previous HTML board. --}}
+@extends('layouts.vertical', ['title' => 'Label/Shipping', 'sidenav' => 'condensed'])
+{{-- Label/Shipping (Tabulator) — Label and Shipping department records. --}}
 
 @php
     $importCsvHeaders = [
@@ -82,7 +82,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Label Issues',
+        'page_title' => 'Label/Shipping',
         'sub_title' => 'Customer Care',
     ])
 
@@ -90,16 +90,16 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <p class="text-muted mb-0">Use Add Label Issue to record SKU issues. SKU lookup auto-fills Parent and available QTY.</p>
+                    <p class="text-muted mb-0">Use Add Issue to record Label or Shipping SKU issues. SKU lookup auto-fills Parent and available QTY.</p>
                 </div>
             </div>
 
             <div class="card mt-3 shadow-sm">
                 <div class="card-header py-2">
                     <div class="d-flex flex-wrap align-items-center gap-2">
-                        <h5 class="mb-0 me-2">Label Issues Records</h5>
+                        <h5 class="mb-0 me-2">Label/Shipping Records</h5>
                         <button type="button" class="btn btn-primary btn-sm" id="li-add">
-                            <i class="bi bi-plus-lg me-1"></i> Add Label Issue
+                            <i class="bi bi-plus-lg me-1"></i> Add Issue
                         </button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="li-history">
                             <i class="bi bi-clock-history me-1"></i> History
@@ -158,9 +158,8 @@
                         <code>sku, order_number (or order id / order_id), qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department</code>
                     </p>
                     <p class="text-muted small mb-3">
-                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found),
-                        <strong>department</strong>. Use multiple departments separated by <strong>|</strong> or
-                        <strong>,</strong> (e.g. <code>Label|QC</code>). Other columns are optional.
+                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found).
+                        Department must be <strong>Label</strong> or <strong>Shipping</strong> (other departments are ignored). Other columns are optional.
                     </p>
                     <div class="mb-3">
                         <label for="importCsvFile" class="form-label">CSV File</label>
@@ -191,7 +190,7 @@
             <div class="modal-content">
                 <form id="li-issue-form" autocomplete="off">
                     <div class="modal-header">
-                        <h5 class="modal-title" id="li-issue-modal-title">Label Issue</h5>
+                        <h5 class="modal-title" id="li-issue-modal-title">Label/Shipping</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
@@ -292,19 +291,17 @@
                                 <input type="text" class="form-control" id="li-root-fixed-remark" placeholder="Write remark for Other">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Department <span class="text-danger">*</span></label>
-                                <div class="dropdown" id="li-dept-ui">
-                                    <button class="form-select text-start" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                                        <span id="li-dept-label" class="text-truncate text-muted">Select department(s)</span>
-                                    </button>
-                                    <div class="dropdown-menu p-2 w-100" id="li-dept-menu" style="max-height:240px;overflow:auto;"></div>
+                                <label class="form-label d-block">Department <span class="text-danger">*</span></label>
+                                <div class="d-flex flex-wrap gap-3 pt-1">
+                                    <label class="d-flex align-items-center gap-2 mb-0">
+                                        <input type="checkbox" class="form-check-input li-dept-check mt-0" value="Label" checked>
+                                        <span>Label</span>
+                                    </label>
+                                    <label class="d-flex align-items-center gap-2 mb-0">
+                                        <input type="checkbox" class="form-check-input li-dept-check mt-0" value="Shipping">
+                                        <span>Shipping</span>
+                                    </label>
                                 </div>
-                                <div class="form-text">Click to select one or more departments.</div>
-                            </div>
-                            <div class="col-12 d-none" id="li-dept-other-wrap">
-                                <label class="form-label" for="li-dept-other">Other — Responsible Dept Notes <span class="text-danger">*</span></label>
-                                <textarea class="form-control" id="li-dept-other" rows="2" maxlength="255" placeholder="Describe the special case / responsible dept..."></textarea>
-                                <div class="form-text text-end small"><span id="li-dept-other-count">0</span> / 255</div>
                             </div>
                         </div>
                     </div>
@@ -341,11 +338,6 @@
             const COLVIS_CHANNEL = 'label_issues';
             const IMPORT_HEADERS = @json($importCsvHeaders);
             const IMPORT_SAMPLE = @json($importCsvSampleRow);
-            const DEPARTMENTS = [
-                'Dispatch', 'Shipping', 'Listing', 'Label', 'Carrier', 'Carrier Issue',
-                'Customer Care', 'Pricing', 'QC', 'Packaging', 'Chargeback', 'Orders on Hold', 'Other',
-            ];
-            const DEPT_LABELS = { 'Carrier': 'Carrier Claims', 'Carrier Issue': 'Carrier Scan Issue' };
             const jsonHeaders = {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
@@ -548,42 +540,14 @@
             }
 
             function selectedDepartments() {
-                return Array.from(document.querySelectorAll('#li-dept-menu input:checked')).map(function (el) { return el.value; });
-            }
-            function refreshDeptLabel() {
-                const selected = selectedDepartments();
-                const label = document.getElementById('li-dept-label');
-                if (!selected.length) {
-                    label.textContent = 'Select department(s)';
-                    label.classList.add('text-muted');
-                } else {
-                    label.textContent = selected.map(function (v) { return DEPT_LABELS[v] || v; }).join(', ');
-                    label.classList.remove('text-muted');
-                }
-                const isOther = selected.indexOf('Other') !== -1;
-                document.getElementById('li-dept-other-wrap').classList.toggle('d-none', !isOther);
-                if (!isOther) {
-                    document.getElementById('li-dept-other').value = '';
-                    document.getElementById('li-dept-other-count').textContent = '0';
-                }
+                return Array.from(document.querySelectorAll('.li-dept-check:checked')).map(function (el) { return el.value; });
             }
             function setDepartments(values) {
-                const wanted = (values || []).map(function (v) { return String(v).trim(); });
-                document.querySelectorAll('#li-dept-menu input').forEach(function (el) {
+                const wanted = values || [];
+                document.querySelectorAll('.li-dept-check').forEach(function (el) {
                     el.checked = wanted.indexOf(el.value) !== -1;
                 });
-                refreshDeptLabel();
             }
-            function buildDeptMenu() {
-                const menu = document.getElementById('li-dept-menu');
-                menu.innerHTML = DEPARTMENTS.map(function (value) {
-                    const label = DEPT_LABELS[value] || value;
-                    return '<label class="d-flex align-items-center gap-2 py-1 px-1 mb-0">' +
-                        '<input type="checkbox" value="' + escAttr(value) + '"> <span>' + escapeHtml(label) + '</span></label>';
-                }).join('');
-                menu.addEventListener('change', refreshDeptLabel);
-            }
-
             function toggleOtherFields() {
                 const rootOther = document.getElementById('li-root').value.trim() === 'Other';
                 document.getElementById('li-root-remark-wrap').classList.toggle('d-none', !rootOther);
@@ -603,7 +567,7 @@
                 document.getElementById('li-product-master-id').value = '';
                 document.getElementById('li-sku-image-wrap').classList.add('d-none');
                 document.getElementById('li-save').textContent = 'Save';
-                setDepartments([]);
+                setDepartments(['Label']);
                 toggleOtherFields();
                 hideAlert();
             }
@@ -634,13 +598,9 @@
                 const depts = Array.isArray(record.departments) && record.departments.length
                     ? record.departments
                     : String(record.department || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-                setDepartments(depts);
-                if (record.department_other_note) {
-                    document.getElementById('li-dept-other').value = record.department_other_note;
-                    document.getElementById('li-dept-other-count').textContent = String(record.department_other_note.length);
-                }
+                setDepartments(depts.filter(function (d) { return d === 'Label' || d === 'Shipping'; }));
                 document.getElementById('li-save').textContent = 'Update';
-                document.getElementById('li-issue-modal-title').textContent = 'Label Issue';
+                document.getElementById('li-issue-modal-title').textContent = 'Label/Shipping';
                 toggleOtherFields();
             }
 
@@ -860,7 +820,6 @@
             }
 
             document.addEventListener('DOMContentLoaded', function () {
-                buildDeptMenu();
                 modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('li-issue-modal'));
                 table = new Tabulator('#label-tabulator', {
                     layout: 'fitDataStretch',
@@ -901,7 +860,7 @@
                     const data = cell.getRow().getData();
                     if (editBtn) {
                         fillForm(data);
-                        document.getElementById('li-issue-modal-title').textContent = 'Label Issue';
+                        document.getElementById('li-issue-modal-title').textContent = 'Label/Shipping';
                         modal.show();
                     } else {
                         archiveRow(data.id);
@@ -919,7 +878,7 @@
 
                 document.getElementById('li-add').addEventListener('click', function () {
                     resetForm();
-                    document.getElementById('li-issue-modal-title').textContent = 'Label Issue';
+                    document.getElementById('li-issue-modal-title').textContent = 'Label/Shipping';
                     modal.show();
                 });
                 document.getElementById('li-history').addEventListener('click', function () {
@@ -955,9 +914,6 @@
                 document.getElementById('li-root').addEventListener('input', toggleOtherFields);
                 document.getElementById('li-action').addEventListener('input', toggleOtherFields);
                 document.getElementById('li-root-fixed').addEventListener('input', toggleOtherFields);
-                document.getElementById('li-dept-other').addEventListener('input', function () {
-                    document.getElementById('li-dept-other-count').textContent = String(this.value.length);
-                });
                 document.getElementById('li-issue-modal').addEventListener('hidden.bs.modal', resetForm);
 
                 document.getElementById('li-issue-form').addEventListener('submit', async function (event) {
@@ -966,7 +922,6 @@
                     const sku = document.getElementById('li-sku').value.trim();
                     const issue = document.getElementById('li-root').value.trim();
                     const depts = selectedDepartments();
-                    const otherNote = document.getElementById('li-dept-other').value.trim();
                     if (!sku) { showAlert('SKU is required.'); return; }
                     if (!issue) { showAlert('Root Cause Found is required.'); return; }
                     if (document.getElementById('li-action').value.trim() === 'Other' && document.getElementById('li-action-remark').value.trim() === '') {
@@ -978,10 +933,7 @@
                     if (document.getElementById('li-root-fixed').value.trim() === 'Other' && document.getElementById('li-root-fixed-remark').value.trim() === '') {
                         showAlert('Please enter Root Cause Fixed remark for Other.'); return;
                     }
-                    if (!depts.length) { showAlert('Select at least one department.'); return; }
-                    if (depts.indexOf('Other') !== -1 && otherNote === '') {
-                        showAlert('Please enter Responsible Dept notes when Other is selected.'); return;
-                    }
+                    if (!depts.length) { showAlert('Select Label or Shipping.'); return; }
                     const orderQtyRaw = document.getElementById('li-order-qty').value;
                     const payload = {
                         sku: sku,
@@ -999,7 +951,6 @@
                         c_action_1: document.getElementById('li-root-fixed').value.trim(),
                         c_action_1_remark: document.getElementById('li-root-fixed-remark').value.trim(),
                         department: depts,
-                        department_other_note: depts.indexOf('Other') !== -1 ? otherNote : '',
                     };
                     const editId = document.getElementById('li-id').value;
                     const saveBtn = document.getElementById('li-save');

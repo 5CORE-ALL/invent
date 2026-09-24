@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\CustomerCare;
 
 use App\Http\Controllers\CustomerCare\Concerns\HasOptionalOrderNumberField;
+use App\Support\CustomerCareDepartments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,10 +33,64 @@ class LabelIssuesController extends IssueBoardControllerBase
         return 'label_issues';
     }
 
+    /** @var list<string> */
+    private const BOARD_DEPARTMENTS = ['Label', 'Shipping'];
+
+    protected function validatePayload(Request $request): array
+    {
+        $allowed = $this->boardDepartments((array) $request->input('department', []));
+        if ($allowed === []) {
+            abort(response()->json([
+                'message' => 'Select Label or Shipping.',
+                'errors' => ['department' => ['Select Label or Shipping.']],
+            ], 422));
+        }
+        $request->merge(['department' => $allowed]);
+
+        return parent::validatePayload($request);
+    }
+
+    protected function csvImportExtraPayload(callable $get): array
+    {
+        $v = $get('order_number');
+        $loss = $get('total_loss');
+        $departments = $this->boardDepartments(
+            CustomerCareDepartments::parseFromImportCell((string) ($get('department') ?? ''))
+        );
+        if ($departments === []) {
+            $departments = ['Label'];
+        }
+        $payload = [
+            'order_number' => $v !== null && $v !== '' ? $v : null,
+            'department' => CustomerCareDepartments::encode($departments),
+        ];
+        if (Schema::hasColumn($this->issuesTable(), 'total_loss')) {
+            $payload['total_loss'] = ($loss !== null && $loss !== '' && is_numeric($loss)) ? (float) $loss : null;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  list<string|mixed>  $departments
+     * @return list<string>
+     */
+    private function boardDepartments(array $departments): array
+    {
+        $out = [];
+        foreach (CustomerCareDepartments::normalizeStringList($departments) as $dept) {
+            if (in_array($dept, self::BOARD_DEPARTMENTS, true) && ! in_array($dept, $out, true)) {
+                $out[] = $dept;
+            }
+        }
+
+        return $out;
+    }
+
     public function issuesIndex(): JsonResponse
     {
         $body = parent::issuesIndex()->getData(true);
-        $body['data'] = $this->attachSkuQcFields($body['data'] ?? []);
+        $body['data'] = $this->attachSkuQcFields($this->onlyBoardRows($body['data'] ?? []));
 
         return response()->json($body);
     }
@@ -43,9 +98,35 @@ class LabelIssuesController extends IssueBoardControllerBase
     public function historyIndex(): JsonResponse
     {
         $body = parent::historyIndex()->getData(true);
-        $body['data'] = $this->attachSkuQcFields($body['data'] ?? []);
+        $body['data'] = $this->attachSkuQcFields($this->onlyBoardRows($body['data'] ?? []));
 
         return response()->json($body);
+    }
+
+    /**
+     * Keep Label and Shipping. Other departments on the same row, including QC, stay off this page.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function onlyBoardRows(array $rows): array
+    {
+        $kept = [];
+        foreach ($rows as $row) {
+            $depts = $row['departments'] ?? [];
+            if (! is_array($depts) || $depts === []) {
+                $depts = CustomerCareDepartments::decode(is_string($row['department'] ?? null) ? $row['department'] : null);
+            }
+            $matched = $this->boardDepartments($depts);
+            if ($matched === []) {
+                continue;
+            }
+            $row['departments'] = $matched;
+            $row['department'] = implode(', ', $matched);
+            $kept[] = $row;
+        }
+
+        return $kept;
     }
 
     public function skuDetails(Request $request): JsonResponse
