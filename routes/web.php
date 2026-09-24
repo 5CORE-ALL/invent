@@ -2238,6 +2238,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.shipping.issues.label');
     Route::get('/customer-care/listing-errors-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'listingErrorsBoard'])
         ->name('customer.care.listing.errors.issues');
+    Route::get('/customer-care/pricing-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'pricingIssuesBoard'])
+        ->name('customer.care.pricing.issues');
     Route::permanentRedirect('/customer-care/dispatch-issue', '/customer-care/all-issues');
     Route::get('/customer-care/all-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
         ->name('customer.care.dispatch.issues.sku.details');
@@ -5062,6 +5064,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/new-temu2', [NewTemutwoController::class, 'index'])->name('newtemutwo.index');
     Route::get('/new-temu2-data-json', [NewTemutwoController::class, 'dataJson'])->name('newtemutwo.data.json');
     Route::post('/new-temu2-save-links', [NewTemutwoController::class, 'saveLinks'])->name('newtemutwo.save.links');
+    Route::post('/new-temu2-save-sprice', [NewTemutwoController::class, 'saveSprice'])->name('newtemutwo.save.sprice');
 
     // Temu Tabulator View
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');

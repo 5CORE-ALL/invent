@@ -1334,7 +1334,7 @@
             let sprc = rawSprc;
             let amzApplied = false;
             // Shopify B2C Sprc Dil stays the Dil suggestion. S PRC uses A Price
-            // when that suggestion is below Amz, and caps to A Price when it is above.
+            // when that suggestion is below Amz, and keeps Sprc Dil when it is above.
             if (ebayDgUsesAmzFloor()) {
                 const amz = (typeof chPromoAmazonPrice === 'function')
                     ? ebayDgRound2(chPromoAmazonPrice(d))
@@ -2032,6 +2032,7 @@
         /** Exact $ the S PRC cell paints — this is what we persist to the table. */
         function ebayDgCellSpriceToSave(d) {
             const painters = [
+                typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice : null,
                 typeof ebayDisplayedSprice === 'function' ? ebayDisplayedSprice : null,
                 typeof ebay2DisplayedSprice === 'function' ? ebay2DisplayedSprice : null,
                 typeof ebay3DisplayedSprice === 'function' ? ebay3DisplayedSprice : null,

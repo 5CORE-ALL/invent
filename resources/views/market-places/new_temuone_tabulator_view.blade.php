@@ -875,33 +875,87 @@
         if (!(ads > 0) || !(s > 0) || !(cost > 0)) return sgroi;
         return sgroi - ((s * ads / 100) / cost) * 100;
     }
-    /** Full Temu Price from target S R (same as PHP spriceFromTargetSR). */
+    /** Inverted S R of a full Temu price. Same base pick as S Base Prc / SGROI. */
+    function chPromoTemuInvertSrAtSprice(sprice) {
+        const s = Number(sprice);
+        if (!(s > 0) || !isFinite(s)) return 0;
+        const mult = 1.1364;
+        const candidates = [(s - 2.99) / mult, s / mult];
+        let best = 0;
+        let bestErr = Infinity;
+        candidates.forEach(function(base) {
+            if (!(base > 0)) return;
+            let full = base * mult;
+            if (full <= 26.99) full += 2.99;
+            const err = Math.abs(full - s);
+            if (err < bestErr - 1e-6) {
+                bestErr = err;
+                best = base;
+            } else if (Math.abs(err - bestErr) <= 1e-6 && (best <= 0 || base < best)) {
+                best = base;
+            }
+        });
+        if (!(best > 0)) return 0;
+        return best <= 26.99 ? best + 2.99 : best;
+    }
+    /** Full Temu Price whose inverted S R matches the target (same as PHP spriceFromTargetSR). */
     function chPromoTemuSpriceFromTargetSR(targetSR) {
         const sr = Number(targetSR);
         if (!(sr > 0) || !isFinite(sr)) return 0;
+        const mult = 1.1364;
         const base = sr > 26.99 ? sr : Math.max(0.01, sr - 2.99);
-        let full = base * 1.1364;
-        if (full <= 26.99) full += 2.99;
-        return chPromoRound2(full);
+        let official = base * mult;
+        if (official <= 26.99) official += 2.99;
+        const cands = [chPromoRound2(official), chPromoRound2(base * mult + 2.99), chPromoRound2(base * mult)];
+        let best = 0;
+        let bestErr = Infinity;
+        cands.forEach(function(full) {
+            if (!(full > 0)) return;
+            const inv = chPromoTemuInvertSrAtSprice(full);
+            if (!(inv > 0)) return;
+            const err = Math.abs(inv - sr);
+            if (err < bestErr - 0.001) {
+                bestErr = err;
+                best = full;
+            }
+        });
+        return best > 0 ? best : 0;
     }
-    /** Back-solve S PRC so SNROI (Dil + CVR Target NROI) matches, using Temu S R math. */
+    const chPromoSnroiPriceCache = {};
+    /** Back-solve S PRC so the measured SNROI (same invert as SGROI) equals the target. */
     function chPromoSpriceFromTargetRoi(d, roiPct) {
         const lp = parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp)) || 0;
         if (!(lp > 0)) return 0;
         const ship = parseFloat(d && (d.temu_ship != null ? d.temu_ship : d.Ship_productmaster)) || 0;
         const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
         const ads = chPromoTemuAdsPct();
-        let adsDollar = 0;
-        let full = 0;
-        for (let i = 0; i < 12; i++) {
-            const targetSR = (lp * (1 + roi / 100) + ship + adsDollar) / 0.95;
-            full = chPromoTemuSpriceFromTargetSR(targetSR);
-            if (!(full > 0)) return 0;
-            const nextAds = ads > 0 ? (full * ads / 100) : 0;
-            if (Math.abs(nextAds - adsDollar) < 0.0005) break;
-            adsDollar = nextAds;
+        const key = lp.toFixed(2) + '|' + ship.toFixed(2) + '|' + roi.toFixed(2) + '|' + ads.toFixed(2);
+        if (chPromoSnroiPriceCache[key] != null) return chPromoSnroiPriceCache[key];
+        let best = 0;
+        let bestErr = Infinity;
+        function consider(price) {
+            const p = chPromoRound2(price);
+            if (!(p >= 0.01)) return;
+            const sn = chPromoTemuInvertSnroiAtSprice(p, lp, ship);
+            if (sn == null || !isFinite(sn)) return;
+            const err = Math.abs(sn - roi);
+            if (err < bestErr - 0.0001) {
+                bestErr = err;
+                best = p;
+            }
         }
-        return full > 0 ? full : 0;
+        const seedSr = (lp * (1 + roi / 100) + ship) / 0.95;
+        const seed = chPromoTemuSpriceFromTargetSR(seedSr);
+        if (seed > 0) consider(seed);
+        const hi = Math.max(80, lp * 6 + ship * 4 + 20);
+        for (let cents = 50; cents <= Math.round(hi * 100); cents += 5) consider(cents / 100);
+        if (best > 0) {
+            const start = Math.max(1, Math.round((best - 0.08) * 100));
+            const end = Math.round((best + 0.08) * 100);
+            for (let cents = start; cents <= end; cents++) consider(cents / 100);
+        }
+        chPromoSnroiPriceCache[key] = best > 0 ? best : 0;
+        return chPromoSnroiPriceCache[key];
     }
     window.chPromoSpriceFromTargetRoi = chPromoSpriceFromTargetRoi;
 
@@ -1232,40 +1286,18 @@
         return updates.length;
     }
     /**
-     * Dil Save (persist+push): wipe stored S PRC, then reload so PHP back-solves
-     * SNROI and writes the new NTO_SPRICE — same clear-then-save as Amazon.
-     * Dil GET / slab edit (persist only): write the painted cell $ immediately.
+     * Dil Save writes the painted S PRC cell into NTO_SPRICE.
+     * Push queues that same cell dollar (S Base of the cell), not a second solve.
      */
     async function chPromoClearThenApplyAllRules(opts) {
         opts = opts || {};
         if (opts.persist !== true) return 0;
-        if (opts.push !== true) {
-            return await ntoPersistDisplayedSprice();
+        const n = await ntoPersistDisplayedSprice();
+        if (opts.push === true) {
+            window._ntoReloadPushQueued = false;
+            if (typeof ntoTryQueuePushOnReload === 'function') ntoTryQueuePushOnReload();
         }
-        const items = [];
-        chPromoEachTableRow(function(row, d) {
-            if (!chPromoIsChildRow(d) || !(chPromoInv(d) > 0)) return;
-            const sku = chPromoSku(d);
-            if (!sku) return;
-            items.push({ row: row, d: d, sku: sku });
-        });
-        if (!items.length) return 0;
-        const blocked = table && typeof table.blockRedraw === 'function';
-        if (blocked) table.blockRedraw();
-        try {
-            items.forEach(function(item) { chPromoWipeSpriceRow(item.row); });
-        } finally {
-            if (blocked) table.restoreRedraw();
-        }
-        temuClearCapMemo();
-        await ntoSaveSpriceChunks(items.map(function(i) { return { sku: i.sku, sprice: 0 }; }));
-        if (table && typeof table.replaceData === 'function') {
-            await table.replaceData();
-        }
-        if (typeof updateSummary === 'function') {
-            try { updateSummary(); } catch (e) { /* ignore */ }
-        }
-        return items.length;
+        return n;
     }
     window.chPromoSku = chPromoSku;
     window.chPromoGetSprice = chPromoGetSprice;
@@ -1403,8 +1435,6 @@
         return rule;
     }
     function temuSnroiPercent(row) {
-        const fromRule = temuSnroiFromRule(row);
-        if (fromRule != null) return fromRule;
         const snpft = temuSnpftDollars(row);
         const lp = parseFloat(row && row.lp) || 0;
         if (snpft == null || !(lp > 0)) return null;
@@ -3537,7 +3567,7 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'SNROI% = Dil + CVR Target NROI. S PRC is back-solved so live SNPFT ÷ LP equals this slab (same as Amazon). Capped to eBay / Amazon / LMP → live SNPFT ÷ LP.',
+                    headerTooltip: 'SNROI% = live SNPFT ÷ LP at S PRC. S PRC is solved so this matches the Dil + CVR target. SGROI is the gross ROI on that same price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSnroiPercent(row);

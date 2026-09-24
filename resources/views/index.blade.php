@@ -358,7 +358,7 @@
         $kpi('ACTIVE ISSUES:', 'customer-care', 'active_issues', $cc['active_issues'] ?? null, 'Active Issues'),
         $kpi('L30 ISSUES:', 'customer-care', 'l30_issue_rows', $cc['l30_issue_rows'] ?? null, 'L30 Issues'),
         $kpi('QC:', 'customer-care', 'qc_issues', $cc['qc_issues'] ?? null, 'QC Issues'),
-        $kpi('LABEL/SHIP:', 'customer-care', 'label_issues', $cc['label_issues'] ?? null, 'Label/Shipping'),
+        $kpi('LABEL/SHIP:', 'customer-care', 'label_issues', $cc['label_issues'] ?? null, 'Label/ Shipping Issues'),
         $kpi('DISPATCH:', 'customer-care', 'dispatch_issues', $cc['dispatch_issues'] ?? null, 'Dispatch Issues'),
         $kpi('SHIP RED:', 'account-health', 'ship_red', $ah['ship_red'] ?? null, 'Shipping Red'),
         $kpi('SHIP YELLOW:', 'account-health', 'ship_yellow', $ah['ship_yellow'] ?? null, 'Shipping Yellow'),
@@ -760,8 +760,8 @@
                 style="font-weight:bold;cursor:pointer;"
                 onclick="window.location.href='{{ route('customer.care.label.issues') }}'"
                 role="button"
-                title="Open Label/Shipping"
-            >Label/Shipping</span>
+                title="Open Label/ Shipping Issues"
+            >Label/ Shipping Issues</span>
             <span
                 class="badge bg-danger text-white fs-6 p-2"
                 style="font-weight:bold;cursor:pointer;"
@@ -770,7 +770,7 @@
                 title="Open Dispatch Issues"
             >Dispatch Issues</span>
             <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.qc.and.packing') }}'" role="button" title="QC PKG active issues">QC: {{ number_format((int) ($cc['qc_issues'] ?? 0)) }}</span>
-            <span class="badge bg-info text-dark fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.label.issues') }}'" role="button" title="Label/Shipping active">Label/Shipping: {{ number_format((int) ($cc['label_issues'] ?? 0)) }}</span>
+            <span class="badge bg-info text-dark fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.label.issues') }}'" role="button" title="Label/ Shipping Issues active">Label/ Shipping Issues: {{ number_format((int) ($cc['label_issues'] ?? 0)) }}</span>
             <span class="badge bg-danger text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.dispatch.issues.only') }}'" role="button" title="Dispatch Issues active">Dispatch: {{ number_format((int) ($cc['dispatch_issues'] ?? 0)) }}</span>
             <span class="badge fs-6 p-2" style="background-color:#dc2626;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'" role="button" title="Shipping Health — Red">Ship Red: {{ number_format((int) ($ah['ship_red'] ?? 0)) }}</span>
             <span class="badge fs-6 p-2" style="background-color:#eab308;color:#212529;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'" role="button" title="Shipping Health — Yellow">Ship Yellow: {{ number_format((int) ($ah['ship_yellow'] ?? 0)) }}</span>

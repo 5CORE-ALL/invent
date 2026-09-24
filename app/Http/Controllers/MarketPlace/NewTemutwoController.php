@@ -487,6 +487,66 @@ class NewTemutwoController extends Controller
         }
     }
 
+    /**
+     * Persist the painted S PRC cell for /new-temu2. Same dollar the cell shows.
+     */
+    public function saveSprice(Request $request)
+    {
+        $updates = $request->input('updates');
+        if (! is_array($updates)) {
+            $sku = trim((string) $request->input('sku', ''));
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'updates array required'], 422);
+            }
+            $updates = [[
+                'sku' => $sku,
+                'sprice' => $request->input('sprice'),
+                'lp' => $request->input('lp'),
+                'ship' => $request->input('ship'),
+            ]];
+        }
+
+        $skus = [];
+        foreach ($updates as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        $store = new NewTemutwoSuggestedPriceStore();
+        $store->loadForSkus($skus);
+        $cleared = 0;
+        $saved = 0;
+        foreach ($updates as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $sprice = (float) ($row['sprice'] ?? 0);
+            if ($sprice > 0) {
+                $store->writeExactSprice(
+                    $sku,
+                    $sprice,
+                    (float) ($row['lp'] ?? 0),
+                    (float) ($row['ship'] ?? 0),
+                    (float) ($row['sprc_dil'] ?? 0),
+                    is_array($row['labels'] ?? null) ? $row['labels'] : []
+                );
+                $saved++;
+            } else {
+                $store->clearSprice($sku);
+                $cleared++;
+            }
+        }
+        $store->flush();
+
+        return response()->json([
+            'success' => true,
+            'cleared' => $cleared,
+            'saved' => $saved,
+        ]);
+    }
+
     public function saveLinks(Request $request)
     {
         $sku = trim((string) $request->input('sku'));

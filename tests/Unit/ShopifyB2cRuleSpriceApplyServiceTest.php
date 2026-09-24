@@ -28,7 +28,7 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         $this->assertFalse($out['amz_sugg']);
     }
 
-    public function test_caps_dil_sprice_to_amazon_when_above_a_price(): void
+    public function test_keeps_sprc_dil_when_above_a_price(): void
     {
         $out = $this->compute([
             'inv' => 10,
@@ -42,8 +42,8 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
 
         $this->assertNotNull($out);
-        // Dil $ is 31.58, above A Price 10, so S PRC caps to Amz.
-        $this->assertEqualsWithDelta(10.0, $out['sprice'], 0.001);
+        // Dil $ is 31.58, above A Price 10, so S PRC keeps Sprc Dil.
+        $this->assertEqualsWithDelta(31.58, $out['sprice'], 0.001);
         $this->assertFalse($out['amz_sugg']);
     }
 

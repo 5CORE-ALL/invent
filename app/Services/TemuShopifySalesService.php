@@ -213,12 +213,31 @@ class TemuShopifySalesService
             return 0.0;
         }
         $base = $targetSR > 26.99 ? $targetSR : max(0.01, $targetSR - 2.99);
-        $full = self::computeFullTemuPrice($base);
-        if (! ($full > 0) || ! is_finite($full)) {
-            return 0.0;
+        $candidates = [
+            round(self::computeFullTemuPrice($base), 2),
+            round($base * self::FULL_PRICE_MULT + 2.99, 2),
+            round($base * self::FULL_PRICE_MULT, 2),
+        ];
+        $best = 0.0;
+        $bestErr = INF;
+        foreach (array_unique($candidates) as $full) {
+            if (! ($full > 0) || ! is_finite($full)) {
+                continue;
+            }
+            $sr = self::computeRPrice(self::computeBaseFromFullTemuPrice($full));
+            if (! ($sr > 0)) {
+                continue;
+            }
+            $err = abs($sr - $targetSR);
+            // base×1.1364 just above $26.99 drops the +$2.99, and invert then
+            // picks the other base. Keep the full price whose S R matches.
+            if ($err < $bestErr - 0.001) {
+                $bestErr = $err;
+                $best = $full;
+            }
         }
 
-        return round($full, 2);
+        return $best > 0 ? $best : 0.0;
     }
 
     /**
@@ -261,8 +280,9 @@ class TemuShopifySalesService
     }
 
     /**
-     * Back-solve S PRC so snroiAtSprice equals Dil + CVR Target NROI.
-     * Iterate ads $ on Full Price; rebuild from target S R each pass.
+     * Back-solve S PRC so the on-page SNROI (same invert as SGROI, minus Ads)
+     * equals Dil + CVR Target NROI. The $26.99 band is not monotonic, so the
+     * price is the one whose measured SNROI is closest to the target.
      */
     public static function spriceFromTargetSnroi(
         float $lp,
@@ -281,22 +301,43 @@ class TemuShopifySalesService
             $adsPercent = 0.0;
         }
         unset($listingBase);
-        $adsDollar = 0.0;
-        $full = 0.0;
-        for ($i = 0; $i < 12; $i++) {
-            $targetSR = ($lp * (1 + $nroiPct / 100) + $ship + $adsDollar) / self::DECREASE_TAKEHOME;
-            $full = self::spriceFromTargetSR($targetSR);
-            if (! ($full > 0)) {
-                return 0.0;
+
+        $best = 0.0;
+        $bestErr = INF;
+        $consider = function (float $price) use ($lp, $ship, $adsPercent, $nroiPct, &$best, &$bestErr): void {
+            $price = round($price, 2);
+            if (! ($price >= 0.01) || ! is_finite($price)) {
+                return;
             }
-            $nextAds = ($adsPercent > 0) ? ($full * $adsPercent / 100.0) : 0.0;
-            if (abs($nextAds - $adsDollar) < 0.0005) {
-                break;
+            $snroi = self::snroiAtSprice($price, $lp, $ship, $adsPercent);
+            if ($snroi === null) {
+                return;
             }
-            $adsDollar = $nextAds;
+            $err = abs($snroi - $nroiPct);
+            if ($err < $bestErr - 0.0001) {
+                $bestErr = $err;
+                $best = $price;
+            }
+        };
+
+        $seedSr = ($lp * (1 + $nroiPct / 100) + $ship) / self::DECREASE_TAKEHOME;
+        $seed = self::spriceFromTargetSR($seedSr);
+        if ($seed > 0) {
+            $consider($seed);
+        }
+        $hi = max(80.0, $lp * 6 + $ship * 4 + 20);
+        for ($cents = 50; $cents <= (int) round($hi * 100); $cents += 5) {
+            $consider($cents / 100);
+        }
+        if ($best > 0) {
+            $start = max(1, (int) round(($best - 0.08) * 100));
+            $end = (int) round(($best + 0.08) * 100);
+            for ($cents = $start; $cents <= $end; $cents++) {
+                $consider($cents / 100);
+            }
         }
 
-        return $full > 0 ? $full : 0.0;
+        return $best > 0 ? $best : 0.0;
     }
 
     /**

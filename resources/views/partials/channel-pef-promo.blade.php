@@ -3558,6 +3558,11 @@
                 }
                 return chPromoRound2(requested);
             }
+            if (d && CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
+                const raw = chPromoRound2(fill);
+                const amzKeep = chPromoRound2(chPromoAmazonPrice(d));
+                if (raw > 0 && amzKeep > 0 && raw > amzKeep) return raw;
+            }
             const skipCap = extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d);
             const afterAmz = d ? chPromoCapSpriceToAmz(d, fill) : chPromoRound2(fill);
             const capped = skipCap
@@ -3655,13 +3660,14 @@
         window.chPromoFinalSpriceToSave = chPromoFinalSpriceToSave;
         window.chPromoWipeSpriceRow = chPromoWipeSpriceRow;
         window.chPromoBatchClearThenSave = chPromoBatchClearThenSave;
-        /** Newegg + Macys + Purchasing Power + Best Buy: if S PRC is below A Price, raise it to Amz. Above Amz is kept. Shopify B2C caps down instead. */
+        /** Below A Price, raise S PRC to Amz. Shopify B2C keeps Sprc Dil when it is above A Price. */
         function chPromoUsesAmzSpriceFloor() {
             return CHANNEL_PROMO_CHANNEL === 'newegg'
                 || CHANNEL_PROMO_CHANNEL === 'macys'
                 || CHANNEL_PROMO_CHANNEL === 'macy'
                 || CHANNEL_PROMO_CHANNEL === 'purchasing_power'
-                || CHANNEL_PROMO_CHANNEL === 'bestbuy';
+                || CHANNEL_PROMO_CHANNEL === 'bestbuy'
+                || CHANNEL_PROMO_CHANNEL === 'shopify_b2c';
         }
         function chPromoFloorShopifySpriceToAmz(d, sprice) {
             if (!chPromoUsesAmzSpriceFloor()) return chPromoRound2(sprice);
@@ -3670,9 +3676,9 @@
             if (s > 0 && amz > 0 && s < amz) return amz;
             return s;
         }
-        /** Shopify B2C: same as Temu, without eBay. If S PRC is above A Price, cap it down to Amz. */
+        /** Shopify B2C no longer caps a higher Sprc Dil down to A Price. */
         function chPromoUsesAmzSpriceCap() {
-            return CHANNEL_PROMO_CHANNEL === 'shopify_b2c';
+            return false;
         }
         function chPromoCapSpriceToAmz(d, sprice) {
             if (!chPromoUsesAmzSpriceCap()) return chPromoRound2(sprice);
@@ -4483,12 +4489,21 @@
                 && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3')) {
                 val = temuPrepareSpriceForSave(rowData, sprice);
             } else {
-                val = extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(rowData)
-                    ? chPromoRound2(sprice)
-                    : (rowData ? chPromoCapSpriceToLmp(rowData, sprice, extra) : chPromoRound2(sprice));
-                if (rowData) val = chPromoCapSpriceToAmz(rowData, val);
-                if (rowData) val = chPromoFloorShopifySpriceToAmz(rowData, val);
-                if (val > 0) val = chPromoRoundChannelSprice(val);
+                if (rowData && CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
+                    const rawKeep = chPromoRound2(sprice);
+                    const amzKeep = chPromoRound2(chPromoAmazonPrice(rowData));
+                    if (rawKeep > 0 && amzKeep > 0 && rawKeep > amzKeep) {
+                        val = rawKeep;
+                    }
+                }
+                if (!(val > 0)) {
+                    val = extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(rowData)
+                        ? chPromoRound2(sprice)
+                        : (rowData ? chPromoCapSpriceToLmp(rowData, sprice, extra) : chPromoRound2(sprice));
+                    if (rowData) val = chPromoCapSpriceToAmz(rowData, val);
+                    if (rowData) val = chPromoFloorShopifySpriceToAmz(rowData, val);
+                    if (val > 0) val = chPromoRoundChannelSprice(val);
+                }
             }
             if (!sku || !chPromoCfg.saveSpriceUrl) {
                 return $.Deferred().reject().promise();

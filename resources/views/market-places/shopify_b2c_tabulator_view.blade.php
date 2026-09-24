@@ -729,7 +729,7 @@
                             title="Amz: suggested S PRC was above A Price and was capped to Amz. Click badge to filter. Click dot for rolling history.">
                             <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span>Amz 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2c-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2c'])
-                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price'])
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price', 'pglTitle' => 'Price or S PRC > non-ignored LMP (red triangle), INV > 0 only. Click badge to filter. Click dot for rolling history.'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shopifyb2c-price-lt80-lmp-badge', 'pltChannelKey' => 'shopifyb2c', 'pltPriceField' => 'Price'])
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="more-sold-count-badge" data-metric="sold_count" data-format="number" data-live-value="0" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter B2B L30 &gt; 0. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="sold_count" title="Rolling history"></span>&gt;0 Sold: 0</span>
                         <span class="badge bg-info fs-6 p-2 d-none shopifyb2c-badge-chart" id="total-cogs-badge" data-metric="total_cogs" data-format="money" data-live-value="{{ (float) ($shopifyDirectTotalCogs ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;"><span class="summary-trend-dot none" data-metric="total_cogs" title="Rolling history"></span>COGS: $0</span>
@@ -1282,13 +1282,13 @@
         return parseFloat(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0;
     }
 
-    /** Sprc Dil vs A Price, then LMP. Below A Price rises to Amz. Above A Price drops to Amz. */
+    /** Sprc Dil below A Price rises to Amz. Sprc Dil above A Price is the S PRC. Then LMP only when not above A Price. */
     function shopifyB2cCapLikeTemu(data, sprice) {
         let s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
         if (!(s > 0)) return 0;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        if (amz > 0 && s > amz) return s;
         if (amz > 0 && s < amz) s = amz;
-        if (amz > 0 && s > amz) s = amz;
         if (window.SpriceLmpCap) {
             const capped = SpriceLmpCap.prepare(data, s);
             if (capped > 0) s = Math.round(capped * 100) / 100;
@@ -1315,7 +1315,7 @@
         return Math.round(value * 100) / 100;
     }
 
-    /** Shown / pushed S PRC. Sprc Dil below A Price uses A Price. Above A Price caps to A Price. Then LMP. */
+    /** Shown / pushed S PRC. Sprc Dil below A Price uses A Price. Sprc Dil above A Price stays. Then LMP. */
     function shopifyB2cShownSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
@@ -1385,6 +1385,18 @@
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
     window.shopifyB2cHasBlueTriangle = shopifyB2cHasBlueTriangle;
+
+    /** Red-triangle badge: live Price or S PRC is above the non-ignored LMP. */
+    function shopifyB2cLmpCompareRow(row) {
+        if (!row) return row;
+        const price = parseFloat(row.Price) || 0;
+        const sprice = (typeof shopifyB2cShownSprice === 'function' ? shopifyB2cShownSprice(row) : 0) || 0;
+        const compare = Math.max(price, sprice);
+        if (!(compare > price)) return row;
+        const copy = Object.assign({}, row);
+        copy.Price = compare;
+        return copy;
+    }
 
     /** Badge / filter: suggested S PRC was above A Price and the shown price is Amz. */
     function shopifyB2cHasPurpleTriangle(data) {
@@ -2492,7 +2504,7 @@
                         // Apply retail price rounding (round to .99 endings)
                         newSprice = roundToRetailPrice(newSprice);
 
-                        // Ensure minimum price. Below A Price rises to Amz; above A Price caps to Amz; then LMP.
+                        // Ensure minimum price. Below A Price rises to Amz. Above A Price keeps Sprc Dil. Then LMP.
                         newSprice = Math.max(0.99, newSprice);
                         newSprice = shopifyB2cCapLikeTemu(rowData, newSprice);
 
@@ -3308,7 +3320,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. If it is below A Price, S PRC uses A Price. If it is above A Price, S PRC caps to A Price. Then LMP if that is lower. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. If it is below A Price, S PRC uses A Price. If it is above A Price, S PRC keeps this Sprc Dil. Then LMP if that is lower. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
@@ -3334,7 +3346,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. If Sprc Dil is below A Price, S PRC uses A Price. If Sprc Dil is above A Price, S PRC caps to A Price. Then LMP if that is lower. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP. Amz = set to A Price.",
+                    headerTooltip: "Not editable. If Sprc Dil is below A Price, S PRC uses A Price. If Sprc Dil is above A Price, S PRC keeps Sprc Dil. Then LMP if that is lower. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP. Amz = raised to A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
@@ -3749,7 +3761,7 @@
             }
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
-                    return PriceGtLmpBadge.hasRedTriangle(data, 'Price');
+                    return PriceGtLmpBadge.hasRedTriangle(shopifyB2cLmpCompareRow(data), 'Price');
                 });
             }
             if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
@@ -4014,7 +4026,15 @@
                 LmpMissingBadge.update('#shopifyb2c-lmp-missing-badge', data, 'shopifyb2c');
             }
             if (window.PriceGtLmpBadge) {
-                PriceGtLmpBadge.update('#shopifyb2c-price-gt-lmp-badge', allData, 'shopifyb2c', 'Price');
+                const pglSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                    ? allTableData
+                    : allData;
+                PriceGtLmpBadge.update(
+                    '#shopifyb2c-price-gt-lmp-badge',
+                    pglSrc.map(shopifyB2cLmpCompareRow),
+                    'shopifyb2c',
+                    'Price'
+                );
                 PriceGtLmpBadge.setOutline(document.getElementById('shopifyb2c-price-gt-lmp-badge'), priceGtLmpFilterActive);
             }
             if (window.PriceLt80LmpBadge) {

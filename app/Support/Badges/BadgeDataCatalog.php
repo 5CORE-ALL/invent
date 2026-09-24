@@ -144,7 +144,7 @@ class BadgeDataCatalog
                 'active_issues' => 'Active issues',
                 'dispatch_issues' => 'Dispatch issues',
                 'qc_issues' => 'QC PKG issues',
-                'label_issues' => 'Label/Shipping issues',
+                'label_issues' => 'Label/ Shipping Issues',
                 'l30_issue_rows' => 'L30 issue rows',
             ],
             'account-health' => [

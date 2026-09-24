@@ -210,8 +210,8 @@ class NewTemuoneSuggestedPriceStore
     }
 
     /**
-     * Persist a Dil SNROI S PRC (Amazon-style insert after clear). Empty fingerprint
-     * so the next catalog load recomputes if Dil / CVR / ads inputs changed.
+     * Persist the painted S PRC cell. Keep the current fingerprint so the next
+     * load returns this same dollar until Dil / CVR / ads inputs change.
      * $sprcDil is the uncapped Dil $; $labels are Amz/EB caps on the painted cell.
      *
      * @param  list<string>  $labels
@@ -243,6 +243,8 @@ class NewTemuoneSuggestedPriceStore
                 $cleanLabels[] = $label;
             }
         }
+        $saved = $this->savedValue($sku);
+        $fp = (string) ($saved[self::KEY_FINGERPRINT] ?? '');
         $this->queueWrite($sku, [
             'sgroi' => $inverted !== null ? round($inverted, 2) : null,
             'sprice' => $sprice,
@@ -252,7 +254,7 @@ class NewTemuoneSuggestedPriceStore
             'lmp_alert' => false,
             'capped' => abs($uncapped - $sprice) > 0.01,
             'use_saved' => true,
-        ], '');
+        ], $fp);
     }
 
     /**
@@ -533,7 +535,7 @@ class NewTemuoneSuggestedPriceStore
         $cvr = AmazonDilGroiRule::normalizeCvrAdj($cvrAdj);
         $lmp = $inputs['lmp'] ?? 0;
         $payload = [
-            'v' => 5,
+            'v' => 7,
             'ads' => round((float) ($inputs['ads'] ?? 0), 2),
             'rules' => $normRules,
             'temu_l30' => (int) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0),
