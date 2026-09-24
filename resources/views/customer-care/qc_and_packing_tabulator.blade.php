@@ -32,8 +32,7 @@
             width: 100%;
             max-width: 100%;
             min-width: 0;
-            overflow: visible;
-            padding-bottom: 56px;
+            overflow: hidden;
         }
         #qc-pkg-wrap .tabulator,
         #qc-history-wrap .tabulator {
@@ -43,7 +42,7 @@
             width: 100% !important;
             max-width: 100%;
             min-width: 0;
-            overflow: visible !important;
+            overflow: hidden !important;
         }
         #qc-pkg-wrap .tabulator .tabulator-header,
         #qc-history-wrap .tabulator .tabulator-header,
@@ -53,14 +52,13 @@
         #qc-history-wrap .tabulator .tabulator-footer { max-width: 100%; min-width: 0; }
         #qc-pkg-wrap .tabulator .tabulator-tableholder,
         #qc-history-wrap .tabulator .tabulator-tableholder {
-            overflow-x: auto !important;
-            overflow-y: visible !important;
+            overflow: auto !important;
             -webkit-overflow-scrolling: touch;
         }
         #qc-pkg-wrap .tabulator .tabulator-header,
         #qc-history-wrap .tabulator .tabulator-header {
-            position: sticky !important;
-            top: var(--tz-topbar-height, 70px) !important;
+            position: relative !important;
+            top: auto !important;
             z-index: 24 !important;
             background: #dbeafe;
             border-bottom: 1px solid #dee2e6;
@@ -208,6 +206,8 @@
         #qc-pkg-wrap .tabulator .tabulator-footer,
         #qc-history-wrap .tabulator .tabulator-footer {
             display: block !important;
+            position: relative !important;
+            z-index: 6;
             background: #f8fafc !important;
             border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
@@ -263,7 +263,7 @@
                 font-size: 13px !important;
             }
             #qc-pkg-wrap .tabulator .tabulator-header,
-            #qc-history-wrap .tabulator .tabulator-header { top: var(--tz-topbar-height, 56px) !important; }
+            #qc-history-wrap .tabulator .tabulator-header { top: auto !important; }
         }
         .sku-thumb, .sku-thumb-placeholder, .sku-image-preview {
             width: 36px; height: 36px; object-fit: contain; border-radius: 3px;
@@ -680,7 +680,7 @@
             function gridOptions(columns, extra) {
                 return Object.assign({
                     columns: columns,
-                    height: false,
+                    height: 'calc(100vh - 250px)',
                     layout: 'fitDataFill',
                     layoutColumnsOnNewData: true,
                     pagination: true,
