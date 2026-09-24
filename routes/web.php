@@ -2383,7 +2383,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ->unique()
             ->values();
 
-        return view('customer-care.qc_and_packing', array_merge(compact('marketplaces'), [
+        return view('customer-care.qc_and_packing_tabulator', array_merge(compact('marketplaces'), [
             'importUrl' => route('customer.care.qc.and.packing.issues.import'),
             // Merge Created At into Created By (name + short date; full ts on hover)
             // for the main list and the Order History card.
@@ -2521,7 +2521,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         if ($skus !== []) {
             $placeholders = implode(',', array_fill(0, count($skus), '?'));
             $pRows = \Illuminate\Support\Facades\DB::table('product_master')
-                ->select('id', 'sku', 'Values')
+                ->select('id', 'sku', 'Values', 'main_image', 'image1')
                 ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $skus)
                 ->get();
             foreach ($pRows as $p) {
@@ -2562,12 +2562,28 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             }
         }
 
+        $shopifyImageBySku = [];
+        if ($skus !== [] && \Illuminate\Support\Facades\Schema::hasTable('shopify_skus')) {
+            $placeholders = implode(',', array_fill(0, count($skus), '?'));
+            $shopRows = \Illuminate\Support\Facades\DB::table('shopify_skus')
+                ->select('sku', 'image_src')
+                ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $skus)
+                ->get();
+            foreach ($shopRows as $shopRow) {
+                $shopKey = strtoupper(trim((string) $shopRow->sku));
+                if ($shopKey !== '' && ! isset($shopifyImageBySku[$shopKey])) {
+                    $shopifyImageBySku[$shopKey] = $shopRow->image_src;
+                }
+            }
+        }
+
         $tz = config('app.timezone');
-        $data = $rows->map(function ($row) use ($tz, $productMap, $instrPkgByProductId, $qcEnhanceBySku) {
+        $data = $rows->map(function ($row) use ($tz, $productMap, $instrPkgByProductId, $qcEnhanceBySku, $shopifyImageBySku) {
             $k = strtoupper(trim((string) ($row->sku ?? '')));
             $productMasterId = null;
             $ctnInstructions = '';
             $instructionsItemPkg = '';
+            $imageCandidates = [$shopifyImageBySku[$k] ?? null];
             if (isset($productMap[$k])) {
                 $p = $productMap[$k];
                 $productMasterId = (int) $p->id;
@@ -2575,13 +2591,30 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 if (is_array($vals) && isset($vals['ctn_instructions'])) {
                     $ctnInstructions = mb_substr((string) $vals['ctn_instructions'], 0, 100);
                 }
+                if (is_array($vals)) {
+                    $imageCandidates[] = $vals['image_path'] ?? null;
+                }
+                $imageCandidates[] = $p->main_image ?? null;
+                $imageCandidates[] = $p->image1 ?? null;
                 $instructionsItemPkg = $instrPkgByProductId[$productMasterId] ?? '';
+            }
+            $imageUrl = null;
+            foreach ($imageCandidates as $candidate) {
+                $path = trim((string) ($candidate ?? ''));
+                if ($path === '') {
+                    continue;
+                }
+                $imageUrl = (preg_match('/^(https?:)?\/\//i', $path) || str_starts_with($path, 'data:'))
+                    ? $path
+                    : '/'.ltrim($path, '/');
+                break;
             }
             $qe = $qcEnhanceBySku[$k] ?? ['issue' => '', 'action_req' => '', 'status_remark' => ''];
 
             return [
                 'id' => (int) $row->id,
                 'sku' => $row->sku,
+                'image_url' => $imageUrl,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
                 'parent' => $row->parent,
@@ -2648,7 +2681,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         if ($histSkus !== []) {
             $placeholders = implode(',', array_fill(0, count($histSkus), '?'));
             $pRows = \Illuminate\Support\Facades\DB::table('product_master')
-                ->select('id', 'sku', 'Values')
+                ->select('id', 'sku', 'Values', 'main_image', 'image1')
                 ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $histSkus)
                 ->get();
             foreach ($pRows as $p) {
@@ -2689,12 +2722,28 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             }
         }
 
+        $histShopifyImageBySku = [];
+        if ($histSkus !== [] && \Illuminate\Support\Facades\Schema::hasTable('shopify_skus')) {
+            $placeholders = implode(',', array_fill(0, count($histSkus), '?'));
+            $shopRows = \Illuminate\Support\Facades\DB::table('shopify_skus')
+                ->select('sku', 'image_src')
+                ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $histSkus)
+                ->get();
+            foreach ($shopRows as $shopRow) {
+                $shopKey = strtoupper(trim((string) $shopRow->sku));
+                if ($shopKey !== '' && ! isset($histShopifyImageBySku[$shopKey])) {
+                    $histShopifyImageBySku[$shopKey] = $shopRow->image_src;
+                }
+            }
+        }
+
         $tz = config('app.timezone');
-        $data = $rows->map(function ($row) use ($tz, $histProductMap, $histInstrPkgByProductId, $histQcEnhanceBySku) {
+        $data = $rows->map(function ($row) use ($tz, $histProductMap, $histInstrPkgByProductId, $histQcEnhanceBySku, $histShopifyImageBySku) {
             $k = strtoupper(trim((string) ($row->sku ?? '')));
             $productMasterId = null;
             $ctnInstructions = '';
             $instructionsItemPkg = '';
+            $imageCandidates = [$histShopifyImageBySku[$k] ?? null];
             if (isset($histProductMap[$k])) {
                 $p = $histProductMap[$k];
                 $productMasterId = (int) $p->id;
@@ -2702,7 +2751,23 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 if (is_array($vals) && isset($vals['ctn_instructions'])) {
                     $ctnInstructions = mb_substr((string) $vals['ctn_instructions'], 0, 100);
                 }
+                if (is_array($vals)) {
+                    $imageCandidates[] = $vals['image_path'] ?? null;
+                }
+                $imageCandidates[] = $p->main_image ?? null;
+                $imageCandidates[] = $p->image1 ?? null;
                 $instructionsItemPkg = $histInstrPkgByProductId[$productMasterId] ?? '';
+            }
+            $imageUrl = null;
+            foreach ($imageCandidates as $candidate) {
+                $path = trim((string) ($candidate ?? ''));
+                if ($path === '') {
+                    continue;
+                }
+                $imageUrl = (preg_match('/^(https?:)?\/\//i', $path) || str_starts_with($path, 'data:'))
+                    ? $path
+                    : '/'.ltrim($path, '/');
+                break;
             }
             $qe = $histQcEnhanceBySku[$k] ?? ['issue' => '', 'action_req' => '', 'status_remark' => ''];
 
@@ -2719,6 +2784,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                     )
                     : null),
                 'sku' => $row->sku,
+                'image_url' => $imageUrl,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
                 'parent' => $row->parent,
