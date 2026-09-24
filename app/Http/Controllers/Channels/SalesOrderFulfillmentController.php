@@ -7231,7 +7231,6 @@ class SalesOrderFulfillmentController extends Controller
     public function historyChartData(Request $request): JsonResponse
     {
         try {
-            @set_time_limit(120);
             $metric = trim((string) $request->input('metric', 'pending_total'));
             $days = (int) $request->input('days', 30);
             $labels = self::historyMetricKeys();
@@ -7280,8 +7279,9 @@ class SalesOrderFulfillmentController extends Controller
                 ];
             }
 
-            $live = $this->liveHistoryMetric($metric);
-            if ($live !== null) {
+            $badgeValue = $request->input('badge_value');
+            if ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue)) {
+                $live = (float) $badgeValue;
                 if ($chartData === []) {
                     $chartData[] = [
                         'date' => $end->format('M d'),
@@ -7309,32 +7309,6 @@ class SalesOrderFulfillmentController extends Controller
                 'data' => [],
             ], 500);
         }
-    }
-
-    /**
-     * Today's badge count — the last point on each history graph.
-     */
-    protected function liveHistoryMetric(string $metric): ?float
-    {
-        return match ($metric) {
-            'channel_count' => (float) (Schema::hasTable('channel_master')
-                ? ChannelMaster::query()
-                    ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
-                    ->whereNotNull('channel')
-                    ->where('channel', '!=', '')
-                    ->count()
-                : 0),
-            'pending_total' => (float) count($this->warehousePendingOrderRows()),
-            'fulfilled_24h' => (float) count($this->labelCreatedNoScanRows()),
-            'label_created_no_tracking' => (float) count($this->labelCreatedNoTrackingRows()),
-            'in_transit_total', 'received_by_carrier_total' => (float) $this->inTransitOrdersCount(),
-            'invoiced_total' => (float) count($this->excludeDisplayedInTransitRows(
-                $this->excludeDisplayedDeliveredRows($this->invoicedOrderRows())
-            )),
-            'delivered_total' => (float) $this->deliveredOrdersCount(),
-            'all_order_total' => (float) $this->allOrdersCount(),
-            default => null,
-        };
     }
 
     /**

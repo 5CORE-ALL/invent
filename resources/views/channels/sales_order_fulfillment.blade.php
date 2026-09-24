@@ -239,10 +239,8 @@
             position: relative;
         }
         #sofHistoryChartLoading {
-            position: absolute;
-            inset: 0;
+            min-height: 28vh;
             background: #fff;
-            z-index: 2;
         }
         #sofHistoryChartContainer {
             height: 28vh;
@@ -1798,8 +1796,8 @@
     </div>
 
     {{-- History graph (same idea as Active Channel Master) --}}
-    <div class="modal fade" id="sofHistoryChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+    <div class="modal fade p-0" id="sofHistoryChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0">
             <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-2 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
@@ -6555,11 +6553,33 @@
         });
     }
 
+    function sofHistoryBadgeValue(metric) {
+        const ids = {
+            channel_count: 'sof-channel-count',
+            pending_total: 'sof-pending-total',
+            label_created_no_tracking: 'sof-no-tracking-total',
+            fulfilled_24h: 'sof-fulfilled-24h',
+            received_by_carrier_total: 'sof-in-transit-total',
+            in_transit_total: 'sof-in-transit-total',
+            invoiced_total: 'sof-invoiced-total',
+            delivered_total: 'sof-delivered-total',
+            all_order_total: 'sof-all-order-total',
+        };
+        const el = document.getElementById(ids[metric] || '');
+        if (!el) return '';
+        const n = String(el.textContent || '').replace(/,/g, '').trim();
+        return /^-?\d+(\.\d+)?$/.test(n) ? n : '';
+    }
+
     function loadSofHistoryChart() {
         $('#sofHistoryChartContainer').hide();
         $('#sofHistoryChartNoData').hide();
         $('#sofHistoryChartLoading').show();
-        const qs = new URLSearchParams({ metric: sofHistoryMetric, days: String(sofHistoryDays) });
+        const qs = new URLSearchParams({
+            metric: sofHistoryMetric,
+            days: String(sofHistoryDays),
+            badge_value: sofHistoryBadgeValue(sofHistoryMetric),
+        });
         fetch(sofChartDataUrl + '?' + qs.toString(), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function (r) { return r.json(); })
             .then(function (res) {
