@@ -5368,9 +5368,17 @@ class VeeqoShopifyFulfillmentService
                     }
                     if ($this->isStrictTrackingMarketplace($marketplace) && $skuCol !== null) {
                         $sku = trim((string) ($row->{$skuCol} ?? ''));
-                        if ($sku === '' || in_array(strtolower($sku), ['__order__', '__unknown__'], true)) {
+                        $placeholder = $sku === '' || in_array(strtolower($sku), ['__order__', '__unknown__'], true);
+                        if ($placeholder) {
+                            if (isset($seen[$key]) || isset($seen[$key.'|__order__'])) {
+                                continue;
+                            }
+                            $seen[$key.'|__order__'] = true;
+                            $ids[] = (int) $row->id;
+
                             continue;
                         }
+                        unset($seen[$key.'|__order__']);
                         $key .= '|'.strtoupper($sku);
                     }
                     if (isset($seen[$key])) {

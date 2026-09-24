@@ -48,7 +48,7 @@ class FourSellerApiService
             return null;
         }
 
-        foreach ($this->cleanRefs($refs) as $ref) {
+        foreach (self::searchablePlatformRefs($refs) as $ref) {
             $hit = $this->searchOne($ref);
             if ($hit !== null) {
                 return $hit;
@@ -59,22 +59,26 @@ class FourSellerApiService
     }
 
     /**
+     * Platform order ids 4Seller can search. Shopify display names (#342860, 5–7 digits)
+     * are omitted. Newegg and Reverb order numbers are 8–10 digits and must be kept.
+     *
      * @param  list<string>  $refs
      * @return list<string>
      */
-    protected function cleanRefs(array $refs): array
+    public static function searchablePlatformRefs(array $refs): array
     {
         $out = [];
         foreach ($refs as $ref) {
             $ref = trim((string) $ref);
-            if (preg_match('/^(?:TT2?|tiktok2?)-(.+)$/i', ltrim($ref, '#'), $m)) {
+            if (preg_match('/^(?:TT2?|tiktok2?|newegg|reverb|aliexpress|alibaba|ae|ebay[123]?|shein|faire)-(.+)$/i', ltrim($ref, '#'), $m)) {
                 $ref = trim((string) $m[1]);
             }
             $plain = strtolower(ltrim($ref, '#'));
             if (strlen($ref) < 6) {
                 continue;
             }
-            if (preg_match('/^\d{5,10}$/', $plain) || preg_match('/^\d{12,14}$/', $plain)) {
+            // Shopify order name (#342860). Not a Newegg/Reverb/AliExpress platform id.
+            if (preg_match('/^\d{5,7}$/', $plain)) {
                 continue;
             }
             if (! in_array($ref, $out, true)) {

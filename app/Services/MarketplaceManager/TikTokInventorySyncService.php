@@ -56,7 +56,7 @@ class TikTokInventorySyncService
         $errorSamples = [];
 
         foreach ($metrics as $metric) {
-            if ($this->tiktokApi->isIpAllowListBlocked()) {
+            if ($this->tiktokApi->isIpAllowListBlocked() || $this->tiktokApi->isListingCreateRestricted()) {
                 $skipped++;
                 continue;
             }
@@ -88,6 +88,16 @@ class TikTokInventorySyncService
         if ($this->tiktokApi->isIpAllowListBlocked()) {
             return $this->resultMessage(
                 'Aborted: TikTok blocked this IP (Partner Center IP allow list). Updated %d SKU(s). Add this server IP and re-run from that host.',
+                $updated,
+                $failed,
+                $skipped,
+                $errorSamples
+            );
+        }
+
+        if ($this->tiktokApi->isListingCreateRestricted()) {
+            return $this->resultMessage(
+                'Stopped: TikTok is blocking listing edits, and the inventory update was rejected too. Updated %d SKU(s).',
                 $updated,
                 $failed,
                 $skipped,
@@ -213,7 +223,7 @@ class TikTokInventorySyncService
         $errorSamples = [];
 
         foreach ($metrics as $metric) {
-            if ($this->tiktokApi->isIpAllowListBlocked()) {
+            if ($this->tiktokApi->isIpAllowListBlocked() || $this->tiktokApi->isListingCreateRestricted()) {
                 $skipped++;
                 continue;
             }
@@ -242,6 +252,16 @@ class TikTokInventorySyncService
         if ($this->tiktokApi->isIpAllowListBlocked()) {
             return $this->resultMessage(
                 "Aborted: TikTok blocked this IP (Partner Center IP allow list). Updated {$updated}; failed {$failed}; skipped {$skipped}. Add this server IP and re-run from that host.",
+                $updated,
+                $failed,
+                $skipped,
+                $errorSamples
+            );
+        }
+
+        if ($this->tiktokApi->isListingCreateRestricted()) {
+            return $this->resultMessage(
+                "Stopped: TikTok is blocking listing edits, and the inventory update was rejected too. Updated {$updated}; failed {$failed}; skipped {$skipped}.",
                 $updated,
                 $failed,
                 $skipped,
