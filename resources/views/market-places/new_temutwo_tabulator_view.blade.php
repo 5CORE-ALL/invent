@@ -917,7 +917,7 @@
             if (err < bestErr - 1e-6) {
                 bestErr = err;
                 best = base;
-            } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+            } else if (Math.abs(err - bestErr) <= 1e-6 && base < best) {
                 best = base;
             }
         });
@@ -942,45 +942,38 @@
         if (!(ads > 0) || !(s > 0) || !(cost > 0)) return sgroi;
         return sgroi - ((s * ads / 100) / cost) * 100;
     }
-    /** Back-solve S PRC so SNROI (Dil + CVR Target NROI) matches, using Temu S R math. */
+    const chPromoSnroiPriceCache = {};
+    /** Back-solve S PRC so the measured SNROI (same invert as SGROI) equals the target. */
     function chPromoSpriceFromTargetRoi(d, roiPct) {
         const lp = parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp)) || 0;
         if (!(lp > 0)) return 0;
         const ship = parseFloat(d && (d.temu_ship != null ? d.temu_ship : d.Ship_productmaster)) || 0;
         const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
         const ads = chPromoTemuAdsPct();
-        const targetSR = (lp * (1 + roi / 100) + ship) / 0.95;
-        if (!(targetSR > 0) || !isFinite(targetSR)) return 0;
-        const base = targetSR > 26.99 ? targetSR : Math.max(0.01, targetSR - 2.99);
-        let seed = base * 1.1364;
-        if (seed <= 26.99) seed += 2.99;
-        if (ads > 0) seed = seed / Math.max(0.2, 1 - ads / 95);
-        seed = chPromoRound2(seed);
-        const invert = chPromoTemuInvertSnroiAtSprice;
-        const seedRoi = invert(seed, lp, ship);
-        if (seedRoi != null && Math.abs(seedRoi - roi) <= 1.5) return seed;
-        let lo = Math.max(0.01, seed * 0.35);
-        let hi = Math.max(seed * 2.8, seed + 20);
-        for (let expand = 0; expand < 10; expand++) {
-            const gLo = invert(lo, lp, ship);
-            const gHi = invert(hi, lp, ship);
-            if (gLo == null || gHi == null) break;
-            if (gLo <= roi && roi <= gHi) break;
-            if (roi < gLo) { hi = lo; lo = Math.max(0.01, lo * 0.5); }
-            else { lo = hi; hi = hi * 1.8; }
-        }
-        let best = seed;
+        const key = lp.toFixed(2) + '|' + ship.toFixed(2) + '|' + roi.toFixed(2) + '|' + ads.toFixed(2);
+        if (chPromoSnroiPriceCache[key] != null) return chPromoSnroiPriceCache[key];
+        let best = 0;
         let bestErr = Infinity;
-        for (let i = 0; i < 40; i++) {
-            const mid = (lo + hi) / 2;
-            const g = invert(mid, lp, ship);
-            if (g == null) break;
-            const err = Math.abs(g - roi);
-            if (err < bestErr) { bestErr = err; best = mid; }
-            if (g < roi) lo = mid;
-            else hi = mid;
+        function consider(price) {
+            const p = chPromoRound2(price);
+            if (!(p >= 0.01)) return;
+            const sn = chPromoTemuInvertSnroiAtSprice(p, lp, ship);
+            if (sn == null || !isFinite(sn)) return;
+            const err = Math.abs(sn - roi);
+            if (err < bestErr - 0.0001) {
+                bestErr = err;
+                best = p;
+            }
         }
-        return (isFinite(best) && best > 0) ? chPromoRound2(best) : 0;
+        const hi = Math.max(80, lp * 6 + ship * 4 + 20);
+        for (let cents = 50; cents <= Math.round(hi * 100); cents += 5) consider(cents / 100);
+        if (best > 0) {
+            const start = Math.max(1, Math.round((best - 0.08) * 100));
+            const end = Math.round((best + 0.08) * 100);
+            for (let cents = start; cents <= end; cents++) consider(cents / 100);
+        }
+        chPromoSnroiPriceCache[key] = best > 0 ? best : 0;
+        return chPromoSnroiPriceCache[key];
     }
     window.chPromoSpriceFromTargetRoi = chPromoSpriceFromTargetRoi;
 
@@ -1181,7 +1174,7 @@
             if (err < bestErr - 1e-6) {
                 bestErr = err;
                 best = base;
-            } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+            } else if (Math.abs(err - bestErr) <= 1e-6 && base < best) {
                 best = base;
             }
         });
@@ -1330,8 +1323,6 @@
         return rule;
     }
     function temuSnroiPercent(row) {
-        const fromRule = temuSnroiFromRule(row);
-        if (fromRule != null) return fromRule;
         const snpft = temuSnpftDollars(row);
         const lp = parseFloat(row && row.lp) || 0;
         if (snpft == null || !(lp > 0)) return null;
@@ -3443,7 +3434,7 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'SNROI% = Dil + CVR Target NROI. S PRC is back-solved so this matches the slab (same as eBay / Amazon). If S PRC was capped to eBay / Amazon / LMP, it shows live SNPFT ÷ LP instead.',
+                    headerTooltip: 'SNROI% = live SNPFT ÷ LP at S PRC. S PRC is solved so this matches the Dil + CVR target. SGROI is the gross ROI on that same price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSnroiPercent(row);
