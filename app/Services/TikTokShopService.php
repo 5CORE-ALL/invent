@@ -58,6 +58,12 @@ class TikTokShopService
     /** LIVE listings reject Update Inventory; skip it for the rest of this request. */
     protected bool $skipInventoryUpdateApi = false;
 
+    /** Shop penalty blocks Partial Edit / new listings (12052093). Stay on inventory/update. */
+    protected bool $blockPartialEdit = false;
+
+    /** inventory/update itself returned the new-listing penalty. Stop the rest of the batch. */
+    protected bool $listingCreateRestricted = false;
+
     public function __construct()
     {
         $cfg = config('services.'.$this->configKey, []);
@@ -3203,9 +3209,24 @@ class TikTokShopService
         return ['code' => $code, 'type' => $type];
     }
 
+    public static function isNewListingRestrictedError(string $message): bool
+    {
+        $message = strtolower($message);
+
+        return str_contains($message, '12052093')
+            || str_contains($message, 'cannot create new product')
+            || str_contains($message, 'new listings are temporarily restricted')
+            || str_contains($message, 'save new listing information as a draft');
+    }
+
+    public function isListingCreateRestricted(): bool
+    {
+        return $this->listingCreateRestricted;
+    }
+
     protected function isProductStatusRestrictionError(string $message): bool
     {
-        if (self::isIdentifierCodeLockedError($message)) {
+        if (self::isIdentifierCodeLockedError($message) || self::isNewListingRestrictedError($message)) {
             return false;
         }
         $message = strtolower($message);
@@ -3233,10 +3254,24 @@ class TikTokShopService
 
     protected function rememberSkipInventoryUpdateApi(): void
     {
+        if ($this->blockPartialEdit || $this->listingCreateRestricted) {
+            return;
+        }
         $this->skipInventoryUpdateApi = true;
         $this->deadInventoryKeys['202309|inventory'] = true;
         try {
             Cache::put($this->cachePrefix.'_skip_inventory_update_api', true, now()->addHours(6));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    protected function clearSkipInventoryUpdateApi(): void
+    {
+        $this->skipInventoryUpdateApi = false;
+        unset($this->deadInventoryKeys['202309|inventory']);
+        try {
+            Cache::forget($this->cachePrefix.'_skip_inventory_update_api');
         } catch (\Throwable $e) {
             // ignore
         }
@@ -3659,6 +3694,9 @@ class TikTokShopService
         if ($this->ipAllowListBlocked) {
             return ['success' => false, 'message' => $lastMessage];
         }
+        if (self::isNewListingRestrictedError($lastMessage) || $this->listingCreateRestricted || $this->blockPartialEdit) {
+            return ['success' => false, 'message' => $lastMessage];
+        }
         if ($this->isProductStatusRestrictionError($lastMessage)) {
             $this->rememberSkipInventoryUpdateApi();
         }
@@ -3683,6 +3721,11 @@ class TikTokShopService
             'method' => 'partial',
             'error' => $lastMessage,
         ]);
+        if (self::isNewListingRestrictedError($lastMessage)) {
+            $host = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+
+            return $this->recoverInventoryAfterListingBan($productId, $skuId, $rows, $host, $lastMessage);
+        }
 
             if ($this->isSalesAttributesError($lastMessage) || self::isIdentifierCodeLockedError($lastMessage) || self::isPackageDimensionsError($lastMessage)) {
             $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
@@ -3719,6 +3762,11 @@ class TikTokShopService
             }
             $invMsg = (string) ($inv['message'] ?? '');
             $this->rememberIpAllowList($invMsg);
+            if (self::isNewListingRestrictedError($invMsg)) {
+                $this->listingCreateRestricted = true;
+
+                return ['success' => false, 'message' => $invMsg];
+            }
             if ($this->isProductStatusRestrictionError($invMsg)) {
                 $this->rememberSkipInventoryUpdateApi();
             } elseif ($invMsg !== '') {
@@ -3782,6 +3830,11 @@ class TikTokShopService
                         'base' => $host,
                         'error' => $lastError,
                     ]);
+                    if (self::isNewListingRestrictedError($lastError)) {
+                        $this->listingCreateRestricted = true;
+
+                        return ['success' => false, 'message' => $lastError];
+                    }
                     if (self::isPackageDimensionsError($lastError)) {
                         $this->rememberSkipInventoryUpdateApi();
                         break;
@@ -3792,6 +3845,14 @@ class TikTokShopService
                     }
                 }
             }
+        }
+
+        if ($this->blockPartialEdit || $this->listingCreateRestricted || self::isNewListingRestrictedError($lastError)) {
+            if (self::isNewListingRestrictedError($lastError)) {
+                $this->listingCreateRestricted = true;
+            }
+
+            return ['success' => false, 'message' => $lastError];
         }
 
         $full = $this->partialEditInventoryParams($productId, $skuId, $rows);
@@ -3840,6 +3901,9 @@ class TikTokShopService
                         'base' => $host,
                         'error' => $lastError,
                     ]);
+                if (self::isNewListingRestrictedError($lastError)) {
+                    return $this->recoverInventoryAfterListingBan($productId, $skuId, $rows, $host, $lastError);
+                }
                 if ($this->isEnforcementBlockedError($lastError)) {
                     return ['success' => false, 'message' => $lastError];
                 }
@@ -3858,6 +3922,9 @@ class TikTokShopService
                     } catch (\Throwable $dimEx) {
                         $lastError = $dimEx->getMessage();
                         $this->rememberIpAllowList($lastError);
+                        if (self::isNewListingRestrictedError($lastError)) {
+                            return $this->recoverInventoryAfterListingBan($productId, $skuId, $rows, $host, $lastError);
+                        }
                         if ($this->ipAllowListBlocked || $this->isEnforcementBlockedError($lastError)) {
                             return ['success' => false, 'message' => $lastError];
                         }
@@ -3886,12 +3953,66 @@ class TikTokShopService
                         } catch (\Throwable $retryEx) {
                             $lastError = $retryEx->getMessage();
                             $this->rememberIpAllowList($lastError);
+                            if (self::isNewListingRestrictedError($lastError)) {
+                                return $this->recoverInventoryAfterListingBan($productId, $skuId, $rows, $host, $lastError);
+                            }
                             if ($this->ipAllowListBlocked || $this->isEnforcementBlockedError($lastError)) {
                                 return ['success' => false, 'message' => $lastError];
                             }
                         }
                     }
                 }
+            }
+        }
+
+        return ['success' => false, 'message' => $lastError];
+    }
+
+    /**
+     * Partial Edit is blocked while TikTok refuses new listings (12052093).
+     * Drop the 6-hour inventory/update skip and write quantity through inventory/update only.
+     *
+     * @param  list<array{warehouse_id?: string, quantity: int}>  $rows
+     * @return array{success: bool, message: string}
+     */
+    protected function recoverInventoryAfterListingBan(string $productId, string $skuId, array $rows, string $host, string $banMessage): array
+    {
+        $this->blockPartialEdit = true;
+        $this->clearSkipInventoryUpdateApi();
+        $rows = $this->ensureWarehouseOnInventoryRows($rows);
+        $qtyOnly = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
+        $lastError = $banMessage;
+        foreach ([
+            "/product/202309/products/{$productId}/inventory/update",
+            "/product/202509/products/{$productId}/inventory/update",
+        ] as $path) {
+            try {
+                $this->tiktokOpenApi('POST', $path, [], $qtyOnly, 12, false, $host);
+                $this->workingInventoryPath = str_contains($path, '202509') ? '202509|inventory' : '202309|inventory';
+                Log::info('TikTok inventory updated after listing-edit ban', [
+                    'product_id' => $productId,
+                    'sku_id' => $skuId,
+                    'path' => $path,
+                ]);
+
+                return ['success' => true, 'message' => 'Inventory updated.'];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                $this->rememberIpAllowList($lastError);
+                if ($this->ipAllowListBlocked) {
+                    return ['success' => false, 'message' => $lastError];
+                }
+                if (self::isNewListingRestrictedError($lastError)) {
+                    $this->listingCreateRestricted = true;
+
+                    return ['success' => false, 'message' => $lastError];
+                }
+                Log::info('TikTok inventory-only retry failed after listing-edit ban', [
+                    'product_id' => $productId,
+                    'sku_id' => $skuId,
+                    'path' => $path,
+                    'error' => $lastError,
+                ]);
             }
         }
 
