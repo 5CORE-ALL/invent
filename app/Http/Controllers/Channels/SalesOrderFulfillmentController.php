@@ -147,6 +147,7 @@ class SalesOrderFulfillmentController extends Controller
     public function data(): JsonResponse
     {
         try {
+            @set_time_limit(120);
             if (! Schema::hasTable('channel_master')) {
                 return response()->json([
                     'success' => true,
@@ -417,27 +418,7 @@ class SalesOrderFulfillmentController extends Controller
     public function deliveredData(): JsonResponse
     {
         try {
-            $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug),
-                true
-            );
-            $fromCarrier = array_values(array_filter(
-                $this->labelCreatedOrderRows(),
-                fn (array $r) => $this->rowLooksDelivered($r)
-            ));
-            $rows = $this->mergeOrderRowsById($rows, $fromCarrier);
-            $rows = $this->mergeOrderRowsById(
-                $rows,
-                $this->onlyCarrierDeliveredRows($this->inTransitOrderRows())
-            );
-            $rows = $this->mergeOrderRowsById($rows, $this->invoicedTrackedForDelivered());
-            $rows = $this->mergeOrderRowsById(
-                $rows,
-                array_values(array_filter(
-                    $this->invoicedOrderRows(),
-                    fn (array $r) => $this->rowDisplayedAsDelivered($r)
-                ))
-            );
+            $rows = $this->deliveredOrderRows();
 
             return response()->json([
                 'success' => true,
@@ -5494,7 +5475,6 @@ class SalesOrderFulfillmentController extends Controller
         $inReceived = $this->inReceivedOrdersCount();
         $invoicedNoScan = count($this->invoicedTrackedForNoScan());
         $invoicedTransit = count($this->invoicedTrackedForInTransit());
-        $invoicedDelivered = count($this->invoicedTrackedForDelivered());
 
         return [
             'channel_count' => (int) $channelCount,
@@ -5512,9 +5492,7 @@ class SalesOrderFulfillmentController extends Controller
             'invoiced_total' => count($this->excludeDisplayedInTransitRows(
                 $this->excludeDisplayedDeliveredRows($this->invoicedOrderRows())
             )),
-            'delivered_total' => $this->countAllOrders(
-                fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug)
-            ) + $invoicedDelivered,
+            'delivered_total' => $this->deliveredOrdersCount(),
             'not_authorized_total' => $this->notAuthorizedTrackingCount(),
             'all_order_total' => $this->allOrdersCount(),
             'calculated_at' => now($this->sofTimezone())->toDateTimeString(),
@@ -5584,7 +5562,13 @@ class SalesOrderFulfillmentController extends Controller
         );
     }
 
-    protected function deliveredOrdersCount(): int
+    /**
+     * Same rows the Delivered tab shows: marketplace delivered, carrier delivered,
+     * and invoiced orders whose status is Delivered.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function deliveredOrderRows(): array
     {
         $rows = $this->collectOrderRows(
             fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug),
@@ -5601,7 +5585,18 @@ class SalesOrderFulfillmentController extends Controller
         );
         $rows = $this->mergeOrderRowsById($rows, $this->invoicedTrackedForDelivered());
 
-        return count($rows);
+        return $this->mergeOrderRowsById(
+            $rows,
+            array_values(array_filter(
+                $this->invoicedOrderRows(),
+                fn (array $r) => $this->rowDisplayedAsDelivered($r)
+            ))
+        );
+    }
+
+    protected function deliveredOrdersCount(): int
+    {
+        return count($this->deliveredOrderRows());
     }
 
     /**
