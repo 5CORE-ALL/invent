@@ -927,8 +927,13 @@
                                     value = 0;
                                 }
 
-                                // If Main INV is less than CTN QTY, force Sugg Send to 0
+                                // Negative Main INV is not a send candidate
                                 const mainInv = parseFloat(rowData.Shopify_INV);
+                                if (!isNaN(mainInv) && mainInv < 0) {
+                                    return '';
+                                }
+
+                                // If Main INV is less than CTN QTY, force Sugg Send to 0
                                 const ctnQty = parseFloat(rowData.CTN_QTY);
                                 if (!isNaN(ctnQty) && ctnQty > 0 && !isNaN(mainInv) && mainInv < ctnQty) {
                                     value = 0;
@@ -2616,9 +2621,12 @@
                         return isNaN(dil) || dil <= 49;
                     });
 
-                    // Hide rows where Main INV is 0 by default
+                    // Hide rows where Main INV is 0 or negative.
+                    // Negative Main INV must not appear in Suggested Send.
                     table.addFilter(function(data) {
-                        return parseFloat(data.Shopify_INV) !== 0;
+                        const mainInv = parseFloat(data.Shopify_INV);
+                        if (isNaN(mainInv)) return true;
+                        return mainInv > 0;
                     });
 
                     if (nrlFbaFilter !== 'all') {
@@ -2662,6 +2670,8 @@
                     if (!isNaN(rating) && rating > 0 && rating < 3.5) value = 0;
 
                     const mainInv = parseFloat(data.Shopify_INV);
+                    if (!isNaN(mainInv) && mainInv < 0) return NaN;
+
                     const ctnQty = parseFloat(data.CTN_QTY);
                     if (!isNaN(ctnQty) && ctnQty > 0 && !isNaN(mainInv) && mainInv < ctnQty) value = 0;
 
