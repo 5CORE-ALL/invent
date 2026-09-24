@@ -27,8 +27,6 @@
             width: 100%;
             max-width: 100%;
             min-width: 0;
-            overflow: visible;
-            padding-bottom: 56px;
         }
         .qc-grid .tabulator {
             border: 1px solid #dee2e6;
@@ -37,20 +35,15 @@
             width: 100% !important;
             max-width: 100%;
             min-width: 0;
-            overflow: visible !important;
         }
         .qc-grid .tabulator .tabulator-header,
         .qc-grid .tabulator .tabulator-tableholder,
         .qc-grid .tabulator .tabulator-footer { max-width: 100%; min-width: 0; }
         .qc-grid .tabulator .tabulator-tableholder {
-            overflow-x: auto !important;
-            overflow-y: visible !important;
+            overflow: auto !important;
             -webkit-overflow-scrolling: touch;
         }
         .qc-grid .tabulator .tabulator-header {
-            position: sticky !important;
-            top: var(--tz-topbar-height, 70px) !important;
-            z-index: 24 !important;
             background: #dbeafe;
             border-bottom: 1px solid #dee2e6;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
@@ -165,6 +158,7 @@
         .qc-grid .tabulator .tabulator-row { min-height: 32px; }
         .qc-grid .tabulator .tabulator-row .tabulator-cell { padding: 3px 2px !important; }
         .qc-grid .tabulator .tabulator-footer {
+            display: block !important;
             background: #f8fafc !important;
             border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
@@ -210,7 +204,7 @@
                 line-height: 32px !important;
                 font-size: 13px !important;
             }
-            .qc-grid .tabulator .tabulator-header { top: var(--tz-topbar-height, 56px) !important; }
+            .qc-grid .tabulator { height: calc(100vh - 220px) !important; }
         }
         .sku-thumb, .sku-thumb-placeholder, .sku-image-preview {
             width: 36px; height: 36px; object-fit: contain; border-radius: 3px;
@@ -630,10 +624,11 @@
             function gridOptions(columns, extra) {
                 return Object.assign({
                     columns: columns,
-                    height: false,
+                    height: 'calc(100vh - 280px)',
                     layout: 'fitDataFill',
                     layoutColumnsOnNewData: true,
                     pagination: true,
+                    paginationMode: 'local',
                     paginationSize: 100,
                     paginationSizeSelector: [25, 50, 100, 250, 500, 1000],
                     paginationCounter: 'rows',
