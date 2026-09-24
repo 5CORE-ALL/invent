@@ -7,10 +7,11 @@
     .payroll-card { border: 1px solid rgba(0,0,0,.08); border-radius: 10px; background: #fff; }
     #employeesTable { font-size: .85rem; }
     .payroll-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .5rem; }
-    .payroll-toolbar.flex-nowrap { flex-wrap: nowrap; overflow: visible; }
     #salaryStatusSection.payroll-card { overflow: visible; }
     .payroll-toolbar-title { margin: 0; font-size: 1.05rem; font-weight: 600; white-space: nowrap; line-height: 31px; height: 31px; }
-    .payroll-month-select { width: auto; min-width: 160px; max-width: 200px; }
+    .payroll-month-select { width: auto; min-width: 150px; max-width: 200px; flex: 0 1 180px; }
+    .payroll-toolbar .input-group { flex: 1 1 140px; min-width: 120px; max-width: 180px; }
+    #monthStats { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
     .payroll-toolbar .btn,
     .payroll-toolbar .form-select,
     .payroll-toolbar .form-control,
@@ -49,15 +50,14 @@
     .payroll-fx-badges { display: none; }
     .payroll-fx-badges.is-visible { display: inline-flex; align-items: center; gap: .35rem; }
     .payroll-history-tip {
-        cursor: help; display: inline-flex; align-items: center; justify-content: center;
-        font-size: 1.1rem; position: relative;
+        cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+        font-size: 1.1rem;
     }
-    .payroll-history-tip:hover::after {
-        content: attr(data-tip);
-        position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
-        background: #212529; color: #fff; font-size: .72rem; font-weight: 500;
-        padding: .35rem .55rem; border-radius: 6px; white-space: nowrap; z-index: 20;
-        box-shadow: 0 2px 8px rgba(0,0,0,.18); pointer-events: none;
+    .payroll-history-pop {
+        position: fixed; z-index: 4000; max-width: 280px;
+        background: #212529; color: #fff; font-size: .75rem; font-weight: 500;
+        padding: .4rem .6rem; border-radius: 6px; line-height: 1.35;
+        box-shadow: 0 4px 14px rgba(0,0,0,.2); pointer-events: none;
     }
     .payroll-doc-row { display: flex; align-items: center; justify-content: center; gap: .25rem; flex-wrap: wrap; margin: .15rem 0; font-size: .72rem; }
     .payroll-doc-label { color: #6c757d; min-width: 0; text-align: right; }
@@ -117,6 +117,25 @@
     #payrollApp .payroll-country-select:disabled {
         background: #f8f9fa; cursor: default; opacity: .85;
     }
+    .payroll-region-tabs { overflow-x: auto; flex-wrap: nowrap; }
+    #payrollApp .tabulator .tabulator-tableholder { overflow-x: auto; }
+    @media (max-width: 1199.98px) {
+        .payroll-toolbar .input-group { max-width: none; }
+        .payroll-month-select,
+        .payroll-status-multi { flex: 1 1 140px; width: auto; max-width: none; }
+    }
+    @media (max-width: 767.98px) {
+        #payrollApp.container-fluid { padding-left: .5rem; padding-right: .5rem; }
+        #salaryStatusSection { padding-left: .6rem !important; padding-right: .6rem !important; }
+        .payroll-toolbar-title { width: 100%; }
+        #monthStats,
+        .payroll-fx-badges.is-visible { width: 100%; }
+        .payroll-toolbar .input-group,
+        .payroll-month-select,
+        .payroll-status-multi { flex: 1 1 100%; max-width: none; width: 100%; }
+        .payroll-toolbar .btn { flex: 1 1 calc(50% - .4rem); justify-content: center; }
+        .payroll-region-tabs .nav-link { padding: .5rem .75rem; }
+    }
 </style>
 @endsection
 
@@ -149,9 +168,9 @@
     </ul>
 
     <div class="payroll-card px-3 py-2 mb-2" id="salaryStatusSection">
-        <div class="payroll-toolbar flex-nowrap">
+        <div class="payroll-toolbar">
             <h4 class="payroll-toolbar-title" id="payrollRegionTitle"><span class="me-1">🇮🇳</span>Salary</h4>
-            <div class="d-flex align-items-center gap-2 flex-shrink-0" id="monthStats">
+            <div class="d-flex align-items-center gap-2 flex-wrap" id="monthStats">
                 <span class="payroll-stat-inline payroll-stat-employees">Employees <span class="val" id="statEmployees">—</span></span>
                 <span class="payroll-stat-inline payroll-stat-net">Net <span class="val" id="statNet">—</span></span>
                 <span class="payroll-fx-badges" id="payrollFxBadges">
@@ -159,7 +178,7 @@
                     <span class="payroll-stat-inline payroll-stat-fx"><span id="statFxLabel">USD Amount</span> <span class="val" id="statFxAmount">—</span></span>
                 </span>
             </div>
-            <div class="input-group input-group-sm" style="width: 150px; flex-shrink: 0;">
+            <div class="input-group input-group-sm">
                 <span class="input-group-text bg-light border-0 py-0"><i class="ri-search-line"></i></span>
                 <input type="text" id="payrollSearch" class="form-control border-0 bg-light form-control-sm" placeholder="Name">
             </div>
@@ -173,7 +192,7 @@
                     <label><input type="checkbox" name="payroll_status" value="na"> N/A</label>
                 </div>
             </div>
-            <select class="form-select form-select-sm payroll-month-select" id="payrollMonthSelect" style="flex-shrink: 0;">
+            <select class="form-select form-select-sm payroll-month-select" id="payrollMonthSelect">
                 @forelse($months as $m)
                     <option value="{{ $m->id }}" {{ $activeMonth?->id === $m->id ? 'selected' : '' }}
                         data-locked="{{ $m->is_locked ? '1' : '0' }}"
@@ -530,18 +549,18 @@
                     }
                     return '<span title="' + esc(tip) + '">' + Math.round(v) + 'h</span>';
                 } },
-            { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Other', field: 'other', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Incentive', field: 'incentive', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Salary PP', field: 'salary_pp', minWidth: 110, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Incr', field: 'increment', minWidth: 90, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Other', field: 'other', minWidth: 90, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Incentive', field: 'incentive', minWidth: 100, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Docs', field: 'documents', hozAlign: 'center', headerSort: false, width: 70, minWidth: 70,
                 formatter: (c) => formatDocumentsCell(c.getRow().getData(), !!c.getRow().getData()._locked) },
-            { title: 'Advance', field: 'adv_inc_other', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Amount', field: 'gross_amount', hozAlign: 'right', formatter: (c) => {
+            { title: 'Advance', field: 'adv_inc_other', minWidth: 100, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Amount', field: 'gross_amount', minWidth: 110, hozAlign: 'right', formatter: (c) => {
                 const d = c.getRow().getData();
                 return fmt(d.gross_amount ?? d.amount_lm, d.salary_region);
             } },
-            { title: 'Payable', field: 'net_amount', hozAlign: 'right', formatter: (c) => {
+            { title: 'Payable', field: 'net_amount', minWidth: 110, hozAlign: 'right', formatter: (c) => {
                 const d = c.getRow().getData();
                 return '<strong>' + fmt(d.net_amount ?? d.amount_p, d.salary_region) + '</strong>';
             } },
@@ -563,7 +582,7 @@
                 }
                 const who = d.edited_by ? String(d.edited_by) : '';
                 const tip = [who, full].filter(Boolean).join(' · ') || 'Edited';
-                return '<span class="payroll-history-tip" data-tip="' + esc(tip) + '"><i class="ri-search-line text-primary"></i></span>';
+                return '<span class="payroll-history-tip" data-tip="' + esc(tip).replace(/"/g, '&quot;') + '"><i class="ri-search-line text-primary"></i></span>';
             }
         });
         if (canManage) {
@@ -999,6 +1018,35 @@
     }, true);
     document.getElementById('payrollSearch')?.addEventListener('keyup', applyPayrollFilters);
     updatePayrollStatusButtonLabel();
+
+    const historyPop = document.createElement('div');
+    historyPop.className = 'payroll-history-pop';
+    historyPop.hidden = true;
+    document.body.appendChild(historyPop);
+
+    function placeHistoryPop(anchor) {
+        const text = anchor.getAttribute('data-tip') || 'Edited';
+        historyPop.textContent = text;
+        historyPop.hidden = false;
+        const rect = anchor.getBoundingClientRect();
+        const pop = historyPop.getBoundingClientRect();
+        let left = rect.left + (rect.width / 2) - (pop.width / 2);
+        left = Math.max(8, Math.min(left, window.innerWidth - pop.width - 8));
+        let top = rect.top - pop.height - 8;
+        if (top < 8) top = rect.bottom + 8;
+        historyPop.style.left = left + 'px';
+        historyPop.style.top = top + 'px';
+    }
+
+    document.addEventListener('click', (e) => {
+        const tip = e.target.closest('.payroll-history-tip');
+        if (!tip) {
+            historyPop.hidden = true;
+            return;
+        }
+        e.preventDefault();
+        placeHistoryPop(tip);
+    });
 
     // Country flag dropdown — save to DB and move row to the matching tab.
     document.getElementById('payrollApp')?.addEventListener('change', async (e) => {
