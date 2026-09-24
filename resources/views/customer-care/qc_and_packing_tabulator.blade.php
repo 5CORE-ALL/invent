@@ -340,7 +340,7 @@
                     </div>
                     <div id="qc-pkg-wrap">
                         <div class="p-2 bg-light border rounded-top d-flex align-items-center gap-2">
-                            <input type="search" id="qc-search" class="form-control" placeholder="Search SKU, tracking, marketplace…" autocomplete="off" aria-label="Search records" maxlength="100">
+                            <input type="search" id="qc-search" class="form-control" placeholder="Search SKU, parent, supplier, tracking…" autocomplete="off" aria-label="Search records" maxlength="100">
                         </div>
                         <div id="qc-pkg-table"></div>
                     </div>
@@ -700,6 +700,8 @@
                     { title: '#', field: main ? 'id' : 'issue_ref', width: main ? 55 : 70, frozen: true, formatter: main ? undefined : function (c) { return dash(c.getValue() || c.getData().orders_on_hold_issue_id || c.getData().id); } },
                     { title: '', field: 'image_url', width: 56, frozen: true, formatter: fmtImage, headerSort: false },
                     { title: 'SKU', field: 'sku', width: 140, frozen: true, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + escapeHtml(c.getValue()) + '</span>'; } },
+                    { title: 'Parent', field: 'parent', width: 140, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + dash(c.getValue()) + '</span>'; } },
+                    { title: 'Supplier', field: 'supplier', width: 160, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + dash(c.getValue()) + '</span>'; } },
                 ];
                 if (main) cols.push({ title: 'Loss $', field: 'total_loss', width: 90, formatter: fmtLoss, headerSort: false, tooltip: false });
                 cols.push(
@@ -1007,7 +1009,7 @@
                     const term = this.value.trim().toLowerCase();
                     if (!term) { table.clearFilter(); document.getElementById('qc-count').textContent = String(table.getDataCount('active')); return; }
                     table.setFilter(function (row) {
-                        const hay = [row.id, row.sku, row.parent, row.order_qty, row.replacement_tracking, row.what_happened, row.action_1, row.action_1_remark, row.issue, row.issue_remark, row.c_action_1, row.c_action_1_remark, row.marketplace_1, deptLabel(row), row.total_loss, row.created_by].map(function (v) { return String(v ?? '').toLowerCase(); }).join(' | ');
+                        const hay = [row.id, row.sku, row.supplier, row.parent, row.order_qty, row.replacement_tracking, row.what_happened, row.action_1, row.action_1_remark, row.issue, row.issue_remark, row.c_action_1, row.c_action_1_remark, row.marketplace_1, deptLabel(row), row.total_loss, row.created_by].map(function (v) { return String(v ?? '').toLowerCase(); }).join(' | ');
                         return hay.includes(term);
                     });
                     document.getElementById('qc-count').textContent = String(table.getDataCount('active'));
@@ -1076,9 +1078,9 @@
                     }
                 });
                 document.getElementById('qc-export').addEventListener('click', function () {
-                    const headers = ['#', 'SKU', 'Loss $', 'Order QTY', 'MKT', 'Issue?', 'Action', 'Action Remark', 'Track R', 'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed', 'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'];
+                    const headers = ['#', 'SKU', 'Parent', 'Supplier', 'Loss $', 'Order QTY', 'MKT', 'Issue?', 'Action', 'Action Remark', 'Track R', 'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed', 'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'];
                     const rows = table.getData().map(function (r) {
-                        return [r.id, r.sku, r.total_loss ?? '', r.order_qty, r.marketplace_1, r.what_happened, r.action_1, r.action_1_remark, r.replacement_tracking, r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark, deptLabel(r), r.created_by, r.created_at];
+                        return [r.id, r.sku, r.parent || '', r.supplier || '', r.total_loss ?? '', r.order_qty, r.marketplace_1, r.what_happened, r.action_1, r.action_1_remark, r.replacement_tracking, r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark, deptLabel(r), r.created_by, r.created_at];
                     });
                     downloadCsv([headers.map(csvEscape).join(',')].concat(rows.map(function (r) { return r.map(csvEscape).join(','); })).join('\r\n'), 'qc_pkg_issues_active_' + new Date().toISOString().slice(0, 10) + '.csv');
                 });

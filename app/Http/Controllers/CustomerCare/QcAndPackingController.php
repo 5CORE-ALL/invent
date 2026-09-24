@@ -9,8 +9,9 @@ use Illuminate\Support\Facades\Schema;
 class QcAndPackingController extends Controller
 {
     /**
-     * Add image_url onto QC rows. Same sources as SKU lookup:
-     * Shopify image, then product_master image_path, main_image, and image1.
+     * Add image_url and supplier onto QC rows.
+     * Image: Shopify, then product_master image_path, main_image, and image1.
+     * Supplier: latest to-order name, then manufacturing, ready-to-ship, and transit.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
@@ -29,13 +30,70 @@ class QcAndPackingController extends Controller
             }
         }
         $urls = $this->urlsBySku(array_values($skus));
+        $suppliers = $this->supplierBySku(array_values($skus));
 
         foreach ($rows as $i => $row) {
             $key = strtoupper(trim((string) ($row['sku'] ?? '')));
             $rows[$i]['image_url'] = $urls[$key] ?? null;
+            $rows[$i]['supplier'] = $suppliers[$key] ?? '';
         }
 
         return $rows;
+    }
+
+    /**
+     * Latest supplier name for each SKU: to-order, then manufacturing, ready-to-ship, and transit.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    private function supplierBySku(array $skus): array
+    {
+        if ($skus === []) {
+            return [];
+        }
+
+        $out = array_fill_keys($skus, '');
+        $this->fillSupplier($out, $skus, 'to_order_analysis', 'sku', 'supplier_name');
+        $this->fillSupplier($out, $skus, 'mfrg_progress', 'sku', 'supplier');
+        $this->fillSupplier($out, $skus, 'ready_to_ship', 'sku', 'supplier');
+        $this->fillSupplier($out, $skus, 'transit_container_details', 'our_sku', 'supplier_name');
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, string>  $out
+     * @param  list<string>  $skus
+     */
+    private function fillSupplier(array &$out, array $skus, string $table, string $skuColumn, string $nameColumn): void
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $skuColumn) || ! Schema::hasColumn($table, $nameColumn)) {
+            return;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($skus), '?'));
+        $query = DB::table($table)->select($skuColumn, $nameColumn);
+        if (Schema::hasColumn($table, 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+        $query->whereNotNull($nameColumn)
+            ->whereRaw('TRIM('.$nameColumn.") != ''")
+            ->whereRaw('UPPER(TRIM('.$skuColumn.")) IN ({$placeholders})", $skus);
+        if (Schema::hasColumn($table, 'updated_at')) {
+            $query->orderByDesc('updated_at');
+        }
+        if (Schema::hasColumn($table, 'id')) {
+            $query->orderByDesc('id');
+        }
+
+        foreach ($query->get() as $row) {
+            $key = strtoupper(trim((string) ($row->{$skuColumn} ?? '')));
+            $name = trim((string) ($row->{$nameColumn} ?? ''));
+            if ($key !== '' && $name !== '' && isset($out[$key]) && $out[$key] === '') {
+                $out[$key] = $name;
+            }
+        }
     }
 
     /**
