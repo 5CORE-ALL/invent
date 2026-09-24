@@ -2986,13 +2986,13 @@ class TikTokShopService
 
             // Write the listing's warehouses first. A 200 on the shop default
             // warehouse is a no-op when the LIVE SKU is bound to another one.
+            // The listings page shows the sum of those warehouses, so a write
+            // that only restates the main warehouse leaves the mismatch in place.
             $skuWarehouses = $this->skuWarehouseInventoryRows($productId, $skuId);
             if ($skuWarehouses !== []) {
-                $result = $this->sendInventoryRows(
-                    $productId,
-                    $skuId,
-                    $this->inventoryRowsForPushQty($skuWarehouses, $quantity)
-                );
+                $defaultWid = $this->resolveDefaultWarehouseId();
+                $rows = self::pushRowsForWarehouseStock($skuWarehouses, $quantity, $defaultWid);
+                $result = $this->sendInventoryRows($productId, $skuId, $rows);
                 if (! empty($result['success'])) {
                     return $result;
                 }
@@ -3001,10 +3001,23 @@ class TikTokShopService
                 if ($this->ipAllowListBlocked) {
                     return ['success' => false, 'message' => $message];
                 }
-            } else {
-                $message = 'TikTok inventory update failed.';
+                $alt = self::alternatePushRows($skuWarehouses, $quantity, $defaultWid, $rows);
+                if ($alt !== []) {
+                    $retry = $this->sendInventoryRows($productId, $skuId, $alt);
+                    if (! empty($retry['success'])) {
+                        return $retry;
+                    }
+                    $message = (string) ($retry['message'] ?? $message);
+                    $this->rememberIpAllowList($message);
+                    if ($this->ipAllowListBlocked) {
+                        return ['success' => false, 'message' => $message];
+                    }
+                }
+
+                return ['success' => false, 'message' => $message !== '' ? $message : 'TikTok inventory update failed.'];
             }
 
+            $message = 'TikTok inventory update failed.';
             $warehouseId = $this->resolveDefaultWarehouseId();
             $result = $this->sendProductInventoryUpdate($productId, $skuId, $quantity, $warehouseId);
             if (! empty($result['success'])) {
@@ -4385,34 +4398,145 @@ class TikTokShopService
     }
 
     /**
-     * @param  list<array{warehouse_id: string, quantity: int}>  $warehouses
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $warehouses
      * @return list<array{warehouse_id: string, quantity: int}>
      */
     protected function inventoryRowsForPushQty(array $warehouses, int $quantity): array
     {
-        $bestWid = '';
+        return self::distributePushInventory(
+            $warehouses,
+            $quantity,
+            $this->resolveDefaultWarehouseId()
+        );
+    }
+
+    /**
+     * Rows to write so the sum of warehouse qty equals $quantity.
+     * Stock sitting on a second warehouse is left alone and subtracted from
+     * the main warehouse. Zeroing that second warehouse is often ignored, so
+     * the listings total never matched Shopify.
+     *
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $warehouses
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    public static function pushRowsForWarehouseStock(array $warehouses, int $quantity, ?string $defaultWarehouseId = null): array
+    {
+        $quantity = max(0, $quantity);
+        $bestWid = self::primaryWarehouseId($warehouses, $defaultWarehouseId);
         $bestQty = -1;
-        $defaultWid = trim((string) ($this->resolveDefaultWarehouseId() ?? ''));
+        $others = 0;
         foreach ($warehouses as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
             $wid = trim((string) ($row['warehouse_id'] ?? ''));
             if ($wid === '') {
                 continue;
             }
-            $q = (int) ($row['quantity'] ?? 0);
-            $preferDefault = $q === $bestQty && $defaultWid !== '' && $wid === $defaultWid;
-            if ($bestWid === '' || $q > $bestQty || $preferDefault) {
+            $q = max(0, (int) ($row['quantity'] ?? 0));
+            if ($wid === $bestWid) {
                 $bestQty = $q;
-                $bestWid = $wid;
+            } else {
+                $others += $q;
             }
         }
 
-        // All warehouses at 0: write the qty to every warehouse so a listing
-        // bound to a non-default warehouse still updates (e.g. LS 180-6 at 0).
-        $broadcast = $bestQty <= 0;
+        if ($bestWid !== '' && $bestQty <= 0 && $others <= 0) {
+            return self::distributePushInventory($warehouses, $quantity, $defaultWarehouseId);
+        }
+        if ($bestWid !== '' && $others > 0 && $others <= $quantity) {
+            return [[
+                'warehouse_id' => $bestWid,
+                'quantity' => $quantity - $others,
+            ]];
+        }
+
+        return self::distributePushInventory($warehouses, $quantity, $defaultWarehouseId);
+    }
+
+    /**
+     * The other write shape when the first one is rejected.
+     *
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $warehouses
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $alreadyTried
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    public static function alternatePushRows(array $warehouses, int $quantity, ?string $defaultWarehouseId, array $alreadyTried): array
+    {
+        $candidates = [
+            self::adjustPrimaryWarehouseQty($warehouses, $quantity, $defaultWarehouseId),
+            self::distributePushInventory($warehouses, $quantity, $defaultWarehouseId),
+        ];
+        $tried = self::canonicalWarehouseRows($alreadyTried);
+        foreach ($candidates as $rows) {
+            if ($rows !== [] && self::canonicalWarehouseRows($rows) !== $tried) {
+                return $rows;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Set the main warehouse to Shopify minus the other warehouses.
+     *
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $warehouses
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    public static function adjustPrimaryWarehouseQty(array $warehouses, int $quantity, ?string $defaultWarehouseId = null): array
+    {
+        $bestWid = self::primaryWarehouseId($warehouses, $defaultWarehouseId);
+        if ($bestWid === '') {
+            return [];
+        }
+        $others = 0;
+        foreach ($warehouses as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $wid = trim((string) ($row['warehouse_id'] ?? ''));
+            if ($wid === '' || $wid === $bestWid) {
+                continue;
+            }
+            $others += max(0, (int) ($row['quantity'] ?? 0));
+        }
+
+        return [[
+            'warehouse_id' => $bestWid,
+            'quantity' => max(0, $quantity - $others),
+        ]];
+    }
+
+    /**
+     * Put the target on the fullest warehouse and zero the rest.
+     * All-zero listings get the target on every warehouse.
+     *
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $warehouses
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    public static function distributePushInventory(array $warehouses, int $quantity, ?string $defaultWarehouseId = null): array
+    {
+        $quantity = max(0, $quantity);
+        $bestWid = self::primaryWarehouseId($warehouses, $defaultWarehouseId);
+        $bestQty = -1;
+        foreach ($warehouses as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $wid = trim((string) ($row['warehouse_id'] ?? ''));
+            if ($wid === $bestWid) {
+                $bestQty = max(0, (int) ($row['quantity'] ?? 0));
+                break;
+            }
+        }
+        $broadcast = $bestWid === '' || $bestQty <= 0;
 
         $out = [];
         $seen = [];
         foreach ($warehouses as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
             $wid = trim((string) ($row['warehouse_id'] ?? ''));
             if ($wid === '' || isset($seen[$wid])) {
                 continue;
@@ -4420,11 +4544,95 @@ class TikTokShopService
             $seen[$wid] = true;
             $out[] = [
                 'warehouse_id' => $wid,
-                'quantity' => ($broadcast || $wid === $bestWid) ? max(0, $quantity) : 0,
+                'quantity' => ($broadcast || $wid === $bestWid) ? $quantity : 0,
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * Product-search rows are what the listings page sums. Inventory search
+     * can miss a warehouse, so union both and let the page rows win.
+     *
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $displayRows
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $searchRows
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    public static function mergeWarehouseInventoryRows(array $displayRows, array $searchRows): array
+    {
+        $byId = [];
+        $order = [];
+        foreach ([$searchRows, $displayRows] as $set) {
+            foreach ($set as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $wid = trim((string) ($row['warehouse_id'] ?? ''));
+                if ($wid === '') {
+                    continue;
+                }
+                if (! isset($byId[$wid])) {
+                    $order[] = $wid;
+                }
+                $byId[$wid] = max(0, (int) ($row['quantity'] ?? 0));
+            }
+        }
+
+        $out = [];
+        foreach ($order as $wid) {
+            $out[] = ['warehouse_id' => $wid, 'quantity' => $byId[$wid]];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $warehouses
+     */
+    public static function primaryWarehouseId(array $warehouses, ?string $defaultWarehouseId = null): string
+    {
+        $bestWid = '';
+        $bestQty = -1;
+        $defaultWid = trim((string) $defaultWarehouseId);
+        foreach ($warehouses as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $wid = trim((string) ($row['warehouse_id'] ?? ''));
+            if ($wid === '') {
+                continue;
+            }
+            $q = max(0, (int) ($row['quantity'] ?? 0));
+            $preferDefault = $q === $bestQty && $defaultWid !== '' && $wid === $defaultWid;
+            if ($bestWid === '' || $q > $bestQty || $preferDefault) {
+                $bestQty = $q;
+                $bestWid = $wid;
+            }
+        }
+
+        return $bestWid;
+    }
+
+    /**
+     * @param  list<array{warehouse_id?: string, quantity?: int}>  $rows
+     */
+    protected static function canonicalWarehouseRows(array $rows): string
+    {
+        $norm = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $wid = trim((string) ($row['warehouse_id'] ?? ''));
+            if ($wid === '') {
+                continue;
+            }
+            $norm[$wid] = max(0, (int) ($row['quantity'] ?? 0));
+        }
+        ksort($norm);
+
+        return json_encode($norm) ?: '';
     }
 
     /**
@@ -4433,14 +4641,29 @@ class TikTokShopService
     protected function skuWarehouseInventoryRows(string $productId, string $skuId): array
     {
         $fromSearch = $this->skuWarehouseRowsFromInventorySearch($productId, $skuId);
-        if ($fromSearch !== []) {
-            return $fromSearch;
+        $fromProduct = $this->skuWarehouseRowsFromListedProduct($productId, $skuId);
+
+        return self::mergeWarehouseInventoryRows($fromProduct, $fromSearch);
+    }
+
+    /**
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    protected function skuWarehouseRowsFromListedProduct(string $productId, string $skuId): array
+    {
+        try {
+            $product = $this->searchProductDataById($productId);
+        } catch (\Throwable $e) {
+            $this->rememberIpAllowList($e->getMessage());
+
+            return [];
+        }
+        $node = $this->skuNodeFromProductData(is_array($product) ? $product : [], $skuId);
+        if ($node === []) {
+            return [];
         }
 
-        // Get Product 202309 rejects LIVE listings and can wait the full HTTP
-        // timeout per SKU. Fall through to the shop default warehouse instead.
-
-        return [];
+        return self::skuNodeWarehouseRows($node);
     }
 
     /**
