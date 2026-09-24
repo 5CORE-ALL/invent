@@ -1487,6 +1487,7 @@
                             return v > 0 ? `<span style="font-weight:700;">${v.toLocaleString()}</span>` : '0';
                         }
                     },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'newegg'])
                     {
                         title: "CVR",
                         field: "cvr",

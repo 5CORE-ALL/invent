@@ -7,6 +7,7 @@ use App\Models\Ebay2OrderMetric;
 use App\Models\Ebay3OrderMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\ShopifyStoreSelector;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -448,11 +449,15 @@ class EbaySellFulfillmentTracking
      * FULFILLED eBay rows whose raw_payload never got shippingFulfillments
      * (order list sync does not store tracking). Pull Sell Fulfillment and persist.
      *
+     * Each account keeps a cursor, so a run continues through older orders instead of
+     * re-reading the newest page. A finished pass waits 20 minutes, then starts again
+     * for tracking eBay added after the last walk.
+     *
      * @return array{success: bool, message: string, checked: int, filled: int, skipped: int}
      */
-    public function fillMissingSofTracking(int $limit = 200): array
+    public function fillMissingSofTracking(int $limit = 200, ?float $deadline = null): array
     {
-        $limit = max(1, min(400, $limit));
+        $limit = max(1, min(2000, $limit));
         $checked = 0;
         $filled = 0;
         $skipped = 0;
@@ -466,44 +471,102 @@ class EbaySellFulfillmentTracking
             if (! Schema::hasTable($table)) {
                 continue;
             }
-            $orders = $class::query()
-                ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['FULFILLED'])
-                ->where('order_date', '>=', now()->subDays(30))
-                ->orderByDesc('order_date')
-                ->orderByDesc('id')
-                ->limit(max(80, $limit))
-                ->get();
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                break;
+            }
 
-            foreach ($orders as $order) {
-                if ($checked >= $limit) {
-                    break 2;
+            $cacheKey = 'sof.ebay.tracking_sync.'.$slug;
+            $progress = Cache::get($cacheKey);
+            $progress = is_array($progress) ? $progress : [];
+            $completedAt = strtotime((string) ($progress['completed_at'] ?? ''));
+            $cursor = (int) ($progress['cursor'] ?? 0);
+            if ($cursor <= 0 && $completedAt !== false && $completedAt > time() - 1200) {
+                continue;
+            }
+
+            $query = $class::query()
+                ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['FULFILLED'])
+                ->where('order_date', '>=', now()->subDays(45))
+                ->where(function ($q) {
+                    $q->whereNull('raw_payload')
+                        ->orWhereRaw("JSON_EXTRACT(raw_payload, '$.tracking_number') IS NULL")
+                        ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.tracking_number')) IN ('', 'null')");
+                })
+                ->orderByDesc('id');
+            if ($cursor > 0) {
+                $query->where('id', '<', $cursor);
+            }
+
+            try {
+                $orders = $query->limit(800)->get();
+            } catch (\Throwable $e) {
+                Log::warning('EbaySellFulfillmentTracking: missing-tracking query failed', [
+                    'channel' => $slug,
+                    'error' => $e->getMessage(),
+                ]);
+                $orders = $class::query()
+                    ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['FULFILLED'])
+                    ->where('order_date', '>=', now()->subDays(45))
+                    ->when($cursor > 0, fn ($q) => $q->where('id', '<', $cursor))
+                    ->orderByDesc('id')
+                    ->limit(800)
+                    ->get();
+            }
+
+            if ($orders->isEmpty()) {
+                Cache::put($cacheKey, [
+                    'cursor' => null,
+                    'completed_at' => now()->toIso8601String(),
+                ], now()->addHours(6));
+                continue;
+            }
+
+            $channelChecked = 0;
+            $passedCursor = null;
+            $stoppedEarly = false;
+            foreach ($orders->groupBy(fn ($order) => trim((string) ($order->order_id ?? ''))) as $ebayOrderId => $lines) {
+                $groupMin = (int) $lines->min('id');
+                if ($channelChecked >= $limit || ($deadline !== null && microtime(true) >= $deadline)) {
+                    $stoppedEarly = true;
+                    break;
                 }
-                $raw = is_array($order->raw_payload ?? null) ? $order->raw_payload : [];
-                $existing = self::trackingFromEbayPayload($raw);
-                if ($existing !== null && trim((string) ($existing['tracking'] ?? '')) !== '') {
+                $passedCursor = $groupMin;
+
+                $local = null;
+                foreach ($lines as $line) {
+                    $raw = is_array($line->raw_payload ?? null) ? $line->raw_payload : [];
+                    $local = self::trackingFromEbayPayload($raw) ?? $local;
+                }
+                if ($local !== null && trim((string) ($local['tracking'] ?? '')) !== '') {
+                    $this->copyTrackingToEbayLines($slug, $class, (string) $ebayOrderId, $lines, $local, $labels);
+                    $filled++;
                     continue;
                 }
-                $ebayOrderId = trim((string) ($order->order_id ?? ''));
-                if ($ebayOrderId === '' || ! preg_match('/^\d{2}-\d{5}-\d{5}$/', $ebayOrderId)) {
+
+                $lookupId = $this->ebayLookupId($lines->first(), (string) $ebayOrderId);
+                if ($lookupId === '') {
                     continue;
                 }
+
+                $channelChecked++;
                 $checked++;
-                $hit = $this->readTrackingFromEbay($slug, $ebayOrderId);
+                $hit = $this->readTrackingFromEbay($slug, $lookupId);
                 $tn = trim((string) ($hit['tracking'] ?? ''));
                 if ($tn === '') {
                     $skipped++;
+                    usleep(80000);
                     continue;
                 }
-                $labels->persistTrackingOntoMarketplaceOrder(
-                    $slug,
-                    (int) $order->id,
-                    (string) ($order->shopify_order_id ?? ''),
-                    $tn,
-                    (string) ($hit['carrier'] ?? 'eBay')
-                );
+                $this->copyTrackingToEbayLines($slug, $class, (string) $ebayOrderId, $lines, $hit, $labels);
                 $filled++;
-                usleep(120000);
+                usleep(80000);
             }
+
+            $finishedPass = ! $stoppedEarly && $orders->count() < 800;
+            Cache::put($cacheKey, [
+                'cursor' => $finishedPass ? null : $passedCursor,
+                'completed_at' => $finishedPass ? now()->toIso8601String() : null,
+            ], now()->addHours(6));
         }
 
         return [
@@ -513,6 +576,51 @@ class EbaySellFulfillmentTracking
             'skipped' => $skipped,
             'message' => "eBay SOF tracking fill: checked {$checked}, filled {$filled}, still missing {$skipped}.",
         ];
+    }
+
+    /**
+     * @param  class-string  $class
+     * @param  \Illuminate\Support\Collection<int, mixed>  $lines
+     * @param  array{tracking: string, carrier: string}  $hit
+     */
+    protected function copyTrackingToEbayLines(string $slug, string $class, string $ebayOrderId, $lines, array $hit, VeeqoShopifyFulfillmentService $labels): void
+    {
+        $tracking = trim((string) ($hit['tracking'] ?? ''));
+        if ($tracking === '') {
+            return;
+        }
+        $carrier = trim((string) ($hit['carrier'] ?? ''));
+        $rows = $ebayOrderId !== ''
+            ? $class::query()->where('order_id', $ebayOrderId)->get()
+            : $lines;
+        if ($rows->isEmpty()) {
+            $rows = $lines;
+        }
+        foreach ($rows as $row) {
+            $labels->persistTrackingOntoMarketplaceOrder(
+                $slug,
+                (int) $row->id,
+                (string) ($row->shopify_order_id ?? ''),
+                $tracking,
+                $carrier !== '' ? $carrier : 'eBay'
+            );
+        }
+    }
+
+    /**
+     * @param  object{order_id?: mixed, raw_payload?: mixed}|null  $line
+     */
+    protected function ebayLookupId(?object $line, string $fallback): string
+    {
+        $candidates = $line !== null ? $this->ebayOrderIdCandidates($line) : [$fallback];
+        foreach ($candidates as $candidate) {
+            $candidate = trim((string) $candidate);
+            if (preg_match('/^\d{2}-\d{5}-\d{5}$/', $candidate) === 1) {
+                return $candidate;
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -595,7 +703,8 @@ class EbaySellFulfillmentTracking
                     'Authorization' => 'Bearer '.$token,
                     'Accept' => 'application/json',
                 ])
-                ->timeout(45)
+                ->connectTimeout(8)
+                ->timeout(20)
                 ->get('https://api.ebay.com/sell/fulfillment/v1/order/'.rawurlencode($orderId));
             if (! $response->successful()) {
                 return null;
@@ -636,7 +745,8 @@ class EbaySellFulfillmentTracking
                     'Authorization' => 'Bearer '.$token,
                     'Accept' => 'application/json',
                 ])
-                ->timeout(45)
+                ->connectTimeout(8)
+                ->timeout(20)
                 ->get('https://api.ebay.com/sell/fulfillment/v1/order/'.rawurlencode($orderId).'/shipping_fulfillment');
             if (! $response->successful()) {
                 return [];

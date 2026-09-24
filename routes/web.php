@@ -621,6 +621,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-order-fulfillment/in-received-data', [SalesOrderFulfillmentController::class, 'inReceivedData'])->name('sales.order.fulfillment.in.received.data');
     Route::get('/sales-order-fulfillment/invoiced-data', [SalesOrderFulfillmentController::class, 'invoicedData'])->name('sales.order.fulfillment.invoiced.data');
     Route::get('/sales-order-fulfillment/delivered-data', [SalesOrderFulfillmentController::class, 'deliveredData'])->name('sales.order.fulfillment.delivered.data');
+    Route::get('/sales-order-fulfillment/not-authorized-data', [SalesOrderFulfillmentController::class, 'notAuthorizedData'])->name('sales.order.fulfillment.not.authorized.data');
     Route::get('/sales-order-fulfillment/all-order-data', [SalesOrderFulfillmentController::class, 'allOrderData'])->name('sales.order.fulfillment.all.order.data');
     Route::get('/sales-order-fulfillment/loss-making-data', [SalesLossOrderController::class, 'lossMakingData'])->name('sales.order.fulfillment.loss.making.data');
     Route::get('/sales-order-fulfillment/doba-orders-data', [SalesOrderFulfillmentController::class, 'dobaOrdersData'])->name('sales.order.fulfillment.doba.orders.data');
@@ -7682,6 +7683,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::prefix('reviews')->name('reviews.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'index'])->name('index');
         Route::get('/data', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'getData'])->name('data');
+        Route::get('/counts', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'counts'])->name('counts');
         Route::get('/sku/{sku}/detail', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'skuDetail'])->name('sku.detail');
         Route::get('/supplier-intelligence', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'supplierIntelligence'])->name('supplier-intelligence');
         Route::get('/ai-insights', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'aiInsights'])->name('ai-insights');

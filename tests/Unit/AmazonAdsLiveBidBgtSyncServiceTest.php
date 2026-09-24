@@ -37,24 +37,29 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
         $this->assertSame([['sp', 'bgt', '111', 12.0]], $persisted);
     }
 
-    public function test_successful_pull_with_no_amazon_bid_does_not_push(): void
+    public function test_missing_live_bid_still_pushes_the_fallback_sbid(): void
     {
         $pushed = [];
+        $live = ['111' => null];
         $svc = $this->service([
-            'pullBids' => fn () => ['111' => null],
-            'pushBid' => function () use (&$pushed) {
-                $pushed[] = true;
-
-                return ['status' => 200];
+            'pullBids' => function () use (&$live) {
+                return $live;
             },
+            'pushBid' => function ($ch, $cid, $desired) use (&$pushed, &$live) {
+                $pushed[] = [(string) $cid, (float) $desired];
+                $live[$cid] = $desired;
+
+                return ['status' => 200, 'failed' => []];
+            },
+            'persistLive' => static function (): void {},
         ]);
 
-        $out = $svc->syncField('sp', 'bid', '111', 'SKU KW', 0.75, 'test');
+        $out = $svc->syncField('sp', 'bid', '111', 'PARENT MEGA WP KW', 0.75, 'test');
 
-        $this->assertSame('failed', $out['status']);
-        $this->assertStringContainsString('no live Amazon keyword/target bid', $out['reason']);
-        $this->assertSame([], $pushed);
-        $this->assertSame('red', $out['sync_color']);
+        $this->assertSame('synced', $out['status']);
+        $this->assertSame('verified_after_push', $out['reason']);
+        $this->assertSame([['111', 0.75]], $pushed);
+        $this->assertSame('green', $out['sync_color']);
     }
 
     public function test_pull_failure_retries_and_does_not_mark_synced(): void

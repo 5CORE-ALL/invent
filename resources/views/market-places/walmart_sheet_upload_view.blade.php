@@ -2172,6 +2172,7 @@
                         return value.toLocaleString();
                     }
                 },
+                @include('partials.analytics-sku-reviews-column', ['marketplace' => 'walmart'])
                  {
                     title: "A Price",
                     field: "a_price",

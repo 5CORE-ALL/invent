@@ -596,6 +596,7 @@
                         sorter: "number",
                         width: 100
                     },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'walmart'])
                     // {
                     //     title: "View",
                     //     field: "Sess30",

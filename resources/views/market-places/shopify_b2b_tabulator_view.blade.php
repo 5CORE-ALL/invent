@@ -1731,6 +1731,7 @@
                         return `<span style="font-weight: 600;">${value.toLocaleString()}</span>`;
                     }
                 },
+                @include('partials.analytics-sku-reviews-column', ['marketplace' => 'shopifyb2b'])
                 {
                     title: "LMP",
                     field: "lmp_price",

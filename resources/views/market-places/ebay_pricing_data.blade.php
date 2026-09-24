@@ -433,7 +433,7 @@
                         },
                         width: 50
                     },
-
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'ebay'])
 
                      {
                         title: "NR/REQ",

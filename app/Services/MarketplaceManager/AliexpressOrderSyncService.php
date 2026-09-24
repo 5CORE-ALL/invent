@@ -296,6 +296,7 @@ class AliexpressOrderSyncService
         }
 
         $status = (string) ($order['order_status'] ?? $order['status'] ?? '');
+        $order = $this->keepStoredLogistics($orderId, $order);
         $lines = $this->aliExpressApi->extractOrderProductLines($order);
         $count = 0;
 
@@ -338,6 +339,35 @@ class AliexpressOrderSyncService
         }
 
         return $count;
+    }
+
+    /**
+     * List sync replaces raw_payload. Keep a tracking number already copied from AliExpress.
+     *
+     * @param  array<string, mixed>  $order
+     * @return array<string, mixed>
+     */
+    protected function keepStoredLogistics(string $orderId, array $order): array
+    {
+        $existing = AliexpressOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->whereNotNull('raw_payload')
+            ->value('raw_payload');
+        $stored = is_array($existing) ? $existing : [];
+        $previous = is_array($stored['order'] ?? null) ? $stored['order'] : $stored;
+        if ($previous === []) {
+            return $order;
+        }
+
+        foreach (['logistic_info_list', 'logistics_no', 'tracking_number', 'tracking_company', 'logistics_service_name'] as $key) {
+            $incoming = $order[$key] ?? null;
+            $empty = $incoming === null || $incoming === '' || $incoming === [];
+            if ($empty && ! empty($previous[$key])) {
+                $order[$key] = $previous[$key];
+            }
+        }
+
+        return $order;
     }
 
     protected function extractOrderAmount(array $order): ?float

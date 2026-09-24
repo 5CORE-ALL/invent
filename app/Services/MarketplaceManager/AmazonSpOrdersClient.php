@@ -127,6 +127,145 @@ class AmazonSpOrdersClient
     }
 
     /**
+     * FBM tracking that Seller Central shows after a label is confirmed.
+     * Orders v0 getOrder does not include it. Orders v2026-01-01 does, under packages[].
+     *
+     * @return array{tracking: string, carrier: string}|null
+     */
+    public function getMerchantPackageTracking(string $orderId): ?array
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '' || ! preg_match('/^\d{3}-\d{7}-\d{7}$/', $orderId)) {
+            return null;
+        }
+
+        $token = $this->getAccessToken();
+        if ($token === null) {
+            return null;
+        }
+
+        $response = Http::connectTimeout(8)->timeout(20)->withHeaders([
+            'x-amz-access-token' => $token,
+            'accept' => 'application/json',
+        ])->get($this->endpoint.'/orders/2026-01-01/orders/'.rawurlencode($orderId), [
+            'includedData' => 'PACKAGES',
+        ]);
+
+        if ($response->status() === 429 || ! $response->successful()) {
+            Log::info('AmazonSpOrdersClient: merchant package tracking failed', [
+                'order_id' => $orderId,
+                'status' => $response->status(),
+                'body' => substr($response->body(), 0, 400),
+            ]);
+
+            return null;
+        }
+
+        $order = $response->json('order');
+
+        return is_array($order) ? self::trackingFromOrderPackages($order) : null;
+    }
+
+    /**
+     * Shipped merchant orders updated since $lastUpdatedAfter, one page at a time.
+     * Rate limit is about one request per three minutes after a burst of 20.
+     *
+     * @return array{orders: list<array<string, mixed>>, next_token: ?string, last_updated_before: ?string, throttled: bool}|null
+     */
+    public function searchMerchantPackages(string $lastUpdatedAfter, ?string $paginationToken = null): ?array
+    {
+        $token = $this->getAccessToken();
+        if ($token === null) {
+            return null;
+        }
+
+        $query = [
+            'lastUpdatedAfter' => $lastUpdatedAfter,
+            'marketplaceIds' => $this->marketplaceId(),
+            'fulfilledBy' => 'MERCHANT',
+            'fulfillmentStatuses' => 'SHIPPED,PARTIALLY_SHIPPED',
+            'includedData' => 'PACKAGES',
+            'maxResultsPerPage' => 100,
+        ];
+        $paginationToken = trim((string) $paginationToken);
+        if ($paginationToken !== '') {
+            $query['paginationToken'] = $paginationToken;
+        }
+
+        $response = Http::connectTimeout(8)->timeout(25)->withHeaders([
+            'x-amz-access-token' => $token,
+            'accept' => 'application/json',
+        ])->get($this->endpoint.'/orders/2026-01-01/orders', $query);
+
+        if ($response->status() === 429) {
+            Log::info('AmazonSpOrdersClient: merchant package search throttled');
+
+            return [
+                'orders' => [],
+                'next_token' => $paginationToken !== '' ? $paginationToken : null,
+                'last_updated_before' => null,
+                'throttled' => true,
+            ];
+        }
+
+        if (! $response->successful()) {
+            Log::warning('AmazonSpOrdersClient: merchant package search failed', [
+                'status' => $response->status(),
+                'body' => substr($response->body(), 0, 400),
+            ]);
+
+            return null;
+        }
+
+        $orders = $response->json('orders');
+        $next = $response->json('pagination.nextToken');
+
+        return [
+            'orders' => is_array($orders) ? array_values(array_filter($orders, 'is_array')) : [],
+            'next_token' => is_string($next) && $next !== '' ? $next : null,
+            'last_updated_before' => is_string($response->json('lastUpdatedBefore')) ? $response->json('lastUpdatedBefore') : null,
+            'throttled' => false,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array{tracking: string, carrier: string}|null
+     */
+    public static function trackingFromOrderPackages(array $order): ?array
+    {
+        $packages = $order['packages'] ?? null;
+        if (! is_array($packages)) {
+            return null;
+        }
+
+        foreach ($packages as $package) {
+            if (! is_array($package)) {
+                continue;
+            }
+            $tracking = trim((string) ($package['trackingNumber'] ?? ''));
+            $compact = strtoupper((string) preg_replace('/\s+/', '', $tracking));
+            if ($compact === '' || strlen($compact) < 8) {
+                continue;
+            }
+            if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $tracking) === 1) {
+                continue;
+            }
+            $carrier = trim((string) ($package['carrier'] ?? ''));
+            if ($carrier === '') {
+                $carrier = trim((string) ($package['shippingService'] ?? ''));
+            }
+
+            return [
+                'tracking' => $compact,
+                'carrier' => $carrier !== '' ? $carrier : 'Other',
+            ];
+        }
+
+        return null;
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function getOrder(string $orderId): ?array

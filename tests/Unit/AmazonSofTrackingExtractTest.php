@@ -4,11 +4,41 @@ namespace Tests\Unit;
 
 use App\Models\AmazonOrder;
 use App\Services\GofoExpressService;
+use App\Services\MarketplaceManager\AmazonSpOrdersClient;
 use App\Services\MarketplaceManager\AmazonTrackingSyncService;
 use PHPUnit\Framework\TestCase;
 
 class AmazonSofTrackingExtractTest extends TestCase
 {
+    public function test_reads_fbm_packages_from_orders_v2026(): void
+    {
+        $hit = AmazonSpOrdersClient::trackingFromOrderPackages([
+            'orderId' => '112-2020581-4711422',
+            'packages' => [
+                [
+                    'packageReferenceId' => 'PKG-1',
+                    'carrier' => 'GOFO',
+                    'trackingNumber' => 'GFUS01074141474180',
+                ],
+            ],
+        ]);
+
+        $this->assertSame('GFUS01074141474180', $hit['tracking'] ?? null);
+        $this->assertSame('GOFO', $hit['carrier'] ?? null);
+    }
+
+    public function test_ignores_amazon_order_id_stored_as_package_tracking(): void
+    {
+        $hit = AmazonSpOrdersClient::trackingFromOrderPackages([
+            'orderId' => '112-2020581-4711422',
+            'packages' => [
+                ['trackingNumber' => '112-2020581-4711422', 'carrier' => 'Other'],
+            ],
+        ]);
+
+        $this->assertNull($hit);
+    }
+
     public function test_reads_package_tracking_details(): void
     {
         $hit = AmazonOrder::trackingFromDecoded([

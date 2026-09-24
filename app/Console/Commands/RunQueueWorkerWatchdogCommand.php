@@ -30,6 +30,12 @@ class RunQueueWorkerWatchdogCommand extends Command
         $this->line('Only explicit --queue workers are started; default queue is never processed.');
 
         while (true) {
+            // Re-read config each pass. A long-lived daemon otherwise never
+            // starts queues added after it was launched.
+            if (trim((string) $this->option('queues')) === '') {
+                $queues = $this->resolveQueues();
+            }
+
             foreach ($queues as $queue => $options) {
                 $timeout = (int) $options['timeout'];
                 $maxTime = (int) $options['max_time'];
@@ -67,6 +73,16 @@ class RunQueueWorkerWatchdogCommand extends Command
             return $queues;
         }
 
-        return QueueWorkerWatchdog::watchdogQueues();
+        $path = config_path('queue_workers.php');
+        $file = is_file($path) ? require $path : [];
+        $fromFile = is_array($file['watchdog_queues'] ?? null) ? $file['watchdog_queues'] : [];
+        $queues = QueueWorkerWatchdog::watchdogQueues();
+        foreach ($fromFile as $queue => $options) {
+            if (! isset($queues[$queue]) && is_array($options)) {
+                $queues[$queue] = $options;
+            }
+        }
+
+        return $queues;
     }
 }

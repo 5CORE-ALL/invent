@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\DobaDailyData;
+use App\Support\DobaTrackingNumber;
 use Carbon\Carbon;
 use DateTime;
 use Exception;
@@ -303,6 +304,13 @@ class FetchDobaDailyData extends Command
         $shippingMethod = $order['shippingMethod'] ?? null;
         $carrierName = $order['logisticsType'] ?? null;
         $trackingNumber = $order['trackingNumber'] ?? null;
+        $label = DobaTrackingNumber::fromOrderPayload($order);
+        if ($label['tracking'] !== '') {
+            $trackingNumber = $label['tracking'];
+            if ($label['carrier'] !== '') {
+                $carrierName = $label['carrier'];
+            }
+        }
         $shipTime = isset($order['shipTime']) ? Carbon::parse($order['shipTime']) : null;
         $deliveryTime = isset($order['deliveryTime']) ? Carbon::parse($order['deliveryTime']) : null;
 

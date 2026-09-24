@@ -76,42 +76,7 @@ class SyncShipmentTrackingStatus extends Command
         $staleMin = $this->resolveStaleMinutes($onlyOpen, $carrierFilter, $catchUp);
         $maxPerRun = $this->resolveMaxPerRun($tracking, $onlyOpen, $staleMin, $carrierFilter, $catchUp);
 
-        $query = DB::table('carrier_tracking_statuses')
-            ->whereNotNull('tracking_number')
-            ->where('tracking_number', '!=', '');
-
-        if ($carrierFilter !== '') {
-            $this->applyCarrierFilter($query, $carrierFilter);
-        }
-
-        if ($onlyOpen) {
-            $query->where(function ($q) {
-                $q->whereNull('shipment_status')
-                    ->orWhereNotIn('shipment_status', [
-                        ShipmentTrackingService::STATUS_DELIVERED,
-                        ShipmentTrackingService::STATUS_EXPIRED,
-                    ]);
-            });
-        }
-
-        if ($staleMin > 0) {
-            $cutoff = now()->subMinutes($staleMin);
-            $query->where(function ($q) use ($cutoff) {
-                $q->whereNull('shipment_checked_at')
-                    ->orWhere('shipment_checked_at', '<', $cutoff);
-            });
-        }
-
-        $rows = $query->select(
-            'tracking_number',
-            DB::raw('MAX(carrier) as carrier'),
-            DB::raw('MAX(CASE WHEN shipment_status IS NULL OR shipment_status = \'\' THEN 1 ELSE 0 END) as needs_status')
-        )
-            ->groupBy('tracking_number')
-            ->orderByRaw('needs_status DESC')
-            ->orderByRaw('MAX(shipment_checked_at) IS NOT NULL, MAX(shipment_checked_at) ASC')
-            ->limit($maxPerRun)
-            ->get();
+        $rows = $this->selectTrackingRows($maxPerRun, $carrierFilter);
 
         $total = $rows->count();
         if ($total === 0) {
@@ -188,11 +153,10 @@ class SyncShipmentTrackingStatus extends Command
                     if (($res['status'] ?? null) === ShipmentTrackingService::STATUS_RATE_LIMITED
                         || ! empty($res['transient'])) {
                         $batchQuota++;
-                        $rotateAt = $staleMin > 60
-                            ? now()->subMinutes($staleMin - 60)
-                            : now();
-                        $rotateNumbers[$num] = $rotateAt;
                     }
+                    // A miss must leave the front of the queue. Otherwise the same
+                    // numbers are retried forever and every other status stays stale.
+                    $rotateNumbers[$num] = now();
                     continue;
                 }
 
@@ -213,28 +177,60 @@ class SyncShipmentTrackingStatus extends Command
                     $byDetail[$d][] = $item['number'];
                 }
                 foreach ($byDetail as $detail => $numbers) {
-                    $affected = DB::table('carrier_tracking_statuses')
-                        ->whereIn('tracking_number', $numbers)
-                        ->update([
-                            'shipment_status' => $status,
-                            'shipment_status_detail' => $detail !== '' ? $detail : null,
-                            'shipment_checked_at' => $now,
-                            'updated_at' => $now,
-                        ]);
+                    $statusUpdate = [
+                        'shipment_status' => $status,
+                        'shipment_status_detail' => $detail !== '' ? $detail : null,
+                        'shipment_checked_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                    $statusQuery = DB::table('carrier_tracking_statuses')
+                        ->whereIn('tracking_number', $numbers);
+                    // A carrier miss must not wipe In Transit / Delivered back to NotFound.
+                    if ($status === ShipmentTrackingService::STATUS_NOT_FOUND) {
+                        $statusQuery->where(function ($q) {
+                            $q->whereNull('shipment_status')
+                                ->orWhere('shipment_status', '')
+                                ->orWhereIn('shipment_status', [
+                                    ShipmentTrackingService::STATUS_NOT_FOUND,
+                                    ShipmentTrackingService::STATUS_PENDING,
+                                    ShipmentTrackingService::STATUS_INFO_RECEIVED,
+                                ]);
+                        });
+                    }
+                    $affected = $statusQuery->update($statusUpdate);
                     $updated += $affected;
+                    if ($status === ShipmentTrackingService::STATUS_NOT_FOUND) {
+                        DB::table('carrier_tracking_statuses')
+                            ->whereIn('tracking_number', $numbers)
+                            ->update([
+                                'shipment_checked_at' => $now,
+                                'updated_at' => $now,
+                            ]);
+                    }
 
                     // Mirror onto legacy shopify_raw_orders rows that already have this tracking#
                     // (display-only cache; no Shopify API).
                     if (Schema::hasTable('shopify_raw_orders')) {
                         try {
-                            DB::table('shopify_raw_orders')
-                                ->whereIn('tracking_number', $numbers)
-                                ->update([
-                                    'shipment_status' => $status,
-                                    'shipment_status_detail' => $detail !== '' ? $detail : null,
-                                    'shipment_checked_at' => $now,
-                                    'updated_at' => $now,
-                                ]);
+                            $mirror = DB::table('shopify_raw_orders')
+                                ->whereIn('tracking_number', $numbers);
+                            if ($status === ShipmentTrackingService::STATUS_NOT_FOUND) {
+                                $mirror->where(function ($q) {
+                                    $q->whereNull('shipment_status')
+                                        ->orWhere('shipment_status', '')
+                                        ->orWhereIn('shipment_status', [
+                                            ShipmentTrackingService::STATUS_NOT_FOUND,
+                                            ShipmentTrackingService::STATUS_PENDING,
+                                            ShipmentTrackingService::STATUS_INFO_RECEIVED,
+                                        ]);
+                                });
+                            }
+                            $mirror->update([
+                                'shipment_status' => $status,
+                                'shipment_status_detail' => $detail !== '' ? $detail : null,
+                                'shipment_checked_at' => $now,
+                                'updated_at' => $now,
+                            ]);
                         } catch (\Throwable) {
                             // ignore mirror failures
                         }
@@ -321,14 +317,16 @@ class SyncShipmentTrackingStatus extends Command
             }
             $hasCarrier = Schema::hasColumn($table, $carrierCol);
             try {
-                $q = DB::table($table)
-                    ->whereNotNull('tracking_number')
-                    ->where('tracking_number', '!=', '')
-                    ->select('tracking_number')
+                $q = DB::table($table.' as src')
+                    ->leftJoin('carrier_tracking_statuses as cts', 'cts.tracking_number', '=', 'src.tracking_number')
+                    ->whereNull('cts.tracking_number')
+                    ->whereNotNull('src.tracking_number')
+                    ->where('src.tracking_number', '!=', '')
+                    ->select('src.tracking_number')
                     ->selectRaw($hasCarrier
-                        ? "MAX({$carrierCol}) as carrier"
+                        ? "MAX(src.{$carrierCol}) as carrier"
                         : 'NULL as carrier')
-                    ->groupBy('tracking_number');
+                    ->groupBy('src.tracking_number');
                 if ($limitPerSource !== null) {
                     $q->limit(max(1, $limitPerSource));
                 }
@@ -663,6 +661,92 @@ class SyncShipmentTrackingStatus extends Command
         }
 
         return (int) $q->distinct()->count('tracking_number');
+    }
+
+    /**
+     * Recheck open shipment statuses before never-checked numbers.
+     * Otherwise In Transit and Label Created keep the first status forever.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    protected function selectTrackingRows(int $maxPerRun, string $carrierFilter)
+    {
+        // Most of each run rechecks shipments that already have a status.
+        // Leaving them behind the never-checked backlog is why In Transit and
+        // Label Created stayed on the status from the first lookup.
+        $refreshLimit = min($maxPerRun, max(200, (int) floor($maxPerRun * 0.8)));
+        $refreshCutoff = now()->subMinutes(60);
+        $moving = [
+            ShipmentTrackingService::STATUS_INFO_RECEIVED,
+            ShipmentTrackingService::STATUS_PENDING,
+            ShipmentTrackingService::STATUS_IN_TRANSIT,
+            ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
+            ShipmentTrackingService::STATUS_PICKUP,
+        ];
+        $refresh = $this->baseTrackingQuery($carrierFilter)
+            ->whereNotNull('shipment_status')
+            ->where('shipment_status', '!=', '')
+            ->whereNotIn('shipment_status', [
+                ShipmentTrackingService::STATUS_DELIVERED,
+                ShipmentTrackingService::STATUS_EXPIRED,
+            ])
+            ->where(function ($q) use ($refreshCutoff) {
+                $q->whereNull('shipment_checked_at')
+                    ->orWhere('shipment_checked_at', '<', $refreshCutoff);
+            })
+            ->select(
+                'tracking_number',
+                DB::raw('MAX(carrier) as carrier'),
+                DB::raw('0 as needs_status')
+            )
+            ->groupBy('tracking_number')
+            ->orderByRaw(
+                'MAX(CASE WHEN shipment_status IN ('
+                .implode(',', array_map(fn (string $s) => "'".$s."'", $moving))
+                .') THEN 0 ELSE 1 END) ASC'
+            )
+            ->orderByRaw('MAX(shipment_checked_at) IS NULL DESC, MAX(shipment_checked_at) ASC')
+            ->limit($refreshLimit)
+            ->get();
+
+        $restLimit = $maxPerRun - $refresh->count();
+        if ($restLimit <= 0) {
+            return $refresh;
+        }
+
+        $exclude = $refresh->pluck('tracking_number')->filter()->values()->all();
+        $rest = $this->baseTrackingQuery($carrierFilter)
+            ->where(function ($q) {
+                $q->whereNull('shipment_status')
+                    ->orWhere('shipment_status', '');
+            });
+        if ($exclude !== []) {
+            $rest->whereNotIn('tracking_number', $exclude);
+        }
+        $restRows = $rest->select(
+            'tracking_number',
+            DB::raw('MAX(carrier) as carrier'),
+            DB::raw('1 as needs_status')
+        )
+            ->groupBy('tracking_number')
+            ->orderByRaw('MAX(shipment_checked_at) IS NULL DESC, MAX(shipment_checked_at) ASC')
+            ->limit($restLimit)
+            ->get();
+
+        return $refresh->concat($restRows)->values();
+    }
+
+    protected function baseTrackingQuery(string $carrierFilter)
+    {
+        $query = DB::table('carrier_tracking_statuses')
+            ->whereNotNull('tracking_number')
+            ->where('tracking_number', '!=', '');
+
+        if ($carrierFilter !== '') {
+            $this->applyCarrierFilter($query, $carrierFilter);
+        }
+
+        return $query;
     }
 
     protected function applyCarrierFilter($query, string $carrierFilter): void

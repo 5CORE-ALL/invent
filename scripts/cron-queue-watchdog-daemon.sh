@@ -25,7 +25,26 @@ mkdir -p "$(dirname "$LOG")"
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
 if pgrep -f "$PATTERN" >/dev/null 2>&1; then
-  exit 0
+  WD_PID="$(pgrep -f "$PATTERN" | head -n 1)"
+  WD_START=0
+  CFG_MTIME=0
+  CODE_MTIME=0
+  if [[ -n "${WD_PID}" && -d "/proc/${WD_PID}" ]]; then
+    WD_START="$(stat -c %Y "/proc/${WD_PID}" 2>/dev/null || echo 0)"
+  fi
+  if [[ -f "${ROOT}/config/queue_workers.php" ]]; then
+    CFG_MTIME="$(stat -c %Y "${ROOT}/config/queue_workers.php" 2>/dev/null || echo 0)"
+  fi
+  if [[ -f "${ROOT}/app/Console/Commands/RunQueueWorkerWatchdogCommand.php" ]]; then
+    CODE_MTIME="$(stat -c %Y "${ROOT}/app/Console/Commands/RunQueueWorkerWatchdogCommand.php" 2>/dev/null || echo 0)"
+  fi
+  # A daemon started before a new queue was added never watches that queue.
+  if [[ "${WD_START}" -ge "${CFG_MTIME}" && "${WD_START}" -ge "${CODE_MTIME}" ]]; then
+    exit 0
+  fi
+  echo "$(ts) restarting queue:watchdog pid ${WD_PID} (config or code is newer)" >>"$LOG"
+  kill "${WD_PID}" >/dev/null 2>&1 || true
+  sleep 1
 fi
 
 echo "$(ts) starting queue:watchdog daemon (all dedicated queues)" >>"$LOG"

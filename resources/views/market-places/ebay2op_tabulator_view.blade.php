@@ -2355,6 +2355,7 @@
                         },
                         width: 50
                     },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'ebay2'])
                     {
                         title: "L7 VIEWS",
                         field: "l7_views",

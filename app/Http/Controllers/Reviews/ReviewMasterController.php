@@ -10,11 +10,13 @@ use App\Models\ReviewIssuesSummary;
 use App\Models\SkuReview;
 use App\Models\Supplier;
 use App\Services\ReviewAnalysisService;
+use App\Support\SkuReviewMarketplace;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
@@ -92,26 +94,21 @@ class ReviewMasterController extends Controller
             $query->where('sku_reviews.supplier_id', $supplier);
         }
         if ($marketplace = trim((string) $request->input('marketplace', ''))) {
-            // Accept PEF / alias keys (temu, ebay1) as well as stored labels (temu 1, amazon)
-            $compact = strtolower(preg_replace('/\s+/', '', $marketplace) ?? '');
-            $aliases = match (true) {
-                $compact === 'amazon' => ['amazon'],
-                in_array($compact, ['ebay', 'ebay1', 'ebayone'], true) => ['ebay', 'ebay1', 'ebay one'],
-                in_array($compact, ['ebay2', 'ebaytwo'], true) => ['ebay2', 'ebay two'],
-                in_array($compact, ['ebay3', 'ebaythree'], true) => ['ebay3', 'ebay three'],
-                in_array($compact, ['temu', 'temu1'], true) => ['temu', 'temu1', 'temu 1'],
-                $compact === 'temu2' => ['temu2', 'temu 2'],
-                default => [$marketplace],
-            };
-            $query->where(function ($q) use ($aliases) {
-                foreach ($aliases as $i => $alias) {
-                    if ($i === 0) {
-                        $q->whereRaw('LOWER(TRIM(sku_reviews.marketplace)) = ?', [strtolower($alias)]);
-                    } else {
-                        $q->orWhereRaw('LOWER(TRIM(sku_reviews.marketplace)) = ?', [strtolower($alias)]);
+            // Accept analytics keys (temu, ebay1, newegg) as well as stored labels.
+            $aliases = SkuReviewMarketplace::aliases($marketplace);
+            if ($aliases === []) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->where(function ($q) use ($aliases) {
+                    foreach ($aliases as $i => $alias) {
+                        if ($i === 0) {
+                            $q->whereRaw('LOWER(TRIM(sku_reviews.marketplace)) = ?', [strtolower($alias)]);
+                        } else {
+                            $q->orWhereRaw('LOWER(TRIM(sku_reviews.marketplace)) = ?', [strtolower($alias)]);
+                        }
                     }
-                }
-            });
+                });
+            }
         }
         if ($rating = $request->input('rating')) {
             $query->where('sku_reviews.rating', $rating);
@@ -137,7 +134,7 @@ class ReviewMasterController extends Controller
                     'id'             => (int) $r->id,
                     'sku'            => $r->sku,
                     'product_name'   => $r->product_name,
-                    'marketplace'    => $r->marketplace,
+                    'marketplace'    => SkuReviewMarketplace::label((string) ($r->marketplace ?? '')),
                     'rating'         => $r->rating !== null ? (int) $r->rating : null,
                     'review_title'   => $r->review_title,
                     'review_text'    => $r->review_text,
@@ -622,6 +619,50 @@ class ReviewMasterController extends Controller
     // -------------------------------------------------------------------------
     // Marketplaces list (for filters)
     // -------------------------------------------------------------------------
+
+    /**
+     * SKU → review count for one marketplace. Used by analytics Views columns.
+     */
+    public function counts(Request $request): JsonResponse
+    {
+        $marketplace = trim((string) $request->query('marketplace', ''));
+        $aliases = SkuReviewMarketplace::aliases($marketplace);
+        if ($aliases === []) {
+            return response()->json(['counts' => []]);
+        }
+
+        $cacheKey = 'sku_review_counts:'.md5(strtolower(implode('|', $aliases)));
+        $counts = Cache::remember($cacheKey, 120, function () use ($aliases) {
+            if (! Schema::hasTable('sku_reviews')) {
+                return [];
+            }
+
+            $lower = array_values(array_unique(array_map(
+                static fn ($alias) => strtolower(trim((string) $alias)),
+                $aliases
+            )));
+            $placeholders = implode(',', array_fill(0, count($lower), '?'));
+
+            $rows = DB::table('sku_reviews')
+                ->select('sku', DB::raw('COUNT(*) as cnt'))
+                ->whereRaw('LOWER(TRIM(marketplace)) IN ('.$placeholders.')', $lower)
+                ->groupBy('sku')
+                ->get();
+
+            $out = [];
+            foreach ($rows as $row) {
+                $key = strtolower(trim((string) $row->sku));
+                if ($key === '') {
+                    continue;
+                }
+                $out[$key] = ($out[$key] ?? 0) + (int) $row->cnt;
+            }
+
+            return $out;
+        });
+
+        return response()->json(['counts' => $counts]);
+    }
 
     public function marketplaces(): JsonResponse
     {

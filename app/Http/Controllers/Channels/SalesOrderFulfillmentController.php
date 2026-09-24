@@ -46,6 +46,7 @@ use App\Services\SheinApiService;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Support\Marketplace\SofOrderCancelDetector;
+use App\Support\DobaTrackingNumber;
 use App\Support\TrackingCarrierGuesser;
 use App\Services\FourSellerApiService;
 use App\Services\TemuShopifySalesService;
@@ -100,6 +101,12 @@ class SalesOrderFulfillmentController extends Controller
     /** @var list<array<string, mixed>>|null */
     protected ?array $cachedPendingRows = null;
 
+    /** @var array<string, true>|null */
+    protected ?array $gofoEmptyOnceIgnoredIds = null;
+
+    /** @var list<array<string, mixed>>|null */
+    protected ?array $cachedInvoicedRows = null;
+
     public function __construct(
         protected MarketplaceApiConfigService $apiConfig
     ) {}
@@ -140,6 +147,7 @@ class SalesOrderFulfillmentController extends Controller
     public function data(): JsonResponse
     {
         try {
+            @set_time_limit(120);
             if (! Schema::hasTable('channel_master')) {
                 return response()->json([
                     'success' => true,
@@ -234,6 +242,7 @@ class SalesOrderFulfillmentController extends Controller
                 'received_by_carrier_total' => 0,
                 'invoiced_total' => 0,
                 'delivered_total' => 0,
+                'not_authorized_total' => 0,
                 'all_order_total' => 0,
             ], 500);
         }
@@ -267,28 +276,24 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Label Created / No Scan — selected date range, carrier has not scanned yet.
-     * Older labeled rows stay here (red triangle after 24h). They are not moved
-     * to In Transit just because the label is older than a day.
+     * Label Created / No Tracking — labeled in the selected date range, carrier
+     * has not scanned, and there is still no tracking number.
+     * Return the grid immediately. GOFO/4Seller/Veeqo lookups run after render
+     * (the page already calls pull-tracking-numbers). Doing them inside this
+     * request rebuilt every order row and often hit the proxy timeout, so the
+     * tab stayed on "Loading…" with a 0 count.
      */
     public function labelCreatedNoTrackingData(): JsonResponse
     {
         try {
-            @set_time_limit(90);
+            @set_time_limit(60);
+            @ini_set('memory_limit', '512M');
+            $this->ignoreShopifyFulfilledEmptyTrackingOnce();
             $rows = $this->labelCreatedNoTrackingRows();
-            // Pull GOFO/4Seller/Veeqo for every marketplace (not Amazon-only), persist
-            // onto SOF, and fulfill the linked Shopify order when a number is found.
-            if ($rows !== []) {
-                $this->pullLabelTrackingFromApis(
-                    $rows,
-                    6,
-                    app(VeeqoShopifyFulfillmentService::class),
-                    microtime(true) + 22.0,
-                    true
-                );
-                $rows = $this->labelCreatedNoTrackingRows();
+            try {
+                $this->queueAmazonSofTrackingFillForRows($rows);
+            } catch (\Throwable) {
             }
-            $this->queueAmazonSofTrackingFillForRows($rows);
 
             return response()->json(array_merge([
                 'success' => true,
@@ -296,6 +301,8 @@ class SalesOrderFulfillmentController extends Controller
                 'count' => count($rows),
             ], $this->labelCreatedSplitCounts()));
         } catch (\Throwable $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load Label Created / No Tracking orders.',
@@ -342,7 +349,7 @@ class SalesOrderFulfillmentController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load Received by carrier orders.',
+                'message' => 'Failed to load Recd Carrier orders.',
                 'data' => [],
                 'count' => 0,
             ], 500);
@@ -350,14 +357,12 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * In Transit — last 30 days (marketplace In Transit + carrier In Transit from Label Created).
+     * Recd/Transit — last 30 days. Received by carrier and In Transit in one list.
      */
     public function inTransitData(): JsonResponse
     {
         try {
-            $rows = $this->annotateInTransitScanPendingAlerts(
-                $this->excludeCarrierDeliveredRows($this->inTransitOrderRows())
-            );
+            $rows = $this->recdTransitOrderRows();
 
             return response()->json([
                 'success' => true,
@@ -367,7 +372,7 @@ class SalesOrderFulfillmentController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load In Transit orders.',
+                'message' => 'Failed to load Recd/Transit orders.',
                 'data' => [],
                 'count' => 0,
             ], 500);
@@ -388,9 +393,8 @@ class SalesOrderFulfillmentController extends Controller
     public function invoicedData(): JsonResponse
     {
         try {
-            $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->scopedToLast30Days($this->invoicedOrdersQuery($slug), $slug),
-                true
+            $rows = $this->excludeDisplayedInTransitRows(
+                $this->excludeDisplayedDeliveredRows($this->invoicedOrderRows())
             );
 
             return response()->json([
@@ -414,19 +418,7 @@ class SalesOrderFulfillmentController extends Controller
     public function deliveredData(): JsonResponse
     {
         try {
-            $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug),
-                true
-            );
-            $fromCarrier = array_values(array_filter(
-                $this->labelCreatedOrderRows(),
-                fn (array $r) => $this->rowLooksDelivered($r)
-            ));
-            $rows = $this->mergeOrderRowsById($rows, $fromCarrier);
-            $rows = $this->mergeOrderRowsById(
-                $rows,
-                $this->onlyCarrierDeliveredRows($this->inTransitOrderRows())
-            );
+            $rows = $this->deliveredOrderRows();
 
             return response()->json([
                 'success' => true,
@@ -439,6 +431,32 @@ class SalesOrderFulfillmentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load Delivered orders.',
+                'data' => [],
+                'count' => 0,
+            ], 500);
+        }
+    }
+
+    /**
+     * Tracking numbers the carrier API refused (USPS MID "not authorized").
+     * These are not a real package status, so they are listed on their own tab.
+     */
+    public function notAuthorizedData(): JsonResponse
+    {
+        try {
+            $rows = $this->notAuthorizedTrackingRows();
+
+            return response()->json([
+                'success' => true,
+                'data' => $rows,
+                'count' => count($rows),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load Not Authorized tracking.',
                 'data' => [],
                 'count' => 0,
             ], 500);
@@ -673,7 +691,8 @@ class SalesOrderFulfillmentController extends Controller
         $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED']);
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED'])
+            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')');
 
         $select = [
             'id', 'order_no', 'platform_order_no', 'order_time', 'updated_at',
@@ -764,11 +783,14 @@ class SalesOrderFulfillmentController extends Controller
             if (is_numeric($amt)) {
                 $row['amount'] = max((float) ($row['amount'] ?? 0), (float) $amt);
             }
-            $tn = trim((string) ($line->tracking_number ?? ''));
+            $fromLabel = $this->dobaTrackingFromStoredOrder($line);
+            $tn = $fromLabel['tracking'];
             if ($tn !== '' && trim((string) ($row['tracking_number'] ?? '')) === '') {
                 $row['tracking_number'] = $tn;
             }
-            $carrier = trim((string) ($line->carrier_name ?? ''));
+            $carrier = $fromLabel['carrier'] !== ''
+                ? $fromLabel['carrier']
+                : trim((string) ($line->carrier_name ?? ''));
             if ($carrier !== '' && trim((string) ($row['tracking_company'] ?? '')) === '') {
                 $row['tracking_company'] = $carrier;
             }
@@ -805,6 +827,12 @@ class SalesOrderFulfillmentController extends Controller
             $row['sku'] = implode(', ', $row['skus']);
             $row['display_title'] = implode(' · ', $row['titles']);
             unset($row['skus'], $row['titles'], $row['shipping_city'], $row['item_price']);
+            if ($this->dobaStatusIsInTransit((string) ($row['status'] ?? ''))) {
+                continue;
+            }
+            if (! $row['is_prepaid'] && ! $row['warehouse_shipped']) {
+                continue;
+            }
             if (! $row['warehouse_shipped']) {
                 $openCount++;
             }
@@ -812,11 +840,7 @@ class SalesOrderFulfillmentController extends Controller
                 $done[] = $row;
                 continue;
             }
-            if ($row['is_prepaid']) {
-                $prepaid[] = $row;
-            } else {
-                $nonPrepaid[] = $row;
-            }
+            $prepaid[] = $row;
         }
 
         return [
@@ -827,9 +851,82 @@ class SalesOrderFulfillmentController extends Controller
         ];
     }
 
+    /**
+     * Doba keeps the waybill on buyerPrepaidLabelList, not the empty order trackingNumber.
+     *
+     * @return array{tracking: string, carrier: string}
+     */
+    protected function dobaTrackingFromStoredOrder(object $line): array
+    {
+        $tracking = DobaTrackingNumber::sanitize((string) ($line->tracking_number ?? ''));
+        $carrier = $this->dobaCarrierName(trim((string) ($line->carrier_name ?? '')), $tracking);
+        if ($tracking !== '') {
+            return ['tracking' => $tracking, 'carrier' => $carrier];
+        }
+
+        $payload = $line->order_json ?? null;
+        if (is_string($payload)) {
+            $decoded = json_decode($payload, true);
+            $payload = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($payload)) {
+            return ['tracking' => '', 'carrier' => $carrier];
+        }
+
+        $hit = DobaTrackingNumber::fromOrderPayload($payload);
+        if ($hit['tracking'] === '') {
+            return ['tracking' => '', 'carrier' => $carrier];
+        }
+
+        $carrier = $this->dobaCarrierName($hit['carrier'] !== '' ? $hit['carrier'] : $carrier, $hit['tracking']);
+        $orderNo = trim((string) ($line->order_no ?? ''));
+        if ($orderNo !== '') {
+            try {
+                DobaDailyData::query()
+                    ->where('order_no', $orderNo)
+                    ->where(function ($q) {
+                        $q->whereNull('tracking_number')->orWhere('tracking_number', '');
+                    })
+                    ->update([
+                        'tracking_number' => substr($hit['tracking'], 0, 100),
+                        'carrier_name' => $carrier !== '' ? substr($carrier, 0, 50) : null,
+                    ]);
+            } catch (\Throwable) {
+                // Display still uses the label number if the column write fails.
+            }
+        }
+
+        return ['tracking' => $hit['tracking'], 'carrier' => $carrier];
+    }
+
+    protected function dobaCarrierName(string $carrier, string $tracking): string
+    {
+        $carrier = trim($carrier);
+        if (str_contains(strtolower($carrier), 'seller') && str_contains(strtolower($carrier), 'own')) {
+            $carrier = '';
+        }
+
+        return (string) (TrackingCarrierGuesser::fill($carrier, $tracking) ?? '');
+    }
+
     protected function dobaOrderTypeIsPrepaid(string $orderType): bool
     {
         return strtolower(trim($orderType)) === self::DOBA_PREPAID_ORDER_TYPE;
+    }
+
+    /**
+     * Doba "In Transit" / "IN_TRANSIT" / "InTransit" — those orders belong on the In Transit tab.
+     */
+    protected function dobaStatusIsInTransit(?string $status): bool
+    {
+        $norm = str_replace([' ', '_', '-'], '', strtoupper(trim((string) $status)));
+
+        return $norm === 'INTRANSIT';
+    }
+
+    protected function dobaInTransitStatusSql(string $column = 'order_status'): string
+    {
+        return "REPLACE(REPLACE(REPLACE(UPPER(TRIM(COALESCE({$column}, ''))), ' ', ''), '_', ''), '-', '') = 'INTRANSIT'";
     }
 
     /**
@@ -850,7 +947,8 @@ class SalesOrderFulfillmentController extends Controller
 
         $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%']);
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
+            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')');
 
         $columns = ['order_no', 'order_time', 'order_type', 'sku', 'quantity'];
         foreach ([
@@ -1583,6 +1681,22 @@ class SalesOrderFulfillmentController extends Controller
                     }
                 }
 
+                $dateSource = $n['order_date'] ?? null;
+                $dateTz = $slug === 'shein' ? SheinApiService::API_TIMEZONE : null;
+                if (in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true)) {
+                    $dateSource = $this->ebayDisplayedOrderDate($order, $n);
+                    $dateTz = null;
+                } elseif ($slug === 'amazon') {
+                    // PurchaseDate is stored as a UTC wall clock, same as eBay creationDate.
+                    $dateSource = $this->utcWallClockDisplayedDate(
+                        $order,
+                        'order_date',
+                        $n['raw_payload'] ?? null,
+                        ['PurchaseDate', 'purchaseDate']
+                    );
+                    $dateTz = null;
+                }
+
                 $rows[] = [
                     'id' => $slug.'-'.$order->id,
                     'row_id' => (int) $order->id,
@@ -1593,10 +1707,7 @@ class SalesOrderFulfillmentController extends Controller
                     'order_id' => $displayOrderId,
                     'order_id_api' => $apiOrderId,
                     'order_number' => $orderNumber !== '' ? $orderNumber : null,
-                    'order_date' => $this->formatOrderDate(
-                        $n['order_date'] ?? null,
-                        $slug === 'shein' ? SheinApiService::API_TIMEZONE : null
-                    ),
+                    'order_date' => $this->formatOrderDate($dateSource, $dateTz),
                     'updated_at' => $this->formatOrderDate($n['updated_at'] ?? null),
                     'tracking_number' => $tracking,
                     'tracking_company' => $company,
@@ -2054,7 +2165,10 @@ class SalesOrderFulfillmentController extends Controller
             $row['status_label'] = 'Label Created';
             $fromPendingLabeled[] = $row;
         }
-        $this->cachedLabelCreatedRows = $this->mergeOrderRowsById($fromMarketplace, $fromPendingLabeled);
+        $this->cachedLabelCreatedRows = $this->mergeOrderRowsById(
+            $this->mergeOrderRowsById($fromMarketplace, $fromPendingLabeled),
+            $this->dobaPrepaidLabelOrderRows()
+        );
 
         return $this->cachedLabelCreatedRows;
     }
@@ -2110,6 +2224,48 @@ class SalesOrderFulfillmentController extends Controller
             ShipmentTrackingService::STATUS_PICKUP,
             ShipmentTrackingService::STATUS_DELIVERED,
         ], true);
+    }
+
+    /**
+     * Carrier still has only the label: it is waiting for the package, not moving it.
+     * A blank status counts only while the order is new. Older blanks are a missed
+     * status refresh, not a confirmed "awaiting shipment".
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function carrierIsAwaitingShipment(array $row): bool
+    {
+        if (! $this->rowHasSofTrackingNumber($row)) {
+            return false;
+        }
+        if ($this->rowLooksDelivered($row) || $this->carrierStatusHasLeftLabelCreated($row['shipment_status'] ?? null)) {
+            return false;
+        }
+
+        $status = trim((string) ($row['shipment_status'] ?? ''));
+        $detail = strtolower(trim((string) ($row['shipment_status_detail'] ?? '')));
+        if (ShipmentTrackingService::isUnusableProviderFailure($detail)) {
+            return false;
+        }
+
+        if (in_array($status, [
+            ShipmentTrackingService::STATUS_INFO_RECEIVED,
+            ShipmentTrackingService::STATUS_PENDING,
+        ], true)) {
+            return true;
+        }
+
+        if ($status === ShipmentTrackingService::STATUS_EXCEPTION
+            && (str_contains($detail, 'not received the package') || str_contains($detail, 'has not received'))
+        ) {
+            return true;
+        }
+
+        if ($status === '') {
+            return ! $this->rowIsOlderThanHours($row, 36);
+        }
+
+        return false;
     }
 
     /**
@@ -2206,6 +2362,7 @@ class SalesOrderFulfillmentController extends Controller
         return array_values(array_filter(
             $this->labelCreatedOrderRows(),
             fn (array $r) => ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null)
+                && ! $this->rowDisplayedAsInTransit($r)
         ));
     }
 
@@ -2216,23 +2373,257 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function labelCreatedNoTrackingRows(): array
     {
+        $ignored = $this->gofoEmptyOnceIgnoredIds();
+
         return array_values(array_filter(
             $this->labelCreatedLabeledRows(),
-            fn (array $r) => ! $this->rowHasSofTrackingNumber($r)
+            function (array $r) use ($ignored): bool {
+                if ($this->rowHasSofTrackingNumber($r)) {
+                    return false;
+                }
+                $id = trim((string) ($r['id'] ?? ''));
+
+                return $id === '' || ! isset($ignored[$id]);
+            }
         ));
     }
 
     /**
-     * Label Created / No Scan: labeled, not scanned, tracking number is present.
+     * Shopify-fulfilled orders with no tracking number cannot be found on GOFO:
+     * GOFO's orderNo is the GFUS waybill, and 4Seller has no API to translate
+     * the marketplace id. Record the current set once and leave them out of
+     * Label Created / No Tracking and out of later GOFO pulls.
+     *
+     * @return array{success: bool, message: string, matched: int, written: int, already?: bool}
+     */
+    public function ignoreShopifyFulfilledEmptyTrackingOnce(): array
+    {
+        if (! Schema::hasTable('sof_shipment_status_overrides') || ! Schema::hasTable('shopify_raw_orders')) {
+            return [
+                'success' => false,
+                'message' => 'Required tables are missing.',
+                'matched' => 0,
+                'written' => 0,
+            ];
+        }
+
+        $already = DB::table('sof_shipment_status_overrides')
+            ->where('mm_slug', self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG)
+            ->where('order_key', self::SOF_GOFO_EMPTY_ONCE_SENTINEL_KEY)
+            ->exists();
+        if ($already) {
+            return [
+                'success' => true,
+                'message' => 'Already ignored the Shopify-fulfilled empty-tracking set once.',
+                'matched' => 0,
+                'written' => 0,
+                'already' => true,
+            ];
+        }
+
+        $rows = array_values(array_filter(
+            $this->labelCreatedLabeledRows(),
+            fn (array $r): bool => ! $this->rowHasSofTrackingNumber($r)
+        ));
+        $shopifyIds = [];
+        foreach ($rows as $row) {
+            $sid = $this->shopifyNumericOrderId(trim((string) ($row['shopify_order_id'] ?? '')));
+            if ($sid !== null) {
+                $shopifyIds[$sid] = true;
+            }
+        }
+
+        $fulfilledEmpty = [];
+        foreach (array_chunk(array_keys($shopifyIds), 500) as $chunk) {
+            $lines = DB::table('shopify_raw_orders')
+                ->whereIn('order_id', $chunk)
+                ->get(['order_id', 'fulfillment_status', 'tracking_number']);
+            $byOrder = [];
+            foreach ($lines as $line) {
+                $byOrder[(int) $line->order_id][] = $line;
+            }
+            foreach ($byOrder as $orderId => $orderLines) {
+                $fulfilled = false;
+                $hasTracking = false;
+                foreach ($orderLines as $line) {
+                    $ff = strtolower(trim((string) ($line->fulfillment_status ?? '')));
+                    if (in_array($ff, ['fulfilled', 'partial', 'partially_fulfilled'], true)) {
+                        $fulfilled = true;
+                    }
+                    if (trim((string) ($line->tracking_number ?? '')) !== '') {
+                        $hasTracking = true;
+                    }
+                }
+                if ($fulfilled && ! $hasTracking) {
+                    $fulfilledEmpty[$orderId] = true;
+                }
+            }
+        }
+
+        $now = now();
+        $written = 0;
+        foreach ($rows as $row) {
+            $id = trim((string) ($row['id'] ?? ''));
+            $sid = $this->shopifyNumericOrderId(trim((string) ($row['shopify_order_id'] ?? '')));
+            if ($id === '' || $sid === null || ! isset($fulfilledEmpty[$sid])) {
+                continue;
+            }
+            DB::table('sof_shipment_status_overrides')->updateOrInsert(
+                [
+                    'mm_slug' => self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG,
+                    'order_key' => self::SOF_GOFO_EMPTY_ONCE_KEY_PREFIX.$id,
+                ],
+                [
+                    'order_id' => mb_substr((string) ($row['order_id'] ?? ''), 0, 128) ?: null,
+                    'shipment_status' => '',
+                    'shipment_status_detail' => 'One-time: Shopify fulfilled, tracking empty, GOFO has no lookup by marketplace id.',
+                    'updated_at' => $now,
+                    'created_at' => $now,
+                ]
+            );
+            $written++;
+        }
+
+        DB::table('sof_shipment_status_overrides')->updateOrInsert(
+            [
+                'mm_slug' => self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG,
+                'order_key' => self::SOF_GOFO_EMPTY_ONCE_SENTINEL_KEY,
+            ],
+            [
+                'order_id' => null,
+                'shipment_status' => '',
+                'shipment_status_detail' => 'Sentinel: ignored '.$written.' Shopify-fulfilled empty-tracking order(s) once.',
+                'updated_at' => $now,
+                'created_at' => $now,
+            ]
+        );
+        $this->gofoEmptyOnceIgnoredIds = null;
+        $this->forgetSofOrderRowCaches();
+
+        return [
+            'success' => true,
+            'message' => 'Ignored '.$written.' Shopify-fulfilled order(s) with empty tracking. This will not run again.',
+            'matched' => count($fulfilledEmpty),
+            'written' => $written,
+        ];
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected function gofoEmptyOnceIgnoredIds(): array
+    {
+        if ($this->gofoEmptyOnceIgnoredIds !== null) {
+            return $this->gofoEmptyOnceIgnoredIds;
+        }
+        $ids = [];
+        if (! Schema::hasTable('sof_shipment_status_overrides')) {
+            return $this->gofoEmptyOnceIgnoredIds = $ids;
+        }
+        $prefix = self::SOF_GOFO_EMPTY_ONCE_KEY_PREFIX;
+        $keys = DB::table('sof_shipment_status_overrides')
+            ->where('mm_slug', self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG)
+            ->where('order_key', 'like', $prefix.'%')
+            ->where('order_key', '!=', self::SOF_GOFO_EMPTY_ONCE_SENTINEL_KEY)
+            ->pluck('order_key');
+        foreach ($keys as $key) {
+            $id = substr((string) $key, strlen($prefix));
+            if ($id !== '') {
+                $ids[$id] = true;
+            }
+        }
+
+        return $this->gofoEmptyOnceIgnoredIds = $ids;
+    }
+
+    /**
+     * Label Created / No Scan: tracking is present and the carrier is still
+     * awaiting the shipment (label only — no pickup scan).
      *
      * @return list<array<string, mixed>>
      */
     protected function labelCreatedNoScanRows(): array
     {
-        return array_values(array_filter(
-            $this->labelCreatedLabeledRows(),
-            fn (array $r) => $this->rowHasSofTrackingNumber($r)
+        $labeled = $this->labelCreatedLabeledRows();
+        $awaiting = array_values(array_filter(
+            $labeled,
+            fn (array $r) => $this->carrierIsAwaitingShipment($r)
         ));
+        // Prepaid Doba labels belong here until a real status moves them.
+        $prepaidLabels = array_values(array_filter(
+            $labeled,
+            fn (array $r) => ! empty($r['doba_prepaid_label'])
+                && ! $this->rowLooksDelivered($r)
+                && ! $this->rowDisplayedAsInTransit($r)
+        ));
+
+        return $this->mergeOrderRowsById(
+            $this->mergeOrderRowsById($awaiting, $prepaidLabels),
+            $this->invoicedTrackedForNoScan()
+        );
+    }
+
+    /**
+     * Open Prepaid Doba orders. They stay on the Prepaid tab and also start on
+     * Label Created / No Scan. In Transit, Delivered, and carrier scans use the
+     * same movement rules as every other order.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function dobaPrepaidLabelOrderRows(): array
+    {
+        $rows = $this->collectOrderRows(
+            fn (string $slug) => $slug === 'doba'
+                ? $this->scopedToLast30Days($this->dobaPrepaidLabelOrdersQuery(), 'doba')
+                : null,
+            true
+        );
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $grouped[$this->marketplaceOrderDedupeKey($row)][] = $row;
+        }
+
+        $out = [];
+        foreach ($grouped as $lines) {
+            $row = $this->mergeMarketplaceOrderLines($lines);
+            $row['doba_prepaid_label'] = true;
+            $row['has_shipping_label'] = true;
+            if (! $this->carrierStatusHasLeftLabelCreated($row['shipment_status'] ?? null)
+                && ! $this->rowLooksDelivered($row)
+            ) {
+                $row['status_label'] = 'Label Created';
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    protected function dobaPrepaidLabelOrdersQuery(): ?Builder
+    {
+        $base = $this->allOrdersQuery('doba');
+        if ($base === null || ! Schema::hasColumn('doba_daily_data', 'order_type')) {
+            return null;
+        }
+
+        $base->whereRaw('LOWER(TRIM(COALESCE(order_type, \'\'))) = ?', [self::DOBA_PREPAID_ORDER_TYPE])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED'])
+            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')');
+
+        if (Schema::hasTable('doba_warehouse_ships') && Schema::hasColumn('doba_daily_data', 'order_no')) {
+            $base->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('doba_warehouse_ships')
+                    ->whereColumn('doba_warehouse_ships.order_no', 'doba_daily_data.order_no')
+                    ->where('doba_warehouse_ships.shipped', true);
+            });
+        }
+
+        return $base;
     }
 
     /**
@@ -2446,6 +2837,11 @@ class SalesOrderFulfillmentController extends Controller
 
     public const SOF_ONE_TIME_NO_TRACKING_SENTINEL_KEY = 'in_transit_no_tracking_v1';
 
+    /** One-time: Shopify fulfilled + empty tracking are not queried on GOFO again. */
+    public const SOF_GOFO_EMPTY_ONCE_SENTINEL_KEY = 'gofo_shopify_fulfilled_empty_v1';
+
+    public const SOF_GOFO_EMPTY_ONCE_KEY_PREFIX = 'gofo_empty_once:';
+
     /**
      * Overlay one-time / manual SOF shipment statuses (including orders with no tracking).
      *
@@ -2525,6 +2921,71 @@ class SalesOrderFulfillmentController extends Controller
         return array_values(array_filter(
             $rows,
             fn (array $r) => ! $this->rowLooksDelivered($r)
+        ));
+    }
+
+    /**
+     * Visible status is Delivered (carrier or marketplace). Those rows belong on the Delivered tab only.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowDisplayedAsDelivered(array $row): bool
+    {
+        if (strtolower(trim((string) ($row['status_label'] ?? ''))) === 'delivered') {
+            return true;
+        }
+        if (strtolower(trim((string) ($row['shipment_status'] ?? ''))) === strtolower(ShipmentTrackingService::STATUS_DELIVERED)) {
+            return true;
+        }
+
+        $mp = strtolower(str_replace([' ', '-', '_'], '', trim((string) ($row['status'] ?? ''))));
+
+        return $mp === 'delivered';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function excludeDisplayedDeliveredRows(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            fn (array $r) => ! $this->rowDisplayedAsDelivered($r)
+        ));
+    }
+
+    /**
+     * Visible status is In Transit. Those rows belong on Recd/Transit.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowDisplayedAsInTransit(array $row): bool
+    {
+        if ($this->rowDisplayedAsDelivered($row)) {
+            return false;
+        }
+        if (strtolower(trim((string) ($row['status_label'] ?? ''))) === 'in transit') {
+            return true;
+        }
+        if (strtolower(trim((string) ($row['shipment_status'] ?? ''))) === strtolower(ShipmentTrackingService::STATUS_IN_TRANSIT)) {
+            return true;
+        }
+
+        $mp = strtolower(str_replace([' ', '-', '_'], '', trim((string) ($row['status'] ?? ''))));
+
+        return $mp === 'intransit';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function excludeDisplayedInTransitRows(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            fn (array $r) => ! $this->rowDisplayedAsInTransit($r)
         ));
     }
 
@@ -2649,6 +3110,9 @@ class SalesOrderFulfillmentController extends Controller
         $fromCarrier = array_values(array_filter(
             $this->labelCreatedOrderRows(),
             function (array $r) {
+                if ($this->rowDisplayedAsInTransit($r)) {
+                    return true;
+                }
                 $s = (string) ($r['shipment_status'] ?? '');
 
                 return in_array($s, [
@@ -2661,8 +3125,11 @@ class SalesOrderFulfillmentController extends Controller
         $fromOlderLabels = $this->labelCreatedAssumedScannedRows();
 
         return $this->mergeOrderRowsById(
-            $this->mergeOrderRowsById($rows, $fromCarrier),
-            $fromOlderLabels
+            $this->mergeOrderRowsById(
+                $this->mergeOrderRowsById($rows, $fromCarrier),
+                $fromOlderLabels
+            ),
+            $this->mergeOrderRowsById($this->receivedByCarrierOrderRows(), $this->invoicedTrackedForInTransit())
         );
     }
 
@@ -3040,6 +3507,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         $this->cachedLabelCreatedRows = null;
         $this->cachedPendingRows = null;
+        $this->cachedInvoicedRows = null;
     }
 
     protected function carrierShipmentStatusLabel(string $shipmentStatus): ?string
@@ -3240,6 +3708,55 @@ class SalesOrderFulfillmentController extends Controller
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * eBay stores creationDate as a UTC wall clock with the Z removed.
+     * Prefer the payload instant so the page does not read that clock as Pacific.
+     *
+     * @param  array<string, mixed>  $normalized
+     */
+    protected function ebayDisplayedOrderDate(object $order, array $normalized): mixed
+    {
+        return $this->utcWallClockDisplayedDate(
+            $order,
+            'order_date',
+            $normalized['raw_payload'] ?? null,
+            ['creationDate']
+        ) ?? ($normalized['order_date'] ?? null);
+    }
+
+    /**
+     * Datetime columns that store a UTC wall clock (Z stripped). Read that instant,
+     * do not treat the clock as Pacific.
+     *
+     * @param  list<string>  $payloadKeys
+     */
+    protected function utcWallClockDisplayedDate(object $order, string $column, mixed $payload, array $payloadKeys): mixed
+    {
+        if (is_string($payload)) {
+            $decoded = json_decode($payload, true);
+            $payload = is_array($decoded) ? $decoded : null;
+        }
+        if (is_array($payload)) {
+            foreach ($payloadKeys as $key) {
+                $created = trim((string) ($payload[$key] ?? ''));
+                if ($created !== '') {
+                    return $created;
+                }
+            }
+        }
+
+        $raw = method_exists($order, 'getRawOriginal') ? $order->getRawOriginal($column) : null;
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return null;
+        }
+        if (preg_match('/(?:[zZ]|[+-]\d{2}:?\d{2})$/', $raw) === 1) {
+            return $raw;
+        }
+
+        return str_replace(' ', 'T', $raw).'Z';
     }
 
     protected function formatOrderDate(mixed $value, ?string $valueTz = null): ?string
@@ -3918,9 +4435,11 @@ class SalesOrderFulfillmentController extends Controller
      *
      * @return array{checked: int, updated: int, with_tracking: int, message: string, candidates: int}
      */
-    public function pullMissingLabelCreatedTracking(int $limit = 80): array
+    public function pullMissingLabelCreatedTracking(int $limit = 80, ?float $deadline = null): array
     {
         $limit = max(1, min(400, $limit));
+        $this->ignoreShopifyFulfilledEmptyTrackingOnce();
+        $ignored = $this->gofoEmptyOnceIgnoredIds();
         $candidates = $this->missingLabelTrackingRows();
         $filtered = [];
         foreach ($candidates as $row) {
@@ -3931,14 +4450,51 @@ class SalesOrderFulfillmentController extends Controller
             if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
                 continue;
             }
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($id !== '' && isset($ignored[$id])) {
+                continue;
+            }
             $filtered[] = $row;
         }
 
+        // Each run used to start at the same first 400, so the rest of the red
+        // rows never got a lookup. Skip orders checked in the last 45 minutes.
+        $recent = Cache::get('sof.pull.recently_checked', []);
+        if (! is_array($recent)) {
+            $recent = [];
+        }
+        $now = time();
+        $fresh = [];
+        $deferred = [];
+        foreach ($filtered as $row) {
+            $key = $this->sofPullRowKey($row);
+            $seenAt = ($key !== '' && isset($recent[$key])) ? (int) $recent[$key] : 0;
+            if ($seenAt > 0 && ($now - $seenAt) < 2700) {
+                $deferred[] = $row;
+            } else {
+                $fresh[] = $row;
+            }
+        }
+        $ordered = array_merge($fresh, $deferred);
+
         $result = $this->pullLabelTrackingFromApis(
-            $filtered,
+            $ordered,
             $limit,
-            app(VeeqoShopifyFulfillmentService::class)
+            app(VeeqoShopifyFulfillmentService::class),
+            $deadline,
+            true
         );
+        foreach ((array) ($result['processed_keys'] ?? []) as $key) {
+            $key = trim((string) $key);
+            if ($key !== '') {
+                $recent[$key] = $now;
+            }
+        }
+        if (count($recent) > 4000) {
+            asort($recent);
+            $recent = array_slice($recent, -2500, null, true);
+        }
+        Cache::put('sof.pull.recently_checked', $recent, now()->addHours(6));
         $result['candidates'] = count($filtered);
 
         return $result;
@@ -4917,25 +5473,27 @@ class SalesOrderFulfillmentController extends Controller
 
         $scanDone = $this->scanDoneLast24HoursCount();
         $inReceived = $this->inReceivedOrdersCount();
+        $invoicedNoScan = count($this->invoicedTrackedForNoScan());
+        $invoicedTransit = count($this->invoicedTrackedForInTransit());
 
         return [
             'channel_count' => (int) $channelCount,
             'pending_total' => $pendingTotal,
-            // Accurate split counts load with the Label Created tabs (avoid full row hydrate here).
-            'fulfilled_24h' => $this->countAllOrders(
-                fn (string $slug) => $this->scopedToLast30Days($this->fulfilledOrdersQuery($slug), $slug)
-            ),
+            // Provisional until the No Scan tab loads and replaces this with the order count.
+            // Do not count every marketplace-fulfilled order — that includes packages already scanned.
+            'fulfilled_24h' => $this->awaitingCarrierTrackingCount() + $invoicedNoScan,
             'label_created_no_tracking' => 0,
             'scan_done_24h' => $scanDone,
             'in_transit_total' => $this->countAllOrders(
                 fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug)
-            ),
+            ) + $scanDone + $inReceived + $invoicedTransit,
             'in_received_total' => $inReceived,
             'received_by_carrier_total' => $scanDone + $inReceived,
-            'invoiced_total' => $this->invoicedOrdersCount(),
-            'delivered_total' => $this->countAllOrders(
-                fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug)
-            ),
+            'invoiced_total' => count($this->excludeDisplayedInTransitRows(
+                $this->excludeDisplayedDeliveredRows($this->invoicedOrderRows())
+            )),
+            'delivered_total' => $this->deliveredOrdersCount(),
+            'not_authorized_total' => $this->notAuthorizedTrackingCount(),
             'all_order_total' => $this->allOrdersCount(),
             'calculated_at' => now($this->sofTimezone())->toDateTimeString(),
         ];
@@ -4982,10 +5540,35 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function inTransitOrdersCount(): int
     {
-        return count($this->excludeCarrierDeliveredRows($this->inTransitOrderRows()));
+        return count($this->recdTransitOrderRows());
     }
 
-    protected function deliveredOrdersCount(): int
+    /**
+     * Recd Carrier rows plus In Transit rows, one list.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function recdTransitOrderRows(): array
+    {
+        return $this->annotateInTransitScanPendingAlerts(
+            $this->excludeDisplayedDeliveredRows(
+                $this->excludeCarrierDeliveredRows(
+                    $this->mergeOrderRowsById(
+                        $this->inTransitOrderRows(),
+                        $this->receivedByCarrierOrderRows()
+                    )
+                )
+            )
+        );
+    }
+
+    /**
+     * Same rows the Delivered tab shows: marketplace delivered, carrier delivered,
+     * and invoiced orders whose status is Delivered.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function deliveredOrderRows(): array
     {
         $rows = $this->collectOrderRows(
             fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug),
@@ -5000,8 +5583,20 @@ class SalesOrderFulfillmentController extends Controller
             $rows,
             $this->onlyCarrierDeliveredRows($this->inTransitOrderRows())
         );
+        $rows = $this->mergeOrderRowsById($rows, $this->invoicedTrackedForDelivered());
 
-        return count($rows);
+        return $this->mergeOrderRowsById(
+            $rows,
+            array_values(array_filter(
+                $this->invoicedOrderRows(),
+                fn (array $r) => $this->rowDisplayedAsDelivered($r)
+            ))
+        );
+    }
+
+    protected function deliveredOrdersCount(): int
+    {
+        return count($this->deliveredOrderRows());
     }
 
     /**
@@ -5022,6 +5617,189 @@ class SalesOrderFulfillmentController extends Controller
         return $this->countAllOrders(
             fn (string $slug) => $this->scopedToLast30Days($this->invoicedOrdersQuery($slug), $slug)
         );
+    }
+
+    /**
+     * Invoiced rows for the selected date range, with carrier shipment status attached.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedOrderRows(): array
+    {
+        if ($this->cachedInvoicedRows !== null) {
+            return $this->cachedInvoicedRows;
+        }
+
+        return $this->cachedInvoicedRows = $this->collectOrderRows(
+            fn (string $slug) => $this->scopedToLast30Days($this->invoicedOrdersQuery($slug), $slug),
+            true
+        );
+    }
+
+    /**
+     * Invoiced orders that already have a carrier tracking number.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedRowsWithTracking(): array
+    {
+        return array_values(array_filter(
+            $this->invoicedOrderRows(),
+            fn (array $r) => $this->rowHasSofTrackingNumber($r)
+        ));
+    }
+
+    /**
+     * Tracking is present and the carrier is still awaiting the shipment.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedTrackedForNoScan(): array
+    {
+        return array_values(array_filter(
+            $this->invoicedRowsWithTracking(),
+            fn (array $r) => $this->carrierIsAwaitingShipment($r)
+        ));
+    }
+
+    protected function notAuthorizedTrackingCount(): int
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return 0;
+        }
+
+        try {
+            return (int) $this->notAuthorizedTrackingQuery()->count();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function notAuthorizedTrackingRows(): array
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($this->notAuthorizedTrackingQuery()->orderByDesc('shipment_checked_at')->get() as $record) {
+            $tn = trim((string) ($record->tracking_number ?? ''));
+            if ($tn === '') {
+                continue;
+            }
+            $detail = trim((string) ($record->shipment_status_detail ?? ''));
+            if (! ShipmentTrackingService::isUnusableProviderFailure($detail)) {
+                continue;
+            }
+            $carrier = trim((string) ($record->carrier ?? ''));
+            $checked = $this->formatOrderDate($record->shipment_checked_at ?? null);
+            $rows[] = [
+                'id' => 'not-auth-'.$tn,
+                'mm_slug' => 'usps',
+                'channel_label' => $carrier !== '' ? $carrier : 'USPS',
+                'order_id' => $tn,
+                'order_number' => $tn,
+                'order_date' => $checked,
+                'updated_at' => $checked,
+                'status' => 'Not Authorized',
+                'status_label' => 'Not Authorized',
+                'sku' => '',
+                'display_title' => $detail,
+                'quantity' => '',
+                'amount' => null,
+                'tracking_number' => $tn,
+                'tracking_company' => $carrier !== '' ? $carrier : 'USPS',
+                'shipment_status' => (string) ($record->shipment_status ?? ''),
+                'shipment_status_detail' => $detail,
+            ];
+        }
+
+        return $rows;
+    }
+
+    protected function notAuthorizedTrackingQuery()
+    {
+        [$from, $to] = $this->resolveOrderDateRange();
+        $bounds = $this->californiaSqlBounds($from, $to);
+
+        return DB::table('carrier_tracking_statuses')
+            ->where(function ($q) {
+                $q->where('shipment_status_detail', 'like', '%not authorized%')
+                    ->orWhere('shipment_status_detail', 'like', '%Tracking API Access%');
+            })
+            ->where('created_at', '>=', $bounds['from_dt'])
+            ->where('created_at', '<=', $bounds['to_dt']);
+    }
+
+    /**
+     * Tracking numbers the carrier has accepted as a label but has not scanned.
+     * Used for the summary badge before the No Scan tab hydrates order rows.
+     */
+    protected function awaitingCarrierTrackingCount(): int
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return 0;
+        }
+
+        try {
+            $since = now()->subDays(30);
+
+            return (int) DB::table('carrier_tracking_statuses')
+                ->where(function ($q) {
+                    $q->whereIn('shipment_status', [
+                        ShipmentTrackingService::STATUS_INFO_RECEIVED,
+                        ShipmentTrackingService::STATUS_PENDING,
+                    ])->orWhere(function ($q2) {
+                        $q2->where('shipment_status', ShipmentTrackingService::STATUS_EXCEPTION)
+                            ->where('shipment_status_detail', 'like', '%not Received the Package%');
+                    });
+                })
+                ->where(function ($q) use ($since) {
+                    $q->where('shipment_checked_at', '>=', $since)
+                        ->orWhere('updated_at', '>=', $since);
+                })
+                ->count();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Carrier has the package and it is not delivered.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedTrackedForInTransit(): array
+    {
+        return array_values(array_filter(
+            $this->invoicedRowsWithTracking(),
+            function (array $r): bool {
+                if ($this->rowLooksDelivered($r)) {
+                    return false;
+                }
+                $status = (string) ($r['shipment_status'] ?? '');
+
+                return $this->rowDisplayedAsInTransit($r) || in_array($status, [
+                    ShipmentTrackingService::STATUS_IN_TRANSIT,
+                    ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
+                    ShipmentTrackingService::STATUS_PICKUP,
+                ], true);
+            }
+        ));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function invoicedTrackedForDelivered(): array
+    {
+        return array_values(array_filter(
+            $this->invoicedRowsWithTracking(),
+            fn (array $r) => $this->rowLooksDelivered($r)
+        ));
     }
 
     /**
@@ -5065,6 +5843,11 @@ class SalesOrderFulfillmentController extends Controller
 
         if ($from->gt($to)) {
             [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
+        }
+
+        $earliest = now($tz)->subDays(30)->startOfDay();
+        if ($from->lt($earliest)) {
+            $from = $earliest;
         }
 
         return [$from, $to];
@@ -5131,8 +5914,9 @@ class SalesOrderFulfillmentController extends Controller
         $toDt = $b['to_dt'];
 
         return match ($slug) {
-            'amazon' => $query->whereDate('order_date', '>=', $fromDate)
-                ->whereDate('order_date', '<=', $toDate),
+            'amazon', 'ebay1', 'ebay2', 'ebay3' => $query
+                ->where('order_date', '>=', $from->copy()->utc()->format('Y-m-d H:i:s'))
+                ->where('order_date', '<=', $to->copy()->utc()->format('Y-m-d H:i:s')),
             'temu', 'temu2' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
                 $q->where(function (Builder $q2) use ($fromDt, $toDt) {
                     $q2->where('parent_order_time', '>=', $fromDt)
@@ -5349,10 +6133,7 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         return match ($slug) {
-            'doba' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)",
-                ['IN TRANSIT', 'IN_TRANSIT']
-            ),
+            'doba' => $base->whereRaw($this->dobaInTransitStatusSql()),
             'purchasingpower' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(status, ''))) = ?",
                 ['SHIPPING']
@@ -5392,6 +6173,13 @@ class SalesOrderFulfillmentController extends Controller
                 ['SHIPPED']
             ),
             'bestbuy', 'macy' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['SHIPPED']),
+            'doba' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)",
+                ['CLOSED', 'SHIPPED']
+            )->whereRaw(
+                'LOWER(TRIM(COALESCE(order_type, \'\'))) != ?',
+                [self::DOBA_PREPAID_ORDER_TYPE]
+            ),
             default => null,
         };
     }
@@ -5569,7 +6357,11 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(status, ''))) = ?",
                 ['AWAITING_SHIPMENT']
             ),
-            'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED']),
+            'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED'])
+                ->whereRaw(
+                    'LOWER(TRIM(COALESCE(order_type, \'\'))) != ?',
+                    [self::DOBA_PREPAID_ORDER_TYPE]
+                ),
             // AWAITING_COLLECTION / PARTIALLY_SHIPPING already have a label or a shipment.
             'tiktok', 'tiktok2' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(order_status, ''))) = ?",
@@ -5827,7 +6619,12 @@ class SalesOrderFulfillmentController extends Controller
                 'import_status' => (string) ($order->import_status ?? ''),
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
                 'raw_payload' => $order->raw_payload ?? null,
-                'tracking_number' => null,
+                'tracking_number' => is_array($order->raw_payload ?? null)
+                    ? (trim((string) ($order->raw_payload['tracking_number'] ?? '')) ?: null)
+                    : null,
+                'tracking_company' => is_array($order->raw_payload ?? null)
+                    ? (trim((string) ($order->raw_payload['tracking_company'] ?? '')) ?: null)
+                    : null,
                 'show_id' => (int) $order->id,
             ],
             'doba' => [
@@ -5842,9 +6639,9 @@ class SalesOrderFulfillmentController extends Controller
                 'order_number' => (string) ($order->platform_order_no ?: $order->order_no ?: ''),
                 'import_status' => (string) ($order->import_status ?? ''),
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
-                'raw_payload' => $order->raw_payload ?? null,
-                'tracking_number' => isset($order->tracking_number) ? trim((string) $order->tracking_number) : null,
-                'tracking_company' => isset($order->carrier_name) ? trim((string) $order->carrier_name) ?: null : null,
+                'raw_payload' => $order->order_json ?? $order->raw_payload ?? null,
+                'tracking_number' => ($dobaTrack = $this->dobaTrackingFromStoredOrder($order))['tracking'] ?: null,
+                'tracking_company' => $dobaTrack['carrier'] !== '' ? $dobaTrack['carrier'] : null,
                 'show_id' => (int) $order->id,
             ],
             default => (function () use ($order) {
@@ -6353,8 +7150,8 @@ class SalesOrderFulfillmentController extends Controller
             'pending_total' => 'Pending',
             'fulfilled_24h' => 'Label Created / No Scan',
             'label_created_no_tracking' => 'Label Created / No Tracking',
-            'received_by_carrier_total' => 'Received by carrier',
-            'in_transit_total' => 'In Transit',
+            'received_by_carrier_total' => 'Recd/Transit',
+            'in_transit_total' => 'Recd/Transit',
             'invoiced_total' => 'Invoiced',
             'delivered_total' => 'Delivered',
             'all_order_total' => 'All Order',

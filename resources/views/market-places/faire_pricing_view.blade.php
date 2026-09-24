@@ -2382,6 +2382,7 @@
                                 : '0';
                         }
                     },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'faire'])
                     {
                         title: 'CVR', field: 'cvr', sorter: 'number', headerSort: true, hozAlign: 'center', width: 58,
                         headerTooltip: 'CVR = Units sold ÷ Page views × 100 (Faire Performance sheet)',

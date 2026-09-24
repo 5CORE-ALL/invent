@@ -3423,6 +3423,7 @@
                         },
                         width: 85
                     },
+                    @include('partials.analytics-sku-reviews-column', ['marketplace' => $tiktokPromoChannel ?? 'tiktok'])
                     {
                         title: "Spend 30",
                         field: "spend_30",

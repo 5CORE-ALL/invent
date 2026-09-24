@@ -166,7 +166,13 @@ class GofoExpressService
             return null;
         }
 
-        $candidates = self::orderNoCandidates($refs, $fast ? 4 : 8);
+        // 4Seller buys the label. GOFO's orderNo is the GFUS waybill it returns,
+        // not the Amazon/Shopify id. Track-by-marketplace-id is always "No data"
+        // (code 305), including for orders that already have a GFUS number.
+        $candidates = array_values(array_filter(
+            self::orderNoCandidates($refs, $fast ? 4 : 8),
+            static fn (string $orderNo): bool => self::isGofoOrderNo($orderNo)
+        ));
 
         foreach ($candidates as $orderNo) {
             $fromTrack = null;
@@ -206,6 +212,18 @@ class GofoExpressService
         }
 
         return null;
+    }
+
+    /**
+     * True when the value is a GOFO waybill (GFUS…) or a 4Seller GOFO order number (S…).
+     * Marketplace ids such as 114-3841207-4168263 and Amz114-… are not GOFO order numbers.
+     */
+    public static function isGofoOrderNo(string $value): bool
+    {
+        $v = strtoupper(ltrim(trim($value), '#'));
+
+        return preg_match('/^GF[A-Z]{2,4}\d{8,}$/', $v) === 1
+            || preg_match('/^S\d{10,}$/', $v) === 1;
     }
 
     /**
@@ -352,6 +370,22 @@ class GofoExpressService
         $code = trim($operationMove);
         $hay = strtolower(trim($enContext));
 
+        if ($hay !== '' && str_contains($hay, 'delivered') && ! str_contains($hay, 'not delivered')) {
+            return ShipmentTrackingService::STATUS_DELIVERED;
+        }
+        if (str_contains($hay, 'out for delivery')) {
+            return ShipmentTrackingService::STATUS_OUT_FOR_DELIV;
+        }
+        // Label exists and the carrier has not taken the package yet.
+        if (str_contains($hay, 'label created')
+            || str_contains($hay, 'shipment information')
+            || str_contains($hay, 'awaiting')
+            || str_contains($hay, 'not received the package')
+            || str_contains($hay, 'has not received')
+        ) {
+            return ShipmentTrackingService::STATUS_INFO_RECEIVED;
+        }
+
         return match ($code) {
             '205', '257' => ShipmentTrackingService::STATUS_DELIVERED,
             '208' => ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
@@ -392,6 +426,14 @@ class GofoExpressService
 
         try {
             $pending = Http::timeout($this->timeout)
+                ->connectTimeout(min(5, $this->timeout))
+                ->withOptions([
+                    'curl' => [
+                        // A stalled GOFO socket otherwise sits in poll() for hours; Http::timeout does not abort it.
+                        CURLOPT_LOW_SPEED_LIMIT => 100,
+                        CURLOPT_LOW_SPEED_TIME => min(20, max(8, $this->timeout)),
+                    ],
+                ])
                 ->withoutVerifying()
                 ->acceptJson()
                 ->withBasicAuth($this->username, $this->password);

@@ -3039,6 +3039,7 @@
                         return ntoBadgeInt(ntoRowViews(cell.getRow().getData()));
                     }
                 },
+                @include('partials.analytics-sku-reviews-column', ['marketplace' => 'temu2'])
                 {
                     title: 'CVR',
                     field: 'cvr_percent',

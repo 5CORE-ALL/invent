@@ -1091,6 +1091,13 @@ class ShipmentTrackingService
             $detail = (string) (data_get($row, 'track_info.latest_event.description')
                 ?? data_get($row, 'track_info.latest_status.sub_status')
                 ?? '');
+            // Register is async. An empty status means 17TRACK has not heard
+            // back from the carrier yet — do not store that as a real status.
+            if ($rawStatus === '') {
+                $out[$number] = $this->transientResult('17track', 'Carrier has not returned a status yet');
+
+                continue;
+            }
 
             $out[$number] = [
                 'status' => $this->normalize17TrackStatus($rawStatus),
@@ -1111,7 +1118,13 @@ class ShipmentTrackingService
                 ?? data_get($row, 'error')
                 ?? ''
             );
-            if ($this->isQuotaOrRateLimitError(0, $errMsg) || str_contains(strtolower($errMsg), 'ran out')) {
+            $errLower = strtolower($errMsg);
+            if ($this->isQuotaOrRateLimitError(0, $errMsg)
+                || str_contains($errLower, 'ran out')
+                || str_contains($errLower, 'not been registered')
+                || str_contains($errLower, 'no tracking information')
+                || str_contains($errLower, 'try again')
+            ) {
                 $out[$number] = $this->transientResult('17track', $errMsg !== '' ? $errMsg : '17TRACK quota exhausted');
 
                 continue;

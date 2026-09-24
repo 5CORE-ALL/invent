@@ -1202,14 +1202,11 @@
                             <span class="badge sof-summary-badge" id="sof-no-tracking-badge" data-sof-metric="label_created_no_tracking" style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d;" title="Label Created / No Tracking — labeled but missing a tracking number">
                                 Label Created / No Tracking: <span id="sof-no-tracking-total">0</span><i class="sof-hist-dot" data-sof-metric="label_created_no_tracking" style="background:#6c757d;" title="History trend"></i>
                             </span>
-                            <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan — has tracking, carrier has not scanned yet">
+                            <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan — carrier is still awaiting the shipment">
                                 Label Created / No Scan: <span id="sof-fulfilled-24h">0</span><i class="sof-hist-dot" data-sof-metric="fulfilled_24h" style="background:#6c757d;" title="History trend"></i>
                             </span>
-                            <span class="badge sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="received_by_carrier_total" style="background:#cfe2ff; color:#084298; border:1px solid #9ec5fe;" title="Received by carrier — click for history graph">
-                                Received by carrier: <span id="sof-scan-done-24h">0</span><i class="sof-hist-dot" data-sof-metric="received_by_carrier_total" style="background:#6c757d;" title="History trend"></i>
-                            </span>
-                            <span class="badge sof-summary-badge" id="sof-in-transit-badge" data-sof-metric="in_transit_total" style="background:#ffe5d0; color:#9a3412; border:1px solid #fdba74;" title="In Transit — click for history graph">
-                                In Transit: <span id="sof-in-transit-total">0</span><i class="sof-hist-dot" data-sof-metric="in_transit_total" style="background:#6c757d;" title="History trend"></i>
+                            <span class="badge sof-summary-badge" id="sof-in-transit-badge" data-sof-metric="in_transit_total" style="background:#ffe5d0; color:#9a3412; border:1px solid #fdba74;" title="Recd/Transit — click for history graph">
+                                Recd/Transit: <span id="sof-in-transit-total">0</span><i class="sof-hist-dot" data-sof-metric="in_transit_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
                             <span class="badge sof-summary-badge" id="sof-invoiced-badge" data-sof-metric="invoiced_total" style="background:#e2d9f3; color:#432874; border:1px solid #c5b3e6;" title="Invoiced — click for history graph">
                                 Invoiced: <span id="sof-invoiced-total">0</span><i class="sof-hist-dot" data-sof-metric="invoiced_total" style="background:#6c757d;" title="History trend"></i>
@@ -1217,10 +1214,13 @@
                             <span class="badge sof-summary-badge" id="sof-delivered-badge" data-sof-metric="delivered_total" style="background:#cff4fc; color:#055160; border:1px solid #9eeaf9;" title="Delivered — click for history graph">
                                 Delivered: <span id="sof-delivered-total">0</span><i class="sof-hist-dot" data-sof-metric="delivered_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
+                            <span class="badge sof-summary-badge" id="sof-not-authorized-badge" style="background:#fde8e8; color:#9b1c1c; border:1px solid #f8b4b4;" title="USPS tracking the carrier API refused — not a real package status">
+                                Not Authorized: <span id="sof-not-authorized-total">0</span>
+                            </span>
                             <span class="badge sof-summary-badge" id="sof-all-order-badge" data-sof-metric="all_order_total" style="background:#e9ecef; color:#343a40; border:1px solid #ced4da;" title="All Order — click for history graph">
                                 All Order: <span id="sof-all-order-total">0</span><i class="sof-hist-dot" data-sof-metric="all_order_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
-                            <span class="badge sof-summary-badge" id="sof-loss-making-badge" title="Loss-making orders in the last 7 days — click to open the tab">
+                            <span class="badge sof-summary-badge" id="sof-loss-making-badge" title="Loss-making orders in the last 30 days — click to open the tab">
                                 Loss Making: <span id="sof-loss-making-total">0</span>
                             </span>
                             <span class="badge sof-summary-badge" id="sof-doba-orders-badge" title="Pending Doba labels still on Send label — click to open the tab">
@@ -1393,17 +1393,10 @@
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="sof-scan-done-tab" data-bs-toggle="tab"
-                                    data-bs-target="#sof-scan-done-pane" type="button" role="tab"
-                                    aria-controls="sof-scan-done-pane" aria-selected="false">
-                                Received by carrier <span class="badge ms-1" id="sof-scan-done-tab-count" style="background:#cfe2ff;color:#084298;border:1px solid #9ec5fe;">0</span>
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
                             <button class="nav-link" id="sof-in-transit-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-in-transit-pane" type="button" role="tab"
                                     aria-controls="sof-in-transit-pane" aria-selected="false">
-                                In Transit <span class="badge ms-1" id="sof-in-transit-tab-count" style="background:#ffe5d0;color:#9a3412;border:1px solid #fdba74;">0</span>
+                                Recd/Transit <span class="badge ms-1" id="sof-in-transit-tab-count" style="background:#ffe5d0;color:#9a3412;border:1px solid #fdba74;">0</span>
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -1418,6 +1411,13 @@
                                     data-bs-target="#sof-delivered-pane" type="button" role="tab"
                                     aria-controls="sof-delivered-pane" aria-selected="false">
                                 Delivered <span class="badge ms-1" id="sof-delivered-tab-count" style="background:#cff4fc;color:#055160;border:1px solid #9eeaf9;" title="Selected date range">0</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="sof-not-authorized-tab" data-bs-toggle="tab"
+                                    data-bs-target="#sof-not-authorized-pane" type="button" role="tab"
+                                    aria-controls="sof-not-authorized-pane" aria-selected="false">
+                                Not Authorized <span class="badge ms-1" id="sof-not-authorized-tab-count" style="background:#fde8e8;color:#9b1c1c;border:1px solid #f8b4b4;">0</span>
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -1454,8 +1454,8 @@
 
                         <div class="tab-pane fade" id="sof-doba-orders-pane" role="tabpanel" aria-labelledby="sof-doba-orders-tab">
                             <p class="small text-muted mb-2">
-                                Doba warehouse queue. Use <strong>ld</strong> to mark a label sent to dispatch.
-                                Open orders stay on <strong>Non-prepaid</strong> or <strong>Prepaid</strong>. After you mark <strong>done</strong>, the row moves to the Done tab.
+                                Prepaid Doba labels stay on this tab and also show on Label Created / No Scan until the carrier or Doba status moves them. Non-prepaid orders are on Pending, Recd/Transit, or Delivered by their Doba status.
+                                Use <strong>ld</strong> to mark a label sent to dispatch. After you mark <strong>done</strong>, the row moves to the Done tab.
                             </p>
                             <div class="sof-doba-export-bar">
                                 <div>
@@ -1475,12 +1475,7 @@
                             </div>
                             <ul class="nav nav-pills sof-doba-subnav mb-2" role="tablist">
                                 <li class="nav-item" role="presentation">
-                                    <button class="nav-link active" id="sof-doba-sub-nonprepaid-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-nonprepaid-pane" type="button" role="tab" aria-controls="sof-doba-sub-nonprepaid-pane" aria-selected="true">
-                                        Non-prepaid <span class="badge ms-1" id="sof-doba-nonprepaid-count" style="background:#fff3cd;color:#856404;border:1px solid #ffe69c;">0</span>
-                                    </button>
-                                </li>
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link" id="sof-doba-sub-prepaid-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-prepaid-pane" type="button" role="tab" aria-controls="sof-doba-sub-prepaid-pane" aria-selected="false">
+                                    <button class="nav-link active" id="sof-doba-sub-prepaid-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-prepaid-pane" type="button" role="tab" aria-controls="sof-doba-sub-prepaid-pane" aria-selected="true">
                                         Prepaid <span class="badge ms-1" id="sof-doba-prepaid-count" style="background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;">0</span>
                                     </button>
                                 </li>
@@ -1491,10 +1486,7 @@
                                 </li>
                             </ul>
                             <div class="tab-content">
-                                <div class="tab-pane fade show active" id="sof-doba-sub-nonprepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-nonprepaid-tab">
-                                    <div id="sof-doba-nonprepaid-table" class="sof-doba-table"></div>
-                                </div>
-                                <div class="tab-pane fade" id="sof-doba-sub-prepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-prepaid-tab">
+                                <div class="tab-pane fade show active" id="sof-doba-sub-prepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-prepaid-tab">
                                     <div id="sof-doba-prepaid-table" class="sof-doba-table"></div>
                                 </div>
                                 <div class="tab-pane fade" id="sof-doba-sub-done-pane" role="tabpanel" aria-labelledby="sof-doba-sub-done-tab">
@@ -1509,32 +1501,32 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels that have a tracking number and the carrier has not scanned yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Shipments the carrier is still awaiting (label created, not picked up), including Invoiced orders in that state. Scanned, in transit, and delivered tracking is not listed here. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
-                        <div class="tab-pane fade" id="sof-scan-done-pane" role="tabpanel" aria-labelledby="sof-scan-done-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Received by carrier (Shipped / Received) in the selected date range.</p>
-                            <div id="sof-scan-done-table" style="height: calc(100vh - 400px);"></div>
-                        </div>
-
                         <div class="tab-pane fade" id="sof-in-transit-pane" role="tabpanel" aria-labelledby="sof-in-transit-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range (carrier or marketplace in transit). Delivered USPS/UPS/FedEx packages are not kept here. Scan pending more than 36 hours are in red at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Received by carrier and in transit in one list for the selected date range, including Doba In Transit and Invoiced orders the carrier has scanned. Scan pending more than 36 hours are in red at the top.</p>
                             <div id="sof-in-transit-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-invoiced-pane" role="tabpanel" aria-labelledby="sof-invoiced-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Invoiced orders in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Invoiced orders in the selected date range. In Transit orders are on Recd/Transit. Delivered orders are on the Delivered tab.</p>
                             <div id="sof-invoiced-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-delivered-pane" role="tabpanel" aria-labelledby="sof-delivered-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Delivered orders in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Delivered orders in the selected date range, including Invoiced orders whose tracking is delivered.</p>
                             <div id="sof-delivered-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
+                        <div class="tab-pane fade" id="sof-not-authorized-pane" role="tabpanel" aria-labelledby="sof-not-authorized-tab">
+                            <p class="small text-muted mb-2">Last 30 Eastern days. USPS refused these tracking numbers (MID not authorized). This is not a carrier scan, in-transit, or delivery status.</p>
+                            <div id="sof-not-authorized-table" style="height: calc(100vh - 400px);"></div>
+                        </div>
+
                         <div class="tab-pane fade" id="sof-loss-making-pane" role="tabpanel" aria-labelledby="sof-loss-making-tab">
-                            <p class="small text-muted mb-2">Last 7 Eastern days. Lowest SKU profit (NPFT%, then GPFT%) is at the top. Negative profit rows are highlighted.</p>
+                            <p class="small text-muted mb-2">Last 30 Eastern days. Lowest SKU profit (NPFT%, then GPFT%) is at the top. Negative profit rows are highlighted.</p>
                             <div id="sof-loss-making-table" style="height: calc(100vh - 400px);"></div>
                         </div>
                     </div>
@@ -1876,6 +1868,10 @@
     let deliveredRows = [];
     let deliveredTableLoaded = false;
     let deliveredTableLoading = false;
+    let notAuthorizedTable = null;
+    let notAuthorizedRows = [];
+    let notAuthorizedTableLoaded = false;
+    let notAuthorizedTableLoading = false;
     let allOrderTable = null;
     let allOrderRows = [];
     let allOrderTableLoaded = false;
@@ -2062,6 +2058,11 @@
         let to = toEl ? (toEl.value || '') : '';
         if (!from) from = sofDefaultDateFrom();
         if (!to) to = sofDefaultDateTo();
+        const earliest = sofDefaultDateFrom();
+        if (from < earliest) {
+            from = earliest;
+            if (fromEl) fromEl.value = earliest;
+        }
         return {
             date_from: from,
             date_to: to,
@@ -2152,10 +2153,25 @@
         return '';
     }
 
+    function sofCarrierNameIsPlaceholder(name) {
+        const n = String(name || '').trim().toLowerCase();
+        if (!n || n === '-' || n === '—' || n === 'n/a' || n === 'na' || n === 'none' || n === 'null' || n === 'unknown' || n === 'other' || n === 'others') {
+            return true;
+        }
+        return n.indexOf('seller') !== -1 && n.indexOf('own') !== -1;
+    }
+
+    function sofDisplayCarrier(data) {
+        const stored = String((data && data.tracking_company) || '').trim();
+        const guessed = guessCarrierFromTrackingNumber(data && data.tracking_number);
+        if (guessed && sofCarrierNameIsPlaceholder(stored)) return guessed;
+        return stored;
+    }
+
     function sofRowMatchesCarrier(data) {
         const selected = sofCarrierFilterValue();
         if (!selected) return true;
-        return sofCarrierKeyFromName(data && data.tracking_company) === selected;
+        return sofCarrierKeyFromName(sofDisplayCarrier(data)) === selected;
     }
 
     function sofRowMatchesTracking(data) {
@@ -2174,7 +2190,7 @@
             || String(data.status_label || data.status || '').toLowerCase().includes(q)
             || String(sofDisplayStatusLabel(data.status_label || data.status || '')).toLowerCase().includes(q)
             || String(data.tracking_number || '').toLowerCase().includes(q)
-            || String(data.tracking_company || '').toLowerCase().includes(q)
+            || String(sofDisplayCarrier(data) || '').toLowerCase().includes(q)
             || String(data.display_title || '').toLowerCase().includes(q);
     }
 
@@ -2210,6 +2226,7 @@
         applyInReceivedFilters();
         applyInvoicedFilters();
         applyDeliveredFilters();
+        applyNotAuthorizedFilters();
         applyAllOrderFilters();
         applyDobaOrdersFilters();
         applyFilters();
@@ -2242,6 +2259,7 @@
             ['#sof-in-transit-tab', '#sof-in-transit-pane', function () { return inTransitRows; }],
             ['#sof-invoiced-tab', '#sof-invoiced-pane', function () { return invoicedRows; }],
             ['#sof-delivered-tab', '#sof-delivered-pane', function () { return deliveredRows; }],
+            ['#sof-not-authorized-tab', '#sof-not-authorized-pane', function () { return notAuthorizedRows; }],
             ['#sof-all-order-tab', '#sof-all-order-pane', function () { return allOrderRows; }],
             ['#sof-loss-making-tab', '#sof-loss-making-pane', function () { return lossMakingRows; }],
             ['#sof-doba-orders-tab', '#sof-doba-orders-pane', function () { return sofActiveDobaRows(); }],
@@ -2265,6 +2283,7 @@
         if (tbl === inReceivedTable) return inReceivedRows;
         if (tbl === invoicedTable) return invoicedRows;
         if (tbl === deliveredTable) return deliveredRows;
+        if (tbl === notAuthorizedTable) return notAuthorizedRows;
         if (tbl === allOrderTable) return allOrderRows;
         if (tbl === lossMakingTable) return lossMakingRows;
         if (tbl === dobaNonprepaidTable) return dobaNonprepaidRows;
@@ -2331,8 +2350,16 @@
         hint.textContent = text;
     }
 
-    function sofReloadAjaxTable(t) {
+    const sofLastAjaxReload = new WeakMap();
+
+    function sofReloadAjaxTable(t, force) {
         if (!t) return;
+        const now = Date.now();
+        if (!force) {
+            const last = sofLastAjaxReload.get(t) || 0;
+            if (now - last < 1500) return;
+        }
+        sofLastAjaxReload.set(t, now);
         try {
             // Prefer setData() so Tabulator re-hits ajaxURL with current sofDateParams().
             if (typeof t.setData === 'function') {
@@ -2349,8 +2376,8 @@
 
     function sofReloadAllTablesForDateRange() {
         sofUpdateDateFilterHint();
-        [table, pendingTable, fulfilledTable, scanDoneTable, inTransitTable, inReceivedTable, invoicedTable, deliveredTable, allOrderTable]
-            .forEach(sofReloadAjaxTable);
+        [table, pendingTable, fulfilledTable, noTrackingTable, scanDoneTable, inTransitTable, inReceivedTable, invoicedTable, deliveredTable, notAuthorizedTable, allOrderTable, lossMakingTable]
+            .forEach(function (t) { sofReloadAjaxTable(t, true); });
         loadDobaOrdersData();
         // Carrier is client-side; re-apply after reload starts completing via dataLoaded.
         sofApplyAllCarrierFilters();
@@ -2378,9 +2405,8 @@
     $('#sof-date-from, #sof-date-to').on('change', sofApplyDateFilterFromInputs);
 
     function sofActiveDobaExportType() {
-        if (sofOrderTabIsActive('#sof-doba-sub-prepaid-tab', '#sof-doba-sub-prepaid-pane')) return 'prepaid';
         if (sofOrderTabIsActive('#sof-doba-sub-done-tab', '#sof-doba-sub-done-pane')) return 'done';
-        return 'non_prepaid';
+        return 'prepaid';
     }
 
     function sofActiveDobaRows() {
@@ -2460,6 +2486,7 @@
             ['#sof-in-transit-tab', '#sof-in-transit-pane', inTransitTable],
             ['#sof-invoiced-tab', '#sof-invoiced-pane', invoicedTable],
             ['#sof-delivered-tab', '#sof-delivered-pane', deliveredTable],
+            ['#sof-not-authorized-tab', '#sof-not-authorized-pane', notAuthorizedTable],
             ['#sof-all-order-tab', '#sof-all-order-pane', allOrderTable],
             ['#sof-loss-making-tab', '#sof-loss-making-pane', lossMakingTable],
             ['#sof-doba-orders-tab', '#sof-doba-orders-pane', sofActiveDobaTable()],
@@ -3109,13 +3136,10 @@
     }
 
     function formatCarrierCell(cell) {
-        let v = String(cell.getValue() || '').trim();
-        if (!v) {
-            const row = cell.getRow && cell.getRow() ? cell.getRow().getData() : null;
-            v = guessCarrierFromTrackingNumber(row && row.tracking_number);
-            if (v && row && typeof row === 'object') {
-                row.tracking_company = v;
-            }
+        const row = cell.getRow && cell.getRow() ? cell.getRow().getData() : null;
+        let v = sofDisplayCarrier(row || { tracking_company: cell.getValue(), tracking_number: '' });
+        if (v && row && typeof row === 'object' && sofCarrierNameIsPlaceholder(row.tracking_company)) {
+            row.tracking_company = v;
         }
         return formatCarrierBadgeHtml(v);
     }
@@ -3263,6 +3287,7 @@
                 [inReceivedTable, '#sof-order-search'],
                 [invoicedTable, '#sof-order-search'],
                 [deliveredTable, '#sof-order-search'],
+                [notAuthorizedTable, '#sof-order-search'],
                 [allOrderTable, '#sof-order-search'],
             ];
             for (let i = 0; i < searchMap.length; i++) {
@@ -3349,13 +3374,7 @@
     }
 
     function switchToScanDoneTab() {
-        const tabBtn = document.getElementById('sof-scan-done-tab');
-        if (tabBtn && typeof bootstrap !== 'undefined') {
-            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
-        } else if (tabBtn) {
-            tabBtn.click();
-        }
-        ensureScanDoneTable();
+        switchToInTransitTab();
     }
 
     function switchToInTransitTab() {
@@ -4048,6 +4067,102 @@
         updateSummaryStats();
     }
 
+    function sofSummarySkipsActive(metric) {
+        const map = {
+            pending: ['#sof-pending-tab', '#sof-pending-pane'],
+            noScan: ['#sof-fulfilled-tab', '#sof-fulfilled-pane'],
+            scan: ['#sof-scan-done-tab', '#sof-scan-done-pane'],
+            transit: ['#sof-in-transit-tab', '#sof-in-transit-pane'],
+            invoiced: ['#sof-invoiced-tab', '#sof-invoiced-pane'],
+            delivered: ['#sof-delivered-tab', '#sof-delivered-pane'],
+            notAuthorized: ['#sof-not-authorized-tab', '#sof-not-authorized-pane'],
+            allOrder: ['#sof-all-order-tab', '#sof-all-order-pane'],
+        };
+        const pair = map[metric];
+        return !!(pair && sofOrderTabIsActive(pair[0], pair[1]));
+    }
+
+    function sofSetCountText(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = Number(value || 0).toLocaleString();
+    }
+
+    function sofApplySummaryTotals(response, opts) {
+        const channelCount = (response && response.channel_count != null)
+            ? Number(response.channel_count)
+            : allRows.length;
+        const pendingTotal = (response && response.pending_total != null)
+            ? Number(response.pending_total)
+            : sumPending(allRows);
+        const fulfilled24h = (response && response.fulfilled_24h != null)
+            ? Number(response.fulfilled_24h)
+            : 0;
+        const noTrackingTotal = (response && response.label_created_no_tracking != null)
+            ? Number(response.label_created_no_tracking)
+            : 0;
+        const scanDone24h = (response && response.received_by_carrier_total != null)
+            ? Number(response.received_by_carrier_total)
+            : ((response && response.scan_done_24h != null ? Number(response.scan_done_24h) : 0)
+                + (response && response.in_received_total != null ? Number(response.in_received_total) : 0));
+        const inTransitTotal = (response && response.in_transit_total != null)
+            ? Number(response.in_transit_total)
+            : 0;
+        const invoicedTotal = (response && response.invoiced_total != null)
+            ? Number(response.invoiced_total)
+            : 0;
+        const deliveredTotal = (response && response.delivered_total != null)
+            ? Number(response.delivered_total)
+            : 0;
+        const notAuthorizedTotal = (response && response.not_authorized_total != null)
+            ? Number(response.not_authorized_total)
+            : 0;
+        const allOrderTotal = (response && response.all_order_total != null)
+            ? Number(response.all_order_total)
+            : 0;
+
+        sofSetCountText('sof-channel-count', channelCount);
+        if (!sofSummarySkipsActive('pending')) {
+            sofSetCountText('sof-pending-total', pendingTotal);
+            sofSetCountText('sof-pending-tab-count', pendingTotal);
+        }
+        if (!noTrackingTableLoaded || noTrackingTotal > 0) {
+            sofSetCountText('sof-no-tracking-total', noTrackingTotal);
+            sofSetCountText('sof-no-tracking-tab-count', noTrackingTotal);
+        }
+        if (!sofSummarySkipsActive('noScan')) {
+            sofSetCountText('sof-fulfilled-24h', fulfilled24h);
+            sofSetCountText('sof-fulfilled-tab-count', fulfilled24h);
+        }
+        if (!sofSummarySkipsActive('scan')) {
+            sofSetCountText('sof-scan-done-24h', scanDone24h);
+            sofSetCountText('sof-scan-done-tab-count', scanDone24h);
+        }
+        if (!sofSummarySkipsActive('transit')) {
+            sofSetCountText('sof-in-transit-total', inTransitTotal);
+            sofSetCountText('sof-in-transit-tab-count', inTransitTotal);
+        }
+        if (!sofSummarySkipsActive('invoiced')) {
+            sofSetCountText('sof-invoiced-total', invoicedTotal);
+            sofSetCountText('sof-invoiced-tab-count', invoicedTotal);
+        }
+        if (!sofSummarySkipsActive('delivered')) {
+            sofSetCountText('sof-delivered-total', deliveredTotal);
+            sofSetCountText('sof-delivered-tab-count', deliveredTotal);
+        }
+        if (!sofSummarySkipsActive('notAuthorized')) {
+            sofSetCountText('sof-not-authorized-total', notAuthorizedTotal);
+            sofSetCountText('sof-not-authorized-tab-count', notAuthorizedTotal);
+        }
+        if (!sofSummarySkipsActive('allOrder')) {
+            sofSetCountText('sof-all-order-total', allOrderTotal);
+            sofSetCountText('sof-all-order-tab-count', allOrderTotal);
+        }
+        if (!opts || opts.history !== false) {
+            loadSofHistoryDots();
+        }
+        sofReconcilePendingLabels();
+    }
+
     table = new Tabulator('#sales-order-fulfillment-table', Object.assign({}, sofLocalTableOpts, {
         layout: 'fitColumns',
         placeholder: 'Loading channels…',
@@ -4074,88 +4189,7 @@
                 ? response.data
                 : [];
 
-            // Set badges immediately from API totals (table may still be empty here).
-            const channelCount = (response && response.channel_count != null)
-                ? Number(response.channel_count)
-                : allRows.length;
-            const pendingTotal = (response && response.pending_total != null)
-                ? Number(response.pending_total)
-                : sumPending(allRows);
-            const fulfilled24h = (response && response.fulfilled_24h != null)
-                ? Number(response.fulfilled_24h)
-                : 0;
-            const noTrackingTotal = (response && response.label_created_no_tracking != null)
-                ? Number(response.label_created_no_tracking)
-                : 0;
-            const scanDone24h = (response && response.received_by_carrier_total != null)
-                ? Number(response.received_by_carrier_total)
-                : ((response && response.scan_done_24h != null ? Number(response.scan_done_24h) : 0)
-                    + (response && response.in_received_total != null ? Number(response.in_received_total) : 0));
-            const inTransitTotal = (response && response.in_transit_total != null)
-                ? Number(response.in_transit_total)
-                : 0;
-            const invoicedTotal = (response && response.invoiced_total != null)
-                ? Number(response.invoiced_total)
-                : 0;
-            const deliveredTotal = (response && response.delivered_total != null)
-                ? Number(response.delivered_total)
-                : 0;
-            const allOrderTotal = (response && response.all_order_total != null)
-                ? Number(response.all_order_total)
-                : 0;
-
-            const channelEl = document.getElementById('sof-channel-count');
-            const pendingEl = document.getElementById('sof-pending-total');
-            const noTrackingEl = document.getElementById('sof-no-tracking-total');
-            const fulfilledEl = document.getElementById('sof-fulfilled-24h');
-            const scanDoneEl = document.getElementById('sof-scan-done-24h');
-            const inTransitEl = document.getElementById('sof-in-transit-total');
-            const invoicedEl = document.getElementById('sof-invoiced-total');
-            const deliveredEl = document.getElementById('sof-delivered-total');
-            const allOrderEl = document.getElementById('sof-all-order-total');
-            if (channelEl) channelEl.textContent = channelCount.toLocaleString();
-            if (pendingEl) pendingEl.textContent = pendingTotal.toLocaleString();
-            if (noTrackingEl && !noTrackingTableLoaded) noTrackingEl.textContent = noTrackingTotal.toLocaleString();
-            if (fulfilledEl && !fulfilledTableLoaded) fulfilledEl.textContent = fulfilled24h.toLocaleString();
-            if (scanDoneEl && !scanDoneTableLoaded) scanDoneEl.textContent = scanDone24h.toLocaleString();
-            if (inTransitEl && !inTransitTableLoaded) inTransitEl.textContent = inTransitTotal.toLocaleString();
-            if (invoicedEl && !invoicedTableLoaded) invoicedEl.textContent = invoicedTotal.toLocaleString();
-            if (deliveredEl && !deliveredTableLoaded) deliveredEl.textContent = deliveredTotal.toLocaleString();
-            if (allOrderEl && !allOrderTableLoaded) allOrderEl.textContent = allOrderTotal.toLocaleString();
-            loadSofHistoryDots();
-            const pendingTabCount = document.getElementById('sof-pending-tab-count');
-            if (pendingTabCount && !pendingTableLoaded) {
-                pendingTabCount.textContent = pendingTotal.toLocaleString();
-            }
-            const noTrackingTabCount = document.getElementById('sof-no-tracking-tab-count');
-            if (noTrackingTabCount && !noTrackingTableLoaded) {
-                noTrackingTabCount.textContent = noTrackingTotal.toLocaleString();
-            }
-            const fulfilledTabCount = document.getElementById('sof-fulfilled-tab-count');
-            if (fulfilledTabCount && !fulfilledTableLoaded) {
-                fulfilledTabCount.textContent = fulfilled24h.toLocaleString();
-            }
-            const scanDoneTabCount = document.getElementById('sof-scan-done-tab-count');
-            if (scanDoneTabCount && !scanDoneTableLoaded) {
-                scanDoneTabCount.textContent = scanDone24h.toLocaleString();
-            }
-            const inTransitTabCount = document.getElementById('sof-in-transit-tab-count');
-            if (inTransitTabCount && !inTransitTableLoaded) {
-                inTransitTabCount.textContent = inTransitTotal.toLocaleString();
-            }
-            const invoicedTabCount = document.getElementById('sof-invoiced-tab-count');
-            if (invoicedTabCount && !invoicedTableLoaded) {
-                invoicedTabCount.textContent = invoicedTotal.toLocaleString();
-            }
-            const deliveredTabCount = document.getElementById('sof-delivered-tab-count');
-            if (deliveredTabCount && !deliveredTableLoaded) {
-                deliveredTabCount.textContent = deliveredTotal.toLocaleString();
-            }
-            const allOrderTabCount = document.getElementById('sof-all-order-tab-count');
-            if (allOrderTabCount && !allOrderTableLoaded) {
-                allOrderTabCount.textContent = allOrderTotal.toLocaleString();
-            }
-            sofReconcilePendingLabels();
+            sofApplySummaryTotals(response);
 
             return allRows;
         },
@@ -4706,11 +4740,22 @@
                 const totalEl = document.getElementById('sof-no-tracking-total');
                 if (totalEl) totalEl.textContent = count.toLocaleString();
                 sofUpdateTrackingFilterCounts(noTrackingRows);
+                if (!noTrackingRows.length && noTrackingTable) {
+                    try {
+                        noTrackingTable.options.placeholder = 'No Label Created / No Tracking orders in this date range.';
+                    } catch (e) {}
+                }
                 return noTrackingRows;
             },
             ajaxError: function () {
                 noTrackingTableLoading = false;
                 noTrackingTableLoaded = false;
+                if (noTrackingTable) {
+                    try {
+                        noTrackingTable.options.placeholder = 'Could not load Label Created / No Tracking orders. Open this tab again to retry.';
+                        noTrackingTable.setData([]);
+                    } catch (e) {}
+                }
             },
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(noTrackingRows);
@@ -4732,7 +4777,7 @@
                 cols.unshift(sofOver24hHiddenColumn());
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Created';
+                        c.title = 'Status';
                         c.headerTooltip = 'Label Created / No Tracking';
                     }
                     if (c.field === 'order_date') {
@@ -4835,7 +4880,7 @@
                 cols.unshift(sofOver24hHiddenColumn());
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Created';
+                        c.title = 'Status';
                         c.headerTooltip = 'Label Created / No Scan';
                     }
                     if (c.field === 'order_date') {
@@ -4867,7 +4912,7 @@
 
         scanDoneTable = new Tabulator('#sof-scan-done-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
-            placeholder: 'Loading Received by carrier orders…',
+            placeholder: 'Loading Recd Carrier orders…',
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -4910,8 +4955,8 @@
                 const cols = orderListColumns('sof-scan-done-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Received by carrier';
-                        c.headerTooltip = 'Shipped / Received by carrier';
+                        c.title = 'Status';
+                        c.headerTooltip = 'Shipped / Recd Carrier';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -4938,7 +4983,7 @@
 
         inTransitTable = new Tabulator('#sof-in-transit-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
-            placeholder: 'Loading In Transit orders…',
+            placeholder: 'Loading Recd/Transit orders…',
             initialSort: [
                 { column: 'scan_pending_over_36h', dir: 'desc' },
                 { column: 'updated_at', dir: 'desc' },
@@ -4997,8 +5042,8 @@
                 });
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'In Transit';
-                        c.headerTooltip = 'In Transit status. Red = scan pending more than 36 hours.';
+                        c.title = 'Status';
+                        c.headerTooltip = 'Recd/Transit. Red = scan pending more than 36 hours.';
                         c.formatter = function (cell) {
                             const row = cell.getRow().getData() || {};
                             const label = escapeHtml(sofDisplayStatusLabel(cell.getValue() || row.status || '—'));
@@ -5007,7 +5052,7 @@
                         };
                     }
                     if (c.field === 'order_date') {
-                        c.headerTooltip = 'Red triangle = scan pending more than 36 hours (In Transit)';
+                        c.headerTooltip = 'Red triangle = scan pending more than 36 hours (Recd/Transit)';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -5024,7 +5069,94 @@
     }
 
     function ensureInReceivedTable() {
-        ensureScanDoneTable();
+        ensureInTransitTable();
+    }
+
+    function applyNotAuthorizedFilters() {
+        sofApplyOrderTableFilter(notAuthorizedTable, '#sof-order-search');
+    }
+
+    function switchToNotAuthorizedTab() {
+        const tabBtn = document.getElementById('sof-not-authorized-tab');
+        if (tabBtn && typeof bootstrap !== 'undefined') {
+            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+        } else if (tabBtn) {
+            tabBtn.click();
+        }
+        setTimeout(function () { ensureNotAuthorizedTable(); }, 80);
+    }
+
+    function ensureNotAuthorizedTable() {
+        if (notAuthorizedTable || notAuthorizedTableLoading) {
+            if (notAuthorizedTable) {
+                setTimeout(function () { notAuthorizedTable.redraw(true); }, 50);
+            }
+            return;
+        }
+        notAuthorizedTableLoading = true;
+
+        notAuthorizedTable = new Tabulator('#sof-not-authorized-table', Object.assign({}, sofOrderTableOpts, {
+            layout: 'fitColumns',
+            placeholder: 'Loading Not Authorized tracking…',
+            initialSort: [
+                { column: 'updated_at', dir: 'desc' },
+            ],
+            ajaxURL: '{{ route("sales.order.fulfillment.not.authorized.data") }}',
+            ajaxConfig: 'GET',
+            ajaxRequestFunc: function (url, config, params) {
+                return new Promise(function (resolve, reject) {
+                    $.ajax({
+                        url: url,
+                        type: 'GET',
+                        data: Object.assign({}, params || {}, sofDateParams()),
+                        timeout: 0,
+                        success: resolve,
+                        error: reject,
+                    });
+                });
+            },
+            ajaxResponse: function (url, params, response) {
+                notAuthorizedRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
+                    ? response.data
+                    : []);
+                notAuthorizedTableLoaded = true;
+                notAuthorizedTableLoading = false;
+                const count = (response && response.count != null)
+                    ? Number(response.count)
+                    : notAuthorizedRows.length;
+                const tabCount = document.getElementById('sof-not-authorized-tab-count');
+                if (tabCount) tabCount.textContent = count.toLocaleString();
+                const badgeEl = document.getElementById('sof-not-authorized-total');
+                if (badgeEl) badgeEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(notAuthorizedRows);
+                return notAuthorizedRows;
+            },
+            ajaxError: function () {
+                notAuthorizedTableLoading = false;
+                notAuthorizedTableLoaded = false;
+            },
+            dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(notAuthorizedRows);
+                applyNotAuthorizedFilters();
+            },
+            columns: (function () {
+                const cols = orderListColumns('sof-not-authorized-badge');
+                cols.forEach(function (c) {
+                    if (c.field === 'status_label') {
+                        c.title = 'Status';
+                        c.headerTooltip = 'USPS refused this tracking number';
+                    }
+                    if (c.field === 'order_id') {
+                        c.title = 'Tracking';
+                    }
+                });
+                const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
+                const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
+                return cols;
+            })(),
+        }));
+        sofWireOrderTable(notAuthorizedTable);
     }
 
     function applyInvoicedFilters() {
@@ -5085,8 +5217,8 @@
                 const cols = orderListColumns('sof-invoiced-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Invoiced';
-                        c.headerTooltip = 'Invoiced status';
+                        c.title = 'Status';
+                        c.headerTooltip = 'Status. In Transit orders are on Recd/Transit. Delivered orders are on the Delivered tab.';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -5174,7 +5306,7 @@
                 const cols = orderListColumns('sof-delivered-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Delivered';
+                        c.title = 'Status';
                         c.headerTooltip = 'Delivered status (last 30 days)';
                     }
                 });
@@ -5294,7 +5426,7 @@
 
         lossMakingTable = new Tabulator('#sof-loss-making-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
-            placeholder: 'Loading last 7 days of lowest-profit orders…',
+            placeholder: 'Loading last 30 days of lowest-profit orders…',
             initialSort: [
                 { column: 'npft_pct', dir: 'asc' },
                 { column: 'gpft_pct', dir: 'asc' },
@@ -5306,7 +5438,7 @@
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params || {},
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,
@@ -5768,9 +5900,6 @@
     }
 
     function ensureDobaOrdersTables() {
-        if (!dobaNonprepaidTable) {
-            dobaNonprepaidTable = makeDobaOrdersTable('#sof-doba-nonprepaid-table', 'No open non-prepaid Doba orders in this date range.');
-        }
         if (!dobaPrepaidTable) {
             dobaPrepaidTable = makeDobaOrdersTable('#sof-doba-prepaid-table', 'No open prepaid Doba orders in this date range.', { includeLabel: true });
         }
@@ -5800,7 +5929,7 @@
     document.getElementById('sof-doba-orders-tab')?.addEventListener('shown.bs.tab', function () {
         ensureDobaOrdersTables();
     });
-    ['sof-doba-sub-nonprepaid-tab', 'sof-doba-sub-prepaid-tab', 'sof-doba-sub-done-tab'].forEach(function (id) {
+    ['sof-doba-sub-prepaid-tab', 'sof-doba-sub-done-tab'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('shown.bs.tab', function () {
             sofRedrawDobaTables();
             sofUpdateTrackingFilterCounts(sofActiveDobaRows());
@@ -5826,6 +5955,9 @@
     });
     document.getElementById('sof-delivered-tab')?.addEventListener('shown.bs.tab', function () {
         ensureDeliveredTable();
+    });
+    document.getElementById('sof-not-authorized-tab')?.addEventListener('shown.bs.tab', function () {
+        ensureNotAuthorizedTable();
     });
 
     document.getElementById('sof-pending-total-badge')?.addEventListener('click', function () {
@@ -5854,6 +5986,9 @@
     });
     document.getElementById('sof-delivered-badge')?.addEventListener('click', function () {
         switchToDeliveredTab();
+    });
+    document.getElementById('sof-not-authorized-badge')?.addEventListener('click', function () {
+        switchToNotAuthorizedTab();
     });
     document.getElementById('sof-all-order-badge')?.addEventListener('click', function () {
         switchToAllOrderTab();
@@ -6339,8 +6474,8 @@
         pending_total: 'Pending',
         label_created_no_tracking: 'Label Created / No Tracking',
         fulfilled_24h: 'Label Created / No Scan',
-        received_by_carrier_total: 'Received by carrier',
-        in_transit_total: 'In Transit',
+        received_by_carrier_total: 'Recd/Transit',
+        in_transit_total: 'Recd/Transit',
         invoiced_total: 'Invoiced',
         delivered_total: 'Delivered',
         all_order_total: 'All Order',

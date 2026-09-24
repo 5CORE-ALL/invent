@@ -79,16 +79,35 @@ class TrackingCarrierGuesser
     }
 
     /**
-     * Fill empty carrier using the tracking number. Returns the original value when already set.
+     * Names that are not a real carrier. The tracking number decides instead.
+     */
+    public static function isPlaceholder(?string $carrier): bool
+    {
+        $carrier = strtolower(trim((string) $carrier));
+        if ($carrier === '' || in_array($carrier, [
+            '-', '—', 'n/a', 'na', 'none', 'null', 'unknown', 'other', 'others',
+        ], true)) {
+            return true;
+        }
+
+        return str_contains($carrier, 'seller') && str_contains($carrier, 'own');
+    }
+
+    /**
+     * Use the tracking number when the stored carrier is empty or a placeholder
+     * such as "Other" or "Seller's Own Logistics".
      */
     public static function fill(?string $carrier, ?string $trackingNumber): ?string
     {
         $carrier = trim((string) $carrier);
-        if ($carrier !== '') {
-            return $carrier;
-        }
         $guess = self::labelFromNumber((string) $trackingNumber);
+        if (($carrier === '' || self::isPlaceholder($carrier)) && $guess !== null && $guess !== '') {
+            return $guess;
+        }
+        if ($carrier === '' || self::isPlaceholder($carrier)) {
+            return null;
+        }
 
-        return $guess !== '' && $guess !== null ? $guess : null;
+        return $carrier;
     }
 }

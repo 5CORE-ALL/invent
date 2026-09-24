@@ -2914,6 +2914,7 @@
                         return `${views.toLocaleString()} ${dotBtn}`.trim();
                     }
                 },
+                @include('partials.analytics-sku-reviews-column', ['marketplace' => 'reverb'])
                 {
                     title: "CVR%",
                     field: "CVR",

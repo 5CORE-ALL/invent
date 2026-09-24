@@ -143,7 +143,17 @@ class FourSellerApiService
         }
 
         try {
-            $pending = Http::timeout($this->timeout)->withoutVerifying()->acceptJson()->withHeaders($headers);
+            $pending = Http::timeout($this->timeout)
+                ->connectTimeout(min(5, $this->timeout))
+                ->withOptions([
+                    'curl' => [
+                        CURLOPT_LOW_SPEED_LIMIT => 100,
+                        CURLOPT_LOW_SPEED_TIME => min(20, max(8, $this->timeout)),
+                    ],
+                ])
+                ->withoutVerifying()
+                ->acceptJson()
+                ->withHeaders($headers);
             $response = strtoupper($method) === 'POST'
                 ? $pending->asJson()->post($url, $queryOrBody)
                 : $pending->get($url, $queryOrBody);
