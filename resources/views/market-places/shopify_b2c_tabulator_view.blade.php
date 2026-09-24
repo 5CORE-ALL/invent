@@ -1282,11 +1282,12 @@
         return parseFloat(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0;
     }
 
-    /** Sprc Dil below A Price rises to Amz. Sprc Dil above A Price stays. Then LMP. */
+    /** Sprc Dil below A Price rises to Amz. Sprc Dil above A Price is the S PRC. Then LMP only when not above A Price. */
     function shopifyB2cCapLikeTemu(data, sprice) {
         let s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
         if (!(s > 0)) return 0;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        if (amz > 0 && s > amz) return s;
         if (amz > 0 && s < amz) s = amz;
         if (window.SpriceLmpCap) {
             const capped = SpriceLmpCap.prepare(data, s);
