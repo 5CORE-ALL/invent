@@ -175,6 +175,7 @@ class TikTokPricingController extends Controller
                 'avg_gpft' => 'avg_gpft',
                 'avg_price' => 'avg_price',
                 'total_l30' => 'total_l30',
+                'cvr_percent' => 'cvr_percent',
                 'zero_sold_count' => 'zero_sold_count',
                 'sold_count' => 'sold_count',
                 'avg_dil' => 'avg_dil',
@@ -2093,6 +2094,7 @@ class TikTokPricingController extends Controller
             $totalGmvSpendL30 = 0.0;
             $totalGmvSpendL1 = 0.0;
             $totalGmvBudget = 0.0;
+            $totalTViews = 0;
             
             // Loop through each row (mirror JavaScript updateSummary logic)
             foreach ($filteredData as $row) {
@@ -2111,6 +2113,18 @@ class TikTokPricingController extends Controller
                 
                 $totalInv += floatval($row['INV'] ?? 0);
                 $totalL30 += $l30;
+                $storedViews = floatval($row['t_views'] ?? 0);
+                if ($storedViews > 0) {
+                    $totalTViews += $storedViews;
+                } else {
+                    $videoViews = (int) ($row['video_views'] ?? 0);
+                    if ($videoViews <= 0) {
+                        $videoViews = (int) ($row['views'] ?? 0);
+                    }
+                    $totalTViews += $videoViews
+                        + (int) ($row['ads_views'] ?? 0)
+                        + (int) ($row['affl_views'] ?? 0);
+                }
                 $totalSpend30 += (float) ($row['spend_30'] ?? 0);
                 $totalSpend1 += (float) ($row['spend_1'] ?? 0);
                 $totalAdsViews30 += (int) ($row['ads_views_30'] ?? 0);
@@ -2183,6 +2197,7 @@ class TikTokPricingController extends Controller
             $avgPrice = $priceCount > 0 ? $totalPrice / $priceCount : 0;
             $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0;
             $avgRoi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+            $cvrPercent = $totalTViews > 0 ? ($totalL30 / $totalTViews) * 100 : 0;
             
             // Store ALL metrics in JSON (flexible!)
             $summaryData = [
@@ -2208,6 +2223,7 @@ class TikTokPricingController extends Controller
                 'avg_gpft' => round($avgGpft, 2),
                 'avg_dil' => round($avgDil, 2),
                 'avg_roi' => round($avgRoi, 2),
+                'cvr_percent' => round($cvrPercent, 2),
                 'avg_price' => round($avgPrice, 2),
                 'total_spend_30' => round($totalSpend30, 2),
                 'total_spend_1' => round($totalSpend1, 2),

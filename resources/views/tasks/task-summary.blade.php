@@ -360,6 +360,15 @@
             color: #fff;
             text-decoration: none;
         }
+        a.task-summary-analytics-badge-ytime {
+            text-decoration: none;
+            cursor: pointer;
+            background: #0f766e;
+        }
+        a.task-summary-analytics-badge-ytime:hover {
+            background: #115e59;
+            color: #fff;
+        }
         a.task-summary-analytics-badge-ydone {
             text-decoration: none;
             cursor: pointer;
@@ -828,6 +837,17 @@
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
             cursor: pointer;
         }
+        .task-summary-col-history {
+            display: inline-block !important;
+            width: 10px !important;
+            height: 10px !important;
+            min-width: 10px !important;
+            min-height: 10px !important;
+            margin-right: 0.35rem !important;
+            background: #15803d !important;
+            box-shadow: 0 0 0 1px rgba(21, 128, 61, 0.35);
+            vertical-align: middle;
+        }
         #taskSummaryAnalyticsModal .modal-content {
             border-radius: 16px;
             border: none;
@@ -1156,11 +1176,25 @@
                                     <span class="task-summary-analytics-badge-label">Done</span>
                                     <span class="task-summary-analytics-badge-value" id="ts-analytics-val-done">{{ number_format($taskDashboardStats['done']) }}</span>
                                 </span>
+                                <a href="{{ $yTimeAttendanceUrl ?? route('attendance.summary') }}"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   class="task-summary-analytics-badge task-summary-analytics-badge-ytime"
+                                   data-ts-metric="y_time"
+                                   data-ts-title="Y Time Analytics"
+                                   title="Active time yesterday ({{ $yDoneDate ?? '' }}, PT). Opens attendance for that day.">
+                                    <span class="summary-trend-dot none" data-ts-metric="y_time" title="History" role="button" tabindex="0" aria-label="Y Time history"></span>
+                                    <span class="task-summary-analytics-badge-label">Y Time</span>
+                                    <span class="task-summary-analytics-badge-value" id="ts-analytics-val-ytime">{{ $yTimeTotal ?? '0h 0m' }}</span>
+                                </a>
                                 <a href="{{ route('tasks.yesterdayDone') }}"
                                    target="_blank"
                                    rel="noopener noreferrer"
                                    class="task-summary-analytics-badge task-summary-analytics-badge-ydone"
+                                   data-ts-metric="y_done"
+                                   data-ts-title="Y Done Analytics"
                                    title="Tasks completed yesterday ({{ $yDoneDate ?? '' }}). Opens the list, including deleted tasks.">
+                                    <span class="summary-trend-dot none" data-ts-metric="y_done" title="History" role="button" tabindex="0" aria-label="Y Done history"></span>
                                     <span class="task-summary-analytics-badge-label">Y Done</span>
                                     <span class="task-summary-analytics-badge-value" id="ts-analytics-val-ydone">{{ number_format((int) ($yDoneTotal ?? 0)) }}</span>
                                 </a>
@@ -1337,7 +1371,11 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="done" data-sort-type="number" title="Sort by done count" role="button" tabindex="0">
                                         Done <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="y_done" data-sort-type="number" title="Y Done — tasks this member completed yesterday (PT). Click a badge to open the list." role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="y_time" data-sort-type="number" title="Y Time — active attendance time yesterday (PT). Shobha and Mariya use Team Logger." role="button" tabindex="0">
+                                        Y Time <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="y_done" data-sort-type="number" title="Y Done — tasks this member completed yesterday (PT). Click a badge to open the list. Click the green dot for history." role="button" tabindex="0">
+                                        <span class="summary-trend-dot none task-summary-col-history" data-ts-metric="y_done" title="Y Done history" role="button" tabindex="0" aria-label="Y Done history"></span>
                                         Y Done <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Overdue — number of overdue tasks (sortable)" role="button" tabindex="0">
@@ -1413,6 +1451,7 @@
                                         data-sort-missed_p30="{{ (int) ($row['missed_p30'] ?? 0) }}"
                                         data-sort-a_task_h="{{ (int) ($row['a_task_h'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}"
+                                        data-sort-y_time="{{ (int) ($row['y_time_seconds'] ?? 0) }}"
                                         data-sort-y_done="{{ (int) ($row['y_done'] ?? 0) }}"
                                         data-sort-soi_count="{{ (int) ($row['soi_count'] ?? 0) }}"
                                         data-sort-incentive_amount="{{ (float) ($row['incentive_amount'] ?? 0) }}">
@@ -1656,6 +1695,12 @@
                                         </td>
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
                                         <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
+                                        @php
+                                            $yTimeSeconds = (int) ($row['y_time_seconds'] ?? 0);
+                                            $yTimeH = intdiv($yTimeSeconds, 3600);
+                                            $yTimeM = intdiv($yTimeSeconds % 3600, 60);
+                                        @endphp
+                                        <td class="task-summary-num" title="Active time yesterday (PT): {{ $yTimeH }}h {{ $yTimeM }}m">{{ $yTimeH }}h {{ $yTimeM }}m</td>
                                         @php $yDone = (int) ($row['y_done'] ?? 0); @endphp
                                         <td class="text-center">
                                             <a href="{{ route('tasks.yesterdayDone', ['user_id' => (int) ($row['user_id'] ?? 0)]) }}"
@@ -1837,7 +1882,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="28" class="text-center text-muted py-4">
+                                        <td colspan="30" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1848,7 +1893,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="28" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="30" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -2110,7 +2155,9 @@
                         assignor_task: parseInt(tr.getAttribute('data-sort-assignor_task'), 10) || 0,
                         overdue: parseInt(tr.getAttribute('data-sort-overdue'), 10) || 0,
                         a_task_h: parseInt(tr.getAttribute('data-sort-a_task_h'), 10) || 0,
-                        done: parseInt(tr.getAttribute('data-sort-done'), 10) || 0
+                        done: parseInt(tr.getAttribute('data-sort-done'), 10) || 0,
+                        y_time: Math.round(((parseInt(tr.getAttribute('data-sort-y_time'), 10) || 0) / 3600) * 10) / 10,
+                        y_done: parseInt(tr.getAttribute('data-sort-y_done'), 10) || 0
                     };
                 });
             }
@@ -2121,7 +2168,9 @@
                     total: 'task',
                     assigned: 'task',
                     overdue: 'overdue',
-                    done: 'done'
+                    done: 'done',
+                    y_time: 'y_time',
+                    y_done: 'y_done'
                 };
                 var field = fieldMap[metric] || 'task';
                 var filtered = rows;
@@ -2144,7 +2193,9 @@
                     total: 'Tasks (assignee)',
                     assigned: 'Tasks (assignee)',
                     overdue: 'Overdue',
-                    done: 'Done'
+                    done: 'Done',
+                    y_time: 'Y Time (h)',
+                    y_done: 'Y Done'
                 };
                 return {
                     categories: categories,
@@ -2172,8 +2223,15 @@
                     titleEl.textContent = title;
                 }
                 if (subEl) {
-                    subEl.textContent = 'Chart uses visible table rows (after search). Top badges match Task Manager row counts. X-axis: team member. Y-axis: ' +
-                        (metric === 'assigned' ? 'assignee task count (only members with tasks).' : 'count for this metric.');
+                    var yAxisNote = 'count for this metric.';
+                    if (metric === 'assigned') {
+                        yAxisNote = 'assignee task count (only members with tasks).';
+                    } else if (metric === 'y_time') {
+                        yAxisNote = 'active hours yesterday (PT).';
+                    } else if (metric === 'y_done') {
+                        yAxisNote = 'tasks completed yesterday.';
+                    }
+                    subEl.textContent = 'Chart uses visible table rows (after search). Top badges match Task Manager row counts. X-axis: team member. Y-axis: ' + yAxisNote;
                 }
                 var loading = document.getElementById('task-summary-analytics-loading');
                 var mount = document.getElementById('task-summary-analytics-apex');
@@ -2216,7 +2274,7 @@
                             },
                             yaxis: {
                                 min: 0,
-                                decimalsInFloat: 0,
+                                decimalsInFloat: metric === 'y_time' ? 1 : 0,
                                 labels: { style: { fontSize: '12px' } }
                             },
                             stroke: { curve: 'smooth', width: 3, colors: ['#0d9488'] },
@@ -2290,7 +2348,15 @@
                 });
             }
 
-            document.querySelectorAll('.task-summary-analytics-badge .summary-trend-dot[data-ts-metric]').forEach(function (dot) {
+            document.querySelectorAll('a.task-summary-analytics-badge').forEach(function (link) {
+                link.addEventListener('click', function (e) {
+                    if (e.target && e.target.closest && e.target.closest('.summary-trend-dot')) {
+                        e.preventDefault();
+                    }
+                }, true);
+            });
+
+            document.querySelectorAll('.summary-trend-dot[data-ts-metric]').forEach(function (dot) {
                 dot.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -2302,6 +2368,7 @@
                 dot.addEventListener('keydown', function (e) {
                     if (e.key !== 'Enter' && e.key !== ' ') return;
                     e.preventDefault();
+                    e.stopPropagation();
                     var m = dot.getAttribute('data-ts-metric');
                     if (m) {
                         openAnalyticsModal(m);
@@ -2481,12 +2548,13 @@
                     + ':not(.is-ts-minimized)'
                     + ':not(.is-ts-snoozed)'
                 );
-                var sum = { task: 0, overdue: 0, done: 0, y_done: 0, members: 0, incentive: 0 };
+                var sum = { task: 0, overdue: 0, done: 0, y_time: 0, y_done: 0, members: 0, incentive: 0 };
                 rows.forEach(function (tr) {
                     var taskN = parseInt(tr.getAttribute('data-sort-task'), 10) || 0;
                     sum.task += taskN;
                     sum.overdue += parseInt(tr.getAttribute('data-sort-overdue'), 10) || 0;
                     sum.done += parseInt(tr.getAttribute('data-sort-done'), 10) || 0;
+                    sum.y_time += parseInt(tr.getAttribute('data-sort-y_time'), 10) || 0;
                     sum.y_done += parseInt(tr.getAttribute('data-sort-y_done'), 10) || 0;
                     sum.incentive += parseFloat(tr.getAttribute('data-sort-incentive_amount')) || 0;
                     if (taskN > 0) sum.members += 1;
@@ -2499,11 +2567,18 @@
                     try { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
                     catch (e) { return '₹' + String(Math.round(n || 0)); }
                 };
+                var fmtYTime = function (seconds) {
+                    seconds = Math.max(0, parseInt(seconds, 10) || 0);
+                    var h = Math.floor(seconds / 3600);
+                    var m = Math.floor((seconds % 3600) / 60);
+                    return h + 'h ' + m + 'm';
+                };
                 var pairs = {
                     'ts-analytics-val-total': fmt(sum.task),
                     'ts-analytics-val-assigned': fmt(sum.members),
                     'ts-analytics-val-overdue': fmt(sum.overdue),
                     'ts-analytics-val-done': fmt(sum.done),
+                    'ts-analytics-val-ytime': fmtYTime(sum.y_time),
                     'ts-analytics-val-ydone': fmt(sum.y_done),
                     'ts-analytics-val-incentive': fmtRs(sum.incentive)
                 };

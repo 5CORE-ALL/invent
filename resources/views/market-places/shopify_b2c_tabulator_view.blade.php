@@ -1536,6 +1536,30 @@
         };
     }
 
+    /** Same live S PRC metric the cell shows. Blank when there is no shown S PRC. */
+    function shopifyB2cLiveSpriceMetric(data, key) {
+        if (!data || isShopifyB2cParentRow(data)) return null;
+        const shown = shopifyB2cShownSprice(data);
+        if (!(shown > 0)) return null;
+        const value = shopifyB2cComputeSpriceMetrics(data, shown)[key];
+        return (value == null || !isFinite(value)) ? null : value;
+    }
+
+    /** Sort by the displayed metric. Blanks stay at the bottom in both directions. */
+    function shopifyB2cLiveSpriceMetricSorter(key) {
+        return function(a, b, aRow, bRow, column, dir) {
+            const av = shopifyB2cLiveSpriceMetric(aRow.getData(), key);
+            const bv = shopifyB2cLiveSpriceMetric(bRow.getData(), key);
+            const aMissing = av == null;
+            const bMissing = bv == null;
+            if (aMissing && bMissing) return 0;
+            const blankLast = dir === 'desc' ? -1 : 1;
+            if (aMissing) return blankLast;
+            if (bMissing) return -blankLast;
+            return av - bv;
+        };
+    }
+
     /** Live Price metrics after a successful push (Price becomes S PRC). */
     function shopifyB2cComputeLivePriceMetrics(data, price) {
         const p = Math.round((parseFloat(price) || 0) * 100) / 100;
@@ -3444,7 +3468,7 @@
                     title: "SGROI%",
                     field: "SROI",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: shopifyB2cLiveSpriceMetricSorter('SROI'),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const shown = shopifyB2cShownSprice(rowData);
@@ -3458,7 +3482,7 @@
                     title: "S GPFT%",
                     field: "SGPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: shopifyB2cLiveSpriceMetricSorter('SGPFT'),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const shown = shopifyB2cShownSprice(rowData);
@@ -3472,7 +3496,7 @@
                     title: "SNPFT%",
                     field: "SNPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: shopifyB2cLiveSpriceMetricSorter('SNPFT'),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const shown = shopifyB2cShownSprice(rowData);
@@ -3486,7 +3510,7 @@
                     title: "SNROI%",
                     field: "SNROI",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: shopifyB2cLiveSpriceMetricSorter('SNROI'),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const shown = shopifyB2cShownSprice(rowData);

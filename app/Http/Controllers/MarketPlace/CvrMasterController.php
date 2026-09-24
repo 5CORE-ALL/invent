@@ -1511,7 +1511,7 @@ class CvrMasterController extends Controller
             $tdOrderL30ByNorm = [];
             try {
                 if (Schema::hasTable('topdawg_products')) {
-                    $tdProductsByNorm = TopDawgProduct::buildLookupByNormalizedSku($skus);
+                    $tdProductsByNorm = TopDawgProduct::buildLookupByNormalizedSku($skus, false, true);
                 }
                 if (Schema::hasTable('topdawg_order_metrics')) {
                     $tdOrderL30ByNorm = $this->fetchTopDawgL30OrderAggregatesBySku();
@@ -5313,7 +5313,7 @@ class CvrMasterController extends Controller
             }
             $tdNormBd = ShopifySku::normalizeSkuForShopifyLookup((string) $fullSku);
             $tdLookupBd = Schema::hasTable('topdawg_products')
-                ? TopDawgProduct::buildLookupByNormalizedSku([$fullSku, $sku])
+                ? TopDawgProduct::buildLookupByNormalizedSku([$fullSku, $sku], false, true)
                 : [];
             $tdProductBd = ($tdNormBd !== '' && isset($tdLookupBd[$tdNormBd])) ? $tdLookupBd[$tdNormBd] : null;
             $tdPriceBd = $tdProductBd ? floatval($tdProductBd->price ?? 0) : 0;

@@ -639,6 +639,10 @@ class TaskController extends Controller
         }
 
         $attHoursByUser = $this->getTaskSummaryAttendanceHours($members->pluck('id')->all());
+        $yTimeByUser = $this->yesterdayActiveSecondsByUser(
+            $members->pluck('id')->all(),
+            $this->yesterdayDoneWindow()['date']
+        );
 
         $kpiByUser = TeamMemberKpi::query()
             ->whereIn('user_id', $members->pluck('id'))
@@ -781,6 +785,7 @@ class TaskController extends Controller
                 'a_task_h' => (int) round($counts['a_task_h'] / 60),
                 'need_approval' => $counts['need_approval'],
                 'done' => $counts['done'],
+                'y_time_seconds' => (int) ($yTimeByUser[(int) $member->id] ?? 0),
                 'y_done' => (int) ($yDoneByEmail[strtolower((string) $email)] ?? 0),
             ], $kpiFields, [
                 'soi_count' => (int) ($soiCounts[$member->id] ?? 0),
@@ -1340,12 +1345,20 @@ class TaskController extends Controller
         $canEditIncentives = $this->canEditIncentives($viewer);
         $canViewAllIncentives = $this->canViewAllIncentives($viewer);
         $designationOptions = $this->taskSummaryDesignationOptions();
+        $yWindow = $this->yesterdayDoneWindow();
         $yDoneTotal = array_sum(array_map(fn (array $r) => (int) ($r['y_done'] ?? 0), $rows));
-        $yDoneDate = $this->yesterdayDoneWindow()['label'];
+        $yDoneDate = $yWindow['label'];
+        $yTimeTotal = $this->formatActiveDuration(array_sum(array_map(fn (array $r) => (int) ($r['y_time_seconds'] ?? 0), $rows)));
+        $yTimeAttendanceUrl = route('attendance.summary', [
+            'range' => 'custom',
+            'from' => $yWindow['date'],
+            'to' => $yWindow['date'],
+            'timezone' => 'America/Los_Angeles',
+        ]);
 
         return view(
             'tasks.task-summary',
-            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives', 'canViewAllIncentives', 'designationOptions', 'yDoneTotal', 'yDoneDate')
+            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives', 'canViewAllIncentives', 'designationOptions', 'yDoneTotal', 'yDoneDate', 'yTimeTotal', 'yTimeAttendanceUrl')
         );
     }
 
@@ -1701,45 +1714,69 @@ class TaskController extends Controller
      */
     protected function yesterdayActiveLabel(array $userIds, string $date): string
     {
+        return $this->formatActiveDuration(array_sum($this->yesterdayActiveSecondsByUser($userIds, $date)));
+    }
+
+    /**
+     * Active seconds per user for one Pacific date.
+     * Daily summary and overlapping sessions are both considered; Team Logger
+     * wins for the people who still clock time there.
+     *
+     * @param  list<int>  $userIds
+     * @return array<int, int>
+     */
+    protected function yesterdayActiveSecondsByUser(array $userIds, string $date): array
+    {
         $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
-        $seconds = 0;
-        if ($userIds !== []) {
-            $start = \Carbon\Carbon::parse($date, 'America/Los_Angeles')->startOfDay();
-            $end = $start->copy()->endOfDay();
+        $out = [];
+        foreach ($userIds as $id) {
+            $out[$id] = 0;
+        }
+        if ($userIds === []) {
+            return $out;
+        }
 
-            $summaryByUser = [];
-            if (Schema::hasTable('attendance_daily_summaries')) {
-                $summaryByUser = AttendanceDailySummary::query()
-                    ->whereIn('user_id', $userIds)
-                    ->whereDate('work_date', $date)
-                    ->pluck('active_seconds', 'user_id')
-                    ->all();
-            }
+        $start = \Carbon\Carbon::parse($date, 'America/Los_Angeles')->startOfDay();
+        $end = $start->copy()->endOfDay();
 
-            $sessionByUser = [];
-            if (Schema::hasTable('attendance_sessions')) {
-                $sessions = AttendanceSession::query()
-                    ->whereIn('user_id', $userIds)
-                    ->where('started_at', '<=', $end)
-                    ->where(function ($query) use ($start) {
-                        $query->whereNull('ended_at')->orWhere('ended_at', '>=', $start);
-                    })
-                    ->get(['user_id', 'total_active_seconds']);
-                foreach ($sessions as $session) {
-                    $id = (int) $session->user_id;
-                    $sessionByUser[$id] = ($sessionByUser[$id] ?? 0) + (int) $session->total_active_seconds;
-                }
-            }
+        $summaryByUser = [];
+        if (Schema::hasTable('attendance_daily_summaries')) {
+            $summaryByUser = AttendanceDailySummary::query()
+                ->whereIn('user_id', $userIds)
+                ->whereDate('work_date', $date)
+                ->pluck('active_seconds', 'user_id')
+                ->all();
+        }
 
-            $teamLoggerByUser = $this->yesterdayTeamLoggerSeconds($userIds, $date);
-            foreach ($userIds as $id) {
-                $attendance = max((int) ($summaryByUser[$id] ?? 0), (int) ($sessionByUser[$id] ?? 0));
-                $seconds += max($attendance, (int) ($teamLoggerByUser[$id] ?? 0));
+        $sessionByUser = [];
+        if (Schema::hasTable('attendance_sessions')) {
+            $sessions = AttendanceSession::query()
+                ->whereIn('user_id', $userIds)
+                ->where('started_at', '<=', $end)
+                ->where(function ($query) use ($start) {
+                    $query->whereNull('ended_at')->orWhere('ended_at', '>=', $start);
+                })
+                ->get(['user_id', 'total_active_seconds']);
+            foreach ($sessions as $session) {
+                $id = (int) $session->user_id;
+                $sessionByUser[$id] = ($sessionByUser[$id] ?? 0) + (int) $session->total_active_seconds;
             }
         }
 
-        $hours = intdiv(max(0, $seconds), 3600);
-        $minutes = intdiv(max(0, $seconds) % 3600, 60);
+        $teamLoggerByUser = $this->yesterdayTeamLoggerSeconds($userIds, $date);
+        foreach ($userIds as $id) {
+            $attendance = max((int) ($summaryByUser[$id] ?? 0), (int) ($sessionByUser[$id] ?? 0));
+            $out[$id] = max($attendance, (int) ($teamLoggerByUser[$id] ?? 0));
+        }
+
+        return $out;
+    }
+
+    protected function formatActiveDuration(int $seconds): string
+    {
+        $seconds = max(0, $seconds);
+        $hours = intdiv($seconds, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
 
         return $hours.'h '.$minutes.'m';
     }

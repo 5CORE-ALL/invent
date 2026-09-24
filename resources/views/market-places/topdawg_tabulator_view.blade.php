@@ -67,7 +67,7 @@
                               title="Exact PFT % from /topdawg/sales-dashboard: (Σ pft ÷ Σ amount) × 100. Margin from marketplace_percentages, no ship.">GPFT: {{ (int) round((float) ($topdawgSalesDashboardGpft ?? 0)) }}%</span>
                         <span class="badge text-center" id="groi-pct-badge"
                               style="background:#0d6efd;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                              title="Exact ROI % from /topdawg/sales-dashboard: (Σ pft ÷ Σ cogs) × 100. COGS = LP × qty, no ship.">GROI: {{ (int) round((float) ($topdawgSalesDashboardRoi ?? 0)) }}%</span>
+                              title="Exact GROI % from /topdawg/sales-dashboard: (Σ pft ÷ Σ cogs) × 100. COGS = LP × qty, no ship.">GROI: {{ (int) round((float) ($topdawgSalesDashboardRoi ?? 0)) }}%</span>
                         <span class="badge bg-danger text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
                         <span class="badge text-center" id="topdawg-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
@@ -130,8 +130,8 @@
                              (red < 40, yellow 40–75, green 75–125, pink ≥ 125) so the
                              dropdown options stay visually consistent with the cell colors. --}}
                         <select id="groi-filter" class="form-select form-select-sm" style="width:90px;"
-                                title="Filter by per-row ROI% (matches GROI badge bracketing)">
-                            <option value="all">ROI%</option>
+                                title="Filter by per-row GROI% (matches GROI badge bracketing)">
+                            <option value="all">GROI%</option>
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
@@ -1086,7 +1086,7 @@
                         else color = '#e83e8c';
                         return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
                     }},
-                { title: 'ROI%', field: 'ROI%', hozAlign: 'center', width: 50, sorter: 'number',
+                { title: 'GROI%', field: 'ROI%', hozAlign: 'center', width: 50, sorter: 'number',
                     formatter: c => {
                         const percent = parseFloat(c.getValue());
                         if (isNaN(percent)) return '';
@@ -1098,7 +1098,7 @@
                         return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
                     }},
                 { title: 'NROI%', field: 'NROI', hozAlign: 'center', width: 50, sorter: 'number',
-                    headerTooltip: 'TopDawg has no Ads% — NROI% = ROI%.',
+                    headerTooltip: 'TopDawg has no Ads% — NROI% = GROI%.',
                     formatter: c => {
                         const percent = parseFloat(c.getRow().getData()['ROI%']);
                         if (isNaN(percent)) return '';
@@ -1256,7 +1256,7 @@
                 },
                 {
                     title: 'SROI%', field: 'SROI', hozAlign: 'center', width: 55, sorter: 'number',
-                    tooltip: 'ROI % at SPRICE (same formula as ROI%, no ship)',
+                    tooltip: 'GROI % at SPRICE (same formula as GROI%, no ship)',
                     formatter: c => {
                         const v = c.getValue();
                         if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';

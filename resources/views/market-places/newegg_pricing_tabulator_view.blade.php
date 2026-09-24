@@ -803,13 +803,29 @@
             return parseFloat(data.sprice || data.SPRICE) || 0;
         }
 
+        /** Uncapped Dil $. The Sprc Dil cell shows this; S PRC raises it to A Price when it is lower. */
+        function neRawSprcDil(data) {
+            if (!data) return 0;
+            if (typeof ebayDilGroiMetaForRow === 'function') {
+                const meta = ebayDilGroiMetaForRow(data);
+                const raw = Number(meta && meta.rawSprc) || 0;
+                if (raw > 0) return Math.round(raw * 100) / 100;
+            }
+            return 0;
+        }
+
         function nePriceBeforeAmzFloor(data) {
             if (!data) return 0;
+            const raw = neRawSprcDil(data);
+            if (raw > 0) return raw;
             const value = neDisplayedSpriceRaw(data);
             return value > 0 ? Math.round(value * 100) / 100 : 0;
         }
 
+        /** Sprc Dil below A Price uses A Price. Sprc Dil at or above A Price stays. */
         function neShownSprice(data) {
+            const raw = neRawSprcDil(data);
+            if (raw > 0) return neApplyAmzFloor(data, raw);
             return neApplyAmzFloor(data, neDisplayedSpriceRaw(data));
         }
         window.neShownSprice = neShownSprice;
@@ -1714,25 +1730,34 @@
                         headerSort: true,
                         sorter: function(a, b, aRow, bRow) {
                             const val = function(row) {
+                                if (typeof neRawSprcDil === 'function') {
+                                    const raw = neRawSprcDil(row);
+                                    if (raw > 0) return raw;
+                                }
                                 return (typeof ebaySprcDilForRow === 'function')
                                     ? (ebaySprcDilForRow(row) || 0)
                                     : 0;
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (L30 = 0, INV > 0) uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
+                        headerTooltip: "Dil suggestion only. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (L30 = 0, INV > 0) uses the lowest Target NROI. If this price is below A Price, S PRC uses A Price. If it is at or above A Price, S PRC keeps this Sprc Dil. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof chPromoIsParentRow === 'function' && chPromoIsParentRow(rowData)) return '';
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
-                            if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            if (!meta) return '';
+                            const shown = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
+                            if (!(shown > 0)) return '';
+                            let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
                                 + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                                + ' → $' + shown.toFixed(2);
+                            if (meta.amzApplied) {
+                                tip += ' → A Price $' + Number(meta.sprc).toFixed(2);
+                            }
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + meta.sprc.toFixed(2) + '</span>';
+                                + shown.toFixed(2) + '</span>';
                         },
                         width: 78
                     },
@@ -1744,10 +1769,10 @@
                             return (neShownSprice(ad) || 0) - (neShownSprice(bd) || 0);
                         },
                         editable: false,
-                        headerTooltip: "Not editable. S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. Dil-matching Target NROI when L30 > 0; 0 Sold uses the lowest Target NROI. Below A Price is raised to Amz. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
+                        headerTooltip: "Not editable. If Sprc Dil is below A Price, S PRC uses A Price. If Sprc Dil is at or above A Price, S PRC keeps Sprc Dil. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            let value = nePriceBeforeAmzFloor(d);
+                            let value = neShownSprice(d);
                             if (!isFinite(value) || !(value > 0)) return '<span style="color:#bbb;">—</span>';
                             const live = parseFloat(d.price) || 0;
                             const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;

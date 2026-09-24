@@ -464,7 +464,7 @@
                             @elseif($ebaySprcDilChannel === 'shein')
                             Dil = OV L30 ÷ INV. 0 Sold is AL30 = 0 (min Target NROI). AL30 &gt; 0 Dil-matches, including the nearest slab.
                             @elseif($ebaySprcDilChannel === 'bestbuy')
-                            Dil = OV L30 ÷ INV. 0 Sold is BB L30 = 0. If S PRC < A Price, use A Price, then cap at LMP.
+                            Dil = OV L30 ÷ INV. 0 Sold is BB L30 = 0. If S PRC < A Price, use A Price, then cap at LMP. If LMP is below A Price, keep A Price.
                             @elseif($ebaySprcDilChannel === 'newegg')
                             Dil = OV L30 ÷ INV. 0 Sold is L30 = 0. If S PRC < A Price, use A Price.
                             @endif
@@ -1333,10 +1333,11 @@
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;
             let amzApplied = false;
+            let amz = 0;
             // Shopify B2C Sprc Dil stays the Dil suggestion. S PRC uses A Price
             // when that suggestion is below Amz, and keeps Sprc Dil when it is above.
             if (ebayDgUsesAmzFloor()) {
-                const amz = (typeof chPromoAmazonPrice === 'function')
+                amz = (typeof chPromoAmazonPrice === 'function')
                     ? ebayDgRound2(chPromoAmazonPrice(d))
                     : ebayDgRound2(d && (d['A Price'] != null ? d['A Price'] : (d.a_price || d.amazon_price)));
                 if (rawSprc > 0 && amz > 0 && rawSprc < amz) {
@@ -1345,11 +1346,18 @@
                 }
             }
             let lmpCapped = false;
+            // Best Buy: LMP runs after the Amazon floor. A lower LMP does not undercut A Price.
             if (ebayDgIsBestbuy()) {
                 const lmp = ebayDgRowLmp(d);
                 if (lmp > 0 && sprc + 0.0001 >= lmp) {
-                    sprc = ebayDgRound2(lmp);
-                    lmpCapped = true;
+                    const lmpPrice = ebayDgRound2(lmp);
+                    if (amz > 0 && lmpPrice + 0.0001 < amz) {
+                        sprc = amz;
+                        amzApplied = true;
+                    } else {
+                        sprc = lmpPrice;
+                        lmpCapped = true;
+                    }
                 }
             }
             if (ebayDgIsAliexpress() && ebayDilGroiAliexpressStopBlocks(d, sprc)) {
@@ -2032,6 +2040,7 @@
         /** Exact $ the S PRC cell paints — this is what we persist to the table. */
         function ebayDgCellSpriceToSave(d) {
             const painters = [
+                typeof neShownSprice === 'function' ? neShownSprice : null,
                 typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice : null,
                 typeof ebayDisplayedSprice === 'function' ? ebayDisplayedSprice : null,
                 typeof ebay2DisplayedSprice === 'function' ? ebay2DisplayedSprice : null,
@@ -2260,9 +2269,10 @@
                 let price = ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
                     ? fbMpRoundSprice(meta.sprc)
                     : ebayDgRound2(meta.sprc);
-                if ((ebayDgIsShopifyB2c() || ebayDgIsMacys() || ebayDgIsEbay123())
+                if ((ebayDgIsShopifyB2c() || ebayDgIsMacys() || ebayDgIsEbay123() || ebayDgIsNewegg())
                     && typeof chPromoFinalSpriceToSave === 'function') {
-                    price = chPromoFinalSpriceToSave(d, price);
+                    const source = ebayDgIsNewegg() && meta.rawSprc > 0 ? meta.rawSprc : price;
+                    price = chPromoFinalSpriceToSave(d, source);
                 }
                 if (!(price > 0)) return 0;
                 return ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'

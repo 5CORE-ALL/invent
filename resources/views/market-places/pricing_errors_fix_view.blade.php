@@ -1575,7 +1575,7 @@
         selected.forEach(function(item) {
             const lp = Number(item.d.lp || 0);
             if (!(lp > 0)) return;
-            const ship = Number(item.d.ship || 0);
+            const ship = pefMetricShip(item.d);
             const margin = rowMargin(item.d);
             const sprice = round2((lp * roiMultiplier + ship) / margin);
             if (!(sprice > 0)) return;
@@ -1619,7 +1619,7 @@
         selected.forEach(function(item) {
             const lp = Number(item.d.lp || 0);
             if (!(lp > 0)) return;
-            const ship = Number(item.d.ship || 0);
+            const ship = pefMetricShip(item.d);
             const margin = rowMargin(item.d);
             const denom = margin - (targetGpftPct / 100);
             if (!(denom > 0)) {
@@ -2102,6 +2102,14 @@
 
     const TEMU_S_RECOVERY_RATE = 0.88;
     const TEMU_FULL_PRICE_MULT = 1.1364;
+    function pefIsTopdawg(d) {
+        const mp = String(d.marketplace || d.channel_key || '').toLowerCase().replace(/\s+/g, '');
+        return mp === 'topdawg' || mp === 'topdog';
+    }
+    /** /topdawg-pricing PFT% and ROI% exclude ship. Other channels keep product-master ship. */
+    function pefMetricShip(d) {
+        return pefIsTopdawg(d) ? 0 : (Number(d.ship || 0) || 0);
+    }
     function pefIsTemu(d) {
         return String(d.marketplace || d.channel_key || '').toLowerCase().indexOf('temu') !== -1;
     }
@@ -2158,11 +2166,17 @@
     function recalcSuggestedForRow(d) {
         const sprice = Number(d.sprice || 0);
         const lp = Number(d.lp || 0);
-        const ship = Number(d.ship || 0);
+        const ship = pefMetricShip(d);
         const margin = rowMargin(d);
-        const adsPct = rowAdsPct(d);
+        const adsPct = pefIsTopdawg(d) ? 0 : rowAdsPct(d);
         if (!(sprice > 0) || !(margin > 0) || !(lp > 0)) {
             return { sroi: null, sgpft: null, snroi: null, snpft: null };
+        }
+        if (pefIsTopdawg(d)) {
+            const gross = (sprice * margin) - lp;
+            const sgpft = round2((gross / sprice) * 100);
+            const sroi = round2((gross / lp) * 100);
+            return { sroi: sroi, sgpft: sgpft, snroi: sroi, snpft: sgpft };
         }
         if (pefIsTemu(d)) {
             const ads = pefIsTemu2(d) ? 0 : adsPct;
@@ -2187,11 +2201,17 @@
     function recalcLiveForRow(d) {
         const price = Number(d.price || 0);
         const lp = Number(d.lp || 0);
-        const ship = Number(d.ship || 0);
+        const ship = pefMetricShip(d);
         const margin = rowMargin(d);
-        const adsPct = rowAdsPct(d);
+        const adsPct = pefIsTopdawg(d) ? 0 : rowAdsPct(d);
         if (!(price > 0) || !(margin > 0) || !(lp > 0)) {
             return { groi: null, gpft: null, nroi: null, npft: null };
+        }
+        if (pefIsTopdawg(d)) {
+            const gross = (price * margin) - lp;
+            const gpft = round2((gross / price) * 100);
+            const groi = round2((gross / lp) * 100);
+            return { groi: groi, gpft: gpft, nroi: groi, npft: gpft };
         }
         if (pefIsTemu(d)) {
             const ads = pefIsTemu2(d) ? 0 : adsPct;
@@ -5343,7 +5363,7 @@
     function pefSpriceFromTargetGroi(d, roiPct) {
         const lp = Number(d && d.lp || 0);
         if (!(lp > 0)) return 0;
-        const ship = Number(d && d.ship || 0);
+        const ship = pefMetricShip(d);
         const margin = rowMargin(d);
         if (!(margin > 0)) return 0;
         const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
@@ -5430,7 +5450,7 @@
             const d = item.d || item.row.getData();
             const roi = pefZeroSoldGroiForRow(d);
             const lp = Number(d.lp || 0);
-            const ship = Number(d.ship || 0);
+            const ship = pefMetricShip(d);
             const margin = rowMargin(d);
             let sprice = round2((lp * (1 + roi / 100) + ship) / margin);
             if (sprice > 0 && window.SpriceLmpCap) sprice = round2(SpriceLmpCap.prepare(d, sprice));

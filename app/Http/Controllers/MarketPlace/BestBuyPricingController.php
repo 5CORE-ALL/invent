@@ -468,7 +468,7 @@ class BestBuyPricingController extends Controller
                 ->filter(fn ($entry) => (float) ($entry->total_price ?? 0) > 0)
                 ->sortBy(fn ($entry) => (float) ($entry->total_price ?? 0))
                 ->values();
-            $lowestLmp = $allLmpEntries->first(fn ($c) => empty($c->ignored)) ?: $allLmpEntries->first();
+            $lowestLmp = $allLmpEntries->first(fn ($c) => empty($c->ignored));
 
             $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price) && is_numeric($lowestLmp->total_price))
                 ? floatval($lowestLmp->total_price)
@@ -1590,7 +1590,7 @@ class BestBuyPricingController extends Controller
                 ->sortBy(fn ($comp) => (float) ($comp->total_price ?? 0))
                 ->values();
 
-            $lowest = $competitors->first(fn ($c) => empty($c->ignored)) ?: $competitors->first();
+            $lowest = $competitors->first(fn ($c) => empty($c->ignored));
 
             return response()->json([
                 'success' => true,

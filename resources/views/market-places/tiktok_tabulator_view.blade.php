@@ -641,6 +641,10 @@
                         <span class="badge bg-success fs-6 p-2 tt-badge-chart" data-metric="total_l30"
                             id="total-l30-badge" style="color: black; font-weight: bold; cursor: pointer;"
                             title="Click for daily trend">L30: 0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="cvr_percent"
+                            id="tt-cvr-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #f7c6d8;"
+                            title="CVR% = Σ TT L30 ÷ Σ T views (video + ads + affl) × 100. Same formula as the CVR column. Click for daily trend.">CVR%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" data-metric="zero_sold_count"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter">0 Sold: 0</span>
@@ -1608,7 +1612,7 @@
             let ttBadgeChartMetricKey = '';
             let ttBadgeChartAjax = null;
             const ttBadgeDollarMetrics = ['total_sales', 'avg_price', 'total_pft', 'total_cogs', 'total_spend_30', 'total_spend_1', 'total_gmv_ad_sales_l30', 'total_gmv_ad_sales_l1', 'total_gmv_spend_l30', 'total_gmv_spend_l1', 'total_gmv_budget'];
-            const ttBadgePercentMetrics = ['avg_gpft', 'avg_roi', 'avg_dil', 'ads_cvr_30', 'ads_acos_pct'];
+            const ttBadgePercentMetrics = ['avg_gpft', 'avg_roi', 'avg_dil', 'cvr_percent', 'ads_cvr_30', 'ads_acos_pct'];
             const ttBadgeRoasMetrics = ['ads_roas', 'avg_target_roas'];
             const ttBadgeMetricLabels = {
                 total_sales: 'Sales',
@@ -1616,6 +1620,7 @@
                 avg_gpft: 'GPFT',
                 avg_price: 'Price',
                 total_l30: 'L30',
+                cvr_percent: 'CVR%',
                 avg_roi: 'ROI%',
                 avg_dil: 'Avg DIL%',
                 total_cogs: 'COGS',
@@ -5417,10 +5422,19 @@
                 const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
                 const avgRoi = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
+                let sumCvrSold = 0;
+                let sumCvrViews = 0;
+                data.forEach(row => {
+                    sumCvrSold += parseFloat(row['TT L30']) || 0;
+                    sumCvrViews += ttListingViews(row);
+                });
+                const listingCvr = sumCvrViews > 0 ? (sumCvrSold / sumCvrViews) * 100 : 0;
+
                 updateRowsCountBadge();
                 $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
                 $('#avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
                 $('#total-l30-badge').text(`L30: ${totalL30.toLocaleString()}`);
+                $('#tt-cvr-badge').text('CVR%: ' + listingCvr.toFixed(1) + '%');
                 $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
                 $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
                 $('#roi-percent-badge').text(`GROI%: ${Math.round(avgRoi)}%`);
