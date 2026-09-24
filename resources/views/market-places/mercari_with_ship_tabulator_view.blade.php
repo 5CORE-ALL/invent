@@ -62,6 +62,16 @@
         #mercari-with-ship-table .tabulator-cell {
             white-space: nowrap;
         }
+        /* Keep SKU text selection inside the cell. Row click-select would otherwise highlight the whole row. */
+        #mercari-with-ship-table .tabulator-row {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #mercari-with-ship-table .tabulator-cell[tabulator-field="sku"] {
+            -webkit-user-select: text;
+            user-select: text;
+            cursor: text;
+        }
 
         #mercWsOpSpriceModal.modal {
             align-items: flex-start;
@@ -865,6 +875,14 @@
                     }
                 ],
             });
+
+            // Copying the SKU must not select the row. Tabulator's row click clears the
+            // text selection and toggles the whole row; stop that click on the SKU cell.
+            document.getElementById('mercari-with-ship-table').addEventListener('click', function(e) {
+                if (e.target.closest && e.target.closest('.tabulator-cell[tabulator-field="sku"]')) {
+                    e.stopPropagation();
+                }
+            }, true);
 
             if (typeof window.chPromoBindTableAutofit === 'function') {
                 window.chPromoBindTableAutofit(table);

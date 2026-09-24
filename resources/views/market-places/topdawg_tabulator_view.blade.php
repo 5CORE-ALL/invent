@@ -1702,8 +1702,11 @@
                     items.forEach(function(it) {
                         if (byOk.has(it.sku)) {
                             const pulled = results.find(function(r) { return r && String(r.sku) === String(it.sku) && r.ok; }) || {};
-                            const live = Number(pulled.live_price) > 0 ? Number(pulled.live_price) : it.price;
-                            tdMarkPushStatus(it.row, 'pushed', { SPRICE_PUSHED_VALUE: it.price, 'TD Price': live });
+                            const patch = { SPRICE_PUSHED_VALUE: it.price };
+                            if (pulled.site_price && Number(pulled.live_price) > 0) {
+                                patch['TD Price'] = Number(pulled.live_price);
+                            }
+                            tdMarkPushStatus(it.row, 'pushed', patch);
                         } else if (byFail.has(it.sku)) {
                             tdMarkPushStatus(it.row, 'failed');
                         }

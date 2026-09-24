@@ -90,6 +90,25 @@ class PushedListingPriceTest extends TestCase
         ], 37.50, true));
     }
 
+    public function test_topdawg_prefer_incoming_uses_site_cost_over_pushed_sprice(): void
+    {
+        $this->assertSame(
+            12.08,
+            ChannelLivePriceSync::preferIncoming('topdawg', 'SS HD 2PK 3FT YLW BAG', 12.08, [
+                'SS HD 2PK 3FT YLW BAG' => 35.99,
+            ])
+        );
+    }
+
+    public function test_topdawg_does_not_stamp_sprice_over_a_different_site_cost(): void
+    {
+        $this->assertTrue(ChannelLivePriceSync::shouldSkipPushAndRepair('topdawg', [
+            'sku' => 'SS HD 2PK 3FT YLW BAG',
+            'live' => 12.08,
+            'pushed_sprice' => 35.99,
+        ], 35.99, true));
+    }
+
     public function test_ebay_prefer_incoming_uses_live_report_over_pushed_dil(): void
     {
         $this->assertSame(

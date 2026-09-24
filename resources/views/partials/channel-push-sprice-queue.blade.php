@@ -85,6 +85,7 @@
             const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|topdawg)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_TIKTOK = /^(tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_MACYS = /^(macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_SPRICE_IS_BESTBUY = CH_PUSH_SPRICE_CHANNEL === 'bestbuy';
             const CH_PUSH_SPRICE_IS_TOPDAWG = CH_PUSH_SPRICE_CHANNEL === 'topdawg';
             const CH_PUSH_SPRICE_PULL_DELAY_MS = CH_PUSH_SPRICE_IS_TIKTOK ? 1500 : (CH_PUSH_SPRICE_IS_TOPDAWG ? 800 : 0);
             const CH_PUSH_SPRICE_CHUNK = 200;
@@ -362,14 +363,18 @@
                     const st = String(t.status || '');
                     const pushed = Number(t.price);
                     const pulled = Number(t.ebay_price != null ? t.ebay_price : 0);
-                    const live = (st === 'ok' && pushed > 0) ? pushed : (pulled > 0 ? pulled : pushed);
+                    // TopDawg Price is the site cost. S PRC stays in SPRICE until the site matches.
+                    const live = CH_PUSH_SPRICE_IS_TOPDAWG
+                        ? (pulled > 0 ? pulled : 0)
+                        : ((st === 'ok' && pushed > 0) ? pushed : (pulled > 0 ? pulled : pushed));
+                    const pushedMark = CH_PUSH_SPRICE_IS_TOPDAWG ? pushed : live;
                     const patch = {};
                     let priceChanged = false;
                     if (st === 'ok') {
                         if (d.SPRICE_STATUS !== 'pushed') patch.SPRICE_STATUS = 'pushed';
                         if (d.push_status !== 'pushed') patch.push_status = 'pushed';
-                        if (live > 0 && !chPushSpriceNearlyEqual(d.SPRICE_PUSHED_VALUE, live)) {
-                            patch.SPRICE_PUSHED_VALUE = live;
+                        if (pushedMark > 0 && !chPushSpriceNearlyEqual(d.SPRICE_PUSHED_VALUE, pushedMark)) {
+                            patch.SPRICE_PUSHED_VALUE = pushedMark;
                         }
                         if (live > 0 && !chPushSpriceNearlyEqual(d[CH_PUSH_SPRICE_PRICE_FIELD], live)) {
                             patch[CH_PUSH_SPRICE_PRICE_FIELD] = live;
@@ -436,6 +441,12 @@
                                     || t.ebay_price || t.price) || 0;
                                 if (livePrice > 0) global.macysApplyLivePriceToRow(row, livePrice);
                             }
+                            if (CH_PUSH_SPRICE_IS_BESTBUY && result.kind === 'price'
+                                && typeof global.bestbuyApplyLivePriceToRow === 'function') {
+                                const livePrice = Number((result.patch && (result.patch['BB Price'] || result.patch.price))
+                                    || t.price) || 0;
+                                if (livePrice > 0) global.bestbuyApplyLivePriceToRow(row, livePrice);
+                            }
                             chPushPaintRowColumns(row);
                         }
                     }
@@ -501,6 +512,13 @@
                             if (!t || String(t.status) !== 'ok' || !(Number(t.price) > 0)) return;
                             const row = chPushSpriceFindRowBySku(t.sku);
                             if (row) global.macysApplyLivePriceToRow(row, t.price);
+                        });
+                    }
+                    if (CH_PUSH_SPRICE_IS_BESTBUY && typeof global.bestbuyApplyLivePriceToRow === 'function') {
+                        tasks.forEach(function(t) {
+                            if (!t || String(t.status) !== 'ok' || !(Number(t.price) > 0)) return;
+                            const row = chPushSpriceFindRowBySku(t.sku);
+                            if (row) global.bestbuyApplyLivePriceToRow(row, t.price);
                         });
                     }
                 }

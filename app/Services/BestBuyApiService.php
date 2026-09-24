@@ -626,20 +626,7 @@ class BestBuyApiService
                 ];
             }
 
-            try {
-                if (Schema::hasTable('bestbuy_usa_products')) {
-                    \App\Models\BestbuyUsaProduct::query()
-                        ->where(function ($q) use ($offerSku, $sku) {
-                            $q->where('sku', $offerSku)->orWhere('sku', $sku);
-                        })
-                        ->update(['price' => $price]);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Best Buy local price sync after PRI01 failed', [
-                    'sku' => $offerSku,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            $this->syncLocalBestBuyPriceAfterPush($sku, $offerSku, $price);
 
             Log::info('Best Buy MCM PRI01 price push complete', [
                 'sku' => $sku,
@@ -667,6 +654,55 @@ class BestBuyApiService
                 'status_code' => null,
             ];
         }
+    }
+
+    /**
+     * Write the pushed SPRICE into the listed-price tables the Price column reads.
+     */
+    protected function syncLocalBestBuyPriceAfterPush(string $sku, string $offerSku, float $price): void
+    {
+        try {
+            $price = round($price, 2);
+            $want = array_values(array_unique(array_filter([
+                $this->normalizeBestBuyOfferSku($sku),
+                $this->normalizeBestBuyOfferSku($offerSku),
+            ])));
+            if ($want === [] || $price <= 0) {
+                return;
+            }
+
+            $placeholders = implode(',', array_fill(0, count($want), '?'));
+
+            if (Schema::hasTable('bestbuy_usa_products')) {
+                \App\Models\BestbuyUsaProduct::query()
+                    ->whereRaw('UPPER(TRIM(sku)) IN ('.$placeholders.')', $want)
+                    ->update(['price' => $price]);
+            }
+
+            if (Schema::hasTable('bestbuy_price_data')) {
+                \App\Models\BestbuyPriceData::query()
+                    ->where(function ($q) use ($placeholders, $want) {
+                        $q->whereRaw('UPPER(TRIM(sku)) IN ('.$placeholders.')', $want)
+                            ->orWhereRaw('UPPER(TRIM(offer_sku)) IN ('.$placeholders.')', $want);
+                    })
+                    ->update([
+                        'price' => $price,
+                        'original_price' => $price,
+                    ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Best Buy local price sync after PRI01 failed', [
+                'sku' => $offerSku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function normalizeBestBuyOfferSku(string $value): string
+    {
+        $v = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $value);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', trim($v)) ?? '');
     }
 
     /**

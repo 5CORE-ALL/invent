@@ -51,6 +51,42 @@
             outline-offset: 2px;
         }
         .depop-select-header { display: flex; align-items: center; justify-content: center; }
+        #dpOpSpriceModal.modal { align-items: flex-start; padding-top: 1.5rem; }
+        #dpOpSpriceModal .dp-op-modal-dialog { margin-top: 0; }
+        #dpOpSpriceModal .dp-op-drag-header {
+            cursor: move; user-select: none; gap: 30px; padding: 2.4rem 1.5rem;
+        }
+        #dpOpSpriceModal .dp-op-header-title {
+            display: flex; align-items: center; gap: 30px; min-width: 0;
+            font-size: 1.24rem; line-height: 1.2; white-space: nowrap;
+        }
+        #dpOpSpriceModal .dp-op-header-img-wrap {
+            flex: 0 0 auto; width: 120px; height: 120px; border-radius: 12px;
+            overflow: hidden; background: #fff; cursor: zoom-in;
+        }
+        #dpOpSpriceModal .dp-op-header-thumb {
+            width: 120px !important; height: 120px !important;
+            max-width: 120px !important; max-height: 120px !important;
+            object-fit: cover !important; display: block;
+        }
+        #dpOpSpriceModal .dp-op-metric-cell { text-align: center; font-weight: 700; vertical-align: middle; }
+        #dpOpSpriceModal .dp-op-price-row {
+            display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap;
+        }
+        #dpOpSpriceModal .dp-sop-icon-btn { border: 0; background: transparent; padding: 0; line-height: 0; cursor: pointer; }
+        #dpOpSpriceModal .dp-sop-icon-btn img { width: 36px; height: 36px; object-fit: contain; display: block; }
+        #dpOpSpriceModal .dp-sop-edit-btn {
+            border: 0; background: transparent; padding: 0 2px; color: #6c757d; line-height: 1; cursor: pointer;
+        }
+        #dpOpSpriceModal .dp-sop-edit-btn:hover { color: #0d6efd; }
+        #dpOpSpriceModal .dp-sop-sheet-input { width: 220px; display: none; }
+        #dpOpSpriceModal .dp-sop-sheet-input.is-open { display: inline-block; }
+        #dpOpImgHoverPreview {
+            position: fixed; display: none; z-index: 200080; pointer-events: none;
+            max-width: min(640px, 90vw); max-height: 80vh; object-fit: contain;
+            background: #fff; border-radius: 10px; padding: 6px;
+            box-shadow: 0 8px 28px rgba(0,0,0,.25);
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'depop'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'depop'])
     </style>
@@ -255,6 +291,70 @@
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'depop'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'depop'])
+
+    <div class="modal fade" id="dpOpSpriceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog dp-op-modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header dp-op-drag-header" style="background-color: #0d6efd;">
+                    <h5 class="modal-title text-white dp-op-header-title">
+                        <span class="dp-op-header-img-wrap" id="dpOpModalImgWrap" style="display:none;">
+                            <img id="dpOpModalImg" class="dp-op-header-thumb no-img-hover" data-no-img-hover alt="Product">
+                        </span>
+                        <span>Offer Sprice – <span id="dpOpModalSku"></span></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-bordered mb-0">
+                        <tbody>
+                            <tr>
+                                <th style="width: 40%;">Offer Sprice</th>
+                                <td>
+                                    <div class="dp-op-price-row">
+                                        <span class="text-muted">$</span>
+                                        <input type="number" class="form-control form-control-sm d-inline-block"
+                                            id="dpOpSpriceInput" value="" step="0.01" min="0" placeholder="0.00"
+                                            style="width: 90px; text-align: right;">
+                                        <button type="button" class="dp-sop-icon-btn" id="dpSopBtn"
+                                            title="Double-click to open SOP sheet">
+                                            <img src="{{ asset('images/sop-icon.png') }}" alt="SOP" class="no-img-hover" data-no-img-hover>
+                                        </button>
+                                        <button type="button" class="dp-sop-edit-btn" id="dpSopEditBtn"
+                                            title="Add / edit SOP sheet link">
+                                            <i class="fas fa-pencil-alt"></i>
+                                        </button>
+                                        <input type="url" class="form-control form-control-sm dp-sop-sheet-input"
+                                            id="dpSopSheetInput" placeholder="Google Sheet URL"
+                                            value="{{ $sopSheetUrl ?? '' }}"
+                                            autocomplete="off" spellcheck="false">
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th title="SGPFT% = ((price × margin − LP) / price) × 100 — no ship">SGPFT%</th>
+                                <td class="dp-op-metric-cell" id="dpOpSgpft">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SGROI% = ((price × margin − LP) / LP) × 100 — no ship">SGROI%</th>
+                                <td class="dp-op-metric-cell" id="dpOpSgroi">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SPFT% = SGPFT% − Ads%">SPFT%</th>
+                                <td class="dp-op-metric-cell" id="dpOpSpft">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SNROI% = ((price × margin − LP − price × Ads%) / LP) × 100">SNROI%</th>
+                                <td class="dp-op-metric-cell" id="dpOpSnroi">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -868,6 +968,25 @@
                     }
                 },
                 {
+                    title: "OP",
+                    field: "op_sprice",
+                    hozAlign: "center",
+                    width: 50,
+                    headerSort: false,
+                    headerTooltip: "Offer Sprice calculator — separate from S Price. Click to view Offer Sprice and SGPFT / SGROI / SPFT / SNROI. No ship.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return '';
+                        return '<i class="fas fa-question-circle dp-op-btn" title="Offer Sprice"'
+                            + ' style="color:#0d6efd;font-size:15px;cursor:pointer;line-height:1;"></i>';
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return;
+                        openDpOpSpriceModal(cell.getRow());
+                    }
+                },
+                {
                     title: "SGROI",
                     field: "sroi",
                     sorter: "number",
@@ -1270,5 +1389,277 @@
             }
         });
     }
+
+    let dpOpModalRow = null;
+    let dpOpModalCalc = { lp: 0, margin: DP_MARGIN, ads: 0 };
+
+    function dpPaintOpMetric(sel, value, field) {
+        const el = document.querySelector(sel);
+        if (!el) return;
+        el.style.backgroundColor = '';
+        el.style.color = '';
+        el.style.padding = '0';
+        if (value == null || !isFinite(value)) {
+            el.innerHTML = '<span style="color:#6c757d;font-weight:700;">-</span>';
+            return;
+        }
+        const label = Math.round(value) + '%';
+        let bg = '';
+        let fg = '#212529';
+        if (window.MetricPctColors) {
+            const kind = MetricPctColors.kindFromField(field);
+            const band = MetricPctColors.bandFor(kind, value);
+            bg = MetricPctColors.colorFor(kind, value) || '';
+            if (bg) fg = (band === 'yellow') ? '#000' : '#fff';
+        } else {
+            const isPft = field === 'SGPFT' || field === 'SPFT';
+            bg = isPft
+                ? (value < 0 ? '#dc3545' : (value < 10 ? '#ffc107' : '#28a745'))
+                : (value < 0 ? '#dc3545' : (value < 40 ? '#ffc107' : '#28a745'));
+            fg = (bg === '#ffc107') ? '#000' : '#fff';
+        }
+        el.innerHTML = '<span style="display:block;padding:6px 8px;font-weight:700;background:'
+            + bg + ';color:' + fg + ';">' + label + '</span>';
+    }
+
+    function dpOpSpriceMetrics(opSprice, lp, margin, adsPct) {
+        opSprice = parseFloat(opSprice) || 0;
+        lp = parseFloat(lp) || 0;
+        margin = parseFloat(margin) || 0;
+        adsPct = parseFloat(adsPct) || 0;
+        if (opSprice <= 0) {
+            return { sgpft: null, sgroi: null, spft: null, snroi: null };
+        }
+        const sgpft = ((opSprice * margin - lp) / opSprice) * 100;
+        const sgroi = lp > 0 ? ((opSprice * margin - lp) / lp) * 100 : 0;
+        const spft = sgpft - adsPct;
+        const snroi = lp > 0
+            ? ((opSprice * margin - lp - opSprice * (adsPct / 100)) / lp) * 100
+            : 0;
+        return { sgpft: sgpft, sgroi: sgroi, spft: spft, snroi: snroi };
+    }
+
+    function dpRefreshOpModalMetrics() {
+        const modal = document.getElementById('dpOpSpriceModal');
+        if (!modal) return;
+        const c = dpOpModalCalc || {};
+        const metrics = dpOpSpriceMetrics(
+            parseFloat((document.getElementById('dpOpSpriceInput') || {}).value) || 0,
+            c.lp != null ? c.lp : modal.getAttribute('data-lp'),
+            c.margin != null ? c.margin : modal.getAttribute('data-margin'),
+            c.ads != null ? c.ads : modal.getAttribute('data-ads')
+        );
+        dpPaintOpMetric('#dpOpSgpft', metrics.sgpft, 'SGPFT');
+        dpPaintOpMetric('#dpOpSgroi', metrics.sgroi, 'SGROI');
+        dpPaintOpMetric('#dpOpSpft', metrics.spft, 'SPFT');
+        dpPaintOpMetric('#dpOpSnroi', metrics.snroi, 'SNROI');
+    }
+
+    function openDpOpSpriceModal(row) {
+        if (!row) return;
+        dpOpModalRow = row;
+        const d = row.getData() || {};
+        if (dpIsParentRow(d)) return;
+        const sku = d.sku || '';
+        const lp = parseFloat(d.lp != null ? d.lp : d.LP_productmaster) || 0;
+        const margin = (typeof chPromoTakehomeMargin === 'function')
+            ? chPromoTakehomeMargin(d)
+            : (parseFloat(d._margin) || DP_MARGIN);
+        const ads = (typeof chPromoAdsFrac === 'function' ? ((chPromoAdsFrac() || 0) * 100) : 0) || 0;
+        dpOpModalCalc = { lp: lp, margin: margin, ads: ads };
+        const sVal = dpRowSprice(d);
+        const modalEl = document.getElementById('dpOpSpriceModal');
+        const skuEl = document.getElementById('dpOpModalSku');
+        const input = document.getElementById('dpOpSpriceInput');
+        if (!modalEl || !input) return;
+        if (skuEl) skuEl.textContent = sku || '—';
+        const imgWrap = document.getElementById('dpOpModalImgWrap');
+        const imgEl = document.getElementById('dpOpModalImg');
+        const imgSrc = String(d.image_path || d.image || '').trim();
+        if (imgWrap && imgEl) {
+            if (imgSrc) {
+                imgEl.src = imgSrc;
+                imgWrap.style.display = '';
+            } else {
+                imgEl.removeAttribute('src');
+                imgWrap.style.display = 'none';
+            }
+        }
+        modalEl.setAttribute('data-sku', sku);
+        modalEl.setAttribute('data-lp', String(lp));
+        modalEl.setAttribute('data-margin', String(margin));
+        modalEl.setAttribute('data-ads', String(ads));
+        input.value = (isFinite(sVal) && sVal > 0) ? Number(sVal).toFixed(2) : '';
+        dpRefreshOpModalMetrics();
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+
+    (function initDpOpSpriceModal() {
+        const modal = document.getElementById('dpOpSpriceModal');
+        const input = document.getElementById('dpOpSpriceInput');
+        const sopBtn = document.getElementById('dpSopBtn');
+        const sopEditBtn = document.getElementById('dpSopEditBtn');
+        const sopSheetInput = document.getElementById('dpSopSheetInput');
+        if (!modal || !input) return;
+
+        function dpSopSheetUrl() {
+            return String((sopSheetInput && sopSheetInput.value) || '').trim();
+        }
+        function dpOpenSopSheetEditor() {
+            if (!sopSheetInput) return;
+            sopSheetInput.classList.add('is-open');
+            sopSheetInput.focus();
+            sopSheetInput.select();
+        }
+        function dpSaveSopSheetUrl() {
+            if (!sopSheetInput) return;
+            const url = dpSopSheetUrl();
+            const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            fetch("{{ route('depop.pricing.sop-sheet') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token
+                },
+                body: JSON.stringify({ url: url })
+            }).then(function(res) {
+                if (!res.ok) throw new Error('save failed');
+                sopSheetInput.classList.remove('is-open');
+                if (typeof showToast === 'function') {
+                    showToast(url ? 'SOP sheet link saved' : 'SOP sheet link cleared', 'success');
+                }
+            }).catch(function() {
+                if (typeof showToast === 'function') showToast('Failed to save SOP sheet link', 'error');
+            });
+        }
+
+        input.addEventListener('input', dpRefreshOpModalMetrics);
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                dpRefreshOpModalMetrics();
+            }
+        });
+        if (sopBtn) {
+            sopBtn.addEventListener('click', function(e) { e.preventDefault(); });
+            sopBtn.addEventListener('dblclick', function(e) {
+                e.preventDefault();
+                const url = dpSopSheetUrl();
+                if (!url) {
+                    dpOpenSopSheetEditor();
+                    return;
+                }
+                window.open(url, '_blank', 'noopener,noreferrer');
+            });
+        }
+        if (sopEditBtn) {
+            sopEditBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (sopSheetInput && sopSheetInput.classList.contains('is-open')) {
+                    dpSaveSopSheetUrl();
+                } else {
+                    dpOpenSopSheetEditor();
+                }
+            });
+        }
+        if (sopSheetInput) {
+            sopSheetInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    dpSaveSopSheetUrl();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    sopSheetInput.classList.remove('is-open');
+                }
+            });
+            sopSheetInput.addEventListener('blur', function() {
+                if (sopSheetInput.classList.contains('is-open')) {
+                    dpSaveSopSheetUrl();
+                }
+            });
+        }
+
+        modal.addEventListener('shown.bs.modal', function() {
+            const dialog = modal.querySelector('.modal-dialog');
+            if (dialog) {
+                dialog.style.position = 'fixed';
+                dialog.style.left = '50%';
+                dialog.style.top = '1.5rem';
+                dialog.style.transform = 'translateX(-50%)';
+                dialog.style.margin = '0';
+            }
+            dpRefreshOpModalMetrics();
+            input.focus();
+            input.select();
+        });
+
+        let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+        const header = modal.querySelector('.dp-op-drag-header');
+        const dialog = modal.querySelector('.modal-dialog');
+        if (!header || !dialog) return;
+        function onMove(e) {
+            dialog.style.left = (startLeft + (e.clientX - startX)) + 'px';
+            dialog.style.top = (startTop + (e.clientY - startY)) + 'px';
+            dialog.style.transform = 'none';
+        }
+        function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        }
+        function dpOpImgPreview() {
+            let el = document.getElementById('dpOpImgHoverPreview');
+            if (el) return el;
+            el = document.createElement('img');
+            el.id = 'dpOpImgHoverPreview';
+            el.alt = '';
+            document.body.appendChild(el);
+            return el;
+        }
+        function dpOpPlacePreview(e) {
+            const preview = dpOpImgPreview();
+            const pad = 16;
+            const w = preview.offsetWidth || 320;
+            const h = preview.offsetHeight || 320;
+            let left = e.clientX + pad;
+            let top = e.clientY + pad;
+            if (left + w > window.innerWidth - 8) left = Math.max(8, e.clientX - w - pad);
+            if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+            preview.style.left = left + 'px';
+            preview.style.top = top + 'px';
+        }
+        const imgWrap = document.getElementById('dpOpModalImgWrap');
+        if (imgWrap) {
+            imgWrap.addEventListener('mouseenter', function(e) {
+                const img = document.getElementById('dpOpModalImg');
+                const src = img && (img.currentSrc || img.src);
+                if (!src) return;
+                const preview = dpOpImgPreview();
+                preview.src = src;
+                preview.style.display = 'block';
+                dpOpPlacePreview(e);
+            });
+            imgWrap.addEventListener('mousemove', dpOpPlacePreview);
+            imgWrap.addEventListener('mouseleave', function() {
+                const preview = document.getElementById('dpOpImgHoverPreview');
+                if (preview) preview.style.display = 'none';
+            });
+        }
+        modal.addEventListener('hidden.bs.modal', function() {
+            const preview = document.getElementById('dpOpImgHoverPreview');
+            if (preview) preview.style.display = 'none';
+        });
+        header.addEventListener('mousedown', function(e) {
+            if (e.target.closest('.btn-close, .dp-op-header-img-wrap')) return;
+            const r = dialog.getBoundingClientRect();
+            startLeft = r.left;
+            startTop = r.top;
+            startX = e.clientX;
+            startY = e.clientY;
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+            e.preventDefault();
+        });
+    })();
 </script>
 @endsection

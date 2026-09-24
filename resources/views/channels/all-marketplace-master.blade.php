@@ -141,6 +141,8 @@
         .amm-page-card {
             min-width: 0;
             max-width: 100%;
+            overflow: visible;
+            transform: none;
         }
         .amm-toolbar {
             overflow-x: hidden;
@@ -153,7 +155,7 @@
         }
         .amm-table-hscroll {
             position: sticky;
-            top: var(--tz-topbar-height, 70px);
+            top: 0;
             z-index: 26;
             overflow-x: auto;
             overflow-y: hidden;
@@ -191,7 +193,7 @@
             overflow: hidden !important;
         }
         #marketplace-table.tabulator .tabulator-header {
-            --amm-header-top: calc(var(--tz-topbar-height, 70px) + 14px);
+            --amm-header-top: 0px;
             position: sticky !important;
             top: var(--amm-header-top) !important;
             z-index: 24 !important;
@@ -199,18 +201,9 @@
             background-color: #dbeafe !important;
             box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
         }
-        #marketplace-table.tabulator .tabulator-header.amm-header-frozen {
-            position: fixed !important;
-            top: var(--amm-header-top) !important;
-            z-index: 30 !important;
-            background: #dbeafe !important;
-            background-color: #dbeafe !important;
-            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
-        }
         #amm-header-freeze-spacer {
-            display: none;
-            width: 100%;
-            pointer-events: none;
+            display: none !important;
+            height: 0 !important;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
         #marketplace-table.tabulator .tabulator-header .tabulator-headers,
@@ -218,11 +211,7 @@
         #marketplace-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content,
         #marketplace-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title-holder,
         #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover,
-        #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable.tabulator-col-sorter-element:hover,
-        #marketplace-table.tabulator .tabulator-header.amm-header-frozen .tabulator-header-contents,
-        #marketplace-table.tabulator .tabulator-header.amm-header-frozen .tabulator-headers,
-        #marketplace-table.tabulator .tabulator-header.amm-header-frozen .tabulator-col,
-        #marketplace-table.tabulator .tabulator-header.amm-header-frozen .tabulator-col .tabulator-col-content {
+        #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable.tabulator-col-sorter-element:hover {
             background: #dbeafe !important;
             background-color: #dbeafe !important;
         }
@@ -651,10 +640,7 @@
                 min-width: 0 !important;
             }
             .amm-table-hscroll {
-                top: 56px !important;
-            }
-            #marketplace-table.tabulator .tabulator-header {
-                --amm-header-top: 70px;
+                top: 0;
             }
             .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
                 height: 52px;
@@ -4912,11 +4898,34 @@
                 pinAmmTableHeader();
             });
 
-            function ammHeaderPinTop() {
+            function ammStickyPort(el) {
+                var node = el && el.parentElement;
+                while (node && node !== document.body && node !== document.documentElement) {
+                    var cs = getComputedStyle(node);
+                    var oy = cs.overflowY;
+                    var ox = cs.overflowX;
+                    if (oy === 'auto' || oy === 'scroll' || oy === 'hidden' || ox === 'auto' || ox === 'scroll' || ox === 'hidden') {
+                        return node;
+                    }
+                    node = node.parentElement;
+                }
+                return null;
+            }
+
+            function ammHeaderPinTop(anchor) {
+                var port = ammStickyPort(anchor);
+                var nav = document.querySelector('.navbar-custom');
+                var top = 0;
+                if (!port && nav) {
+                    var bottom = nav.getBoundingClientRect().bottom;
+                    if (bottom > 0) top = bottom;
+                }
                 var bar = document.getElementById('amm-table-hscroll');
-                var topbar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tz-topbar-height')) || 70;
-                var extra = (bar && bar.style.display !== 'none' && bar.offsetParent !== null) ? (bar.offsetHeight || 14) : 0;
-                return topbar + extra;
+                if (bar && bar.style.display !== 'none' && bar.offsetParent !== null) {
+                    bar.style.top = Math.round(top) + 'px';
+                    top += bar.offsetHeight || 0;
+                }
+                return Math.round(top);
             }
 
             function pinAmmTableHeader() {
@@ -4924,37 +4933,21 @@
                 var header = tableEl && tableEl.querySelector('.tabulator-header');
                 if (!tableEl || !header) return;
 
+                header.classList.remove('amm-header-frozen');
+                header.style.left = '';
+                header.style.width = '';
+                header.style.right = '';
+                header.style.position = '';
+
                 var spacer = document.getElementById('amm-header-freeze-spacer');
-                if (!spacer) {
-                    spacer = document.createElement('div');
-                    spacer.id = 'amm-header-freeze-spacer';
-                    header.parentNode.insertBefore(spacer, header);
-                }
-
-                var top = ammHeaderPinTop();
-                var tableRect = tableEl.getBoundingClientRect();
-                var headerRect = header.getBoundingClientRect();
-                var headerH = header.offsetHeight || headerRect.height || 0;
-                var pinned = header.classList.contains('amm-header-frozen');
-                var inRange = tableRect.top < top && tableRect.bottom > (top + headerH);
-                var stickyFailed = pinned || headerRect.top < (top - 1);
-
-                header.style.setProperty('--amm-header-top', top + 'px');
-                if (inRange && stickyFailed) {
-                    spacer.style.display = 'block';
-                    spacer.style.height = headerH + 'px';
-                    header.classList.add('amm-header-frozen');
-                    header.style.left = tableRect.left + 'px';
-                    header.style.width = tableRect.width + 'px';
-                    header.style.right = 'auto';
-                } else {
+                if (spacer) {
                     spacer.style.display = 'none';
                     spacer.style.height = '0px';
-                    header.classList.remove('amm-header-frozen');
-                    header.style.left = '';
-                    header.style.width = '';
-                    header.style.right = '';
                 }
+
+                var top = ammHeaderPinTop(header);
+                header.style.setProperty('--amm-header-top', top + 'px');
+                header.style.setProperty('top', top + 'px', 'important');
 
                 if (!window.__ammHeaderFreezeBound) {
                     window.__ammHeaderFreezeBound = true;

@@ -4,16 +4,22 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ebay2Metric;
+use App\Models\EbayTwoDataView;
+use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Support\Marketplace\EbayListingEnded;
+use App\Support\Marketplace\EbayTwoListingCounts;
+use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class Ebay2ListingVariationVerifyController extends Controller
 {
-    public const DATA_CACHE_KEY = 'ebay2.listing.variation.verify.data.v6';
+    public const DATA_CACHE_KEY = 'ebay2.listing.variation.verify.data.v7';
 
     public function index()
     {
@@ -22,11 +28,12 @@ class Ebay2ListingVariationVerifyController extends Controller
 
     /**
      * Parent-only rows: Parent, INV (Shopify child sum), Required, Parent Vs Listed SKU.
-     * Missing = CP Master child not on the parent eBay 2 listing (item_id group)
-     *           and that child has Shopify INV > 0. Zero-INV SKUs are not missing.
-     * Extra   = SKU on this parent listing that is not a CP Master child of this
-     *           parent and is not a child of another CP parent.
-     *           Open Box SKUs are exempt and are never treated as excess.
+     * Missing = CP Master child not on the live parent eBay 2 listing
+     *           with Shopify INV > 0. Zero-INV, NRL, and Coming SKUs are not missing.
+     * Extra   = SKU on the latest eBay 2 inventory pull for this parent listing
+     *           that is not a CP Master child of this parent and is not a child
+     *           of another CP parent. Ended / inactive rows and SKUs left behind
+     *           from an older pull are not excess. Open Box and USED are exempt.
      */
     public function data(Request $request)
     {
@@ -64,13 +71,15 @@ class Ebay2ListingVariationVerifyController extends Controller
 
         $parentGroups = [];
         $pmParentByNorm = [];
+        $pmParentByCompact = [];
         $childRowsCount = 0;
+        $allSkus = [];
 
         $pmRows = DB::table('product_master')
             ->whereNull('deleted_at')
             ->whereNotNull('parent')
             ->where('parent', '!=', '')
-            ->get(['parent', 'sku']);
+            ->get(['parent', 'sku', 'Values']);
 
         foreach ($pmRows as $pm) {
             $parent = trim((string) ($pm->parent ?? ''));
@@ -80,35 +89,66 @@ class Ebay2ListingVariationVerifyController extends Controller
             }
 
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $compact = ShopifySku::compactSkuForLookup($sku);
             if ($norm !== '' && ! isset($pmParentByNorm[$norm])) {
                 $pmParentByNorm[$norm] = $parent;
             }
-            $available = $listedSkuSet['empty']
-                ? null
-                : ($norm !== '' && isset($listedSkuSet['set'][$norm]));
+            if ($compact !== '' && ! isset($pmParentByCompact[$compact])) {
+                $pmParentByCompact[$compact] = $parent;
+            }
+
+            $values = $pm->Values ?? null;
+            if (is_string($values)) {
+                $values = json_decode($values, true) ?: [];
+            }
 
             $parentGroups[$parent][] = [
                 'parent' => $parent,
                 'sku' => $sku,
                 'norm' => $norm,
-                'child_sku_available' => $available,
+                'compact' => $compact,
+                'is_coming' => ProductMaster::isComingStatus(is_array($values) ? $values : []),
+                'is_nrl' => false,
             ];
+            $allSkus[] = $sku;
             $childRowsCount++;
+        }
+
+        if ($allSkus !== []) {
+            $nrValues = ListingCountsEngine::loadNrValues(EbayTwoDataView::class, $allSkus);
+            foreach ($parentGroups as &$groupChildren) {
+                foreach ($groupChildren as &$groupChild) {
+                    $nrReq = EbayTwoListingCounts::nrReqFromDataView(
+                        ListingCountsEngine::lookupNrValue($nrValues, $groupChild['sku'])
+                    );
+                    $groupChild['is_nrl'] = $nrReq === 'NR';
+                }
+            }
+            unset($groupChildren, $groupChild);
         }
 
         $formattedData = [];
         foreach ($parentGroups as $parentKey => $children) {
-            $diff = $this->diffParentListing($parentKey, $children, $listedSkuSet, $pmParentByNorm);
+            $diff = $this->diffParentListing($parentKey, $children, $listedSkuSet, $pmParentByNorm, $pmParentByCompact);
 
             $requiredCount = count($children);
             $extraSkus = $diff['extra_skus'];
             $known = $diff['known'];
+            $childBySku = [];
+            foreach ($children as $child) {
+                $childBySku[$child['sku']] = $child;
+            }
 
-            // Parent Missing = unlisted children with INV > 0 only.
+            // Parent Missing = unlisted REQ children with INV > 0.
+            // NRL, Coming, and zero-INV are not open issues.
             $missingSkus = [];
             if ($known) {
                 foreach ($diff['missing_skus'] as $sku) {
-                    $missNorm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    $flags = $childBySku[$sku] ?? [];
+                    if (! empty($flags['is_nrl']) || ! empty($flags['is_coming'])) {
+                        continue;
+                    }
+                    $missNorm = $flags['norm'] ?? ShopifySku::normalizeSkuForShopifyLookup($sku);
                     $missInv = ($missNorm !== '' && isset($invByNorm[$missNorm]))
                         ? (float) $invByNorm[$missNorm]
                         : 0.0;
@@ -136,30 +176,57 @@ class Ebay2ListingVariationVerifyController extends Controller
 
             $inv = 0.0;
             $childPayload = [];
+            $rawMissing = $known ? array_fill_keys($diff['missing_skus'], true) : [];
+            $countedMissing = array_fill_keys($missingSkus, true);
             foreach ($children as $child) {
-                $listed = $child['child_sku_available'];
                 $norm = $child['norm'] ?? '';
                 $childInv = ($norm !== '' && isset($invByNorm[$norm]))
                     ? (int) round($invByNorm[$norm])
                     : 0;
                 $inv += $childInv;
 
+                $isComing = ! empty($child['is_coming']);
+                $isNrl = ! empty($child['is_nrl']);
+                $onListing = $known && ! isset($rawMissing[$child['sku']]);
+                $isMissing = isset($countedMissing[$child['sku']]);
+                if (! $known) {
+                    $childLabel = '—';
+                    $listed = null;
+                } elseif ($onListing) {
+                    $childLabel = 'Listed';
+                    $listed = true;
+                } elseif ($isComing) {
+                    $childLabel = 'Coming';
+                    $listed = null;
+                } elseif ($isNrl) {
+                    $childLabel = 'NRL';
+                    $listed = null;
+                } elseif ($childInv <= 0) {
+                    $childLabel = 'INV ≤0';
+                    $listed = null;
+                } else {
+                    $childLabel = 'Missing';
+                    $listed = false;
+                }
+
                 $childPayload[] = [
                     'parent' => $parentKey,
                     'sku' => $child['sku'],
                     'is_parent' => false,
                     'INV' => $childInv,
+                    'is_coming' => $isComing,
+                    'is_nrl' => $isNrl,
                     'child_sku_required' => 1,
                     'child_sku_required_label' => '1',
                     'child_sku_available' => $listed,
-                    'child_sku_available_label' => $listed === null ? '—' : ($listed ? 'Listed' : 'Missing'),
-                    'child_sku_available_count' => $listed ? 1 : 0,
+                    'child_sku_available_label' => $childLabel,
+                    'child_sku_available_count' => $onListing ? 1 : 0,
                     'child_sku_total' => 1,
-                    'missing_skus' => ($listed === false) ? [$child['sku']] : [],
+                    'missing_skus' => $isMissing ? [$child['sku']] : [],
                     'extra_skus' => [],
-                    'missing_count' => ($listed === false) ? 1 : 0,
+                    'missing_count' => $isMissing ? 1 : 0,
                     'extra_count' => 0,
-                    'match_status' => $listed,
+                    'match_status' => $isMissing ? false : ($onListing ? true : null),
                 ];
             }
 
@@ -265,15 +332,20 @@ class Ebay2ListingVariationVerifyController extends Controller
     /**
      * Compare CP Master children to SKUs on the parent eBay 2 listing (shared item_id).
      *
-     * @param  array<int, array{parent: string, sku: string, norm?: string, child_sku_available: ?bool}>  $children
+     * @param  array<int, array{parent: string, sku: string, norm?: string, compact?: string}>  $children
      * @param  array{
      *   set: array<string, true>,
+     *   compact_set: array<string, true>,
      *   empty: bool,
+     *   has_current_pull: bool,
+     *   current_item_ids: array<string, true>,
      *   sku_to_item_id: array<string, string>,
      *   item_id_to_skus: array<string, list<string>>,
+     *   item_id_current_norms: array<string, array<string, true>>,
      *   parent_to_item_id: array<string, string>
      * }  $lookup
      * @param  array<string, string>  $pmParentByNorm
+     * @param  array<string, string>  $pmParentByCompact
      * @return array{
      *   known: bool,
      *   available_count: int,
@@ -281,13 +353,18 @@ class Ebay2ListingVariationVerifyController extends Controller
      *   extra_skus: list<string>
      * }
      */
-    private function diffParentListing(string $parentKey, array $children, array $lookup, array $pmParentByNorm): array
+    private function diffParentListing(string $parentKey, array $children, array $lookup, array $pmParentByNorm, array $pmParentByCompact): array
     {
         $requiredNormToSku = [];
+        $requiredCompact = [];
         foreach ($children as $child) {
             $norm = $child['norm'] ?? ShopifySku::normalizeSkuForShopifyLookup($child['sku']);
+            $compact = $child['compact'] ?? ShopifySku::compactSkuForLookup($child['sku']);
             if ($norm !== '' && ! isset($requiredNormToSku[$norm])) {
                 $requiredNormToSku[$norm] = $child['sku'];
+            }
+            if ($compact !== '') {
+                $requiredCompact[$compact] = true;
             }
         }
 
@@ -321,12 +398,37 @@ class Ebay2ListingVariationVerifyController extends Controller
             }
         }
 
+        $hasCurrentPull = ! empty($lookup['has_current_pull']);
+        $currentItemIds = $lookup['current_item_ids'] ?? [];
+        if ($hasCurrentPull && ($itemId === null || $itemId === '' || ! isset($currentItemIds[$itemId]))) {
+            // PARENT row still points at an ended / previous item. Use the live relist.
+            $itemId = null;
+            $itemIdCounts = [];
+            foreach ($requiredNormToSku as $norm => $_sku) {
+                if (! isset($lookup['sku_to_item_id'][$norm])) {
+                    continue;
+                }
+                $candidate = $lookup['sku_to_item_id'][$norm];
+                if (! isset($currentItemIds[$candidate])) {
+                    continue;
+                }
+                $itemIdCounts[$candidate] = ($itemIdCounts[$candidate] ?? 0) + 1;
+            }
+            if ($itemIdCounts !== []) {
+                arsort($itemIdCounts);
+                $itemId = (string) array_key_first($itemIdCounts);
+            }
+        }
+
         // No shared listing found — fall back to flat listed-SKU check (missing only).
         if ($itemId === null || $itemId === '') {
             $availableCount = 0;
             $missingSkus = [];
             foreach ($requiredNormToSku as $norm => $sku) {
-                if (isset($lookup['set'][$norm])) {
+                $compact = ShopifySku::compactSkuForLookup($sku);
+                $listed = isset($lookup['set'][$norm])
+                    || ($compact !== '' && isset($lookup['compact_set'][$compact]));
+                if ($listed) {
                     $availableCount++;
                 } else {
                     $missingSkus[] = $sku;
@@ -341,7 +443,9 @@ class Ebay2ListingVariationVerifyController extends Controller
             ];
         }
 
+        $currentNorms = $lookup['item_id_current_norms'][$itemId] ?? [];
         $listedOnParent = [];
+        $listedCompact = [];
         foreach ($lookup['item_id_to_skus'][$itemId] ?? [] as $listedSku) {
             $trimmed = trim((string) $listedSku);
             if ($trimmed === '' || preg_match('/^PARENT\s+/i', $trimmed)) {
@@ -354,12 +458,19 @@ class Ebay2ListingVariationVerifyController extends Controller
             if (! isset($listedOnParent[$norm])) {
                 $listedOnParent[$norm] = $trimmed;
             }
+            $compact = ShopifySku::compactSkuForLookup($trimmed);
+            if ($compact !== '' && ! isset($listedCompact[$compact])) {
+                $listedCompact[$compact] = $norm;
+            }
         }
 
         $availableCount = 0;
         $missingSkus = [];
         foreach ($requiredNormToSku as $norm => $sku) {
-            if (isset($listedOnParent[$norm])) {
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            $listed = isset($listedOnParent[$norm])
+                || ($compact !== '' && isset($listedCompact[$compact]));
+            if ($listed) {
                 $availableCount++;
             } else {
                 $missingSkus[] = $sku;
@@ -372,11 +483,19 @@ class Ebay2ListingVariationVerifyController extends Controller
             if (isset($requiredNormToSku[$norm])) {
                 continue;
             }
-            if ($this->isOpenBoxSku($sku) || $this->isOpenBoxSku($norm)) {
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            if ($compact !== '' && isset($requiredCompact[$compact])) {
+                continue;
+            }
+            // Dropped from the latest inventory pull — the listing was already fixed.
+            if ($hasCurrentPull && ! isset($currentNorms[$norm])) {
+                continue;
+            }
+            if ($this->isOpenBoxSku($sku) || $this->isOpenBoxSku($norm) || $this->isUsedSku($sku) || $this->isUsedSku($norm)) {
                 continue;
             }
 
-            $pmParent = $pmParentByNorm[$norm] ?? null;
+            $pmParent = $pmParentByNorm[$norm] ?? ($compact !== '' ? ($pmParentByCompact[$compact] ?? null) : null);
             // Belongs to another CP parent — not excess for this group.
             if ($pmParent !== null && $pmParent !== $parentKey) {
                 continue;
@@ -403,11 +522,19 @@ class Ebay2ListingVariationVerifyController extends Controller
     }
 
     /**
+     * Live eBay 2 catalog. Ended / inactive rows are ignored.
+     * The latest inventory pull (report_range) is the current variation membership;
+     * older rows stay only so an OOS child still on that item counts as listed.
+     *
      * @return array{
      *   set: array<string, true>,
+     *   compact_set: array<string, true>,
      *   empty: bool,
+     *   has_current_pull: bool,
+     *   current_item_ids: array<string, true>,
      *   sku_to_item_id: array<string, string>,
      *   item_id_to_skus: array<string, list<string>>,
+     *   item_id_current_norms: array<string, array<string, true>>,
      *   parent_to_item_id: array<string, string>,
      *   listings_count: int,
      *   last_pulled_at: ?string
@@ -416,16 +543,37 @@ class Ebay2ListingVariationVerifyController extends Controller
     private function buildListedSkuLookup(): array
     {
         $set = [];
+        $compactSet = [];
         $skuToItemId = [];
+        $skuItemRank = [];
         $itemIdToSkus = [];
+        $itemIdCurrentNorms = [];
+        $currentItemIds = [];
         $parentToItemId = [];
+        $parentItemRank = [];
         $listingsCount = 0;
         $lastPulledAt = null;
+
+        $hasStatus = Schema::hasColumn('ebay_2_metrics', 'listing_status');
+        $hasReportRange = Schema::hasColumn('ebay_2_metrics', 'report_range');
+        $latestRange = null;
+        if ($hasReportRange) {
+            $latestRange = DB::table('ebay_2_metrics')->max('report_range');
+            $latestRange = $latestRange !== null && $latestRange !== '' ? (string) $latestRange : null;
+        }
+
+        $columns = ['sku', 'item_id', 'updated_at'];
+        if ($hasStatus) {
+            $columns[] = 'listing_status';
+        }
+        if ($hasReportRange) {
+            $columns[] = 'report_range';
+        }
 
         $rows = DB::table('ebay_2_metrics')
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
-            ->get(['sku', 'item_id', 'updated_at']);
+            ->get($columns);
 
         foreach ($rows as $row) {
             $sku = trim((string) ($row->sku ?? ''));
@@ -433,9 +581,16 @@ class Ebay2ListingVariationVerifyController extends Controller
                 continue;
             }
 
-            $listingsCount++;
+            $status = $hasStatus ? (string) ($row->listing_status ?? '') : '';
+            if ($status !== '' && (EbayListingEnded::isEnded($status) || strtoupper(trim($status)) === 'MISSING')) {
+                continue;
+            }
+
+            $reportRange = $hasReportRange ? (string) ($row->report_range ?? '') : '';
+            $isCurrent = $latestRange === null || $reportRange === $latestRange;
+
             $updatedAt = $row->updated_at ?? null;
-            if ($updatedAt !== null && $updatedAt !== '') {
+            if ($isCurrent && $updatedAt !== null && $updatedAt !== '') {
                 $updatedAt = (string) $updatedAt;
                 if ($lastPulledAt === null || $updatedAt > $lastPulledAt) {
                     $lastPulledAt = $updatedAt;
@@ -444,31 +599,59 @@ class Ebay2ListingVariationVerifyController extends Controller
 
             $itemId = trim((string) ($row->item_id ?? ''));
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-
+            $compact = ShopifySku::compactSkuForLookup($sku);
             if ($norm !== '') {
                 $set[$norm] = true;
-                if ($itemId !== '' && ! isset($skuToItemId[$norm])) {
-                    $skuToItemId[$norm] = $itemId;
+            }
+            if ($compact !== '') {
+                $compactSet[$compact] = true;
+            }
+
+            if ($isCurrent) {
+                $listingsCount++;
+            }
+
+            if ($itemId === '') {
+                continue;
+            }
+
+            $itemIdToSkus[$itemId][] = $sku;
+            $rank = $isCurrent ? 2 : 1;
+
+            if ($isCurrent) {
+                $currentItemIds[$itemId] = true;
+                if ($norm !== '') {
+                    $itemIdCurrentNorms[$itemId][$norm] = true;
                 }
             }
 
-            if ($itemId !== '') {
-                $itemIdToSkus[$itemId][] = $sku;
+            if ($norm !== '' && $rank > ($skuItemRank[$norm] ?? 0)) {
+                $skuToItemId[$norm] = $itemId;
+                $skuItemRank[$norm] = $rank;
+            }
 
-                if (preg_match('/^PARENT\s+(.+)$/i', $sku, $m)) {
-                    $parentNorm = ShopifySku::normalizeSkuForShopifyLookup(trim($m[1]));
-                    if ($parentNorm !== '' && ! isset($parentToItemId[$parentNorm])) {
-                        $parentToItemId[$parentNorm] = $itemId;
-                    }
+            if (preg_match('/^PARENT\s+(.+)$/i', $sku, $m)) {
+                $parentNorm = ShopifySku::normalizeSkuForShopifyLookup(trim($m[1]));
+                if ($parentNorm !== '' && $rank > ($parentItemRank[$parentNorm] ?? 0)) {
+                    $parentToItemId[$parentNorm] = $itemId;
+                    $parentItemRank[$parentNorm] = $rank;
                 }
             }
         }
 
+        if ($listingsCount === 0) {
+            $listingsCount = count($set);
+        }
+
         return [
             'set' => $set,
+            'compact_set' => $compactSet,
             'empty' => empty($set),
+            'has_current_pull' => $latestRange !== null && $currentItemIds !== [],
+            'current_item_ids' => $currentItemIds,
             'sku_to_item_id' => $skuToItemId,
             'item_id_to_skus' => $itemIdToSkus,
+            'item_id_current_norms' => $itemIdCurrentNorms,
             'parent_to_item_id' => $parentToItemId,
             'listings_count' => $listingsCount,
             'last_pulled_at' => $lastPulledAt,
@@ -543,6 +726,16 @@ class Ebay2ListingVariationVerifyController extends Controller
 
         return str_contains($norm, 'OPEN BOX')
             || str_contains(str_replace(' ', '', $norm), 'OPENBOX');
+    }
+
+    private function isUsedSku(string $sku): bool
+    {
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm === '') {
+            $norm = strtoupper(trim($sku));
+        }
+
+        return (bool) preg_match('/(^|[^A-Z])USED([^A-Z]|$)/', $norm);
     }
 
     private function skuBelongsToParentFamily(string $skuNorm, string $parentNorm, string $childPrefix): bool

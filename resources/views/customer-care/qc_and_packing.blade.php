@@ -1294,6 +1294,14 @@
             min-width: 8rem;
         }
 
+        .issues-toolbar-dates {
+            flex: 0 0 auto;
+        }
+
+        .issues-toolbar-dates .form-control {
+            width: 9.25rem;
+        }
+
         /* ── Quick-search input (Carrier Claims and similar pages) ───── */
         .issues-toolbar-search {
             flex: 1 1 220px;
@@ -1516,6 +1524,24 @@
                                             <option value="green">Recd: Green</option>
                                             <option value="red">Recd: Red</option>
                                         </select>
+                                    @endif
+                                    @if ($showDateRangeFilter ?? false)
+                                        <div class="issues-toolbar-dates d-flex flex-wrap align-items-center gap-1"
+                                            title="Filter by created date">
+                                            <label class="small text-muted mb-0 text-nowrap"
+                                                for="issues-date-from">From</label>
+                                            <input type="date" id="issues-date-from"
+                                                class="form-control form-control-sm" aria-label="From date">
+                                            <label class="small text-muted mb-0 text-nowrap"
+                                                for="issues-date-to">Till</label>
+                                            <input type="date" id="issues-date-to"
+                                                class="form-control form-control-sm" aria-label="Till date">
+                                            <button type="button" class="btn btn-outline-secondary btn-sm px-2"
+                                                id="issues-date-clear" title="Clear date filter"
+                                                aria-label="Clear date filter">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
                                     @endif
                                 </div>
                                 {{-- Search bar defaults to ON for every page that includes this
@@ -2464,6 +2490,9 @@
             const showCarrierColumn = @json((bool) ($showCarrierColumn ?? false));
             const claimsStatsUrl = @json($claimsStatsUrl ?? null);
             const showClaimsSummaryBadges = @json((bool) ($showClaimsSummaryBadges ?? false));
+            const showDateRangeFilter = @json((bool) ($showDateRangeFilter ?? false));
+            let activeDateFrom = '';
+            let activeDateTo = '';
             const issueCarrierOptions = ['USPS', 'UPS', 'FEDEX', 'GOFO'];
             const CARRIER_FILTER_EMPTY = '__empty__';
             let skuTimer = null;
@@ -2772,12 +2801,42 @@
                 return rowSearchHaystack(r).includes(activeSearchQuery);
             }
 
+            function dateRangeIsActive() {
+                return !!(activeDateFrom || activeDateTo);
+            }
+
+            // Calendar day of the row in the same format the table shows
+            // (created_at_display is d-m-Y in the app timezone).
+            function rowCreatedYmd(r) {
+                const display = String(r?.created_at || '').trim();
+                let m = display.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
+                if (m) {
+                    return m[3] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0');
+                }
+                const raw = String(r?.created_at_raw || '').trim();
+                m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (m) {
+                    return m[1] + '-' + m[2] + '-' + m[3];
+                }
+                return '';
+            }
+
+            function rowMatchesDateRange(r) {
+                if (!dateRangeIsActive()) return true;
+                const ymd = rowCreatedYmd(r);
+                if (!ymd) return false;
+                if (activeDateFrom && ymd < activeDateFrom) return false;
+                if (activeDateTo && ymd > activeDateTo) return false;
+                return true;
+            }
+
             function getFilteredRows() {
                 let rows = holdIssueRows;
                 if (activeDeptFilter) rows = rows.filter(rowMatchesActiveDeptFilter);
                 if (activeCarrierFilter) rows = rows.filter(rowMatchesActiveCarrierFilter);
                 if (activeSearchQuery) rows = rows.filter(rowMatchesSearchQuery);
                 if (anyClaimDotFilterActive()) rows = rows.filter(rowMatchesActiveClaimDotFilters);
+                if (dateRangeIsActive()) rows = rows.filter(rowMatchesDateRange);
                 return rows;
             }
 
@@ -2951,6 +3010,37 @@
                     if (next === activeSearchQuery) return;
                     activeSearchQuery = next;
                     renderRows();
+                });
+            })();
+
+            (function setupDateRangeFilter() {
+                if (!showDateRangeFilter) return;
+                const fromEl = document.getElementById('issues-date-from');
+                const toEl = document.getElementById('issues-date-to');
+                const clearBtn = document.getElementById('issues-date-clear');
+                if (!fromEl || !toEl) return;
+
+                function syncBounds() {
+                    toEl.min = fromEl.value || '';
+                    fromEl.max = toEl.value || '';
+                }
+
+                function applyDateInputs() {
+                    activeDateFrom = fromEl.value || '';
+                    activeDateTo = toEl.value || '';
+                    syncBounds();
+                    renderRows();
+                    if (!dateRangeIsActive()) {
+                        loadClaimsStats();
+                    }
+                }
+
+                fromEl.addEventListener('change', applyDateInputs);
+                toEl.addEventListener('change', applyDateInputs);
+                clearBtn?.addEventListener('click', () => {
+                    fromEl.value = '';
+                    toEl.value = '';
+                    applyDateInputs();
                 });
             })();
 
@@ -3511,8 +3601,70 @@
                 });
             }
 
+            function applyClaimsSummaryNumbers(filed, pending, received) {
+                const apply = (idCount, idAmt, bucket) => {
+                    const elC = document.getElementById(idCount);
+                    const elA = document.getElementById(idAmt);
+                    if (elC) {
+                        elC.textContent = String(bucket?.count ?? 0);
+                    }
+                    if (elA) {
+                        elA.textContent = formatClaimsMoney(bucket?.amount ?? 0);
+                    }
+                };
+                apply('carrierClaimsFiledCount', 'carrierClaimsFiledAmount', filed);
+                apply('carrierClaimsPendingCount', 'carrierClaimsPendingAmount', pending);
+                apply('carrierClaimsReceivedCount', 'carrierClaimsReceivedAmount', received);
+            }
+
+            function parseAmpUsdAmount(raw) {
+                const s = String(raw ?? '').replace(/[^0-9.\-]/g, '');
+                if (s === '' || s === '.' || s === '-') return 0;
+                const v = parseFloat(s);
+                return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
+            }
+
+            function claimsSummaryFromRows(rows) {
+                let filedC = 0;
+                let filedA = 0;
+                let pendingC = 0;
+                let pendingA = 0;
+                let receivedC = 0;
+                let receivedA = 0;
+                (rows || []).forEach((r) => {
+                    const amt = parseAmpUsdAmount(r.amp_usd);
+                    if (r.claim_filed) {
+                        filedC += 1;
+                        filedA += amt;
+                    }
+                    if (r.claim_filed && !r.claim_received) {
+                        pendingC += 1;
+                        pendingA += amt;
+                    }
+                    if (r.claim_received) {
+                        receivedC += 1;
+                        receivedA += amt;
+                    }
+                });
+                return {
+                    filed: { count: filedC, amount: filedA },
+                    pending: { count: pendingC, amount: pendingA },
+                    received: { count: receivedC, amount: receivedA },
+                };
+            }
+
+            function refreshDateFilteredClaimsSummary(rows) {
+                if (!showClaimsSummaryBadges || !dateRangeIsActive()) return;
+                const summary = claimsSummaryFromRows(rows);
+                applyClaimsSummaryNumbers(summary.filed, summary.pending, summary.received);
+            }
+
             async function loadClaimsStats() {
                 if (!showClaimsSummaryBadges || !claimsStatsUrl) {
+                    return;
+                }
+                if (dateRangeIsActive()) {
+                    refreshDateFilteredClaimsSummary(getFilteredRows());
                     return;
                 }
                 try {
@@ -3529,19 +3681,11 @@
                     const f = data.filed || {};
                     const p = data.pending || {};
                     const r = data.received || {};
-                    const apply = (idCount, idAmt, c, a) => {
-                        const elC = document.getElementById(idCount);
-                        const elA = document.getElementById(idAmt);
-                        if (elC) {
-                            elC.textContent = String(c ?? 0);
-                        }
-                        if (elA) {
-                            elA.textContent = formatClaimsMoney(a ?? 0);
-                        }
-                    };
-                    apply('carrierClaimsFiledCount', 'carrierClaimsFiledAmount', f.count, f.amount);
-                    apply('carrierClaimsPendingCount', 'carrierClaimsPendingAmount', p.count, p.amount);
-                    apply('carrierClaimsReceivedCount', 'carrierClaimsReceivedAmount', r.count, r.amount);
+                    applyClaimsSummaryNumbers(
+                        { count: f.count, amount: f.amount },
+                        { count: p.count, amount: p.amount },
+                        { count: r.count, amount: r.amount }
+                    );
                 } catch (e) {
                     /* silent */ }
             }
@@ -4660,8 +4804,15 @@
                 const filtered = getFilteredRows();
 
                 if (!filtered.length) {
-                    if (emptyRow) emptyRow.classList.remove('d-none');
+                    if (emptyRow) {
+                        tableBody.innerHTML = emptyRow.outerHTML;
+                        const nextEmpty = document.getElementById('hold_issue_empty_row');
+                        if (nextEmpty) nextEmpty.classList.remove('d-none');
+                    } else {
+                        tableBody.innerHTML = '';
+                    }
                     updateTotalCount();
+                    refreshDateFilteredClaimsSummary(filtered);
                     return;
                 }
 
@@ -4822,6 +4973,7 @@
                 const nextEmpty = document.getElementById('hold_issue_empty_row');
                 if (nextEmpty && holdIssueRows.length) nextEmpty.classList.add('d-none');
                 updateTotalCount();
+                refreshDateFilteredClaimsSummary(filtered);
             }
 
             function updateHistoryTotalCount() {
@@ -5950,7 +6102,10 @@
                 if (showClaimableRemarkColumn) {
                     activeHeaders.push('Not claimable reason');
                 }
-                const activeData = holdIssueRows.map(r => {
+                const exportSource = (showDateRangeFilter && dateRangeIsActive())
+                    ? getFilteredRows()
+                    : holdIssueRows;
+                const activeData = exportSource.map(r => {
                     const row = [r.id, r.sku];
                     if (exportIncludeOrderId) {
                         row.push(r.order_number || '');

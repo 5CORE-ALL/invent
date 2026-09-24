@@ -102,8 +102,9 @@ class ChannelLivePriceSync
         }
 
         // eBay Price is CurrentPrice from GetItem / inventory reports.
-        // Do not stamp Dil S PRC over a listing that never revised (or was changed later).
-        if ($channel === 'doba_withoutship' || self::isEbayChannel($channel)) {
+        // TopDawg Price is SupplierProduct cost on the site.
+        // Do not stamp Dil S PRC over a listing that is still at another amount.
+        if ($channel === 'doba_withoutship' || $channel === 'topdawg' || self::isEbayChannel($channel)) {
             return;
         }
 
@@ -288,7 +289,8 @@ class ChannelLivePriceSync
             return PushedListingPrice::temuBaseToWrite($incoming, $pushed);
         }
 
-        if (self::isEbayChannel($channel)) {
+        // Live catalog price wins. A saved S PRC stays in SPRICE, not in Price.
+        if ($channel === 'topdawg' || self::isEbayChannel($channel)) {
             if ($incoming !== null && $incoming > 0) {
                 return round($incoming, 2);
             }
@@ -321,8 +323,18 @@ class ChannelLivePriceSync
         }
 
         // A leftover SPRICE_PUSHED_VALUE must not skip the revise or overwrite
-        // ebay_price when the live listing is still at another amount.
+        // the live listing price when the site is still at another amount.
         if (self::isEbayChannel($channel)) {
+            return false;
+        }
+
+        // Already submitted to TopDawg. Leave the site cost in the Price column.
+        if (self::normalize($channel) === 'topdawg') {
+            $pushedTd = (float) ($row['pushed_sprice'] ?? 0);
+            if ($pushedTd > 0 && PushedListingPrice::same($pushedTd, $next)) {
+                return true;
+            }
+
             return false;
         }
 

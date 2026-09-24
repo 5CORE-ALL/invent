@@ -10,6 +10,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -28,10 +29,35 @@ class DepopController extends Controller
 
     private const DEFAULT_MARGIN_PCT = 87.0;
 
+    private const SOP_SHEET_CACHE_KEY = 'depop.analytics.sop_sheet_url';
+
     public function pricingView()
     {
         return view('market-places.depop_pricing', [
             'marginPercent' => self::marginPercent(),
+            'sopSheetUrl' => trim((string) Cache::get(self::SOP_SHEET_CACHE_KEY, '')),
+        ]);
+    }
+
+    public function saveSopSheet(Request $request)
+    {
+        $url = trim((string) $request->input('url', ''));
+        if ($url !== '' && ! filter_var($url, FILTER_VALIDATE_URL)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enter a valid Google Sheet or Doc URL.',
+            ], 422);
+        }
+
+        if ($url === '') {
+            Cache::forget(self::SOP_SHEET_CACHE_KEY);
+        } else {
+            Cache::forever(self::SOP_SHEET_CACHE_KEY, $url);
+        }
+
+        return response()->json([
+            'success' => true,
+            'url' => $url,
         ]);
     }
 

@@ -54,6 +54,17 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'mercari_woship'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'mercari_woship'])
 
+        /* Keep SKU text selection inside the cell. Row click-select would otherwise highlight the whole row. */
+        #mercari-without-ship-table .tabulator-row {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #mercari-without-ship-table .tabulator-cell[tabulator-field="sku"] {
+            -webkit-user-select: text;
+            user-select: text;
+            cursor: text;
+        }
+
         #mercWosOpSpriceModal.modal {
             align-items: flex-start;
             padding-top: 1.5rem;
@@ -798,6 +809,14 @@
                     }
                 ],
             });
+
+            // Copying the SKU must not select the row. Tabulator's row click clears the
+            // text selection and toggles the whole row; stop that click on the SKU cell.
+            document.getElementById('mercari-without-ship-table').addEventListener('click', function(e) {
+                if (e.target.closest && e.target.closest('.tabulator-cell[tabulator-field="sku"]')) {
+                    e.stopPropagation();
+                }
+            }, true);
 
             if (typeof window.chPromoBindTableAutofit === 'function') {
                 window.chPromoBindTableAutofit(table);

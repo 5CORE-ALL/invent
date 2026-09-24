@@ -21,6 +21,12 @@ class PayrollService
     /** First N calendar days of the month come from TeamLogger; the rest from New Logger. */
     public const LOGGER_TEAM_DAYS = 18;
 
+    /**
+     * From this date, Hours LM is the larger of TeamLogger and the new attendance
+     * system for the whole month. Earlier months keep the 18-day split.
+     */
+    public const NEW_ATTENDANCE_HOURS_FROM = '2026-09-01';
+
     public function __construct(
         protected TeamSalaryCalculator $teamSalary
     ) {}
@@ -55,6 +61,33 @@ class PayrollService
         } catch (\Throwable) {
             return [null, null];
         }
+    }
+
+    /**
+     * September 2026 onward uses the larger of TeamLogger and the new attendance system.
+     */
+    public function monthUsesNewAttendanceHours(PayrollMonth $month): bool
+    {
+        $range = $this->monthPeriodRange($month);
+
+        return $range !== null && $range[0] >= self::NEW_ATTENDANCE_HOURS_FROM;
+    }
+
+    /**
+     * @return array{0: string, 1: string}|null
+     */
+    protected function monthPeriodRange(PayrollMonth $month): ?array
+    {
+        $start = $month->period_start?->toDateString();
+        $end = $month->period_end?->toDateString();
+        if (! $start || ! $end) {
+            [$start, $end] = $this->periodDatesFromLabel($month->month_label);
+        }
+        if (! $start || ! $end) {
+            return null;
+        }
+
+        return [$start, $end];
     }
 
     public function monthIncrementLabel(string $monthLabel): string
@@ -130,17 +163,21 @@ class PayrollService
     }
 
     /**
-     * First 18 calendar days → TeamLogger; remaining days → built-in logger.
-     * Display only — does not change Hours LM or salary amounts.
+     * Before September 2026: first 18 calendar days → TeamLogger; remaining days → built-in logger.
+     * From September 2026: Final Hour is the full-month TeamLogger total plus the full-month new attendance total.
      *
      * @param  iterable<int, User|object>  $users
-     * @return array<int, array{hours: float, days: int, team_hours: float, final_hours: float, team_from: string, team_to: string, new_from: ?string, new_to: string}>
+     * @return array<int, array{hours: float, days: int, team_hours: float, final_hours: float, team_from: ?string, team_to: ?string, new_from: ?string, new_to: string, attendance_only?: bool, has_data?: bool}>
      */
     public function loggerSplitHoursByUser(PayrollMonth $month, iterable $users): array
     {
         $users = collect($users)->filter(fn ($u) => $u && isset($u->id));
         if ($users->isEmpty()) {
             return [];
+        }
+
+        if ($this->monthUsesNewAttendanceHours($month)) {
+            return $this->newAttendanceSplitByUser($month, $users);
         }
 
         $split = $this->loggerSplitDates($month);
@@ -182,13 +219,99 @@ class PayrollService
             ];
         }
 
+        return $this->attachTeamLoggerMonthHours($month, $users, $hours);
+    }
+
+    /**
+     * Full-month hours from the new attendance system. Used from September 2026.
+     *
+     * @param  \Illuminate\Support\Collection<int, User|object>  $users
+     * @return array<int, array{hours: float, days: int, team_hours: float, second_hours: float, final_hours: float, team_from: null, team_to: null, new_from: string, new_to: string, attendance_only: bool, has_data: bool}>
+     */
+    protected function newAttendanceSplitByUser(PayrollMonth $month, $users): array
+    {
+        $range = $this->monthPeriodRange($month);
+        if (! $range) {
+            return [];
+        }
+
+        [$start, $end] = $range;
+        $userIds = $users->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $attendance = $this->builtLoggerHoursForRange($userIds, $start, $end, sessionsStartedInRange: true);
+
+        $hours = [];
+        foreach ($users as $user) {
+            $userId = (int) $user->id;
+            $built = $attendance[$userId] ?? ['hours' => 0.0, 'days' => 0, 'has_data' => false];
+            $worked = (float) ($built['hours'] ?? 0);
+
+            $hours[$userId] = [
+                'hours' => $worked,
+                'days' => (int) ($built['days'] ?? 0),
+                'team_hours' => 0.0,
+                'second_hours' => $worked,
+                'final_hours' => $worked,
+                'team_from' => null,
+                'team_to' => null,
+                'new_from' => $start,
+                'new_to' => $end,
+                'attendance_only' => true,
+                'has_data' => (bool) ($built['has_data'] ?? false),
+            ];
+        }
+
+        return $this->attachTeamLoggerMonthHours($month, $users, $hours);
+    }
+
+    /**
+     * Full-month productive TeamLogger hours, kept visible beside the new attendance hours.
+     *
+     * @param  \Illuminate\Support\Collection<int, User|object>  $users
+     * @param  array<int, array<string, mixed>>  $hours
+     * @return array<int, array<string, mixed>>
+     */
+    protected function attachTeamLoggerMonthHours(PayrollMonth $month, $users, array $hours): array
+    {
+        if ($hours === []) {
+            return $hours;
+        }
+
+        $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
+        $range = $this->monthPeriodRange($month);
+
+        foreach ($users as $user) {
+            if (! $user instanceof User) {
+                continue;
+            }
+            $userId = (int) $user->id;
+            if (! isset($hours[$userId])) {
+                continue;
+            }
+            $email = $this->resolveTeamLoggerEmail($user->email);
+            $hasTeam = array_key_exists($email, $teamLogger);
+            $teamMonthHours = $hasTeam ? $this->liveHoursForUser($user, $teamLogger) : 0.0;
+            $hours[$userId]['team_logger_month_hours'] = $teamMonthHours;
+            $hours[$userId]['team_logger_month_from'] = $range[0] ?? null;
+            $hours[$userId]['team_logger_month_to'] = $range[1] ?? null;
+
+            if (! empty($hours[$userId]['attendance_only'])) {
+                $attendanceHours = (float) ($hours[$userId]['hours'] ?? 0);
+                $hours[$userId]['team_hours'] = $teamMonthHours;
+                $hours[$userId]['second_hours'] = $attendanceHours;
+                // Same days can exist in both loggers. Pay the larger source, not the sum.
+                $hours[$userId]['final_hours'] = max($teamMonthHours, $attendanceHours);
+                $hours[$userId]['has_data'] = ! empty($hours[$userId]['has_data']) || $hasTeam;
+            }
+        }
+
         return $hours;
     }
 
     /**
-     * Copy Final Hour (18d TeamLogger + remaining New Logger) into Hours LM
-     * and recalculate salary. Marks hours as overridden so TeamLogger refresh
-     * does not overwrite the split total.
+     * Copy Final Hour into Hours LM and recalculate salary.
+     * Before September 2026 that total is 18 days TeamLogger plus the remaining New Logger days,
+     * and the row is locked so a TeamLogger refresh does not overwrite it.
+     * From September 2026 the total is the larger of full-month TeamLogger and full-month new attendance, and it stays live.
      *
      * @return array{updated:int, unchanged:int, skipped_no_data:int, locked:bool}
      */
@@ -215,15 +338,22 @@ class PayrollService
                 continue;
             }
 
-            $finalHours = (float) ($split[$row->user_id]['final_hours'] ?? 0);
-            if ((float) $row->hours_worked === $finalHours && $row->hours_overridden) {
+            $entry = $split[$row->user_id];
+            if (! empty($entry['attendance_only']) && empty($entry['has_data'])) {
+                $stats['skipped_no_data']++;
+                continue;
+            }
+
+            $finalHours = (float) ($entry['final_hours'] ?? 0);
+            $lockHours = empty($entry['attendance_only']);
+            if ((float) $row->hours_worked === $finalHours && (bool) $row->hours_overridden === $lockHours) {
                 $stats['unchanged']++;
                 continue;
             }
 
             $row->update([
                 'hours_worked' => $finalHours,
-                'hours_overridden' => true,
+                'hours_overridden' => $lockHours,
                 'edited_by' => $editedBy,
                 'edited_at' => now(),
             ]);
@@ -264,7 +394,7 @@ class PayrollService
             return [];
         }
 
-        return $this->builtLoggerHoursForRange($userIds, $start, $end);
+        return $this->builtLoggerHoursForRange($userIds, $start, $end, sessionsStartedInRange: false);
     }
 
     /**
@@ -299,9 +429,9 @@ class PayrollService
 
     /**
      * @param  array<int, int>  $userIds
-     * @return array<int, array{hours: float, days: int}>
+     * @return array<int, array{hours: float, days: int, has_data: bool}>
      */
-    protected function builtLoggerHoursForRange(array $userIds, string $start, string $end): array
+    protected function builtLoggerHoursForRange(array $userIds, string $start, string $end, bool $sessionsStartedInRange = false): array
     {
         $startAt = Carbon::parse($start)->startOfDay();
         $endAt = Carbon::parse($end)->endOfDay();
@@ -314,12 +444,21 @@ class PayrollService
             ->get()
             ->keyBy('user_id');
 
-        $fromSessions = AttendanceSession::query()
-            ->whereIn('user_id', $userIds)
-            ->where('started_at', '<=', $endAt)
-            ->where(function ($q) use ($startAt) {
-                $q->whereNull('ended_at')->orWhere('ended_at', '>=', $startAt);
-            })
+        $sessionQuery = AttendanceSession::query()
+            ->whereIn('user_id', $userIds);
+        if ($sessionsStartedInRange) {
+            // Count only sessions that began in this window so an open August
+            // session is not added onto September (and the reverse).
+            $sessionQuery->whereBetween('started_at', [$startAt, $endAt]);
+        } else {
+            $sessionQuery
+                ->where('started_at', '<=', $endAt)
+                ->where(function ($q) use ($startAt) {
+                    $q->whereNull('ended_at')->orWhere('ended_at', '>=', $startAt);
+                });
+        }
+
+        $fromSessions = $sessionQuery
             ->selectRaw('user_id, SUM(total_active_seconds) as active_seconds, COUNT(DISTINCT DATE(started_at)) as days')
             ->groupBy('user_id')
             ->get()
@@ -339,6 +478,7 @@ class PayrollService
             $hours[$userId] = [
                 'hours' => $seconds > 0 ? (float) (int) round($seconds / 3600) : 0.0,
                 'days' => (int) max((int) ($summary?->days ?? 0), (int) ($session?->days ?? 0)),
+                'has_data' => $summary !== null || $session !== null,
             ];
         }
 
@@ -397,12 +537,14 @@ class PayrollService
 
     /**
      * Whether a payroll row should stay on the sheet: any positive login/working
-     * hours (live TeamLogger, manual override, or already stored). Inactive users
-     * with hours are kept; anyone with zero hours is dropped.
+     * hours (new attendance from September 2026, otherwise TeamLogger, plus a
+     * manual override or already stored hours). Inactive users with hours are
+     * kept; anyone with zero measured hours is dropped.
      *
      * @param  array<string, array<string, mixed>>  $teamLogger
+     * @param  array<int, array{hours: float, has_data?: bool}>|null  $attendance
      */
-    protected function rowHasPayableHours(PayrollEmployeeSalary $row, array $teamLogger): bool
+    protected function rowHasPayableHours(PayrollEmployeeSalary $row, array $teamLogger, ?array $attendance = null): bool
     {
         // Manually edited hours rows stay on the sheet (including 0h) so HR can
         // keep someone visible and adjust hours without them disappearing on reload.
@@ -413,6 +555,23 @@ class PayrollService
         $user = $row->user;
         if (! $user) {
             return false;
+        }
+
+        if (is_array($attendance)) {
+            $entry = $attendance[(int) $user->id] ?? null;
+            $attendanceHours = ($entry && ! empty($entry['has_data'])) ? (float) ($entry['hours'] ?? 0) : 0.0;
+            $teamHours = $this->liveHoursForUser($user, $teamLogger);
+            if ($attendanceHours + $teamHours > 0) {
+                return true;
+            }
+
+            $email = $this->resolveTeamLoggerEmail($user->email);
+            $measured = ($entry && ! empty($entry['has_data'])) || array_key_exists($email, $teamLogger);
+            if ($measured) {
+                return false;
+            }
+
+            return (float) $row->hours_worked > 0;
         }
 
         $live = $this->liveHoursForUser($user, $teamLogger);
@@ -426,7 +585,7 @@ class PayrollService
             return false;
         }
 
-        // No live TeamLogger row: keep if the sheet already has stored hours
+        // No live hours source: keep if the sheet already has stored hours
         // (inactive leavers whose hours were synced earlier still show).
         return (float) $row->hours_worked > 0;
     }
@@ -496,16 +655,21 @@ class PayrollService
      */
     public function removeEmployeesWithoutHours(PayrollMonth $month): int
     {
+        $rows = PayrollEmployeeSalary::with('user')->where('payroll_month_id', $month->id)->get();
+        $usesAttendance = $this->monthUsesNewAttendanceHours($month);
+        $attendance = $usesAttendance
+            ? $this->attendanceHoursForMonth($month, $rows->pluck('user_id')->all())
+            : null;
         $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
         $removeIds = [];
 
-        foreach (PayrollEmployeeSalary::with('user')->where('payroll_month_id', $month->id)->get() as $row) {
-            // China / USA candidates stay on the sheet even without TeamLogger hours.
+        foreach ($rows as $row) {
+            // China / USA candidates stay on the sheet even without logged hours.
             if ($row->user && $row->user->isOverseasSalaryRegion()) {
                 continue;
             }
 
-            if (! $this->rowHasPayableHours($row, $teamLogger)) {
+            if (! $this->rowHasPayableHours($row, $teamLogger, $attendance)) {
                 $removeIds[] = $row->id;
             }
         }
@@ -569,7 +733,7 @@ class PayrollService
      * raise is absorbed into this month's base pay. Hours / other / advance still
      * come from the live calculation.
      */
-    protected function newRowAttributes(PayrollMonth $month, User $user, array $teamLogger): array
+    protected function newRowAttributes(PayrollMonth $month, User $user, array $teamLogger, ?float $hoursOverride = null): array
     {
         $calc = $this->teamSalary->calculateForUser($user, $teamLogger);
 
@@ -579,6 +743,16 @@ class PayrollService
                 (float) $calc['hours_lm'],
                 $carry,
                 0.0,
+                (float) $calc['other'],
+                (float) $calc['adv_inc_other'],
+            );
+        }
+
+        if ($hoursOverride !== null) {
+            $calc = $this->teamSalary->calculateFromValues(
+                $hoursOverride,
+                (float) $calc['salary_pp'],
+                (float) $calc['increment'],
                 (float) $calc['other'],
                 (float) $calc['adv_inc_other'],
             );
@@ -610,11 +784,21 @@ class PayrollService
             $query->whereIn('id', $userIds);
         }
 
+        $users = $query->get();
+        $attendance = $this->monthUsesNewAttendanceHours($month)
+            ? $this->attendanceHoursForMonth($month, $users->pluck('id')->all())
+            : [];
+
         $count = 0;
-        foreach ($query->get() as $user) {
-            if (! $this->userHasRecordedHours($user, $teamLogger)) {
+        foreach ($users as $user) {
+            $attendanceHours = $this->positiveAttendanceHours($attendance, (int) $user->id);
+            if ($attendanceHours === null && ! $this->userHasRecordedHours($user, $teamLogger)) {
                 continue;
             }
+
+            $hoursOverride = $attendance !== []
+                ? $this->combinedSheetHours($user, $teamLogger, $attendance)
+                : null;
 
             $exists = PayrollEmployeeSalary::where('payroll_month_id', $month->id)
                 ->where('user_id', $user->id)
@@ -628,8 +812,8 @@ class PayrollService
             // rows keep whatever salary is already on the sheet (manual edits or a
             // previously carried-forward value) so re-syncing never clobbers them.
             $attributes = $exists
-                ? $this->liveCalcAttributes($user, $teamLogger)
-                : $this->newRowAttributes($month, $user, $teamLogger);
+                ? $this->liveCalcAttributes($user, $teamLogger, $hoursOverride)
+                : $this->newRowAttributes($month, $user, $teamLogger, $hoursOverride);
             $attributes['is_new_hire'] = $newHiresOnly || ! $exists;
 
             PayrollEmployeeSalary::updateOrCreate(
@@ -646,9 +830,18 @@ class PayrollService
      * Attributes computed straight from the user's stored salary + live hours,
      * without carry-forward. Used when refreshing an existing row.
      */
-    protected function liveCalcAttributes(User $user, array $teamLogger): array
+    protected function liveCalcAttributes(User $user, array $teamLogger, ?float $hoursOverride = null): array
     {
         $calc = $this->teamSalary->calculateForUser($user, $teamLogger);
+        if ($hoursOverride !== null) {
+            $calc = $this->teamSalary->calculateFromValues(
+                $hoursOverride,
+                (float) $calc['salary_pp'],
+                (float) $calc['increment'],
+                (float) $calc['other'],
+                (float) $calc['adv_inc_other'],
+            );
+        }
         $salary = $user->userSalary;
 
         return [
@@ -690,17 +883,25 @@ class PayrollService
         }
 
         $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
+        $attendance = $this->monthUsesNewAttendanceHours($month)
+            ? $this->attendanceHoursForMonth($month, $missing->pluck('id')->all())
+            : [];
         $count = 0;
 
         foreach ($missing as $user) {
-            // China / USA candidates always get a row (they may not use TeamLogger).
-            if (! $user->isOverseasSalaryRegion() && ! $this->userHasRecordedHours($user, $teamLogger)) {
+            $attendanceHours = $this->positiveAttendanceHours($attendance, (int) $user->id);
+            // China / USA candidates always get a row (they may not use either logger).
+            if (! $user->isOverseasSalaryRegion() && $attendanceHours === null && ! $this->userHasRecordedHours($user, $teamLogger)) {
                 continue;
             }
 
+            $hoursOverride = $attendance !== []
+                ? $this->combinedSheetHours($user, $teamLogger, $attendance)
+                : null;
+
             try {
                 PayrollEmployeeSalary::create(array_merge(
-                    $this->newRowAttributes($month, $user, $teamLogger),
+                    $this->newRowAttributes($month, $user, $teamLogger, $hoursOverride),
                     [
                         'payroll_month_id' => $month->id,
                         'user_id' => $user->id,
@@ -861,11 +1062,12 @@ class PayrollService
     }
 
     /**
-     * Refresh stored working hours from live TeamLogger for an unlocked month, then
-     * recompute amounts. Salary inputs (PP, increment, other, adv) are kept as stored,
-     * and users with no live TeamLogger entry keep their existing hours.
+     * Refresh stored working hours for an unlocked month, then recompute amounts.
+     * Before September 2026 the source is TeamLogger. From September 2026 Hours LM
+     * is the larger of TeamLogger and the new attendance system. Salary inputs stay as stored.
+     * Hand-edited hours are left alone unless this is a full Sync Hours.
      *
-     * @return array{updated:int, skipped_overridden:int, skipped_no_data:int, unchanged:int, teamlogger_users:int, locked:bool}
+     * @return array{updated:int, skipped_overridden:int, skipped_no_data:int, unchanged:int, teamlogger_users:int, locked:bool, hours_source?:string}
      */
     public function refreshLiveHours(PayrollMonth $month, bool $freshFromApi = false): array
     {
@@ -882,12 +1084,24 @@ class PayrollService
             return $stats;
         }
 
+        $usesAttendance = $this->monthUsesNewAttendanceHours($month);
+        if ($usesAttendance) {
+            $stats['hours_source'] = 'both';
+        }
+
         if ($freshFromApi) {
             (new TeamLoggerService())->clearCacheForMonth($month->month_label);
         }
 
+        $rows = PayrollEmployeeSalary::with('user')->where('payroll_month_id', $month->id)->get();
+        $attendance = $usesAttendance
+            ? $this->attendanceHoursForMonth($month, $rows->pluck('user_id')->all())
+            : [];
         $teamLogger = $this->teamLoggerDataForMonth($month->month_label, ! $freshFromApi, $freshFromApi);
-        $stats['teamlogger_users'] = count($teamLogger);
+        $attendanceUsers = count(array_filter($attendance, fn ($entry) => ! empty($entry['has_data'])));
+        $stats['teamlogger_users'] = $usesAttendance
+            ? ($attendanceUsers + count($teamLogger))
+            : count($teamLogger);
 
         if ($freshFromApi && $teamLogger !== []) {
             $this->persistTeamLoggerHours($month->month_label, $teamLogger);
@@ -896,7 +1110,7 @@ class PayrollService
         $changed = false;
         $respectOverrides = ! $freshFromApi;
 
-        foreach (PayrollEmployeeSalary::with('user')->where('payroll_month_id', $month->id)->get() as $row) {
+        foreach ($rows as $row) {
             if (! $row->user) {
                 continue;
             }
@@ -904,13 +1118,28 @@ class PayrollService
                 $stats['skipped_overridden']++;
                 continue;
             }
+
+            $attendanceEntry = $attendance[(int) $row->user_id] ?? null;
+            $hasAttendance = $usesAttendance && $attendanceEntry && ! empty($attendanceEntry['has_data']);
             $email = $this->resolveTeamLoggerEmail($row->user->email);
-            if (! array_key_exists($email, $teamLogger)) {
+            $hasTeam = array_key_exists($email, $teamLogger);
+
+            if ($usesAttendance) {
+                if (! $hasAttendance && ! $hasTeam) {
+                    $stats['skipped_no_data']++;
+                    continue;
+                }
+                $attendanceHours = $hasAttendance ? (float) $attendanceEntry['hours'] : 0.0;
+                $teamHours = $hasTeam ? $this->liveHoursForUser($row->user, $teamLogger) : 0.0;
+                $hours = max($teamHours, $attendanceHours);
+            } elseif (! $hasTeam) {
                 $stats['skipped_no_data']++;
                 continue;
+            } else {
+                // Payroll Hours LM = productive only (TeamLogger total − idle). Never include idle.
+                $hours = $this->liveHoursForUser($row->user, $teamLogger);
             }
-            // Payroll Hours LM = productive only (TeamLogger total − idle). Never include idle.
-            $hours = $this->liveHoursForUser($row->user, $teamLogger);
+
             $hoursChanged = (float) $row->hours_worked !== $hours;
             $clearOverride = $freshFromApi && $row->hours_overridden;
 
@@ -932,6 +1161,54 @@ class PayrollService
         }
 
         return $stats;
+    }
+
+    /**
+     * New-attendance hours for every user in this payroll month.
+     * Sessions are limited to ones that started inside the month.
+     *
+     * @param  array<int, int|string>  $userIds
+     * @return array<int, array{hours: float, days: int, has_data: bool}>
+     */
+    protected function attendanceHoursForMonth(PayrollMonth $month, array $userIds): array
+    {
+        $range = $this->monthPeriodRange($month);
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if (! $range || $userIds === []) {
+            return [];
+        }
+
+        return $this->builtLoggerHoursForRange($userIds, $range[0], $range[1], sessionsStartedInRange: true);
+    }
+
+    /**
+     * @param  array<int, array{hours?: float, has_data?: bool}>  $attendance
+     */
+    protected function positiveAttendanceHours(array $attendance, int $userId): ?float
+    {
+        $entry = $attendance[$userId] ?? null;
+        if (! $entry || empty($entry['has_data'])) {
+            return null;
+        }
+
+        $hours = (float) ($entry['hours'] ?? 0);
+
+        return $hours > 0 ? $hours : null;
+    }
+
+    /**
+     * The larger of TeamLogger and new-attendance hours. Adding them double-counts
+     * people who appear in both (96h in attendance plus 4h in TeamLogger became 100h).
+     *
+     * @param  array<string, array<string, mixed>>  $teamLogger
+     * @param  array<int, array{hours?: float, has_data?: bool}>  $attendance
+     */
+    protected function combinedSheetHours(User $user, array $teamLogger, array $attendance): float
+    {
+        $entry = $attendance[(int) $user->id] ?? null;
+        $attendanceHours = ($entry && ! empty($entry['has_data'])) ? (float) ($entry['hours'] ?? 0) : 0.0;
+
+        return max($this->liveHoursForUser($user, $teamLogger), $attendanceHours);
     }
 
     /** @param  array<string, array<string, mixed>>  $teamLogger */

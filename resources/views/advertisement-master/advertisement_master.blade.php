@@ -364,8 +364,8 @@
                         </div>
                         <div class="d-flex align-items-center gap-1" style="flex-shrink:0;">
                             <select id="adm-filter-rn" class="form-select form-select-sm" style="width:100px;" aria-label="Filter REQ/ NR" title="Filter REQ/ NR">
-                                <option value="" selected>REQ/ NR</option>
-                                <option value="REQ">REQ</option>
+                                <option value="">REQ/ NR</option>
+                                <option value="REQ" selected>REQ</option>
                                 <option value="NR">NR</option>
                             </select>
                         </div>
@@ -1110,7 +1110,7 @@
                 const chInput = document.getElementById('adm-filter-channel');
                 if (chInput) chInput.value = '';
                 const rnSel = document.getElementById('adm-filter-rn');
-                if (rnSel) rnSel.value = '';
+                if (rnSel) rnSel.value = 'REQ';
                 table.clearFilter();
                 showAdmLoading();
                 table.setData(dataUrl);

@@ -59,6 +59,8 @@
     // Amt Rec, not-claimable notes and department.
     'showSearchBar' => true,
     'searchBarPlaceholder' => 'Search SKU, order, tracking, carrier…',
+    // From / Till date range on the toolbar. Filters rows by created date.
+    'showDateRangeFilter' => true,
     // Ord column: clipboard icon only (order # via button title); no hover expand.
     'orderNumberIconOnly' => true,
 ])->render() !!}
