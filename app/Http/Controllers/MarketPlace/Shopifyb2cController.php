@@ -1101,32 +1101,19 @@ class Shopifyb2cController extends Controller
             $processedItem['STANDARD_PRICE'] = $stdPrc;
             $processedItem = $promoService->applyToRow($processedItem, $promoMap, (string) $sku);
 
-            $seenLmp = [];
-            $lmpCount = 0;
-            $lowestLmpPrice = null;
+            $lmpOffers = [];
             $skusForLmp = $linkedLmpSkus !== [] ? $linkedLmpSkus : [$sku];
             foreach ($skusForLmp as $linkedSku) {
                 $linkedKey = GoogleSkuCompetitor::normalizeSkuKey((string) $linkedSku);
-                $groupEntries = $googleLmpDetails[$linkedKey] ?? [];
-                if ($groupEntries === []) {
-                    continue;
-                }
-                foreach ($groupEntries as $comp) {
-                    $dedupeKey = (string) ($comp['d'] ?? '');
-                    if ($dedupeKey === '' || isset($seenLmp[$dedupeKey])) {
-                        continue;
-                    }
-                    $seenLmp[$dedupeKey] = true;
-                    $lmpCount++;
-                    $offerPrice = (float) ($comp['p'] ?? 0);
-                    if ($offerPrice > 0 && ($lowestLmpPrice === null || $offerPrice < $lowestLmpPrice)) {
-                        $lowestLmpPrice = $offerPrice;
-                    }
+                foreach ($googleLmpDetails[$linkedKey] ?? [] as $comp) {
+                    $lmpOffers[] = $comp;
                 }
             }
+            $lmpSummary = GoogleSkuCompetitor::summarizeLeanOffers($lmpOffers);
 
-            $processedItem['lmp_price'] = $lowestLmpPrice !== null ? round($lowestLmpPrice, 2) : null;
-            $processedItem['lmp_entries_total'] = $lmpCount;
+            $processedItem['lmp_price'] = $lmpSummary['lowest'];
+            $processedItem['lmp_ignored_price'] = $lmpSummary['ignored_lowest'];
+            $processedItem['lmp_entries_total'] = $lmpSummary['total'];
 
             $processedItem['is_parent_summary'] = false;
             $processedItems[] = $processedItem;
@@ -1204,6 +1191,7 @@ class Shopifyb2cController extends Controller
                 'SPRICE_STATUS' => null,
                 'linked_lmp_skus' => [],
                 'lmp_price' => null,
+                'lmp_ignored_price' => null,
                 'lmp_entries_total' => 0,
             ];
         }

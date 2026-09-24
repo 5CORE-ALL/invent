@@ -10904,6 +10904,13 @@ class CvrMasterController extends Controller
 
                 return response()->json(['success' => true, 'ignored' => $ignored ? 1 : 0, 'message' => $ignored ? 'Ignored for L1' : 'Included in L1']);
             }
+            if ($marketplace === 'google') {
+                if (! GoogleSkuCompetitor::persistIgnored((int) $id, $ignored)) {
+                    return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);
+                }
+
+                return response()->json(['success' => true, 'ignored' => $ignored ? 1 : 0, 'message' => $ignored ? 'Ignored for L1' : 'Included in L1']);
+            }
             $comp = $model::find((int) $id);
             if (!$comp) {
                 return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);

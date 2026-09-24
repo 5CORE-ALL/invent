@@ -3058,6 +3058,15 @@
                                 + lmpPrice.toFixed(2) + '</span>' + countHtml + '</span>';
                         }
 
+                        const ignoredPrice = parseFloat(rowData.lmp_ignored_price) || 0;
+                        if (ignoredPrice > 0) {
+                            return '<span style="white-space:nowrap;" title="Ignored LMP — not used for S PRC">'
+                                + '<span style="text-decoration:line-through;color:#94a3b8;font-weight:600;">$'
+                                + ignoredPrice.toFixed(2) + '</span>'
+                                + ' <i class="fas fa-times" style="color:#dc3545;font-size:10px;" title="Ignored — not counted"></i>'
+                                + countHtml + '</span>';
+                        }
+
                         if (totalCompetitors > 0) {
                             return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"'
                                 + ' title="View ' + totalCompetitors + ' competitor' + (totalCompetitors === 1 ? '' : 's') + '"'
@@ -4263,18 +4272,24 @@
         function updateShopifyB2cLmpRow(sku, competitors, lowestPrice) {
             if (!table || !sku) return;
             const list = Array.isArray(competitors) ? competitors : [];
-            const active = list.filter(function(c) { return !c.ignored; });
+            const active = list.filter(function(c) {
+                return window.LmpIgnore ? !LmpIgnore.isIgnored(c) : !c.ignored;
+            });
             const lowest = (lowestPrice != null && lowestPrice > 0)
                 ? parseFloat(lowestPrice)
                 : (active.length
                     ? Math.min.apply(null, active.map(c => parseFloat(c.price) || 0).filter(p => p > 0))
                     : null);
+            const ignoredOnly = !(lowest > 0) && window.LmpIgnore
+                ? LmpIgnore.ignoredPrice(list, 'price')
+                : null;
 
             table.getRows().forEach(function(row) {
                 const d = row.getData();
                 if (String(d['(Child) sku'] || '') !== String(sku)) return;
                 row.update({
                     lmp_price: lowest && lowest > 0 ? Math.round(lowest * 100) / 100 : null,
+                    lmp_ignored_price: ignoredOnly && ignoredOnly > 0 ? Math.round(ignoredOnly * 100) / 100 : null,
                     lmp_entries_total: list.length,
                 });
             });
