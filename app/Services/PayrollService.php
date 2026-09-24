@@ -22,8 +22,8 @@ class PayrollService
     public const LOGGER_TEAM_DAYS = 18;
 
     /**
-     * From this date, Hours LM and Final Hour are TeamLogger plus the new
-     * attendance system for the whole month. Earlier months keep the 18-day split.
+     * From this date, Hours LM is the larger of TeamLogger and the new attendance
+     * system for the whole month. Earlier months keep the 18-day split.
      */
     public const NEW_ATTENDANCE_HOURS_FROM = '2026-09-01';
 
@@ -64,7 +64,7 @@ class PayrollService
     }
 
     /**
-     * September 2026 onward counts both TeamLogger and the new attendance system.
+     * September 2026 onward uses the larger of TeamLogger and the new attendance system.
      */
     public function monthUsesNewAttendanceHours(PayrollMonth $month): bool
     {
@@ -298,7 +298,8 @@ class PayrollService
                 $attendanceHours = (float) ($hours[$userId]['hours'] ?? 0);
                 $hours[$userId]['team_hours'] = $teamMonthHours;
                 $hours[$userId]['second_hours'] = $attendanceHours;
-                $hours[$userId]['final_hours'] = $teamMonthHours + $attendanceHours;
+                // Same days can exist in both loggers. Pay the larger source, not the sum.
+                $hours[$userId]['final_hours'] = max($teamMonthHours, $attendanceHours);
                 $hours[$userId]['has_data'] = ! empty($hours[$userId]['has_data']) || $hasTeam;
             }
         }
@@ -310,7 +311,7 @@ class PayrollService
      * Copy Final Hour into Hours LM and recalculate salary.
      * Before September 2026 that total is 18 days TeamLogger plus the remaining New Logger days,
      * and the row is locked so a TeamLogger refresh does not overwrite it.
-     * From September 2026 the total is full-month TeamLogger plus full-month new attendance, and it stays live.
+     * From September 2026 the total is the larger of full-month TeamLogger and full-month new attendance, and it stays live.
      *
      * @return array{updated:int, unchanged:int, skipped_no_data:int, locked:bool}
      */
@@ -1063,7 +1064,7 @@ class PayrollService
     /**
      * Refresh stored working hours for an unlocked month, then recompute amounts.
      * Before September 2026 the source is TeamLogger. From September 2026 Hours LM
-     * is TeamLogger plus the new attendance system. Salary inputs stay as stored.
+     * is the larger of TeamLogger and the new attendance system. Salary inputs stay as stored.
      * Hand-edited hours are left alone unless this is a full Sync Hours.
      *
      * @return array{updated:int, skipped_overridden:int, skipped_no_data:int, unchanged:int, teamlogger_users:int, locked:bool, hours_source?:string}
@@ -1130,7 +1131,7 @@ class PayrollService
                 }
                 $attendanceHours = $hasAttendance ? (float) $attendanceEntry['hours'] : 0.0;
                 $teamHours = $hasTeam ? $this->liveHoursForUser($row->user, $teamLogger) : 0.0;
-                $hours = $teamHours + $attendanceHours;
+                $hours = max($teamHours, $attendanceHours);
             } elseif (! $hasTeam) {
                 $stats['skipped_no_data']++;
                 continue;
@@ -1196,7 +1197,8 @@ class PayrollService
     }
 
     /**
-     * TeamLogger productive hours plus new-attendance hours for one employee.
+     * The larger of TeamLogger and new-attendance hours. Adding them double-counts
+     * people who appear in both (96h in attendance plus 4h in TeamLogger became 100h).
      *
      * @param  array<string, array<string, mixed>>  $teamLogger
      * @param  array<int, array{hours?: float, has_data?: bool}>  $attendance
@@ -1206,7 +1208,7 @@ class PayrollService
         $entry = $attendance[(int) $user->id] ?? null;
         $attendanceHours = ($entry && ! empty($entry['has_data'])) ? (float) ($entry['hours'] ?? 0) : 0.0;
 
-        return $this->liveHoursForUser($user, $teamLogger) + $attendanceHours;
+        return max($this->liveHoursForUser($user, $teamLogger), $attendanceHours);
     }
 
     /** @param  array<string, array<string, mixed>>  $teamLogger */

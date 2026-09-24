@@ -306,7 +306,7 @@ class PayrollController extends Controller
         $skippedOverride = (int) ($stats['skipped_overridden'] ?? 0);
         $skippedNoData = (int) ($stats['skipped_no_data'] ?? 0);
         $fromBoth = ($stats['hours_source'] ?? '') === 'both';
-        $source = $fromBoth ? 'TeamLogger and the new attendance system' : 'TeamLogger';
+        $source = $fromBoth ? 'the larger of TeamLogger and the new attendance system' : 'TeamLogger';
 
         if ($updated === 0 && $unchanged === 0 && $skippedNoData > 0 && ! $fromBoth) {
             return "TeamLogger has {$stats['teamlogger_users']} user(s) for {$monthLabel}, but none matched payroll employees. Check email mapping.";

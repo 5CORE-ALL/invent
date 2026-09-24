@@ -500,35 +500,34 @@
                     }
                     return txt;
                 } },
-            { title: 'Team Logger', field: 'team_logger_hours', hozAlign: 'center', width: 120,
-                headerTooltip: 'Productive TeamLogger hours for the whole month (total − idle)',
+            { title: 'Logger', field: 'final_hours', hozAlign: 'center', width: 110,
+                headerTooltip: 'The larger of Team Logger and New Logger',
                 formatter: (c) => {
                     const d = c.getRow().getData();
                     const v = parseFloat(c.getValue());
                     if (isNaN(v)) return '—';
-                    const range = (d.team_logger_from && d.team_logger_to)
-                        ? (d.team_logger_from + ' – ' + d.team_logger_to)
-                        : 'this month';
-                    return '<span title="TeamLogger productive hours (' + esc(range) + ')">' + Math.round(v) + 'h</span>';
-                } },
-            { title: 'New Logger', field: 'new_logger_hours', hozAlign: 'center', width: 120,
-                headerTooltip: 'New attendance hours. From September 2026 this is the full month. Earlier months are the days after the first 18.',
-                formatter: (c) => {
-                    const d = c.getRow().getData();
-                    const v = parseFloat(c.getValue());
-                    if (isNaN(v)) return '—';
-                    const days = parseInt(d.new_logger_days, 10);
-                    const range = (d.logger_new_from && d.logger_new_to)
-                        ? (d.logger_new_from + ' – ' + d.logger_new_to)
-                        : (d.attendance_only ? 'full month' : 'after day 18');
-                    const dayLabel = (!isNaN(days) && days > 0)
-                        ? (days + ' day' + (days === 1 ? '' : 's') + ' ')
-                        : '';
-                    const tip = d.attendance_only
-                        ? (dayLabel + 'from the new attendance system (' + range + ')')
-                        : (dayLabel
-                            ? (dayLabel + 'from built-in logger (' + range + ')')
-                            : ('Built-in attendance logger (' + range + ')'));
+                    const teamFull = parseFloat(d.team_logger_hours);
+                    const neu = parseFloat(d.new_logger_hours);
+                    let tip;
+                    if (d.attendance_only) {
+                        const teamH = isNaN(teamFull) ? 0 : Math.round(teamFull);
+                        const neuH = isNaN(neu) ? 0 : Math.round(neu);
+                        const used = teamH >= neuH ? 'Team Logger' : 'New Logger';
+                        tip = Math.round(v) + 'h from ' + used + ' (' + teamH + 'h Team Logger, ' + neuH + 'h New Logger)';
+                    } else {
+                        const team = parseFloat(d.team_logger_split_hours ?? d.team_logger_15_hours);
+                        const second = parseFloat(d.final_second_hours);
+                        const secondH = !isNaN(second) ? Math.round(second) : (isNaN(neu) ? 0 : Math.round(neu));
+                        const secondSrc = (!isNaN(neu) && neu > 0) ? 'New Logger' : 'TeamLogger';
+                        const teamRange = (d.logger_team_from && d.logger_team_to)
+                            ? (d.logger_team_from + ' – ' + d.logger_team_to)
+                            : 'first 18 days';
+                        const afterRange = (d.logger_new_from && d.logger_new_to)
+                            ? (d.logger_new_from + ' – ' + d.logger_new_to)
+                            : 'after day 18';
+                        tip = (isNaN(team) ? 0 : Math.round(team)) + 'h TeamLogger (' + teamRange + ') + '
+                            + secondH + 'h ' + secondSrc + ' (' + afterRange + ')';
+                    }
                     return '<span title="' + esc(tip) + '">' + Math.round(v) + 'h</span>';
                 } },
             { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
