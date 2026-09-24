@@ -294,8 +294,8 @@ class PayrollController extends Controller
         }
 
         if (($stats['teamlogger_users'] ?? 0) === 0) {
-            if (($stats['hours_source'] ?? '') === 'attendance') {
-                return "No new attendance hours found for {$monthLabel}.";
+            if (($stats['hours_source'] ?? '') === 'both') {
+                return "No TeamLogger or new attendance hours found for {$monthLabel}.";
             }
 
             return "No TeamLogger data returned for {$monthLabel}. Check TEAM_LOGGER_API_TOKEN and try again.";
@@ -305,14 +305,10 @@ class PayrollController extends Controller
         $unchanged = (int) ($stats['unchanged'] ?? 0);
         $skippedOverride = (int) ($stats['skipped_overridden'] ?? 0);
         $skippedNoData = (int) ($stats['skipped_no_data'] ?? 0);
-        $fromAttendance = ($stats['hours_source'] ?? '') === 'attendance';
-        $source = $fromAttendance ? 'the new attendance system' : 'TeamLogger';
+        $fromBoth = ($stats['hours_source'] ?? '') === 'both';
+        $source = $fromBoth ? 'TeamLogger and the new attendance system' : 'TeamLogger';
 
-        if ($updated === 0 && $unchanged === 0 && $skippedNoData > 0) {
-            if ($fromAttendance) {
-                return "Attendance has {$stats['teamlogger_users']} user(s) for {$monthLabel}, but none matched payroll employees.";
-            }
-
+        if ($updated === 0 && $unchanged === 0 && $skippedNoData > 0 && ! $fromBoth) {
             return "TeamLogger has {$stats['teamlogger_users']} user(s) for {$monthLabel}, but none matched payroll employees. Check email mapping.";
         }
 
@@ -324,8 +320,8 @@ class PayrollController extends Controller
             $parts[] = "{$skippedOverride} skipped (manually edited — use Sync Hours to overwrite).";
         }
         if ($skippedNoData > 0) {
-            $parts[] = $fromAttendance
-                ? "{$skippedNoData} had no new attendance or TeamLogger match."
+            $parts[] = $fromBoth
+                ? "{$skippedNoData} had no TeamLogger or new attendance match."
                 : "{$skippedNoData} had no TeamLogger match.";
         }
 
@@ -544,6 +540,9 @@ class PayrollController extends Controller
             'salary_lm' => (float) $r->salary_pp + (float) $r->increment,
             'hours_worked' => $r->hours_worked,
             'hours_overridden' => (bool) $r->hours_overridden,
+            'team_logger_hours' => (float) ($logger['team_logger_month_hours'] ?? 0),
+            'team_logger_from' => $logger['team_logger_month_from'] ?? null,
+            'team_logger_to' => $logger['team_logger_month_to'] ?? null,
             'new_logger_hours' => $newHours,
             'new_logger_days' => $logger['days'] ?? 0,
             'team_logger_split_hours' => $teamHours,

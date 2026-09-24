@@ -500,6 +500,17 @@
                     }
                     return txt;
                 } },
+            { title: 'Team Logger', field: 'team_logger_hours', hozAlign: 'center', width: 120,
+                headerTooltip: 'Productive TeamLogger hours for the whole month (total − idle)',
+                formatter: (c) => {
+                    const d = c.getRow().getData();
+                    const v = parseFloat(c.getValue());
+                    if (isNaN(v)) return '—';
+                    const range = (d.team_logger_from && d.team_logger_to)
+                        ? (d.team_logger_from + ' – ' + d.team_logger_to)
+                        : 'this month';
+                    return '<span title="TeamLogger productive hours (' + esc(range) + ')">' + Math.round(v) + 'h</span>';
+                } },
             { title: 'New Logger', field: 'new_logger_hours', hozAlign: 'center', width: 120,
                 headerTooltip: 'New attendance hours. From September 2026 this is the full month. Earlier months are the days after the first 18.',
                 formatter: (c) => {
@@ -521,16 +532,17 @@
                     return '<span title="' + esc(tip) + '">' + Math.round(v) + 'h</span>';
                 } },
             { title: 'Final Hour', field: 'final_hours', hozAlign: 'center', width: 120,
-                headerTooltip: 'From September 2026: new attendance hours for the month. Earlier: 18 days TeamLogger + remaining New Logger',
+                headerTooltip: 'From September 2026: Team Logger + New Logger. Earlier: 18 days TeamLogger + remaining New Logger',
                 formatter: (c) => {
                     const d = c.getRow().getData();
                     const v = parseFloat(c.getValue());
                     if (isNaN(v)) return '—';
-                    const newRange = (d.logger_new_from && d.logger_new_to)
-                        ? (d.logger_new_from + ' – ' + d.logger_new_to)
-                        : 'full month';
                     if (d.attendance_only) {
-                        const tip = Math.round(v) + 'h from the new attendance system (' + newRange + ')';
+                        const team = parseFloat(d.team_logger_hours);
+                        const neu = parseFloat(d.new_logger_hours);
+                        const teamH = isNaN(team) ? 0 : Math.round(team);
+                        const neuH = isNaN(neu) ? 0 : Math.round(neu);
+                        const tip = teamH + 'h Team Logger + ' + neuH + 'h New Logger';
                         return '<strong title="' + esc(tip) + '">' + Math.round(v) + 'h</strong>';
                     }
                     const team = parseFloat(d.team_logger_split_hours ?? d.team_logger_15_hours);
