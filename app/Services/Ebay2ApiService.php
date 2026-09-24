@@ -2393,9 +2393,13 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $ack = $data['Ack'] ?? 'Failure';
             $msg = $this->flattenEbayErrors($data);
             if ($ack === 'Success' || $ack === 'Warning') {
+                $statuses = self::inventoryStatusesFromResponse($data);
+                $confirmed = self::confirmedRequestIndexes($rows, $statuses);
+
                 return [
                     'success' => true,
-                    'quantity_confirmed' => true,
+                    'quantity_confirmed' => count($confirmed) === count($rows),
+                    'confirmed_indexes' => $confirmed,
                     'message' => 'Inventory updated.',
                     'data' => $data,
                 ];
@@ -2812,18 +2816,93 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
      */
     protected function extractReturnedInventoryQuantity(array $data): ?int
     {
-        $status = $data['InventoryStatus'] ?? null;
-        if (! is_array($status)) {
+        $statuses = self::inventoryStatusesFromResponse($data);
+        if ($statuses === [] || $statuses[0]['quantity'] === null) {
             return null;
         }
-        if (isset($status['Quantity'])) {
-            return (int) $status['Quantity'];
+
+        return $statuses[0]['quantity'];
+    }
+
+    /**
+     * ReviseInventoryStatus echoes one InventoryStatus per item. Quantity here
+     * is what eBay kept, not what we asked for.
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<array{item_id: string, sku: string, quantity: ?int}>
+     */
+    public static function inventoryStatusesFromResponse(array $data): array
+    {
+        $status = $data['InventoryStatus'] ?? null;
+        if (! is_array($status)) {
+            return [];
         }
-        if (isset($status[0]['Quantity'])) {
-            return (int) $status[0]['Quantity'];
+        $list = isset($status['ItemID']) || isset($status['Quantity']) || isset($status['SKU'])
+            ? [$status]
+            : $status;
+        $out = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $out[] = [
+                'item_id' => trim((string) ($row['ItemID'] ?? '')),
+                'sku' => trim((string) ($row['SKU'] ?? '')),
+                'quantity' => isset($row['Quantity']) && $row['Quantity'] !== '' ? (int) $row['Quantity'] : null,
+            ];
         }
 
-        return null;
+        return $out;
+    }
+
+    /**
+     * Indexes of requested rows whose returned quantity matches. A batch Ack
+     * of Success can still leave a variation at the old qty.
+     *
+     * @param  list<array{item_id?: string, sku?: string, quantity?: int}>  $requested
+     * @param  list<array{item_id: string, sku: string, quantity: ?int}>  $statuses
+     * @return list<int>
+     */
+    public static function confirmedRequestIndexes(array $requested, array $statuses): array
+    {
+        $used = [];
+        $confirmed = [];
+        foreach ($requested as $index => $req) {
+            if (! is_array($req)) {
+                continue;
+            }
+            $itemId = trim((string) ($req['item_id'] ?? ''));
+            $sku = trim((string) ($req['sku'] ?? ''));
+            $qty = (int) ($req['quantity'] ?? 0);
+            foreach ($statuses as $statusIndex => $status) {
+                if (isset($used[$statusIndex]) || $status['item_id'] !== $itemId) {
+                    continue;
+                }
+                if ($status['quantity'] === null || (int) $status['quantity'] !== $qty) {
+                    continue;
+                }
+                $statusSku = $status['sku'];
+                if ($sku !== '' && $statusSku !== '' && strcasecmp($statusSku, $sku) !== 0) {
+                    continue;
+                }
+                if ($sku !== '' && $statusSku === '') {
+                    $sameItem = 0;
+                    foreach ($requested as $other) {
+                        if (is_array($other) && trim((string) ($other['item_id'] ?? '')) === $itemId) {
+                            $sameItem++;
+                        }
+                    }
+                    if ($sameItem !== 1) {
+                        continue;
+                    }
+                }
+                $used[$statusIndex] = true;
+                $confirmed[] = (int) $index;
+                break;
+            }
+        }
+
+        return $confirmed;
     }
 
     /**

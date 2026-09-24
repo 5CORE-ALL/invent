@@ -182,7 +182,7 @@ class Ebay2InventorySyncService
             ];
         }
 
-        $invResult = $this->pushInventoryRows($inventoryRows, ! $exactShopifyQty, $preferFixedPrice);
+        $invResult = $this->pushInventoryRows($inventoryRows, ! $exactShopifyQty, $preferFixedPrice, $exactShopifyQty);
         $pushedRows = $invResult['rows'] ?? [];
         $skipped += (int) ($invResult['skipped'] ?? 0);
         if ($pushedRows !== []) {
@@ -538,7 +538,7 @@ class Ebay2InventorySyncService
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int, price?: float|null}>  $inventoryRows
      * @return array{success: bool, pushed: int, failed: int, skipped: int, rate_limited: bool, message?: string, rows: array<int, array<string, mixed>>}
      */
-    protected function pushInventoryRows(array $inventoryRows, bool $allowRelist = true, bool $preferFixedPrice = false): array
+    protected function pushInventoryRows(array $inventoryRows, bool $allowRelist = true, bool $preferFixedPrice = false, bool $confirmLive = false): array
     {
         $pushed = 0;
         $failed = 0;
@@ -572,7 +572,7 @@ class Ebay2InventorySyncService
             }
 
             $batchCounted = false;
-            if (! $preferFixedPrice && count($chunk) >= 2) {
+            if (! $confirmLive && ! $preferFixedPrice && count($chunk) >= 2) {
                 $attempted += count($chunk);
                 $batchCounted = true;
                 $batch = [];
@@ -593,9 +593,36 @@ class Ebay2InventorySyncService
                         'batch' => count($chunk),
                     ]);
                 } elseif (! empty($result['success'])) {
-                    foreach ($chunk as $row) {
-                        $pushedRows[] = $row;
-                        $pushed++;
+                    $confirmed = array_fill_keys($result['confirmed_indexes'] ?? [], true);
+                    $pending = [];
+                    foreach ($chunk as $index => $row) {
+                        if (isset($confirmed[$index])) {
+                            $pushedRows[] = $row;
+                            $pushed++;
+                        } else {
+                            $pending[] = $row;
+                        }
+                    }
+                    foreach ($pending as $row) {
+                        if ($rateLimited) {
+                            break;
+                        }
+                        usleep(350000);
+                        $one = $this->pushOneInventoryRow($row, $allowRelist, true, false);
+                        $lastMessage = $one['message'] ?? $lastMessage;
+                        if (! empty($one['rate_limited'])) {
+                            $rateLimited = true;
+                            $failed++;
+                            break;
+                        }
+                        if (! empty($one['ok'])) {
+                            $pushedRows[] = $one['row'] ?? $row;
+                            $pushed++;
+                        } elseif (! empty($one['skipped'])) {
+                            $skipped++;
+                        } else {
+                            $failed++;
+                        }
                     }
                     continue;
                 } else {
@@ -615,7 +642,7 @@ class Ebay2InventorySyncService
                 } elseif ($index > 0) {
                     usleep(350000);
                 }
-                $one = $this->pushOneInventoryRow($row, $allowRelist, $preferFixedPrice);
+                $one = $this->pushOneInventoryRow($row, $allowRelist, $preferFixedPrice, $confirmLive);
                 $lastMessage = $one['message'] ?? $lastMessage;
                 if (! empty($one['rate_limited'])) {
                     $rateLimited = true;
@@ -658,7 +685,7 @@ class Ebay2InventorySyncService
      * @param  array{product_id: string, sku_code: string, inventory: int, price?: float|null}  $row
      * @return array{ok: bool, rate_limited: bool, skipped?: bool, row?: array, message?: string}
      */
-    protected function pushOneInventoryRow(array $row, bool $allowRelist = true, bool $preferFixedPrice = false): array
+    protected function pushOneInventoryRow(array $row, bool $allowRelist = true, bool $preferFixedPrice = false, bool $confirmLive = false): array
     {
         $itemId = trim((string) ($row['product_id'] ?? ''));
         $sku = trim((string) ($row['sku_code'] ?? ''));
@@ -666,6 +693,7 @@ class Ebay2InventorySyncService
         $price = $row['price'] ?? null;
         $price = ($price !== null && (float) $price > 0) ? (float) $price : null;
         $usedQtyOnlyFallback = false;
+        $triedVariationRevise = false;
         $result = ['success' => false, 'message' => ''];
         $msg = '';
 
@@ -743,6 +771,7 @@ class Ebay2InventorySyncService
                 }
             }
             if ($preferFixedPrice || empty($result['success']) || (isset($result['quantity_confirmed']) && $result['quantity_confirmed'] === false)) {
+                $triedVariationRevise = true;
                 $fallback = $this->ebay2Api->reviseVariationQuantity($itemId, $sku, $qty);
                 $fallbackMsg = (string) ($fallback['message'] ?? '');
                 if (self::looksLikeTradingLimit($fallbackMsg)) {
@@ -760,17 +789,35 @@ class Ebay2InventorySyncService
             }
 
             if (! empty($result['success'])) {
-                if (! ($result['quantity_confirmed'] ?? true)) {
+                $needsLiveCheck = $confirmLive || ! ($result['quantity_confirmed'] ?? true);
+                if ($needsLiveCheck) {
                     $liveQty = $this->ebay2Api->variationAvailableQty($itemId, $sku);
-                    if ($liveQty !== null && (int) $liveQty === $qty) {
-                        $row['inventory'] = $liveQty;
-                    } else {
+                    $liveMatches = $liveQty !== null && (int) $liveQty === $qty;
+                    if (! $liveMatches && ! $usedQtyOnlyFallback && ! $triedVariationRevise) {
+                        $fallback = $this->ebay2Api->reviseVariationQuantity($itemId, $sku, $qty);
+                        $fallbackMsg = (string) ($fallback['message'] ?? '');
+                        if (self::looksLikeTradingLimit($fallbackMsg)) {
+                            self::markTradingLimited();
+
+                            return ['ok' => false, 'rate_limited' => true, 'message' => $fallbackMsg];
+                        }
+                        if (! empty($fallback['success'])) {
+                            $result = $fallback;
+                            $usedQtyOnlyFallback = true;
+                            $row['price'] = null;
+                            $liveQty = $this->ebay2Api->variationAvailableQty($itemId, $sku);
+                            $liveMatches = $liveQty !== null && (int) $liveQty === $qty;
+                        }
+                    }
+                    if ($liveQty !== null && ! $liveMatches) {
                         return [
                             'ok' => false,
                             'rate_limited' => false,
-                            'message' => 'eBay 2 did not confirm quantity '.$qty
-                                .($liveQty !== null ? ' (live '.$liveQty.')' : ''),
+                            'message' => 'eBay 2 did not confirm quantity '.$qty.' (live '.$liveQty.')',
                         ];
+                    }
+                    if ($liveMatches) {
+                        $row['inventory'] = (int) $liveQty;
                     }
                 }
                 if ($usedQtyOnlyFallback) {
