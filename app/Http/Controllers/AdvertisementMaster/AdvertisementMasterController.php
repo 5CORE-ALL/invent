@@ -3638,6 +3638,30 @@ class AdvertisementMasterController extends Controller
         return null;
     }
 
+    private function facebookB2bSheetHref(string $name): ?string
+    {
+        if (! str_contains($name, self::SUBROW_SEPARATOR)) {
+            return null;
+        }
+        $bits = array_map('trim', explode(self::SUBROW_SEPARATOR, $name));
+        $parent = strtolower((string) ($bits[count($bits) - 2] ?? ''));
+        $tag = (string) ($bits[count($bits) - 1] ?? '');
+        if (! in_array($parent, ['facebook', 'instagram'], true) || $tag === '') {
+            return null;
+        }
+        try {
+            $options = \App\Models\FacebookB2bB2cOption::options();
+        } catch (\Throwable) {
+            return null;
+        }
+        $tagKey = \App\Models\FacebookAllAdsSheet::normalizeAdTypeName($tag);
+        if (! in_array($tagKey, $options, true)) {
+            return null;
+        }
+
+        return $this->namedHref('facebook.all.ads.sheet');
+    }
+
     private function adsTitleFromName(string $name): string
     {
         $label = trim((string) preg_replace('/\s+Total$/i', '', trim($name)));
@@ -3659,6 +3683,11 @@ class AdvertisementMasterController extends Controller
         $ads = $this->channelAdsHrefMap()[$norm] ?? null;
         if (is_string($ads) && $ads !== '') {
             return $ads;
+        }
+
+        $b2bHref = $this->facebookB2bSheetHref($name);
+        if ($b2bHref) {
+            return $b2bHref;
         }
 
         if (Route::has('channel.title.ads')) {
@@ -3701,6 +3730,10 @@ class AdvertisementMasterController extends Controller
             'shopifyfacebookpcarousal' => $this->namedHref('facebook.ads.channel.parent.carousal'),
             'shopifyfacebookmusicstore' => $this->namedHref('music.store.ads.sheet'),
             'shopifyfacebookmusicschool' => $this->namedHref('music.school.ads.sheet'),
+            'shopifyfacebookb2b' => $this->namedHref('facebook.all.ads.sheet'),
+            'shopifyfacebookb2c' => $this->namedHref('facebook.all.ads.sheet'),
+            'shopifyinstagramb2b' => $this->namedHref('facebook.all.ads.sheet'),
+            'shopifyinstagramb2c' => $this->namedHref('facebook.all.ads.sheet'),
             'shopifyinstagram' => $this->namedHref('instagram.ads.channel'),
             'shopifyinstagramgvideo' => $this->namedHref('instagram.ads.channel.group.video'),
             'shopifyinstagramgcarousal' => $this->namedHref('instagram.ads.channel.group.carousal'),

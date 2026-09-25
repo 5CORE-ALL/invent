@@ -1755,53 +1755,12 @@ class FacebookAllAdsSheetController extends Controller
      */
     private function resolvedB2bB2c(?string $stored, array $rowData): ?string
     {
-        $options = $this->b2bOptionNames();
-        $storedKey = FacebookAllAdsSheet::normalizeAdTypeName((string) $stored);
-        if ($storedKey !== '' && in_array($storedKey, $options, true)) {
-            return $storedKey;
-        }
-
-        foreach ($rowData as $key => $value) {
-            if (! $this->isB2bB2cHeader((string) $key)) {
-                continue;
-            }
-            $fromColumn = FacebookAllAdsSheet::normalizeAdTypeName((string) $value);
-            if ($fromColumn !== '' && in_array($fromColumn, $options, true)) {
-                return $fromColumn;
-            }
-        }
-
-        $name = $rowData['Campaign name'] ?? $rowData['Campaign Name'] ?? null;
-
-        return $this->b2bTokenInText(is_string($name) ? $name : null, $options);
-    }
-
-    /**
-     * @param  list<string>  $options
-     */
-    private function b2bTokenInText(?string $text, array $options): ?string
-    {
-        $text = FacebookAllAdsSheet::normalizeAdTypeName((string) $text);
-        if ($text === '') {
-            return null;
-        }
-
-        $hits = [];
-        foreach ($options as $opt) {
-            $quoted = preg_quote($opt, '/');
-            if (preg_match('/(?<![A-Z0-9])'.$quoted.'(?![A-Z0-9])/', $text)) {
-                $hits[] = $opt;
-            }
-        }
-
-        return count($hits) === 1 ? $hits[0] : null;
+        return FacebookAllAdsSheet::resolveB2bB2c($stored, $rowData);
     }
 
     private function isB2bB2cHeader(string $key): bool
     {
-        $n = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', $key));
-
-        return $n !== '' && str_contains($n, 'B2B') && str_contains($n, 'B2C');
+        return FacebookAllAdsSheet::isB2bB2cHeader($key);
     }
 
     /**
@@ -1828,18 +1787,6 @@ class FacebookAllAdsSheetController extends Controller
         }
 
         return $rowData;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function b2bOptionNames(): array
-    {
-        try {
-            return FacebookB2bB2cOption::options();
-        } catch (\Throwable) {
-            return FacebookB2bB2cOption::BUILTIN;
-        }
     }
 
     private function findCampaignId(array $rowData): ?string
