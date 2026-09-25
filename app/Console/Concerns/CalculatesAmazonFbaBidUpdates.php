@@ -82,6 +82,7 @@ trait CalculatesAmazonFbaBidUpdates
      *
      * @param  'fba_kw'|'fba_pt'  $fbaUtilType
      * @param  array<string, mixed>|null  $sbidRule  Pass {@see AmazonAdsSbidRule::resolvedRule()} from the caller loop for fewer cache reads.
+     * @param  bool  $useCellSbid  FBA KW only: CPC1/CPC2/CPC3 from the ads-grid calendar days, same as PT.
      * @return array{sbid: float, ub1: float, ub2: float, ub7: float, bid_out: array{sbid: float|null, band: string}, ub_source: string}|null
      */
     protected function fbaRuleBasedSbidOrNull(
@@ -95,7 +96,8 @@ trait CalculatesAmazonFbaBidUpdates
         float $cpcL1,
         float $cpcL2,
         float $cpcL7,
-        ?array $sbidRule = null
+        ?array $sbidRule = null,
+        bool $useCellSbid = false
     ): ?array {
         $r = $sbidRule ?? AmazonAdsSbidRule::resolvedRule();
         $ub7 = $budget > 0 ? ($l7Spend / ($budget * 7)) * 100 : 0;
@@ -104,11 +106,31 @@ trait CalculatesAmazonFbaBidUpdates
         $ub1 = (float) $resolved['ub1'];
         $ub7Eff = (float) $resolved['ub7'];
         $ub2 = AmazonBidUtilizationService::ub2PercentFromL2Spend($budget, $l2Spend);
-        $cpcFallback = ($cpcL1 <= 0 && $cpcL2 <= 0 && $cpcL7 <= 0) ? max($cpcL1, $cpcL7) : null;
-        if ($cpcFallback !== null && $cpcFallback <= 0) {
+        $avgCpc = null;
+        if ($useCellSbid) {
+            [$cpcL1, $cpcL2, $cpcL7] = AmazonBidUtilizationService::gridDailyCpcTriple(
+                'amazon_sp_campaign_reports',
+                $campaignId,
+                'SPONSORED_PRODUCTS'
+            );
+            try {
+                $avg = AmazonBidUtilizationService::lifetimeAvgCpcFromDaily(
+                    'amazon_sp_campaign_reports',
+                    $campaignId,
+                    'SPONSORED_PRODUCTS'
+                );
+                $avgCpc = $avg > 0 ? $avg : null;
+            } catch (\Exception $e) {
+                $avgCpc = null;
+            }
             $cpcFallback = null;
+        } else {
+            $cpcFallback = ($cpcL1 <= 0 && $cpcL2 <= 0 && $cpcL7 <= 0) ? max($cpcL1, $cpcL7) : null;
+            if ($cpcFallback !== null && $cpcFallback <= 0) {
+                $cpcFallback = null;
+            }
         }
-        $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc($ub7Eff, $ub1, $cpcL1, $cpcL2, $cpcL7, $cpcFallback);
+        $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc($ub7Eff, $ub1, $cpcL1, $cpcL2, $cpcL7, $cpcFallback, $avgCpc);
         if ($wantOverUtilized) {
             if (! AmazonAdsSbidRule::isBothAboveUtilHigh($ub7Eff, $ub1, $r) || $bidOut['band'] !== 'over') {
                 return null;

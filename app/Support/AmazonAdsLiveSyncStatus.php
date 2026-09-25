@@ -115,6 +115,13 @@ final class AmazonAdsLiveSyncStatus
                         'reason' => 'already_matched',
                         'tip' => self::greenTip('BID', 'SBID', 'already_matched', $shown, $want),
                     ];
+                } elseif ($field === 'bid' && $presented['color'] === self::GREEN && self::displayedBidsDiffer($row['last_sbid'] ?? null, $row['sbid'] ?? null)) {
+                    $presented = [
+                        'color' => self::YELLOW,
+                        'status' => 'pending',
+                        'reason' => 'sbid_differs',
+                        'tip' => 'Pending — saved SBID '.self::money($row['sbid']).' does not match live BID '.self::money($row['last_sbid']),
+                    ];
                 }
                 $row[$field.'_sync_color'] = $presented['color'];
                 $row[$field.'_sync_tip'] = $presented['tip'];
@@ -183,6 +190,17 @@ final class AmazonAdsLiveSyncStatus
         }
 
         return AmazonAdsApiRetry::valuesMatch($live, $want, 0.015);
+    }
+
+    public static function displayedBidsDiffer(mixed $shown, mixed $desired): bool
+    {
+        $live = self::numeric($shown);
+        $want = self::numeric($desired);
+        if ($live === null || $want === null || $live <= 0 || $want <= 0) {
+            return false;
+        }
+
+        return ! AmazonAdsApiRetry::valuesMatch($live, $want, 0.015);
     }
 
     public static function colorFromStatus(?string $status): string

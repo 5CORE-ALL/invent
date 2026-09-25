@@ -11,6 +11,7 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\FbaTable;
 use App\Models\ShopifySku;
 use App\Services\CronMonitor\CronExecutionContext;
+use App\Support\AmazonFbaKwBidDecision;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -367,7 +368,8 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
                         return false;
                     }
                     // Safety check: exclude PT.
-                    return !preg_match('/\bPT\b/i', $cleanName) && strtoupper((string) ($item->campaignStatus ?? '')) === 'ENABLED';
+                    return !preg_match('/\bPT\b/i', $cleanName)
+                        && AmazonFbaKwBidDecision::allowsBidPush((string) ($item->campaignStatus ?? ''));
                 });
 
                 $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sellerSkuUpper) {
@@ -376,7 +378,8 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
                         return false;
                     }
                     // Safety check: exclude PT.
-                    return !preg_match('/\bPT\b/i', $cleanName) && strtoupper((string) ($item->campaignStatus ?? '')) === 'ENABLED';
+                    return !preg_match('/\bPT\b/i', $cleanName)
+                        && AmazonFbaKwBidDecision::allowsBidPush((string) ($item->campaignStatus ?? ''));
                 });
 
                 $campaignId = (string) (($matchedCampaignL7 ? $matchedCampaignL7->campaign_id : null)
@@ -391,8 +394,6 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
                 );
                 $l7_spend = floatval($matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0);
                 $l1_spend = floatval($matchedCampaignL1 ? ($matchedCampaignL1->spend ?? 0) : 0);
-                $l7_cpcRow = floatval($matchedCampaignL7 ? ($matchedCampaignL7->costPerClick ?? 0) : 0);
-                $l1_cpcRow = floatval($matchedCampaignL1 ? ($matchedCampaignL1->costPerClick ?? 0) : 0);
 
                 $cpcL1 = $this->cpcFromCampaign($amazonSpCampaignReportsL1, $campaignId);
                 $cpcL2 = $this->cpcFromCampaign($amazonSpCampaignReportsL2, $campaignId);
@@ -410,17 +411,20 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
                     $cpcL1,
                     $cpcL2,
                     $cpcL7,
-                    $sbidRule
+                    $sbidRule,
+                    true
                 );
                 if ($ruleBid === null) {
                     continue;
                 }
 
-                $currentBid = $this->resolveCurrentBidFromReport($matchedCampaignL7, $matchedCampaignL1, $l7_cpcRow, $l1_cpcRow);
-                $newBid = $ruleBid['sbid'];
-                if ($newBid <= 0 || abs($newBid - $currentBid) < 0.001) {
+                $newBid = (float) $ruleBid['sbid'];
+                $liveBid = AmazonFbaKwBidDecision::recordedLiveBid($matchedCampaignL1, $matchedCampaignL7);
+                $status = (string) (($matchedCampaignL7->campaignStatus ?? null) ?: ($matchedCampaignL1->campaignStatus ?? ''));
+                if (! AmazonFbaKwBidDecision::shouldPush($status, null, $newBid, $liveBid)) {
                     continue;
                 }
+                $currentBid = $liveBid;
 
                 $calc = [
                     'source' => (string) ($ruleBid['bid_out']['band'] ?? 'over'),
