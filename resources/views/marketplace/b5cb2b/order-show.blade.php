@@ -4,7 +4,7 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.orders', 'b5cb2b') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Orders</a>
-        @include('marketplace._page-heading', ['slug' => 'b5cb2b', 'heading' => 'Order #'.$order->store_order_id])
+        @include('marketplace._page-heading', ['slug' => 'b5cb2b', 'heading' => 'Order '.$order->channelOrderNumber()])
         @include('marketplace.b5cb2b._nav', ['active' => 'orders'])
         <div class="card">
             <div class="card-body">
@@ -15,7 +15,10 @@
                     <tr><th>Tracking</th><td>{{ $order->tracking_reference ?: '—' }}</td></tr>
                     <tr><th>Shopify</th><td>{{ $order->shopify_order_id ?: '—' }}</td></tr>
                 </table>
-                @php $lines = $order->payload['products'] ?? []; @endphp
+                @php
+                    $payload = is_array($order->payload) ? $order->payload : [];
+                    $lines = $payload['products'] ?? $payload['line_items'] ?? $payload['items'] ?? $payload['lines'] ?? [];
+                @endphp
                 @if($lines)
                     <h6 class="mt-3">Lines</h6>
                     <table class="table table-sm">
