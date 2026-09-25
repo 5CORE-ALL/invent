@@ -117,6 +117,36 @@ final class EbayLiveListingMapper
     }
 
     /**
+     * Per-SKU listing row. A shared item id is only the first variation,
+     * so siblings must not inherit that qty.
+     *
+     * @param  array<string, array<string, mixed>>  $indexed
+     * @return array<string, mixed>|null
+     */
+    public static function detailForSku(array $indexed, string $sku, string $alternateSku = ''): ?array
+    {
+        foreach ([$sku, $alternateSku] as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($candidate);
+            foreach ([$candidate, strtoupper($candidate), $norm] as $key) {
+                if ($key === '' || ! isset($indexed[$key]) || ! is_array($indexed[$key])) {
+                    continue;
+                }
+                $row = $indexed[$key];
+                $rowSku = trim((string) ($row['sku'] ?? ''));
+                if ($rowSku !== '' && self::skuEquals($rowSku, $candidate)) {
+                    return $row;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * True when GetItem has a Variations node (multi-SKU listing).
      *
      * @param  array<string, mixed>  $item

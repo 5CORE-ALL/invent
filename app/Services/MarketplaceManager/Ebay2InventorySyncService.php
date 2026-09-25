@@ -551,6 +551,7 @@ class Ebay2InventorySyncService
         $failed = 0;
         $skipped = 0;
         $lastMessage = null;
+        $errorSamples = [];
         $pushedRows = [];
         $rateLimited = false;
         $attempted = 0;
@@ -663,12 +664,21 @@ class Ebay2InventorySyncService
                     $skipped++;
                 } else {
                     $failed++;
+                    $err = trim((string) ($one['message'] ?? ''));
+                    if ($err !== '') {
+                        $errorSamples[$err] = ($errorSamples[$err] ?? 0) + 1;
+                    }
                 }
             }
         }
 
         $remaining = max(0, count($valid) - $attempted);
         $message = $lastMessage;
+        if ($failed > 0 && $errorSamples !== [] && ! $rateLimited) {
+            arsort($errorSamples);
+            $top = array_key_first($errorSamples);
+            $message = $failed.' eBay 2 update(s) failed. '.$top;
+        }
         if ($rateLimited) {
             $skipped += $remaining;
             $until = self::tradingLimitMessage() ?: 'wait until after midnight Pacific (~12:50 PM IST)';

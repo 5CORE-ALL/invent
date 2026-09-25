@@ -12,6 +12,22 @@ use PHPUnit\Framework\TestCase;
 
 class Ebay2MismatchInventoryRulesTest extends TestCase
 {
+    public function test_shared_item_id_does_not_copy_the_first_variation_qty(): void
+    {
+        $rows = [
+            ['product_id' => '366636745339', 'sku' => '5581 USB 10', 'inventory' => 60],
+            ['product_id' => '366636745339', 'sku' => '6581 USB', 'inventory' => 14],
+        ];
+        $indexed = EbayLiveListingMapper::indexDetailsForIds($rows, ['366636745339']);
+
+        $first = EbayLiveListingMapper::detailForSku($indexed, '5581 USB 10');
+        $second = EbayLiveListingMapper::detailForSku($indexed, '6581 USB');
+
+        $this->assertSame(60, $first['inventory'] ?? null);
+        $this->assertSame(14, $second['inventory'] ?? null);
+        $this->assertSame(60, $indexed['366636745339']['inventory'] ?? null);
+    }
+
     public function test_fixed_price_success_is_kept_when_getitem_still_shows_the_old_qty(): void
     {
         $this->assertFalse(Ebay2InventorySyncService::rejectUnconfirmedEbayQty(4, 24, true));

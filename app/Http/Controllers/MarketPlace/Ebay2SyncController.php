@@ -10,6 +10,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\ShopifySku;
 use App\Services\EbayTwoApiService;
 use App\Services\MarketplaceManager\Ebay2DetailFormatter;
+use App\Services\MarketplaceManager\EbayLiveListingMapper;
 use App\Services\MarketplaceManager\Ebay2InventorySyncService;
 use App\Services\MarketplaceManager\Ebay2LinkMapSyncService;
 use App\Services\MarketplaceManager\Ebay2LiveListingsService;
@@ -203,7 +204,6 @@ class Ebay2SyncController extends Controller
             }
             $metricMap = $this->ebay2MetricMapForSkus($mismatchQty);
             $productIds = [];
-            $idToSku = [];
             foreach ($mismatchQty as $sku) {
                 $metric = $metricMap[$sku] ?? null;
                 if (! $this->isShopifySkuLinkedOnEbay2($metric, (string) $sku)) {
@@ -214,13 +214,15 @@ class Ebay2SyncController extends Controller
                     continue;
                 }
                 $productIds[] = $pid;
-                $idToSku[$pid] = (string) $sku;
             }
             $liveMpByUpper = [];
             if ($productIds !== []) {
                 foreach ($liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($productIds)), 0, 80)) as $pid => $row) {
-                    $sku = $idToSku[(string) $pid] ?? trim((string) ($row['sku'] ?? ''));
-                    if ($sku === '' || ! array_key_exists('inventory', $row) || $row['inventory'] === null) {
+                    $sku = trim((string) ($row['sku'] ?? ''));
+                    if ($sku === '' || ! EbayLiveListingMapper::skuEquals($sku, (string) $pid)) {
+                        continue;
+                    }
+                    if (! array_key_exists('inventory', $row) || $row['inventory'] === null) {
                         continue;
                     }
                     $qty = (int) $row['inventory'];
@@ -408,7 +410,7 @@ class Ebay2SyncController extends Controller
                 ? MarketplaceListingStockResolver::qtyFromMap($aeStockMap, $sku, $metricSku)
                 : null;
             $cached = $this->aeCachedRowForSku($sku, $stateIndex);
-            $live = ($pid !== '' && isset($pageLiveByProduct[$pid])) ? $pageLiveByProduct[$pid] : null;
+            $live = EbayLiveListingMapper::detailForSku($pageLiveByProduct, $sku, (string) ($metricSku ?? ''));
             $state = (string) ($live['state'] ?? $cached['state'] ?? '');
             if ($linked) {
                 $aeQty = MarketplaceListingStockResolver::displayedMarketplaceQty(
@@ -943,11 +945,8 @@ class Ebay2SyncController extends Controller
             $done = $nextOffset >= $total;
             if ($done) {
                 Cache::forget($cacheKey);
-                try {
-                    app(Ebay2LiveListingsService::class)->clearCache();
-                } catch (\Throwable $e) {
-                    // ignore
-                }
+                // Keep the listings cache. Clearing it reloads stale ebay_stock
+                // and the mismatch count jumps on the reload after OK.
             }
 
             return response()->json([
