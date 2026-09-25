@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\AdvertisementMaster;
 
-use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\AmazonAdsMissingController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
@@ -215,224 +214,6 @@ class AdvertisementMasterController extends Controller
         }
 
         return round($sum, 2);
-    }
-
-    /**
-     * All Marketplace Master chart points (channel = all), in date order.
-     * Dates are the as-of days that page plots — not a calendar through today.
-     * badge_value=0 keeps the last historical point instead of pinning it to
-     * the live table total.
-     *
-     * @return array<string, float> Y-m-d => value
-     */
-    private function allMarketplaceMetricSeries(int $days, string $metric): array
-    {
-        try {
-            $response = app(ChannelMasterController::class)->getChannelMetricChartData(
-                Request::create('/channel-metric-chart-data', 'GET', [
-                    'channel' => 'all',
-                    'metric' => $metric,
-                    'days' => $days,
-                    'badge_value' => 0,
-                ])
-            );
-            $payload = $response->getData(true);
-        } catch (\Throwable $e) {
-            \Log::warning('Advertisement Master marketplace '.$metric.' chart failed: '.$e->getMessage());
-
-            return [];
-        }
-
-        $points = is_array($payload['data'] ?? null) ? $payload['data'] : [];
-        if ($points === [] || empty($payload['success'])) {
-            return [];
-        }
-
-        $out = [];
-        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
-        $year = (int) $today->year;
-        $prev = null;
-        foreach ($points as $point) {
-            if (! is_array($point)) {
-                continue;
-            }
-            $stamp = trim((string) ($point['date'] ?? ''));
-            if ($stamp === '') {
-                continue;
-            }
-            try {
-                $parsed = Carbon::parse($stamp.' '.$year, self::SNAPSHOT_TIMEZONE)->startOfDay();
-            } catch (\Throwable $e) {
-                continue;
-            }
-            if ($prev === null && $parsed->gt($today)) {
-                $year--;
-                $parsed = Carbon::parse($stamp.' '.$year, self::SNAPSHOT_TIMEZONE)->startOfDay();
-            } elseif ($prev !== null && $parsed->lt($prev)) {
-                $year++;
-                $parsed = Carbon::parse($stamp.' '.$year, self::SNAPSHOT_TIMEZONE)->startOfDay();
-            }
-            $prev = $parsed->copy();
-            $out[$parsed->toDateString()] = round((float) ($point['value'] ?? 0), 2);
-        }
-
-        return $out;
-    }
-
-    /**
-     * Latest Active Channel chart point — the number the Total Sales / Spend
-     * graph shows on its last day.
-     */
-    private function latestMarketplaceMetric(string $metric): ?float
-    {
-        return $this->seriesLast($this->allMarketplaceMetricSeries(32, $metric));
-    }
-
-    /**
-     * @param  array<string, float>  $series
-     */
-    private function seriesLast(array $series): ?float
-    {
-        if ($series === []) {
-            return null;
-        }
-        $last = end($series);
-
-        return $last === false ? null : round((float) $last, 2);
-    }
-
-    /**
-     * up / down / flat from the last two chart points.
-     *
-     * @param  array<string, float>  $series
-     */
-    private function seriesDirection(array $series): string
-    {
-        $values = array_values($series);
-        $count = count($values);
-        if ($count < 2) {
-            return 'flat';
-        }
-        $prev = (float) $values[$count - 2];
-        $last = (float) $values[$count - 1];
-        if (abs($last - $prev) < 0.01) {
-            return 'flat';
-        }
-
-        return $last > $prev ? 'up' : 'down';
-    }
-
-    /**
-     * @param  array<string, float>  $sales
-     * @param  array<string, float>  $spend
-     */
-    private function tcosDirection(array $sales, array $spend): string
-    {
-        $dates = array_values(array_intersect(array_keys($sales), array_keys($spend)));
-        sort($dates);
-        $count = count($dates);
-        if ($count < 2) {
-            return 'flat';
-        }
-        $pct = [];
-        foreach (array_slice($dates, -2) as $date) {
-            $sale = (float) $sales[$date];
-            $cost = (float) $spend[$date];
-            $pct[] = $sale > 0 ? ($cost / $sale) * 100 : ($cost > 0 ? 100.0 : 0.0);
-        }
-        if (abs($pct[1] - $pct[0]) < 0.01) {
-            return 'flat';
-        }
-
-        return $pct[1] > $pct[0] ? 'up' : 'down';
-    }
-
-    /**
-     * Daily Active Channel badge history (All Marketplace Master).
-     *
-     * @return array{ad_spend: array<string, float>, l30_sales: array<string, float>}
-     */
-    private function activeChannelHistoryByDate(string $from, string $to): array
-    {
-        $out = ['ad_spend' => [], 'l30_sales' => []];
-        if (! Schema::hasTable('badges_data_histories')) {
-            return $out;
-        }
-
-        try {
-            $rows = BadgeDataHistory::query()
-                ->where('page_name', 'all-marketplace-master')
-                ->whereIn('field', ['ad_spend', 'l30_sales'])
-                ->whereDate('snapshot_date', '>=', $from)
-                ->whereDate('snapshot_date', '<=', $to)
-                ->orderBy('snapshot_date')
-                ->get(['field', 'snapshot_date', 'value']);
-        } catch (\Throwable $e) {
-            \Log::warning('Advertisement Master active-channel graph history failed: '.$e->getMessage());
-
-            return $out;
-        }
-
-        foreach ($rows as $row) {
-            $field = (string) $row->field;
-            if (! isset($out[$field])) {
-                continue;
-            }
-            $date = $row->snapshot_date instanceof \DateTimeInterface
-                ? $row->snapshot_date->format('Y-m-d')
-                : substr((string) $row->snapshot_date, 0, 10);
-            $out[$field][$date] = (float) $row->value;
-        }
-
-        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
-        if ($today >= $from && $today <= $to) {
-            $spend = $this->activeChannelAdSpendTotal();
-            $sales = $this->activeChannelL30SalesTotal();
-            if ($spend > 0) {
-                $out['ad_spend'][$today] = $spend;
-            }
-            if ($sales > 0) {
-                $out['l30_sales'][$today] = $sales;
-            }
-        }
-
-        return $out;
-    }
-
-    /**
-     * Replace the all-channels Spend and Total Sales lines with Active Channel
-     * history, then recompute TCOS from those two series.
-     *
-     * @param  array<string, array<int, float|int|null>>  $metrics
-     * @param  array<int, string>  $labels
-     * @param  array{ad_spend: array<string, float>, l30_sales: array<string, float>}  $history
-     * @return array<string, array<int, float|int|null>>
-     */
-    private function applyActiveChannelGraphSeries(array $metrics, array $labels, array $history): array
-    {
-        if ($history['ad_spend'] !== []) {
-            foreach ($labels as $i => $d) {
-                if (array_key_exists($d, $history['ad_spend'])) {
-                    $metrics['spend'][$i] = round($history['ad_spend'][$d], 2);
-                }
-            }
-        }
-
-        $tcos = [];
-        foreach ($labels as $i => $d) {
-            $spend = $metrics['spend'][$i] ?? null;
-            $sales = $metrics['ssales'][$i] ?? null;
-            if ($spend === null || $sales === null) {
-                $tcos[] = $metrics['tcos'][$i] ?? null;
-                continue;
-            }
-            $sales = (float) $sales;
-            $spend = (float) $spend;
-            $tcos[] = $sales > 0 ? (int) round(($spend / $sales) * 100) : ($spend > 0 ? 100 : 0);
-        }
-        $metrics['tcos'] = $tcos;
-
-        return $metrics;
     }
 
     /**
@@ -2300,10 +2081,9 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
-     * Badge/cell trend history. Returns a per-day time series for each metric
-     * (spend / clicks / sold / sales / cvr / acos) rolled up across the
-     * Active Channel (/channel-metric-chart-data). This page no longer
-     * builds its own snapshot series.
+     * Badge charts read badges_data_histories for all-marketplace-master —
+     * the same saved badge numbers. Channel charts read this page's existing
+     * daily rows. No separate graph table and no Active Channel chart call.
      *
      *   GET /advertisement-master/history?days=30&channel=eBay&metric=spend
      */
@@ -2311,20 +2091,18 @@ class AdvertisementMasterController extends Controller
     {
         $days = max(1, min(365, (int) $request->query('days', 30)));
         $metric = (string) $request->query('metric', 'spend');
-        $chartMetric = $this->activeChannelChartMetric($metric);
+        $channel = (string) $request->query('channel', '__total__');
         $labels = [];
         $series = [];
 
-        if ($chartMetric !== null) {
-            try {
-                [$labels, $series] = $this->activeChannelChartSeries(
-                    $this->activeChannelChartNames((string) $request->query('channel', '__total__')),
-                    $chartMetric,
-                    $days
-                );
-            } catch (\Throwable $e) {
-                \Log::warning('Advertisement Master active-channel chart failed: '.$e->getMessage());
+        try {
+            if ($this->historyIsAllChannels($channel) && $this->badgeHistoryField($metric) !== null) {
+                [$labels, $series] = $this->badgePageHistory($metric, $days);
+            } else {
+                [$labels, $series] = $this->snapshotHistory($channel, $metric, $days);
             }
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master history failed: '.$e->getMessage());
         }
 
         return response()->json([
@@ -2340,16 +2118,19 @@ class AdvertisementMasterController extends Controller
         ]);
     }
 
-    private function activeChannelChartMetric(string $metric): ?string
+    private function historyIsAllChannels(string $channel): bool
+    {
+        $channel = trim($channel);
+
+        return $channel === '' || $channel === '__total__';
+    }
+
+    private function badgeHistoryField(string $metric): ?string
     {
         return match ($metric) {
             'spend' => 'ad_spend',
-            'clicks' => 'total_views',
-            'sold' => 'ad_sold',
-            'sales' => 'ad_sales',
             'ssales' => 'l30_sales',
-            'cvr' => 'ads_cvr',
-            'acos' => 'acos',
+            'clicks' => 'total_views',
             'tcos' => 'ads_pct',
             'missing_ads' => 'missing_l',
             default => null,
@@ -2357,86 +2138,124 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
-     * @return list<string>
+     * @return array{0: list<string>, 1: list<float>}
      */
-    private function activeChannelChartNames(string $channel): array
+    private function badgePageHistory(string $metric, int $days): array
     {
-        $channel = trim($channel);
-        if ($channel === '' || $channel === '__total__') {
-            return ['all'];
-        }
-        $rawKey = strtolower((string) preg_replace('/[^a-z0-9]+/', '', $channel));
-        if ($rawKey === 'ebaytotal') {
-            return ['ebay', 'ebay2', 'ebay3'];
-        }
-        if ($rawKey === 'temutotal') {
-            return ['temu', 'temu2'];
-        }
-        if ($rawKey === 'tiktoktotal') {
-            return ['tiktok'];
+        $field = $this->badgeHistoryField($metric);
+        if ($field === null) {
+            return [[], []];
         }
 
-        $channel = $this->stripTotalSuffix($channel);
-        if (str_contains($channel, self::SUBROW_SEPARATOR)) {
-            $channel = trim(explode(self::SUBROW_SEPARATOR, $channel)[0]);
-        }
-        $key = strtolower((string) preg_replace('/[^a-z0-9]+/', '', $channel));
-
-        return [match ($key) {
-            'amazon', 'amz' => 'amazon',
-            'ebay', 'ebay1' => 'ebay',
-            'ebay2' => 'ebay2',
-            'ebay3' => 'ebay3',
-            'shopify', 'shopifyb2c' => 'shopify',
-            'tiktok', 'tiktok1', 'tiktokshop' => 'tiktok',
-            'tiktok2', 'tiktokshop2' => 'tiktok2',
-            'temu', 'temu1' => 'temu',
-            'temu2' => 'temu2',
-            default => $channel !== '' ? $channel : 'all',
-        }];
-    }
-
-    /**
-     * @param  list<string>  $channelNames
-     * @return array{0: list<string>, 1: list<float|null>}
-     */
-    private function activeChannelChartSeries(array $channelNames, string $chartMetric, int $days): array
-    {
-        $order = [];
-        $sums = [];
-        foreach ($channelNames as $channelName) {
-            $response = app(ChannelMasterController::class)->getChannelMetricChartData(
-                Request::create('/channel-metric-chart-data', 'GET', [
-                    'channel' => $channelName,
-                    'metric' => $chartMetric,
-                    'days' => $days,
-                ])
-            );
-            $payload = $response->getData(true);
-            foreach ((array) ($payload['data'] ?? []) as $point) {
-                if (! is_array($point)) {
-                    continue;
-                }
-                $label = (string) ($point['date'] ?? '');
-                if (! array_key_exists($label, $sums)) {
-                    $order[] = $label;
-                    $sums[$label] = null;
-                }
-                if (! array_key_exists('value', $point) || $point['value'] === null) {
-                    continue;
-                }
-                $sums[$label] = round(($sums[$label] ?? 0) + (float) $point['value'], 2);
-            }
-        }
-
+        $cached = BadgeData::dataForPage('all-marketplace-master');
+        $live = array_key_exists($field, $cached) && is_numeric($cached[$field])
+            ? (float) $cached[$field]
+            : null;
+        $points = BadgeDataHistory::series('all-marketplace-master', $field, $days, $live);
         $labels = [];
         $series = [];
-        foreach ($order as $label) {
-            $labels[] = $label;
-            $series[] = $sums[$label];
+        foreach ($points as $point) {
+            $labels[] = (string) ($point['date'] ?? '');
+            $series[] = round((float) ($point['value'] ?? 0), 2);
         }
 
         return [$labels, $series];
+    }
+
+    /**
+     * Daily values already saved for this page's table. A value stays on the day it was saved.
+     *
+     * @return array{0: list<string>, 1: list<float|null>}
+     */
+    private function snapshotHistory(string $channel, string $metric, int $days): array
+    {
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $from = $today->copy()->subDays($days - 1);
+        $labels = [];
+        $cursor = $from->copy();
+        while ($cursor->lte($today)) {
+            $labels[] = $cursor->toDateString();
+            $cursor->addDay();
+        }
+
+        $byDate = [];
+        $ssalesByDate = [];
+        if (Schema::hasTable('advertisement_master_metric_snapshots')) {
+            $names = $this->historyIsAllChannels($channel) ? null : $this->snapshotChannelNames($channel);
+            $cols = ['snapshot_date', 'channel', 'spend', 'clicks', 'sold', 'sales', 'active'];
+            if ($this->snapshotsHaveMissingAdsColumn()) {
+                $cols[] = 'missing_ads';
+            }
+            $query = DB::table('advertisement_master_metric_snapshots')
+                ->whereDate('snapshot_date', '>=', $from->toDateString())
+                ->whereDate('snapshot_date', '<=', $today->toDateString());
+            if ($names !== null) {
+                $query->whereIn('channel', $names);
+            }
+            foreach ($query->get($cols) as $row) {
+                $name = (string) ($row->channel ?? '');
+                $date = $row->snapshot_date instanceof \DateTimeInterface
+                    ? $row->snapshot_date->format('Y-m-d')
+                    : substr((string) $row->snapshot_date, 0, 10);
+                if ($name === self::SSALES_CHANNEL) {
+                    $ssalesByDate[$date] = (float) ($row->sales ?? 0);
+                    continue;
+                }
+                if ($this->isActiveChannelSnapshot($name)) {
+                    continue;
+                }
+                if ($names === null && ($name === '' || str_contains($name, self::SUBROW_SEPARATOR))) {
+                    continue;
+                }
+                if (! isset($byDate[$date])) {
+                    $byDate[$date] = [
+                        'spend' => 0.0,
+                        'clicks' => 0.0,
+                        'sold' => 0.0,
+                        'sales' => 0.0,
+                        'active' => 0.0,
+                        'missing_ads' => 0.0,
+                    ];
+                }
+                $byDate[$date]['spend'] += (float) ($row->spend ?? 0);
+                $byDate[$date]['clicks'] += (float) ($row->clicks ?? 0);
+                $byDate[$date]['sold'] += (float) ($row->sold ?? 0);
+                $byDate[$date]['sales'] += (float) ($row->sales ?? 0);
+                $byDate[$date]['active'] += (float) ($row->active ?? 0);
+                $byDate[$date]['missing_ads'] += (float) ($row->missing_ads ?? 0);
+            }
+        }
+
+        $built = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
+        if ($metric === 'ssales') {
+            $series = array_map(
+                fn ($d) => array_key_exists($d, $ssalesByDate) ? round($ssalesByDate[$d], 2) : null,
+                $labels
+            );
+        } else {
+            $series = $built[$metric] ?? array_fill(0, count($labels), null);
+        }
+
+        return [
+            array_map(fn ($d) => date('M d', strtotime($d)), $labels),
+            $series,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function snapshotChannelNames(string $channel): array
+    {
+        $channel = trim($channel);
+        $key = strtolower((string) preg_replace('/[^a-z0-9]+/', '', $channel));
+
+        return match ($key) {
+            'ebaytotal' => ['eBay', 'eBay 2', 'eBay 3'],
+            'tiktoktotal' => ['TikTok 1', 'TikTok'],
+            'temutotal' => ['Temu', 'Temu 1', 'Temu 2'],
+            default => [$this->stripTotalSuffix($channel)],
+        };
     }
 
     /**
