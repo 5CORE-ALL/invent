@@ -4142,6 +4142,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/instagram/analytics/import', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'importCsv'])->name('instagram.analytics.import');
     Route::post('/instagram/analytics/save-sprice', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'saveSprice'])->name('instagram.analytics.save.sprice');
 
+    Route::get('/instagram-shop/sold', [\App\Http\Controllers\MarketPlace\InstagramShopSoldController::class, 'index'])->name('instagram.shop.sold');
+    Route::get('/instagram-shop/sold/data', [\App\Http\Controllers\MarketPlace\InstagramShopSoldController::class, 'data'])->name('instagram.shop.sold.data');
+
     // Missing Listing — channel_master rows (image + channel) plus DAR submissions
     Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');
     Route::get('/missing-listing/data',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'getData'])->name('missing.listing.data');

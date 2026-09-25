@@ -217,6 +217,78 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
+     * Ad badges shown on Active Channel (/all-marketplace-master).
+     *
+     * @return array{values: array<string, float|null>, trends: array<string, string>}
+     */
+    private function activeChannelAdBadgePack(): array
+    {
+        $empty = [
+            'values' => ['spend' => null, 'ads' => null, 'clicks' => null, 'cvr' => null],
+            'trends' => ['spend' => 'flat', 'tcos' => 'flat', 'clicks' => 'flat', 'cvr' => 'flat'],
+        ];
+        try {
+            $data = BadgeData::dataForPage('all-marketplace-master');
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel ad badges failed: '.$e->getMessage());
+
+            return $empty;
+        }
+
+        $value = static function (array $data, string $field): ?float {
+            if (! array_key_exists($field, $data) || ! is_numeric($data[$field])) {
+                return null;
+            }
+
+            return round((float) $data[$field], 2);
+        };
+
+        return [
+            'values' => [
+                'spend' => $value($data, 'ad_spend'),
+                'ads' => $value($data, 'ads_pct'),
+                'clicks' => $value($data, 'total_views'),
+                'cvr' => $value($data, 'cvr_pct'),
+            ],
+            'trends' => [
+                'spend' => $this->badgeHistoryDirection('ad_spend'),
+                'tcos' => $this->badgeHistoryDirection('ads_pct'),
+                'clicks' => $this->badgeHistoryDirection('total_views'),
+                'cvr' => $this->badgeHistoryDirection('cvr_pct'),
+            ],
+        ];
+    }
+
+    private function badgeHistoryDirection(string $field): string
+    {
+        if (! Schema::hasTable('badges_data_histories')) {
+            return 'flat';
+        }
+
+        try {
+            $values = BadgeDataHistory::query()
+                ->where('page_name', 'all-marketplace-master')
+                ->where('field', $field)
+                ->orderByDesc('snapshot_date')
+                ->limit(2)
+                ->pluck('value');
+        } catch (\Throwable $e) {
+            return 'flat';
+        }
+
+        if ($values->count() < 2) {
+            return 'flat';
+        }
+        $last = (float) $values[0];
+        $prev = (float) $values[1];
+        if (abs($last - $prev) < 0.01) {
+            return 'flat';
+        }
+
+        return $last > $prev ? 'up' : 'down';
+    }
+
+    /**
      * Home Dashboard badges — same rollup as /advertisement-master header badges
      * (parent channels only; CVR / ACOS / TCOS / TOTAL SALES derived).
      * Reads the latest Pacific-day snapshot so the dashboard stays fast.
@@ -404,11 +476,13 @@ class AdvertisementMasterController extends Controller
             $chartSales = $savedSales['last'];
             $chartSpend = $savedSpend['last'];
             $chartClicks = $savedClicks['last'];
+            $adBadges = $this->activeChannelAdBadgePack();
             $badgeTrends = [
                 'ssales' => $savedSales['dir'],
-                'spend' => $savedSpend['dir'],
-                'clicks' => $savedClicks['dir'],
-                'tcos' => $this->savedTcosDirection(),
+                'spend' => $adBadges['trends']['spend'],
+                'clicks' => $adBadges['trends']['clicks'],
+                'tcos' => $adBadges['trends']['tcos'],
+                'cvr' => $adBadges['trends']['cvr'],
             ];
             $activeChannelSpend = ($chartSpend !== null && $chartSpend > 0)
                 ? $chartSpend
@@ -484,6 +558,7 @@ class AdvertisementMasterController extends Controller
                 'total_net_sales' => $totalNetSales,
                 'active_channel_spend' => $activeChannelSpend,
                 'active_channel_clicks' => $chartClicks,
+                'active_channel_badges' => $adBadges['values'],
                 'badge_trends' => $badgeTrends,
             ]);
         } catch (\Throwable $e) {
@@ -2134,6 +2209,7 @@ class AdvertisementMasterController extends Controller
             'ssales' => 'l30_sales',
             'clicks' => 'total_views',
             'tcos' => 'ads_pct',
+            'cvr' => 'cvr_pct',
             default => null,
         };
     }
