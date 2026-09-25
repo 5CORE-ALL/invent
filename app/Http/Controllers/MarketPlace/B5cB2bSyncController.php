@@ -237,9 +237,20 @@ class B5cB2bSyncController extends Controller
             ?: B5cB2bOrder::query()->find($order);
         abort_if(! $row, 404);
 
+        $pushError = null;
+        if (trim((string) $row->shopify_order_id) === '') {
+            $push = app(B5cB2bOrderPushService::class);
+            $shopifyId = $push->importToShopify($row);
+            $row->refresh();
+            if (! $shopifyId) {
+                $pushError = $push->lastFailureReason ?: 'Shopify import failed.';
+            }
+        }
+
         return view('marketplace.b5cb2b.order-show', [
             'title' => 'B5C B2B Order '.$row->channelOrderNumber(),
             'order' => $row,
+            'pushError' => $pushError,
         ]);
     }
 

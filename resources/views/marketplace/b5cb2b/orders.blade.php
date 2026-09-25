@@ -24,6 +24,7 @@
                     <thead>
                         <tr>
                             <th>Order</th>
+                            <th>SKU</th>
                             <th>Status</th>
                             <th>Customer</th>
                             <th>Total</th>
@@ -34,17 +35,24 @@
                     </thead>
                     <tbody>
                         @forelse($orders as $row)
-                            <tr>
+                            <tr data-store-id="{{ $row->store_order_id }}" data-shopify="{{ $row->shopify_order_id }}" data-label="{{ $row->channelOrderNumber() }}">
                                 <td><a href="{{ url('/marketplace/b5cb2b/orders/'.$row->store_order_id) }}">{{ $row->channelOrderNumber() }}</a></td>
+                                <td class="text-nowrap">
+                                    @forelse($row->displayLines() as $line)
+                                        <div>{{ $line['sku'] !== '' ? $line['sku'] : '—' }}</div>
+                                    @empty
+                                        —
+                                    @endforelse
+                                </td>
                                 <td>{{ $row->status }}</td>
                                 <td>{{ $row->customer_name }}<br><span class="text-muted small">{{ $row->customer_email }}</span></td>
                                 <td>{{ $row->currency }} {{ $row->total }}</td>
                                 <td>{{ $row->tracking_reference ?: '—' }}</td>
-                                <td>{{ $row->shopify_order_id ?: '—' }}</td>
+                                <td class="b5c-shopify-cell">{{ $row->shopify_order_id ?: '—' }}</td>
                                 <td>{{ optional($row->ordered_at)->format('Y-m-d H:i') }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" class="text-muted">No orders yet. Click Fetch orders.</td></tr>
+                            <tr><td colspan="8" class="text-muted">No orders yet. Click Fetch orders.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -63,12 +71,55 @@ $('#b5c-fetch-orders').on('click', function () {
         .done(function (res) { $s.text(res.message || 'Queued'); })
         .fail(function (xhr) { $s.text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed'); });
 });
-$('#b5c-push-shopify').on('click', function () {
-    const $s = $('#b5c-orders-status').text('Queueing Shopify…');
-    $.post("{{ route('marketplace.manager.b5cb2b.push.shopify') }}", {_token: '{{ csrf_token() }}'})
-        .done(function (res) { $s.text(res.message || 'Queued'); })
-        .fail(function (xhr) { $s.text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed'); });
-});
+function b5cPushUnlinked() {
+    if (window.b5cPushing) {
+        return;
+    }
+    var rows = [];
+    $('tr[data-store-id]').each(function () {
+        if (!$(this).attr('data-shopify')) {
+            rows.push($(this));
+        }
+    });
+    var $s = $('#b5c-orders-status');
+    if (!rows.length) {
+        $s.text('Every order is already in Shopify.');
+        return;
+    }
+    window.b5cPushing = true;
+    var ok = 0;
+    var fail = 0;
+    function next() {
+        if (!rows.length) {
+            window.b5cPushing = false;
+            $s.text('Shopify: ' + ok + ' sent' + (fail ? ', ' + fail + ' failed' : '') + '.');
+            return;
+        }
+        var $tr = rows.shift();
+        $s.text('Sending ' + $tr.attr('data-label') + ' to Shopify…');
+        $.post("{{ route('marketplace.orders.push', 'b5cb2b') }}", {
+            _token: '{{ csrf_token() }}',
+            order_id: $tr.attr('data-store-id')
+        }).done(function (res) {
+            if (res.shopify_order_id) {
+                ok++;
+                $tr.attr('data-shopify', res.shopify_order_id);
+                $tr.find('.b5c-shopify-cell').text(res.shopify_order_id);
+            } else {
+                fail++;
+                $tr.find('.b5c-shopify-cell').text(res.message || 'Failed');
+            }
+            next();
+        }).fail(function (xhr) {
+            fail++;
+            $tr.find('.b5c-shopify-cell').text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed');
+            next();
+        });
+    }
+    next();
+}
+$('#b5c-push-shopify').on('click', b5cPushUnlinked);
+b5cPushUnlinked();
 $('#b5c-sync-tracking').on('click', function () {
     const $s = $('#b5c-orders-status').text('Pushing tracking…');
     $.post("{{ route('marketplace.manager.b5cb2b.sync.tracking') }}", {_token: '{{ csrf_token() }}'})
