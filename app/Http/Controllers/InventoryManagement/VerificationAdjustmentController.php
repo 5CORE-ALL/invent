@@ -723,34 +723,10 @@ class VerificationAdjustmentController extends Controller
 
         $shopifyAdjustmentStatus = null;
         $shopifyAdjustmentError = null;
-        $shopifyResult = null;
 
-        // If approving with a non-zero delta, update Shopify before saving (persist row even on failure for Status column + retries)
+        // Save first and return. Shopify runs in a follow-up request so the user can move to the next row.
         if ($validated['is_approved'] && $toAdjust != 0) {
-            $startTime = time();
-
-            try {
-                $shopifyResult = $this->adjustShopifyInventoryFast($sku, (int) $toAdjust);
-
-                if ($shopifyResult['success']) {
-                    $shopifyAdjustmentStatus = 'success';
-                    Log::info('Shopify updated successfully', ['sku' => $sku, 'duration' => time() - $startTime]);
-                } else {
-                    $shopifyAdjustmentStatus = 'failed';
-                    $shopifyAdjustmentError = $shopifyResult['error'] ?? 'Unknown error';
-                    Log::error('Shopify update failed; saving record with failed status for retry', [
-                        'sku' => $sku,
-                        'error' => $shopifyAdjustmentError,
-                    ]);
-                }
-            } catch (\Exception $e) {
-                $shopifyAdjustmentStatus = 'failed';
-                $shopifyAdjustmentError = $e->getMessage();
-                Log::error('Shopify update exception; saving record with failed status', [
-                    'sku' => $sku,
-                    'error' => $shopifyAdjustmentError,
-                ]);
-            }
+            $shopifyAdjustmentStatus = 'pending';
         } elseif ($validated['is_approved'] && $toAdjust == 0) {
             $shopifyAdjustmentStatus = 'na';
         }
@@ -796,37 +772,12 @@ class VerificationAdjustmentController extends Controller
                 $verifiedByFirstName = $nameParts[0] ?? Auth::user()->name;
             }
 
-            // Apply the Shopify response onto the local row. A second live pull is not needed for the click.
             $shopifyPull = null;
-            if ($shopifyAdjustmentStatus === 'success') {
-                $localQty = $this->applyAdjustmentToLocalShopifySku(
-                    $sku,
-                    (int) $toAdjust,
-                    isset($shopifyResult['available']) ? (int) $shopifyResult['available'] : null
-                );
-                if ($localQty !== null) {
-                    $shopifyPull = [
-                        'success' => true,
-                        'message' => 'Inventory updated for this SKU.',
-                        'data' => $localQty,
-                    ];
-                }
-            }
 
-            // Determine message
             $message = 'Record saved successfully';
             if ($validated['is_approved']) {
                 if ($toAdjust != 0) {
-                    if ($shopifyAdjustmentStatus === 'success') {
-                        $message = 'Shopify inventory updated successfully and saved to database';
-                        if (($shopifyPull['success'] ?? false)) {
-                            $message .= '. Inventory updated for this SKU.';
-                        }
-                    } elseif ($shopifyAdjustmentStatus === 'failed') {
-                        $message = 'Saved, but Shopify was not updated. Check Status — you can Retry or wait for automatic retries (every 1 min, up to 5).';
-                    } else {
-                        $message = 'Record saved successfully';
-                    }
+                    $message = 'Saved. Shopify update is running for this row.';
                 } else {
                     $message = 'Record saved. Shopify was not changed because verified quantity matches on hand (no adjustment).';
                 }
@@ -2621,6 +2572,98 @@ GQL;
         }
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Push a saved verification row to Shopify. Called after Accept so the page does not wait.
+     */
+    public function pushVerificationShopifyAdjustment(Request $request)
+    {
+        $request->validate([
+            'inventory_id' => 'required|integer|exists:inventories,id',
+        ]);
+
+        $record = Inventory::find($request->inventory_id);
+        if (! $record) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Adjustment record not found.',
+            ], 404);
+        }
+
+        if (in_array($record->shopify_adjustment_status, ['success', 'na'], true)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Shopify inventory already updated.',
+                'shopify_adjustment_status' => $record->shopify_adjustment_status,
+                'shopify_adjustment_succeeded_at' => $record->shopify_adjustment_succeeded_at?->toIso8601String(),
+            ]);
+        }
+
+        return response()->json($this->finishShopifyAdjustment($record));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function finishShopifyAdjustment(Inventory $record): array
+    {
+        $sku = trim((string) $record->sku);
+        $toAdjust = (int) $record->to_adjust;
+
+        if ($toAdjust === 0) {
+            $record->shopify_adjustment_status = 'na';
+            $record->shopify_adjustment_error = null;
+            $record->save();
+
+            return [
+                'success' => true,
+                'message' => 'No Shopify change (0 adjustment).',
+                'shopify_adjustment_status' => 'na',
+            ];
+        }
+
+        try {
+            $result = $this->adjustShopifyInventoryFast($sku, $toAdjust);
+        } catch (\Exception $e) {
+            $result = ['success' => false, 'error' => $e->getMessage()];
+        }
+
+        if ($result['success'] ?? false) {
+            $record->shopify_adjustment_status = 'success';
+            $record->shopify_adjustment_error = null;
+            $record->shopify_adjustment_succeeded_at = Carbon::now('America/New_York');
+            $record->save();
+
+            $localQty = $this->applyAdjustmentToLocalShopifySku(
+                $sku,
+                $toAdjust,
+                isset($result['available']) ? (int) $result['available'] : null
+            );
+
+            return [
+                'success' => true,
+                'message' => 'Shopify inventory updated.',
+                'shopify_adjustment_status' => 'success',
+                'shopify_adjustment_error' => null,
+                'shopify_adjustment_succeeded_at' => $record->shopify_adjustment_succeeded_at?->toIso8601String(),
+                'shopify_pull' => $localQty !== null
+                    ? ['success' => true, 'message' => 'Inventory updated for this SKU.', 'data' => $localQty]
+                    : ['success' => false, 'message' => 'Shopify updated, but this SKU was not found locally.'],
+            ];
+        }
+
+        $error = (string) ($result['error'] ?? 'Shopify update failed.');
+        $record->shopify_adjustment_status = 'failed';
+        $record->shopify_adjustment_error = Str::limit($error, 65000, '');
+        $record->save();
+
+        return [
+            'success' => false,
+            'message' => $error,
+            'shopify_adjustment_status' => 'failed',
+            'shopify_adjustment_error' => $record->shopify_adjustment_error,
+        ];
     }
 
     /**

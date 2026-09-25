@@ -1100,6 +1100,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lost-gain-adjust-quantity', [VerificationAdjustmentController::class, 'adjustLostGainQuantities']);
     Route::get('/lost-gain-aq-history', [VerificationAdjustmentController::class, 'getLostGainAqHistory']);
     Route::post('/update-verified-stock', [VerificationAdjustmentController::class, 'updateVerifiedStock']);
+    Route::post('/push-verification-shopify-adjustment', [VerificationAdjustmentController::class, 'pushVerificationShopifyAdjustment']);
     Route::post('/retry-verification-shopify-adjustment', [VerificationAdjustmentController::class, 'retryVerificationShopifyAdjustment']);
     Route::post('/save-remark', [VerificationAdjustmentController::class, 'saveRemark']);
     Route::get('/get-verified-stock', [VerificationAdjustmentController::class, 'getVerifiedStock']);
