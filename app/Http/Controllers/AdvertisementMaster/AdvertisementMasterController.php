@@ -1808,6 +1808,21 @@ class AdvertisementMasterController extends Controller
         return $flat;
     }
 
+    /**
+     * @param  array<string, mixed>  $byDate
+     * @return array<string, mixed>
+     */
+    private function shiftDatesBackOneDay(array $byDate): array
+    {
+        $out = [];
+        foreach ($byDate as $date => $value) {
+            $asOf = Carbon::parse((string) $date, self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
+            $out[$asOf] = $value;
+        }
+
+        return $out;
+    }
+
     private function isActiveChannelSnapshot(string $channel): bool
     {
         return in_array($channel, [
@@ -2311,9 +2326,11 @@ class AdvertisementMasterController extends Controller
     public function history(Request $request)
     {
         $days = max(1, min(365, (int) $request->query('days', 32)));
-        // Anchor to the Pacific business day so it lines up with the snapshots.
-        $from = Carbon::now(self::SNAPSHOT_TIMEZONE)->subDays($days - 1)->toDateString();
-        $end = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
+        // Same window as /all-marketplace-master: snapshots from today-(days+1),
+        // drawn on the previous Pacific day, so the axis ends yesterday.
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $from = $today->copy()->subDays($days + 1)->toDateString();
+        $end = $today->toDateString();
         $this->persistActiveChannelDaily($from, $end);
 
         $histCols = ['snapshot_date', 'channel', 'spend', 'clicks', 'sold', 'sales', 'active'];
@@ -2373,16 +2390,6 @@ class AdvertisementMasterController extends Controller
             $byDate[$d]['missing_ads'] += (float) ($r->missing_ads ?? 0);
         }
 
-        // Continuous calendar window (L30 when days=30) so missing snapshot
-        // days still appear on the chart instead of jumping Aug 14 → Aug 24.
-        $labels = [];
-        $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->startOfDay();
-        $endC = Carbon::parse($end, self::SNAPSHOT_TIMEZONE)->startOfDay();
-        while ($cursor->lte($endC)) {
-            $labels[] = $cursor->toDateString();
-            $cursor->addDay();
-        }
-
         // Amazon snapshots are whatever L30 summary existed on page load.
         // When that pull lagged, spend dipped to ~$6.5k then jumped on refresh.
         // Overlay a dated daily rolling L30 so the chart matches real delivery.
@@ -2395,6 +2402,23 @@ class AdvertisementMasterController extends Controller
             );
         } catch (\Throwable $e) {
             \Log::warning('Advertisement Master Amazon history overlay failed: '.$e->getMessage());
+        }
+
+        // A row saved on D is the closed day D-1, same as the Active Channel chart.
+        $byDate = $this->shiftDatesBackOneDay($byDate);
+        $ssalesByDate = $this->shiftDatesBackOneDay($ssalesByDate);
+        $activeSpendByDate = $this->shiftDatesBackOneDay($activeSpendByDate);
+        $activeClicksByDate = $this->shiftDatesBackOneDay($activeClicksByDate);
+        foreach ($byChannel as $channel => $perDay) {
+            $byChannel[$channel] = $this->shiftDatesBackOneDay($perDay);
+        }
+
+        $labels = [];
+        $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->subDay()->startOfDay();
+        $endC = $today->copy()->subDay()->startOfDay();
+        while ($cursor->lte($endC)) {
+            $labels[] = $cursor->toDateString();
+            $cursor->addDay();
         }
 
         // All-channels Spend, Clicks, and Total Sales are the daily rows saved
