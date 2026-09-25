@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdsMaster\AdsMasterController;
+use App\Http\Controllers\Ads\ChannelTitleAdsController;
 use App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController;
 use App\Http\Controllers\AdvertisementMaster\VariationsAdsController;
 use App\Http\Controllers\AmazonAdsController;
@@ -4142,6 +4143,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/instagram/analytics/import', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'importCsv'])->name('instagram.analytics.import');
     Route::post('/instagram/analytics/save-sprice', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'saveSprice'])->name('instagram.analytics.save.sprice');
 
+    Route::get('/instagram-shop/sold', [\App\Http\Controllers\MarketPlace\InstagramShopSoldController::class, 'index'])->name('instagram.shop.sold');
+    Route::get('/instagram-shop/sold/data', [\App\Http\Controllers\MarketPlace\InstagramShopSoldController::class, 'data'])->name('instagram.shop.sold.data');
+
     // Missing Listing — channel_master rows (image + channel) plus DAR submissions
     Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');
     Route::get('/missing-listing/data',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'getData'])->name('missing.listing.data');
@@ -4463,7 +4467,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/facebook-all-ads-sheet/batches',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'batches'])->name('facebook.all.ads.sheet.batches');
     Route::post('/facebook-all-ads-sheet/upload',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'upload'])->name('facebook.all.ads.sheet.upload');
     Route::post('/facebook-all-ads-sheet/ad-types',        [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'storeAdType'])->name('facebook.all.ads.sheet.ad.types.store');
+    Route::post('/facebook-all-ads-sheet/b2b-b2c-options', [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'storeB2bB2cOption'])->name('facebook.all.ads.sheet.b2b.b2c.store');
     Route::post('/facebook-all-ads-sheet/{id}/ad-type',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateAdType'])->whereNumber('id')->name('facebook.all.ads.sheet.ad.type');
+    Route::post('/facebook-all-ads-sheet/{id}/b2b-b2c',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateB2bB2c'])->whereNumber('id')->name('facebook.all.ads.sheet.b2b.b2c');
     Route::post('/facebook-all-ads-sheet/{id}/ch',         [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateCh'])->whereNumber('id')->name('facebook.all.ads.sheet.ch');
     Route::post('/facebook-all-ads-sheet/bulk-ch',         [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'bulkCh'])->name('facebook.all.ads.sheet.bulk.ch');
 
@@ -4512,6 +4518,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // ad_type filter differs (just like the G Video / P Carousal child pages).
     Route::get('/music-store-ads-sheet',                   [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'musicStoreIndex'])->name('music.store.ads.sheet');
     Route::get('/music-school-ads-sheet',                  [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'musicSchoolIndex'])->name('music.school.ads.sheet');
+
+    // B2B / B2C — same Meta sheet, lensed to the B2B / B2C tag. Same blade
+    // and data endpoints as Music School; only the tag filter differs.
+    Route::get('/b2b-ads-sheet',                           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'b2bIndex'])->name('b2b.ads.sheet');
+    Route::get('/b2c-ads-sheet',                           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'b2cIndex'])->name('b2c.ads.sheet');
+    Route::get('/b2b-b2c-ads/{option}',                    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'b2bB2cOptionIndex'])->where('option', '[A-Za-z0-9\-]+')->name('b2b.b2c.ads.sheet');
 
     // ── TikTok Video Ads — fully independent module (own tables, own
     // controller). Same page layout / filters as the Meta sheet but a
@@ -5244,6 +5256,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-avg-views-history', [TemuController::class, 'getAvgViewsHistory'])->name('temu.avg.views.history');
     Route::get('/temu-latest-avg-views', [TemuController::class, 'getLatestAvgViews'])->name('temu.latest.avg.views');
     Route::post('/temu-pricing/save-starget', [TemuController::class, 'saveStarget'])->name('temu.save.starget');
+
+    // Title-only ads page for channels that do not have their own ads screen.
+    Route::get('/channel-ads/{channel}', [ChannelTitleAdsController::class, 'show'])
+        ->where('channel', '[A-Za-z0-9]+')
+        ->name('channel.title.ads');
 
     // Advertisement Master view routes
     Route::get('/advertisement-master', [AdvertisementMasterController::class, 'index'])->name('advertisement.master');

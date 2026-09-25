@@ -397,7 +397,13 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1" style="min-width:0;">
                             <span class="adm-stat-badge adm-stat-badge--missing adm-badge-link" data-metric="missing_ads" data-label="Missing" title="Sum of missing ads — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="missing_ads" title="vs previous day"></span>MISSING: <span id="adm-badge-missing">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--active" title="Active (running / enabled) campaigns across all channels"><span class="adm-trend-dot is-flat" data-badge-metric="active" title="vs previous day"></span>ACTIVE: <span id="adm-badge-active">0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--active" title="Active campaigns in the ACTIVE column"><span class="adm-trend-dot is-flat" data-badge-metric="active" title="vs previous day"></span>ACTIVE: <span id="adm-badge-active">0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--clicks" title="Sum of the CLICKS column">CLICKS: <span id="adm-badge-col-clicks">0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--spend adm-badge-link" data-metric="spend" data-label="Spend" title="Same Spend badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="spend" title="vs previous day"></span>SPEND: <span id="adm-badge-spend">$0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--acos adm-badge-link" data-metric="acos" data-label="ACOS" title="Active Channel ACOS: Total Ad Spend ÷ Ad Sales"><span class="adm-trend-dot is-flat" data-badge-metric="acos" title="vs previous day"></span>ACOS: <span id="adm-badge-acos">0%</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--tcos adm-badge-link" data-metric="tcos" data-label="TCOS" title="Same Ads % as Active Channel: Spend ÷ Sales"><span class="adm-trend-dot is-flat" data-badge-metric="tcos" title="vs previous day"></span>TCOS: <span id="adm-badge-tcos">0%</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--clicks adm-badge-link" data-metric="clicks" data-label="Clicks" title="Same Clicks badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="clicks" title="vs previous day"></span>CLICKS: <span id="adm-badge-clicks">0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--cvr adm-badge-link" data-metric="cvr" data-label="CVR" title="Same CVR badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="cvr" title="vs previous day"></span>CVR: <span id="adm-badge-cvr">0.00%</span></span>
                         </div>
                         <div class="d-flex align-items-center gap-1" style="flex-shrink:0;">
                             <select id="adm-filter-kind" class="form-select form-select-sm" style="width:140px;" aria-label="Row view" title="Row view">
@@ -693,21 +699,59 @@
                 return percentFormatter(cell);
             }
 
+            function paintActiveChannelAdBadges(badges) {
+                badges = badges || {};
+                const spendEl = document.getElementById('adm-badge-spend');
+                if (spendEl && badges.spend != null && !isNaN(Number(badges.spend))) {
+                    spendEl.textContent = '$' + Math.round(Number(badges.spend)).toLocaleString();
+                }
+                const tcosEl = document.getElementById('adm-badge-tcos');
+                if (tcosEl && badges.tcos != null && !isNaN(Number(badges.tcos))) {
+                    tcosEl.textContent = Number(badges.tcos).toFixed(1) + '%';
+                }
+                const acosEl = document.getElementById('adm-badge-acos');
+                if (acosEl && badges.acos != null && !isNaN(Number(badges.acos))) {
+                    acosEl.textContent = Number(badges.acos).toFixed(1) + '%';
+                }
+                const clicksEl = document.getElementById('adm-badge-clicks');
+                if (clicksEl && badges.clicks != null && !isNaN(Number(badges.clicks))) {
+                    clicksEl.textContent = Math.round(Number(badges.clicks)).toLocaleString();
+                }
+                const cvrEl = document.getElementById('adm-badge-cvr');
+                if (cvrEl && badges.cvr != null && !isNaN(Number(badges.cvr))) {
+                    cvrEl.textContent = Number(badges.cvr).toFixed(2) + '%';
+                }
+            }
+
             function updateBadges(rows) {
-                let active = 0, missing = 0;
+                let active = 0, clicks = 0, missing = 0;
                 (admAllRows.length ? admAllRows : rows).forEach(function (r) {
                     if (!r || !r.has_missing_ads || !r.missing_ads_href) return;
                     if (r.is_group_total || r.is_sum_row) return;
                     missing += Number(r.missing_ads || 0);
                 });
-                rows.forEach(function (r) {
-                    if (r && r.is_sub_row) return;
+                const kind = String((document.getElementById('adm-filter-kind') || {}).value || '');
+                const rnRaw = String((document.getElementById('adm-filter-rn') || {}).value || '').trim().toUpperCase();
+                const rn = (rnRaw === 'REQ' || rnRaw === 'NR') ? rnRaw : '';
+                const channelRaw = String((document.getElementById('adm-filter-channel') || {}).value || '').trim().toLowerCase();
+                const channel = (channelRaw && channelRaw !== 'all') ? channelRaw : '';
+                const typeQ = String((document.getElementById('adm-search') || {}).value || '').trim().toLowerCase();
+                (admAllRows.length ? admAllRows : rows).forEach(function (r) {
+                    if (!r) return;
+                    if (kind === 'total' && !r.is_sum_row) return;
+                    if (kind !== 'total' && r.is_sum_row) return;
+                    if (channel && String(r.channel_group || '').toLowerCase().indexOf(channel) === -1) return;
+                    if (typeQ && String(r.channel || '').toLowerCase().indexOf(typeQ) === -1) return;
+                    if (rn && String(r.nr_req || 'REQ').toUpperCase() !== rn) return;
                     active += Number(r.active || 0);
+                    clicks += Number(r.clicks || 0);
                 });
                 const missingEl = document.getElementById('adm-badge-missing');
                 if (missingEl) missingEl.textContent = Math.round(missing).toLocaleString();
                 const activeEl = document.getElementById('adm-badge-active');
                 if (activeEl) activeEl.textContent = Math.round(active).toLocaleString();
+                const colClicksEl = document.getElementById('adm-badge-col-clicks');
+                if (colClicksEl) colClicksEl.textContent = Math.round(clicks).toLocaleString();
                 admPaintBadgeDots(rows);
             }
 
@@ -1038,6 +1082,7 @@
                     const rows = sortAdmRows(flattenAdmRows(response.data || []));
                     admAllRows = rows;
                     admBadgeTrends = (response && response.badge_trends) || {};
+                    paintActiveChannelAdBadges((response && response.active_channel_badges) || {});
                     updateBadges(rows);
                     buildAdmChannelOptions(rows);
                     fillAdmChannelFilter(rows);

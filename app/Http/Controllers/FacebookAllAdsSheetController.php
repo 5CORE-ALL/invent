@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Models\FacebookAdType;
 use App\Models\FacebookAllAdsSheet;
+use App\Models\FacebookB2bB2cOption;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\Csv as CsvReader;
@@ -179,6 +181,46 @@ class FacebookAllAdsSheetController extends Controller
         ]);
     }
 
+    /** B2B page — Meta dataset lensed to B2B / B2C = B2B. */
+    public function b2bIndex()
+    {
+        return $this->renderB2bB2cPage('B2B');
+    }
+
+    /** B2C page — Meta dataset lensed to B2B / B2C = B2C. */
+    public function b2cIndex()
+    {
+        return $this->renderB2bB2cPage('B2C');
+    }
+
+    /** Any saved B2B / B2C option, including ones added from the sheet. */
+    public function b2bB2cOptionIndex(string $option)
+    {
+        $match = null;
+        foreach (FacebookB2bB2cOption::options() as $name) {
+            if (FacebookAllAdsSheet::b2bSlug($name) === strtolower($option)) {
+                $match = $name;
+                break;
+            }
+        }
+        abort_unless($match, 404);
+
+        return $this->renderB2bB2cPage($match);
+    }
+
+    private function renderB2bB2cPage(string $tag): \Illuminate\View\View
+    {
+        return view('facebook-all-ads-sheet', [
+            'pageType' => 'all',
+            'pageTitle' => $tag,
+            'pageSubtitle' => 'Meta campaigns tagged B2B / B2C = '.$tag,
+            'allowedAdTypes' => FacebookAllAdsSheet::allAdTypes(),
+            'canManageAdTypes' => true,
+            'chOptions' => FacebookAllAdsSheet::CH_OPTIONS,
+            'b2bFilter' => $tag,
+        ]);
+    }
+
     /** Music School page — Meta dataset lensed to ad_type = MUSIC SCHOOL. */
     public function musicSchoolIndex()
     {
@@ -220,12 +262,13 @@ class FacebookAllAdsSheetController extends Controller
         if (! in_array($chFilter, FacebookAllAdsSheet::CH_OPTIONS, true)) {
             $chFilter = null;
         }
+        $b2bFilter = $this->normalizeB2bFilter($request->query('b2b'));
 
         // Merged view: join the most recent Campaign batch with the most
         // recent Spend batch by `Campaign ID`. Default when no specific batch
         // is asked for, so the user sees one unified table out of the box.
         if ($batchId === null && ($view === 'merged' || $view === null)) {
-            $merged = $this->getMergedView($typeList, $chFilter);
+            $merged = $this->getMergedView($typeList, $chFilter, $b2bFilter);
             if ($merged !== null) {
                 return response()->json($merged);
             }
@@ -254,7 +297,7 @@ class FacebookAllAdsSheetController extends Controller
             ], $this->tcosPayloadMatchingMaster()));
         }
 
-        $rows = $query->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'source_filename', 'created_at']);
+        $rows = $query->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'b2b_b2c', 'source_filename', 'created_at']);
 
         // Build column list from the union of keys observed in this batch.
         // Skip any `__*` meta keys (e.g. `__upload_type`) — those are
@@ -284,6 +327,10 @@ class FacebookAllAdsSheetController extends Controller
                 fn($_, $k) => ! str_starts_with($k, '__'),
                 ARRAY_FILTER_USE_BOTH
             );
+            $b2b = $this->resolvedB2bB2c($r->b2b_b2c, $cleanedData);
+            if ($b2b) {
+                $cleanedData = $this->writeB2bIntoRowData($cleanedData, $b2b);
+            }
             return array_merge(
                 [
                     '_id'          => $r->id,
@@ -291,10 +338,14 @@ class FacebookAllAdsSheetController extends Controller
                     '_upload_type' => $uploadType,
                     'ad_type'      => $r->ad_type,
                     'ch'           => $r->ch,
+                    'b2b_b2c'      => $b2b,
                 ],
                 $cleanedData
             );
         });
+        if ($b2bFilter) {
+            $data = $data->filter(fn ($row) => ($row['b2b_b2c'] ?? null) === $b2bFilter)->values();
+        }
 
         $meta = FacebookAllAdsSheet::query()
             ->where('import_batch_id', $batchId)
@@ -492,7 +543,7 @@ class FacebookAllAdsSheetController extends Controller
      * Type filtering (`$typeList` from /facebook-{video|carousal}-… pages)
      * is applied to the merged set just like it is to individual batches.
      */
-    public function getMergedView(?array $typeList, ?string $chFilter = null): ?array
+    public function getMergedView(?array $typeList, ?string $chFilter = null, ?string $b2bFilter = null): ?array
     {
         $latestByType = $this->latestBatchPerType();
         if (empty($latestByType)) {
@@ -506,7 +557,7 @@ class FacebookAllAdsSheetController extends Controller
         if ($typeList) {
             $rowsQ->whereIn('ad_type', $typeList);
         }
-        $rows = $rowsQ->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'import_batch_id']);
+        $rows = $rowsQ->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'b2b_b2c', 'import_batch_id']);
 
         // Build a `lowercase Campaign name → Campaign ID` lookup from the
         // Campaign batch. Used as a fallback for Spend / Sales rows whose
@@ -549,6 +600,7 @@ class FacebookAllAdsSheetController extends Controller
 
             $presence[$cid][$uploadType ?? '_unknown'] = true;
 
+            $resolvedB2b = $this->resolvedB2bB2c($r->b2b_b2c, $cleanedData);
             if (! isset($merged[$cid])) {
                 $merged[$cid] = [
                     '_id'          => $r->id,
@@ -557,7 +609,10 @@ class FacebookAllAdsSheetController extends Controller
                     '_campaign_id' => $cid,
                     'ad_type'      => $r->ad_type,
                     'ch'           => $r->ch,
+                    'b2b_b2c'      => $resolvedB2b,
                 ];
+            } elseif (($merged[$cid]['b2b_b2c'] ?? '') === '' && $resolvedB2b) {
+                $merged[$cid]['b2b_b2c'] = $resolvedB2b;
             }
 
             // Don't let later rows overwrite a previously-filled cell with
@@ -577,6 +632,14 @@ class FacebookAllAdsSheetController extends Controller
                 $merged[$cid]['_id']     = $r->id;
                 $merged[$cid]['ad_type'] = $r->ad_type;
                 $merged[$cid]['ch']      = $r->ch;
+                // A saved tag on the campaign row wins. A blank campaign
+                // row must not wipe a tag already read from spend/sales
+                // or from the campaign name.
+                if ($r->b2b_b2c) {
+                    $merged[$cid]['b2b_b2c'] = $r->b2b_b2c;
+                } elseif (($merged[$cid]['b2b_b2c'] ?? '') === '' && $resolvedB2b) {
+                    $merged[$cid]['b2b_b2c'] = $resolvedB2b;
+                }
             }
         }
 
@@ -616,6 +679,7 @@ class FacebookAllAdsSheetController extends Controller
                 '_campaign_id' => $row['_campaign_id'],
                 'ad_type'      => $row['ad_type'],
                 'ch'           => $row['ch'] ?? null,
+                'b2b_b2c'      => $row['b2b_b2c'] ?? null,
             ];
             // Pass 1 — sources
             foreach (self::MERGED_COLUMNS as $col) {
@@ -717,6 +781,12 @@ class FacebookAllAdsSheetController extends Controller
                 fn($r) => ($r['ch'] ?? null) === $chFilter
             ));
         }
+        if ($b2bFilter) {
+            $projected = array_values(array_filter(
+                $projected,
+                fn ($r) => ($r['b2b_b2c'] ?? null) === $b2bFilter
+            ));
+        }
 
         $columnList = array_map(
             fn($c) => ['title' => $c['title'], 'field' => $c['title']],
@@ -809,6 +879,39 @@ class FacebookAllAdsSheetController extends Controller
                 $map[$cid] = $r->ch;
             }
         }
+        return $map;
+    }
+
+    /**
+     * Campaign ID → B2B / B2C so a new upload keeps the tag.
+     *
+     * @return array<string, string>
+     */
+    private function buildB2bB2cCarryMap(): array
+    {
+        if (! Schema::hasColumn('facebook_all_ads_sheet', 'b2b_b2c')) {
+            return [];
+        }
+
+        $rows = FacebookAllAdsSheet::query()
+            ->whereNotNull('b2b_b2c')
+            ->where('b2b_b2c', '!=', '')
+            ->orderByDesc('id')
+            ->get(['b2b_b2c', 'row_data']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            $rd  = $r->row_data ?? [];
+            $cid = $this->findCampaignId(array_filter(
+                $rd,
+                fn ($_, $k) => ! str_starts_with($k, '__'),
+                ARRAY_FILTER_USE_BOTH
+            ));
+            if ($cid !== null && $cid !== '' && ! isset($map[$cid])) {
+                $map[$cid] = $r->b2b_b2c;
+            }
+        }
+
         return $map;
     }
 
@@ -1694,6 +1797,58 @@ class FacebookAllAdsSheetController extends Controller
      *     (e.g. "120247090510380496"). Falsy values like "(No name)" or
      *     "{{campaign_name}}" are skipped so they don't pollute the merge.
      */
+    /**
+     * B2B / B2C for a row: the saved tag, otherwise the sheet column of the
+     * same name, otherwise a single B2B or B2C token in the campaign name.
+     *
+     * @param  array<string, mixed>  $rowData
+     */
+    private function normalizeB2bFilter(?string $raw): ?string
+    {
+        $key = FacebookAllAdsSheet::normalizeAdTypeName((string) $raw);
+        if ($key === '') {
+            return null;
+        }
+
+        return in_array($key, FacebookB2bB2cOption::options(), true) ? $key : null;
+    }
+
+    private function resolvedB2bB2c(?string $stored, array $rowData): ?string
+    {
+        return FacebookAllAdsSheet::resolveB2bB2c($stored, $rowData);
+    }
+
+    private function isB2bB2cHeader(string $key): bool
+    {
+        return FacebookAllAdsSheet::isB2bB2cHeader($key);
+    }
+
+    /**
+     * Keep the uploaded sheet cell in step with the dropdown.
+     *
+     * @param  array<string, mixed>  $rowData
+     * @return array<string, mixed>
+     */
+    private function writeB2bIntoRowData(array $rowData, ?string $value): array
+    {
+        $key = null;
+        foreach (array_keys($rowData) as $k) {
+            if ($this->isB2bB2cHeader((string) $k)) {
+                $key = (string) $k;
+                break;
+            }
+        }
+        $key ??= 'B2B / B2C';
+
+        if ($value === null || $value === '') {
+            unset($rowData[$key]);
+        } else {
+            $rowData[$key] = $value;
+        }
+
+        return $rowData;
+    }
+
     private function findCampaignId(array $rowData): ?string
     {
         foreach ($rowData as $key => $value) {
@@ -1785,6 +1940,95 @@ class FacebookAllAdsSheetController extends Controller
             'success'  => true,
             'ad_type'  => $name,
             'ad_types' => FacebookAllAdsSheet::allAdTypes(),
+        ]);
+    }
+
+    /**
+     * Add a B2B / B2C dropdown option. Built-ins and existing names are
+     * returned as-is so the same option is never stored twice.
+     */
+    public function storeB2bB2cOption(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:32'],
+        ]);
+
+        $name = FacebookAllAdsSheet::normalizeAdTypeName($data['name']);
+        if ($name === '' || ! preg_match('/^[A-Z0-9][A-Z0-9 \-]{0,31}$/', $name)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Option must be 1–32 letters, numbers, spaces, or hyphens.',
+            ], 422);
+        }
+
+        $existing = FacebookB2bB2cOption::options();
+        if (! in_array($name, $existing, true)) {
+            try {
+                FacebookB2bB2cOption::firstOrCreate(['name' => $name]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Another request stored the same name first.
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'b2b_b2c' => $name,
+            'options' => FacebookB2bB2cOption::options(),
+        ]);
+    }
+
+    /**
+     * Persist the B2B / B2C choice on every row that shares this Campaign ID.
+     */
+    public function updateB2bB2c(Request $request, int $id)
+    {
+        $options = FacebookB2bB2cOption::options();
+        $request->validate([
+            'b2b_b2c' => ['nullable', 'string', 'in:'.implode(',', $options)],
+        ]);
+
+        $row = FacebookAllAdsSheet::findOrFail($id);
+        $value = $request->input('b2b_b2c') ?: null;
+
+        $cid = $this->findCampaignId(array_filter(
+            (array) ($row->row_data ?? []),
+            fn ($_, $k) => ! str_starts_with($k, '__'),
+            ARRAY_FILTER_USE_BOTH
+        ));
+
+        $propagated = 1;
+        if ($cid !== null && $cid !== '') {
+            $like1 = '%"'.str_replace('%', '\\%', $cid).'"%';
+            $propagated = FacebookAllAdsSheet::query()
+                ->where('row_data', 'like', $like1)
+                ->get(['id', 'row_data'])
+                ->filter(function ($r) use ($cid) {
+                    $rowCid = $this->findCampaignId(array_filter(
+                        (array) ($r->row_data ?? []),
+                        fn ($_, $k) => ! str_starts_with($k, '__'),
+                        ARRAY_FILTER_USE_BOTH
+                    ));
+
+                    return $rowCid === $cid;
+                })
+                ->each(function ($r) use ($value) {
+                    $r->row_data = $this->writeB2bIntoRowData((array) ($r->row_data ?? []), $value);
+                    $r->b2b_b2c = $value;
+                    $r->save();
+                })
+                ->count();
+        } else {
+            $row->row_data = $this->writeB2bIntoRowData((array) ($row->row_data ?? []), $value);
+            $row->b2b_b2c = $value;
+            $row->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'id' => $row->id,
+            'b2b_b2c' => $value,
+            'campaign_id' => $cid,
+            'propagated' => $propagated,
         ]);
     }
 
@@ -2227,6 +2471,7 @@ class FacebookAllAdsSheetController extends Controller
         // user set on a campaign survive the replace.
         $prevAdTypeByCid = $this->buildAdTypeCarryMap();
         $prevChByCid     = $this->buildChCarryMap();
+        $prevB2bByCid    = $this->buildB2bB2cCarryMap();
 
         DB::beginTransaction();
         try {
@@ -2250,6 +2495,7 @@ class FacebookAllAdsSheetController extends Controller
                 $rowCid     = $this->findCampaignId($assoc);
                 $carriedAdType = $rowCid !== null ? ($prevAdTypeByCid[$rowCid] ?? null) : null;
                 $carriedCh     = $rowCid !== null ? ($prevChByCid[$rowCid] ?? null) : null;
+                $carriedB2b    = $rowCid !== null ? ($prevB2bByCid[$rowCid] ?? null) : null;
 
                 // Tuck the upload type inside the existing `row_data` JSON
                 // (under a double-underscore meta key) so we don't need a new
@@ -2263,6 +2509,7 @@ class FacebookAllAdsSheetController extends Controller
                     'row_data'        => $assoc,
                     'ad_type'         => $carriedAdType,
                     'ch'              => $carriedCh,
+                    'b2b_b2c'         => $carriedB2b,
                     'uploaded_by'     => $userId,
                 ]);
                 $imported++;

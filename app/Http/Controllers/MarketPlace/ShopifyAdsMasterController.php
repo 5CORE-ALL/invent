@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\FacebookAllAdsSheet;
+use App\Models\FacebookB2bB2cOption;
 use App\Models\ShopifyMetaCampaign;
 use App\Support\GoogleYoutubeCampaignSales;
 use Carbon\Carbon;
@@ -197,6 +198,9 @@ class ShopifyAdsMasterController extends Controller
             }
             $facebookChildren[] = $child;
         }
+        foreach ($this->facebookB2bAdvertisementChildren('Facebook', 'FB') as $child) {
+            $facebookChildren[] = $child;
+        }
         $facebookRow['_children'] = $facebookChildren;
         $children[] = $facebookRow;
 
@@ -283,13 +287,15 @@ class ShopifyAdsMasterController extends Controller
         foreach ($this->metaAdTypeLenses('shopify_facebook') as [$suffix, , $adTypes]) {
             $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$suffix, 'FB', $adTypes, true);
         }
+        foreach ($this->facebookB2bOptionNames() as $tag) {
+            $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$tag, 'FB', null, true, false, $tag);
+        }
 
         $instagram = $this->metaChannelMetrics('Instagram', 'Insta');
         $instagram['_children'] = [];
         foreach ($this->metaAdTypeLenses('shopify_instagram', false) as [$suffix, , $adTypes]) {
             $instagram['_children'][] = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
         }
-
         $rows = [
             $this->googleShoppingMetrics(),
             $this->googleSerpMetrics(),
@@ -976,7 +982,7 @@ class ShopifyAdsMasterController extends Controller
      *                            spend / clicks / sold / sales (matches /facebook-ads
      *                            default Status filter).
      */
-    private function metaChannelMetrics(string $label, string $chCode, ?array $adTypeList = null, bool $isSubRow = false, bool $activeOnly = false): array
+    private function metaChannelMetrics(string $label, string $chCode, ?array $adTypeList = null, bool $isSubRow = false, bool $activeOnly = false, ?string $b2b = null): array
     {
         try {
             $ctx = $this->loadFacebookContext();
@@ -1001,6 +1007,12 @@ class ShopifyAdsMasterController extends Controller
                         $adTypeList
                     );
                     if ($at === '' || ! in_array($at, $wanted, true)) {
+                        continue;
+                    }
+                }
+                if ($b2b !== null) {
+                    $tag = mb_strtoupper(trim((string) ($ctx['b2bMap'][$cid] ?? '')));
+                    if ($tag === '' || $tag !== mb_strtoupper(trim($b2b))) {
                         continue;
                     }
                 }
@@ -1052,6 +1064,7 @@ class ShopifyAdsMasterController extends Controller
             'nameToCid'  => [],
             'chMap'      => [],
             'adTypeMap'  => [],
+            'b2bMap'     => [],
             'spendByCid' => [],
             'salesByCid' => [],
             'activeCids' => [],
@@ -1126,6 +1139,7 @@ class ShopifyAdsMasterController extends Controller
             'nameToCid'  => $nameToCid,
             'chMap'      => $this->facebookChMap(),
             'adTypeMap'  => $this->facebookAdTypeMap(),
+            'b2bMap'     => $this->facebookB2bMap(),
             'spendByCid' => $spendByCid,
             'salesByCid' => $salesByCid,
             'activeCids' => $activeCids,
@@ -1161,6 +1175,87 @@ class ShopifyAdsMasterController extends Controller
         }
 
         return $map;
+    }
+
+    /**
+     * Campaign ID → B2B / B2C tag from the Facebook sheet. Latest row wins.
+     * Uses the same resolution as the sheet dropdown (saved value, sheet
+     * column, or a single B2B / B2C token in the campaign name).
+     *
+     * @return array<string, string>
+     */
+    private function facebookB2bMap(): array
+    {
+        if (! Schema::hasColumn('facebook_all_ads_sheet', 'b2b_b2c')) {
+            return [];
+        }
+
+        $rows = FacebookAllAdsSheet::query()
+            ->whereNotNull('b2b_b2c')
+            ->where('b2b_b2c', '!=', '')
+            ->orderByDesc('id')
+            ->get(['b2b_b2c', 'row_data']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            $rd = array_filter(
+                (array) ($r->row_data ?? []),
+                fn ($_, $k) => ! str_starts_with((string) $k, '__'),
+                ARRAY_FILTER_USE_BOTH
+            );
+            $cid = $this->facebookFindCampaignId($rd);
+            if ($cid === null || $cid === '' || isset($map[$cid])) {
+                continue;
+            }
+            $tag = FacebookAllAdsSheet::resolveB2bB2c($r->b2b_b2c, $rd);
+            if ($tag) {
+                $map[$cid] = $tag;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Every saved B2B / B2C option, including B2B and B2C when none are tagged yet.
+     *
+     * @return list<string>
+     */
+    private function facebookB2bOptionNames(): array
+    {
+        try {
+            return FacebookB2bB2cOption::options();
+        } catch (\Throwable) {
+            return FacebookB2bB2cOption::BUILTIN;
+        }
+    }
+
+    /**
+     * Advertisement-dashboard children: "Shopify · Facebook · B2B".
+     * Always present, same as Music School and the other Facebook type rows.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function facebookB2bAdvertisementChildren(string $parentLabel, string $chCode): array
+    {
+        $sep = self::SUBROW_SEPARATOR;
+        $rows = [];
+        foreach ($this->facebookB2bOptionNames() as $tag) {
+            $slug = strtolower((string) preg_replace('/[^a-z0-9]+/i', '_', $tag));
+            $slug = trim($slug, '_');
+            if ($slug === '') {
+                continue;
+            }
+            $metrics = $this->metaChannelMetrics($parentLabel.$sep.$tag, $chCode, null, true, false, $tag);
+            $rows[] = self::advertisementMasterMetricRow(
+                'Shopify'.$sep.$parentLabel.$sep.$tag,
+                'shopify_'.strtolower($parentLabel).'_biz_'.$slug,
+                (object) $metrics,
+                true
+            );
+        }
+
+        return $rows;
     }
 
     /**

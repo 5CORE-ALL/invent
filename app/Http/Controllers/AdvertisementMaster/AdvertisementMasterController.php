@@ -17,8 +17,10 @@ use App\Http\Controllers\Campaigns\TemuAdsController;
 use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
 use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Http\Controllers\Sales\AmazonSalesController;
+use App\Support\Badges\AllMarketplaceMasterBadgeAggregator;
 use App\Models\AdvertisementMasterChannelLabel;
 use App\Models\BadgeData;
 use App\Models\BadgeDataHistory;
@@ -62,6 +64,9 @@ class AdvertisementMasterController extends Controller
 
     /** Daily Active Channel listing clicks (total views), one row per Pacific day. */
     private const ACTIVE_CLICKS_CHANNEL = '__aclicks__';
+
+    /** @var list<array<string, mixed>>|null */
+    private ?array $activeChannelGridRows = null;
 
     public function index(Request $request)
     {
@@ -214,6 +219,377 @@ class AdvertisementMasterController extends Controller
         }
 
         return round($sum, 2);
+    }
+
+    /**
+     * Ad badges on Active Channel, taken from the same live grid that page sums.
+     *
+     * @return array{values: array<string, float|null>, trends: array<string, string>}
+     */
+    private function activeChannelAdBadgePack(): array
+    {
+        $empty = [
+            'values' => ['spend' => null, 'tcos' => null, 'acos' => null, 'clicks' => null, 'cvr' => null],
+            'trends' => ['spend' => 'flat', 'tcos' => 'flat', 'acos' => 'flat', 'clicks' => 'flat', 'cvr' => 'flat'],
+        ];
+        $rows = $this->activeChannelGridRows();
+        if ($rows === []) {
+            return $empty;
+        }
+
+        $agg = AllMarketplaceMasterBadgeAggregator::aggregate($rows);
+        $spend = round((float) ($agg['ad_spend'] ?? 0), 2);
+        $l30 = (float) ($agg['l30_sales'] ?? 0);
+        $tcos = $l30 > 0 ? round(($spend / $l30) * 100, 1) : 0.0;
+        $adSales = 0.0;
+        foreach ($rows as $row) {
+            $adSales += $this->gridNumber($row, 'Ad Sales');
+        }
+        $acos = $adSales > 0 ? round(($spend / $adSales) * 100, 1) : ($spend > 0 ? 100.0 : 0.0);
+        $clicks = (float) round((float) ($agg['total_views'] ?? 0));
+        $cvr = $this->activeChannelListingCvr($rows);
+
+        $prior = $this->activeChannelPriorDayTotals();
+        $priorSpend = $prior['ad_spend'] ?? null;
+        $priorSales = $prior['l30_sales'] ?? null;
+        $priorAdSales = $prior['ad_sales'] ?? null;
+        $priorTcos = ($priorSpend !== null && $priorSales !== null && $priorSales > 0)
+            ? ($priorSpend / $priorSales) * 100
+            : null;
+        $priorAcos = ($priorSpend !== null && $priorAdSales !== null && $priorAdSales > 0)
+            ? ($priorSpend / $priorAdSales) * 100
+            : null;
+
+        return [
+            'values' => [
+                'spend' => $spend,
+                'tcos' => $tcos,
+                'acos' => $acos,
+                'clicks' => $clicks,
+                'cvr' => $cvr,
+            ],
+            'trends' => [
+                'spend' => $this->liveVsPriorDirection($spend, $priorSpend),
+                'tcos' => $this->liveVsPriorDirection($tcos, $priorTcos),
+                'acos' => $this->liveVsPriorDirection($acos, $priorAcos),
+                'clicks' => $this->liveVsPriorDirection($clicks, $prior['clicks'] ?? null),
+                'cvr' => $this->liveVsPriorDirection($cvr, $this->priorListingCvr($prior), 0.005),
+            ],
+        ];
+    }
+
+    /**
+     * Same rows Active Channel draws in its header badges.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function activeChannelGridRows(): array
+    {
+        if ($this->activeChannelGridRows !== null) {
+            return $this->activeChannelGridRows;
+        }
+
+        try {
+            $payload = app(ChannelMasterController::class)->getAllMarketplaceMasterChannelPayload();
+            $rows = $payload['data'] ?? [];
+            $this->activeChannelGridRows = is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel grid failed: '.$e->getMessage());
+            $this->activeChannelGridRows = [];
+        }
+
+        return $this->activeChannelGridRows;
+    }
+
+    /**
+     * Listing CVR badge: Amazon and Reverb use Qty (else orders) ÷ views.
+     * Every other channel uses its saved listing CVR × views.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function activeChannelListingCvr(array $rows): ?float
+    {
+        $units = 0.0;
+        $viewsSum = 0.0;
+        foreach ($rows as $row) {
+            $views = $this->gridNumber($row, 'Total Views');
+            if ($views <= 0) {
+                continue;
+            }
+            $key = strtolower((string) preg_replace('/[^a-z0-9]/', '', (string) ($row['Channel '] ?? $row['Channel'] ?? '')));
+            if ($key === 'amazon' || $key === 'reverb') {
+                $qty = $this->gridNumber($row, 'Qty');
+                if ($qty <= 0) {
+                    $qty = $this->gridNumber($row, 'L30 Orders');
+                }
+                $units += $qty;
+                $viewsSum += $views;
+                continue;
+            }
+            if (array_key_exists('CVR', $row) && $row['CVR'] !== null && $row['CVR'] !== '') {
+                $units += ($this->gridNumber($row, 'CVR') / 100) * $views;
+                $viewsSum += $views;
+            } else {
+                $units += $this->gridNumber($row, 'Qty');
+                $viewsSum += $views;
+            }
+        }
+
+        return $viewsSum > 0 ? round(($units / $viewsSum) * 100, 2) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     * @return array{units: float, views: float}|null
+     */
+    private function summaryListingCvrPart(string $channelKey, array $summary): ?array
+    {
+        $views = (float) ($summary['total_views'] ?? 0);
+        if ($views <= 0) {
+            return null;
+        }
+        if ($channelKey === 'amazon' || $channelKey === 'reverb') {
+            $qty = (float) ($summary['total_quantity'] ?? 0);
+            if ($qty <= 0) {
+                $qty = (float) ($summary['l30_orders'] ?? 0);
+            }
+
+            return ['units' => $qty, 'views' => $views];
+        }
+        $cvr = $summary['listing_cvr'] ?? null;
+        if ($cvr === null || $cvr === '') {
+            $cvr = $summary['cvr_percent'] ?? null;
+        }
+        if ($cvr !== null && $cvr !== '' && is_numeric($cvr)) {
+            return ['units' => ((float) $cvr / 100) * $views, 'views' => $views];
+        }
+        $qty = (float) ($summary['total_quantity'] ?? 0);
+        if ($qty <= 0) {
+            $qty = (float) ($summary['l30_orders'] ?? 0);
+        }
+
+        return ['units' => $qty, 'views' => $views];
+    }
+
+    /**
+     * @param  array<string, float>|null  $prior
+     */
+    private function priorListingCvr(?array $prior): ?float
+    {
+        if ($prior === null) {
+            return null;
+        }
+        $views = (float) ($prior['cvr_views'] ?? 0);
+        if ($views <= 0) {
+            return null;
+        }
+
+        return round(((float) ($prior['cvr_units'] ?? 0) / $views) * 100, 2);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function gridNumber(array $row, string $key): float
+    {
+        if (! array_key_exists($key, $row) || $row[$key] === null || $row[$key] === '') {
+            return 0.0;
+        }
+        $cleaned = preg_replace('/[^0-9.-]/', '', (string) $row[$key]);
+        if ($cleaned === '' || $cleaned === '-' || ! is_numeric($cleaned)) {
+            return 0.0;
+        }
+
+        return (float) $cleaned;
+    }
+
+    /**
+     * Latest saved Active Channel day before today, used only for the badge dot.
+     *
+     * @return array{l30_sales: float, ad_spend: float, clicks: float, ad_sales: float}|null
+     */
+    private function activeChannelPriorDayTotals(): ?array
+    {
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $totals = $this->activeChannelDailyTotals(
+            $today->copy()->subDays(3)->toDateString(),
+            $today->toDateString()
+        );
+        unset($totals[$today->toDateString()]);
+        if ($totals === []) {
+            return null;
+        }
+
+        $last = end($totals);
+
+        return is_array($last) ? $last : null;
+    }
+
+    private function liveVsPriorDirection(?float $live, ?float $prior, float $epsilon = 0.01): string
+    {
+        if ($live === null || $prior === null || abs($live - $prior) < $epsilon) {
+            return 'flat';
+        }
+
+        return $live > $prior ? 'up' : 'down';
+    }
+
+    private function badgeHistoryDirection(string $field): string
+    {
+        if (! Schema::hasTable('badges_data_histories')) {
+            return 'flat';
+        }
+
+        try {
+            $values = BadgeDataHistory::query()
+                ->where('page_name', 'all-marketplace-master')
+                ->where('field', $field)
+                ->orderByDesc('snapshot_date')
+                ->limit(2)
+                ->pluck('value');
+        } catch (\Throwable $e) {
+            return 'flat';
+        }
+
+        if ($values->count() < 2) {
+            return 'flat';
+        }
+        $last = (float) $values[0];
+        $prev = (float) $values[1];
+        if (abs($last - $prev) < 0.01) {
+            return 'flat';
+        }
+
+        return $last > $prev ? 'up' : 'down';
+    }
+
+    /**
+     * ACOS column total on Active Channel: Total Ad Spend ÷ Ad Sales.
+     */
+    private function activeChannelAcos(?float $spend): ?float
+    {
+        $adSales = $this->activeChannelAdSalesTotal();
+        if ($spend === null && $adSales <= 0) {
+            return null;
+        }
+        $spend = $spend ?? 0.0;
+        if ($adSales <= 0) {
+            return $spend > 0 ? 100.0 : 0.0;
+        }
+
+        return round(($spend / $adSales) * 100, 1);
+    }
+
+    private function activeChannelAdSalesTotal(): float
+    {
+        if (! Schema::hasTable('channel_master') || ! Schema::hasTable('channel_master_calculated_data')) {
+            return 0.0;
+        }
+
+        $active = [];
+        foreach (ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['active'])
+            ->pluck('channel') as $name) {
+            $key = $this->normalizeChannelMatchKey((string) $name);
+            if ($key !== '') {
+                $active[$key] = true;
+            }
+        }
+
+        $sum = 0.0;
+        $seen = [];
+        try {
+            foreach (ChannelMasterCalculatedData::query()->get(['channel', 'ad_sales']) as $row) {
+                $key = $this->normalizeChannelMatchKey((string) ($row->channel ?? ''));
+                if ($key === '' || ! isset($active[$key]) || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $sum += (float) ($row->ad_sales ?? 0);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel ad sales sum failed: '.$e->getMessage());
+
+            return 0.0;
+        }
+
+        return round($sum, 2);
+    }
+
+    private function activeChannelAcosDirection(): string
+    {
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $totals = $this->activeChannelDailyTotals(
+            $today->copy()->subDay()->toDateString(),
+            $today->toDateString()
+        );
+        $pct = [];
+        foreach ($totals as $metric) {
+            $sales = (float) ($metric['ad_sales'] ?? 0);
+            $spend = (float) ($metric['ad_spend'] ?? 0);
+            if ($sales <= 0 && $spend <= 0) {
+                continue;
+            }
+            $pct[] = $sales > 0 ? ($spend / $sales) * 100 : ($spend > 0 ? 100.0 : 0.0);
+        }
+        if (count($pct) < 2 || abs($pct[1] - $pct[0]) < 0.01) {
+            return 'flat';
+        }
+
+        return $pct[1] > $pct[0] ? 'up' : 'down';
+    }
+
+    /**
+     * @return array{0: list<string>, 1: list<float|null>}
+     */
+    private function activeChannelAcosHistory(int $days): array
+    {
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $from = $today->copy()->subDays($days - 1);
+        $totals = $this->activeChannelDailyTotals($from->toDateString(), $today->toDateString());
+        $dates = [];
+        $cursor = $from->copy();
+        while ($cursor->lte($today)) {
+            $dates[] = $cursor->toDateString();
+            $cursor->addDay();
+        }
+
+        $series = [];
+        foreach ($dates as $date) {
+            if (! isset($totals[$date])) {
+                $series[] = null;
+                continue;
+            }
+            $sales = (float) ($totals[$date]['ad_sales'] ?? 0);
+            $spend = (float) ($totals[$date]['ad_spend'] ?? 0);
+            if ($sales <= 0 && $spend <= 0) {
+                $series[] = null;
+                continue;
+            }
+            $series[] = $sales > 0 ? round(($spend / $sales) * 100, 1) : ($spend > 0 ? 100.0 : 0.0);
+        }
+
+        $todayIdx = array_search($today->toDateString(), $dates, true);
+        if ($todayIdx !== false) {
+            $liveSpend = null;
+            try {
+                $cached = BadgeData::dataForPage('all-marketplace-master');
+                if (array_key_exists('ad_spend', $cached) && is_numeric($cached['ad_spend'])) {
+                    $liveSpend = (float) $cached['ad_spend'];
+                }
+            } catch (\Throwable $e) {
+                $liveSpend = null;
+            }
+            $live = $this->activeChannelAcos($liveSpend);
+            if ($live !== null) {
+                $series[$todayIdx] = $live;
+            }
+        }
+
+        return [
+            array_map(fn ($d) => date('M d', strtotime($d)), $dates),
+            $series,
+        ];
     }
 
     /**
@@ -404,14 +780,18 @@ class AdvertisementMasterController extends Controller
             $chartSales = $savedSales['last'];
             $chartSpend = $savedSpend['last'];
             $chartClicks = $savedClicks['last'];
+            $adBadges = $this->activeChannelAdBadgePack();
             $badgeTrends = [
                 'ssales' => $savedSales['dir'],
-                'spend' => $savedSpend['dir'],
-                'clicks' => $savedClicks['dir'],
-                'tcos' => $this->savedTcosDirection(),
+                'spend' => $adBadges['trends']['spend'],
+                'clicks' => $adBadges['trends']['clicks'],
+                'tcos' => $adBadges['trends']['tcos'],
+                'cvr' => $adBadges['trends']['cvr'],
+                'acos' => $adBadges['trends']['acos'],
             ];
-            $activeChannelSpend = ($chartSpend !== null && $chartSpend > 0)
-                ? $chartSpend
+            $liveSpend = $adBadges['values']['spend'];
+            $activeChannelSpend = $liveSpend !== null
+                ? (float) $liveSpend
                 : $this->activeChannelAdSpendTotal();
             $totalNetSales = ($chartSales !== null && $chartSales > 0)
                 ? $chartSales
@@ -463,7 +843,9 @@ class AdvertisementMasterController extends Controller
             $this->attachTotalRowAcos($rows, $prevByChannel);
             $this->attachMissingAds($rows);
             $this->attachMissingAdsTrends($rows, $prevByChannel);
+            $this->applyActiveChannelAds($rows);
             try {
+                $this->snapshotChannels($this->flattenRows($rows), $totalNetSales);
                 $this->snapshotMissingAds($this->flattenRows($rows));
             } catch (\Throwable $e) {
                 \Log::warning('Advertisement Master missing-ads snapshot failed: '.$e->getMessage());
@@ -484,6 +866,7 @@ class AdvertisementMasterController extends Controller
                 'total_net_sales' => $totalNetSales,
                 'active_channel_spend' => $activeChannelSpend,
                 'active_channel_clicks' => $chartClicks,
+                'active_channel_badges' => $adBadges['values'],
                 'badge_trends' => $badgeTrends,
             ]);
         } catch (\Throwable $e) {
@@ -1496,6 +1879,271 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
+     * Replace campaign-report ads figures with the Active Channel row
+     * (channel_master_calculated_data): spend, ad clicks, ad sold, ad sales, ACOS, Ads CVR, Ads%.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function applyActiveChannelAds(array &$rows): void
+    {
+        $this->applyActiveChannelAdsWalk($rows, $this->activeChannelAdsByKey());
+    }
+
+    /**
+     * @return array<string, array<string, float|int>>
+     */
+    private function activeChannelAdsByKey(): array
+    {
+        if (! Schema::hasTable('channel_master') || ! Schema::hasTable('channel_master_calculated_data')) {
+            return [];
+        }
+
+        $active = [];
+        foreach (ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['active'])
+            ->pluck('channel') as $name) {
+            foreach ($this->activeChannelAdsKeys((string) $name) as $key) {
+                $active[$key] = true;
+            }
+        }
+
+        $map = [];
+        try {
+            $rows = ChannelMasterCalculatedData::query()->get([
+                'channel', 'total_ad_spend', 'clicks', 'ad_sold', 'ad_sales', 'acos', 'cvr',
+                'ads_percentage', 'l30_sales',
+                'kw_clicks', 'pt_clicks', 'hl_clicks', 'pmt_clicks', 'shopping_clicks', 'serp_clicks',
+                'kw_sales', 'pt_sales', 'hl_sales', 'pmt_sales', 'shopping_sales', 'serp_sales',
+                'kw_sold', 'pt_sold', 'hl_sold', 'pmt_sold', 'shopping_sold', 'serp_sold',
+                'kw_acos', 'pt_acos', 'hl_acos', 'pmt_acos', 'shopping_acos', 'serp_acos',
+                'kw_cvr', 'pt_cvr', 'hl_cvr', 'pmt_cvr', 'shopping_cvr', 'serp_cvr',
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel ads read failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        foreach ($rows as $row) {
+            $metrics = [
+                'spend' => (float) ($row->total_ad_spend ?? 0),
+                'clicks' => (int) ($row->clicks ?? 0),
+                'sold' => (int) ($row->ad_sold ?? 0),
+                'sales' => (float) ($row->ad_sales ?? 0),
+                'acos' => (float) ($row->acos ?? 0),
+                'cvr' => (float) ($row->cvr ?? 0),
+                'tcos' => (float) ($row->ads_percentage ?? 0),
+                'l30_sales' => (float) ($row->l30_sales ?? 0),
+                'kw_clicks' => (int) ($row->kw_clicks ?? 0),
+                'pt_clicks' => (int) ($row->pt_clicks ?? 0),
+                'hl_clicks' => (int) ($row->hl_clicks ?? 0),
+                'pmt_clicks' => (int) ($row->pmt_clicks ?? 0),
+                'shopping_clicks' => (int) ($row->shopping_clicks ?? 0),
+                'serp_clicks' => (int) ($row->serp_clicks ?? 0),
+                'kw_sales' => (float) ($row->kw_sales ?? 0),
+                'pt_sales' => (float) ($row->pt_sales ?? 0),
+                'hl_sales' => (float) ($row->hl_sales ?? 0),
+                'pmt_sales' => (float) ($row->pmt_sales ?? 0),
+                'shopping_sales' => (float) ($row->shopping_sales ?? 0),
+                'serp_sales' => (float) ($row->serp_sales ?? 0),
+                'kw_sold' => (int) ($row->kw_sold ?? 0),
+                'pt_sold' => (int) ($row->pt_sold ?? 0),
+                'hl_sold' => (int) ($row->hl_sold ?? 0),
+                'pmt_sold' => (int) ($row->pmt_sold ?? 0),
+                'shopping_sold' => (int) ($row->shopping_sold ?? 0),
+                'serp_sold' => (int) ($row->serp_sold ?? 0),
+                'kw_acos' => (float) ($row->kw_acos ?? 0),
+                'pt_acos' => (float) ($row->pt_acos ?? 0),
+                'hl_acos' => (float) ($row->hl_acos ?? 0),
+                'pmt_acos' => (float) ($row->pmt_acos ?? 0),
+                'shopping_acos' => (float) ($row->shopping_acos ?? 0),
+                'serp_acos' => (float) ($row->serp_acos ?? 0),
+                'kw_cvr' => (float) ($row->kw_cvr ?? 0),
+                'pt_cvr' => (float) ($row->pt_cvr ?? 0),
+                'hl_cvr' => (float) ($row->hl_cvr ?? 0),
+                'pmt_cvr' => (float) ($row->pmt_cvr ?? 0),
+                'shopping_cvr' => (float) ($row->shopping_cvr ?? 0),
+                'serp_cvr' => (float) ($row->serp_cvr ?? 0),
+            ];
+            foreach ($this->activeChannelAdsKeys((string) ($row->channel ?? '')) as $key) {
+                if ($key === '' || ! isset($active[$key])) {
+                    continue;
+                }
+                $map[$key] = $metrics;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function activeChannelAdsKeys(string $name): array
+    {
+        $key = $this->normalizeChannelMatchKey($name);
+        if ($key === '') {
+            return [];
+        }
+        $keys = [$key];
+        if ($key === 'shopifyb2c') {
+            $keys[] = 'shopify';
+        }
+        if ($key === 'tiktokshop2') {
+            $keys[] = 'tiktok2';
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, array<string, float|int>>  $byChannel
+     */
+    private function applyActiveChannelAdsWalk(array &$rows, array $byChannel): void
+    {
+        foreach ($rows as &$row) {
+            if (! empty($row['_children']) && is_array($row['_children'])) {
+                $this->applyActiveChannelAdsWalk($row['_children'], $byChannel);
+            }
+            if (! empty($row['is_group_total'])) {
+                $this->sumGroupAdsFromChildren($row);
+                continue;
+            }
+
+            $name = (string) ($row['channel_key'] ?? $row['channel'] ?? '');
+            $isType = str_contains($name, self::SUBROW_SEPARATOR);
+            $type = $isType ? $this->activeChannelBreakdown($name) : null;
+            $key = $this->adsParentKey($row);
+            $metrics = $byChannel[$key] ?? null;
+
+            if ($isType && $type !== null && $metrics !== null) {
+                $this->applyBreakdownAds($row, $metrics, $type);
+            } elseif (! $isType && $metrics !== null) {
+                $this->applyChannelAds($row, $metrics);
+            } elseif (! $isType) {
+                $this->zeroAdsMetrics($row);
+            }
+        }
+        unset($row);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function adsParentKey(array $row): string
+    {
+        $name = (string) ($row['channel_key'] ?? $row['channel'] ?? '');
+        if (str_contains($name, self::SUBROW_SEPARATOR)) {
+            $name = trim(explode(self::SUBROW_SEPARATOR, $name)[0]);
+        }
+        $keys = $this->activeChannelAdsKeys($name);
+
+        return $keys[0] ?? '';
+    }
+
+    private function activeChannelBreakdown(string $name): ?string
+    {
+        $part = $name;
+        if (str_contains($name, self::SUBROW_SEPARATOR)) {
+            $bits = explode(self::SUBROW_SEPARATOR, $name);
+            $part = trim((string) end($bits));
+        }
+        $key = strtolower((string) preg_replace('/[^a-z0-9]+/', '', $part));
+
+        return match ($key) {
+            'kw' => 'kw',
+            'pt' => 'pt',
+            'hl' => 'hl',
+            'pmt', 'promoted' => 'pmt',
+            'shopping', 'googleshopping' => 'shopping',
+            'serp', 'googleserp' => 'serp',
+            default => null,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<string, float|int>  $metrics
+     */
+    private function applyChannelAds(array &$row, array $metrics): void
+    {
+        $row['spend'] = round((float) $metrics['spend'], 2);
+        $row['clicks'] = (int) $metrics['clicks'];
+        $row['sold'] = (int) $metrics['sold'];
+        $row['sales'] = round((float) $metrics['sales'], 2);
+        $row['acos'] = round((float) $metrics['acos'], 1);
+        $row['cvr'] = round((float) $metrics['cvr'], 1);
+        $row['tcos'] = round((float) $metrics['tcos'], 1);
+        $row['has_tcos'] = ((float) $metrics['l30_sales']) > 0 || ((float) $metrics['spend']) > 0;
+        $row['t_sales'] = round((float) $metrics['l30_sales'], 2);
+        $row['has_t_sales'] = ((float) $metrics['l30_sales']) > 0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<string, float|int>  $metrics
+     */
+    private function applyBreakdownAds(array &$row, array $metrics, string $type): void
+    {
+        $row['spend'] = 0;
+        $row['clicks'] = (int) ($metrics[$type.'_clicks'] ?? 0);
+        $row['sold'] = (int) ($metrics[$type.'_sold'] ?? 0);
+        $row['sales'] = round((float) ($metrics[$type.'_sales'] ?? 0), 2);
+        $row['acos'] = round((float) ($metrics[$type.'_acos'] ?? 0), 1);
+        $row['cvr'] = round((float) ($metrics[$type.'_cvr'] ?? 0), 1);
+        $this->clearTcos($row);
+        $row['t_sales'] = 0;
+        $row['has_t_sales'] = false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function zeroAdsMetrics(array &$row): void
+    {
+        $row['spend'] = 0;
+        $row['clicks'] = 0;
+        $row['sold'] = 0;
+        $row['sales'] = 0;
+        $row['acos'] = 0;
+        $row['cvr'] = 0;
+        $this->clearTcos($row);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function sumGroupAdsFromChildren(array &$row): void
+    {
+        $spend = 0.0;
+        $clicks = 0.0;
+        $sold = 0.0;
+        $sales = 0.0;
+        $l30 = 0.0;
+        foreach ($row['_children'] ?? [] as $child) {
+            if (! is_array($child)) {
+                continue;
+            }
+            $spend += (float) ($child['spend'] ?? 0);
+            $clicks += (float) ($child['clicks'] ?? 0);
+            $sold += (float) ($child['sold'] ?? 0);
+            $sales += (float) ($child['sales'] ?? 0);
+            $l30 += (float) ($child['t_sales'] ?? 0);
+        }
+        $row['spend'] = round($spend, 2);
+        $row['clicks'] = (int) round($clicks);
+        $row['sold'] = (int) round($sold);
+        $row['sales'] = round($sales, 2);
+        $row['cvr'] = $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0;
+        $row['acos'] = $sales > 0 ? round(($spend / $sales) * 100, 1) : ($spend > 0 ? 100 : 0);
+        $row['t_sales'] = round($l30, 2);
+        $row['has_t_sales'] = $l30 > 0;
+        $row['tcos'] = $l30 > 0 ? round(($spend / $l30) * 100, 1) : 0;
+        $row['has_tcos'] = $l30 > 0 || $spend > 0;
+    }
+
+    /**
      * KW / PT / HL (and Shopify · …) are ad types, not Active Channel rows.
      * Active Channel TCOS is one number per channel: total spend / L30 sales.
      *
@@ -1649,7 +2297,14 @@ class AdvertisementMasterController extends Controller
             }
             $out[$date]['l30_sales'] = ($out[$date]['l30_sales'] ?? 0) + (float) ($summary['l30_sales'] ?? 0);
             $out[$date]['ad_spend'] = ($out[$date]['ad_spend'] ?? 0) + (float) ($summary['total_ad_spend'] ?? 0);
+            $out[$date]['ad_sales'] = ($out[$date]['ad_sales'] ?? 0) + (float) ($summary['ad_sales'] ?? 0);
             $out[$date]['clicks'] = ($out[$date]['clicks'] ?? 0) + (float) ($summary['total_views'] ?? 0);
+            $channelKey = substr($combo, strpos($combo, '|') + 1);
+            $cvrPart = $this->summaryListingCvrPart(is_string($channelKey) ? $channelKey : '', $summary);
+            if ($cvrPart !== null) {
+                $out[$date]['cvr_units'] = ($out[$date]['cvr_units'] ?? 0) + $cvrPart['units'];
+                $out[$date]['cvr_views'] = ($out[$date]['cvr_views'] ?? 0) + $cvrPart['views'];
+            }
         }
         ksort($out);
 
@@ -2081,9 +2736,8 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
-     * Badge charts read badges_data_histories for all-marketplace-master —
-     * the same saved badge numbers. Channel charts read this page's existing
-     * daily rows. No separate graph table and no Active Channel chart call.
+     * All-channel badge charts use the same series Active Channel draws.
+     * A single channel still reads this page's saved daily rows.
      *
      *   GET /advertisement-master/history?days=30&channel=eBay&metric=spend
      */
@@ -2098,8 +2752,8 @@ class AdvertisementMasterController extends Controller
         try {
             if ($metric === 'missing_ads' && $this->historyIsAllChannels($channel)) {
                 [$labels, $series] = $this->missingBadgeHistory($days);
-            } elseif ($this->historyIsAllChannels($channel) && $this->badgeHistoryField($metric) !== null) {
-                [$labels, $series] = $this->badgePageHistory($metric, $days);
+            } elseif ($this->historyIsAllChannels($channel) && $this->activeChannelChartMetric($metric) !== null) {
+                [$labels, $series] = $this->activeChannelChartHistory($metric, $days);
             } else {
                 [$labels, $series] = $this->snapshotHistory($channel, $metric, $days);
             }
@@ -2134,8 +2788,67 @@ class AdvertisementMasterController extends Controller
             'ssales' => 'l30_sales',
             'clicks' => 'total_views',
             'tcos' => 'ads_pct',
+            'cvr' => 'cvr_pct',
             default => null,
         };
+    }
+
+    private function activeChannelChartMetric(string $metric): ?string
+    {
+        return match ($metric) {
+            'spend' => 'ad_spend',
+            'ssales' => 'l30_sales',
+            'clicks' => 'total_views',
+            'tcos' => 'ads_pct',
+            'cvr' => 'cvr',
+            'acos' => 'acos',
+            default => null,
+        };
+    }
+
+    /**
+     * Same chart Active Channel opens for an all-channels badge.
+     * The last point is pinned to this page's live badge.
+     *
+     * @return array{0: list<string>, 1: list<float|null>}
+     */
+    private function activeChannelChartHistory(string $metric, int $days): array
+    {
+        $chartMetric = $this->activeChannelChartMetric($metric);
+        if ($chartMetric === null) {
+            return [[], []];
+        }
+
+        $badge = $this->activeChannelAdBadgePack()['values'][$metric] ?? null;
+        $badgeValue = $badge === null ? null : match ($metric) {
+            'spend', 'clicks', 'ssales' => (float) round((float) $badge),
+            'tcos', 'acos' => round((float) $badge, 1),
+            'cvr' => round((float) $badge, 2),
+            default => (float) $badge,
+        };
+
+        $request = Request::create('/channel-metric-chart-data', 'GET', array_filter([
+            'channel' => 'all',
+            'metric' => $chartMetric,
+            'days' => $days,
+            'badge_value' => $badgeValue,
+        ], static fn ($value) => $value !== null));
+
+        $response = app(ChannelMasterController::class)->getChannelMetricChartData($request);
+        $payload = $response->getData(true);
+        $labels = [];
+        $series = [];
+        foreach (is_array($payload['data'] ?? null) ? $payload['data'] : [] as $point) {
+            if (! is_array($point)) {
+                continue;
+            }
+            $labels[] = (string) ($point['date'] ?? '');
+            $series[] = isset($point['value']) && is_numeric($point['value'])
+                ? round((float) $point['value'], 2)
+                : null;
+        }
+
+        return [$labels, $series];
     }
 
     /**
@@ -2925,6 +3638,51 @@ class AdvertisementMasterController extends Controller
         return null;
     }
 
+    private function facebookB2bSheetHref(string $name): ?string
+    {
+        if (! str_contains($name, self::SUBROW_SEPARATOR)) {
+            return null;
+        }
+        $bits = array_map('trim', explode(self::SUBROW_SEPARATOR, $name));
+        $parent = strtolower((string) ($bits[count($bits) - 2] ?? ''));
+        $tag = (string) ($bits[count($bits) - 1] ?? '');
+        if (! in_array($parent, ['facebook', 'instagram'], true) || $tag === '') {
+            return null;
+        }
+        try {
+            $options = \App\Models\FacebookB2bB2cOption::options();
+        } catch (\Throwable) {
+            return null;
+        }
+        $tagKey = \App\Models\FacebookAllAdsSheet::normalizeAdTypeName($tag);
+        if (! in_array($tagKey, $options, true)) {
+            return null;
+        }
+        if ($tagKey === 'B2B') {
+            return $this->namedHref('b2b.ads.sheet');
+        }
+        if ($tagKey === 'B2C') {
+            return $this->namedHref('b2c.ads.sheet');
+        }
+        $slug = \App\Models\FacebookAllAdsSheet::b2bSlug($tagKey);
+        if ($slug === '' || ! \Illuminate\Support\Facades\Route::has('b2b.b2c.ads.sheet')) {
+            return $this->namedHref('facebook.all.ads.sheet');
+        }
+
+        return route('b2b.b2c.ads.sheet', ['option' => $slug]);
+    }
+
+    private function adsTitleFromName(string $name): string
+    {
+        $label = trim((string) preg_replace('/\s+Total$/i', '', trim($name)));
+        if (str_contains($label, self::SUBROW_SEPARATOR)) {
+            $bits = array_map('trim', explode(self::SUBROW_SEPARATOR, $label));
+            $label = (string) end($bits);
+        }
+
+        return $label !== '' ? $label : 'Channel';
+    }
+
     private function channelHrefForName(string $name): ?string
     {
         $norm = $this->normalizeChannelMatchKey($name);
@@ -2935,6 +3693,15 @@ class AdvertisementMasterController extends Controller
         $ads = $this->channelAdsHrefMap()[$norm] ?? null;
         if (is_string($ads) && $ads !== '') {
             return $ads;
+        }
+
+        $b2bHref = $this->facebookB2bSheetHref($name);
+        if ($b2bHref) {
+            return $b2bHref;
+        }
+
+        if (Route::has('channel.title.ads')) {
+            return route('channel.title.ads', ['channel' => $norm]).'?title='.rawurlencode($this->adsTitleFromName($name));
         }
 
         $analytics = $this->channelAnalyticsHrefMap()[$norm] ?? null;
@@ -2973,6 +3740,8 @@ class AdvertisementMasterController extends Controller
             'shopifyfacebookpcarousal' => $this->namedHref('facebook.ads.channel.parent.carousal'),
             'shopifyfacebookmusicstore' => $this->namedHref('music.store.ads.sheet'),
             'shopifyfacebookmusicschool' => $this->namedHref('music.school.ads.sheet'),
+            'shopifyfacebookb2b' => $this->namedHref('b2b.ads.sheet'),
+            'shopifyfacebookb2c' => $this->namedHref('b2c.ads.sheet'),
             'shopifyinstagram' => $this->namedHref('instagram.ads.channel'),
             'shopifyinstagramgvideo' => $this->namedHref('instagram.ads.channel.group.video'),
             'shopifyinstagramgcarousal' => $this->namedHref('instagram.ads.channel.group.carousal'),

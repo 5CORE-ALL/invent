@@ -980,6 +980,18 @@
                         <li>
                             <a href="{{ route('music.school.ads.sheet') }}">Music School</a>
                         </li>
+                        @foreach (\App\Models\FacebookB2bB2cOption::options() as $b2bOpt)
+                            @php
+                                $b2bHref = match ($b2bOpt) {
+                                    'B2B' => route('b2b.ads.sheet'),
+                                    'B2C' => route('b2c.ads.sheet'),
+                                    default => route('b2b.b2c.ads.sheet', ['option' => \App\Models\FacebookAllAdsSheet::b2bSlug($b2bOpt)]),
+                                };
+                            @endphp
+                            <li>
+                                <a href="{{ $b2bHref }}">{{ $b2bOpt }}</a>
+                            </li>
+                        @endforeach
                     </ul>
                 </div>
             </li>
@@ -1706,6 +1718,9 @@
                                     <li>
                                         <a href="{{ url('/macys-pricing') }}">Macys - Analytics</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('channel.title.ads', ['channel' => 'macys', 'title' => "Macy's"]) }}">Macy's Ads</a>
+                                    </li>
 
                                 </ul>
                             </div>
@@ -1725,6 +1740,9 @@
                                     <li>
                                         <a href="{{ route('depop.sheet') }}">Depop Sales Data</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('channel.title.ads', ['channel' => 'depop', 'title' => 'Depop']) }}">Depop Ads</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -1742,6 +1760,9 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('vinted.sheet') }}">Vinted Sales Data</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('channel.title.ads', ['channel' => 'vinted', 'title' => 'Vinted']) }}">Vinted Ads</a>
                                     </li>
                                 </ul>
                             </div>
@@ -1763,6 +1784,9 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('purchasing.power.listing.variation.verify') }}">Purchasing Power Listing Variation Verify</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('channel.title.ads', ['channel' => 'purchasingpower', 'title' => 'Purchasing Power']) }}">Purchasing Power Ads</a>
                                     </li>
                                 </ul>
                             </div>
@@ -1786,6 +1810,9 @@
                                     <li>
                                         <a href="{{ route('wayfair.variation.verify') }}">Wayfair Variation Verify</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('channel.title.ads', ['channel' => 'wayfair', 'title' => 'Wayfair']) }}">Wayfair Ads</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -1807,6 +1834,9 @@
                                     <li>
                                         <a href="{{ route('listing.reverb') }}">Listing Reverb</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('channel.title.ads', ['channel' => 'reverb', 'title' => 'Reverb']) }}">Reverb Ads</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -1824,6 +1854,9 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('topdawg.sales.dashboard') }}">TopDawg Sales Data</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('channel.title.ads', ['channel' => 'topdawg', 'title' => 'TopDawg']) }}">TopDawg Ads</a>
                                     </li>
                                 </ul>
                             </div>
@@ -1912,6 +1945,9 @@
                                     <li>
                                         <a href="{{ route('temu3.tabulator') }}">Temu 3 Sales Data</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('channel.title.ads', ['channel' => 'temu3', 'title' => 'Temu 3']) }}">Temu 3 Ads</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -1933,6 +1969,9 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.doba') }}">Listing Doba</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('channel.title.ads', ['channel' => 'doba', 'title' => 'Doba']) }}">Doba Ads</a>
                                     </li>
 
 
@@ -2172,6 +2211,7 @@
                         </li>
                         <li><a href="{{ route('aliexpress.listing.variation.verify') }}">AliExpress Listing Variation Verify</a></li>
                         <li><a href="{{ route('aliexpress.lmp') }}">Aliexpress LMP</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'aliexpress', 'title' => 'AliExpress']) }}">AliExpress Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2186,6 +2226,7 @@
                 <div class="collapse" id="sidebarAlibaba">
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('alibaba.analytics') }}">Alibaba Analytics</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'alibaba', 'title' => 'Alibaba']) }}">Alibaba Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2201,6 +2242,7 @@
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('faire.pricing.view') }}">Faire - Analytics</a></li>
                         <li><a href="{{ route('faire.listing.variation.verify') }}">Faire Listing Variation Verify</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'faire', 'title' => 'Faire']) }}">Faire Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2260,6 +2302,7 @@
                 <div class="collapse" id="sidebarMercariWShip">
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('mercari.wship.tabulator.view') }}">Mercari w Ship - Analytics</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'mercariwship', 'title' => 'Mercari w Ship']) }}">Mercari w Ship Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2277,6 +2320,7 @@
 
                         <li><a href="{{ route('listing.fbmarketplace') }}">Listing FB
                                 Marketplace</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'fbmarketplace', 'title' => 'FB Marketplace']) }}">FB Marketplace Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2295,6 +2339,7 @@
 
                         <li><a href="{{ route('listing.pls') }}">Listing PLS</a></li>
                         <li><a href="{{ route('pls.listing.variation.verify') }}">PLS Listing Variation Verify</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'pls', 'title' => 'PLS']) }}">PLS Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2313,6 +2358,7 @@
 
                         <li><a href="{{ route('listing.mercariwoship') }}">Listing Mercari w/o
                                 Ship</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'mercariwoship', 'title' => 'Mercari w/o Ship']) }}">Mercari w/o Ship Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2331,6 +2377,7 @@
                         <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>
                         <li><a href="{{ route('shein.pricing.view') }}">Shein Pricing</a></li>
                         <li><a href="{{ route('shein.listing.variation.verify') }}">Shein Listing Variation Verify</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'shein', 'title' => 'Shein']) }}">Shein Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2350,6 +2397,7 @@
                         </li>
 
                         <li><a href="{{ route('listing.fbshop') }}">Listing FB Shop</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'fbshop', 'title' => 'FB Shop']) }}">FB Shop Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2372,6 +2420,7 @@
 
                         <li><a href="{{ route('listing.instagramshop') }}">Listing Instagram
                                 Shop</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'instagramshop', 'title' => 'Instagram Shop']) }}">Instagram Shop Ads</a></li>
                     </ul>
                 </div>
             </li>
@@ -2386,6 +2435,7 @@
                 <div class="collapse" id="sidebarBestbuyUSA">
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('bestbuy.pricing') }}">Best Buy Pricing</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'bestbuy', 'title' => 'Best Buy']) }}">Best Buy Ads</a></li>
                         <li><a href="{{ route('bestbuy.listing.variation.verify') }}">Bestbuy Listing Variation Verify</a></li>
                         <li><a href="{{ route('zero.bestbuyusa') }}">Bestbuy USA 0 view</a></li>
 
@@ -2408,6 +2458,7 @@
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('newegg.pricing.view') }}">Newegg Pricing</a></li>
                         <li><a href="{{ route('newegg.listing.variation.verify') }}">Newegg Listing Variation Verify</a></li>
+                        <li><a href="{{ route('channel.title.ads', ['channel' => 'newegg', 'title' => 'Newegg']) }}">Newegg Ads</a></li>
                     </ul>
                 </div>
             </li>
