@@ -4519,6 +4519,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/music-store-ads-sheet',                   [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'musicStoreIndex'])->name('music.store.ads.sheet');
     Route::get('/music-school-ads-sheet',                  [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'musicSchoolIndex'])->name('music.school.ads.sheet');
 
+    // B2B / B2C — same Meta sheet, lensed to the B2B / B2C tag. Same blade
+    // and data endpoints as Music School; only the tag filter differs.
+    Route::get('/b2b-ads-sheet',                           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'b2bIndex'])->name('b2b.ads.sheet');
+    Route::get('/b2c-ads-sheet',                           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'b2cIndex'])->name('b2c.ads.sheet');
+    Route::get('/b2b-b2c-ads/{option}',                    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'b2bB2cOptionIndex'])->where('option', '[A-Za-z0-9\-]+')->name('b2b.b2c.ads.sheet');
+
     // ── TikTok Video Ads — fully independent module (own tables, own
     // controller). Same page layout / filters as the Meta sheet but a
     // separate dataset sourced from TikTok uploads.

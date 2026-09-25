@@ -3658,8 +3658,18 @@ class AdvertisementMasterController extends Controller
         if (! in_array($tagKey, $options, true)) {
             return null;
         }
+        if ($tagKey === 'B2B') {
+            return $this->namedHref('b2b.ads.sheet');
+        }
+        if ($tagKey === 'B2C') {
+            return $this->namedHref('b2c.ads.sheet');
+        }
+        $slug = \App\Models\FacebookAllAdsSheet::b2bSlug($tagKey);
+        if ($slug === '' || ! \Illuminate\Support\Facades\Route::has('b2b.b2c.ads.sheet')) {
+            return $this->namedHref('facebook.all.ads.sheet');
+        }
 
-        return $this->namedHref('facebook.all.ads.sheet');
+        return route('b2b.b2c.ads.sheet', ['option' => $slug]);
     }
 
     private function adsTitleFromName(string $name): string
@@ -3730,10 +3740,8 @@ class AdvertisementMasterController extends Controller
             'shopifyfacebookpcarousal' => $this->namedHref('facebook.ads.channel.parent.carousal'),
             'shopifyfacebookmusicstore' => $this->namedHref('music.store.ads.sheet'),
             'shopifyfacebookmusicschool' => $this->namedHref('music.school.ads.sheet'),
-            'shopifyfacebookb2b' => $this->namedHref('facebook.all.ads.sheet'),
-            'shopifyfacebookb2c' => $this->namedHref('facebook.all.ads.sheet'),
-            'shopifyinstagramb2b' => $this->namedHref('facebook.all.ads.sheet'),
-            'shopifyinstagramb2c' => $this->namedHref('facebook.all.ads.sheet'),
+            'shopifyfacebookb2b' => $this->namedHref('b2b.ads.sheet'),
+            'shopifyfacebookb2c' => $this->namedHref('b2c.ads.sheet'),
             'shopifyinstagram' => $this->namedHref('instagram.ads.channel'),
             'shopifyinstagramgvideo' => $this->namedHref('instagram.ads.channel.group.video'),
             'shopifyinstagramgcarousal' => $this->namedHref('instagram.ads.channel.group.carousal'),

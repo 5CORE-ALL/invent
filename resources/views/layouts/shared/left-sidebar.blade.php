@@ -980,6 +980,18 @@
                         <li>
                             <a href="{{ route('music.school.ads.sheet') }}">Music School</a>
                         </li>
+                        @foreach (\App\Models\FacebookB2bB2cOption::options() as $b2bOpt)
+                            @php
+                                $b2bHref = match ($b2bOpt) {
+                                    'B2B' => route('b2b.ads.sheet'),
+                                    'B2C' => route('b2c.ads.sheet'),
+                                    default => route('b2b.b2c.ads.sheet', ['option' => \App\Models\FacebookAllAdsSheet::b2bSlug($b2bOpt)]),
+                                };
+                            @endphp
+                            <li>
+                                <a href="{{ $b2bHref }}">{{ $b2bOpt }}</a>
+                            </li>
+                        @endforeach
                     </ul>
                 </div>
             </li>

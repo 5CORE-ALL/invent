@@ -181,6 +181,46 @@ class FacebookAllAdsSheetController extends Controller
         ]);
     }
 
+    /** B2B page — Meta dataset lensed to B2B / B2C = B2B. */
+    public function b2bIndex()
+    {
+        return $this->renderB2bB2cPage('B2B');
+    }
+
+    /** B2C page — Meta dataset lensed to B2B / B2C = B2C. */
+    public function b2cIndex()
+    {
+        return $this->renderB2bB2cPage('B2C');
+    }
+
+    /** Any saved B2B / B2C option, including ones added from the sheet. */
+    public function b2bB2cOptionIndex(string $option)
+    {
+        $match = null;
+        foreach (FacebookB2bB2cOption::options() as $name) {
+            if (FacebookAllAdsSheet::b2bSlug($name) === strtolower($option)) {
+                $match = $name;
+                break;
+            }
+        }
+        abort_unless($match, 404);
+
+        return $this->renderB2bB2cPage($match);
+    }
+
+    private function renderB2bB2cPage(string $tag): \Illuminate\View\View
+    {
+        return view('facebook-all-ads-sheet', [
+            'pageType' => 'all',
+            'pageTitle' => $tag,
+            'pageSubtitle' => 'Meta campaigns tagged B2B / B2C = '.$tag,
+            'allowedAdTypes' => FacebookAllAdsSheet::allAdTypes(),
+            'canManageAdTypes' => true,
+            'chOptions' => FacebookAllAdsSheet::CH_OPTIONS,
+            'b2bFilter' => $tag,
+        ]);
+    }
+
     /** Music School page — Meta dataset lensed to ad_type = MUSIC SCHOOL. */
     public function musicSchoolIndex()
     {
@@ -222,12 +262,13 @@ class FacebookAllAdsSheetController extends Controller
         if (! in_array($chFilter, FacebookAllAdsSheet::CH_OPTIONS, true)) {
             $chFilter = null;
         }
+        $b2bFilter = $this->normalizeB2bFilter($request->query('b2b'));
 
         // Merged view: join the most recent Campaign batch with the most
         // recent Spend batch by `Campaign ID`. Default when no specific batch
         // is asked for, so the user sees one unified table out of the box.
         if ($batchId === null && ($view === 'merged' || $view === null)) {
-            $merged = $this->getMergedView($typeList, $chFilter);
+            $merged = $this->getMergedView($typeList, $chFilter, $b2bFilter);
             if ($merged !== null) {
                 return response()->json($merged);
             }
@@ -302,6 +343,9 @@ class FacebookAllAdsSheetController extends Controller
                 $cleanedData
             );
         });
+        if ($b2bFilter) {
+            $data = $data->filter(fn ($row) => ($row['b2b_b2c'] ?? null) === $b2bFilter)->values();
+        }
 
         $meta = FacebookAllAdsSheet::query()
             ->where('import_batch_id', $batchId)
@@ -499,7 +543,7 @@ class FacebookAllAdsSheetController extends Controller
      * Type filtering (`$typeList` from /facebook-{video|carousal}-… pages)
      * is applied to the merged set just like it is to individual batches.
      */
-    public function getMergedView(?array $typeList, ?string $chFilter = null): ?array
+    public function getMergedView(?array $typeList, ?string $chFilter = null, ?string $b2bFilter = null): ?array
     {
         $latestByType = $this->latestBatchPerType();
         if (empty($latestByType)) {
@@ -735,6 +779,12 @@ class FacebookAllAdsSheetController extends Controller
             $projected = array_values(array_filter(
                 $projected,
                 fn($r) => ($r['ch'] ?? null) === $chFilter
+            ));
+        }
+        if ($b2bFilter) {
+            $projected = array_values(array_filter(
+                $projected,
+                fn ($r) => ($r['b2b_b2c'] ?? null) === $b2bFilter
             ));
         }
 
@@ -1753,6 +1803,16 @@ class FacebookAllAdsSheetController extends Controller
      *
      * @param  array<string, mixed>  $rowData
      */
+    private function normalizeB2bFilter(?string $raw): ?string
+    {
+        $key = FacebookAllAdsSheet::normalizeAdTypeName((string) $raw);
+        if ($key === '') {
+            return null;
+        }
+
+        return in_array($key, FacebookB2bB2cOption::options(), true) ? $key : null;
+    }
+
     private function resolvedB2bB2c(?string $stored, array $rowData): ?string
     {
         return FacebookAllAdsSheet::resolveB2bB2c($stored, $rowData);

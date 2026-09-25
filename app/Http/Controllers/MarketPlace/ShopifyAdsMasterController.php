@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\FacebookAllAdsSheet;
+use App\Models\FacebookB2bB2cOption;
 use App\Models\ShopifyMetaCampaign;
 use App\Support\GoogleYoutubeCampaignSales;
 use Carbon\Carbon;
@@ -227,9 +228,6 @@ class ShopifyAdsMasterController extends Controller
                 true
             );
         }
-        foreach ($this->facebookB2bAdvertisementChildren('Instagram', 'Insta') as $child) {
-            $instagramChildren[] = $child;
-        }
         $instagramRow['_children'] = $instagramChildren;
         $children[] = $instagramRow;
 
@@ -289,7 +287,7 @@ class ShopifyAdsMasterController extends Controller
         foreach ($this->metaAdTypeLenses('shopify_facebook') as [$suffix, , $adTypes]) {
             $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$suffix, 'FB', $adTypes, true);
         }
-        foreach ($this->facebookB2bTags('FB') as $tag) {
+        foreach ($this->facebookB2bOptionNames() as $tag) {
             $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$tag, 'FB', null, true, false, $tag);
         }
 
@@ -298,10 +296,6 @@ class ShopifyAdsMasterController extends Controller
         foreach ($this->metaAdTypeLenses('shopify_instagram', false) as [$suffix, , $adTypes]) {
             $instagram['_children'][] = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
         }
-        foreach ($this->facebookB2bTags('Insta') as $tag) {
-            $instagram['_children'][] = $this->metaChannelMetrics('Instagram'.$sep.$tag, 'Insta', null, true, false, $tag);
-        }
-
         $rows = [
             $this->googleShoppingMetrics(),
             $this->googleSerpMetrics(),
@@ -1221,31 +1215,22 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * B2B / B2C tags that have at least one campaign on this CH.
+     * Every saved B2B / B2C option, including B2B and B2C when none are tagged yet.
      *
      * @return list<string>
      */
-    private function facebookB2bTags(string $chCode): array
+    private function facebookB2bOptionNames(): array
     {
-        $ctx = $this->loadFacebookContext();
-        $tags = [];
-        foreach ($ctx['baseCids'] as $cid => $_) {
-            if (($ctx['chMap'][$cid] ?? null) !== $chCode) {
-                continue;
-            }
-            $tag = (string) ($ctx['b2bMap'][$cid] ?? '');
-            if ($tag !== '') {
-                $tags[$tag] = true;
-            }
+        try {
+            return FacebookB2bB2cOption::options();
+        } catch (\Throwable) {
+            return FacebookB2bB2cOption::BUILTIN;
         }
-        $keys = array_keys($tags);
-        sort($keys);
-
-        return $keys;
     }
 
     /**
      * Advertisement-dashboard children: "Shopify · Facebook · B2B".
+     * Always present, same as Music School and the other Facebook type rows.
      *
      * @return list<array<string, mixed>>
      */
@@ -1253,7 +1238,7 @@ class ShopifyAdsMasterController extends Controller
     {
         $sep = self::SUBROW_SEPARATOR;
         $rows = [];
-        foreach ($this->facebookB2bTags($chCode) as $tag) {
+        foreach ($this->facebookB2bOptionNames() as $tag) {
             $slug = strtolower((string) preg_replace('/[^a-z0-9]+/i', '_', $tag));
             $slug = trim($slug, '_');
             if ($slug === '') {

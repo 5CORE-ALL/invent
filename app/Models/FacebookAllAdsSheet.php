@@ -91,6 +91,13 @@ class FacebookAllAdsSheet extends Model
         return self::b2bTokenInText(is_string($name) ? $name : null, $options);
     }
 
+    public static function b2bSlug(string $name): string
+    {
+        $slug = strtolower((string) preg_replace('/[^a-z0-9]+/i', '-', trim($name)));
+
+        return trim($slug, '-');
+    }
+
     public static function isB2bB2cHeader(string $key): bool
     {
         $n = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', $key));

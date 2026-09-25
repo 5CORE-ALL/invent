@@ -10,6 +10,7 @@
     // shows rows tagged with that CH value (powers the Facebook /
     // Instagram channel pages). Null on the generic "all" page.
     $chFilter        = $chFilter        ?? null;
+    $b2bFilter       = $b2bFilter       ?? null;
     $pageTitle       = $pageTitle       ?? 'Facebook All Ads Sheet';
     $pageSubtitle    = $pageSubtitle    ?? 'Generic CSV / Excel / TSV importer — upload any sheet and view it as a table';
     $allowedAdTypes   = $allowedAdTypes   ?? ['GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL', 'MUSIC STORE', 'MUSIC SCHOOL', 'WHOLESALE', 'DROPSHIP'];
@@ -899,6 +900,7 @@
         // Channel lens ('FB' | 'Insta' | null) — sent to the data feed as
         // ?ch=… so the server filters rows by the CH column.
         const CH_FILTER = @json($chFilter);
+        const B2B_FILTER = @json($b2bFilter);
         // TCOS = same Ads% as /all-marketplace-master (Spend / Shopify S Sales).
         let faasMasterTcosPercent = null;
         let faasShopifyNetSales = 0;
@@ -1538,6 +1540,7 @@
             }
             if (PAGE_TYPE !== 'all') params.set('type', PAGE_TYPE);
             if (CH_FILTER) params.set('ch', CH_FILTER);
+            if (B2B_FILTER) params.set('b2b', B2B_FILTER);
             const url = '/facebook-all-ads-sheet/data?' + params.toString();
 
             return fetch(url, { credentials: 'same-origin' })
