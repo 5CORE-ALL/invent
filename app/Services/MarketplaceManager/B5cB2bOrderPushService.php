@@ -94,7 +94,7 @@ class B5cB2bOrderPushService
         }
 
         $payload = is_array($order->payload) ? $order->payload : [];
-        $resolved = [];
+        $pending = [];
         $missingSku = false;
         foreach ($order->displayLines() as $line) {
             $sku = trim((string) ($line['sku'] ?? ''));
@@ -102,27 +102,33 @@ class B5cB2bOrderPushService
             if ($qty <= 0) {
                 continue;
             }
-            $title = trim((string) ($line['name'] ?? ''));
-            if ($title === '') {
-                $title = $sku;
-            }
             if ($sku === '') {
                 $missingSku = true;
                 continue;
             }
-            $item = [
-                'title' => mb_substr($title !== '' ? $title : $sku, 0, 255),
-                'quantity' => $qty,
-                'price' => number_format((float) ($line['price'] ?? 0), 2, '.', ''),
+            $title = trim((string) ($line['name'] ?? ''));
+            $pending[] = [
                 'sku' => $sku,
+                'qty' => $qty,
+                'title' => $title !== '' ? $title : $sku,
+                'price' => (float) ($line['price'] ?? 0),
             ];
-            $variantId = ShopifyVariantIdLookup::idForSku(
-                (string) $config['store_url'],
-                (string) $config['token'],
-                $sku
-            );
-            if ($variantId) {
-                $item['variant_id'] = $variantId;
+        }
+        $variantIds = ShopifyVariantIdLookup::idsForSkus(
+            (string) $config['store_url'],
+            (string) $config['token'],
+            array_column($pending, 'sku')
+        );
+        $resolved = [];
+        foreach ($pending as $line) {
+            $item = [
+                'title' => mb_substr($line['title'], 0, 255),
+                'quantity' => $line['qty'],
+                'price' => number_format($line['price'], 2, '.', ''),
+                'sku' => $line['sku'],
+            ];
+            if (! empty($variantIds[$line['sku']])) {
+                $item['variant_id'] = $variantIds[$line['sku']];
             }
             $resolved[] = $item;
         }
@@ -342,6 +348,7 @@ class B5cB2bOrderPushService
     {
         $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders.json';
 
+        sleep(1);
         $id = $this->postOrderOnce($config, $payload, $url);
         if ($id !== null || $this->lastApiStatus !== 422) {
             return $id;
@@ -371,38 +378,52 @@ class B5cB2bOrderPushService
      */
     protected function postOrderOnce(array $config, array $payload, string $url): ?string
     {
-        try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $config['token'],
-                'Content-Type' => 'application/json',
-            ])->timeout(60)->post($url, $payload);
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            try {
+                $response = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $config['token'],
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->post($url, $payload);
 
-            $this->lastApiStatus = $response->status();
-            if ($response->successful()) {
-                $id = (string) ($response->json('order.id') ?? '');
-                if ($id === '') {
-                    $this->lastFailureReason = 'Shopify returned no order id';
+                $this->lastApiStatus = $response->status();
+                if ($response->successful()) {
+                    $id = (string) ($response->json('order.id') ?? '');
+                    if ($id === '') {
+                        $this->lastFailureReason = 'Shopify returned no order id';
 
-                    return null;
+                        return null;
+                    }
+
+                    return $id;
                 }
 
-                return $id;
+                if ($response->status() === 429 && $attempt < 5) {
+                    $wait = (int) ($response->header('Retry-After') ?: (2 * $attempt));
+                    sleep(max(2, min(20, $wait)));
+
+                    continue;
+                }
+
+                $this->lastFailureReason = 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 300);
+                Log::error('B5cB2bOrderPushService: Shopify order create failed', [
+                    'status' => $response->status(),
+                    'body' => mb_substr($response->body(), 0, 500),
+                    'attempt' => $attempt,
+                ]);
+
+                return null;
+            } catch (\Throwable $e) {
+                $this->lastFailureReason = $e->getMessage();
+                $this->lastApiStatus = null;
+                Log::error('B5cB2bOrderPushService: exception', ['error' => $e->getMessage()]);
+                if ($attempt >= 5) {
+                    return null;
+                }
+                sleep(2 * $attempt);
             }
-
-            $this->lastFailureReason = 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 300);
-            Log::error('B5cB2bOrderPushService: Shopify order create failed', [
-                'status' => $response->status(),
-                'body' => mb_substr($response->body(), 0, 500),
-            ]);
-
-            return null;
-        } catch (\Throwable $e) {
-            $this->lastFailureReason = $e->getMessage();
-            $this->lastApiStatus = null;
-            Log::error('B5cB2bOrderPushService: exception', ['error' => $e->getMessage()]);
-
-            return null;
         }
+
+        return null;
     }
 
     /**
