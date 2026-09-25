@@ -2096,7 +2096,9 @@ class AdvertisementMasterController extends Controller
         $series = [];
 
         try {
-            if ($this->historyIsAllChannels($channel) && $this->badgeHistoryField($metric) !== null) {
+            if ($metric === 'missing_ads' && $this->historyIsAllChannels($channel)) {
+                [$labels, $series] = $this->missingBadgeHistory($days);
+            } elseif ($this->historyIsAllChannels($channel) && $this->badgeHistoryField($metric) !== null) {
                 [$labels, $series] = $this->badgePageHistory($metric, $days);
             } else {
                 [$labels, $series] = $this->snapshotHistory($channel, $metric, $days);
@@ -2132,7 +2134,6 @@ class AdvertisementMasterController extends Controller
             'ssales' => 'l30_sales',
             'clicks' => 'total_views',
             'tcos' => 'ads_pct',
-            'missing_ads' => 'missing_l',
             default => null,
         };
     }
@@ -2160,6 +2161,103 @@ class AdvertisementMasterController extends Controller
         }
 
         return [$labels, $series];
+    }
+
+    /**
+     * Missing badge = leaf rows that have their own missing-ads link.
+     * Parents and "* Total" rows are left out so the chart is that same sum.
+     *
+     * @return array{0: list<string>, 1: list<int|null>}
+     */
+    private function missingBadgeHistory(int $days): array
+    {
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $from = $today->copy()->subDays($days - 1);
+        $dates = [];
+        $cursor = $from->copy();
+        while ($cursor->lte($today)) {
+            $dates[] = $cursor->toDateString();
+            $cursor->addDay();
+        }
+
+        $byDate = [];
+        if (Schema::hasTable('advertisement_master_metric_snapshots') && $this->snapshotsHaveMissingAdsColumn()) {
+            $rows = DB::table('advertisement_master_metric_snapshots')
+                ->whereDate('snapshot_date', '>=', $from->toDateString())
+                ->whereDate('snapshot_date', '<=', $today->toDateString())
+                ->get(['snapshot_date', 'channel', 'missing_ads']);
+            foreach ($rows as $row) {
+                $canonical = $this->missingBadgeCanonical((string) ($row->channel ?? ''));
+                if ($canonical === null) {
+                    continue;
+                }
+                $date = $row->snapshot_date instanceof \DateTimeInterface
+                    ? $row->snapshot_date->format('Y-m-d')
+                    : substr((string) $row->snapshot_date, 0, 10);
+                $byDate[$date][$canonical] = max(
+                    $byDate[$date][$canonical] ?? 0,
+                    (int) ($row->missing_ads ?? 0)
+                );
+            }
+        }
+
+        $series = [];
+        foreach ($dates as $date) {
+            if (! isset($byDate[$date])) {
+                $series[] = null;
+                continue;
+            }
+            $series[] = array_sum($byDate[$date]);
+        }
+
+        $todayKey = $today->toDateString();
+        $todayIdx = array_search($todayKey, $dates, true);
+        if ($todayIdx !== false) {
+            $series[$todayIdx] = $this->liveMissingBadgeTotal();
+        }
+
+        return [
+            array_map(fn ($d) => date('M d', strtotime($d)), $dates),
+            $series,
+        ];
+    }
+
+    private function liveMissingBadgeTotal(): int
+    {
+        $seen = [];
+        $sum = 0;
+        foreach ($this->missingAdsSourceMap() as $key => $source) {
+            $canonical = $this->missingBadgeCanonical($key);
+            if ($canonical === null || isset($seen[$canonical]) || empty($source['href'])) {
+                continue;
+            }
+            $seen[$canonical] = true;
+            $sum += (int) ($source['count'] ?? 0);
+        }
+
+        return $sum;
+    }
+
+    private function missingBadgeCanonical(string $channel): ?string
+    {
+        if (preg_match('/\s+Total$/i', trim($channel))) {
+            return null;
+        }
+        $norm = $this->normalizeChannelMatchKey($channel);
+
+        return match ($norm) {
+            'amazonkw', 'amzkw' => 'amazonkw',
+            'amazonpt', 'amzpt' => 'amazonpt',
+            'shopifygoogleshopping' => 'shopifygoogleshopping',
+            'shopifygoogleserp' => 'shopifygoogleserp',
+            'shopifyyoutubeads' => 'shopifyyoutubeads',
+            'shopifytiktokvideoads' => 'shopifytiktokvideoads',
+            'temu', 'temu1' => 'temu',
+            'temu2' => 'temu2',
+            'ebay' => 'ebay',
+            'ebay2' => 'ebay2',
+            default => null,
+        };
     }
 
     /**

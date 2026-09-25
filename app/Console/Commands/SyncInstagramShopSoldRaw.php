@@ -57,7 +57,7 @@ class SyncInstagramShopSoldRaw extends Command
             $gross = round((float) ($row['gross_sales'] ?? 0), 2);
             $payload = [
                 'sale_date' => $row['day'] ?? null,
-                'url' => $this->variantUrl($productUrls, $row),
+                'url' => $this->pageUrl($productUrls, $row),
                 'product_title' => $row['product_title'] ?? null,
                 'quantity' => $quantity,
                 'sold_price' => $quantity > 0 ? round($gross / $quantity, 2) : 0,
@@ -182,22 +182,27 @@ class SyncInstagramShopSoldRaw extends Command
     }
 
     /**
+     * Product page on the online store, without a variant query.
+     *
      * @param  array<string, string>  $productUrls
      * @param  array<string, mixed>  $row
      */
-    private function variantUrl(array $productUrls, array $row): ?string
+    private function pageUrl(array $productUrls, array $row): ?string
     {
         $productId = trim((string) ($row['product_id'] ?? ''));
-        $base = $productUrls[$productId] ?? null;
-        if ($base === null || $base === '') {
+        $url = $productUrls[$productId] ?? null;
+        if ($url === null || $url === '') {
             return null;
         }
 
-        $variantId = trim((string) ($row['product_variant_id'] ?? ''));
-        if ($variantId === '') {
-            return $base;
+        $parts = parse_url($url);
+        if (! is_array($parts) || empty($parts['host'])) {
+            return strtok($url, '?') ?: $url;
         }
 
-        return $base.'?variant='.$variantId;
+        $scheme = $parts['scheme'] ?? 'https';
+        $path = $parts['path'] ?? '';
+
+        return $scheme.'://'.$parts['host'].$path;
     }
 }
