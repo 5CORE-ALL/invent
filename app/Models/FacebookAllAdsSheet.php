@@ -16,6 +16,7 @@ class FacebookAllAdsSheet extends Model
         'row_data',
         'ad_type',
         'ch',
+        'b2b_b2c',
         'uploaded_by',
     ];
 

@@ -4467,7 +4467,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/facebook-all-ads-sheet/batches',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'batches'])->name('facebook.all.ads.sheet.batches');
     Route::post('/facebook-all-ads-sheet/upload',          [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'upload'])->name('facebook.all.ads.sheet.upload');
     Route::post('/facebook-all-ads-sheet/ad-types',        [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'storeAdType'])->name('facebook.all.ads.sheet.ad.types.store');
+    Route::post('/facebook-all-ads-sheet/b2b-b2c-options', [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'storeB2bB2cOption'])->name('facebook.all.ads.sheet.b2b.b2c.store');
     Route::post('/facebook-all-ads-sheet/{id}/ad-type',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateAdType'])->whereNumber('id')->name('facebook.all.ads.sheet.ad.type');
+    Route::post('/facebook-all-ads-sheet/{id}/b2b-b2c',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateB2bB2c'])->whereNumber('id')->name('facebook.all.ads.sheet.b2b.b2c');
     Route::post('/facebook-all-ads-sheet/{id}/ch',         [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'updateCh'])->whereNumber('id')->name('facebook.all.ads.sheet.ch');
     Route::post('/facebook-all-ads-sheet/bulk-ch',         [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'bulkCh'])->name('facebook.all.ads.sheet.bulk.ch');
 

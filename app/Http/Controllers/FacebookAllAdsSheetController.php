@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Models\FacebookAdType;
 use App\Models\FacebookAllAdsSheet;
+use App\Models\FacebookB2bB2cOption;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\Csv as CsvReader;
@@ -254,7 +256,7 @@ class FacebookAllAdsSheetController extends Controller
             ], $this->tcosPayloadMatchingMaster()));
         }
 
-        $rows = $query->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'source_filename', 'created_at']);
+        $rows = $query->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'b2b_b2c', 'source_filename', 'created_at']);
 
         // Build column list from the union of keys observed in this batch.
         // Skip any `__*` meta keys (e.g. `__upload_type`) — those are
@@ -291,6 +293,7 @@ class FacebookAllAdsSheetController extends Controller
                     '_upload_type' => $uploadType,
                     'ad_type'      => $r->ad_type,
                     'ch'           => $r->ch,
+                    'b2b_b2c'      => $r->b2b_b2c,
                 ],
                 $cleanedData
             );
@@ -506,7 +509,7 @@ class FacebookAllAdsSheetController extends Controller
         if ($typeList) {
             $rowsQ->whereIn('ad_type', $typeList);
         }
-        $rows = $rowsQ->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'import_batch_id']);
+        $rows = $rowsQ->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'b2b_b2c', 'import_batch_id']);
 
         // Build a `lowercase Campaign name → Campaign ID` lookup from the
         // Campaign batch. Used as a fallback for Spend / Sales rows whose
@@ -557,6 +560,7 @@ class FacebookAllAdsSheetController extends Controller
                     '_campaign_id' => $cid,
                     'ad_type'      => $r->ad_type,
                     'ch'           => $r->ch,
+                    'b2b_b2c'      => $r->b2b_b2c,
                 ];
             }
 
@@ -577,6 +581,7 @@ class FacebookAllAdsSheetController extends Controller
                 $merged[$cid]['_id']     = $r->id;
                 $merged[$cid]['ad_type'] = $r->ad_type;
                 $merged[$cid]['ch']      = $r->ch;
+                $merged[$cid]['b2b_b2c'] = $r->b2b_b2c;
             }
         }
 
@@ -616,6 +621,7 @@ class FacebookAllAdsSheetController extends Controller
                 '_campaign_id' => $row['_campaign_id'],
                 'ad_type'      => $row['ad_type'],
                 'ch'           => $row['ch'] ?? null,
+                'b2b_b2c'      => $row['b2b_b2c'] ?? null,
             ];
             // Pass 1 — sources
             foreach (self::MERGED_COLUMNS as $col) {
@@ -809,6 +815,39 @@ class FacebookAllAdsSheetController extends Controller
                 $map[$cid] = $r->ch;
             }
         }
+        return $map;
+    }
+
+    /**
+     * Campaign ID → B2B / B2C so a new upload keeps the tag.
+     *
+     * @return array<string, string>
+     */
+    private function buildB2bB2cCarryMap(): array
+    {
+        if (! Schema::hasColumn('facebook_all_ads_sheet', 'b2b_b2c')) {
+            return [];
+        }
+
+        $rows = FacebookAllAdsSheet::query()
+            ->whereNotNull('b2b_b2c')
+            ->where('b2b_b2c', '!=', '')
+            ->orderByDesc('id')
+            ->get(['b2b_b2c', 'row_data']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            $rd  = $r->row_data ?? [];
+            $cid = $this->findCampaignId(array_filter(
+                $rd,
+                fn ($_, $k) => ! str_starts_with($k, '__'),
+                ARRAY_FILTER_USE_BOTH
+            ));
+            if ($cid !== null && $cid !== '' && ! isset($map[$cid])) {
+                $map[$cid] = $r->b2b_b2c;
+            }
+        }
+
         return $map;
     }
 
@@ -1789,6 +1828,93 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
+     * Add a B2B / B2C dropdown option. Built-ins and existing names are
+     * returned as-is so the same option is never stored twice.
+     */
+    public function storeB2bB2cOption(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:32'],
+        ]);
+
+        $name = FacebookAllAdsSheet::normalizeAdTypeName($data['name']);
+        if ($name === '' || ! preg_match('/^[A-Z0-9][A-Z0-9 \-]{0,31}$/', $name)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Option must be 1–32 letters, numbers, spaces, or hyphens.',
+            ], 422);
+        }
+
+        $existing = FacebookB2bB2cOption::options();
+        if (! in_array($name, $existing, true)) {
+            try {
+                FacebookB2bB2cOption::firstOrCreate(['name' => $name]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Another request stored the same name first.
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'b2b_b2c' => $name,
+            'options' => FacebookB2bB2cOption::options(),
+        ]);
+    }
+
+    /**
+     * Persist the B2B / B2C choice on every row that shares this Campaign ID.
+     */
+    public function updateB2bB2c(Request $request, int $id)
+    {
+        $options = FacebookB2bB2cOption::options();
+        $request->validate([
+            'b2b_b2c' => ['nullable', 'string', 'in:'.implode(',', $options)],
+        ]);
+
+        $row = FacebookAllAdsSheet::findOrFail($id);
+        $value = $request->input('b2b_b2c') ?: null;
+
+        $cid = $this->findCampaignId(array_filter(
+            (array) ($row->row_data ?? []),
+            fn ($_, $k) => ! str_starts_with($k, '__'),
+            ARRAY_FILTER_USE_BOTH
+        ));
+
+        $propagated = 1;
+        if ($cid !== null && $cid !== '') {
+            $like1 = '%"'.str_replace('%', '\\%', $cid).'"%';
+            $propagated = FacebookAllAdsSheet::query()
+                ->where('row_data', 'like', $like1)
+                ->get(['id', 'row_data'])
+                ->filter(function ($r) use ($cid) {
+                    $rowCid = $this->findCampaignId(array_filter(
+                        (array) ($r->row_data ?? []),
+                        fn ($_, $k) => ! str_starts_with($k, '__'),
+                        ARRAY_FILTER_USE_BOTH
+                    ));
+
+                    return $rowCid === $cid;
+                })
+                ->each(function ($r) use ($value) {
+                    $r->b2b_b2c = $value;
+                    $r->save();
+                })
+                ->count();
+        } else {
+            $row->b2b_b2c = $value;
+            $row->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'id' => $row->id,
+            'b2b_b2c' => $value,
+            'campaign_id' => $cid,
+            'propagated' => $propagated,
+        ]);
+    }
+
+    /**
      * Persist the Ad Type chosen from the dropdown. Propagates the value
      * (or NULL when cleared) to every row that shares the same Campaign ID.
      * Accepts an empty string in `ad_type` to clear the value.
@@ -2227,6 +2353,7 @@ class FacebookAllAdsSheetController extends Controller
         // user set on a campaign survive the replace.
         $prevAdTypeByCid = $this->buildAdTypeCarryMap();
         $prevChByCid     = $this->buildChCarryMap();
+        $prevB2bByCid    = $this->buildB2bB2cCarryMap();
 
         DB::beginTransaction();
         try {
@@ -2250,6 +2377,7 @@ class FacebookAllAdsSheetController extends Controller
                 $rowCid     = $this->findCampaignId($assoc);
                 $carriedAdType = $rowCid !== null ? ($prevAdTypeByCid[$rowCid] ?? null) : null;
                 $carriedCh     = $rowCid !== null ? ($prevChByCid[$rowCid] ?? null) : null;
+                $carriedB2b    = $rowCid !== null ? ($prevB2bByCid[$rowCid] ?? null) : null;
 
                 // Tuck the upload type inside the existing `row_data` JSON
                 // (under a double-underscore meta key) so we don't need a new
@@ -2263,6 +2391,7 @@ class FacebookAllAdsSheetController extends Controller
                     'row_data'        => $assoc,
                     'ad_type'         => $carriedAdType,
                     'ch'              => $carriedCh,
+                    'b2b_b2c'         => $carriedB2b,
                     'uploaded_by'     => $userId,
                 ]);
                 $imported++;

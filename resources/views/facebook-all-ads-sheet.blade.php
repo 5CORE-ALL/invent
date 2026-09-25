@@ -14,6 +14,7 @@
     $pageSubtitle    = $pageSubtitle    ?? 'Generic CSV / Excel / TSV importer — upload any sheet and view it as a table';
     $allowedAdTypes   = $allowedAdTypes   ?? ['GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL', 'MUSIC STORE', 'MUSIC SCHOOL', 'WHOLESALE', 'DROPSHIP'];
     $canManageAdTypes = $canManageAdTypes ?? false;
+    $b2bB2cOptions    = $b2bB2cOptions    ?? \App\Models\FacebookB2bB2cOption::options();
 @endphp
 
 @extends('layouts.vertical', ['title' => $pageTitle, 'sidenav' => 'condensed'])
@@ -351,6 +352,14 @@
                             title="Create a Type and add it to the dropdown">
                         <i class="fas fa-plus me-1"></i>Add Type
                     </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            style="flex-shrink:0;"
+                            data-bs-toggle="modal"
+                            data-bs-target="#faasAddB2bModal"
+                            title="Create a B2B / B2C option and add it to the dropdown">
+                        <i class="fas fa-plus me-1"></i>Add B2B / B2C
+                    </button>
                     @endif
 
                     {{-- Global search — fills the horizontal space
@@ -460,6 +469,34 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-sm btn-primary" id="faasAddTypeSave">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade"
+     id="faasAddB2bModal"
+     tabindex="-1"
+     aria-labelledby="faasAddB2bModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="faasAddB2bModalLabel">Add B2B / B2C</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label for="faasNewB2bName" class="form-label small fw-semibold">Option name</label>
+                <input type="text"
+                       id="faasNewB2bName"
+                       class="form-control"
+                       maxlength="32"
+                       placeholder="e.g. B2B"
+                       autocomplete="off">
+                <div id="faasAddB2bError" class="text-danger small mt-2"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="faasAddB2bSave">Save</button>
             </div>
         </div>
     </div>
@@ -850,6 +887,12 @@
         const AD_TYPES  = @json($allowedAdTypes);
         const CAN_MANAGE_AD_TYPES = @json((bool) $canManageAdTypes);
         const ADD_TYPE_SENTINEL = '__add_type__';
+        const B2B_OPTIONS = @json($b2bB2cOptions);
+        const ADD_B2B_SENTINEL = '__add_b2b__';
+        const B2B_COLORS = {
+            'B2B': { bg: '#dbeafe', fg: '#1e40af' },
+            'B2C': { bg: '#dcfce7', fg: '#166534' },
+        };
         const AD_TYPE_COLORS = {
             'GROUP VIDEO':     { bg: '#dbeafe', fg: '#1e40af' },
             'GROUP CAROUSAL':  { bg: '#dcfce7', fg: '#166534' },
@@ -1227,6 +1270,139 @@
             })
             .catch(e => {
                 if (err) err.textContent = e.message || 'Could not save type.';
+            })
+            .finally(() => { if (btn) btn.disabled = false; });
+        }
+
+        function b2bColor(v) {
+            if (B2B_COLORS[v]) return B2B_COLORS[v];
+            let h = 0;
+            const s = String(v || '');
+            for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+            return EXTRA_TYPE_PALETTE[h % EXTRA_TYPE_PALETTE.length];
+        }
+
+        function formatB2bCell(cell) {
+            const v = cell.getValue();
+            if (!v) {
+                return '<span class="text-muted small">— Select —</span>';
+            }
+            const c = b2bColor(v);
+            return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;`
+                 + `background:${c.bg};color:${c.fg};font-size:0.75rem;font-weight:600;">${escapeHtml(v)}</span>`;
+        }
+
+        function b2bEditorValues() {
+            const values = { '': '— Select —' };
+            (B2B_OPTIONS || []).forEach(function (v) { values[v] = v; });
+            if (CAN_MANAGE_AD_TYPES) values[ADD_B2B_SENTINEL] = '+ Add option…';
+            return values;
+        }
+
+        function rememberB2b(name) {
+            const key = String(name || '').trim().toUpperCase();
+            if (!key || B2B_OPTIONS.includes(key)) return;
+            B2B_OPTIONS.push(key);
+        }
+
+        let faasSuppressB2bEdit = false;
+        let faasAddB2bOnSaved = null;
+
+        function persistB2b(row, value, oldVal) {
+            const id = row.getData()._id;
+            if (!id) return;
+            const fd = new FormData();
+            fd.append('b2b_b2c', value);
+            fd.append('_token', csrfToken);
+            fetch(`/facebook-all-ads-sheet/${id}/b2b-b2c`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: fd,
+            })
+            .then(async r => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data.success) throw new Error(data.message || `HTTP ${r.status}`);
+            })
+            .catch(err => {
+                row.update({ b2b_b2c: oldVal });
+                alert('Failed to save B2B / B2C: ' + err.message);
+            });
+        }
+
+        function onB2bEdited(cell) {
+            if (faasSuppressB2bEdit) return;
+            const row = cell.getRow();
+            const value = cell.getValue() || '';
+            const oldVal = cell.getOldValue() || '';
+            if (!row.getData()._id) return;
+            if (value === ADD_B2B_SENTINEL) {
+                faasSuppressB2bEdit = true;
+                row.update({ b2b_b2c: oldVal });
+                faasSuppressB2bEdit = false;
+                openAddB2bModal(function (name) {
+                    faasSuppressB2bEdit = true;
+                    row.update({ b2b_b2c: name });
+                    faasSuppressB2bEdit = false;
+                    persistB2b(row, name, oldVal);
+                });
+                return;
+            }
+            persistB2b(row, value, oldVal);
+        }
+
+        function openAddB2bModal(onSaved) {
+            faasAddB2bOnSaved = typeof onSaved === 'function' ? onSaved : null;
+            const input = document.getElementById('faasNewB2bName');
+            const err = document.getElementById('faasAddB2bError');
+            if (input) input.value = '';
+            if (err) err.textContent = '';
+            const el = document.getElementById('faasAddB2bModal');
+            if (!el || !window.bootstrap) return;
+            window.bootstrap.Modal.getOrCreateInstance(el).show();
+            setTimeout(function () { input && input.focus(); }, 200);
+        }
+
+        function saveNewB2bOption() {
+            const input = document.getElementById('faasNewB2bName');
+            const err = document.getElementById('faasAddB2bError');
+            const name = (input?.value || '').trim();
+            if (!name) {
+                if (err) err.textContent = 'Enter an option name.';
+                return;
+            }
+            const btn = document.getElementById('faasAddB2bSave');
+            if (btn) btn.disabled = true;
+            fetch('/facebook-all-ads-sheet/b2b-b2c-options', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ name: name }),
+            })
+            .then(async r => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data.success) throw new Error(data.message || `HTTP ${r.status}`);
+                return data;
+            })
+            .then(data => {
+                const saved = data.b2b_b2c;
+                if (Array.isArray(data.options)) {
+                    data.options.forEach(rememberB2b);
+                } else {
+                    rememberB2b(saved);
+                }
+                const cb = faasAddB2bOnSaved;
+                faasAddB2bOnSaved = null;
+                const el = document.getElementById('faasAddB2bModal');
+                if (el && window.bootstrap) window.bootstrap.Modal.getOrCreateInstance(el).hide();
+                if (cb) cb(saved);
+            })
+            .catch(e => {
+                if (err) err.textContent = e.message || 'Could not save option.';
             })
             .finally(() => { if (btn) btn.disabled = false; });
         }
@@ -1651,6 +1827,22 @@
                             },
                             cellEdited:   onAdTypeEdited,
                             formatter:    formatAdTypeCell,
+                        },
+                        {
+                            title:        'B2B / B2C',
+                            field:        'b2b_b2c',
+                            width:        130,
+                            headerFilter: false,
+                            editor:       'list',
+                            editorParams: {
+                                valuesLookup:     function () { return b2bEditorValues(); },
+                                clearable:        true,
+                                autocomplete:     true,
+                                listOnEmpty:      true,
+                                placeholderEmpty: '— Select —',
+                            },
+                            cellEdited:   onB2bEdited,
+                            formatter:    formatB2bCell,
                         }
                     );
                     // Action column — red alert when ACOS > current avg ACOS
@@ -2315,6 +2507,13 @@
         });
 
         document.getElementById('faasAddTypeSave')?.addEventListener('click', saveNewAdType);
+        document.getElementById('faasAddB2bSave')?.addEventListener('click', saveNewB2bOption);
+        document.getElementById('faasNewB2bName')?.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveNewB2bOption();
+            }
+        });
         document.getElementById('faasNewTypeName')?.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
