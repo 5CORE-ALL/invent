@@ -860,6 +860,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/b5cb2b/refresh-products/status', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'refreshProductsStatus'])->name('b5cb2b.refresh.status');
         Route::post('/b5cb2b/fetch-orders', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'fetchOrders'])->name('b5cb2b.fetch.orders');
         Route::post('/b5cb2b/push-shopify', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'pushUnlinkedToShopify'])->name('b5cb2b.push.shopify');
+        Route::post('/b5cb2b/retag-shopify', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'renameShopifyTag'])->name('b5cb2b.retag.shopify');
         Route::post('/b5cb2b/sync-inventory', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'syncInventoryNow'])->name('b5cb2b.sync.inventory');
         Route::post('/b5cb2b/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'syncMismatchInventoryNow'])->name('b5cb2b.sync.mismatch.inventory');
         Route::post('/b5cb2b/sync-tracking', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'syncTrackingNow'])->name('b5cb2b.sync.tracking');

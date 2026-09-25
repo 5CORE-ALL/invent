@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\B5cB2bOrder;
+use App\Services\MarketplaceManager\B5cB2bOrderPushService;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use PHPUnit\Framework\TestCase;
 
@@ -81,5 +82,19 @@ class B5cB2bOrderNumberTest extends TestCase
         $this->assertFalse(MarketplaceOrderPaidFilter::isPaid('b5cb2b', new B5cB2bOrder([
             'status' => 'unpaid',
         ])));
+    }
+
+    public function test_shopify_tag_uses_the_channel_name_instead_of_the_slug(): void
+    {
+        $tags = B5cB2bOrderPushService::shopifyTags('B5-0004', ['b5cb2b', '5Core Inventory']);
+
+        $this->assertSame(['Business 5 Core (B2B)', 'B5-0004', '5Core Inventory'], $tags);
+
+        $rewritten = B5cB2bOrderPushService::rewriteTagList('5Core Inventory, B5-0004, b5cb2b');
+        $this->assertTrue($rewritten['changed']);
+        $this->assertSame('5Core Inventory, B5-0004, Business 5 Core (B2B)', $rewritten['tags']);
+
+        $already = B5cB2bOrderPushService::rewriteTagList('5Core Inventory, B5-0004, Business 5 Core (B2B)');
+        $this->assertFalse($already['changed']);
     }
 }

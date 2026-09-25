@@ -83,7 +83,7 @@ function b5cPushUnlinked() {
     });
     var $s = $('#b5c-orders-status');
     if (!rows.length) {
-        $s.text('Every order is already in Shopify.');
+        b5cRetagLinked('');
         return;
     }
     window.b5cPushing = true;
@@ -92,7 +92,10 @@ function b5cPushUnlinked() {
     function next() {
         if (!rows.length) {
             window.b5cPushing = false;
-            $s.text('Shopify: ' + ok + ' sent' + (fail ? ', ' + fail + ' failed' : '') + '.');
+            var summary = ok || fail
+                ? ('Shopify: ' + ok + ' sent' + (fail ? ', ' + fail + ' failed' : '') + '.')
+                : '';
+            b5cRetagLinked(summary);
             return;
         }
         var $tr = rows.shift();
@@ -115,6 +118,53 @@ function b5cPushUnlinked() {
             $tr.find('.b5c-shopify-cell').text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed');
             setTimeout(next, 2000);
         });
+    }
+    next();
+}
+function b5cRetagLinked(prefix) {
+    var rows = [];
+    $('tr[data-store-id]').each(function () {
+        if ($(this).attr('data-shopify')) {
+            rows.push($(this));
+        }
+    });
+    var $s = $('#b5c-orders-status');
+    var updated = 0;
+    var fail = 0;
+    function finish() {
+        var extra = updated ? ' Tag set to Business 5 Core (B2B) on ' + updated + '.' : '';
+        if (fail) {
+            extra += ' Tag update failed on ' + fail + '.';
+        }
+        $s.text(((prefix || '') + extra).trim());
+    }
+    function next() {
+        if (!rows.length) {
+            finish();
+            return;
+        }
+        var $tr = rows.shift();
+        $s.text('Updating Shopify tag for ' + $tr.attr('data-label') + '…');
+        $.post("{{ route('marketplace.manager.b5cb2b.retag.shopify') }}", {
+            _token: '{{ csrf_token() }}',
+            order_id: $tr.attr('data-store-id')
+        }).done(function (res) {
+            if (res.success && res.changed) {
+                updated++;
+            } else if (!res.success) {
+                fail++;
+            }
+            setTimeout(next, res.cached ? 0 : 2000);
+        }).fail(function () {
+            fail++;
+            setTimeout(next, 2000);
+        });
+    }
+    if (!rows.length) {
+        if (prefix) {
+            $s.text(prefix);
+        }
+        return;
     }
     next();
 }

@@ -121,7 +121,7 @@
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify order tags (comma-separated)</label>
-                        <input type="text" class="form-control form-control-sm" name="order[shopify_order_tags]" value="{{ implode(', ', $settings['order']['shopify_order_tags'] ?? ['b5cb2b']) }}" style="max-width: 400px;">
+                        <input type="text" class="form-control form-control-sm" name="order[shopify_order_tags]" value="{{ implode(', ', $settings['order']['shopify_order_tags'] ?? []) }}" placeholder="Business 5 Core (B2B)" style="max-width: 400px;">
                     </div>
                 </div>
             </div>

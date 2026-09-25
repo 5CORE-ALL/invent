@@ -137,6 +137,25 @@ class B5cB2bSyncController extends Controller
         ]);
     }
 
+    public function renameShopifyTag(Request $request): JsonResponse
+    {
+        $id = (int) $request->input('order_id', $request->input('id', 0));
+        $row = B5cB2bOrder::query()->where('store_order_id', $id)->first()
+            ?: ($id > 0 ? B5cB2bOrder::query()->find($id) : null);
+        if (! $row) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        $shopifyId = trim((string) ($row->shopify_order_id ?? ''));
+        if ($shopifyId === '') {
+            return response()->json(['success' => false, 'message' => 'Order is not in Shopify yet.'], 422);
+        }
+
+        $result = app(B5cB2bOrderPushService::class)->renameShopifyTag($shopifyId);
+
+        return response()->json($result, $result['success'] ? 200 : 422);
+    }
+
     public function syncInventoryNow(): JsonResponse
     {
         $settings = MarketplaceSyncSettings::getFor('b5cb2b');
