@@ -788,38 +788,13 @@ class TopDawgOrderPushService
 
     protected function findShopifyVariantIdBySku(string $sku): ?int
     {
-        $row = ShopifySku::firstForProductSku($sku);
-        if ($row && ! empty($row->variant_id)) {
-            return (int) $row->variant_id;
-        }
-
         $config = $this->shopifyConfig();
-        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
-            return null;
-        }
 
-        $url = 'https://'.$config['store_url'].'/admin/api/2024-01/variants.json?sku='.urlencode($sku);
-
-        try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $config['token'],
-            ])->timeout(30)->get($url);
-
-            if (! $response->successful()) {
-                return null;
-            }
-
-            $variants = $response->json('variants') ?? [];
-            if (! is_array($variants) || $variants === []) {
-                return null;
-            }
-
-            return (int) ($variants[0]['id'] ?? 0) ?: null;
-        } catch (\Throwable $e) {
-            Log::warning('TopDawgOrderPushService: variant lookup failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-
-            return null;
-        }
+        return ShopifyVariantIdLookup::idForSku(
+            (string) ($config['store_url'] ?? ''),
+            (string) ($config['token'] ?? ''),
+            $sku
+        );
     }
 
     /**
