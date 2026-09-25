@@ -574,7 +574,7 @@ class AmazonAdsService
                     $body['nextToken'] = $nextToken;
                 }
                 $response = $this->post('/sb/targets/list', $body, [
-                    'Content-Type' => 'application/vnd.sblisttargetsrequest.v3.2+json',
+                    'Content-Type' => 'application/json',
                     'Accept' => 'application/vnd.sblisttargetsresponse.v3.2+json',
                 ]);
                 $batch = (isset($response['targets']) && is_array($response['targets'])) ? $response['targets'] : [];
