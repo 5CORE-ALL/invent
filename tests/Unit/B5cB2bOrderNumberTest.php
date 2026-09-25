@@ -37,6 +37,39 @@ class B5cB2bOrderNumberTest extends TestCase
         $this->assertNull(B5cB2bOrder::storeIdFromSearch('Rick Rudolph'));
     }
 
+    public function test_line_sku_is_read_from_product_sku_and_nested_product(): void
+    {
+        $fromProductSku = (new B5cB2bOrder([
+            'store_order_id' => 9,
+            'payload' => [
+                'products' => [[
+                    'product_sku' => 'KS 2X HAND',
+                    'name' => 'Keyboard stand',
+                    'qty' => 5,
+                    'unit_price' => 12.58,
+                ]],
+            ],
+        ]))->normalizedLines();
+
+        $this->assertSame('KS 2X HAND', $fromProductSku[0]['sku']);
+        $this->assertSame(5, $fromProductSku[0]['qty']);
+
+        $nested = (new B5cB2bOrder([
+            'store_order_id' => 9,
+            'payload' => [
+                'items' => [[
+                    'product' => ['sku' => 'KS 2X HAND', 'name' => 'Keyboard stand'],
+                    'quantity' => 5,
+                    'price' => 12.58,
+                ]],
+            ],
+        ]))->normalizedLines();
+
+        $this->assertSame('KS 2X HAND', $nested[0]['sku']);
+        $this->assertSame('Keyboard stand', $nested[0]['name']);
+        $this->assertSame(5, $nested[0]['qty']);
+    }
+
     public function test_pending_fulfillment_is_still_paid_for_shopify_import(): void
     {
         $order = new B5cB2bOrder([

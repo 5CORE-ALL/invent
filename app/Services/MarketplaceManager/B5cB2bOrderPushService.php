@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\B5cB2bOrder;
 use App\Models\MarketplaceSyncSettings;
+use App\Services\Business5CoreB2bApiService;
 use App\Services\ShopifyStoreSelector;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -28,8 +29,12 @@ class B5cB2bOrderPushService
         $this->lastApiStatus = null;
         $this->lastDuplicateLinkMessage = null;
 
+        $order = $this->refreshFromStore($order);
+
         $existingId = trim((string) ($order->shopify_order_id ?? ''));
         if ($existingId !== '') {
+            $this->syncLineSkus($order, $existingId);
+
             return $existingId;
         }
 
@@ -73,6 +78,8 @@ class B5cB2bOrderPushService
             'shopify_imported_at' => $order->shopify_imported_at ?? now(),
         ]);
 
+        $this->syncLineSkus($order->fresh() ?? $order, $shopifyOrderId);
+
         return $shopifyOrderId;
     }
 
@@ -87,29 +94,26 @@ class B5cB2bOrderPushService
         }
 
         $payload = is_array($order->payload) ? $order->payload : [];
-        $lines = $this->lineItems($payload);
         $resolved = [];
-        foreach ($lines as $line) {
-            if (! is_array($line)) {
-                continue;
-            }
+        $missingSku = false;
+        foreach ($order->displayLines() as $line) {
             $sku = trim((string) ($line['sku'] ?? ''));
-            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
-                continue;
-            }
-            $qty = (int) ($line['qty'] ?? $line['quantity'] ?? 0);
+            $qty = (int) ($line['qty'] ?? 0);
             if ($qty <= 0) {
                 continue;
             }
-            $unit = (float) ($line['unit_price'] ?? $line['price'] ?? $line['selling_price'] ?? 0);
-            $title = trim((string) ($line['name'] ?? $line['title'] ?? $sku));
+            $title = trim((string) ($line['name'] ?? ''));
             if ($title === '') {
                 $title = $sku;
             }
+            if ($sku === '') {
+                $missingSku = true;
+                continue;
+            }
             $item = [
-                'title' => mb_substr($title, 0, 255),
+                'title' => mb_substr($title !== '' ? $title : $sku, 0, 255),
                 'quantity' => $qty,
-                'price' => number_format($unit, 2, '.', ''),
+                'price' => number_format((float) ($line['price'] ?? 0), 2, '.', ''),
                 'sku' => $sku,
             ];
             $variantId = ShopifyVariantIdLookup::idForSku(
@@ -124,7 +128,12 @@ class B5cB2bOrderPushService
         }
 
         if ($resolved === []) {
-            return ['success' => false, 'message' => 'Business 5 Core order '.$order->channelOrderNumber().' has no line items to import.'];
+            $message = 'Business 5 Core order '.$order->channelOrderNumber().' has no line items to import.';
+            if ($missingSku) {
+                $message = 'Business 5 Core order '.$order->channelOrderNumber().' has no SKU on its lines.';
+            }
+
+            return ['success' => false, 'message' => $message];
         }
 
         $settings = MarketplaceSyncSettings::getFor('b5cb2b');
@@ -185,6 +194,133 @@ class B5cB2bOrderPushService
             'payload' => $orderPayload,
             'order_number' => $number,
         ];
+    }
+
+    protected function refreshFromStore(B5cB2bOrder $order): B5cB2bOrder
+    {
+        $id = (int) $order->store_order_id;
+        if ($id <= 0) {
+            return $order;
+        }
+
+        try {
+            $detail = app(Business5CoreB2bApiService::class)->fetchOrder($id);
+        } catch (\Throwable $e) {
+            Log::warning('B5cB2bOrderPushService: order detail refresh failed', [
+                'store_order_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $order;
+        }
+
+        if ($detail === [] || B5cB2bOrder::rawLines($detail) === []) {
+            return $order;
+        }
+
+        $order->update([
+            'status' => $detail['status'] ?? $order->status,
+            'customer_email' => $detail['customer_email'] ?? $order->customer_email,
+            'customer_name' => $detail['customer_name'] ?? $order->customer_name,
+            'currency' => $detail['currency'] ?? $order->currency,
+            'total' => $detail['total'] ?? $order->total,
+            'tracking_reference' => $detail['tracking_reference'] ?? $order->tracking_reference,
+            'payload' => $detail,
+        ]);
+
+        return $order->fresh() ?? $order;
+    }
+
+    /**
+     * Write each Business 5 Core line SKU onto the Shopify order line.
+     * Shopify keeps the variant SKU when variant_id is set, so this corrects a blank or different SKU.
+     */
+    protected function syncLineSkus(B5cB2bOrder $order, string $shopifyOrderId): void
+    {
+        $wanted = [];
+        foreach ($order->displayLines() as $line) {
+            $sku = trim((string) ($line['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $wanted[] = $sku;
+        }
+        if ($wanted === []) {
+            return;
+        }
+
+        $config = $this->shopifyConfig();
+        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
+            return;
+        }
+
+        $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json';
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['token'],
+            ])->timeout(30)->get($url);
+        } catch (\Throwable $e) {
+            Log::warning('B5cB2bOrderPushService: could not read Shopify order lines', [
+                'shopify_order_id' => $shopifyOrderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        if (! $response->successful()) {
+            return;
+        }
+
+        $existing = $response->json('order.line_items');
+        if (! is_array($existing) || $existing === []) {
+            return;
+        }
+
+        $updates = [];
+        foreach (array_values($existing) as $index => $line) {
+            if (! is_array($line) || empty($line['id'])) {
+                continue;
+            }
+            $sku = $wanted[$index] ?? '';
+            if ($sku === '') {
+                continue;
+            }
+            if (trim((string) ($line['sku'] ?? '')) === $sku) {
+                continue;
+            }
+            $updates[] = [
+                'id' => (int) $line['id'],
+                'sku' => $sku,
+            ];
+        }
+        if ($updates === []) {
+            return;
+        }
+
+        try {
+            $put = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['token'],
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->put($url, [
+                'order' => [
+                    'id' => (int) $shopifyOrderId,
+                    'line_items' => $updates,
+                ],
+            ]);
+            if (! $put->successful()) {
+                Log::warning('B5cB2bOrderPushService: Shopify line SKU update failed', [
+                    'shopify_order_id' => $shopifyOrderId,
+                    'status' => $put->status(),
+                    'body' => mb_substr($put->body(), 0, 300),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('B5cB2bOrderPushService: Shopify line SKU update exception', [
+                'shopify_order_id' => $shopifyOrderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

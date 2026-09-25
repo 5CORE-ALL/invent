@@ -94,15 +94,21 @@ class B5cB2bSyncController extends Controller
 
     public function pushUnlinkedToShopify(): JsonResponse
     {
-        $queued = app(B5cB2bOrderSyncService::class)->dispatchImportsForNewOrders(true);
+        $sync = app(B5cB2bOrderSyncService::class);
+        $inline = $sync->importUnlinkedInline(4);
+        $queued = $sync->dispatchImportsForNewOrders(true);
+        $message = (string) ($inline['message'] ?? '');
+        if ($queued > 0) {
+            $message .= ($message !== '' ? ' ' : '')."Queued {$queued} more.";
+        }
 
         return response()->json([
-            'success' => true,
+            'success' => ($inline['failed'] ?? 0) === 0,
+            'imported' => $inline['imported'] ?? 0,
+            'failed' => $inline['failed'] ?? 0,
             'queued' => $queued,
-            'message' => $queued > 0
-                ? "Queued {$queued} Business 5 Core order(s) for Shopify."
-                : 'No new Shopify imports queued. Orders already in Shopify, or already waiting, were left as they are.',
-        ]);
+            'message' => $message,
+        ], ($inline['failed'] ?? 0) > 0 && ($inline['imported'] ?? 0) === 0 ? 422 : 200);
     }
 
     public function pushOrderToShopify(Request $request): JsonResponse

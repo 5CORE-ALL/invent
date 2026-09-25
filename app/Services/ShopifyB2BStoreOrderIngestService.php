@@ -46,7 +46,7 @@ class ShopifyB2BStoreOrderIngestService
             if (! is_array($line)) {
                 continue;
             }
-            $sku = trim((string) ($line['sku'] ?? ''));
+            $sku = B5cB2bOrder::skuFromLine($line);
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                 continue;
             }

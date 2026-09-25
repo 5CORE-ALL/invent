@@ -151,6 +151,56 @@ class B5cB2bOrderSyncService
     }
 
     /**
+     * Create Shopify orders in this request so the SKU is written even when the queue worker is behind.
+     *
+     * @return array{imported: int, failed: int, skipped: int, message: string}
+     */
+    public function importUnlinkedInline(int $limit = 8): array
+    {
+        if (! Schema::hasTable('b5c_b2b_orders')) {
+            return ['imported' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'b5c_b2b_orders table missing.'];
+        }
+
+        $orders = B5cB2bOrder::query()
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
+            ->orderByDesc('store_order_id')
+            ->limit(max(1, $limit))
+            ->get();
+
+        $push = app(B5cB2bOrderPushService::class);
+        $imported = 0;
+        $failed = 0;
+        $reasons = [];
+        foreach ($orders as $order) {
+            Cache::forget(ImportB5cB2bOrderToShopify::dispatchKeyFor((int) $order->id));
+            $shopifyId = $push->importToShopify($order);
+            if ($shopifyId) {
+                $imported++;
+                continue;
+            }
+            $failed++;
+            $reasons[] = $order->channelOrderNumber().': '.($push->lastFailureReason ?: 'Shopify import failed');
+        }
+
+        $message = "Imported {$imported} Business 5 Core order(s) to Shopify.";
+        if ($failed > 0) {
+            $message .= ' Failed '.$failed.'. '.implode(' ', array_slice($reasons, 0, 3));
+        }
+        if ($imported === 0 && $failed === 0) {
+            $message = 'No unlinked Business 5 Core orders to import.';
+        }
+
+        return [
+            'imported' => $imported,
+            'failed' => $failed,
+            'skipped' => 0,
+            'message' => $message,
+        ];
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     protected function fetchOrdersSince(string $from): array
