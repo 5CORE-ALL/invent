@@ -585,6 +585,7 @@
             let admSSales = 0;
             let admActiveSpend = null;
             let admAllRows = [];
+            let admBadgeTrends = {};
             const admActiveChannels = @json($activeChannels ?? []);
 
             // Metrics where a HIGHER value is worse (cost side): an up move
@@ -606,6 +607,10 @@
             }
 
             function admBadgeDir(rows, field) {
+                const fromChart = admBadgeTrends[field];
+                if (fromChart === 'up' || fromChart === 'down' || fromChart === 'flat') {
+                    return fromChart;
+                }
                 let up = 0;
                 let down = 0;
                 (rows || []).forEach(function (r) {
@@ -1058,6 +1063,7 @@
                     }
                     const rows = sortAdmRows(flattenAdmRows(response.data || []));
                     admAllRows = rows;
+                    admBadgeTrends = (response && response.badge_trends) || {};
                     admSSales = Number(response.total_net_sales || 0);
                     admActiveSpend = (response.active_channel_spend != null && Number(response.active_channel_spend) > 0)
                         ? Number(response.active_channel_spend)

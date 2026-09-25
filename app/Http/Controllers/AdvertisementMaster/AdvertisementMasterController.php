@@ -278,13 +278,66 @@ class AdvertisementMasterController extends Controller
      */
     private function latestMarketplaceMetric(string $metric): ?float
     {
-        $series = $this->allMarketplaceMetricSeries(32, $metric);
+        return $this->seriesLast($this->allMarketplaceMetricSeries(32, $metric));
+    }
+
+    /**
+     * @param  array<string, float>  $series
+     */
+    private function seriesLast(array $series): ?float
+    {
         if ($series === []) {
             return null;
         }
         $last = end($series);
 
         return $last === false ? null : round((float) $last, 2);
+    }
+
+    /**
+     * up / down / flat from the last two chart points.
+     *
+     * @param  array<string, float>  $series
+     */
+    private function seriesDirection(array $series): string
+    {
+        $values = array_values($series);
+        $count = count($values);
+        if ($count < 2) {
+            return 'flat';
+        }
+        $prev = (float) $values[$count - 2];
+        $last = (float) $values[$count - 1];
+        if (abs($last - $prev) < 0.01) {
+            return 'flat';
+        }
+
+        return $last > $prev ? 'up' : 'down';
+    }
+
+    /**
+     * @param  array<string, float>  $sales
+     * @param  array<string, float>  $spend
+     */
+    private function tcosDirection(array $sales, array $spend): string
+    {
+        $dates = array_values(array_intersect(array_keys($sales), array_keys($spend)));
+        sort($dates);
+        $count = count($dates);
+        if ($count < 2) {
+            return 'flat';
+        }
+        $pct = [];
+        foreach (array_slice($dates, -2) as $date) {
+            $sale = (float) $sales[$date];
+            $cost = (float) $spend[$date];
+            $pct[] = $sale > 0 ? ($cost / $sale) * 100 : ($cost > 0 ? 100.0 : 0.0);
+        }
+        if (abs($pct[1] - $pct[0]) < 0.01) {
+            return 'flat';
+        }
+
+        return $pct[1] > $pct[0] ? 'up' : 'down';
     }
 
     /**
@@ -544,8 +597,15 @@ class AdvertisementMasterController extends Controller
                 'temu2' => $temu2NetSales,
             ]);
 
-            $chartSales = $this->latestMarketplaceMetric('l30_sales');
-            $chartSpend = $this->latestMarketplaceMetric('ad_spend');
+            $salesSeries = $this->allMarketplaceMetricSeries(32, 'l30_sales');
+            $spendSeries = $this->allMarketplaceMetricSeries(32, 'ad_spend');
+            $chartSales = $this->seriesLast($salesSeries);
+            $chartSpend = $this->seriesLast($spendSeries);
+            $badgeTrends = [
+                'ssales' => $this->seriesDirection($salesSeries),
+                'spend' => $this->seriesDirection($spendSeries),
+                'tcos' => $this->tcosDirection($salesSeries, $spendSeries),
+            ];
             $activeChannelSpend = ($chartSpend !== null && $chartSpend > 0)
                 ? $chartSpend
                 : $this->activeChannelAdSpendTotal();
@@ -620,6 +680,7 @@ class AdvertisementMasterController extends Controller
                 'temu2_net_sales' => $temu2NetSales,
                 'total_net_sales' => $totalNetSales,
                 'active_channel_spend' => $activeChannelSpend,
+                'badge_trends' => $badgeTrends,
             ]);
         } catch (\Throwable $e) {
             \Log::error('Advertisement Master data failed: '.$e->getMessage(), [
