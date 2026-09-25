@@ -12,7 +12,8 @@
     $chFilter        = $chFilter        ?? null;
     $pageTitle       = $pageTitle       ?? 'Facebook All Ads Sheet';
     $pageSubtitle    = $pageSubtitle    ?? 'Generic CSV / Excel / TSV importer — upload any sheet and view it as a table';
-    $allowedAdTypes  = $allowedAdTypes  ?? ['GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL', 'MUSIC STORE', 'MUSIC SCHOOL'];
+    $allowedAdTypes   = $allowedAdTypes   ?? ['GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL', 'MUSIC STORE', 'MUSIC SCHOOL', 'WHOLESALE', 'DROPSHIP'];
+    $canManageAdTypes = $canManageAdTypes ?? false;
 @endphp
 
 @extends('layouts.vertical', ['title' => $pageTitle, 'sidenav' => 'condensed'])
@@ -341,6 +342,17 @@
                         </ul>
                     </div>
 
+                    @if ($canManageAdTypes)
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            style="flex-shrink:0;"
+                            data-bs-toggle="modal"
+                            data-bs-target="#faasAddTypeModal"
+                            title="Create a Type and add it to the dropdown">
+                        <i class="fas fa-plus me-1"></i>Add Type
+                    </button>
+                    @endif
+
                     {{-- Global search — fills the horizontal space
                          between the leading filters and the trailing
                          Sbgt/Stat selectors. --}}
@@ -421,6 +433,38 @@
             </div>
         </div>
     </div>
+
+@if ($canManageAdTypes)
+{{-- ── Add Type modal ─────────────────────────────────────────────── --}}
+<div class="modal fade"
+     id="faasAddTypeModal"
+     tabindex="-1"
+     aria-labelledby="faasAddTypeModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="faasAddTypeModalLabel">Add Type</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label for="faasNewTypeName" class="form-label small fw-semibold">Type name</label>
+                <input type="text"
+                       id="faasNewTypeName"
+                       class="form-control"
+                       maxlength="32"
+                       placeholder="e.g. RETARGETING"
+                       autocomplete="off">
+                <div id="faasAddTypeError" class="text-danger small mt-2"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="faasAddTypeSave">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
 
 {{-- ── Upload Sheet modal ─────────────────────────────────────────── --}}
 <div class="modal fade"
@@ -804,6 +848,8 @@
         // restricted subset so users can't pick a value that would make the
         // row disappear from the page they're currently looking at.
         const AD_TYPES  = @json($allowedAdTypes);
+        const CAN_MANAGE_AD_TYPES = @json((bool) $canManageAdTypes);
+        const ADD_TYPE_SENTINEL = '__add_type__';
         const AD_TYPE_COLORS = {
             'GROUP VIDEO':     { bg: '#dbeafe', fg: '#1e40af' },
             'GROUP CAROUSAL':  { bg: '#dcfce7', fg: '#166534' },
@@ -811,7 +857,34 @@
             'PARENT CAROUSAL': { bg: '#fce7f3', fg: '#9d174d' },
             'MUSIC STORE':     { bg: '#ede9fe', fg: '#5b21b6' },
             'MUSIC SCHOOL':    { bg: '#cffafe', fg: '#155e75' },
+            'WHOLESALE':       { bg: '#ffedd5', fg: '#9a3412' },
+            'DROPSHIP':        { bg: '#e0f2fe', fg: '#075985' },
         };
+        const EXTRA_TYPE_PALETTE = [
+            { bg: '#fef9c3', fg: '#854d0e' },
+            { bg: '#fae8ff', fg: '#86198f' },
+            { bg: '#d1fae5', fg: '#065f46' },
+            { bg: '#fee2e2', fg: '#991b1b' },
+            { bg: '#e0e7ff', fg: '#3730a3' },
+        ];
+        function adTypeColor(v) {
+            if (AD_TYPE_COLORS[v]) return AD_TYPE_COLORS[v];
+            let h = 0;
+            const s = String(v || '');
+            for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+            return EXTRA_TYPE_PALETTE[h % EXTRA_TYPE_PALETTE.length];
+        }
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, function (c) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+            });
+        }
+        function adTypeEditorValues() {
+            const values = { '': '— Select —' };
+            (AD_TYPES || []).forEach(function (v) { values[v] = shortAdType(v); });
+            if (CAN_MANAGE_AD_TYPES) values[ADD_TYPE_SENTINEL] = '+ Add type…';
+            return values;
+        }
         // CH (channel) dropdown — which platform the campaign runs on.
         const CH_OPTIONS = @json($chOptions ?? ['FB', 'Insta']);
         const CH_COLORS = {
@@ -821,8 +894,13 @@
         // Frontend-only short labels for the Ad-Type column. The DB
         // and the rest of the code keep using the full strings — only
         // what the user sees is shortened.
+        const AD_TYPE_LABELS = {
+            'WHOLESALE': 'WholeSale',
+            'DROPSHIP':  'Dropship',
+        };
         function shortAdType(v) {
             if (!v) return v;
+            if (AD_TYPE_LABELS[v]) return AD_TYPE_LABELS[v];
             return v.replace(/^GROUP\b/,  'G')
                     .replace(/^PARENT\b/, 'P');
         }
@@ -927,8 +1005,8 @@
             if (!v) {
                 return '<span class="text-muted small">— Select —</span>';
             }
-            const c     = AD_TYPE_COLORS[v] || { bg: '#e5e7eb', fg: '#374151' };
-            const label = shortAdType(v);
+            const c     = adTypeColor(v);
+            const label = escapeHtml(shortAdType(v));
             return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;`
                  + `background:${c.bg};color:${c.fg};font-size:0.75rem;font-weight:600;">${label}</span>`;
         }
@@ -1039,11 +1117,17 @@
         }
 
         // Persist a row's chosen Ad Type to the backend on edit.
-        function onAdTypeEdited(cell) {
-            const row     = cell.getRow();
-            const id      = row.getData()._id;
-            const value   = cell.getValue() || '';
-            const oldVal  = cell.getOldValue() || '';
+        let faasSuppressAdTypeEdit = false;
+        let faasAddTypeOnSaved = null;
+
+        function rememberAdType(name) {
+            if (!name || AD_TYPES.includes(name)) return;
+            AD_TYPES.push(name);
+            buildTypeFilter();
+        }
+
+        function persistAdType(row, value, oldVal) {
+            const id = row.getData()._id;
             if (!id) return;
 
             const fd = new FormData();
@@ -1062,10 +1146,89 @@
                 return data;
             })
             .catch(err => {
-                // Revert the cell on save failure.
                 row.update({ ad_type: oldVal });
                 alert('Failed to save Ad Type: ' + err.message);
             });
+        }
+
+        function onAdTypeEdited(cell) {
+            if (faasSuppressAdTypeEdit) return;
+            const row    = cell.getRow();
+            const value  = cell.getValue() || '';
+            const oldVal = cell.getOldValue() || '';
+            if (!row.getData()._id) return;
+
+            if (value === ADD_TYPE_SENTINEL) {
+                faasSuppressAdTypeEdit = true;
+                row.update({ ad_type: oldVal });
+                faasSuppressAdTypeEdit = false;
+                openAddTypeModal(function (name) {
+                    faasSuppressAdTypeEdit = true;
+                    row.update({ ad_type: name });
+                    faasSuppressAdTypeEdit = false;
+                    persistAdType(row, name, oldVal);
+                });
+                return;
+            }
+
+            persistAdType(row, value, oldVal);
+        }
+
+        function openAddTypeModal(onSaved) {
+            faasAddTypeOnSaved = typeof onSaved === 'function' ? onSaved : null;
+            const input = document.getElementById('faasNewTypeName');
+            const err   = document.getElementById('faasAddTypeError');
+            if (input) input.value = '';
+            if (err) err.textContent = '';
+            const el = document.getElementById('faasAddTypeModal');
+            if (!el || !window.bootstrap) return;
+            window.bootstrap.Modal.getOrCreateInstance(el).show();
+            setTimeout(function () { input && input.focus(); }, 200);
+        }
+
+        function saveNewAdType() {
+            const input = document.getElementById('faasNewTypeName');
+            const err   = document.getElementById('faasAddTypeError');
+            const name  = (input?.value || '').trim();
+            if (!name) {
+                if (err) err.textContent = 'Enter a type name.';
+                return;
+            }
+            const btn = document.getElementById('faasAddTypeSave');
+            if (btn) btn.disabled = true;
+
+            fetch('/facebook-all-ads-sheet/ad-types', {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept':       'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ name: name }),
+            })
+            .then(async r => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data.success) throw new Error(data.message || `HTTP ${r.status}`);
+                return data;
+            })
+            .then(data => {
+                const saved = data.ad_type;
+                if (Array.isArray(data.ad_types)) {
+                    data.ad_types.forEach(rememberAdType);
+                } else {
+                    rememberAdType(saved);
+                }
+                const cb = faasAddTypeOnSaved;
+                faasAddTypeOnSaved = null;
+                const el = document.getElementById('faasAddTypeModal');
+                if (el && window.bootstrap) window.bootstrap.Modal.getOrCreateInstance(el).hide();
+                if (cb) cb(saved);
+            })
+            .catch(e => {
+                if (err) err.textContent = e.message || 'Could not save type.';
+            })
+            .finally(() => { if (btn) btn.disabled = false; });
         }
 
         // Persist a row's chosen CH (channel) to the backend on edit.
@@ -1478,10 +1641,9 @@
                             headerFilter: false,
                             editor:       'list',
                             editorParams: {
-                                values: {
-                                    '': '— Select —',
-                                    ...Object.fromEntries(AD_TYPES.map(v => [v, shortAdType(v)])),
-                                },
+                                // valuesLookup is called every time the editor
+                                // opens, so types added in this session show up.
+                                valuesLookup:     function () { return adTypeEditorValues(); },
                                 clearable:        true,
                                 autocomplete:     true,
                                 listOnEmpty:      true,
@@ -2125,7 +2287,7 @@
             const opts = (AD_TYPES || []).map(v => ({
                 value: v,
                 label: shortAdType(v),
-                color: (AD_TYPE_COLORS[v] || {}).bg || '#9ca3af',
+                color: (adTypeColor(v) || {}).bg || '#9ca3af',
             }));
             buildCheckboxFilter('faasTypeFilterMenu', opts, typeFilterSelected, function () {
                 updateTypeFilterLabel();
@@ -2150,6 +2312,25 @@
             typeFilterSelected = new Set();
             buildTypeFilter();
             applyAllFilters();
+        });
+
+        document.getElementById('faasAddTypeSave')?.addEventListener('click', saveNewAdType);
+        document.getElementById('faasNewTypeName')?.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveNewAdType();
+            }
+        });
+        document.getElementById('faasAddTypeModal')?.addEventListener('show.bs.modal', function (e) {
+            // Toolbar button opens a blank create. The cell's "+ Add type…"
+            // sets faasAddTypeOnSaved before calling show(), with no relatedTarget.
+            if (e.relatedTarget) faasAddTypeOnSaved = null;
+            const err = document.getElementById('faasAddTypeError');
+            if (e.relatedTarget) {
+                const input = document.getElementById('faasNewTypeName');
+                if (input) input.value = '';
+            }
+            if (err) err.textContent = '';
         });
 
         // ── Status filter ────────────────────────────────────────────
