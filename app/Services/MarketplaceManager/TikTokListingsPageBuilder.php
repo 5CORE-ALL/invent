@@ -231,6 +231,11 @@ class TikTokListingsPageBuilder
         if ($liveShopifyQty === []) {
             $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
         }
+        if ($this->channel === 'tiktok2') {
+            foreach (MarketplaceListingStockResolver::liveShopifyQtyMapForRows($pageRows, true) as $upper => $qty) {
+                $liveShopifyQty[(string) $upper] = (int) $qty;
+            }
+        }
 
         $pageLive = [];
         if (in_array($linkTab, $liveLinkTabs, true)) {

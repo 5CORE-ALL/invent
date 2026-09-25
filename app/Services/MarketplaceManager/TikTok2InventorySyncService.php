@@ -41,12 +41,22 @@ class TikTok2InventorySyncService
             $maxQty = null;
         }
 
-        $shopifyQty = $this->shopifyQtyForPush($skus, $shopifyConfig);
-        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
-            $shopifyQty,
-            $skus,
-            $exactShopifyQty
-        );
+        if ($exactShopifyQty) {
+            // Mismatch button / hourly pass: use the listings Shopify qty.
+            // Do not crawl products.json before the TikTok inventory call.
+            $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush([], $skus, true);
+            if ($shopifyQty === []) {
+                $shopifyQty = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($skus);
+            }
+            $shopifyQty = $this->overlayExactLiveShopifyQty($shopifyQty, $skus);
+        } else {
+            $shopifyQty = $this->shopifyQtyForPush($skus, $shopifyConfig);
+            $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+                $shopifyQty,
+                $skus,
+                false
+            );
+        }
         $metrics = $this->metricsForSkus($skus);
         $liveMpQty = $this->liveMarketplaceQtyMap($metrics->pluck('sku')->all());
 
@@ -470,6 +480,45 @@ class TikTok2InventorySyncService
     }
 
     /**
+     * Refresh live Shopify qty for this mismatch batch only, and keep shopify_skus in step.
+     *
+     * @param  array<string, int>  $shopifyQty
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    protected function overlayExactLiveShopifyQty(array $shopifyQty, array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $skus
+        ))));
+        if ($skus === []) {
+            return $shopifyQty;
+        }
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($skus), '?'));
+            $rows = ShopifySku::query()
+                ->whereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', array_map('strtoupper', $skus))
+                ->get()
+                ->all();
+            $live = MarketplaceListingStockResolver::liveShopifyQtyMapForRows($rows, true);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok2InventorySyncService: exact Shopify qty refresh failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return $shopifyQty;
+        }
+
+        foreach ($live as $key => $qty) {
+            $shopifyQty[(string) $key] = (int) $qty;
+        }
+
+        return $shopifyQty;
+    }
+
+    /**
      * @param  array<int, string>  $skus
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
      * @return array<string, int>
@@ -589,15 +638,13 @@ class TikTok2InventorySyncService
         }
 
         if (Schema::hasTable('tiktok_products_two') && Schema::hasColumn('tiktok_products_two', 'stock')) {
-            $wanted = $this->wantedSkuKeys([$sku]);
-            TikTokProductTwo::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->get(['id', 'sku'])
-                ->filter(fn ($row) => $this->skuIsWanted((string) $row->sku, $wanted))
-                ->each(function ($row) use ($pushQty) {
-                    TikTokProductTwo::query()->whereKey($row->id)->update(['stock' => $pushQty]);
-                });
+            $aliases = self::skuAliasesForPush($sku);
+            if ($aliases !== []) {
+                $placeholders = implode(',', array_fill(0, count($aliases), '?'));
+                TikTokProductTwo::query()
+                    ->whereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', array_map('strtoupper', $aliases))
+                    ->update(['stock' => $pushQty]);
+            }
         }
 
         if (! Schema::hasTable('product_stock_mappings')) {
