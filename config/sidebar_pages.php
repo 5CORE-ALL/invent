@@ -210,6 +210,7 @@ return [
     ['value' => 'listing_syncee', 'text' => 'Listing Syncee', 'group' => 'Marketplace'],
 
     ['value' => 'offerup', 'text' => 'Offerup', 'group' => 'Marketplace'],
+    ['value' => 'offerup_analytics', 'text' => 'Offer Up Analytics', 'group' => 'Marketplace'],
     ['value' => 'listing_offerup', 'text' => 'Listing Offerup', 'group' => 'Marketplace'],
 
     ['value' => 'neweggb2b', 'text' => 'Newegg B2B', 'group' => 'Marketplace'],

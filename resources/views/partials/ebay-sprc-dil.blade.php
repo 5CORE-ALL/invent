@@ -2040,6 +2040,10 @@
         /** Exact $ the S PRC cell paints — this is what we persist to the table. */
         function ebayDgCellSpriceToSave(d) {
             const painters = [
+                typeof bestbuyDisplayedSprice === 'function' ? bestbuyDisplayedSprice : null,
+                typeof shopifyB2cShownSprice === 'function' ? shopifyB2cShownSprice : null,
+                typeof shopifyB2bDisplayedSprice === 'function' ? shopifyB2bDisplayedSprice : null,
+                typeof sheinVisibleSprice === 'function' ? sheinVisibleSprice : null,
                 typeof neShownSprice === 'function' ? neShownSprice : null,
                 typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice : null,
                 typeof ebayDisplayedSprice === 'function' ? ebayDisplayedSprice : null,

@@ -2165,6 +2165,13 @@
                     {
                         title: "Sprice",
                         field: "sprice",
+                        download: true,
+                        accessorDownload: function(value, data) {
+                            const shown = (typeof sheinVisibleSprice === 'function')
+                                ? sheinVisibleSprice(data)
+                                : (parseFloat(value) || 0);
+                            return shown > 0 ? +Number(shown).toFixed(2) : '';
+                        },
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,

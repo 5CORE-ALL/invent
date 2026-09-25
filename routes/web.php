@@ -125,6 +125,7 @@ use App\Http\Controllers\MarketingMaster\YoutubeAdsManagerController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Http\Controllers\MarketPlace\ACOSControl\EbayACOSController;
 use App\Http\Controllers\MarketPlace\AlibabaAnalyticsController;
+use App\Http\Controllers\MarketPlace\OfferUpAnalyticsController;
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\AmazonFbaInvController;
 use App\Http\Controllers\MarketPlace\Business5coreController;
@@ -6187,6 +6188,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_syncee/export', [ListingSynceeController::class, 'export'])->name('listing_syncee.export');
 
     // Offerup
+    Route::get('/offerup/analytics', [OfferUpAnalyticsController::class, 'index'])->name('offerup.analytics');
     Route::get('/zero-offerup', [OfferupZeroController::class, 'offerupZeroview'])->name('zero.offerup');
     Route::get('/zero_offerup/view-data', [OfferupZeroController::class, 'getViewOfferupZeroData']);
     Route::post('/zero_offerup/reason-action/update-data', [OfferupZeroController::class, 'updateReasonAction']);

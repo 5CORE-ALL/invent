@@ -4180,6 +4180,24 @@
                 {
                     title: "S PRC",
                     field: "sprice",
+                    download: true,
+                    accessorDownload: function(value, data) {
+                        const model = typeof temuSpriceCellModel === 'function' ? temuSpriceCellModel(data) : null;
+                        let shown = (model && model.value > 0)
+                            ? model.value
+                            : ((typeof temuDisplayedSprice === 'function')
+                                ? temuDisplayedSprice(data)
+                                : (parseFloat(value) || 0));
+                        if (!(shown > 0) && window.SpriceLmpCap) {
+                            const discounted = typeof temuDiscountedPrice === 'function'
+                                ? temuDiscountedPrice(data)
+                                : (parseFloat(value) || 0);
+                            const lmpCap = SpriceLmpCap.apply(data, discounted);
+                            if (lmpCap && lmpCap.shown > 0) shown = lmpCap.shown;
+                        }
+                        if (typeof temuClampSpriceBand2699 === 'function') shown = temuClampSpriceBand2699(shown);
+                        return shown > 0 ? +Number(shown).toFixed(2) : '';
+                    },
                     hozAlign: "center",
                     minWidth: 88,
                     headerSort: true,
