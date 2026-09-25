@@ -235,6 +235,7 @@ use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
 use App\Http\Controllers\MarketPlace\WalmartControllerMarket;
+use App\Http\Controllers\MarketPlace\ViewsMasterController;
 use App\Http\Controllers\MarketPlace\WayfairController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\AppscenicZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\AutoDSZeroController;
@@ -1100,6 +1101,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lost-gain-adjust-quantity', [VerificationAdjustmentController::class, 'adjustLostGainQuantities']);
     Route::get('/lost-gain-aq-history', [VerificationAdjustmentController::class, 'getLostGainAqHistory']);
     Route::post('/update-verified-stock', [VerificationAdjustmentController::class, 'updateVerifiedStock']);
+    Route::post('/push-verification-shopify-adjustment', [VerificationAdjustmentController::class, 'pushVerificationShopifyAdjustment']);
     Route::post('/retry-verification-shopify-adjustment', [VerificationAdjustmentController::class, 'retryVerificationShopifyAdjustment']);
     Route::post('/save-remark', [VerificationAdjustmentController::class, 'saveRemark']);
     Route::get('/get-verified-stock', [VerificationAdjustmentController::class, 'getVerifiedStock']);
@@ -3970,6 +3972,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/pricing-errors-fix-push-status', [CvrMasterController::class, 'pricingErrorsFixPushJobStatus'])->name('pricing.errors.fix.push.status');
     Route::post('/pricing-errors-fix-push-cancel', [CvrMasterController::class, 'pricingErrorsFixCancelPush'])->name('pricing.errors.fix.push.cancel');
     Route::post('/pricing-errors-fix-badge-snapshot', [CvrMasterController::class, 'pricingErrorsFixBadgeSnapshot'])->name('pricing.errors.fix.badge.snapshot');
+
+    // Views Master — same SKU × channel rows as /pricing-errors-fix, only sites that store views
+    Route::get('/views-master', [ViewsMasterController::class, 'index'])->name('views.master');
+    Route::get('/views-master-data-json', [ViewsMasterController::class, 'dataJson'])->name('views.master.data');
 
     // WMPNM Dil (copy of price-increase; same datatable /cvr-master-data-json)
     Route::get('/wmpnm-dil', [CvrMasterController::class, 'wmpnmDilView'])->name('wmpnm.dil');

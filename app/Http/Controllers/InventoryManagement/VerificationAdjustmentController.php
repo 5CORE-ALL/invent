@@ -724,32 +724,9 @@ class VerificationAdjustmentController extends Controller
         $shopifyAdjustmentStatus = null;
         $shopifyAdjustmentError = null;
 
-        // If approving with a non-zero delta, update Shopify before saving (persist row even on failure for Status column + retries)
+        // Save first and return. Shopify runs in a follow-up request so the user can move to the next row.
         if ($validated['is_approved'] && $toAdjust != 0) {
-            $startTime = time();
-
-            try {
-                $shopifyResult = $this->updateShopifyInventoryWithRetry($sku, (int) $toAdjust, 10);
-
-                if ($shopifyResult['success']) {
-                    $shopifyAdjustmentStatus = 'success';
-                    Log::info('Shopify updated successfully', ['sku' => $sku, 'duration' => time() - $startTime]);
-                } else {
-                    $shopifyAdjustmentStatus = 'failed';
-                    $shopifyAdjustmentError = $shopifyResult['error'] ?? 'Unknown error';
-                    Log::error('Shopify update failed; saving record with failed status for retry', [
-                        'sku' => $sku,
-                        'error' => $shopifyAdjustmentError,
-                    ]);
-                }
-            } catch (\Exception $e) {
-                $shopifyAdjustmentStatus = 'failed';
-                $shopifyAdjustmentError = $e->getMessage();
-                Log::error('Shopify update exception; saving record with failed status', [
-                    'sku' => $sku,
-                    'error' => $shopifyAdjustmentError,
-                ]);
-            }
+            $shopifyAdjustmentStatus = 'pending';
         } elseif ($validated['is_approved'] && $toAdjust == 0) {
             $shopifyAdjustmentStatus = 'na';
         }
@@ -795,43 +772,12 @@ class VerificationAdjustmentController extends Controller
                 $verifiedByFirstName = $nameParts[0] ?? Auth::user()->name;
             }
 
-            // After a successful Shopify push, pull this SKU only to refresh app inventory
             $shopifyPull = null;
-            if ($shopifyAdjustmentStatus === 'success') {
-                try {
-                    $shopifyPull = $this->pullShopifyInventoryDataForSku($sku);
-                    if (! ($shopifyPull['success'] ?? false)) {
-                        Log::warning('Post-push Shopify pull failed', [
-                            'sku' => $sku,
-                            'message' => $shopifyPull['message'] ?? null,
-                        ]);
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('Post-push Shopify pull exception', [
-                        'sku' => $sku,
-                        'error' => $e->getMessage(),
-                    ]);
-                    $shopifyPull = [
-                        'success' => false,
-                        'message' => $e->getMessage(),
-                    ];
-                }
-            }
 
-            // Determine message
             $message = 'Record saved successfully';
             if ($validated['is_approved']) {
                 if ($toAdjust != 0) {
-                    if ($shopifyAdjustmentStatus === 'success') {
-                        $message = 'Shopify inventory updated successfully and saved to database';
-                        if (($shopifyPull['success'] ?? false)) {
-                            $message .= '. Inventory pulled from Shopify for this SKU.';
-                        }
-                    } elseif ($shopifyAdjustmentStatus === 'failed') {
-                        $message = 'Saved, but Shopify was not updated. Check Status — you can Retry or wait for automatic retries (every 1 min, up to 5).';
-                    } else {
-                        $message = 'Record saved successfully';
-                    }
+                    $message = 'Saved. Shopify update is running for this row.';
                 } else {
                     $message = 'Record saved. Shopify was not changed because verified quantity matches on hand (no adjustment).';
                 }
@@ -882,6 +828,203 @@ class VerificationAdjustmentController extends Controller
                 'message' => 'Shopify updated but failed to save to database: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * One lookup + one adjust. No catalog scan and no sleeps, so Accept returns in a few seconds.
+     * Failed pushes stay on the row for Retry.
+     *
+     * @return array{success: bool, error?: string, available?: int, message?: string}
+     */
+    protected function adjustShopifyInventoryFast(string $sku, int $adjustment): array
+    {
+        $normalizedSku = strtoupper(preg_replace('/\s+/u', ' ', trim($sku)));
+        $inventoryItemId = $this->resolveInventoryItemIdFast($normalizedSku);
+        if (! $inventoryItemId) {
+            return ['success' => false, 'error' => 'SKU not found in Shopify: '.$normalizedSku];
+        }
+
+        $locationId = $this->getPreferredShopifyLocationId();
+        if (! $locationId) {
+            try {
+                $locationId = $this->getLocationIdFast($inventoryItemId);
+            } catch (\Exception $e) {
+                return ['success' => false, 'error' => 'Location lookup failed: '.$e->getMessage()];
+            }
+        }
+        if (! $locationId) {
+            return ['success' => false, 'error' => 'Location not found in Shopify.'];
+        }
+
+        try {
+            $available = $this->postInventoryAdjustment($inventoryItemId, $locationId, $adjustment);
+        } catch (\Exception $e) {
+            $preferred = $this->getPreferredShopifyLocationId();
+            if (! $preferred) {
+                return ['success' => false, 'error' => $e->getMessage()];
+            }
+
+            try {
+                $fallback = $this->getLocationIdFast($inventoryItemId);
+            } catch (\Exception $lookupError) {
+                return ['success' => false, 'error' => $e->getMessage()];
+            }
+
+            if (! $fallback || $fallback === $locationId) {
+                return ['success' => false, 'error' => $e->getMessage()];
+            }
+
+            try {
+                $available = $this->postInventoryAdjustment($inventoryItemId, $fallback, $adjustment);
+            } catch (\Exception $retryError) {
+                return ['success' => false, 'error' => $retryError->getMessage()];
+            }
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Updated',
+            'available' => $available,
+        ];
+    }
+
+    protected function resolveInventoryItemIdFast(string $normalizedSku): ?string
+    {
+        $cacheKey = 'va:shopify_iid:'.$normalizedSku;
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])->first(['variant_id']);
+        $inventoryItemId = null;
+
+        if ($row && $row->variant_id) {
+            try {
+                $response = $this->shopifyHttp()->timeout(8)
+                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$row->variant_id}.json");
+                if ($response->successful()) {
+                    $inventoryItemId = $response->json('variant.inventory_item_id');
+                }
+            } catch (\Exception $e) {
+                Log::warning('Fast variant lookup failed', [
+                    'sku' => $normalizedSku,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if (! $inventoryItemId) {
+            $inventoryItemId = $this->findInventoryItemIdBySkuGraphQl($normalizedSku);
+        }
+
+        if ($inventoryItemId) {
+            Cache::put($cacheKey, (string) $inventoryItemId, 86400);
+
+            return (string) $inventoryItemId;
+        }
+
+        return null;
+    }
+
+    protected function findInventoryItemIdBySkuGraphQl(string $normalizedSku): ?string
+    {
+        $query = <<<'GQL'
+query ($q: String!) {
+  productVariants(first: 1, query: $q) {
+    nodes {
+      inventoryItem { id }
+    }
+  }
+}
+GQL;
+
+        try {
+            $response = $this->shopifyHttp()->timeout(8)
+                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json", [
+                    'query' => $query,
+                    'variables' => [
+                        'q' => 'sku:"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $normalizedSku).'"',
+                    ],
+                ]);
+        } catch (\Exception $e) {
+            Log::warning('Fast SKU GraphQL lookup failed', [
+                'sku' => $normalizedSku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $gid = $response->json('data.productVariants.nodes.0.inventoryItem.id');
+        if (! is_string($gid) || ! preg_match('/(\d+)$/', $gid, $matches)) {
+            return null;
+        }
+
+        return $matches[1];
+    }
+
+    protected function postInventoryAdjustment(string $inventoryItemId, string $locationId, int $adjustment): int
+    {
+        $response = $this->shopifyHttp()->timeout(8)
+            ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+                'inventory_item_id' => $inventoryItemId,
+                'location_id' => $locationId,
+                'available_adjustment' => $adjustment,
+            ]);
+
+        if (! $response->successful()) {
+            $errorMessage = "HTTP {$response->status()}";
+            $responseData = $response->json();
+            if (isset($responseData['errors'])) {
+                $errorMessage .= ' - '.json_encode($responseData['errors']);
+            }
+
+            throw new \Exception($errorMessage);
+        }
+
+        return (int) ($response->json('inventory_level.available') ?? 0);
+    }
+
+    /**
+     * Write the adjusted available qty onto shopify_skus and return the row payload the page already expects.
+     *
+     * @return array<string, int|float>|null
+     */
+    protected function applyAdjustmentToLocalShopifySku(string $sku, int $adjustment, ?int $newAvailable): ?array
+    {
+        $normalized = strtoupper(preg_replace('/\s+/u', ' ', trim($sku)));
+        $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        if (! $row) {
+            return null;
+        }
+
+        $oldAvailable = (int) ($row->available_to_sell ?? $row->inv ?? 0);
+        $available = $newAvailable !== null ? $newAvailable : $oldAvailable + $adjustment;
+        $onHand = (int) ($row->on_hand ?? $oldAvailable) + ($available - $oldAvailable);
+        $l30 = (float) ($row->quantity ?? 0);
+
+        $row->available_to_sell = $available;
+        $row->inv = $available;
+        $row->on_hand = $onHand;
+        $row->save();
+
+        $dil = ($available !== 0) ? round($l30 / $available, 2) : 0;
+
+        return [
+            'INV' => $available,
+            'L30' => $l30,
+            'DIL' => $dil,
+            'ON_HAND' => $onHand,
+            'COMMITTED' => (int) ($row->committed ?? 0),
+            'AVAILABLE_TO_SELL' => $available,
+            'UNAVAILABLE' => (int) ($row->unavailable ?? 0),
+            'INCOMING' => (int) ($row->incoming ?? 0),
+        ];
     }
 
     /**
@@ -2432,6 +2575,98 @@ GQL;
     }
 
     /**
+     * Push a saved verification row to Shopify. Called after Accept so the page does not wait.
+     */
+    public function pushVerificationShopifyAdjustment(Request $request)
+    {
+        $request->validate([
+            'inventory_id' => 'required|integer|exists:inventories,id',
+        ]);
+
+        $record = Inventory::find($request->inventory_id);
+        if (! $record) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Adjustment record not found.',
+            ], 404);
+        }
+
+        if (in_array($record->shopify_adjustment_status, ['success', 'na'], true)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Shopify inventory already updated.',
+                'shopify_adjustment_status' => $record->shopify_adjustment_status,
+                'shopify_adjustment_succeeded_at' => $record->shopify_adjustment_succeeded_at?->toIso8601String(),
+            ]);
+        }
+
+        return response()->json($this->finishShopifyAdjustment($record));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function finishShopifyAdjustment(Inventory $record): array
+    {
+        $sku = trim((string) $record->sku);
+        $toAdjust = (int) $record->to_adjust;
+
+        if ($toAdjust === 0) {
+            $record->shopify_adjustment_status = 'na';
+            $record->shopify_adjustment_error = null;
+            $record->save();
+
+            return [
+                'success' => true,
+                'message' => 'No Shopify change (0 adjustment).',
+                'shopify_adjustment_status' => 'na',
+            ];
+        }
+
+        try {
+            $result = $this->adjustShopifyInventoryFast($sku, $toAdjust);
+        } catch (\Exception $e) {
+            $result = ['success' => false, 'error' => $e->getMessage()];
+        }
+
+        if ($result['success'] ?? false) {
+            $record->shopify_adjustment_status = 'success';
+            $record->shopify_adjustment_error = null;
+            $record->shopify_adjustment_succeeded_at = Carbon::now('America/New_York');
+            $record->save();
+
+            $localQty = $this->applyAdjustmentToLocalShopifySku(
+                $sku,
+                $toAdjust,
+                isset($result['available']) ? (int) $result['available'] : null
+            );
+
+            return [
+                'success' => true,
+                'message' => 'Shopify inventory updated.',
+                'shopify_adjustment_status' => 'success',
+                'shopify_adjustment_error' => null,
+                'shopify_adjustment_succeeded_at' => $record->shopify_adjustment_succeeded_at?->toIso8601String(),
+                'shopify_pull' => $localQty !== null
+                    ? ['success' => true, 'message' => 'Inventory updated for this SKU.', 'data' => $localQty]
+                    : ['success' => false, 'message' => 'Shopify updated, but this SKU was not found locally.'],
+            ];
+        }
+
+        $error = (string) ($result['error'] ?? 'Shopify update failed.');
+        $record->shopify_adjustment_status = 'failed';
+        $record->shopify_adjustment_error = Str::limit($error, 65000, '');
+        $record->save();
+
+        return [
+            'success' => false,
+            'message' => $error,
+            'shopify_adjustment_status' => 'failed',
+            'shopify_adjustment_error' => $record->shopify_adjustment_error,
+        ];
+    }
+
+    /**
      * Retry Shopify inventory adjustment for a verification row (manual or scheduled auto-retry).
      */
     public function retryVerificationShopifyAdjustment(Request $request)
@@ -2463,7 +2698,7 @@ GQL;
         }
 
         $sku = trim((string) $record->sku);
-        $result = $this->updateShopifyInventoryWithRetry($sku, (int) $record->to_adjust, 10);
+        $result = $this->adjustShopifyInventoryFast($sku, (int) $record->to_adjust);
 
         if ($result['success']) {
             $record->shopify_adjustment_status = 'success';
@@ -2473,19 +2708,14 @@ GQL;
 
             $successYmd = Carbon::parse($record->shopify_adjustment_succeeded_at)->timezone('America/New_York')->format('Y-m-d');
 
-            $shopifyPull = null;
-            try {
-                $shopifyPull = $this->pullShopifyInventoryDataForSku($sku);
-            } catch (\Exception $e) {
-                Log::warning('Post-retry Shopify pull exception', [
-                    'sku' => $sku,
-                    'error' => $e->getMessage(),
-                ]);
-                $shopifyPull = [
-                    'success' => false,
-                    'message' => $e->getMessage(),
-                ];
-            }
+            $localQty = $this->applyAdjustmentToLocalShopifySku(
+                $sku,
+                (int) $record->to_adjust,
+                isset($result['available']) ? (int) $result['available'] : null
+            );
+            $shopifyPull = $localQty !== null
+                ? ['success' => true, 'message' => 'Inventory updated for this SKU.', 'data' => $localQty]
+                : ['success' => false, 'message' => 'Shopify updated, but this SKU was not found locally.'];
 
             return response()->json([
                 'success' => true,
