@@ -12,6 +12,14 @@ use PHPUnit\Framework\TestCase;
 
 class Ebay2MismatchInventoryRulesTest extends TestCase
 {
+    public function test_fixed_price_success_is_kept_when_getitem_still_shows_the_old_qty(): void
+    {
+        $this->assertFalse(Ebay2InventorySyncService::rejectUnconfirmedEbayQty(4, 24, true));
+        $this->assertFalse(Ebay2InventorySyncService::rejectUnconfirmedEbayQty(24, 24, false));
+        $this->assertFalse(Ebay2InventorySyncService::rejectUnconfirmedEbayQty(null, 24, false));
+        $this->assertTrue(Ebay2InventorySyncService::rejectUnconfirmedEbayQty(4, 24, false));
+    }
+
     public function test_fixed_price_revise_adds_units_already_sold(): void
     {
         $this->assertSame(44, Ebay2ApiService::totalQtyForFixedPriceRevise(24, 20));

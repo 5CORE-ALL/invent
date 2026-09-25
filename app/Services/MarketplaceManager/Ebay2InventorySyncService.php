@@ -98,15 +98,22 @@ class Ebay2InventorySyncService
         }
         $fetchSkus = array_values(array_unique($fetchSkus));
 
-        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
-            $fetchSkus,
-            fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
-        );
-        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
-            $shopifyQty,
-            $fetchSkus,
-            $exactShopifyQty
-        );
+        if ($exactShopifyQty) {
+            // Mismatch button / hourly pass: the listings column is shopify_skus.
+            // Do not crawl products.json (that times out a 4-SKU batch before eBay is called).
+            $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush([], $fetchSkus, true);
+            $shopifyQty = $this->overlayExactLiveShopifyQty($shopifyQty, $fetchSkus);
+        } else {
+            $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
+                $fetchSkus,
+                fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
+            );
+            $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+                $shopifyQty,
+                $fetchSkus,
+                false
+            );
+        }
         $shopifyQty = $this->mergeLocalShopifyQtyFallback($shopifyQty, $fetchSkus);
 
         $this->ensureMetricsForSkus($skus, false);
@@ -809,7 +816,7 @@ class Ebay2InventorySyncService
                             $liveMatches = $liveQty !== null && (int) $liveQty === $qty;
                         }
                     }
-                    if ($liveQty !== null && ! $liveMatches) {
+                    if (self::rejectUnconfirmedEbayQty($liveQty, $qty, $usedQtyOnlyFallback)) {
                         return [
                             'ok' => false,
                             'rate_limited' => false,
@@ -866,6 +873,20 @@ class Ebay2InventorySyncService
                 'message' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * ReviseFixedPriceItem often returns Success before GetItem shows the new
+     * available qty. Keep that push. Reject only a ReviseInventoryStatus no-op
+     * whose live qty is still the old number.
+     */
+    public static function rejectUnconfirmedEbayQty(?int $liveQty, int $desired, bool $fixedPriceAccepted): bool
+    {
+        if ($fixedPriceAccepted) {
+            return false;
+        }
+
+        return $liveQty !== null && (int) $liveQty !== $desired;
     }
 
     /**
@@ -1150,6 +1171,45 @@ class Ebay2InventorySyncService
         $row->sku = $sku;
         $row->report_range = now()->toDateString();
         $row->save();
+    }
+
+    /**
+     * Refresh the same Shopify qty the mismatch table shows, for this batch only.
+     *
+     * @param  array<string, int>  $shopifyQty
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    protected function overlayExactLiveShopifyQty(array $shopifyQty, array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $skus
+        ))));
+        if ($skus === []) {
+            return $shopifyQty;
+        }
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($skus), '?'));
+            $rows = ShopifySku::query()
+                ->whereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', array_map('strtoupper', $skus))
+                ->get()
+                ->all();
+            $live = MarketplaceListingStockResolver::liveShopifyQtyMapForRows($rows, true);
+        } catch (\Throwable $e) {
+            Log::warning('Ebay2InventorySyncService: exact Shopify qty refresh failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return $shopifyQty;
+        }
+
+        foreach ($live as $key => $qty) {
+            $shopifyQty[(string) $key] = (int) $qty;
+        }
+
+        return $shopifyQty;
     }
 
     /**
