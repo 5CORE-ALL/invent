@@ -154,9 +154,13 @@
                     </div>
                     <input type="hidden" id="vm-cvr-filter" value="all">
 
-                    <label class="vm-lbl" for="vm-search">Search</label>
-                    <input type="search" id="vm-search" class="form-control form-control-sm" style="width:180px;"
-                        placeholder="SKU / Parent / Site">
+                    <label class="vm-lbl" for="vm-parent-search">Parent</label>
+                    <input type="search" id="vm-parent-search" class="form-control form-control-sm" style="width:140px;"
+                        placeholder="Parent">
+
+                    <label class="vm-lbl" for="vm-sku-search">SKU</label>
+                    <input type="search" id="vm-sku-search" class="form-control form-control-sm" style="width:160px;"
+                        placeholder="SKU">
 
                     <button type="button" class="btn btn-sm btn-outline-primary" id="vm-reload-btn">
                         <i class="fas fa-sync-alt"></i> Reload
@@ -310,10 +314,11 @@
         if (boxes.length && keys.indexOf(pull) === -1) return false;
         const cvrFilter = String($('#vm-cvr-filter').val() || 'all');
         if (cvrFilter !== 'all' && cvrColorBand(rowCvr(d)) !== cvrFilter) return false;
-        const q = String($('#vm-search').val() || '').trim().toLowerCase();
-        if (!q) return true;
-        const hay = [d.sku, d.parent, d.channel].join(' ').toLowerCase();
-        return hay.indexOf(q) !== -1;
+        const parentQ = String($('#vm-parent-search').val() || '').trim().toLowerCase();
+        const skuQ = String($('#vm-sku-search').val() || '').trim().toLowerCase();
+        if (parentQ && String(d.parent || '').toLowerCase().indexOf(parentQ) === -1) return false;
+        if (skuQ && String(d.sku || '').toLowerCase().indexOf(skuQ) === -1) return false;
+        return true;
     }
 
     function applyFilter() {
@@ -455,7 +460,7 @@
         $(this).addClass('active');
         applyFilter();
     });
-    $('#vm-search').on('input', applyFilter);
+    $('#vm-parent-search, #vm-sku-search').on('input', applyFilter);
     $('#vm-reload-btn').on('click', loadData);
 
     initTable();
