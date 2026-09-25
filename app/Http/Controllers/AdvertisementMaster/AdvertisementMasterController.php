@@ -2302,142 +2302,141 @@ class AdvertisementMasterController extends Controller
     /**
      * Badge/cell trend history. Returns a per-day time series for each metric
      * (spend / clicks / sold / sales / cvr / acos) rolled up across the
-     * top-level channels, plus the same broken out per channel so the chart
-     * can lens to the total or a single channel. Mirrors the
-     * /shopify-ads-master history endpoint.
+     * Active Channel (/channel-metric-chart-data). This page no longer
+     * builds its own snapshot series.
      *
-     *   GET /advertisement-master/history?days=32
+     *   GET /advertisement-master/history?days=30&channel=eBay&metric=spend
      */
     public function history(Request $request)
     {
-        $days = max(1, min(365, (int) $request->query('days', 32)));
-        // Same span as Active Channel, but a value stays on the day it was saved.
-        // The axis ends yesterday so today's open day is not drawn as the last point.
-        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
-        $from = $today->copy()->subDays($days + 1)->toDateString();
-        $end = $today->copy()->subDay()->toDateString();
-        $alreadySaved = Schema::hasTable('advertisement_master_metric_snapshots')
-            && DB::table('advertisement_master_metric_snapshots')
-                ->where('channel', self::SSALES_CHANNEL)
-                ->whereDate('snapshot_date', '<=', $from)
-                ->exists();
-        if (! $alreadySaved) {
-            $this->persistActiveChannelDaily($from, $end);
-        }
-
-        $histCols = ['snapshot_date', 'channel', 'spend', 'clicks', 'sold', 'sales', 'active'];
-        if ($this->snapshotsHaveMissingAdsColumn()) {
-            $histCols[] = 'missing_ads';
-        }
-        $rows = DB::table('advertisement_master_metric_snapshots')
-            ->where('snapshot_date', '>=', $from)
-            ->orderBy('snapshot_date')
-            ->get($histCols);
-
-        $byDate       = [];   // date => rolled-up totals (top-level parents only)
-        $byChannel    = [];   // channel => date => measures
-        $ssalesByDate = [];   // date => combined S Sales (net sales)
-        $activeSpendByDate = [];
-        $activeClicksByDate = [];
-        foreach ($rows as $r) {
-            $d  = (string) $r->snapshot_date;
-            $ch = (string) $r->channel;
-
-            // Combined S Sales pseudo-channel: kept aside for the TCOS /
-            // S SALES badges, never rolled into the channel totals.
-            if ($ch === self::SSALES_CHANNEL) {
-                $ssalesByDate[$d] = (float) $r->sales;
-                continue;
-            }
-            if ($ch === self::ACTIVE_SPEND_CHANNEL) {
-                $activeSpendByDate[$d] = (float) $r->spend;
-                continue;
-            }
-            if ($ch === self::ACTIVE_CLICKS_CHANNEL) {
-                $activeClicksByDate[$d] = (float) $r->clicks;
-                continue;
-            }
-
-            $byChannel[$ch][$d] = [
-                'spend'  => (float) $r->spend,
-                'clicks' => (float) $r->clicks,
-                'sold'   => (float) $r->sold,
-                'sales'  => (float) $r->sales,
-                'active' => (float) ($r->active ?? 0),
-                'missing_ads' => (float) ($r->missing_ads ?? 0),
-            ];
-
-            // Sub-rows (contain the separator) are slices of a parent — skip
-            // them from the grand total so parents aren't double-counted.
-            if (str_contains($ch, self::SUBROW_SEPARATOR)) {
-                continue;
-            }
-
-            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0, 'active' => 0.0, 'missing_ads' => 0.0];
-            $byDate[$d]['spend']  += (float) $r->spend;
-            $byDate[$d]['clicks'] += (float) $r->clicks;
-            $byDate[$d]['sold']   += (float) $r->sold;
-            $byDate[$d]['sales']  += (float) $r->sales;
-            $byDate[$d]['active'] += (float) ($r->active ?? 0);
-            $byDate[$d]['missing_ads'] += (float) ($r->missing_ads ?? 0);
-        }
-
-        // Amazon snapshots are whatever L30 summary existed on page load.
-        // When that pull lagged, spend dipped to ~$6.5k then jumped on refresh.
-        // Overlay a dated daily rolling L30 so the chart matches real delivery.
-        try {
-            $computed = AmazonAdsAdvertisementMasterHistory::computedL30ByChannel($from, $end);
-            [$byDate, $byChannel] = AmazonAdsAdvertisementMasterHistory::overlayOnHistory(
-                $byDate,
-                $byChannel,
-                $computed
-            );
-        } catch (\Throwable $e) {
-            \Log::warning('Advertisement Master Amazon history overlay failed: '.$e->getMessage());
-        }
-
+        $days = max(1, min(365, (int) $request->query('days', 30)));
+        $metric = (string) $request->query('metric', 'spend');
+        $chartMetric = $this->activeChannelChartMetric($metric);
         $labels = [];
-        $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->startOfDay();
-        $endC = Carbon::parse($end, self::SNAPSHOT_TIMEZONE)->startOfDay();
-        while ($cursor->lte($endC)) {
-            $labels[] = $cursor->toDateString();
-            $cursor->addDay();
-        }
+        $series = [];
 
-        // All-channels Spend, Clicks, and Total Sales are the daily rows saved
-        // from Active Channel. Past days stay as saved; only today is refreshed.
-        $activeHistory = [
-            'ad_spend' => $activeSpendByDate,
-            'l30_sales' => $ssalesByDate,
-        ];
-
-        // Rolled-up "All channels" series carries tcos + ssales (both need the
-        // store-level net sales). Per-channel series get tcos too, lensed to
-        // that channel's spend against the same store S Sales.
-        $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
-        $metrics['ssales'] = array_map(
-            fn ($d) => array_key_exists($d, $ssalesByDate) ? round($ssalesByDate[$d], 2) : null,
-            $labels
-        );
-        $metrics = $this->applyActiveChannelGraphSeries($metrics, $labels, $activeHistory);
-        if ($activeClicksByDate !== []) {
-            $metrics['clicks'] = array_map(
-                fn ($d) => array_key_exists($d, $activeClicksByDate) ? (int) round($activeClicksByDate[$d]) : null,
-                $labels
-            );
+        if ($chartMetric !== null) {
+            try {
+                [$labels, $series] = $this->activeChannelChartSeries(
+                    $this->activeChannelChartNames((string) $request->query('channel', '__total__')),
+                    $chartMetric,
+                    $days
+                );
+            } catch (\Throwable $e) {
+                \Log::warning('Advertisement Master active-channel chart failed: '.$e->getMessage());
+            }
         }
 
         return response()->json([
-            'status'   => 200,
-            'days'     => $days,
-            'labels'   => array_map(fn ($d) => date('M d', strtotime($d)), $labels),
-            'metrics'  => $metrics,
-            'channels' => $this->buildChannelSeries($byChannel, $labels, $ssalesByDate),
+            'status' => 200,
+            'days' => $days,
+            'labels' => $labels,
+            'metrics' => [$metric => $series],
+            'channels' => [],
         ])->withHeaders([
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma' => 'no-cache',
             'Expires' => '0',
         ]);
+    }
+
+    private function activeChannelChartMetric(string $metric): ?string
+    {
+        return match ($metric) {
+            'spend' => 'ad_spend',
+            'clicks' => 'total_views',
+            'sold' => 'ad_sold',
+            'sales' => 'ad_sales',
+            'ssales' => 'l30_sales',
+            'cvr' => 'ads_cvr',
+            'acos' => 'acos',
+            'tcos' => 'ads_pct',
+            'missing_ads' => 'missing_l',
+            default => null,
+        };
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function activeChannelChartNames(string $channel): array
+    {
+        $channel = trim($channel);
+        if ($channel === '' || $channel === '__total__') {
+            return ['all'];
+        }
+        $rawKey = strtolower((string) preg_replace('/[^a-z0-9]+/', '', $channel));
+        if ($rawKey === 'ebaytotal') {
+            return ['ebay', 'ebay2', 'ebay3'];
+        }
+        if ($rawKey === 'temutotal') {
+            return ['temu', 'temu2'];
+        }
+        if ($rawKey === 'tiktoktotal') {
+            return ['tiktok'];
+        }
+
+        $channel = $this->stripTotalSuffix($channel);
+        if (str_contains($channel, self::SUBROW_SEPARATOR)) {
+            $channel = trim(explode(self::SUBROW_SEPARATOR, $channel)[0]);
+        }
+        $key = strtolower((string) preg_replace('/[^a-z0-9]+/', '', $channel));
+
+        return [match ($key) {
+            'amazon', 'amz' => 'amazon',
+            'ebay', 'ebay1' => 'ebay',
+            'ebay2' => 'ebay2',
+            'ebay3' => 'ebay3',
+            'shopify', 'shopifyb2c' => 'shopify',
+            'tiktok', 'tiktok1', 'tiktokshop' => 'tiktok',
+            'tiktok2', 'tiktokshop2' => 'tiktok2',
+            'temu', 'temu1' => 'temu',
+            'temu2' => 'temu2',
+            default => $channel !== '' ? $channel : 'all',
+        }];
+    }
+
+    /**
+     * @param  list<string>  $channelNames
+     * @return array{0: list<string>, 1: list<float|null>}
+     */
+    private function activeChannelChartSeries(array $channelNames, string $chartMetric, int $days): array
+    {
+        $order = [];
+        $sums = [];
+        foreach ($channelNames as $channelName) {
+            $response = app(ChannelMasterController::class)->getChannelMetricChartData(
+                Request::create('/channel-metric-chart-data', 'GET', [
+                    'channel' => $channelName,
+                    'metric' => $chartMetric,
+                    'days' => $days,
+                ])
+            );
+            $payload = $response->getData(true);
+            foreach ((array) ($payload['data'] ?? []) as $point) {
+                if (! is_array($point)) {
+                    continue;
+                }
+                $label = (string) ($point['date'] ?? '');
+                if (! array_key_exists($label, $sums)) {
+                    $order[] = $label;
+                    $sums[$label] = null;
+                }
+                if (! array_key_exists('value', $point) || $point['value'] === null) {
+                    continue;
+                }
+                $sums[$label] = round(($sums[$label] ?? 0) + (float) $point['value'], 2);
+            }
+        }
+
+        $labels = [];
+        $series = [];
+        foreach ($order as $label) {
+            $labels[] = $label;
+            $series[] = $sums[$label];
+        }
+
+        return [$labels, $series];
     }
 
     /**

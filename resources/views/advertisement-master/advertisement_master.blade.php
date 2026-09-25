@@ -1736,9 +1736,7 @@
 
             function admSeriesFor(payload, channel, metric) {
                 if (!payload) return [];
-                if (channel === '__total__') return (payload.metrics || {})[metric] || [];
-                const ch = (payload.channels || {})[channel];
-                return ch ? (ch[metric] || []) : [];
+                return (payload.metrics || {})[metric] || [];
             }
 
             // Clicking a metric cell opens the chart lensed to that row + metric.
@@ -1768,7 +1766,7 @@
             var admTrendChannel = document.getElementById('adm-trend-channel');
             if (admTrendChannel) admTrendChannel.addEventListener('change', function () {
                 admSetTrendTitle();
-                renderAdmChart();
+                loadAdmHistory();
             });
             var admTrendDays = document.getElementById('adm-trend-days');
             if (admTrendDays) admTrendDays.addEventListener('change', loadAdmHistory);
@@ -1864,7 +1862,12 @@
                 const req = ++admHistoryReq;
                 admSetTrendTitle();
                 admClearTrendChart();
-                fetch(historyUrl + '?days=' + encodeURIComponent(days) + '&_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+                const chSel = document.getElementById('adm-trend-channel');
+                const channel = chSel ? chSel.value : '__total__';
+                fetch(historyUrl + '?days=' + encodeURIComponent(days)
+                    + '&channel=' + encodeURIComponent(channel)
+                    + '&metric=' + encodeURIComponent(admTrendMetric)
+                    + '&_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
                     .then(function (r) { return r.json(); })
                     .then(function (payload) {
                         if (req !== admHistoryReq) return;
