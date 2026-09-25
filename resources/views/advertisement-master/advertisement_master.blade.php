@@ -7,6 +7,7 @@
 
 @section('css')
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="{{ asset('css/select-searchable.css') }}" rel="stylesheet">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         .adm-stat-badge {
@@ -29,7 +30,6 @@
         .adm-stat-badge--tcos   { background: #7c3aed; }
         .adm-stat-badge--ssales { background: #0d9488; }
         .adm-stat-badge--active { background: #059669; }
-        .adm-stat-badge--views  { background: #0284c7; }
         .adm-stat-badge--missing { background: #dc2626; }
         .adm-missing-cell {
             display: inline-flex;
@@ -55,8 +55,7 @@
         .adm-badge-link:hover { transform: translateY(-1px); filter: brightness(1.1); }
 
         #advertisement-master-wrap {
-            overflow-x: auto;
-            overflow-y: visible;
+            overflow: visible;
         }
 
         #advertisement-master-wrap .tabulator {
@@ -185,6 +184,7 @@
         }
 
         #advertisement-master-wrap .tabulator .tabulator-row .tabulator-cell.adm-edit-cell,
+        #advertisement-master-wrap .tabulator .tabulator-row .tabulator-cell.adm-delete-cell,
         #advertisement-master-wrap .tabulator .tabulator-row .tabulator-cell.adm-task-cell {
             cursor: pointer;
         }
@@ -214,6 +214,51 @@
             height: 13px;
             flex-shrink: 0;
         }
+
+        .adm-delete-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            min-width: 26px;
+            height: 26px;
+            padding: 0;
+            border: 1px solid #fecaca;
+            border-radius: 6px;
+            background: #fff;
+            color: #dc2626;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .adm-delete-btn:hover {
+            color: #fff;
+            border-color: #dc2626;
+            background: #dc2626;
+        }
+        .adm-delete-btn svg {
+            width: 13px;
+            height: 13px;
+            flex-shrink: 0;
+        }
+
+        .adm-trend-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-left: 5px;
+            vertical-align: middle;
+            background: #9ca3af;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+            flex-shrink: 0;
+        }
+        .adm-stat-badge .adm-trend-dot {
+            margin-left: 0;
+            margin-right: 6px;
+        }
+        .adm-trend-dot.is-up { background: #22c55e; }
+        .adm-trend-dot.is-down { background: #ef4444; }
+        .adm-trend-dot.is-flat { background: #9ca3af; }
 
         .adm-task-btn {
             display: inline-flex;
@@ -328,6 +373,14 @@
             width: 100%;
             max-width: 100%;
         }
+        #admEditModal .modal-content,
+        #admEditModal .modal-body { overflow: visible; }
+        #admEditModal .select-searchable-display {
+            font-size: 1rem;
+            min-height: calc(1.5em + 0.75rem + 2px);
+            padding-top: 0.375rem;
+            padding-bottom: 0.375rem;
+        }
     </style>
 @endsection
 
@@ -343,17 +396,16 @@
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1" style="min-width:0;">
-                            <span class="adm-stat-badge adm-stat-badge--missing adm-badge-link" data-metric="missing_ads" data-label="Missing" title="Sum of missing ads — click for trend">MISSING: <span id="adm-badge-missing">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--active" title="Active (running / enabled) campaigns across all channels">ACTIVE: <span id="adm-badge-active">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--spend adm-badge-link" data-metric="spend" data-label="Spend" title="Click for trend">SPEND: <span id="adm-badge-spend">$0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--clicks adm-badge-link" data-metric="clicks" data-label="Clicks" title="Click for trend">CLICKS: <span id="adm-badge-clicks">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--views" title="Sum of listing views (Channel Master) across visible parent rows">VIEWS: <span id="adm-badge-views">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--sold adm-badge-link" data-metric="sold" data-label="Sold" title="Click for trend">SOLD: <span id="adm-badge-sold">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--sales adm-badge-link" data-metric="sales" data-label="Ads Sales" title="Click for trend">ADS SALES: <span id="adm-badge-sales">$0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--cvr adm-badge-link" data-metric="cvr" data-label="CVR" title="Click for trend">CVR: <span id="adm-badge-cvr">0%</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--acos adm-badge-link" data-metric="acos" data-label="ACOS" title="Click for trend">ACOS: <span id="adm-badge-acos">0%</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--tcos adm-badge-link" data-metric="tcos" data-label="Tcos" title="Click for trend">TCOS: <span id="adm-badge-tcos">0%</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--ssales adm-badge-link" data-metric="ssales" data-label="Total Sales" title="Combined Amz + eBay + eBay 2 + eBay 3 + Shopify + TikTok 1 L30 store sales — click for trend">TOTAL SALES: <span id="adm-badge-ssales">$0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--missing adm-badge-link" data-metric="missing_ads" data-label="Missing" title="Sum of missing ads — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="missing_ads" title="vs previous day"></span>MISSING: <span id="adm-badge-missing">0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--active" title="Active (running / enabled) campaigns across all channels"><span class="adm-trend-dot is-flat" data-badge-metric="active" title="vs previous day"></span>ACTIVE: <span id="adm-badge-active">0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--spend adm-badge-link" data-metric="spend" data-label="Spend" title="Total ad spend on active channels (Active Channel) — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="spend" title="vs previous day"></span>SPEND: <span id="adm-badge-spend">$0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--clicks adm-badge-link" data-metric="clicks" data-label="Clicks" title="Click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="clicks" title="vs previous day"></span>CLICKS: <span id="adm-badge-clicks">0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--sold adm-badge-link" data-metric="sold" data-label="Sold" title="Click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="sold" title="vs previous day"></span>SOLD: <span id="adm-badge-sold">0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--sales adm-badge-link" data-metric="sales" data-label="Ads Sales" title="Click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="sales" title="vs previous day"></span>ADS SALES: <span id="adm-badge-sales">$0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--cvr adm-badge-link" data-metric="cvr" data-label="CVR" title="Click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="cvr" title="vs previous day"></span>CVR: <span id="adm-badge-cvr">0%</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--acos adm-badge-link" data-metric="acos" data-label="ACOS" title="Click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="acos" title="vs previous day"></span>ACOS: <span id="adm-badge-acos">0%</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--tcos adm-badge-link" data-metric="tcos" data-label="Tcos" title="Click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="tcos" title="vs previous day"></span>TCOS: <span id="adm-badge-tcos">0%</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--ssales adm-badge-link" data-metric="ssales" data-label="Total Sales" title="Sum of L30 Sales on active channels (Active Channel) — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="ssales" title="vs previous day"></span>TOTAL SALES: <span id="adm-badge-ssales">$0</span></span>
                         </div>
                         <div class="d-flex align-items-center gap-1" style="flex-shrink:0;">
                             <select id="adm-filter-kind" class="form-select form-select-sm" style="width:140px;" aria-label="Row view" title="Row view">
@@ -466,8 +518,9 @@
                         <p class="text-muted small mb-3" id="adm-edit-original"></p>
                         <div class="mb-3">
                             <label class="form-label fw-semibold" for="adm-edit-group">Channel</label>
-                            <input type="text" class="form-control" id="adm-edit-group" name="group_name" list="adm-edit-group-list" maxlength="80" required autocomplete="off">
-                            <datalist id="adm-edit-group-list"></datalist>
+                            <select class="form-select select-searchable" id="adm-edit-group" name="group_name">
+                                <option value="">Select channel</option>
+                            </select>
                         </div>
                         <div class="mb-0">
                             <label class="form-label fw-semibold" for="adm-edit-channel">Type</label>
@@ -524,33 +577,54 @@
 @endsection
 
 @section('script-bottom')
+    <script src="{{ asset('js/select-searchable.js') }}"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             let admSSales = 0;
+            let admActiveSpend = null;
             let admAllRows = [];
+            const admActiveChannels = @json($activeChannels ?? []);
 
             // Metrics where a HIGHER value is worse (cost side): an up move
             // reads red, a down move green — the opposite of clicks/sold/etc.
             const ADM_INVERTED_METRICS = { spend: true, acos: true, tcos: true, missing_ads: true };
 
-            // Day-over-day trend dot on every metric cell. Green = improvement,
-            // red = decline. No grey / empty state — if there is no prior day
-            // or the value is unchanged, color vs zero (spend / ACOS invert).
+            // Same as Active Channel: green = improved, red = worse, gray = unchanged or no prior day.
+            function admTrendClass(dir, inverted) {
+                if (dir !== 'up' && dir !== 'down') return 'is-flat';
+                const improved = inverted ? (dir === 'down') : (dir === 'up');
+                return improved ? 'is-up' : 'is-down';
+            }
+
             function admTrendDot(cell) {
                 const field = cell.getField();
                 const data  = cell.getRow().getData() || {};
-                const value = Number(cell.getValue() || 0);
-                const inverted = !!ADM_INVERTED_METRICS[field];
-                let dir = (data.trend || {})[field];
-                if (!dir || dir === 'flat') {
-                    dir = value > 0 ? 'up' : 'down';
-                }
-                const improved = inverted ? (dir === 'down') : (dir === 'up');
-                const color = improved ? '#28a745' : '#dc3545';
-                return '<span title="vs previous day" style="display:inline-block;width:8px;height:8px;'
-                    + 'border-radius:50%;background:' + color + ';margin-left:5px;vertical-align:middle;"></span>';
+                const dir = (data.trend || {})[field];
+                return '<span class="adm-trend-dot ' + admTrendClass(dir, !!ADM_INVERTED_METRICS[field]) + '" title="vs previous day"></span>';
+            }
+
+            function admBadgeDir(rows, field) {
+                let up = 0;
+                let down = 0;
+                (rows || []).forEach(function (r) {
+                    if (!r || r.is_sub_row) return;
+                    const dir = (r.trend || {})[field];
+                    if (dir === 'up') up++;
+                    else if (dir === 'down') down++;
+                });
+                if (up === 0 && down === 0) return 'flat';
+                if (up === down) return 'flat';
+                return up > down ? 'up' : 'down';
+            }
+
+            function admPaintBadgeDots(rows) {
+                document.querySelectorAll('.adm-trend-dot[data-badge-metric]').forEach(function (el) {
+                    const field = el.getAttribute('data-badge-metric');
+                    el.classList.remove('is-up', 'is-down', 'is-flat');
+                    el.classList.add(admTrendClass(admBadgeDir(rows, field), !!ADM_INVERTED_METRICS[field]));
+                });
             }
 
             function wholeMoneyFormatter(cell) {
@@ -561,14 +635,6 @@
             function intFormatter(cell) {
                 const value = Number(cell.getValue() || 0);
                 return Math.round(value).toLocaleString() + admTrendDot(cell);
-            }
-
-            function viewsFormatter(cell) {
-                const row = cell.getRow().getData() || {};
-                if (!row.is_sum_row && !row.is_group_total) {
-                    return '<span class="text-muted">-</span>';
-                }
-                return intFormatter(cell);
             }
 
             function admIsTypeMetricRow(row) {
@@ -633,7 +699,7 @@
             }
 
             function updateBadges(rows) {
-                let spend = 0, clicks = 0, sold = 0, sales = 0, active = 0, views = 0, missing = 0;
+                let spend = 0, clicks = 0, sold = 0, sales = 0, active = 0, missing = 0;
                 (admAllRows.length ? admAllRows : rows).forEach(function (r) {
                     if (!r || !r.has_missing_ads || !r.missing_ads_href) return;
                     if (r.is_group_total || r.is_sum_row) return;
@@ -646,25 +712,24 @@
                     sold   += Number(r.sold   || 0);
                     sales  += Number(r.sales  || 0);
                     active += Number(r.active || 0);
-                    views  += Number(r.views  || 0);
                 });
+                const badgeSpend = (admActiveSpend != null && !isNaN(admActiveSpend)) ? admActiveSpend : spend;
                 const cvr  = clicks > 0 ? (sold  / clicks) * 100 : 0;
                 const acos = sales  > 0 ? (spend / sales)  * 100 : (spend > 0 ? 100 : 0);
-                const tcos = admSSales > 0 ? (spend / admSSales) * 100 : (spend > 0 ? 100 : 0);
+                const tcos = admSSales > 0 ? (badgeSpend / admSSales) * 100 : (badgeSpend > 0 ? 100 : 0);
 
                 const missingEl = document.getElementById('adm-badge-missing');
                 if (missingEl) missingEl.textContent = Math.round(missing).toLocaleString();
                 const activeEl = document.getElementById('adm-badge-active');
                 if (activeEl) activeEl.textContent = Math.round(active).toLocaleString();
-                document.getElementById('adm-badge-spend').textContent  = '$' + Math.round(spend).toLocaleString();
+                document.getElementById('adm-badge-spend').textContent  = '$' + Math.round(badgeSpend).toLocaleString();
                 document.getElementById('adm-badge-clicks').textContent = Math.round(clicks).toLocaleString();
-                const viewsEl = document.getElementById('adm-badge-views');
-                if (viewsEl) viewsEl.textContent = Math.round(views).toLocaleString();
                 document.getElementById('adm-badge-sold').textContent   = Math.round(sold).toLocaleString();
                 document.getElementById('adm-badge-sales').textContent  = '$' + Math.round(sales).toLocaleString();
                 document.getElementById('adm-badge-cvr').textContent    = cvr.toFixed(1) + '%';
                 document.getElementById('adm-badge-acos').textContent   = Math.round(acos) + '%';
                 document.getElementById('adm-badge-tcos').textContent   = Math.round(tcos) + '%';
+                admPaintBadgeDots(rows);
             }
 
             const channelLinks = {
@@ -929,6 +994,13 @@
                     + '</svg></button>';
             }
 
+            function deleteFormatter() {
+                return '<button type="button" class="adm-delete-btn" title="Delete" aria-label="Delete">'
+                    + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+                    + '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>'
+                    + '</svg></button>';
+            }
+
             function taskFormatter() {
                 return '<button type="button" class="adm-task-btn" title="Assign Task" aria-label="Assign Task">TM</button>';
             }
@@ -950,6 +1022,13 @@
             const loadingEl = document.getElementById('adm-loading');
             const errorEl = document.getElementById('adm-error');
 
+            function admFreezeHeight() {
+                const el = document.getElementById('advertisement-master-table');
+                if (!el) return 480;
+                const docTop = el.getBoundingClientRect().top + window.scrollY;
+                return Math.max(320, Math.floor(window.innerHeight - docTop - 20));
+            }
+
             function showAdmError(message) {
                 if (loadingEl) loadingEl.classList.add('d-none');
                 if (errorEl) {
@@ -964,6 +1043,7 @@
             }
 
             const table = new Tabulator('#advertisement-master-table', {
+                height: admFreezeHeight(),
                 ajaxURL: dataUrl,
                 ajaxRequestTimeout: 180000,
                 placeholder: 'Loading channel metrics…',
@@ -977,6 +1057,9 @@
                     const rows = sortAdmRows(flattenAdmRows(response.data || []));
                     admAllRows = rows;
                     admSSales = Number(response.total_net_sales || 0);
+                    admActiveSpend = (response.active_channel_spend != null && Number(response.active_channel_spend) > 0)
+                        ? Number(response.active_channel_spend)
+                        : null;
                     const ssEl = document.getElementById('adm-badge-ssales');
                     if (ssEl) {
                         ssEl.textContent = '$' + Number(admSSales).toLocaleString('en-US', {
@@ -987,7 +1070,10 @@
                     updateBadges(rows);
                     buildAdmChannelOptions(rows);
                     fillAdmChannelFilter(rows);
-                    setTimeout(applyAdmFilters, 0);
+                    setTimeout(function () {
+                        applyAdmFilters();
+                        table.setHeight(admFreezeHeight());
+                    }, 0);
                     return rows;
                 },
                 ajaxError: function () {
@@ -1019,7 +1105,6 @@
                     { title: 'ACTIVE', field: 'active', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: 'SPEND', field: 'spend', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: 'CLICKS', field: 'clicks', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'VIEWS', field: 'views', hozAlign: 'center', headerHozAlign: 'center', formatter: viewsFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter },
                     { title: 'SOLD', field: 'sold', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: 'ADS SALES', field: 'sales', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: 'T Sales', field: 't_sales', hozAlign: 'center', headerHozAlign: 'center', formatter: tSalesFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, visible: false },
@@ -1028,11 +1113,16 @@
                     { title: 'Tcos', field: 'tcos', hozAlign: 'center', formatter: tcosFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admTcosCellChart, visible: false },
                     { title: '', field: '_task', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: taskFormatter, cssClass: 'adm-task-cell', cellClick: openAdmTaskFromCell },
                     { title: '', field: '_edit', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: editFormatter, cssClass: 'adm-edit-cell', cellClick: openAdmEditFromCell },
+                    { title: '', field: '_delete', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: deleteFormatter, cssClass: 'adm-delete-cell', cellClick: openAdmDeleteFromCell },
                 ],
             });
 
             table.on('dataFiltered', function () {
                 updateBadges(table.getData('active') || table.getData());
+            });
+
+            window.addEventListener('resize', function () {
+                table.setHeight(admFreezeHeight());
             });
 
             function fillAdmChannelFilter(rows) {
@@ -1117,6 +1207,7 @@
             });
 
             const admEditSaveUrl = "{{ route('advertisement.master.label.save') }}";
+            const admDeleteUrl = "{{ route('advertisement.master.row.delete') }}";
             const admNrSaveUrl = "{{ route('advertisement.master.nr.save') }}";
             const admCsrf = document.querySelector('meta[name="csrf-token"]');
             let admEditRow = null;
@@ -1166,18 +1257,38 @@
                 });
             });
 
-            function admFillGroupList() {
-                const list = document.getElementById('adm-edit-group-list');
-                if (!list) return;
+            function admFillGroupList(selected) {
+                const sel = document.getElementById('adm-edit-group');
+                if (!sel) return;
+                const selectedName = String(selected || '').trim();
+                const selectedKey = selectedName.toLowerCase();
+                const names = [];
                 const seen = {};
-                ['Amazon', 'eBay', 'Shopify', 'TikTok'].forEach(function (g) { seen[g] = true; });
-                (table.getData() || []).forEach(function (r) {
-                    const g = String((r && r.channel_group) || '').trim();
-                    if (g) seen[g] = true;
+                (admActiveChannels || []).forEach(function (n) {
+                    const name = String(n || '').trim();
+                    if (!name) return;
+                    const key = name.toLowerCase();
+                    if (seen[key]) return;
+                    seen[key] = true;
+                    names.push(name);
                 });
-                list.innerHTML = Object.keys(seen).map(function (g) {
-                    return '<option value="' + admEsc(g) + '">';
+                let matched = '';
+                if (selectedKey) {
+                    names.forEach(function (n) {
+                        if (!matched && n.toLowerCase() === selectedKey) matched = n;
+                    });
+                    if (!matched) {
+                        names.push(selectedName);
+                        matched = selectedName;
+                    }
+                }
+                names.sort(function (a, b) {
+                    return a.localeCompare(b, undefined, { sensitivity: 'base' });
+                });
+                sel.innerHTML = '<option value="">Select channel</option>' + names.map(function (n) {
+                    return '<option value="' + admEsc(n) + '"' + (n === matched ? ' selected' : '') + '>' + admEsc(n) + '</option>';
                 }).join('');
+                if (window.SelectSearchable) SelectSearchable.refresh(sel);
             }
 
             function admShowEditModal() {
@@ -1215,7 +1326,6 @@
                 const title = document.getElementById('admEditLabel');
                 if (title) title.textContent = isAdd ? 'Add Channel & Type' : 'Edit Channel & Type';
                 document.getElementById('adm-edit-key').value = key;
-                document.getElementById('adm-edit-group').value = isAdd ? '' : (admEditRow.channel_group || '');
                 document.getElementById('adm-edit-channel').value = isAdd ? '' : (admEditRow.channel || '');
                 const orig = document.getElementById('adm-edit-original');
                 if (orig) {
@@ -1224,11 +1334,15 @@
                 }
                 const err = document.getElementById('adm-edit-error');
                 if (err) { err.textContent = ''; err.classList.add('d-none'); }
-                admFillGroupList();
+                admFillGroupList(isAdd ? '' : (admEditRow.channel_group || ''));
                 admShowEditModal();
                 setTimeout(function () {
                     const input = document.getElementById('adm-edit-group');
-                    if (input) input.focus();
+                    const display = input && input.closest('.select-searchable-wrap')
+                        ? input.closest('.select-searchable-wrap').querySelector('.select-searchable-display')
+                        : null;
+                    if (display) display.focus();
+                    else if (input) input.focus();
                 }, 150);
             }
 
@@ -1240,6 +1354,37 @@
             document.getElementById('adm-add-row').addEventListener('click', function () {
                 openAdmEditModal({ _is_add: true });
             });
+
+            function openAdmDeleteFromCell(e, cell) {
+                if (e && e.stopPropagation) e.stopPropagation();
+                const row = cell.getRow();
+                const data = row.getData() || {};
+                const key = String(data.channel_key || data.channel || '').trim();
+                const name = String(data.channel || data.channel_group || 'this row').trim();
+                if (!key) return;
+                if (!window.confirm('Delete ' + name + '?')) return;
+                const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+                if (admCsrf && admCsrf.content) headers['X-CSRF-TOKEN'] = admCsrf.content;
+                fetch(admDeleteUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: headers,
+                    body: JSON.stringify({ channel_key: key }),
+                }).then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                .then(function (result) {
+                    if (!result.ok || !result.body || Number(result.body.status) !== 200) {
+                        window.alert((result.body && result.body.message) || 'Could not delete.');
+                        return;
+                    }
+                    admAllRows = (admAllRows || []).filter(function (r) {
+                        return String((r && (r.channel_key || r.channel)) || '') !== key;
+                    });
+                    row.delete();
+                    updateBadges(table.getData('active') || table.getData());
+                }).catch(function () {
+                    window.alert('Could not delete.');
+                });
+            }
 
             const admTaskStoreUrl = "{{ route('tasks.store') }}";
             const admAssignorId = {{ (int) (Auth::id() ?? 0) }};

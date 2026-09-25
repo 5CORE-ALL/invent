@@ -20,6 +20,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Models\AdvertisementMasterChannelLabel;
+use App\Models\BadgeData;
 use App\Models\AdvertisementMasterCustomRow;
 use App\Models\AdvertisementMasterHiddenRow;
 use App\Models\AdvertisementMasterNrReq;
@@ -59,7 +60,152 @@ class AdvertisementMasterController extends Controller
         return view('advertisement-master.advertisement_master', [
             'mode' => $request->query('mode'),
             'demo' => $request->query('demo'),
+            'activeChannels' => $this->activeChannelNames(),
         ]);
+    }
+
+    /**
+     * Distinct channel names from Channel Master rows whose status is active.
+     *
+     * @return list<string>
+     */
+    private function activeChannelNames(): array
+    {
+        if (! Schema::hasTable('channel_master')) {
+            return [];
+        }
+
+        return ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['active'])
+            ->whereNotNull('channel')
+            ->orderBy('channel')
+            ->pluck('channel')
+            ->map(fn ($name) => trim((string) $name))
+            ->filter(fn ($name) => $name !== '')
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Combined store sales for the TOTAL SALES badge — same L30 Sales total as
+     * Active Channel / All Marketplace Master (active channels only).
+     */
+    private function activeChannelL30SalesTotal(): float
+    {
+        try {
+            if (Schema::hasTable('badges_data')) {
+                $cached = BadgeData::dataForPage('all-marketplace-master');
+                $sales = (float) ($cached['l30_sales'] ?? 0);
+                if ($sales > 0) {
+                    return round($sales, 2);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel sales badge lookup failed: '.$e->getMessage());
+        }
+
+        if (! Schema::hasTable('channel_master') || ! Schema::hasTable('channel_master_calculated_data')) {
+            return 0.0;
+        }
+
+        $active = [];
+        foreach (ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['active'])
+            ->pluck('channel') as $name) {
+            $key = $this->normalizeChannelMatchKey((string) $name);
+            if ($key !== '') {
+                $active[$key] = true;
+            }
+        }
+
+        $sum = 0.0;
+        $seen = [];
+        try {
+            foreach (ChannelMasterCalculatedData::query()->get(['channel', 'l30_sales']) as $row) {
+                $key = $this->normalizeChannelMatchKey((string) ($row->channel ?? ''));
+                if ($key === '' || ! isset($active[$key]) || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $sales = (float) ($row->l30_sales ?? 0);
+                if ($key === 'amazon') {
+                    $live = $this->amazonNetSales();
+                    if ($live > 0) {
+                        $sales = $live;
+                    }
+                }
+                $sum += $sales;
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel sales sum failed: '.$e->getMessage());
+
+            return 0.0;
+        }
+
+        return round($sum, 2);
+    }
+
+    /**
+     * Combined ad spend for the SPEND badge — same Total Ad Spend as
+     * Active Channel / All Marketplace Master (active channels only).
+     */
+    private function activeChannelAdSpendTotal(): float
+    {
+        try {
+            if (Schema::hasTable('badges_data')) {
+                $cached = BadgeData::dataForPage('all-marketplace-master');
+                if (array_key_exists('ad_spend', $cached)) {
+                    return round((float) $cached['ad_spend'], 2);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel spend badge lookup failed: '.$e->getMessage());
+        }
+
+        if (! Schema::hasTable('channel_master') || ! Schema::hasTable('channel_master_calculated_data')) {
+            return 0.0;
+        }
+
+        $active = [];
+        foreach (ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['active'])
+            ->pluck('channel') as $name) {
+            $key = $this->normalizeChannelMatchKey((string) $name);
+            if ($key !== '') {
+                $active[$key] = true;
+            }
+        }
+
+        $sum = 0.0;
+        $seen = [];
+        try {
+            foreach (ChannelMasterCalculatedData::query()->get(['channel', 'total_ad_spend', 'l30_sales', 'ads_percentage', 'tacos_percentage']) as $row) {
+                $key = $this->normalizeChannelMatchKey((string) ($row->channel ?? ''));
+                if ($key === '' || ! isset($active[$key]) || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $spend = (float) ($row->total_ad_spend ?? 0);
+                if ($spend <= 0 && str_contains($key, 'reverb')) {
+                    $pct = (float) ($row->ads_percentage ?? 0);
+                    if ($pct <= 0) {
+                        $pct = (float) ($row->tacos_percentage ?? 0);
+                    }
+                    $l30 = (float) ($row->l30_sales ?? 0);
+                    if ($pct > 0 && $l30 > 0) {
+                        $spend = ($pct / 100) * $l30;
+                    }
+                }
+                $sum += $spend;
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel spend sum failed: '.$e->getMessage());
+
+            return 0.0;
+        }
+
+        return round($sum, 2);
     }
 
     /**
@@ -146,9 +292,18 @@ class AdvertisementMasterController extends Controller
             }
 
             $cvr = $clicks > 0 ? ($sold / $clicks) * 100 : 0.0;
+            $rowSpend = $spend;
             $acos = $sales > 0
-                ? (int) round(($spend / $sales) * 100)
-                : ($spend > 0 ? 100 : 0);
+                ? (int) round(($rowSpend / $sales) * 100)
+                : ($rowSpend > 0 ? 100 : 0);
+            $activeChannelSales = (new static)->activeChannelL30SalesTotal();
+            if ($activeChannelSales > 0) {
+                $ssales = $activeChannelSales;
+            }
+            $activeChannelSpend = (new static)->activeChannelAdSpendTotal();
+            if ($activeChannelSpend > 0) {
+                $spend = $activeChannelSpend;
+            }
             $tcos = $ssales > 0
                 ? (int) round(($spend / $ssales) * 100)
                 : ($spend > 0 ? 100 : 0);
@@ -215,10 +370,14 @@ class AdvertisementMasterController extends Controller
                 'temu2' => $temu2NetSales,
             ]);
 
-            $totalNetSales = round(
-                $amazonNetSales + $ebayNetSales + $ebay2NetSales + $ebay3NetSales + $shopifyNetSales + $tiktokNetSales + $temuNetSales + $temu2NetSales,
-                2
-            );
+            $activeChannelSpend = $this->activeChannelAdSpendTotal();
+            $totalNetSales = $this->activeChannelL30SalesTotal();
+            if ($totalNetSales <= 0) {
+                $totalNetSales = round(
+                    $amazonNetSales + $ebayNetSales + $ebay2NetSales + $ebay3NetSales + $shopifyNetSales + $tiktokNetSales + $temuNetSales + $temu2NetSales,
+                    2
+                );
+            }
 
             // Trend dots: compare each metric against the previous Pacific-day
             // snapshot (per channel). Read *before* today's snapshot write so
@@ -280,6 +439,7 @@ class AdvertisementMasterController extends Controller
                 'temu_net_sales' => $temuNetSales,
                 'temu2_net_sales' => $temu2NetSales,
                 'total_net_sales' => $totalNetSales,
+                'active_channel_spend' => $activeChannelSpend,
             ]);
         } catch (\Throwable $e) {
             \Log::error('Advertisement Master data failed: '.$e->getMessage(), [
@@ -300,6 +460,7 @@ class AdvertisementMasterController extends Controller
                 'temu_net_sales' => 0,
                 'temu2_net_sales' => 0,
                 'total_net_sales' => 0,
+                'active_channel_spend' => 0,
             ], 500);
         }
     }
