@@ -343,6 +343,28 @@
                         </ul>
                     </div>
 
+                    <div class="dropdown faas-sbgt-dropdown" style="flex-shrink:0;">
+                        <button class="btn btn-sm btn-outline-primary dropdown-toggle"
+                                type="button"
+                                id="faasB2bFilterBtn"
+                                data-bs-toggle="dropdown"
+                                data-bs-auto-close="outside"
+                                data-bs-strategy="fixed"
+                                aria-expanded="false"
+                                title="Filter rows by B2B / B2C">
+                            <span id="faasB2bFilterLabel">B2B / B2C: all</span>
+                        </button>
+                        <ul class="dropdown-menu px-2 py-1"
+                            id="faasB2bFilterMenu"
+                            aria-labelledby="faasB2bFilterBtn"
+                            style="max-height:300px; overflow-y:auto; min-width:200px;">
+                            <li class="d-flex justify-content-between align-items-center px-2 pt-1 pb-2 border-bottom">
+                                <button type="button" class="btn btn-link btn-sm p-0" id="faasB2bFilterAll">All</button>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-muted" id="faasB2bFilterClear">None</button>
+                            </li>
+                        </ul>
+                    </div>
+
                     @if ($canManageAdTypes)
                     <button type="button"
                             class="btn btn-sm btn-outline-primary"
@@ -1299,10 +1321,30 @@
             return values;
         }
 
+        function isB2bDataColumn(field) {
+            const n = String(field || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            return n.includes('B2B') && n.includes('B2C');
+        }
+
+        function rowCampaignId(data) {
+            return String(
+                (data && (data['CAMPAIGN ID'] || data._campaign_id || data['Campaign ID'] || data['Campaign activities'])) || ''
+            );
+        }
+
+        function b2bRowPatch(value, data) {
+            const patch = { b2b_b2c: value };
+            Object.keys(data || {}).forEach(function (k) {
+                if (isB2bDataColumn(k)) patch[k] = value;
+            });
+            return patch;
+        }
+
         function rememberB2b(name) {
             const key = String(name || '').trim().toUpperCase();
             if (!key || B2B_OPTIONS.includes(key)) return;
             B2B_OPTIONS.push(key);
+            buildB2bFilter();
         }
 
         let faasSuppressB2bEdit = false;
@@ -1323,6 +1365,18 @@
             .then(async r => {
                 const data = await r.json().catch(() => ({}));
                 if (!r.ok || !data.success) throw new Error(data.message || `HTTP ${r.status}`);
+                const cid = String(data.campaign_id || rowCampaignId(row.getData()) || '');
+                faasSuppressB2bEdit = true;
+                if (tabulator && cid) {
+                    tabulator.getRows().forEach(function (r) {
+                        if (rowCampaignId(r.getData()) === cid) {
+                            r.update(b2bRowPatch(value, r.getData()));
+                        }
+                    });
+                } else {
+                    row.update(b2bRowPatch(value, row.getData()));
+                }
+                faasSuppressB2bEdit = false;
             })
             .catch(err => {
                 row.update({ b2b_b2c: oldVal });
@@ -1493,6 +1547,13 @@
                         showStatus('Failed to load data.', 'error');
                         return;
                     }
+                    (resp.data || []).forEach(function (row) {
+                        const v = row.b2b_b2c;
+                        if (!v) return;
+                        Object.keys(row).forEach(function (k) {
+                            if (isB2bDataColumn(k)) row[k] = v;
+                        });
+                    });
                     updateBatchPill(resp.batch);
                     faasMasterTcosPercent = (resp.tcos_percent != null && resp.tcos_percent !== undefined)
                         ? Number(resp.tcos_percent) : null;
@@ -2251,6 +2312,7 @@
         // that filter is inactive.
         let sbgtFilterSelected   = new Set();   // numbers (1..20)
         let typeFilterSelected   = new Set();   // ad-type strings
+        let b2bFilterSelected    = new Set();   // B2B / B2C tags
         let statusFilterSelected = new Set();   // status strings (lowercased keys)
         // Distinct Status values seen in the current dataset — refilled
         // every time loadTable() returns. Used to drive the Status
@@ -2286,6 +2348,7 @@
 
             const sbgtSel   = sbgtFilterSelected;
             const typeSel   = typeFilterSelected;
+            const b2bSel    = b2bFilterSelected;
             const statusSel = statusFilterSelected;
             const term = (document.getElementById('faas-search')?.value || '')
                 .toLowerCase().trim();
@@ -2299,7 +2362,7 @@
 
             // Fast path — no filters active → clear so Tabulator skips
             // the per-row predicate cost entirely.
-            if (sbgtSel.size === 0 && typeSel.size === 0 && statusSel.size === 0 && !term && !hasRange) {
+            if (sbgtSel.size === 0 && typeSel.size === 0 && b2bSel.size === 0 && statusSel.size === 0 && !term && !hasRange) {
                 tabulator.clearFilter(false);
                 return;
             }
@@ -2322,6 +2385,9 @@
                 // Type (ad_type) — exact-match by full string.
                 if (typeSel.size > 0) {
                     if (!typeSel.has(row['ad_type'])) return false;
+                }
+                if (b2bSel.size > 0) {
+                    if (!b2bSel.has(row['b2b_b2c'])) return false;
                 }
                 // Status — normalised keys so "Not delivering",
                 // "not_delivering", "Not-Delivering" all match.
@@ -2500,6 +2566,37 @@
             buildTypeFilter();
             applyAllFilters();
         });
+        function buildB2bFilter() {
+            const opts = (B2B_OPTIONS || []).map(v => ({
+                value: v,
+                label: v,
+                color: (b2bColor(v) || {}).bg || '#9ca3af',
+            }));
+            buildCheckboxFilter('faasB2bFilterMenu', opts, b2bFilterSelected, function () {
+                updateB2bFilterLabel();
+                applyAllFilters();
+            });
+            updateB2bFilterLabel();
+        }
+        function updateB2bFilterLabel() {
+            const lbl = document.getElementById('faasB2bFilterLabel');
+            if (!lbl) return;
+            const n = b2bFilterSelected.size;
+            if (n === 0)     lbl.textContent = 'B2B / B2C: all';
+            else if (n <= 2) lbl.textContent = 'B2B / B2C: ' + [...b2bFilterSelected].join(', ');
+            else             lbl.textContent = `B2B / B2C: ${n} sel`;
+        }
+        document.getElementById('faasB2bFilterAll')?.addEventListener('click', function () {
+            b2bFilterSelected = new Set(B2B_OPTIONS || []);
+            buildB2bFilter();
+            applyAllFilters();
+        });
+        document.getElementById('faasB2bFilterClear')?.addEventListener('click', function () {
+            b2bFilterSelected = new Set();
+            buildB2bFilter();
+            applyAllFilters();
+        });
+
         document.getElementById('faasTypeFilterClear')?.addEventListener('click', function () {
             typeFilterSelected = new Set();
             buildTypeFilter();
@@ -3718,9 +3815,10 @@
         document.getElementById('faasExportCsvBtn')?.addEventListener('click', () => exportFaasData('csv'));
         document.getElementById('faasExportExcelBtn')?.addEventListener('click', () => exportFaasData('xlsx'));
 
-        // Type filter is driven by AD_TYPES (static for this page) so
-        // it can be built immediately, before the first data fetch.
+        // Type and B2B / B2C filters are driven by the option lists, so
+        // they can be built immediately, before the first data fetch.
         buildTypeFilter();
+        buildB2bFilter();
 
         fetchColumnVisibility()
             .then(() => fetchSbgtRule())   // populates the Sbgt filter dropdown

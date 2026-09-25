@@ -286,6 +286,10 @@ class FacebookAllAdsSheetController extends Controller
                 fn($_, $k) => ! str_starts_with($k, '__'),
                 ARRAY_FILTER_USE_BOTH
             );
+            $b2b = $this->resolvedB2bB2c($r->b2b_b2c, $cleanedData);
+            if ($b2b) {
+                $cleanedData = $this->writeB2bIntoRowData($cleanedData, $b2b);
+            }
             return array_merge(
                 [
                     '_id'          => $r->id,
@@ -293,7 +297,7 @@ class FacebookAllAdsSheetController extends Controller
                     '_upload_type' => $uploadType,
                     'ad_type'      => $r->ad_type,
                     'ch'           => $r->ch,
-                    'b2b_b2c'      => $r->b2b_b2c,
+                    'b2b_b2c'      => $b2b,
                 ],
                 $cleanedData
             );
@@ -552,6 +556,7 @@ class FacebookAllAdsSheetController extends Controller
 
             $presence[$cid][$uploadType ?? '_unknown'] = true;
 
+            $resolvedB2b = $this->resolvedB2bB2c($r->b2b_b2c, $cleanedData);
             if (! isset($merged[$cid])) {
                 $merged[$cid] = [
                     '_id'          => $r->id,
@@ -560,8 +565,10 @@ class FacebookAllAdsSheetController extends Controller
                     '_campaign_id' => $cid,
                     'ad_type'      => $r->ad_type,
                     'ch'           => $r->ch,
-                    'b2b_b2c'      => $r->b2b_b2c,
+                    'b2b_b2c'      => $resolvedB2b,
                 ];
+            } elseif (($merged[$cid]['b2b_b2c'] ?? '') === '' && $resolvedB2b) {
+                $merged[$cid]['b2b_b2c'] = $resolvedB2b;
             }
 
             // Don't let later rows overwrite a previously-filled cell with
@@ -581,7 +588,14 @@ class FacebookAllAdsSheetController extends Controller
                 $merged[$cid]['_id']     = $r->id;
                 $merged[$cid]['ad_type'] = $r->ad_type;
                 $merged[$cid]['ch']      = $r->ch;
-                $merged[$cid]['b2b_b2c'] = $r->b2b_b2c;
+                // A saved tag on the campaign row wins. A blank campaign
+                // row must not wipe a tag already read from spend/sales
+                // or from the campaign name.
+                if ($r->b2b_b2c) {
+                    $merged[$cid]['b2b_b2c'] = $r->b2b_b2c;
+                } elseif (($merged[$cid]['b2b_b2c'] ?? '') === '' && $resolvedB2b) {
+                    $merged[$cid]['b2b_b2c'] = $resolvedB2b;
+                }
             }
         }
 
@@ -1733,6 +1747,101 @@ class FacebookAllAdsSheetController extends Controller
      *     (e.g. "120247090510380496"). Falsy values like "(No name)" or
      *     "{{campaign_name}}" are skipped so they don't pollute the merge.
      */
+    /**
+     * B2B / B2C for a row: the saved tag, otherwise the sheet column of the
+     * same name, otherwise a single B2B or B2C token in the campaign name.
+     *
+     * @param  array<string, mixed>  $rowData
+     */
+    private function resolvedB2bB2c(?string $stored, array $rowData): ?string
+    {
+        $options = $this->b2bOptionNames();
+        $storedKey = FacebookAllAdsSheet::normalizeAdTypeName((string) $stored);
+        if ($storedKey !== '' && in_array($storedKey, $options, true)) {
+            return $storedKey;
+        }
+
+        foreach ($rowData as $key => $value) {
+            if (! $this->isB2bB2cHeader((string) $key)) {
+                continue;
+            }
+            $fromColumn = FacebookAllAdsSheet::normalizeAdTypeName((string) $value);
+            if ($fromColumn !== '' && in_array($fromColumn, $options, true)) {
+                return $fromColumn;
+            }
+        }
+
+        $name = $rowData['Campaign name'] ?? $rowData['Campaign Name'] ?? null;
+
+        return $this->b2bTokenInText(is_string($name) ? $name : null, $options);
+    }
+
+    /**
+     * @param  list<string>  $options
+     */
+    private function b2bTokenInText(?string $text, array $options): ?string
+    {
+        $text = FacebookAllAdsSheet::normalizeAdTypeName((string) $text);
+        if ($text === '') {
+            return null;
+        }
+
+        $hits = [];
+        foreach ($options as $opt) {
+            $quoted = preg_quote($opt, '/');
+            if (preg_match('/(?<![A-Z0-9])'.$quoted.'(?![A-Z0-9])/', $text)) {
+                $hits[] = $opt;
+            }
+        }
+
+        return count($hits) === 1 ? $hits[0] : null;
+    }
+
+    private function isB2bB2cHeader(string $key): bool
+    {
+        $n = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', $key));
+
+        return $n !== '' && str_contains($n, 'B2B') && str_contains($n, 'B2C');
+    }
+
+    /**
+     * Keep the uploaded sheet cell in step with the dropdown.
+     *
+     * @param  array<string, mixed>  $rowData
+     * @return array<string, mixed>
+     */
+    private function writeB2bIntoRowData(array $rowData, ?string $value): array
+    {
+        $key = null;
+        foreach (array_keys($rowData) as $k) {
+            if ($this->isB2bB2cHeader((string) $k)) {
+                $key = (string) $k;
+                break;
+            }
+        }
+        $key ??= 'B2B / B2C';
+
+        if ($value === null || $value === '') {
+            unset($rowData[$key]);
+        } else {
+            $rowData[$key] = $value;
+        }
+
+        return $rowData;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function b2bOptionNames(): array
+    {
+        try {
+            return FacebookB2bB2cOption::options();
+        } catch (\Throwable) {
+            return FacebookB2bB2cOption::BUILTIN;
+        }
+    }
+
     private function findCampaignId(array $rowData): ?string
     {
         foreach ($rowData as $key => $value) {
@@ -1896,11 +2005,13 @@ class FacebookAllAdsSheetController extends Controller
                     return $rowCid === $cid;
                 })
                 ->each(function ($r) use ($value) {
+                    $r->row_data = $this->writeB2bIntoRowData((array) ($r->row_data ?? []), $value);
                     $r->b2b_b2c = $value;
                     $r->save();
                 })
                 ->count();
         } else {
+            $row->row_data = $this->writeB2bIntoRowData((array) ($row->row_data ?? []), $value);
             $row->b2b_b2c = $value;
             $row->save();
         }
