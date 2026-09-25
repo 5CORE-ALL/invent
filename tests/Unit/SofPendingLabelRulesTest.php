@@ -44,8 +44,24 @@ class SofPendingLabelRulesTest extends TestCase
         $ref = new ReflectionClass(SalesOrderFulfillmentController::class);
         $ctrl = $ref->newInstanceWithoutConstructor();
         $looks = $ref->getMethod('looksLikeCarrierTrackingNumber');
+        $has = $ref->getMethod('rowHasSofTrackingNumber');
 
         $this->assertFalse($looks->invoke($ctrl, '113-1234567-1234567'));
+        $this->assertFalse($has->invoke($ctrl, ['tracking_number' => '113-1234567-1234567']));
+        $this->assertFalse($has->invoke($ctrl, ['tracking_number' => '']));
+    }
+
+    public function test_long_usps_number_counts_as_tracking(): void
+    {
+        $ref = new ReflectionClass(SalesOrderFulfillmentController::class);
+        $ctrl = $ref->newInstanceWithoutConstructor();
+        $looks = $ref->getMethod('looksLikeCarrierTrackingNumber');
+        $has = $ref->getMethod('rowHasSofTrackingNumber');
+
+        $longUsps = '923469026733880001234567890123';
+        $this->assertTrue($looks->invoke($ctrl, $longUsps));
+        $this->assertTrue($has->invoke($ctrl, ['tracking_number' => $longUsps]));
+        $this->assertTrue($looks->invoke($ctrl, '9234690267338800012345, 9400111899351234567890'));
     }
 
     public function test_shopify_lookup_keys_include_tiktok_prefixes(): void

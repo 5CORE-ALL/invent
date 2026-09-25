@@ -286,20 +286,24 @@ class SalesOrderFulfillmentController extends Controller
     public function labelCreatedNoTrackingData(): JsonResponse
     {
         try {
-            @set_time_limit(60);
+            @set_time_limit(120);
             @ini_set('memory_limit', '512M');
-            $this->ignoreShopifyFulfilledEmptyTrackingOnce();
+            // Do not rebuild the No Scan list or run the one-time GOFO ignore here.
+            // Both run after this response used to be sent, so the proxy closed the
+            // connection and the grid stayed on "Loading…" while the badge already
+            // showed the count from the No Scan request.
             $rows = $this->labelCreatedNoTrackingRows();
             try {
                 $this->queueAmazonSofTrackingFillForRows($rows);
             } catch (\Throwable) {
             }
 
-            return response()->json(array_merge([
+            return response()->json([
                 'success' => true,
                 'data' => $rows,
                 'count' => count($rows),
-            ], $this->labelCreatedSplitCounts()));
+                'no_tracking_count' => count($rows),
+            ]);
         } catch (\Throwable $e) {
             report($e);
 
@@ -2675,8 +2679,29 @@ class SalesOrderFulfillmentController extends Controller
     public function rowHasSofTrackingNumber(array $row): bool
     {
         $tn = trim((string) ($row['tracking_number'] ?? ''));
+        if ($tn === '' || $this->trackingValueIsPlaceholder($tn)) {
+            return false;
+        }
+        if ($this->looksLikeCarrierTrackingNumber($tn)) {
+            return true;
+        }
 
-        return $tn !== '' && $this->looksLikeCarrierTrackingNumber($tn);
+        // The Tracking column turns green for any saved number. Those rows are
+        // not "no tracking", even when the number is longer than the old pattern.
+        $compact = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', $tn));
+        if ($compact === '' || strlen($compact) < 8) {
+            return false;
+        }
+        if (preg_match('/^\d{3}\d{7}\d{7}$/', $compact) === 1) {
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function trackingValueIsPlaceholder(string $value): bool
+    {
+        return in_array(strtolower(trim($value)), ['—', '-', 'n/a', 'na', 'none', 'null'], true);
     }
 
     /**
@@ -2837,10 +2862,26 @@ class SalesOrderFulfillmentController extends Controller
     protected function looksLikeCarrierTrackingNumber(string $value): bool
     {
         $v = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', $value));
+        if ($this->trackingTokenLooksLikeCarrier($v)) {
+            return true;
+        }
+
+        foreach (preg_split('/[\s,;\/|]+/', strtoupper($value)) ?: [] as $part) {
+            $token = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', (string) $part));
+            if ($token !== '' && $token !== $v && $this->trackingTokenLooksLikeCarrier($token)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function trackingTokenLooksLikeCarrier(string $v): bool
+    {
         if ($v === '' || strlen($v) < 8) {
             return false;
         }
-        // Marketplace order ids are not tracking numbers.
+        // Marketplace order ids (111-1234567-1234567) are not tracking numbers.
         if (preg_match('/^\d{3}\d{7}\d{7}$/', $v) === 1) {
             return false;
         }
@@ -2849,16 +2890,12 @@ class SalesOrderFulfillmentController extends Controller
         if (preg_match('/^1Z[A-Z0-9]{16}$/', $v) === 1) {
             return true;
         }
-        // USPS / common numeric express
-        if (preg_match('/^\d{12,22}$/', $v) === 1) {
-            return true;
-        }
-        // FedEx-ish
-        if (preg_match('/^\d{12,15}$/', $v) === 1) {
+        // USPS IMpb (22) and the same number with a 420 ZIP routing prefix (30–34).
+        if (preg_match('/^\d{12,34}$/', $v) === 1) {
             return true;
         }
         // International / other alphanumeric tracking (exclude pure short numeric ids)
-        if (preg_match('/^[A-Z0-9]{10,30}$/', $v) === 1 && preg_match('/[A-Z]/', $v) === 1) {
+        if (preg_match('/^[A-Z0-9]{10,40}$/', $v) === 1 && preg_match('/[A-Z]/', $v) === 1) {
             return true;
         }
 
