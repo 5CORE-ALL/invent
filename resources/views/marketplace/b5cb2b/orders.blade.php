@@ -13,6 +13,7 @@
                 <button class="btn btn-sm btn-outline-secondary">Search</button>
             </form>
             <button type="button" class="btn btn-sm btn-primary" id="b5c-fetch-orders">Fetch orders</button>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="b5c-push-shopify">Push to Shopify</button>
             <button type="button" class="btn btn-sm btn-outline-success" id="b5c-sync-tracking">Push tracking</button>
             <span class="small text-muted align-self-center" id="b5c-orders-status"></span>
         </div>
@@ -34,7 +35,7 @@
                     <tbody>
                         @forelse($orders as $row)
                             <tr>
-                                <td><a href="{{ url('/marketplace/b5cb2b/orders/'.$row->store_order_id) }}">#{{ $row->store_order_id }}</a></td>
+                                <td><a href="{{ url('/marketplace/b5cb2b/orders/'.$row->store_order_id) }}">{{ $row->channelOrderNumber() }}</a></td>
                                 <td>{{ $row->status }}</td>
                                 <td>{{ $row->customer_name }}<br><span class="text-muted small">{{ $row->customer_email }}</span></td>
                                 <td>{{ $row->currency }} {{ $row->total }}</td>
@@ -59,6 +60,12 @@
 $('#b5c-fetch-orders').on('click', function () {
     const $s = $('#b5c-orders-status').text('Queueing…');
     $.post("{{ route('marketplace.manager.b5cb2b.fetch.orders') }}", {_token: '{{ csrf_token() }}'})
+        .done(function (res) { $s.text(res.message || 'Queued'); })
+        .fail(function (xhr) { $s.text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed'); });
+});
+$('#b5c-push-shopify').on('click', function () {
+    const $s = $('#b5c-orders-status').text('Queueing Shopify…');
+    $.post("{{ route('marketplace.manager.b5cb2b.push.shopify') }}", {_token: '{{ csrf_token() }}'})
         .done(function (res) { $s.text(res.message || 'Queued'); })
         .fail(function (xhr) { $s.text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed'); });
 });

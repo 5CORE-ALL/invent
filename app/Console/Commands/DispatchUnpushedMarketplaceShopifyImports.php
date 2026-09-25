@@ -101,6 +101,7 @@ class DispatchUnpushedMarketplaceShopifyImports extends Command
             'faire' => \App\Services\MarketplaceManager\FaireOrderSyncService::class,
             'tiktok' => \App\Services\MarketplaceManager\TikTokOrderSyncService::class,
             'tiktok2' => \App\Services\MarketplaceManager\TikTok2OrderSyncService::class,
+            'b5cb2b' => \App\Services\MarketplaceManager\B5cB2bOrderSyncService::class,
         ];
     }
 }

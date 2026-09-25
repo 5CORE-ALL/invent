@@ -11,6 +11,8 @@ use App\Models\MarketplaceSyncSettings;
 use App\Services\Business5CoreB2bApiService;
 use App\Services\MarketplaceManager\B5cB2bListingsPageBuilder;
 use App\Services\MarketplaceManager\B5cB2bLiveListingsService;
+use App\Services\MarketplaceManager\B5cB2bOrderPushService;
+use App\Services\MarketplaceManager\B5cB2bOrderSyncService;
 use App\Services\MarketplaceManager\B5cB2bTrackingSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
@@ -86,7 +88,52 @@ class B5cB2bSyncController extends Controller
         return response()->json([
             'success' => true,
             'queued' => true,
-            'message' => 'Business 5 Core B2B order fetch queued.',
+            'message' => 'Business 5 Core order fetch queued. New orders import to Shopify as B5-0009.',
+        ]);
+    }
+
+    public function pushUnlinkedToShopify(): JsonResponse
+    {
+        $sync = app(B5cB2bOrderSyncService::class);
+        $inline = $sync->importUnlinkedInline(4);
+        $queued = $sync->dispatchImportsForNewOrders(true);
+        $message = (string) ($inline['message'] ?? '');
+        if ($queued > 0) {
+            $message .= ($message !== '' ? ' ' : '')."Queued {$queued} more.";
+        }
+
+        return response()->json([
+            'success' => ($inline['failed'] ?? 0) === 0,
+            'imported' => $inline['imported'] ?? 0,
+            'failed' => $inline['failed'] ?? 0,
+            'queued' => $queued,
+            'message' => $message,
+        ], ($inline['failed'] ?? 0) > 0 && ($inline['imported'] ?? 0) === 0 ? 422 : 200);
+    }
+
+    public function pushOrderToShopify(Request $request): JsonResponse
+    {
+        $id = (int) $request->input('order_id', $request->input('id', 0));
+        $row = B5cB2bOrder::query()->where('store_order_id', $id)->first()
+            ?: ($id > 0 ? B5cB2bOrder::query()->find($id) : null);
+        if (! $row) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        $push = app(B5cB2bOrderPushService::class);
+        $shopifyId = $push->importToShopify($row);
+        if (! $shopifyId) {
+            return response()->json([
+                'success' => false,
+                'message' => $push->lastFailureReason ?: 'Shopify import failed.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'shopify_order_id' => $shopifyId,
+            'order_number' => $row->channelOrderNumber(),
+            'message' => $row->channelOrderNumber().' linked to Shopify order '.$shopifyId.'.',
         ]);
     }
 
@@ -154,11 +201,17 @@ class B5cB2bSyncController extends Controller
         $search = trim((string) $request->input('q', ''));
         $query = B5cB2bOrder::query()->orderByDesc('store_order_id');
         if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('store_order_id', $search)
-                    ->orWhere('customer_email', 'like', '%'.$search.'%')
+            $storeId = B5cB2bOrder::storeIdFromSearch($search);
+            $query->where(function ($q) use ($search, $storeId) {
+                if ($storeId !== null) {
+                    $q->where('store_order_id', $storeId);
+                } else {
+                    $q->whereRaw('1 = 0');
+                }
+                $q->orWhere('customer_email', 'like', '%'.$search.'%')
                     ->orWhere('customer_name', 'like', '%'.$search.'%')
-                    ->orWhere('status', 'like', '%'.$search.'%');
+                    ->orWhere('status', 'like', '%'.$search.'%')
+                    ->orWhere('shopify_order_id', 'like', '%'.$search.'%');
             });
         }
         $orders = Schema::hasTable('b5c_b2b_orders')
@@ -185,7 +238,7 @@ class B5cB2bSyncController extends Controller
         abort_if(! $row, 404);
 
         return view('marketplace.b5cb2b.order-show', [
-            'title' => 'B5C B2B Order #'.$row->store_order_id,
+            'title' => 'B5C B2B Order '.$row->channelOrderNumber(),
             'order' => $row,
         ]);
     }

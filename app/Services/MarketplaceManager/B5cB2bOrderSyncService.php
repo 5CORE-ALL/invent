@@ -2,10 +2,13 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Jobs\ImportB5cB2bOrderToShopify;
 use App\Models\B5cB2bOrder;
+use App\Models\MarketplaceSyncSettings;
 use App\Services\Business5CoreB2bApiService;
 use App\Services\ShopifyB2BStoreOrderIngestService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -75,13 +78,125 @@ class B5cB2bOrderSyncService
 
         $this->dailyIngest->refreshPeriodLabels();
 
+        $queued = 0;
+        if ($import || MarketplaceShopifyImportQueue::shouldDispatchImports('b5cb2b')) {
+            $queued = $this->dispatchImportsForNewOrders();
+        }
+
+        $message = "Synced {$upserted} Business 5 Core B2B order(s), {$lines} sales line(s).";
+        if ($queued > 0) {
+            $message .= " Queued {$queued} Shopify import(s).";
+        }
+
         return [
             'success' => true,
-            'message' => "Synced {$upserted} Business 5 Core B2B order(s), {$lines} sales line(s).",
+            'message' => $message,
             'upserted' => $upserted,
             'pages' => 1,
             'fetched' => $upserted,
             'stored' => $upserted,
+            'queued' => $queued,
+        ];
+    }
+
+    /**
+     * Queue Shopify creates for orders that still have no shopify_order_id.
+     */
+    public function dispatchImportsForNewOrders(bool $force = false): int
+    {
+        if (! $force && ! MarketplaceSyncSettings::canAutoImportToShopify('b5cb2b')) {
+            return 0;
+        }
+        if (! Schema::hasTable('b5c_b2b_orders')) {
+            return 0;
+        }
+
+        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('b5cb2b');
+        $orders = B5cB2bOrder::query()
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
+            ->orderByDesc('store_order_id')
+            ->limit(200)
+            ->get();
+
+        $dispatched = 0;
+        foreach ($orders as $order) {
+            $status = strtolower(trim((string) ($order->status ?? '')));
+            if (in_array($status, ['canceled', 'cancelled'], true)) {
+                continue;
+            }
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('b5cb2b', $order)) {
+                continue;
+            }
+
+            $key = ImportB5cB2bOrderToShopify::dispatchKeyFor((int) $order->id);
+            if (! Cache::add($key, 1, now()->addMinutes(30))) {
+                continue;
+            }
+
+            try {
+                ImportB5cB2bOrderToShopify::dispatch((int) $order->id);
+                $dispatched++;
+            } catch (\Throwable $e) {
+                Cache::forget($key);
+                Log::warning('B5cB2bOrderSyncService: could not queue Shopify import', [
+                    'id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $dispatched;
+    }
+
+    /**
+     * Create Shopify orders in this request so the SKU is written even when the queue worker is behind.
+     *
+     * @return array{imported: int, failed: int, skipped: int, message: string}
+     */
+    public function importUnlinkedInline(int $limit = 8): array
+    {
+        if (! Schema::hasTable('b5c_b2b_orders')) {
+            return ['imported' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'b5c_b2b_orders table missing.'];
+        }
+
+        $orders = B5cB2bOrder::query()
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
+            ->orderByDesc('store_order_id')
+            ->limit(max(1, $limit))
+            ->get();
+
+        $push = app(B5cB2bOrderPushService::class);
+        $imported = 0;
+        $failed = 0;
+        $reasons = [];
+        foreach ($orders as $order) {
+            Cache::forget(ImportB5cB2bOrderToShopify::dispatchKeyFor((int) $order->id));
+            $shopifyId = $push->importToShopify($order);
+            if ($shopifyId) {
+                $imported++;
+                continue;
+            }
+            $failed++;
+            $reasons[] = $order->channelOrderNumber().': '.($push->lastFailureReason ?: 'Shopify import failed');
+        }
+
+        $message = "Imported {$imported} Business 5 Core order(s) to Shopify.";
+        if ($failed > 0) {
+            $message .= ' Failed '.$failed.'. '.implode(' ', array_slice($reasons, 0, 3));
+        }
+        if ($imported === 0 && $failed === 0) {
+            $message = 'No unlinked Business 5 Core orders to import.';
+        }
+
+        return [
+            'imported' => $imported,
+            'failed' => $failed,
+            'skipped' => 0,
+            'message' => $message,
         ];
     }
 

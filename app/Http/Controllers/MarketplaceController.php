@@ -710,6 +710,9 @@ class MarketplaceController extends Controller
 
             return app(TikTokSyncController::class)->pushOrderToShopify($request, $id);
         }
+        if (strtolower($marketplace) === 'b5cb2b') {
+            return app(B5cB2bSyncController::class)->pushOrderToShopify($request);
+        }
         return response()->json(['success' => false], 404);
     }
 

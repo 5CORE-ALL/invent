@@ -65,8 +65,22 @@ class MarketplaceOrderPaidFilter
             'amazon' => self::isAmazonPaid($order),
             'reverb' => self::isReverbPaid($order),
             'aliexpress', 'alibaba' => self::isAliFamilyPaid($order),
+            'b5cb2b' => self::isB5cB2bPaid($order),
             default => true,
         };
+    }
+
+    protected static function isB5cB2bPaid(object $order): bool
+    {
+        $status = strtolower(trim((string) ($order->status ?? '')));
+        if (in_array($status, ['unpaid', 'pending_payment', 'canceled', 'cancelled'], true)) {
+            return false;
+        }
+
+        $payload = is_array($order->payload ?? null) ? $order->payload : [];
+        $payment = strtolower(trim((string) ($payload['payment_status'] ?? '')));
+
+        return ! in_array($payment, ['unpaid', 'pending', 'pending_payment'], true);
     }
 
     protected static function isTopDawgPaid(object $order): bool
