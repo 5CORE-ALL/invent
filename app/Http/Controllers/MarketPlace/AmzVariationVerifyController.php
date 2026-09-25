@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Models\AmazonAdsCampaignSku;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonListingRaw;
 use App\Models\AmazonSpCampaignReport;
@@ -82,12 +83,18 @@ class AmzVariationVerifyController extends Controller
             $ptFields = $this->buildSiblingAdFields($hasPt, $available, $adLookup['empty'], $isComing, $isLowInv, $isNrl);
 
             if (! empty($kwFields['existing']) || ! empty($kwFields['over'])) {
-                $kwFields['campaign_names'] = $this->findMatchedCampaignNames($sku, $parent, $available, $adLookup, 'kw');
+                $kwFields['campaign_names'] = $this->mergeCampaignNameLists(
+                    $this->findMatchedCampaignNames($sku, $parent, $available, $adLookup, 'kw'),
+                    $this->productAdCampaignNamesForSku($sku, $adLookup, 'kw')
+                );
             } else {
                 $kwFields['campaign_names'] = [];
             }
             if (! empty($ptFields['existing']) || ! empty($ptFields['over'])) {
-                $ptFields['campaign_names'] = $this->findMatchedCampaignNames($sku, $parent, $available, $adLookup, 'pt');
+                $ptFields['campaign_names'] = $this->mergeCampaignNameLists(
+                    $this->findMatchedCampaignNames($sku, $parent, $available, $adLookup, 'pt'),
+                    $this->productAdCampaignNamesForSku($sku, $adLookup, 'pt')
+                );
             } else {
                 $ptFields['campaign_names'] = [];
             }
@@ -1063,6 +1070,12 @@ class AmzVariationVerifyController extends Controller
         $kwNames = $kwCampaigns->map(fn ($c) => trim((string) ($c->campaignName ?? '')))->filter()->unique()->values()->all();
         $ptNames = $ptCampaigns->map(fn ($c) => trim((string) ($c->campaignName ?? '')))->filter()->unique()->values()->all();
         $productAdSkus = $this->buildProductAdSkuLookup($kwCampaigns, $ptCampaigns);
+        $advertised = $this->buildAdvertisedCampaignSkuLookup($kwCampaigns, $ptCampaigns);
+        foreach (['kw', 'pt'] as $type) {
+            foreach ($advertised[$type] as $key => $_) {
+                $productAdSkus[$type][$key] = true;
+            }
+        }
 
         return [
             'empty' => false,
@@ -1082,6 +1095,8 @@ class AmzVariationVerifyController extends Controller
             'pt_campaign_names' => $ptNames,
             'kw_product_ad_skus' => $productAdSkus['kw'],
             'pt_product_ad_skus' => $productAdSkus['pt'],
+            'kw_product_ad_campaigns' => $advertised['kw_campaigns'],
+            'pt_product_ad_campaigns' => $advertised['pt_campaigns'],
         ];
     }
 
@@ -1130,8 +1145,6 @@ class AmzVariationVerifyController extends Controller
                 continue;
             }
             $cid = preg_replace('/\D+/', '', trim((string) ($row->campaign_id ?? ''))) ?: '';
-            $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-            $nameKey = strtoupper(trim(rtrim($sku, '.')));
             $isKw = $cid !== '' && isset($kwIds[$cid]);
             $isPt = $cid !== '' && isset($ptIds[$cid]);
             // Campaign report missing (just-added) — credit both so the row stays Added.
@@ -1139,10 +1152,7 @@ class AmzVariationVerifyController extends Controller
                 $isKw = true;
                 $isPt = true;
             }
-            foreach ([$norm, $nameKey] as $key) {
-                if ($key === '') {
-                    continue;
-                }
+            foreach ($this->advertisedSkuKeys($sku) as $key) {
                 if ($isKw) {
                     $out['kw'][$key] = true;
                 }
@@ -1153,6 +1163,275 @@ class AmzVariationVerifyController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Real SP product ads from /amazon-ads (amazon_ads_campaign_skus).
+     * Campaign title does not have to match the CP parent. A live product ad
+     * is KW or PT from its campaign id, then from its name. If neither is
+     * known, it is kept on both so the SKU is not left missing.
+     * Name-derived rows are ignored (they list every child of a parent campaign).
+     * Sponsored Brand / headline names are not KW or PT.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $kwCampaigns
+     * @param  \Illuminate\Support\Collection<int, object>  $ptCampaigns
+     * @return array{
+     *   kw: array<string, true>,
+     *   pt: array<string, true>,
+     *   kw_campaigns: array<string, array<string, true>>,
+     *   pt_campaigns: array<string, array<string, true>>
+     * }
+     */
+    private function buildAdvertisedCampaignSkuLookup($kwCampaigns, $ptCampaigns): array
+    {
+        $out = [
+            'kw' => [],
+            'pt' => [],
+            'kw_campaigns' => [],
+            'pt_campaigns' => [],
+        ];
+        if (! Schema::hasTable('amazon_ads_campaign_skus')) {
+            return $out;
+        }
+
+        $nameByCampaignId = [];
+        $typeByCampaignId = [];
+        foreach (['kw' => $kwCampaigns, 'pt' => $ptCampaigns] as $type => $campaigns) {
+            foreach ($campaigns as $campaign) {
+                $cid = preg_replace('/\D+/', '', trim((string) ($campaign->campaign_id ?? ''))) ?: '';
+                $name = trim((string) ($campaign->campaignName ?? ''));
+                if ($cid === '') {
+                    continue;
+                }
+                if ($name !== '') {
+                    $nameByCampaignId[$cid] = $name;
+                }
+                if (! isset($typeByCampaignId[$cid])) {
+                    $typeByCampaignId[$cid] = $type;
+                }
+            }
+        }
+
+        $rows = AmazonAdsCampaignSku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotNull('ad_id')
+            ->where('ad_id', 'not like', 'name:%')
+            ->where('ad_id', 'not like', 'sb:%')
+            ->where(function ($q) {
+                $q->whereNull('state')
+                    ->orWhereRaw('UPPER(TRIM(state)) != ?', ['ARCHIVED']);
+            })
+            ->get(['sku', 'campaign_id', 'campaign_name']);
+
+        $unresolved = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $cid = preg_replace('/\D+/', '', trim((string) ($row->campaign_id ?? ''))) ?: '';
+            $campaignName = trim((string) ($row->campaign_name ?? ''));
+            if ($campaignName === '' && $cid !== '') {
+                $campaignName = $nameByCampaignId[$cid] ?? '';
+            }
+            $type = $this->resolveAdvertisedAdType($cid, $campaignName, $typeByCampaignId);
+            if ($type === null && $cid !== '' && $campaignName === '' && ! isset($typeByCampaignId[$cid])) {
+                $unresolved[$cid][] = $sku;
+                continue;
+            }
+            $this->storeAdvertisedProductAd($out, $sku, $campaignName, $type);
+        }
+
+        if ($unresolved !== [] && Schema::hasTable('amazon_sp_campaign_reports')) {
+            $extraNames = AmazonSpCampaignReport::query()
+                ->whereIn('campaign_id', array_keys($unresolved))
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->get(['campaign_id', 'campaignName']);
+            foreach ($extraNames as $campaign) {
+                $cid = preg_replace('/\D+/', '', trim((string) ($campaign->campaign_id ?? ''))) ?: '';
+                $name = trim((string) ($campaign->campaignName ?? ''));
+                if ($cid !== '' && $name !== '' && ! isset($nameByCampaignId[$cid])) {
+                    $nameByCampaignId[$cid] = $name;
+                }
+            }
+            foreach ($unresolved as $cid => $skus) {
+                $campaignName = $nameByCampaignId[$cid] ?? '';
+                $type = $this->resolveAdvertisedAdType($cid, $campaignName, $typeByCampaignId);
+                foreach ($skus as $sku) {
+                    $this->storeAdvertisedProductAd($out, $sku, $campaignName, $type);
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Campaign id in the KW/PT report wins. Otherwise the campaign name.
+     *
+     * @param  array<string, string>  $typeByCampaignId
+     */
+    private function resolveAdvertisedAdType(string $campaignId, string $campaignName, array $typeByCampaignId): ?string
+    {
+        if ($campaignId !== '' && isset($typeByCampaignId[$campaignId])) {
+            $fromReport = $typeByCampaignId[$campaignId];
+            if ($fromReport === 'kw' || $fromReport === 'pt') {
+                return $fromReport;
+            }
+        }
+
+        return $this->campaignReportAdType($campaignName);
+    }
+
+    /**
+     * @param  array{
+     *   kw: array<string, true>,
+     *   pt: array<string, true>,
+     *   kw_campaigns: array<string, array<string, true>>,
+     *   pt_campaigns: array<string, array<string, true>>
+     * }  $bucket
+     */
+    private function storeAdvertisedProductAd(array &$bucket, string $sku, string $campaignName, ?string $type): void
+    {
+        if ($type === 'kw' || $type === 'pt') {
+            $this->rememberAdvertisedSku($bucket, $sku, $campaignName, $type);
+
+            return;
+        }
+        if ($this->isHeadlineCampaignName($campaignName)) {
+            return;
+        }
+        // Real product ad with no KW/PT label — do not leave it missing.
+        $this->rememberAdvertisedSku($bucket, $sku, $campaignName, 'kw');
+        $this->rememberAdvertisedSku($bucket, $sku, $campaignName, 'pt');
+    }
+
+    /**
+     * KW unless the campaign name is PT. Headline / HL names are not KW or PT.
+     */
+    private function campaignReportAdType(string $campaignName): ?string
+    {
+        $cn = $this->normalizeCampaignToken($campaignName);
+        if ($cn === '') {
+            return null;
+        }
+        if (preg_match('/\s+(HEAD|HL)$/', $cn)) {
+            return null;
+        }
+        if (preg_match('/\s+PT$/', $cn)) {
+            return 'pt';
+        }
+
+        return 'kw';
+    }
+
+    private function isHeadlineCampaignName(string $campaignName): bool
+    {
+        $cn = $this->normalizeCampaignToken($campaignName);
+
+        return $cn !== '' && (bool) preg_match('/\s+(HEAD|HL)$/', $cn);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function advertisedSkuKeys(string $sku): array
+    {
+        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+        $nameKey = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
+        $nameKey = preg_replace('/\s+/', ' ', $nameKey) ?? $nameKey;
+        $nameKey = rtrim($nameKey, '.');
+        $keys = [];
+        foreach ([$norm, $nameKey] as $key) {
+            if ($key !== '') {
+                $keys[$key] = true;
+            }
+        }
+
+        return array_keys($keys);
+    }
+
+    /**
+     * @param  array{
+     *   kw: array<string, true>,
+     *   pt: array<string, true>,
+     *   kw_campaigns: array<string, array<string, true>>,
+     *   pt_campaigns: array<string, array<string, true>>
+     * }  $bucket
+     */
+    private function rememberAdvertisedSku(array &$bucket, string $sku, string $campaignName, ?string $type = null): void
+    {
+        $type = ($type === 'kw' || $type === 'pt') ? $type : $this->campaignReportAdType($campaignName);
+        if ($type !== 'kw' && $type !== 'pt') {
+            return;
+        }
+
+        $rawName = trim($campaignName);
+        $skuMapKey = $type;
+        $campaignMapKey = $type.'_campaigns';
+
+        foreach ($this->advertisedSkuKeys($sku) as $key) {
+            $bucket[$skuMapKey][$key] = true;
+            if ($rawName !== '') {
+                $bucket[$campaignMapKey][$key][$rawName] = true;
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $lookup
+     * @return list<string>
+     */
+    private function productAdCampaignNamesForSku(string $sku, array $lookup, string $type): array
+    {
+        $map = $type === 'pt'
+            ? ($lookup['pt_product_ad_campaigns'] ?? [])
+            : ($lookup['kw_product_ad_campaigns'] ?? []);
+        if ($map === []) {
+            return [];
+        }
+
+        $found = [];
+        foreach ($this->advertisedSkuKeys($sku) as $key) {
+            if ($key === '' || empty($map[$key]) || ! is_array($map[$key])) {
+                continue;
+            }
+            foreach ($map[$key] as $name => $_) {
+                $name = trim((string) $name);
+                if ($name !== '') {
+                    $found[$name] = true;
+                }
+            }
+        }
+
+        $list = array_keys($found);
+        sort($list, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $list;
+    }
+
+    /**
+     * @param  list<string>  ...$lists
+     * @return list<string>
+     */
+    private function mergeCampaignNameLists(array ...$lists): array
+    {
+        $out = [];
+        foreach ($lists as $list) {
+            foreach ($list as $name) {
+                $name = trim((string) $name);
+                if ($name !== '') {
+                    $out[$name] = true;
+                }
+            }
+        }
+
+        $names = array_keys($out);
+        sort($names, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $names;
     }
 
     /**
@@ -1517,7 +1796,8 @@ class AmzVariationVerifyController extends Controller
     /**
      * Child is in ads when:
      *  1) a campaign is named for this SKU (direct), OR
-     *  2) a product ad for this SKU was added to a KW/PT campaign (INV ignored), OR
+     *  2) a product ad for this SKU is in a KW/PT campaign
+     *     (amazon_sp_product_ads or amazon_ads_campaign_skus; INV ignored), OR
      *  3) a PARENT {parent} campaign exists AND this child is listed on Amazon
      *     (unlisted children stay Missing unless explicitly added via #2).
      *
@@ -1539,20 +1819,11 @@ class AmzVariationVerifyController extends Controller
 
         $keys = $type === 'pt' ? ($lookup['pt_keys'] ?? []) : ($lookup['kw_keys'] ?? []);
         $adSkus = $type === 'pt' ? ($lookup['pt_product_ad_skus'] ?? []) : ($lookup['kw_product_ad_skus'] ?? []);
-        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-        $nameKey = strtoupper(trim(rtrim($sku, '.')));
 
-        if ($norm !== '' && isset($keys[$norm])) {
-            return true;
-        }
-        if ($nameKey !== '' && isset($keys[$nameKey])) {
-            return true;
-        }
-        if ($norm !== '' && isset($adSkus[$norm])) {
-            return true;
-        }
-        if ($nameKey !== '' && isset($adSkus[$nameKey])) {
-            return true;
+        foreach ($this->advertisedSkuKeys($sku) as $key) {
+            if (isset($keys[$key]) || isset($adSkus[$key])) {
+                return true;
+            }
         }
 
         // Parent-family campaign covers listed variations only.
