@@ -159,14 +159,13 @@
                     <div class="dropdown">
                         <button class="btn btn-sm btn-light dropdown-toggle border vm-metric-filter-btn" type="button"
                             id="vm-groi-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
-                            title="GROI — Red &lt;60, Yellow 60–90, Green 90–150, Pink 150+">
+                            title="GROI — Red &lt;90, Green 90–150, Pink 150+">
                             <span class="status-circle default" id="vm-groi-filter-dot"></span>
                             <span id="vm-groi-filter-label">GROI</span>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="vm-groi-filter-btn">
                             <li><a class="dropdown-item vm-metric-filter-item active" href="#" data-filter="groi" data-color="all"><span class="status-circle default"></span> All GROI</a></li>
-                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="groi" data-color="red"><span class="status-circle red"></span> Red (&lt;60)</a></li>
-                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="groi" data-color="yellow"><span class="status-circle yellow"></span> Yellow (60–90)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="groi" data-color="red"><span class="status-circle red"></span> Red (&lt;90)</a></li>
                             <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="groi" data-color="green"><span class="status-circle green"></span> Green (90–150)</a></li>
                             <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="groi" data-color="pink"><span class="status-circle pink"></span> Pink (150+)</a></li>
                         </ul>
@@ -176,14 +175,13 @@
                     <div class="dropdown">
                         <button class="btn btn-sm btn-light dropdown-toggle border vm-metric-filter-btn" type="button"
                             id="vm-gpft-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
-                            title="GPFT — Red ≤20, Yellow 20–30, Green 30–43, Pink 43+">
+                            title="GPFT — Red &lt;30, Green 30–43, Pink 43+">
                             <span class="status-circle default" id="vm-gpft-filter-dot"></span>
                             <span id="vm-gpft-filter-label">GPFT</span>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="vm-gpft-filter-btn">
                             <li><a class="dropdown-item vm-metric-filter-item active" href="#" data-filter="gpft" data-color="all"><span class="status-circle default"></span> All GPFT</a></li>
-                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="gpft" data-color="red"><span class="status-circle red"></span> Red (≤20)</a></li>
-                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="gpft" data-color="yellow"><span class="status-circle yellow"></span> Yellow (20–30)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="gpft" data-color="red"><span class="status-circle red"></span> Red (&lt;30)</a></li>
                             <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="gpft" data-color="green"><span class="status-circle green"></span> Green (30–43)</a></li>
                             <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="gpft" data-color="pink" data-dot="pink-dil"><span class="status-circle pink-dil"></span> Pink (43+)</a></li>
                         </ul>
@@ -193,14 +191,13 @@
                     <div class="dropdown">
                         <button class="btn btn-sm btn-light dropdown-toggle border vm-metric-filter-btn" type="button"
                             id="vm-nroi-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
-                            title="NROI — Red &lt;40, Yellow 40–70, Green 70–125, Pink 125+">
+                            title="NROI — Red &lt;70, Green 70–125, Pink 125+">
                             <span class="status-circle default" id="vm-nroi-filter-dot"></span>
                             <span id="vm-nroi-filter-label">NROI</span>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="vm-nroi-filter-btn">
                             <li><a class="dropdown-item vm-metric-filter-item active" href="#" data-filter="nroi" data-color="all"><span class="status-circle default"></span> All NROI</a></li>
-                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="nroi" data-color="red"><span class="status-circle red"></span> Red (&lt;40)</a></li>
-                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="nroi" data-color="yellow"><span class="status-circle yellow"></span> Yellow (40–70)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="nroi" data-color="red"><span class="status-circle red"></span> Red (&lt;70)</a></li>
                             <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="nroi" data-color="green"><span class="status-circle green"></span> Green (70–125)</a></li>
                             <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="nroi" data-color="pink"><span class="status-circle pink"></span> Pink (125+)</a></li>
                         </ul>
@@ -210,14 +207,13 @@
                     <div class="dropdown">
                         <button class="btn btn-sm btn-light dropdown-toggle border vm-metric-filter-btn" type="button"
                             id="vm-npft-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
-                            title="NPFT — Red ≤10, Yellow 10–20, Green 20–33, Pink 33+">
+                            title="NPFT — Red &lt;20, Green 20–33, Pink 33+">
                             <span class="status-circle default" id="vm-npft-filter-dot"></span>
                             <span id="vm-npft-filter-label">NPFT</span>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="vm-npft-filter-btn">
                             <li><a class="dropdown-item vm-metric-filter-item active" href="#" data-filter="npft" data-color="all"><span class="status-circle default"></span> All NPFT</a></li>
-                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="npft" data-color="red"><span class="status-circle red"></span> Red (≤10)</a></li>
-                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="npft" data-color="yellow"><span class="status-circle yellow"></span> Yellow (10–20)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="npft" data-color="red"><span class="status-circle red"></span> Red (&lt;20)</a></li>
                             <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="npft" data-color="green"><span class="status-circle green"></span> Green (20–33)</a></li>
                             <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="npft" data-color="pink"><span class="status-circle pink"></span> Pink (33+)</a></li>
                         </ul>
@@ -347,34 +343,35 @@
         return '#334155';
     }
 
-    /** Same bands as metric-percent-colors.js. GPFT 43+ is pink-dil, treated as pink here. */
+    /**
+     * Analytics green/pink cutoffs. The old yellow slab is red (same as Dil: no yellow band).
+     * GROI red &lt;90, green &lt;150, pink 150+.
+     * GPFT red &lt;30, green &lt;43, pink 43+.
+     * NROI red &lt;70, green &lt;125, pink 125+.
+     * NPFT red &lt;20, green &lt;33, pink 33+.
+     */
     function metricColorBand(kind, value) {
         const n = Number(value);
         if (!isFinite(n)) return '';
-        let band = null;
-        if (window.MetricPctColors && typeof MetricPctColors.bandFor === 'function') {
-            band = MetricPctColors.bandFor(kind, n);
-        } else if (kind === 'groi') {
-            band = n < 60 ? 'red' : (n < 90 ? 'yellow' : (n < 150 ? 'green' : 'pink'));
-        } else if (kind === 'gpft') {
-            band = n <= 20 ? 'red' : (n < 30 ? 'yellow' : (n < 43 ? 'green' : 'pink-dil'));
-        } else if (kind === 'nroi') {
-            band = n < 40 ? 'red' : (n < 70 ? 'yellow' : (n < 125 ? 'green' : 'pink'));
-        } else if (kind === 'npft') {
-            band = n <= 10 ? 'red' : (n < 20 ? 'yellow' : (n < 33 ? 'green' : 'pink'));
-        }
-        if (band === 'pink-dil') return 'pink';
-        return band || '';
+        if (kind === 'groi') return n < 90 ? 'red' : (n < 150 ? 'green' : 'pink');
+        if (kind === 'gpft') return n < 30 ? 'red' : (n < 43 ? 'green' : 'pink');
+        if (kind === 'nroi') return n < 70 ? 'red' : (n < 125 ? 'green' : 'pink');
+        if (kind === 'npft') return n < 20 ? 'red' : (n < 33 ? 'green' : 'pink');
+        return '';
     }
 
-    /** Same color bands as analytics pages (metric-percent-colors.js). */
+    function metricColorHex(kind, band) {
+        if (band === 'red') return '#dc3545';
+        if (band === 'green') return '#28a745';
+        if (band === 'pink') return kind === 'gpft' ? '#4e0dab' : '#e83e8c';
+        return '#334155';
+    }
+
     function metricHtml(kind, value) {
         const n = Number(value);
         if (!isFinite(n)) return '<span class="text-muted">—</span>';
-        if (window.MetricPctColors && typeof MetricPctColors.htmlFor === 'function') {
-            return MetricPctColors.htmlFor(kind, n, { decimals: 0, empty: '—' });
-        }
-        return Math.round(n) + '%';
+        const band = metricColorBand(kind, n);
+        return '<span style="color:' + metricColorHex(kind, band) + ';font-weight:700;">' + Math.round(n) + '%</span>';
     }
 
     function metricColumn(title, field, kind, tip) {
@@ -528,8 +525,8 @@
                         return '<span style="color:' + cvrColorHex(band) + ';font-weight:700;">' + label + '</span>';
                     },
                 },
-                metricColumn('GROI', 'groi', 'groi', 'GROI% from the channel analytics page. Red <60, Yellow 60–90, Green 90–150, Pink 150+.'),
-                metricColumn('GPFT', 'gpft', 'gpft', 'GPFT% from the channel analytics page. Red ≤20, Yellow 20–30, Green 30–43, Pink 43+.'),
+                metricColumn('GROI', 'groi', 'groi', 'GROI% from the channel analytics page. Red <90, Green 90–150, Pink 150+.'),
+                metricColumn('GPFT', 'gpft', 'gpft', 'GPFT% from the channel analytics page. Red <30, Green 30–43, Pink 43+.'),
                 {
                     title: 'Ads', field: 'ads_pct', width: 68, hozAlign: 'center', vertAlign: 'middle',
                     headerSort: true, sorter: 'number',
@@ -541,8 +538,8 @@
                         return '<span style="color:' + color + ';font-weight:700;">' + (Math.round(n * 10) / 10).toFixed(1) + '%</span>';
                     },
                 },
-                metricColumn('NROI', 'nroi', 'nroi', 'NROI% from the channel analytics page. Red <40, Yellow 40–70, Green 70–125, Pink 125+.'),
-                metricColumn('NPFT', 'npft', 'npft', 'NPFT% from the channel analytics page. Red ≤10, Yellow 10–20, Green 20–33, Pink 33+.'),
+                metricColumn('NROI', 'nroi', 'nroi', 'NROI% from the channel analytics page. Red <70, Green 70–125, Pink 125+.'),
+                metricColumn('NPFT', 'npft', 'npft', 'NPFT% from the channel analytics page. Red <20, Green 20–33, Pink 33+.'),
                 {
                     title: 'INV', field: 'inv', width: 70, hozAlign: 'center', vertAlign: 'middle',
                     headerSort: true, sorter: 'number',
