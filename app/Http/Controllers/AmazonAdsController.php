@@ -182,7 +182,7 @@ class AmazonAdsController extends Controller
     /**
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
-     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` follows Stat; `activeAgain` is the last column; `bgtAcos` then `bgtViews` then `bgtCvr` then `bgtPrc` then `bgtReviews` then `bgtDil` then `sbgt` follow `bgt` when the table has campaign budget.
+     * `campaignStatus` (Stat) sits immediately before `bgt` (Lbgt); `ruleStatus` follows Stat; `activeAgain` is the last column; `sbgt` and `sbgtAlert` sit beside Lbgt, then `bgtAcos`, `bgtViews`, `bgtCvr`, `bgtPrc`, `bgtReviews`, `bgtDil`.
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -250,7 +250,7 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // Alert sits beside SBID. Hover shows why a bid or budget was not pushed.
+        // SBID alert sits beside SBID. SBGT has its own alert beside SBGT.
         if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)
             && in_array('sbid', $ordered, true)) {
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'pushAlert'));
@@ -296,19 +296,26 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // BGT ACOS, Bgt Views, Bgt Cvr, BGT PRC, Bgt Reviews, Bgt Dil, then SBGT immediately after BGT.
+        // Lbgt, SBGT, and the SBGT alert sit together. The budget parts follow that pair.
         if (in_array('campaignBudgetAmount', self::orderedColumnsForTable($table), true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'bgtAcos' && $c !== 'sbgt' && $c !== 'bgtViews' && $c !== 'bgtCvr' && $c !== 'bgtPrc' && $c !== 'bgtReviews' && $c !== 'bgtDil'));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'bgtAcos' && $c !== 'sbgt' && $c !== 'sbgtAlert' && $c !== 'bgtViews' && $c !== 'bgtCvr' && $c !== 'bgtPrc' && $c !== 'bgtReviews' && $c !== 'bgtDil'));
             $idxBgtForSbgt = array_search('bgt', $ordered, true);
             if ($idxBgtForSbgt !== false) {
-                array_splice($ordered, $idxBgtForSbgt + 1, 0, ['bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt']);
+                $budgetTail = ['sbgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil'];
+                if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
+                    $budgetTail = ['sbgt', 'sbgtAlert', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil'];
+                }
+                array_splice($ordered, $idxBgtForSbgt + 1, 0, $budgetTail);
             }
         }
 
         $idxBgt = array_search('bgt', $ordered, true);
         if ($idxBgt !== false && in_array('clicks', $ordered, true)) {
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'clicks'));
-            $idxAfterBgt = array_search('sbgt', $ordered, true);
+            $idxAfterBgt = array_search('bgtDil', $ordered, true);
+            if ($idxAfterBgt === false) {
+                $idxAfterBgt = array_search('sbgt', $ordered, true);
+            }
             if ($idxAfterBgt === false) {
                 $idxAfterBgt = array_search('bgtCvr', $ordered, true);
             }
@@ -3339,6 +3346,8 @@ class AmazonAdsController extends Controller
             $inner = $q->clone()->select($table.'.campaign_id');
             if ($field === 'bid') {
                 $inner->addSelect([$table.'.last_sbid', $table.'.sbid']);
+            } elseif (in_array('campaignBudgetAmount', Schema::getColumnListing($table), true)) {
+                $inner->addSelect([$table.'.campaignBudgetAmount']);
             }
             $channel = self::liveSyncChannelForTable($table);
             $colorSql = self::liveSyncColorSql('r', $field);
@@ -3401,7 +3410,7 @@ class AmazonAdsController extends Controller
 
     /**
      * Same green / yellow / red as the dots on the row.
-     * Failed stays red. BID is green when Amazon already matches SBID, unless that row failed.
+     * Failed stays red. BID is green when Lbid matches SBID. BGT is green when the live budget matches the last SBGT, unless that row failed.
      */
     private static function liveSyncColorSql(string $alias, string $field): string
     {
@@ -3410,6 +3419,12 @@ class AmazonAdsController extends Controller
         if ($field === 'bid') {
             $match = self::storedBidMatchesSql($alias);
             $differ = self::storedBidDiffersSql($alias);
+
+            return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
+        }
+        if ($field === 'bgt') {
+            $match = self::storedBudgetMatchesSql($alias);
+            $differ = self::storedBudgetDiffersSql($alias);
 
             return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
         }
@@ -3444,6 +3459,27 @@ class AmazonAdsController extends Controller
         $t = str_replace('`', '', $table);
 
         return "((`{$t}`.`last_sbid` + 0) > 0 AND (`{$t}`.`sbid` + 0) > 0 AND ABS((`{$t}`.`last_sbid` + 0) - (`{$t}`.`sbid` + 0)) > 0.015)";
+    }
+
+    private static function storedBudgetAmountSql(string $table): string
+    {
+        $t = str_replace('`', '', $table);
+
+        return $t === 'r' ? 'r.campaignBudgetAmount' : "`{$t}`.`campaignBudgetAmount`";
+    }
+
+    private static function storedBudgetMatchesSql(string $table): string
+    {
+        $col = self::storedBudgetAmountSql($table);
+
+        return "({$col} IS NOT NULL AND s.desired_value IS NOT NULL AND ABS(({$col} + 0) - (s.desired_value + 0)) <= 0.015)";
+    }
+
+    private static function storedBudgetDiffersSql(string $table): string
+    {
+        $col = self::storedBudgetAmountSql($table);
+
+        return "({$col} IS NOT NULL AND s.desired_value IS NOT NULL AND ABS(({$col} + 0) - (s.desired_value + 0)) > 0.015)";
     }
 
     /**
