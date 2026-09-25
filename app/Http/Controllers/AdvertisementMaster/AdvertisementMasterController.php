@@ -599,12 +599,15 @@ class AdvertisementMasterController extends Controller
 
             $salesSeries = $this->allMarketplaceMetricSeries(32, 'l30_sales');
             $spendSeries = $this->allMarketplaceMetricSeries(32, 'ad_spend');
+            $clicksSeries = $this->allMarketplaceMetricSeries(32, 'total_views');
             $chartSales = $this->seriesLast($salesSeries);
             $chartSpend = $this->seriesLast($spendSeries);
+            $chartClicks = $this->seriesLast($clicksSeries);
             $badgeTrends = [
                 'ssales' => $this->seriesDirection($salesSeries),
                 'spend' => $this->seriesDirection($spendSeries),
                 'tcos' => $this->tcosDirection($salesSeries, $spendSeries),
+                'clicks' => $this->seriesDirection($clicksSeries),
             ];
             $activeChannelSpend = ($chartSpend !== null && $chartSpend > 0)
                 ? $chartSpend
@@ -680,6 +683,7 @@ class AdvertisementMasterController extends Controller
                 'temu2_net_sales' => $temu2NetSales,
                 'total_net_sales' => $totalNetSales,
                 'active_channel_spend' => $activeChannelSpend,
+                'active_channel_clicks' => $chartClicks,
                 'badge_trends' => $badgeTrends,
             ]);
         } catch (\Throwable $e) {
@@ -2160,9 +2164,11 @@ class AdvertisementMasterController extends Controller
         $activeHistory = $this->activeChannelHistoryByDate($from, $end);
         $marketplaceSales = $this->allMarketplaceMetricSeries($days, 'l30_sales');
         $marketplaceSpend = $this->allMarketplaceMetricSeries($days, 'ad_spend');
+        $marketplaceClicks = $this->allMarketplaceMetricSeries($days, 'total_views');
         $marketplaceDates = array_values(array_unique(array_merge(
             array_keys($marketplaceSales),
-            array_keys($marketplaceSpend)
+            array_keys($marketplaceSpend),
+            array_keys($marketplaceClicks)
         )));
         sort($marketplaceDates);
         if ($marketplaceDates !== []) {
@@ -2188,6 +2194,12 @@ class AdvertisementMasterController extends Controller
             $labels
         );
         $metrics = $this->applyActiveChannelGraphSeries($metrics, $labels, $activeHistory);
+        if ($marketplaceClicks !== []) {
+            $metrics['clicks'] = array_map(
+                fn ($d) => array_key_exists($d, $marketplaceClicks) ? (int) round($marketplaceClicks[$d]) : null,
+                $labels
+            );
+        }
 
         return response()->json([
             'status'   => 200,
