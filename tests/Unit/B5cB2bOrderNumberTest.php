@@ -97,4 +97,60 @@ class B5cB2bOrderNumberTest extends TestCase
         $already = B5cB2bOrderPushService::rewriteTagList('5Core Inventory, B5-0004, Business 5 Core (B2B)');
         $this->assertFalse($already['changed']);
     }
+
+    public function test_a_saved_shopify_id_counts_only_when_the_order_is_this_channel_order(): void
+    {
+        $this->assertTrue(B5cB2bOrderPushService::shopifyOrderRecordMatchesChannel([
+            'name' => '#344071',
+            'tags' => 'B5-0004, b5cb2b',
+        ], 'B5-0004', 4));
+
+        $this->assertTrue(B5cB2bOrderPushService::shopifyOrderRecordMatchesChannel([
+            'name' => '#B5-0005',
+            'tags' => '',
+        ], 'B5-0005', 5));
+
+        $this->assertFalse(B5cB2bOrderPushService::shopifyOrderRecordMatchesChannel([
+            'name' => '#341560',
+            'tags' => 'Best Buy USA',
+            'note_attributes' => [],
+        ], 'B5-0005', 5));
+
+        $this->assertFalse(B5cB2bOrderPushService::shopifyOrderRecordMatchesChannel([
+            'name' => '#341560',
+            'tags' => 'b5cb2b',
+        ], 'B5-0002', 2));
+    }
+
+    public function test_shipping_address_is_read_from_business_5_core_fields(): void
+    {
+        $fromString = B5cB2bOrderPushService::shopifyAddressFromPayload([
+            'shipping_address' => '707 Waterford Dr',
+            'shipping_city' => 'Grayslake',
+            'shipping_state' => 'IL',
+            'shipping_zip' => '60030',
+            'shipping_country' => 'United States',
+            'phone' => '8472121718',
+        ], 'Rick', 'Rudolph');
+
+        $this->assertSame('707 Waterford Dr', $fromString['address1']);
+        $this->assertSame('Grayslake', $fromString['city']);
+        $this->assertSame('IL', $fromString['province_code']);
+        $this->assertSame('60030', $fromString['zip']);
+        $this->assertSame('US', $fromString['country_code']);
+        $this->assertSame('8472121718', $fromString['phone']);
+
+        $fromNested = B5cB2bOrderPushService::shopifyAddressFromPayload([
+            'shipping' => [
+                'address_line_1' => '10 Main St',
+                'city' => 'Chicago',
+                'state' => 'IL',
+                'postal_code' => '60601',
+            ],
+        ], 'Avi', 'harrison');
+
+        $this->assertSame('10 Main St', $fromNested['address1']);
+        $this->assertSame('Chicago', $fromNested['city']);
+        $this->assertSame('60601', $fromNested['zip']);
+    }
 }

@@ -5667,7 +5667,9 @@ class TaskController extends Controller
 
         [$windowStart, $windowEnd] = $this->deletedTasksDateWindow(
             (string) $request->query('range', 'yesterday'),
-            $request->query('date')
+            $request->query('date'),
+            $request->query('from'),
+            $request->query('to')
         );
 
         $query = DeletedTask::query()
@@ -5739,9 +5741,22 @@ class TaskController extends Controller
      *
      * @return array{0: string, 1: string}
      */
-    protected function deletedTasksDateWindow(string $range, mixed $date): array
+    protected function deletedTasksDateWindow(string $range, mixed $date, mixed $from = null, mixed $to = null): array
     {
         $today = TaskBusinessTime::today();
+
+        if ($range === 'custom') {
+            $start = $this->deletedTasksParseDay($from, $today->copy()->subDays(7));
+            $end = $this->deletedTasksParseDay($to, $today->copy()->subDay());
+            if ($start->greaterThan($end)) {
+                [$start, $end] = [$end, $start];
+            }
+
+            return [
+                $start->copy()->startOfDay()->format('Y-m-d H:i:s'),
+                $end->copy()->endOfDay()->format('Y-m-d H:i:s'),
+            ];
+        }
 
         if ($range === '7') {
             return [
@@ -5779,6 +5794,20 @@ class TaskController extends Controller
             $yesterday->copy()->startOfDay()->format('Y-m-d H:i:s'),
             $yesterday->copy()->endOfDay()->format('Y-m-d H:i:s'),
         ];
+    }
+
+    protected function deletedTasksParseDay(mixed $raw, \Carbon\Carbon $fallback): \Carbon\Carbon
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return $fallback->copy()->startOfDay();
+        }
+
+        try {
+            return TaskBusinessTime::parse($raw.' 00:00:00')->startOfDay();
+        } catch (\Throwable $e) {
+            return $fallback->copy()->startOfDay();
+        }
     }
 
     /**

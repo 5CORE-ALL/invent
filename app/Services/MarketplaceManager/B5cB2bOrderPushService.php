@@ -27,19 +27,57 @@ class B5cB2bOrderPushService
 
     public ?string $lastDuplicateLinkMessage = null;
 
+    public bool $lastCreated = false;
+
+    public bool $lastLinkWasCached = false;
+
     public function importToShopify(B5cB2bOrder $order): ?string
     {
         $this->lastFailureReason = null;
         $this->lastApiStatus = null;
         $this->lastDuplicateLinkMessage = null;
+        $this->lastCreated = false;
+        $this->lastLinkWasCached = false;
 
         $order = $this->refreshFromStore($order);
 
         $existingId = trim((string) ($order->shopify_order_id ?? ''));
         if ($existingId !== '') {
-            $this->syncLineSkus($order, $existingId);
+            $cacheKey = 'b5cb2b-shopify-link:'.(int) $order->store_order_id.':'.$existingId;
+            if (Cache::get($cacheKey)) {
+                $this->lastLinkWasCached = true;
+                if ($this->syncAddressToShopify($order, $existingId)) {
+                    $this->lastLinkWasCached = false;
+                }
 
-            return $existingId;
+                return $existingId;
+            }
+
+            $belongs = $this->shopifyOrderBelongsTo($order, $existingId);
+            if ($belongs === true) {
+                Cache::put($cacheKey, 1, now()->addDays(30));
+                $this->syncLineSkus($order, $existingId);
+                $this->syncAddressToShopify($order, $existingId);
+
+                return $existingId;
+            }
+            if ($belongs === null) {
+                $this->lastFailureReason = 'Could not verify the saved Shopify order, so it was left unchanged.';
+
+                return $existingId;
+            }
+
+            Log::warning('B5cB2bOrderPushService: saved Shopify id is not this Business 5 Core order', [
+                'store_order_id' => $order->store_order_id,
+                'channel_order' => $order->channelOrderNumber(),
+                'shopify_order_id' => $existingId,
+            ]);
+            $order->update([
+                'shopify_order_id' => null,
+                'shopify_imported_at' => null,
+            ]);
+            $order->shopify_order_id = null;
+            Cache::forget('b5cb2b-display-tag:'.$existingId);
         }
 
         $status = strtolower(trim((string) ($order->status ?? '')));
@@ -81,10 +119,92 @@ class B5cB2bOrderPushService
             'shopify_order_id' => $shopifyOrderId,
             'shopify_imported_at' => $order->shopify_imported_at ?? now(),
         ]);
+        $this->lastCreated = true;
+        Cache::put('b5cb2b-shopify-link:'.(int) $order->store_order_id.':'.$shopifyOrderId, 1, now()->addDays(30));
+        $createdAddress = is_array($plan['payload']['shipping_address'] ?? null) ? $plan['payload']['shipping_address'] : [];
+        if ($createdAddress !== []) {
+            Cache::put($this->addressCacheKey($order, $createdAddress), 1, now()->addDays(30));
+        }
 
         $this->syncLineSkus($order->fresh() ?? $order, $shopifyOrderId);
 
         return $shopifyOrderId;
+    }
+
+    /**
+     * True when this Shopify order is the Business 5 Core order. False when it is missing or a different order.
+     * Null when Shopify could not be checked.
+     *
+     * @param  array<string, mixed>  $shopifyOrder
+     */
+    public static function shopifyOrderRecordMatchesChannel(array $shopifyOrder, string $channelNumber, int $storeOrderId): bool
+    {
+        $channelNumber = strtoupper(trim($channelNumber));
+        $name = strtoupper(ltrim(trim((string) ($shopifyOrder['name'] ?? '')), '#'));
+        if ($channelNumber !== '' && $name === $channelNumber) {
+            return true;
+        }
+
+        $tags = $shopifyOrder['tags'] ?? '';
+        if (is_array($tags)) {
+            $tags = implode(',', $tags);
+        }
+        foreach (preg_split('/\s*,\s*/', (string) $tags) ?: [] as $tag) {
+            if (strtoupper(trim((string) $tag)) === $channelNumber) {
+                return true;
+            }
+        }
+
+        $notes = $shopifyOrder['note_attributes'] ?? [];
+        if (! is_array($notes)) {
+            return false;
+        }
+        foreach ($notes as $note) {
+            if (! is_array($note)) {
+                continue;
+            }
+            $key = (string) ($note['name'] ?? '');
+            $value = trim((string) ($note['value'] ?? ''));
+            if ($key === 'b5cb2b_order_number' && $channelNumber !== '' && strtoupper($value) === $channelNumber) {
+                return true;
+            }
+            if ($key === 'b5cb2b_order_id' && $storeOrderId > 0 && (int) $value === $storeOrderId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function shopifyOrderBelongsTo(B5cB2bOrder $order, string $shopifyOrderId): ?bool
+    {
+        $config = $this->shopifyConfig();
+        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
+            return null;
+        }
+
+        $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json?fields=id,name,tags,note,note_attributes';
+        $response = $this->shopifySend('GET', $url, $config);
+        if ($response === null) {
+            return null;
+        }
+        if ($response->status() === 404) {
+            return false;
+        }
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $payload = $response->json('order');
+        if (! is_array($payload)) {
+            return false;
+        }
+
+        return self::shopifyOrderRecordMatchesChannel(
+            $payload,
+            $order->channelOrderNumber(),
+            (int) $order->store_order_id
+        );
     }
 
     /**
@@ -154,7 +274,7 @@ class B5cB2bOrderPushService
         }
 
         [$first, $last] = $this->splitName((string) ($order->customer_name ?? ($payload['customer_name'] ?? '')));
-        $shipping = $this->shippingAddress($payload, $first, $last);
+        $shipping = self::shopifyAddressFromPayload($payload, $first, $last);
         $extraTags = is_array($settings['order']['shopify_order_tags'] ?? null) ? $settings['order']['shopify_order_tags'] : [];
         $tags = self::shopifyTags($number, $extraTags);
 
@@ -384,38 +504,44 @@ class B5cB2bOrderPushService
     /**
      * Replace the b5cb2b tag on an order that is already in Shopify.
      *
-     * @return array{success: bool, changed: bool, cached: bool, message: string}
+     * @return array{success: bool, changed: bool, cached: bool, clear_link: bool, message: string}
      */
-    public function renameShopifyTag(string $shopifyOrderId): array
+    public function renameShopifyTag(string $shopifyOrderId, string $channelNumber = '', int $storeOrderId = 0): array
     {
         $shopifyOrderId = trim($shopifyOrderId);
         if ($shopifyOrderId === '') {
-            return ['success' => false, 'changed' => false, 'cached' => false, 'message' => 'No Shopify order.'];
+            return ['success' => false, 'changed' => false, 'cached' => false, 'clear_link' => false, 'message' => 'No Shopify order.'];
         }
 
         $cacheKey = 'b5cb2b-display-tag:'.$shopifyOrderId;
         if (Cache::get($cacheKey)) {
-            return ['success' => true, 'changed' => false, 'cached' => true, 'message' => 'Tag already updated.'];
+            return ['success' => true, 'changed' => false, 'cached' => true, 'clear_link' => false, 'message' => 'Tag already updated.'];
         }
 
         $config = $this->shopifyConfig();
         if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
-            return ['success' => false, 'changed' => false, 'cached' => false, 'message' => 'Shopify store credentials are not configured.'];
+            return ['success' => false, 'changed' => false, 'cached' => false, 'clear_link' => false, 'message' => 'Shopify store credentials are not configured.'];
         }
 
-        $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json?fields=id,tags';
+        $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json?fields=id,name,tags,note,note_attributes';
         $response = $this->shopifySend('GET', $url, $config);
         if ($response === null || ! $response->successful()) {
             $status = $response ? $response->status() : 0;
+            $missing = $status === 404;
 
-            return ['success' => false, 'changed' => false, 'cached' => false, 'message' => 'Could not read Shopify tags'.($status ? ' (HTTP '.$status.')' : '').'.'];
+            return ['success' => false, 'changed' => false, 'cached' => false, 'clear_link' => $missing, 'message' => 'Could not read Shopify tags'.($status ? ' (HTTP '.$status.')' : '').'.'];
         }
 
-        $rewritten = self::rewriteTagList((string) $response->json('order.tags'));
+        $shopifyOrder = $response->json('order');
+        if ($channelNumber !== '' && is_array($shopifyOrder) && ! self::shopifyOrderRecordMatchesChannel($shopifyOrder, $channelNumber, $storeOrderId)) {
+            return ['success' => false, 'changed' => false, 'cached' => false, 'clear_link' => true, 'message' => 'Saved Shopify id is not '.$channelNumber.'.'];
+        }
+
+        $rewritten = self::rewriteTagList((string) (is_array($shopifyOrder) ? ($shopifyOrder['tags'] ?? '') : ''));
         if (! $rewritten['changed']) {
             Cache::put($cacheKey, 1, now()->addDays(30));
 
-            return ['success' => true, 'changed' => false, 'cached' => false, 'message' => 'Tag already updated.'];
+            return ['success' => true, 'changed' => false, 'cached' => false, 'clear_link' => false, 'message' => 'Tag already updated.'];
         }
 
         sleep(1);
@@ -433,12 +559,12 @@ class B5cB2bOrderPushService
                 'body' => $put ? mb_substr($put->body(), 0, 300) : null,
             ]);
 
-            return ['success' => false, 'changed' => false, 'cached' => false, 'message' => 'Shopify tag update failed'.($status ? ' (HTTP '.$status.')' : '').'.'];
+            return ['success' => false, 'changed' => false, 'cached' => false, 'clear_link' => false, 'message' => 'Shopify tag update failed'.($status ? ' (HTTP '.$status.')' : '').'.'];
         }
 
         Cache::put($cacheKey, 1, now()->addDays(30));
 
-        return ['success' => true, 'changed' => true, 'cached' => false, 'message' => 'Tag updated.'];
+        return ['success' => true, 'changed' => true, 'cached' => false, 'clear_link' => false, 'message' => 'Tag updated.'];
     }
 
     /**
@@ -624,34 +750,187 @@ class B5cB2bOrderPushService
     }
 
     /**
+     * Business 5 Core sends the street as a string or under several address keys.
+     *
      * @param  array<string, mixed>  $payload
      * @return array<string, string>
      */
-    protected function shippingAddress(array $payload, string $first, string $last): array
+    public static function shopifyAddressFromPayload(array $payload, string $first, string $last): array
     {
-        $raw = is_array($payload['shipping_address'] ?? null)
-            ? $payload['shipping_address']
-            : (is_array($payload['shipping'] ?? null) ? $payload['shipping'] : []);
-        $address1 = trim((string) ($raw['address1'] ?? $raw['address'] ?? $raw['street'] ?? $raw['line1'] ?? $payload['shipping_address1'] ?? ''));
+        $bags = [];
+        foreach (['shipping_address', 'shipping', 'ship_to', 'delivery_address', 'delivery', 'address', 'billing_address'] as $key) {
+            if (is_array($payload[$key] ?? null)) {
+                $bags[] = $payload[$key];
+            }
+        }
+        $customer = is_array($payload['customer'] ?? null) ? $payload['customer'] : [];
+        foreach (['shipping_address', 'address', 'shipping'] as $key) {
+            if (is_array($customer[$key] ?? null)) {
+                $bags[] = $customer[$key];
+            }
+        }
+        $bags[] = $payload;
+
+        $address1 = self::firstAddressValue($bags, [
+            'address1', 'address_1', 'address_line_1', 'address_line1', 'line1', 'line_1',
+            'street', 'street1', 'street_address', 'address',
+        ]);
+        if ($address1 === '' && is_string($payload['shipping_address'] ?? null)) {
+            $address1 = trim($payload['shipping_address']);
+        }
+        if ($address1 === '' && is_string($customer['address'] ?? null)) {
+            $address1 = trim($customer['address']);
+        }
         if ($address1 === '') {
             return [];
         }
 
-        $country = strtoupper(trim((string) ($raw['country_code'] ?? $raw['country'] ?? $payload['shipping_country'] ?? 'US')));
-        if (strlen($country) > 2) {
-            $country = 'US';
+        $address2 = self::firstAddressValue($bags, ['address2', 'address_2', 'address_line_2', 'address_line2', 'line2', 'line_2', 'street2']);
+        $city = self::firstAddressValue($bags, ['city', 'shipping_city', 'town']);
+        $province = self::firstAddressValue($bags, ['province_code', 'province', 'state', 'shipping_state', 'shipping_province', 'region']);
+        $zip = self::firstAddressValue($bags, ['zip', 'zip_code', 'postal_code', 'postcode', 'shipping_zip', 'shipping_postal_code', 'shipping_postcode']);
+        $phone = self::firstAddressValue($bags, ['phone', 'shipping_phone', 'customer_phone', 'telephone', 'mobile']);
+        $country = self::firstAddressValue($bags, ['country_code', 'country', 'shipping_country', 'shipping_country_code']);
+        $country = self::countryCode($country);
+
+        if ($city === '' && $zip === '' && str_contains($address1, ',')) {
+            if (preg_match('/^(.+?),\s*([^,]+),\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/', $address1, $match) === 1) {
+                $address1 = trim($match[1]);
+                $city = trim($match[2]);
+                $province = strtoupper($match[3]);
+                $zip = $match[4];
+            }
         }
 
-        return array_filter([
+        $address = array_filter([
             'first_name' => $first,
             'last_name' => $last,
             'address1' => $address1,
-            'address2' => trim((string) ($raw['address2'] ?? $raw['line2'] ?? '')),
-            'city' => trim((string) ($raw['city'] ?? $payload['shipping_city'] ?? '')),
-            'province' => trim((string) ($raw['province'] ?? $raw['state'] ?? $raw['province_code'] ?? '')),
-            'zip' => trim((string) ($raw['zip'] ?? $raw['postal_code'] ?? $raw['postcode'] ?? '')),
+            'address2' => $address2,
+            'city' => $city,
+            'province' => $province,
+            'zip' => $zip,
             'country_code' => $country,
-            'phone' => trim((string) ($raw['phone'] ?? $payload['phone'] ?? '')),
+            'phone' => $phone,
         ], static fn ($value) => $value !== '');
+        if (strlen($province) === 2) {
+            $address['province_code'] = strtoupper($province);
+            $address['province'] = strtoupper($province);
+        }
+
+        return $address;
+    }
+
+    /**
+     * Write the Business 5 Core ship-to onto an order that is already in Shopify.
+     * Returns true when a Shopify request was made.
+     *
+     * @return bool
+     */
+    public function syncAddressToShopify(B5cB2bOrder $order, string $shopifyOrderId): bool
+    {
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($shopifyOrderId === '') {
+            return false;
+        }
+
+        $payload = is_array($order->payload) ? $order->payload : [];
+        [$first, $last] = $this->splitName((string) ($order->customer_name ?? ($payload['customer_name'] ?? '')));
+        $address = self::shopifyAddressFromPayload($payload, $first, $last);
+        if ($address === [] || trim((string) ($address['address1'] ?? '')) === '') {
+            return false;
+        }
+
+        $cacheKey = $this->addressCacheKey($order, $address);
+        if (Cache::get($cacheKey)) {
+            return false;
+        }
+
+        $config = $this->shopifyConfig();
+        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
+            return false;
+        }
+
+        sleep(1);
+        $put = $this->shopifySend('PUT', 'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json', $config, [
+            'order' => [
+                'id' => (int) $shopifyOrderId,
+                'shipping_address' => $address,
+                'billing_address' => $address,
+            ],
+        ]);
+        if ($put === null || ! $put->successful()) {
+            Log::warning('B5cB2bOrderPushService: Shopify address update failed', [
+                'shopify_order_id' => $shopifyOrderId,
+                'store_order_id' => $order->store_order_id,
+                'status' => $put ? $put->status() : 0,
+            ]);
+
+            return true;
+        }
+
+        Cache::put($cacheKey, 1, now()->addDays(30));
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, string>  $address
+     */
+    protected function addressCacheKey(B5cB2bOrder $order, array $address): string
+    {
+        return 'b5cb2b-shopify-address:'.(int) $order->store_order_id.':'.md5(json_encode($address) ?: '');
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $bags
+     * @param  list<string>  $keys
+     */
+    protected static function firstAddressValue(array $bags, array $keys): string
+    {
+        foreach ($bags as $bag) {
+            foreach ($keys as $key) {
+                $value = self::scalarAddressValue($bag[$key] ?? null);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+            foreach ($keys as $key) {
+                $value = self::scalarAddressValue($bag['shipping_'.$key] ?? null);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    protected static function scalarAddressValue(mixed $value): string
+    {
+        if (! is_scalar($value)) {
+            return '';
+        }
+
+        return trim((string) $value);
+    }
+
+    protected static function countryCode(string $country): string
+    {
+        $country = strtoupper(trim($country));
+        $map = [
+            'UNITED STATES' => 'US',
+            'UNITED STATES OF AMERICA' => 'US',
+            'USA' => 'US',
+            'CANADA' => 'CA',
+        ];
+        if (isset($map[$country])) {
+            return $map[$country];
+        }
+        if ($country === '' || strlen($country) > 2) {
+            return 'US';
+        }
+
+        return $country;
     }
 }

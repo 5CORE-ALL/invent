@@ -83,7 +83,7 @@ class B5cB2bSyncController extends Controller
 
     public function fetchOrders(): JsonResponse
     {
-        SyncMarketplaceOrdersJob::dispatch('b5cb2b', now()->subDays(14)->toDateString(), true, 14);
+        SyncMarketplaceOrdersJob::dispatch('b5cb2b', now()->subDays(45)->toDateString(), true, 45);
 
         return response()->json([
             'success' => true,
@@ -133,6 +133,8 @@ class B5cB2bSyncController extends Controller
             'success' => true,
             'shopify_order_id' => $shopifyId,
             'order_number' => $row->channelOrderNumber(),
+            'created' => $push->lastCreated,
+            'cached' => $push->lastLinkWasCached,
             'message' => $row->channelOrderNumber().' linked to Shopify order '.$shopifyId.'.',
         ]);
     }
@@ -151,7 +153,17 @@ class B5cB2bSyncController extends Controller
             return response()->json(['success' => false, 'message' => 'Order is not in Shopify yet.'], 422);
         }
 
-        $result = app(B5cB2bOrderPushService::class)->renameShopifyTag($shopifyId);
+        $result = app(B5cB2bOrderPushService::class)->renameShopifyTag(
+            $shopifyId,
+            $row->channelOrderNumber(),
+            (int) $row->store_order_id
+        );
+        if (! empty($result['clear_link'])) {
+            $row->update([
+                'shopify_order_id' => null,
+                'shopify_imported_at' => null,
+            ]);
+        }
 
         return response()->json($result, $result['success'] ? 200 : 422);
     }

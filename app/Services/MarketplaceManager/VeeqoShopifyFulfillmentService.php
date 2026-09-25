@@ -161,6 +161,21 @@ class VeeqoShopifyFulfillmentService
             ];
         }
 
+        if (strtolower(trim($marketplace)) === 'b5cb2b') {
+            $named = $this->shopifyOrderPayload(
+                (array) $ctx['shopify_config'],
+                (string) ($ctx['shopify_order_id'] ?? '')
+            );
+            $orderName = trim((string) (is_array($named) ? ($named['name'] ?? '') : ''));
+            if ($orderName !== '') {
+                foreach ([$orderName, ltrim($orderName, '#')] as $ref) {
+                    if ($ref !== '' && ! in_array($ref, $ctx['refs'], true)) {
+                        $ctx['refs'][] = $ref;
+                    }
+                }
+            }
+        }
+
         $skus = [];
         foreach ((array) ($ctx['skus'] ?? []) as $sku) {
             $sku = trim((string) $sku);
@@ -2970,6 +2985,19 @@ class VeeqoShopifyFulfillmentService
         foreach ($refFields as $field) {
             $refs[] = (string) ($model->{$field} ?? '');
         }
+        if ($marketplace === 'b5cb2b' && $model instanceof B5cB2bOrder) {
+            $number = $model->channelOrderNumber();
+            foreach ([$number, '#'.$number] as $ref) {
+                if ($ref !== '' && $ref !== '#' && ! in_array($ref, $refs, true)) {
+                    $refs[] = $ref;
+                }
+            }
+            foreach ($this->shopifyOrderNumberRefs((string) ($model->shopify_order_id ?? '')) as $ref) {
+                if ($ref !== '' && ! in_array($ref, $refs, true)) {
+                    $refs[] = $ref;
+                }
+            }
+        }
 
         $local = $this->trackingFromModel($model);
         if ($local === null) {
@@ -3050,6 +3078,11 @@ class VeeqoShopifyFulfillmentService
         if ($marketplace === 'amazon' && $model instanceof AmazonOrder) {
             foreach ($model->items()->pluck('sku') as $sku) {
                 $push((string) $sku);
+            }
+        }
+        if ($marketplace === 'b5cb2b' && $model instanceof B5cB2bOrder) {
+            foreach ($model->displayLines() as $line) {
+                $push((string) ($line['sku'] ?? ''));
             }
         }
 
