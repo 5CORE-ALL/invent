@@ -273,7 +273,7 @@ class AdvertisementMasterController extends Controller
                 'tcos' => $this->liveVsPriorDirection($tcos, $priorTcos),
                 'acos' => $this->liveVsPriorDirection($acos, $priorAcos),
                 'clicks' => $this->liveVsPriorDirection($clicks, $prior['clicks'] ?? null),
-                'cvr' => 'flat',
+                'cvr' => $this->liveVsPriorDirection($cvr, $this->priorListingCvr($prior), 0.005),
             ],
         ];
     }
@@ -339,6 +339,55 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $summary
+     * @return array{units: float, views: float}|null
+     */
+    private function summaryListingCvrPart(string $channelKey, array $summary): ?array
+    {
+        $views = (float) ($summary['total_views'] ?? 0);
+        if ($views <= 0) {
+            return null;
+        }
+        if ($channelKey === 'amazon' || $channelKey === 'reverb') {
+            $qty = (float) ($summary['total_quantity'] ?? 0);
+            if ($qty <= 0) {
+                $qty = (float) ($summary['l30_orders'] ?? 0);
+            }
+
+            return ['units' => $qty, 'views' => $views];
+        }
+        $cvr = $summary['listing_cvr'] ?? null;
+        if ($cvr === null || $cvr === '') {
+            $cvr = $summary['cvr_percent'] ?? null;
+        }
+        if ($cvr !== null && $cvr !== '' && is_numeric($cvr)) {
+            return ['units' => ((float) $cvr / 100) * $views, 'views' => $views];
+        }
+        $qty = (float) ($summary['total_quantity'] ?? 0);
+        if ($qty <= 0) {
+            $qty = (float) ($summary['l30_orders'] ?? 0);
+        }
+
+        return ['units' => $qty, 'views' => $views];
+    }
+
+    /**
+     * @param  array<string, float>|null  $prior
+     */
+    private function priorListingCvr(?array $prior): ?float
+    {
+        if ($prior === null) {
+            return null;
+        }
+        $views = (float) ($prior['cvr_views'] ?? 0);
+        if ($views <= 0) {
+            return null;
+        }
+
+        return round(((float) ($prior['cvr_units'] ?? 0) / $views) * 100, 2);
+    }
+
+    /**
      * @param  array<string, mixed>  $row
      */
     private function gridNumber(array $row, string $key): float
@@ -376,9 +425,9 @@ class AdvertisementMasterController extends Controller
         return is_array($last) ? $last : null;
     }
 
-    private function liveVsPriorDirection(?float $live, ?float $prior): string
+    private function liveVsPriorDirection(?float $live, ?float $prior, float $epsilon = 0.01): string
     {
-        if ($live === null || $prior === null || abs($live - $prior) < 0.01) {
+        if ($live === null || $prior === null || abs($live - $prior) < $epsilon) {
             return 'flat';
         }
 
@@ -2250,6 +2299,12 @@ class AdvertisementMasterController extends Controller
             $out[$date]['ad_spend'] = ($out[$date]['ad_spend'] ?? 0) + (float) ($summary['total_ad_spend'] ?? 0);
             $out[$date]['ad_sales'] = ($out[$date]['ad_sales'] ?? 0) + (float) ($summary['ad_sales'] ?? 0);
             $out[$date]['clicks'] = ($out[$date]['clicks'] ?? 0) + (float) ($summary['total_views'] ?? 0);
+            $channelKey = substr($combo, strpos($combo, '|') + 1);
+            $cvrPart = $this->summaryListingCvrPart(is_string($channelKey) ? $channelKey : '', $summary);
+            if ($cvrPart !== null) {
+                $out[$date]['cvr_units'] = ($out[$date]['cvr_units'] ?? 0) + $cvrPart['units'];
+                $out[$date]['cvr_views'] = ($out[$date]['cvr_views'] ?? 0) + $cvrPart['views'];
+            }
         }
         ksort($out);
 
