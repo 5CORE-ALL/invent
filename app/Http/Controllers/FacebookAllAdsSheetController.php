@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
+use App\Models\FacebookAdType;
 use App\Models\FacebookAllAdsSheet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,8 +52,9 @@ class FacebookAllAdsSheetController extends Controller
             'pageType'       => 'all',
             'pageTitle'      => 'Meta Ads All',
             'pageSubtitle'   => 'Generic CSV / Excel / TSV importer — upload any sheet and view it as a table',
-            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+            'allowedAdTypes'    => FacebookAllAdsSheet::allAdTypes(),
+            'canManageAdTypes'  => true,
+            'chOptions'         => FacebookAllAdsSheet::CH_OPTIONS,
         ]);
     }
 
@@ -75,9 +77,10 @@ class FacebookAllAdsSheetController extends Controller
             'pageType'       => 'all',
             'pageTitle'      => 'Facebook',
             'pageSubtitle'   => 'Campaigns tagged CH = FB',
-            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
-            'chFilter'       => 'FB',
+            'allowedAdTypes'    => FacebookAllAdsSheet::allAdTypes(),
+            'canManageAdTypes'  => true,
+            'chOptions'         => FacebookAllAdsSheet::CH_OPTIONS,
+            'chFilter'          => 'FB',
         ]);
     }
 
@@ -88,7 +91,7 @@ class FacebookAllAdsSheetController extends Controller
      */
     private function renderTypedChannelChild(string $chFilter, string $typeKey, string $shortLabel): \Illuminate\View\View
     {
-        $allowed = self::TYPE_FILTERS[$typeKey] ?? FacebookAllAdsSheet::AD_TYPES;
+        $allowed = self::TYPE_FILTERS[$typeKey] ?? FacebookAllAdsSheet::allAdTypes();
         $channelLabel = $chFilter === 'FB' ? 'Facebook' : 'Instagram';
 
         return view('facebook-all-ads-sheet', [
@@ -132,9 +135,10 @@ class FacebookAllAdsSheetController extends Controller
             'pageType'       => 'all',
             'pageTitle'      => 'Instagram',
             'pageSubtitle'   => 'Campaigns tagged CH = Insta',
-            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
-            'chFilter'       => 'Insta',
+            'allowedAdTypes'    => FacebookAllAdsSheet::allAdTypes(),
+            'canManageAdTypes'  => true,
+            'chOptions'         => FacebookAllAdsSheet::CH_OPTIONS,
+            'chFilter'          => 'Insta',
         ]);
     }
 
@@ -168,9 +172,10 @@ class FacebookAllAdsSheetController extends Controller
         return view('facebook-all-ads-sheet', [
             'pageType'       => 'music-store',
             'pageTitle'      => 'Music Store',
-            'pageSubtitle'   => 'Meta campaigns tagged Type = MUSIC STORE',
-            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+            'pageSubtitle'      => 'Meta campaigns tagged Type = MUSIC STORE',
+            'allowedAdTypes'    => FacebookAllAdsSheet::allAdTypes(),
+            'canManageAdTypes'  => true,
+            'chOptions'         => FacebookAllAdsSheet::CH_OPTIONS,
         ]);
     }
 
@@ -180,9 +185,10 @@ class FacebookAllAdsSheetController extends Controller
         return view('facebook-all-ads-sheet', [
             'pageType'       => 'music-school',
             'pageTitle'      => 'Music School',
-            'pageSubtitle'   => 'Meta campaigns tagged Type = MUSIC SCHOOL',
-            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
-            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+            'pageSubtitle'      => 'Meta campaigns tagged Type = MUSIC SCHOOL',
+            'allowedAdTypes'    => FacebookAllAdsSheet::allAdTypes(),
+            'canManageAdTypes'  => true,
+            'chOptions'         => FacebookAllAdsSheet::CH_OPTIONS,
         ]);
     }
 
@@ -1754,22 +1760,43 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
+     * Add a Type to the dropdown. Built-ins (WHOLESALE, DROPSHIP, …) are
+     * returned as-is; anything new is stored in facebook_ad_types.
+     */
+    public function storeAdType(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:32'],
+        ]);
+
+        $name = FacebookAllAdsSheet::normalizeAdTypeName($data['name']);
+        if ($name === '' || ! preg_match('/^[A-Z0-9][A-Z0-9 \-]{0,31}$/', $name)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Type must be 1–32 letters, numbers, spaces, or hyphens.',
+            ], 422);
+        }
+
+        if (! in_array($name, FacebookAllAdsSheet::allAdTypes(), true)) {
+            FacebookAdType::firstOrCreate(['name' => $name]);
+        }
+
+        return response()->json([
+            'success'  => true,
+            'ad_type'  => $name,
+            'ad_types' => FacebookAllAdsSheet::allAdTypes(),
+        ]);
+    }
+
+    /**
      * Persist the Ad Type chosen from the dropdown. Propagates the value
-     * (or NULL when cleared) to **every** row in the table that shares the
-     * same Campaign ID, so Ad Type behaves as a campaign-level attribute
-     * rather than a single-row one. This way:
-     *
-     *   • Setting a tag survives any re-upload (Spend, Sales, or Campaign
-     *     re-import) because new rows inherit via the carry-over map.
-     *   • Clearing a tag also survives — there's no leftover row hiding the
-     *     same value that could resurrect on the next upload.
-     *
+     * (or NULL when cleared) to every row that shares the same Campaign ID.
      * Accepts an empty string in `ad_type` to clear the value.
      */
     public function updateAdType(Request $request, int $id)
     {
         $request->validate([
-            'ad_type' => ['nullable', 'string', 'in:' . implode(',', FacebookAllAdsSheet::AD_TYPES)],
+            'ad_type' => ['nullable', 'string', 'in:' . implode(',', FacebookAllAdsSheet::allAdTypes())],
         ]);
 
         $row = FacebookAllAdsSheet::findOrFail($id);
