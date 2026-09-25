@@ -79,11 +79,17 @@ class B5cB2bOrderSyncService
         $this->dailyIngest->refreshPeriodLabels();
 
         $queued = 0;
+        $imported = 0;
         if ($import || MarketplaceShopifyImportQueue::shouldDispatchImports('b5cb2b')) {
+            $inline = $this->importUnlinkedInline(25);
+            $imported = (int) ($inline['imported'] ?? 0);
             $queued = $this->dispatchImportsForNewOrders();
         }
 
         $message = "Synced {$upserted} Business 5 Core B2B order(s), {$lines} sales line(s).";
+        if ($imported > 0) {
+            $message .= " Imported {$imported} to Shopify.";
+        }
         if ($queued > 0) {
             $message .= " Queued {$queued} Shopify import(s).";
         }

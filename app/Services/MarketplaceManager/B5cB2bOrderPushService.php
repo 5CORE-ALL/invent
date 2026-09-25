@@ -63,9 +63,9 @@ class B5cB2bOrderPushService
         $shopifyOrderId = $this->postOrderGuarded(
             $config,
             ['order' => $plan['payload']],
-            [$number, (string) $order->store_order_id],
-            ['b5cb2b-', 'b5-'],
-            ['b5cb2b_order_number', 'b5cb2b_order_id'],
+            [$number],
+            ['b5cb2b-'],
+            ['b5cb2b_order_number'],
             'B5cB2bOrderPushService',
             $order->shopify_order_id
         );
@@ -342,6 +342,35 @@ class B5cB2bOrderPushService
     {
         $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders.json';
 
+        $id = $this->postOrderOnce($config, $payload, $url);
+        if ($id !== null || $this->lastApiStatus !== 422) {
+            return $id;
+        }
+
+        $order = is_array($payload['order'] ?? null) ? $payload['order'] : [];
+        unset($order['name'], $order['source_name']);
+        $order['inventory_behaviour'] = 'bypass';
+        $lines = [];
+        foreach (is_array($order['line_items'] ?? null) ? $order['line_items'] : [] as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            unset($line['variant_id']);
+            $lines[] = $line;
+        }
+        if ($lines !== []) {
+            $order['line_items'] = $lines;
+        }
+
+        return $this->postOrderOnce($config, ['order' => $order], $url);
+    }
+
+    /**
+     * @param  array{store_url: string, token: string}  $config
+     * @param  array<string, mixed>  $payload
+     */
+    protected function postOrderOnce(array $config, array $payload, string $url): ?string
+    {
         try {
             $response = Http::withHeaders([
                 'X-Shopify-Access-Token' => $config['token'],
@@ -369,6 +398,7 @@ class B5cB2bOrderPushService
             return null;
         } catch (\Throwable $e) {
             $this->lastFailureReason = $e->getMessage();
+            $this->lastApiStatus = null;
             Log::error('B5cB2bOrderPushService: exception', ['error' => $e->getMessage()]);
 
             return null;
