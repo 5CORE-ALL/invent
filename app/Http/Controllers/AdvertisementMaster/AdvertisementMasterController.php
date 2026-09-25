@@ -3638,6 +3638,17 @@ class AdvertisementMasterController extends Controller
         return null;
     }
 
+    private function adsTitleFromName(string $name): string
+    {
+        $label = trim((string) preg_replace('/\s+Total$/i', '', trim($name)));
+        if (str_contains($label, self::SUBROW_SEPARATOR)) {
+            $bits = array_map('trim', explode(self::SUBROW_SEPARATOR, $label));
+            $label = (string) end($bits);
+        }
+
+        return $label !== '' ? $label : 'Channel';
+    }
+
     private function channelHrefForName(string $name): ?string
     {
         $norm = $this->normalizeChannelMatchKey($name);
@@ -3648,6 +3659,10 @@ class AdvertisementMasterController extends Controller
         $ads = $this->channelAdsHrefMap()[$norm] ?? null;
         if (is_string($ads) && $ads !== '') {
             return $ads;
+        }
+
+        if (Route::has('channel.title.ads')) {
+            return route('channel.title.ads', ['channel' => $norm]).'?title='.rawurlencode($this->adsTitleFromName($name));
         }
 
         $analytics = $this->channelAnalyticsHrefMap()[$norm] ?? null;

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdsMaster\AdsMasterController;
+use App\Http\Controllers\Ads\ChannelTitleAdsController;
 use App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController;
 use App\Http\Controllers\AdvertisementMaster\VariationsAdsController;
 use App\Http\Controllers\AmazonAdsController;
@@ -5247,6 +5248,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-avg-views-history', [TemuController::class, 'getAvgViewsHistory'])->name('temu.avg.views.history');
     Route::get('/temu-latest-avg-views', [TemuController::class, 'getLatestAvgViews'])->name('temu.latest.avg.views');
     Route::post('/temu-pricing/save-starget', [TemuController::class, 'saveStarget'])->name('temu.save.starget');
+
+    // Title-only ads page for channels that do not have their own ads screen.
+    Route::get('/channel-ads/{channel}', [ChannelTitleAdsController::class, 'show'])
+        ->where('channel', '[A-Za-z0-9]+')
+        ->name('channel.title.ads');
 
     // Advertisement Master view routes
     Route::get('/advertisement-master', [AdvertisementMasterController::class, 'index'])->name('advertisement.master');
