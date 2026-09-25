@@ -669,7 +669,9 @@ class AdvertisementMasterController extends Controller
             $this->attachTotalRowAcos($rows, $prevByChannel);
             $this->attachMissingAds($rows);
             $this->attachMissingAdsTrends($rows, $prevByChannel);
+            $this->applyActiveChannelAds($rows);
             try {
+                $this->snapshotChannels($this->flattenRows($rows), $totalNetSales);
                 $this->snapshotMissingAds($this->flattenRows($rows));
             } catch (\Throwable $e) {
                 \Log::warning('Advertisement Master missing-ads snapshot failed: '.$e->getMessage());
@@ -1700,6 +1702,271 @@ class AdvertisementMasterController extends Controller
             }
         }
         unset($row);
+    }
+
+    /**
+     * Replace campaign-report ads figures with the Active Channel row
+     * (channel_master_calculated_data): spend, ad clicks, ad sold, ad sales, ACOS, Ads CVR, Ads%.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function applyActiveChannelAds(array &$rows): void
+    {
+        $this->applyActiveChannelAdsWalk($rows, $this->activeChannelAdsByKey());
+    }
+
+    /**
+     * @return array<string, array<string, float|int>>
+     */
+    private function activeChannelAdsByKey(): array
+    {
+        if (! Schema::hasTable('channel_master') || ! Schema::hasTable('channel_master_calculated_data')) {
+            return [];
+        }
+
+        $active = [];
+        foreach (ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['active'])
+            ->pluck('channel') as $name) {
+            foreach ($this->activeChannelAdsKeys((string) $name) as $key) {
+                $active[$key] = true;
+            }
+        }
+
+        $map = [];
+        try {
+            $rows = ChannelMasterCalculatedData::query()->get([
+                'channel', 'total_ad_spend', 'clicks', 'ad_sold', 'ad_sales', 'acos', 'cvr',
+                'ads_percentage', 'l30_sales',
+                'kw_clicks', 'pt_clicks', 'hl_clicks', 'pmt_clicks', 'shopping_clicks', 'serp_clicks',
+                'kw_sales', 'pt_sales', 'hl_sales', 'pmt_sales', 'shopping_sales', 'serp_sales',
+                'kw_sold', 'pt_sold', 'hl_sold', 'pmt_sold', 'shopping_sold', 'serp_sold',
+                'kw_acos', 'pt_acos', 'hl_acos', 'pmt_acos', 'shopping_acos', 'serp_acos',
+                'kw_cvr', 'pt_cvr', 'hl_cvr', 'pmt_cvr', 'shopping_cvr', 'serp_cvr',
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel ads read failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        foreach ($rows as $row) {
+            $metrics = [
+                'spend' => (float) ($row->total_ad_spend ?? 0),
+                'clicks' => (int) ($row->clicks ?? 0),
+                'sold' => (int) ($row->ad_sold ?? 0),
+                'sales' => (float) ($row->ad_sales ?? 0),
+                'acos' => (float) ($row->acos ?? 0),
+                'cvr' => (float) ($row->cvr ?? 0),
+                'tcos' => (float) ($row->ads_percentage ?? 0),
+                'l30_sales' => (float) ($row->l30_sales ?? 0),
+                'kw_clicks' => (int) ($row->kw_clicks ?? 0),
+                'pt_clicks' => (int) ($row->pt_clicks ?? 0),
+                'hl_clicks' => (int) ($row->hl_clicks ?? 0),
+                'pmt_clicks' => (int) ($row->pmt_clicks ?? 0),
+                'shopping_clicks' => (int) ($row->shopping_clicks ?? 0),
+                'serp_clicks' => (int) ($row->serp_clicks ?? 0),
+                'kw_sales' => (float) ($row->kw_sales ?? 0),
+                'pt_sales' => (float) ($row->pt_sales ?? 0),
+                'hl_sales' => (float) ($row->hl_sales ?? 0),
+                'pmt_sales' => (float) ($row->pmt_sales ?? 0),
+                'shopping_sales' => (float) ($row->shopping_sales ?? 0),
+                'serp_sales' => (float) ($row->serp_sales ?? 0),
+                'kw_sold' => (int) ($row->kw_sold ?? 0),
+                'pt_sold' => (int) ($row->pt_sold ?? 0),
+                'hl_sold' => (int) ($row->hl_sold ?? 0),
+                'pmt_sold' => (int) ($row->pmt_sold ?? 0),
+                'shopping_sold' => (int) ($row->shopping_sold ?? 0),
+                'serp_sold' => (int) ($row->serp_sold ?? 0),
+                'kw_acos' => (float) ($row->kw_acos ?? 0),
+                'pt_acos' => (float) ($row->pt_acos ?? 0),
+                'hl_acos' => (float) ($row->hl_acos ?? 0),
+                'pmt_acos' => (float) ($row->pmt_acos ?? 0),
+                'shopping_acos' => (float) ($row->shopping_acos ?? 0),
+                'serp_acos' => (float) ($row->serp_acos ?? 0),
+                'kw_cvr' => (float) ($row->kw_cvr ?? 0),
+                'pt_cvr' => (float) ($row->pt_cvr ?? 0),
+                'hl_cvr' => (float) ($row->hl_cvr ?? 0),
+                'pmt_cvr' => (float) ($row->pmt_cvr ?? 0),
+                'shopping_cvr' => (float) ($row->shopping_cvr ?? 0),
+                'serp_cvr' => (float) ($row->serp_cvr ?? 0),
+            ];
+            foreach ($this->activeChannelAdsKeys((string) ($row->channel ?? '')) as $key) {
+                if ($key === '' || ! isset($active[$key])) {
+                    continue;
+                }
+                $map[$key] = $metrics;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function activeChannelAdsKeys(string $name): array
+    {
+        $key = $this->normalizeChannelMatchKey($name);
+        if ($key === '') {
+            return [];
+        }
+        $keys = [$key];
+        if ($key === 'shopifyb2c') {
+            $keys[] = 'shopify';
+        }
+        if ($key === 'tiktokshop2') {
+            $keys[] = 'tiktok2';
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, array<string, float|int>>  $byChannel
+     */
+    private function applyActiveChannelAdsWalk(array &$rows, array $byChannel): void
+    {
+        foreach ($rows as &$row) {
+            if (! empty($row['_children']) && is_array($row['_children'])) {
+                $this->applyActiveChannelAdsWalk($row['_children'], $byChannel);
+            }
+            if (! empty($row['is_group_total'])) {
+                $this->sumGroupAdsFromChildren($row);
+                continue;
+            }
+
+            $name = (string) ($row['channel_key'] ?? $row['channel'] ?? '');
+            $isType = str_contains($name, self::SUBROW_SEPARATOR);
+            $type = $isType ? $this->activeChannelBreakdown($name) : null;
+            $key = $this->adsParentKey($row);
+            $metrics = $byChannel[$key] ?? null;
+
+            if ($isType && $type !== null && $metrics !== null) {
+                $this->applyBreakdownAds($row, $metrics, $type);
+            } elseif (! $isType && $metrics !== null) {
+                $this->applyChannelAds($row, $metrics);
+            } else {
+                $this->zeroAdsMetrics($row);
+            }
+        }
+        unset($row);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function adsParentKey(array $row): string
+    {
+        $name = (string) ($row['channel_key'] ?? $row['channel'] ?? '');
+        if (str_contains($name, self::SUBROW_SEPARATOR)) {
+            $name = trim(explode(self::SUBROW_SEPARATOR, $name)[0]);
+        }
+        $keys = $this->activeChannelAdsKeys($name);
+
+        return $keys[0] ?? '';
+    }
+
+    private function activeChannelBreakdown(string $name): ?string
+    {
+        $part = $name;
+        if (str_contains($name, self::SUBROW_SEPARATOR)) {
+            $bits = explode(self::SUBROW_SEPARATOR, $name);
+            $part = trim((string) end($bits));
+        }
+        $key = strtolower((string) preg_replace('/[^a-z0-9]+/', '', $part));
+
+        return match ($key) {
+            'kw' => 'kw',
+            'pt' => 'pt',
+            'hl' => 'hl',
+            'pmt', 'promoted' => 'pmt',
+            'shopping', 'googleshopping' => 'shopping',
+            'serp', 'googleserp' => 'serp',
+            default => null,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<string, float|int>  $metrics
+     */
+    private function applyChannelAds(array &$row, array $metrics): void
+    {
+        $row['spend'] = round((float) $metrics['spend'], 2);
+        $row['clicks'] = (int) $metrics['clicks'];
+        $row['sold'] = (int) $metrics['sold'];
+        $row['sales'] = round((float) $metrics['sales'], 2);
+        $row['acos'] = round((float) $metrics['acos'], 1);
+        $row['cvr'] = round((float) $metrics['cvr'], 1);
+        $row['tcos'] = round((float) $metrics['tcos'], 1);
+        $row['has_tcos'] = ((float) $metrics['l30_sales']) > 0 || ((float) $metrics['spend']) > 0;
+        $row['t_sales'] = round((float) $metrics['l30_sales'], 2);
+        $row['has_t_sales'] = ((float) $metrics['l30_sales']) > 0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<string, float|int>  $metrics
+     */
+    private function applyBreakdownAds(array &$row, array $metrics, string $type): void
+    {
+        $row['spend'] = 0;
+        $row['clicks'] = (int) ($metrics[$type.'_clicks'] ?? 0);
+        $row['sold'] = (int) ($metrics[$type.'_sold'] ?? 0);
+        $row['sales'] = round((float) ($metrics[$type.'_sales'] ?? 0), 2);
+        $row['acos'] = round((float) ($metrics[$type.'_acos'] ?? 0), 1);
+        $row['cvr'] = round((float) ($metrics[$type.'_cvr'] ?? 0), 1);
+        $this->clearTcos($row);
+        $row['t_sales'] = 0;
+        $row['has_t_sales'] = false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function zeroAdsMetrics(array &$row): void
+    {
+        $row['spend'] = 0;
+        $row['clicks'] = 0;
+        $row['sold'] = 0;
+        $row['sales'] = 0;
+        $row['acos'] = 0;
+        $row['cvr'] = 0;
+        $this->clearTcos($row);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function sumGroupAdsFromChildren(array &$row): void
+    {
+        $spend = 0.0;
+        $clicks = 0.0;
+        $sold = 0.0;
+        $sales = 0.0;
+        $l30 = 0.0;
+        foreach ($row['_children'] ?? [] as $child) {
+            if (! is_array($child)) {
+                continue;
+            }
+            $spend += (float) ($child['spend'] ?? 0);
+            $clicks += (float) ($child['clicks'] ?? 0);
+            $sold += (float) ($child['sold'] ?? 0);
+            $sales += (float) ($child['sales'] ?? 0);
+            $l30 += (float) ($child['t_sales'] ?? 0);
+        }
+        $row['spend'] = round($spend, 2);
+        $row['clicks'] = (int) round($clicks);
+        $row['sold'] = (int) round($sold);
+        $row['sales'] = round($sales, 2);
+        $row['cvr'] = $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0;
+        $row['acos'] = $sales > 0 ? round(($spend / $sales) * 100, 1) : ($spend > 0 ? 100 : 0);
+        $row['t_sales'] = round($l30, 2);
+        $row['has_t_sales'] = $l30 > 0;
+        $row['tcos'] = $l30 > 0 ? round(($spend / $l30) * 100, 1) : 0;
+        $row['has_tcos'] = $l30 > 0 || $spend > 0;
     }
 
     /**
