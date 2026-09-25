@@ -71,7 +71,9 @@
         .status-circle.yellow { background: #ffc107; }
         .status-circle.green { background: #28a745; }
         .status-circle.pink { background: #e83e8c; }
-        #vm-cvr-filter-btn .status-circle { margin-right: 6px; }
+        .status-circle.pink-dil { background: #4e0dab; }
+        #vm-cvr-filter-btn .status-circle,
+        .vm-metric-filter-btn .status-circle { margin-right: 6px; }
         .vm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
         .vm-lbl { font-size: 12px; font-weight: 600; color: #475569; margin: 0; }
         .vm-channel-menu { max-height: 320px; overflow: auto; min-width: 220px; }
@@ -153,6 +155,74 @@
                         </ul>
                     </div>
                     <input type="hidden" id="vm-cvr-filter" value="all">
+
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-light dropdown-toggle border vm-metric-filter-btn" type="button"
+                            id="vm-groi-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="GROI — Red &lt;60, Yellow 60–90, Green 90–150, Pink 150+">
+                            <span class="status-circle default" id="vm-groi-filter-dot"></span>
+                            <span id="vm-groi-filter-label">GROI</span>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="vm-groi-filter-btn">
+                            <li><a class="dropdown-item vm-metric-filter-item active" href="#" data-filter="groi" data-color="all"><span class="status-circle default"></span> All GROI</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="groi" data-color="red"><span class="status-circle red"></span> Red (&lt;60)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="groi" data-color="yellow"><span class="status-circle yellow"></span> Yellow (60–90)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="groi" data-color="green"><span class="status-circle green"></span> Green (90–150)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="groi" data-color="pink"><span class="status-circle pink"></span> Pink (150+)</a></li>
+                        </ul>
+                    </div>
+                    <input type="hidden" id="vm-groi-filter" value="all">
+
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-light dropdown-toggle border vm-metric-filter-btn" type="button"
+                            id="vm-gpft-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="GPFT — Red ≤20, Yellow 20–30, Green 30–43, Pink 43+">
+                            <span class="status-circle default" id="vm-gpft-filter-dot"></span>
+                            <span id="vm-gpft-filter-label">GPFT</span>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="vm-gpft-filter-btn">
+                            <li><a class="dropdown-item vm-metric-filter-item active" href="#" data-filter="gpft" data-color="all"><span class="status-circle default"></span> All GPFT</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="gpft" data-color="red"><span class="status-circle red"></span> Red (≤20)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="gpft" data-color="yellow"><span class="status-circle yellow"></span> Yellow (20–30)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="gpft" data-color="green"><span class="status-circle green"></span> Green (30–43)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="gpft" data-color="pink" data-dot="pink-dil"><span class="status-circle pink-dil"></span> Pink (43+)</a></li>
+                        </ul>
+                    </div>
+                    <input type="hidden" id="vm-gpft-filter" value="all">
+
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-light dropdown-toggle border vm-metric-filter-btn" type="button"
+                            id="vm-nroi-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="NROI — Red &lt;40, Yellow 40–70, Green 70–125, Pink 125+">
+                            <span class="status-circle default" id="vm-nroi-filter-dot"></span>
+                            <span id="vm-nroi-filter-label">NROI</span>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="vm-nroi-filter-btn">
+                            <li><a class="dropdown-item vm-metric-filter-item active" href="#" data-filter="nroi" data-color="all"><span class="status-circle default"></span> All NROI</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="nroi" data-color="red"><span class="status-circle red"></span> Red (&lt;40)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="nroi" data-color="yellow"><span class="status-circle yellow"></span> Yellow (40–70)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="nroi" data-color="green"><span class="status-circle green"></span> Green (70–125)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="nroi" data-color="pink"><span class="status-circle pink"></span> Pink (125+)</a></li>
+                        </ul>
+                    </div>
+                    <input type="hidden" id="vm-nroi-filter" value="all">
+
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-light dropdown-toggle border vm-metric-filter-btn" type="button"
+                            id="vm-npft-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="NPFT — Red ≤10, Yellow 10–20, Green 20–33, Pink 33+">
+                            <span class="status-circle default" id="vm-npft-filter-dot"></span>
+                            <span id="vm-npft-filter-label">NPFT</span>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="vm-npft-filter-btn">
+                            <li><a class="dropdown-item vm-metric-filter-item active" href="#" data-filter="npft" data-color="all"><span class="status-circle default"></span> All NPFT</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="npft" data-color="red"><span class="status-circle red"></span> Red (≤10)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="npft" data-color="yellow"><span class="status-circle yellow"></span> Yellow (10–20)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="npft" data-color="green"><span class="status-circle green"></span> Green (20–33)</a></li>
+                            <li><a class="dropdown-item vm-metric-filter-item" href="#" data-filter="npft" data-color="pink"><span class="status-circle pink"></span> Pink (33+)</a></li>
+                        </ul>
+                    </div>
+                    <input type="hidden" id="vm-npft-filter" value="all">
 
                     <label class="vm-lbl" for="vm-inv-filter">INV</label>
                     <select id="vm-inv-filter" class="form-select form-select-sm" style="width:72px;" title="Filter by inventory">
@@ -277,6 +347,26 @@
         return '#334155';
     }
 
+    /** Same bands as metric-percent-colors.js. GPFT 43+ is pink-dil, treated as pink here. */
+    function metricColorBand(kind, value) {
+        const n = Number(value);
+        if (!isFinite(n)) return '';
+        let band = null;
+        if (window.MetricPctColors && typeof MetricPctColors.bandFor === 'function') {
+            band = MetricPctColors.bandFor(kind, n);
+        } else if (kind === 'groi') {
+            band = n < 60 ? 'red' : (n < 90 ? 'yellow' : (n < 150 ? 'green' : 'pink'));
+        } else if (kind === 'gpft') {
+            band = n <= 20 ? 'red' : (n < 30 ? 'yellow' : (n < 43 ? 'green' : 'pink-dil'));
+        } else if (kind === 'nroi') {
+            band = n < 40 ? 'red' : (n < 70 ? 'yellow' : (n < 125 ? 'green' : 'pink'));
+        } else if (kind === 'npft') {
+            band = n <= 10 ? 'red' : (n < 20 ? 'yellow' : (n < 33 ? 'green' : 'pink'));
+        }
+        if (band === 'pink-dil') return 'pink';
+        return band || '';
+    }
+
     /** Same color bands as analytics pages (metric-percent-colors.js). */
     function metricHtml(kind, value) {
         const n = Number(value);
@@ -353,6 +443,12 @@
         if (boxes.length && keys.indexOf(pull) === -1) return false;
         const cvrFilter = String($('#vm-cvr-filter').val() || 'all');
         if (cvrFilter !== 'all' && cvrColorBand(rowCvr(d)) !== cvrFilter) return false;
+        const metricKinds = ['groi', 'gpft', 'nroi', 'npft'];
+        for (let i = 0; i < metricKinds.length; i++) {
+            const kind = metricKinds[i];
+            const want = String($('#vm-' + kind + '-filter').val() || 'all');
+            if (want !== 'all' && metricColorBand(kind, d[kind]) !== want) return false;
+        }
         const parentQ = String($('#vm-parent-search').val() || '').trim().toLowerCase();
         const skuQ = String($('#vm-sku-search').val() || '').trim().toLowerCase();
         if (parentQ && String(d.parent || '').toLowerCase().indexOf(parentQ) === -1) return false;
@@ -526,6 +622,20 @@
         $('#vm-cvr-filter-label').text(label);
         $('#vm-cvr-filter-dot').attr('class', 'status-circle ' + (color === 'all' ? 'default' : color));
         $('.vm-cvr-filter-item').removeClass('active');
+        $(this).addClass('active');
+        applyFilter();
+    });
+    $(document).on('click', '.vm-metric-filter-item', function(e) {
+        e.preventDefault();
+        const filter = String($(this).data('filter') || '');
+        if (!filter) return;
+        const color = String($(this).data('color') || 'all');
+        const dot = String($(this).data('dot') || (color === 'all' ? 'default' : color));
+        const label = color === 'all' ? filter.toUpperCase() : $(this).text().trim();
+        $('#vm-' + filter + '-filter').val(color);
+        $('#vm-' + filter + '-filter-label').text(label);
+        $('#vm-' + filter + '-filter-dot').attr('class', 'status-circle ' + dot);
+        $('.vm-metric-filter-item[data-filter="' + filter + '"]').removeClass('active');
         $(this).addClass('active');
         applyFilter();
     });
