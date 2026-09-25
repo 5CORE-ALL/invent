@@ -7,6 +7,7 @@ use App\Models\ShopifyB2BDailyData;
 use App\Models\ShopifySku;
 use App\Services\PricingErrorsFixCvrCacheBuilder;
 use App\Services\TemuShopifySalesService;
+use App\Support\ReverbPricingViews;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -82,6 +83,11 @@ class ViewsMasterController extends Controller
                 }
                 $row = $this->applyAnalyticsViews($row, $pull, $analyticsViews);
                 $row = $this->applyAnalyticsMargins($row, $pull);
+                if ($pull === 'reverb') {
+                    $rawViews = (float) ($row['views'] ?? 0);
+                    $row['views'] = ReverbPricingViews::scale($rawViews);
+                    $row['cvr'] = ReverbPricingViews::cvrPercent((float) ($row['l30'] ?? 0), $rawViews, 1);
+                }
                 $views = $row['views'] ?? null;
                 if (! is_numeric($views) || (float) $views <= 0) {
                     continue;

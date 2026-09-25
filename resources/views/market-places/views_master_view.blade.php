@@ -154,6 +154,20 @@
                     </div>
                     <input type="hidden" id="vm-cvr-filter" value="all">
 
+                    <label class="vm-lbl" for="vm-inv-filter">INV</label>
+                    <select id="vm-inv-filter" class="form-select form-select-sm" style="width:72px;" title="Filter by inventory">
+                        <option value="all">All</option>
+                        <option value="eq_0">= 0</option>
+                        <option value="gt_0">&gt; 0</option>
+                    </select>
+
+                    <label class="vm-lbl" for="vm-ovl30-filter">OVL30</label>
+                    <select id="vm-ovl30-filter" class="form-select form-select-sm" style="width:72px;" title="Filter by overall L30">
+                        <option value="all">All</option>
+                        <option value="eq_0">= 0</option>
+                        <option value="gt_0">&gt; 0</option>
+                    </select>
+
                     <label class="vm-lbl" for="vm-parent-search">Parent</label>
                     <input type="search" id="vm-parent-search" class="form-control form-control-sm" style="width:140px;"
                         placeholder="Parent">
@@ -343,6 +357,14 @@
         const skuQ = String($('#vm-sku-search').val() || '').trim().toLowerCase();
         if (parentQ && String(d.parent || '').toLowerCase().indexOf(parentQ) === -1) return false;
         if (skuQ && String(d.sku || '').toLowerCase().indexOf(skuQ) === -1) return false;
+        const inv = Number(d.inv) || 0;
+        const ovl30 = Number(d.ov_l30) || 0;
+        const invFilter = String($('#vm-inv-filter').val() || 'all');
+        const ovl30Filter = String($('#vm-ovl30-filter').val() || 'all');
+        if (invFilter === 'eq_0' && inv !== 0) return false;
+        if (invFilter === 'gt_0' && !(inv > 0)) return false;
+        if (ovl30Filter === 'eq_0' && ovl30 !== 0) return false;
+        if (ovl30Filter === 'gt_0' && !(ovl30 > 0)) return false;
         return true;
     }
 
@@ -410,13 +432,31 @@
                         return '<span style="color:' + cvrColorHex(band) + ';font-weight:700;">' + label + '</span>';
                     },
                 },
-                metricColumn('GPFT', 'gpft', 'gpft', 'GPFT% from the channel analytics page. Red ≤20, Yellow 20–30, Green 30–43, Pink 43+.'),
                 metricColumn('GROI', 'groi', 'groi', 'GROI% from the channel analytics page. Red <60, Yellow 60–90, Green 90–150, Pink 150+.'),
-                metricColumn('NPFT', 'npft', 'npft', 'NPFT% from the channel analytics page. Red ≤10, Yellow 10–20, Green 20–33, Pink 33+.'),
+                metricColumn('GPFT', 'gpft', 'gpft', 'GPFT% from the channel analytics page. Red ≤20, Yellow 20–30, Green 30–43, Pink 43+.'),
+                {
+                    title: 'Ads', field: 'ads_pct', width: 68, hozAlign: 'center', vertAlign: 'middle',
+                    headerSort: true, sorter: 'number',
+                    headerTooltip: 'Channel Ads%. Green <5%, Yellow 5–10%, Red above 10%.',
+                    formatter: function(cell) {
+                        const n = Number(cell.getValue());
+                        if (!isFinite(n)) return '<span class="text-muted">—</span>';
+                        const color = n < 5 ? '#28a745' : (n <= 10 ? '#ffc107' : '#a00211');
+                        return '<span style="color:' + color + ';font-weight:700;">' + (Math.round(n * 10) / 10).toFixed(1) + '%</span>';
+                    },
+                },
                 metricColumn('NROI', 'nroi', 'nroi', 'NROI% from the channel analytics page. Red <40, Yellow 40–70, Green 70–125, Pink 125+.'),
+                metricColumn('NPFT', 'npft', 'npft', 'NPFT% from the channel analytics page. Red ≤10, Yellow 10–20, Green 20–33, Pink 33+.'),
                 {
                     title: 'INV', field: 'inv', width: 70, hozAlign: 'center', vertAlign: 'middle',
                     headerSort: true, sorter: 'number',
+                    headerTooltip: 'Overall inventory — same as the analytics pages',
+                    formatter: function(cell) { return fmtInt(cell.getValue()); },
+                },
+                {
+                    title: 'OVL30', field: 'ov_l30', width: 72, hozAlign: 'center', vertAlign: 'middle',
+                    headerSort: true, sorter: 'number',
+                    headerTooltip: 'Overall Shopify L30 (all channels)',
                     formatter: function(cell) { return fmtInt(cell.getValue()); },
                 },
                 {
@@ -490,6 +530,7 @@
         applyFilter();
     });
     $('#vm-parent-search, #vm-sku-search').on('input', applyFilter);
+    $('#vm-inv-filter, #vm-ovl30-filter').on('change', applyFilter);
     $('#vm-reload-btn').on('click', loadData);
 
     initTable();
