@@ -57,6 +57,21 @@
         .vm-dil-red { color: #dc3545; font-weight: 700; }
         .vm-dil-green { color: #28a745; font-weight: 700; }
         .vm-dil-pink { color: #e83e8c; font-weight: 700; }
+        .status-circle {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+            border: 1px solid rgba(0,0,0,.08);
+            vertical-align: middle;
+        }
+        .status-circle.default { background: #94a3b8; }
+        .status-circle.red { background: #a00211; }
+        .status-circle.yellow { background: #ffc107; }
+        .status-circle.green { background: #28a745; }
+        .status-circle.pink { background: #e83e8c; }
+        #vm-cvr-filter-btn .status-circle { margin-right: 6px; }
         .vm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
         .vm-lbl { font-size: 12px; font-weight: 600; color: #475569; margin: 0; }
         .vm-channel-menu { max-height: 320px; overflow: auto; min-width: 220px; }
@@ -121,6 +136,23 @@
                             @endforeach
                         </ul>
                     </div>
+
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-light dropdown-toggle border" type="button"
+                            id="vm-cvr-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Filter by CVR color — Red &lt;1%, Yellow 1–3%, Green 3–5%, Pink 5%+">
+                            <span class="status-circle default" id="vm-cvr-filter-dot"></span>
+                            <span id="vm-cvr-filter-label">CVR</span>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="vm-cvr-filter-btn">
+                            <li><a class="dropdown-item vm-cvr-filter-item active" href="#" data-color="all"><span class="status-circle default"></span> All CVR</a></li>
+                            <li><a class="dropdown-item vm-cvr-filter-item" href="#" data-color="red"><span class="status-circle red"></span> Red (&lt;1%)</a></li>
+                            <li><a class="dropdown-item vm-cvr-filter-item" href="#" data-color="yellow"><span class="status-circle yellow"></span> Yellow (1–3%)</a></li>
+                            <li><a class="dropdown-item vm-cvr-filter-item" href="#" data-color="green"><span class="status-circle green"></span> Green (3–5%)</a></li>
+                            <li><a class="dropdown-item vm-cvr-filter-item" href="#" data-color="pink"><span class="status-circle pink"></span> Pink (5%+)</a></li>
+                        </ul>
+                    </div>
+                    <input type="hidden" id="vm-cvr-filter" value="all">
 
                     <label class="vm-lbl" for="vm-search">Search</label>
                     <input type="search" id="vm-search" class="form-control form-control-sm" style="width:180px;"
@@ -201,6 +233,32 @@
         return 'vm-dil-pink';
     }
 
+    /** Same CVR bands as /price-increase: Red &lt;1, Yellow 1–3, Green 3–5, Pink 5%+. */
+    function rowCvr(d) {
+        let n = Number(d && d.cvr);
+        if (!isFinite(n)) {
+            const views = Number(d && d.views) || 0;
+            const l30 = Number(d && d.l30) || 0;
+            n = views > 0 ? (l30 / views) * 100 : 0;
+        }
+        return isFinite(n) ? n : 0;
+    }
+
+    function cvrColorBand(n) {
+        if (n < 1) return 'red';
+        if (n < 3) return 'yellow';
+        if (n < 5) return 'green';
+        return 'pink';
+    }
+
+    function cvrColorHex(band) {
+        if (band === 'red') return '#a00211';
+        if (band === 'yellow') return '#ffc107';
+        if (band === 'green') return '#28a745';
+        if (band === 'pink') return '#e83e8c';
+        return '#334155';
+    }
+
     function selectedChannels() {
         const keys = [];
         $('.vm-channel-cb:checked').each(function() { keys.push(String($(this).val())); });
@@ -250,6 +308,8 @@
         const keys = selectedChannels();
         const pull = String(d.pull_key || '');
         if (boxes.length && keys.indexOf(pull) === -1) return false;
+        const cvrFilter = String($('#vm-cvr-filter').val() || 'all');
+        if (cvrFilter !== 'all' && cvrColorBand(rowCvr(d)) !== cvrFilter) return false;
         const q = String($('#vm-search').val() || '').trim().toLowerCase();
         if (!q) return true;
         const hay = [d.sku, d.parent, d.channel].join(' ').toLowerCase();
@@ -312,17 +372,12 @@
                 {
                     title: 'CVR', field: 'cvr', width: 70, hozAlign: 'center', vertAlign: 'middle',
                     headerSort: true, sorter: 'number',
-                    headerTooltip: 'L30 ÷ Views × 100',
+                    headerTooltip: 'L30 ÷ Views × 100. Red <1%, Yellow 1–3%, Green 3–5%, Pink 5%+',
                     formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        let n = Number(cell.getValue());
-                        if (!isFinite(n)) {
-                            const views = Number(d.views) || 0;
-                            const l30 = Number(d.l30) || 0;
-                            n = views > 0 ? (l30 / views) * 100 : 0;
-                        }
-                        if (!isFinite(n)) return '';
-                        return (Math.round(n * 10) / 10).toFixed(1) + '%';
+                        const n = rowCvr(cell.getRow().getData() || {});
+                        const band = cvrColorBand(n);
+                        const label = (Math.round(n * 10) / 10).toFixed(1) + '%';
+                        return '<span style="color:' + cvrColorHex(band) + ';font-weight:700;">' + label + '</span>';
                     },
                 },
                 {
@@ -389,6 +444,17 @@
         applyFilter();
     });
     $(document).on('click', '.vm-channel-menu', function(e) { e.stopPropagation(); });
+    $(document).on('click', '.vm-cvr-filter-item', function(e) {
+        e.preventDefault();
+        const color = String($(this).data('color') || 'all');
+        const label = color === 'all' ? 'CVR' : $(this).text().trim();
+        $('#vm-cvr-filter').val(color);
+        $('#vm-cvr-filter-label').text(label);
+        $('#vm-cvr-filter-dot').attr('class', 'status-circle ' + (color === 'all' ? 'default' : color));
+        $('.vm-cvr-filter-item').removeClass('active');
+        $(this).addClass('active');
+        applyFilter();
+    });
     $('#vm-search').on('input', applyFilter);
     $('#vm-reload-btn').on('click', loadData);
 
