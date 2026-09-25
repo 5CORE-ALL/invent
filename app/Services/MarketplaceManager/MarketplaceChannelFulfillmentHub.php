@@ -100,7 +100,7 @@ class MarketplaceChannelFulfillmentHub
             return;
         }
 
-        $this->pushLine($marketplace, $line);
+        $this->pushLine($marketplace, $line, $result);
     }
 
     /**
@@ -139,7 +139,7 @@ class MarketplaceChannelFulfillmentHub
                 continue;
             }
             $this->linkShopifyId($line, $shopifyOrderId);
-            $this->pushLine($slug, $line);
+            $this->pushLine($slug, $line, $result);
             $pushed[$slug.':'.(int) ($line->id ?? 0)] = true;
         }
 
@@ -151,7 +151,7 @@ class MarketplaceChannelFulfillmentHub
             if ($primarySlug !== '' && $hit['slug'] !== $primarySlug) {
                 continue;
             }
-            $this->pushLine($hit['slug'], $hit['line']);
+            $this->pushLine($hit['slug'], $hit['line'], $result);
         }
     }
 
@@ -198,7 +198,10 @@ class MarketplaceChannelFulfillmentHub
         dispatch($job);
     }
 
-    protected function pushLine(string $marketplace, object $line): void
+    /**
+     * @param  array<string, mixed>  $known
+     */
+    protected function pushLine(string $marketplace, object $line, array $known = []): void
     {
         $map = $this->channelMap()[$marketplace] ?? null;
         if ($map === null) {
@@ -214,7 +217,12 @@ class MarketplaceChannelFulfillmentHub
         }
 
         try {
-            $service->pushTrackingForOrder($line);
+            $method = new \ReflectionMethod($service, 'pushTrackingForOrder');
+            if ($method->getNumberOfParameters() >= 2) {
+                $service->pushTrackingForOrder($line, $known);
+            } else {
+                $service->pushTrackingForOrder($line);
+            }
         } catch (\Throwable $e) {
             Log::warning('MarketplaceChannelFulfillmentHub: channel tracking push failed', [
                 'marketplace' => $marketplace,

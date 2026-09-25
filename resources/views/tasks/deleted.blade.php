@@ -321,8 +321,14 @@
             min-width: 9.5rem;
             max-width: 11rem;
         }
-        .deleted-filters-bar .deleted-filter-item--datepick[hidden] {
+        .deleted-filters-bar .deleted-filter-item--datepick[hidden],
+        .deleted-filters-bar .deleted-filter-item--range[hidden] {
             display: none !important;
+        }
+        .deleted-filters-bar .deleted-filter-item--range {
+            flex: 0 0 auto;
+            min-width: 9.5rem;
+            max-width: 11rem;
         }
         .deleted-playback-group .btn {
             display: inline-flex;
@@ -632,7 +638,16 @@
                                     <option value="7">Last 7 Days</option>
                                     <option value="30">Last 30 Days</option>
                                     <option value="date">Date Selection</option>
+                                    <option value="custom">From – To</option>
                                 </select>
+                            </div>
+                            <div class="deleted-filter-item deleted-filter-item--range" id="filter-from-wrap" hidden>
+                                <label for="filter-date-from" class="form-label">From</label>
+                                <input type="date" id="filter-date-from" class="form-control form-control-sm" value="{{ \App\Support\TaskBusinessTime::today()->subDays(7)->toDateString() }}" max="{{ \App\Support\TaskBusinessTime::today()->toDateString() }}">
+                            </div>
+                            <div class="deleted-filter-item deleted-filter-item--range" id="filter-to-wrap" hidden>
+                                <label for="filter-date-to" class="form-label">To</label>
+                                <input type="date" id="filter-date-to" class="form-control form-control-sm" value="{{ $yesterdayDate }}" max="{{ \App\Support\TaskBusinessTime::today()->toDateString() }}">
                             </div>
                             <div class="deleted-filter-item deleted-filter-item--datepick" id="filter-date-wrap" hidden>
                                 <label for="filter-date" class="form-label">Select date</label>
@@ -1370,16 +1385,26 @@
                 if (range === 'date') {
                     url += '&date=' + encodeURIComponent($('#filter-date').val() || @json($yesterdayDate));
                 }
+                if (range === 'custom') {
+                    url += '&from=' + encodeURIComponent($('#filter-date-from').val() || '');
+                    url += '&to=' + encodeURIComponent($('#filter-date-to').val() || '');
+                }
                 return url;
             }
             function reloadDeletedByDate() {
-                var isPick = ($('#filter-date-range').val() || '') === 'date';
-                $('#filter-date-wrap').prop('hidden', !isPick);
+                var range = $('#filter-date-range').val() || '';
+                $('#filter-date-wrap').prop('hidden', range !== 'date');
+                $('#filter-from-wrap, #filter-to-wrap').prop('hidden', range !== 'custom');
                 table.setData(deletedDataUrl());
             }
             $('#filter-date-range').on('change', reloadDeletedByDate);
             $('#filter-date').on('change', function() {
                 if (($('#filter-date-range').val() || '') === 'date') {
+                    reloadDeletedByDate();
+                }
+            });
+            $('#filter-date-from, #filter-date-to').on('change', function() {
+                if (($('#filter-date-range').val() || '') === 'custom') {
                     reloadDeletedByDate();
                 }
             });

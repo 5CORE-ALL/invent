@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 class SyncB5cB2bOrders extends Command
 {
     protected $signature = 'b5cb2b:sync-orders
-                            {--days=14 : Days of order history}
+                            {--days=45 : Days of order history}
                             {--from= : Fetch orders from this date onward (YYYY-MM-DD); overrides --days}
                             {--import : Dispatch import jobs for new orders after fetch}
                             {--force : Run even if Fetch orders setting is Off}';

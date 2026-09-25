@@ -27,7 +27,10 @@ class B5cB2bTrackingSyncService
     /**
      * @return array{success: bool, skipped?: bool, message: string, updated?: int}
      */
-    public function pushTrackingForOrder(object $line): array
+    /**
+     * @param  array<string, mixed>  $known  Tracking already found on the Veeqo / 4Seller label.
+     */
+    public function pushTrackingForOrder(object $line, array $known = []): array
     {
         if (! $this->api->isConfigured()) {
             return ['success' => false, 'message' => 'Business 5 Core B2B API is not configured.'];
@@ -48,10 +51,14 @@ class B5cB2bTrackingSyncService
         }
 
         $sku = $this->skuFromLine($line);
-        $tracking = $this->trackingFromShopify($shopifyOrderId, (string) $storeOrderId, $sku);
+        $tracking = trim((string) ($known['tracking'] ?? ''));
+        if ($tracking === '') {
+            $tracking = $this->trackingFromShopify($shopifyOrderId, (string) $storeOrderId, $sku);
+        }
         if ($tracking === '') {
             $copied = $this->copyPurchasedLabelToShopify('b5cb2b', (int) ($line->id ?? 0));
-            if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
+            $tracking = trim((string) ($copied['tracking'] ?? ''));
+            if ($tracking === '') {
                 $tracking = $this->trackingFromShopify($shopifyOrderId, (string) $storeOrderId, $sku);
             }
         }
@@ -59,7 +66,18 @@ class B5cB2bTrackingSyncService
             return [
                 'success' => false,
                 'skipped' => true,
-                'message' => 'No tracking number on Shopify yet.',
+                'message' => 'No Veeqo or 4Seller GOFO tracking for this order yet.',
+            ];
+        }
+
+        $already = trim((string) ($line->tracking_reference ?? ''));
+        $status = strtolower(trim((string) ($line->status ?? '')));
+        if ($already !== '' && strcasecmp($already, $tracking) === 0 && $status === 'shipped') {
+            return [
+                'success' => true,
+                'skipped' => true,
+                'message' => 'Business 5 Core already has tracking '.$tracking.'.',
+                'updated' => 0,
             ];
         }
 
@@ -109,7 +127,9 @@ class B5cB2bTrackingSyncService
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
             ->where(function ($q) {
-                $q->whereNull('tracking_reference')->orWhere('tracking_reference', '');
+                $q->whereNull('tracking_reference')
+                    ->orWhere('tracking_reference', '')
+                    ->orWhereNotIn('status', ['shipped', 'completed', 'canceled', 'cancelled']);
             })
             ->orderByDesc('id')
             ->limit(max(1, (int) $limit))
@@ -146,6 +166,15 @@ class B5cB2bTrackingSyncService
 
     protected function skuFromLine(object $line): string
     {
+        if ($line instanceof B5cB2bOrder) {
+            foreach ($line->displayLines() as $item) {
+                $sku = trim((string) ($item['sku'] ?? ''));
+                if ($sku !== '') {
+                    return $sku;
+                }
+            }
+        }
+
         $payload = is_array($line->payload ?? null) ? $line->payload : [];
         foreach (['sku', 'seller_sku', 'variant_sku'] as $key) {
             $sku = trim((string) ($payload[$key] ?? ''));

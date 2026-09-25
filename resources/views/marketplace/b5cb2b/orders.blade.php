@@ -77,13 +77,11 @@ function b5cPushUnlinked() {
     }
     var rows = [];
     $('tr[data-store-id]').each(function () {
-        if (!$(this).attr('data-shopify')) {
-            rows.push($(this));
-        }
+        rows.push($(this));
     });
     var $s = $('#b5c-orders-status');
     if (!rows.length) {
-        b5cRetagLinked('');
+        $s.text('No Business 5 Core orders to send.');
         return;
     }
     window.b5cPushing = true;
@@ -94,7 +92,7 @@ function b5cPushUnlinked() {
             window.b5cPushing = false;
             var summary = ok || fail
                 ? ('Shopify: ' + ok + ' sent' + (fail ? ', ' + fail + ' failed' : '') + '.')
-                : '';
+                : 'Every Business 5 Core order is in Shopify.';
             b5cRetagLinked(summary);
             return;
         }
@@ -105,14 +103,16 @@ function b5cPushUnlinked() {
             order_id: $tr.attr('data-store-id')
         }).done(function (res) {
             if (res.shopify_order_id) {
-                ok++;
+                if (res.created) {
+                    ok++;
+                }
                 $tr.attr('data-shopify', res.shopify_order_id);
                 $tr.find('.b5c-shopify-cell').text(res.shopify_order_id);
             } else {
                 fail++;
                 $tr.find('.b5c-shopify-cell').text(res.message || 'Failed');
             }
-            setTimeout(next, 2000);
+            setTimeout(next, res.cached ? 0 : 2000);
         }).fail(function (xhr) {
             fail++;
             $tr.find('.b5c-shopify-cell').text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed');
@@ -149,7 +149,11 @@ function b5cRetagLinked(prefix) {
             _token: '{{ csrf_token() }}',
             order_id: $tr.attr('data-store-id')
         }).done(function (res) {
-            if (res.success && res.changed) {
+            if (res.clear_link) {
+                $tr.attr('data-shopify', '');
+                $tr.find('.b5c-shopify-cell').text('—');
+                fail++;
+            } else if (res.success && res.changed) {
                 updated++;
             } else if (!res.success) {
                 fail++;
