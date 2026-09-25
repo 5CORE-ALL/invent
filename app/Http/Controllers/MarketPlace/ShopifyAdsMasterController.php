@@ -215,19 +215,14 @@ class ShopifyAdsMasterController extends Controller
         );
 
         $instagramChildren = [];
-        foreach ($this->metaAdTypeLenses('shopify_instagram') as [$suffix, $source, $adTypes]) {
+        foreach ($this->metaAdTypeLenses('shopify_instagram', false) as [$suffix, $source, $adTypes]) {
             $subMetrics = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
-            $child = self::advertisementMasterMetricRow(
+            $instagramChildren[] = self::advertisementMasterMetricRow(
                 'Shopify'.$sep.'Instagram'.$sep.$suffix,
                 $source,
                 (object) $subMetrics,
                 true
             );
-            $href = $this->metaAdTypePageUrl($adTypes[0] ?? '');
-            if ($href !== null) {
-                $child['href'] = $href;
-            }
-            $instagramChildren[] = $child;
         }
         $instagramRow['_children'] = $instagramChildren;
         $children[] = $instagramRow;
@@ -276,11 +271,11 @@ class ShopifyAdsMasterController extends Controller
         // those pages show, with no double-counting between them.
         //
         // Facebook + Instagram are expandable parent rows (Tabulator data tree, same
-        // UX as /advertisement-master). Each carries one typed sub-row per Facebook
-        // ad type (G Video, G Carousal, P Video, P Carousal, Music Store, Music
-        // School, and any type later saved on the sheet). Children keep
-        // `is_sub_row=true` so the rolled-up badges and history endpoint skip them —
-        // they're slices of the parent, not new channels.
+        // UX as /advertisement-master). Instagram keeps the four video/carousel
+        // types. Facebook also lists every other sheet type (Music Store, Music
+        // School, and types saved later). Children keep `is_sub_row=true` so the
+        // rolled-up badges and history endpoint skip them — they're slices of the
+        // parent, not new channels.
         $sep = self::SUBROW_SEPARATOR;
 
         $facebook = $this->metaChannelMetrics('Facebook', 'FB');
@@ -291,7 +286,7 @@ class ShopifyAdsMasterController extends Controller
 
         $instagram = $this->metaChannelMetrics('Instagram', 'Insta');
         $instagram['_children'] = [];
-        foreach ($this->metaAdTypeLenses('shopify_instagram') as [$suffix, , $adTypes]) {
+        foreach ($this->metaAdTypeLenses('shopify_instagram', false) as [$suffix, , $adTypes]) {
             $instagram['_children'][] = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
         }
 
@@ -902,13 +897,14 @@ class ShopifyAdsMasterController extends Controller
      * Typed Meta sub-rows for Facebook and Instagram.
      *
      * The original four lenses keep their short labels and source keys so
-     * existing snapshots stay attached. Every other ad type from the Facebook
-     * sheet — Music Store, Music School, Wholesale, Dropship, and any type
-     * later saved in facebook_ad_types — is appended on the next load.
+     * existing snapshots stay attached. When `$includeSheetTypes` is true,
+     * every other ad type from the Facebook sheet — Music Store, Music School,
+     * Wholesale, Dropship, and any type later saved in facebook_ad_types — is
+     * appended. Instagram stays on the original four only.
      *
      * @return list<array{0: string, 1: string, 2: list<string>}>
      */
-    private function metaAdTypeLenses(string $sourcePrefix): array
+    private function metaAdTypeLenses(string $sourcePrefix, bool $includeSheetTypes = true): array
     {
         $known = [
             'GROUP VIDEO' => ['G Video', $sourcePrefix.'_g_video'],
@@ -920,6 +916,10 @@ class ShopifyAdsMasterController extends Controller
         $out = [];
         foreach ($known as $adType => [$label, $source]) {
             $out[] = [$label, $source, [$adType]];
+        }
+
+        if (! $includeSheetTypes) {
+            return $out;
         }
 
         $covered = array_fill_keys(array_keys($known), true);

@@ -761,8 +761,6 @@
                 'Shopify · Instagram · G Carousal': "{{ route('instagram.ads.channel.group.carousal') }}",
                 'Shopify · Instagram · P Video': "{{ route('instagram.ads.channel.parent.video') }}",
                 'Shopify · Instagram · P Carousal': "{{ route('instagram.ads.channel.parent.carousal') }}",
-                'Shopify · Instagram · Music Store': "{{ route('music.store.ads.sheet') }}",
-                'Shopify · Instagram · Music School': "{{ route('music.school.ads.sheet') }}",
                 'TikTok Total': "{{ route('tiktok1.ads.raw') }}",
                 'TikTok 1': "{{ route('tiktok1.ads.raw') }}",
                 'Shopify · TikTok Video Ads': "{{ Route::has('tiktok.ads.master') ? route('tiktok.ads.master') : route('tiktok.video.ads') }}",

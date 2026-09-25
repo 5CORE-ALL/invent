@@ -2654,8 +2654,6 @@ class AdvertisementMasterController extends Controller
             'shopifyinstagramgcarousal' => $this->namedHref('instagram.ads.channel.group.carousal'),
             'shopifyinstagrampvideo' => $this->namedHref('instagram.ads.channel.parent.video'),
             'shopifyinstagrampcarousal' => $this->namedHref('instagram.ads.channel.parent.carousal'),
-            'shopifyinstagrammusicstore' => $this->namedHref('music.store.ads.sheet'),
-            'shopifyinstagrammusicschool' => $this->namedHref('music.school.ads.sheet'),
             'tiktok1' => $this->namedHref('tiktok1.ads.raw'),
             'tiktok2' => $this->namedHref('tiktok.gmv.ads.raw'),
             'temu' => $this->namedHref('temu.ads'),
