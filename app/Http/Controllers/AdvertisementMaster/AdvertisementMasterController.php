@@ -2316,7 +2316,14 @@ class AdvertisementMasterController extends Controller
         $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
         $from = $today->copy()->subDays($days + 1)->toDateString();
         $end = $today->copy()->subDay()->toDateString();
-        $this->persistActiveChannelDaily($from, $end);
+        $alreadySaved = Schema::hasTable('advertisement_master_metric_snapshots')
+            && DB::table('advertisement_master_metric_snapshots')
+                ->where('channel', self::SSALES_CHANNEL)
+                ->whereDate('snapshot_date', '<=', $from)
+                ->exists();
+        if (! $alreadySaved) {
+            $this->persistActiveChannelDaily($from, $end);
+        }
 
         $histCols = ['snapshot_date', 'channel', 'spend', 'clicks', 'sold', 'sales', 'active'];
         if ($this->snapshotsHaveMissingAdsColumn()) {

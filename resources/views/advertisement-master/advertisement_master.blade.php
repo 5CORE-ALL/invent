@@ -1705,6 +1705,7 @@
             let admTrendCache  = null;
             let admTrendMetric = 'spend';
             let admTrendLabel  = 'Spend';
+            let admHistoryReq  = 0;
 
             // Build the channel selector options from the loaded tree (flattened),
             // so every parent + child channel can be lensed in the chart.
@@ -1816,6 +1817,25 @@
                 btn.addEventListener('click', admHideModal);
             });
 
+            function admClearTrendChart() {
+                if (admTrendChart) {
+                    admTrendChart.destroy();
+                    admTrendChart = null;
+                }
+                admTrendCache = null;
+                const canvas = document.getElementById('adm-trend-canvas');
+                const emptyEl = document.getElementById('adm-trend-empty');
+                if (canvas) canvas.style.display = 'none';
+                if (emptyEl) {
+                    emptyEl.textContent = 'Loading…';
+                    emptyEl.classList.remove('d-none');
+                }
+                ['adm-trend-highest', 'adm-trend-median', 'adm-trend-lowest'].forEach(function (id) {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = '—';
+                });
+            }
+
             function openAdmChart(metric, label, channel) {
                 admTrendMetric = metric;
                 admTrendLabel  = label;
@@ -1825,6 +1845,7 @@
                     chSel.value = Array.prototype.slice.call(chSel.options).some(function (o) { return o.value === wanted; }) ? wanted : '__total__';
                 }
                 admSetTrendTitle();
+                admClearTrendChart();
                 admShowModal();
                 loadAdmHistory();
             }
@@ -1840,11 +1861,21 @@
 
             function loadAdmHistory() {
                 const days = parseInt(document.getElementById('adm-trend-days').value || '30', 10);
+                const req = ++admHistoryReq;
                 admSetTrendTitle();
+                admClearTrendChart();
                 fetch(historyUrl + '?days=' + encodeURIComponent(days) + '&_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
                     .then(function (r) { return r.json(); })
-                    .then(function (payload) { admTrendCache = payload; renderAdmChart(); })
-                    .catch(function () { admTrendCache = { labels: [], metrics: {}, channels: {} }; renderAdmChart(); });
+                    .then(function (payload) {
+                        if (req !== admHistoryReq) return;
+                        admTrendCache = payload;
+                        renderAdmChart();
+                    })
+                    .catch(function () {
+                        if (req !== admHistoryReq) return;
+                        admTrendCache = { labels: [], metrics: {}, channels: {} };
+                        renderAdmChart();
+                    });
             }
 
             function renderAdmChart() {
@@ -1874,7 +1905,10 @@
 
                 if (!labels.length || !numericValues.length) {
                     canvas.style.display = 'none';
-                    if (emptyEl) emptyEl.classList.remove('d-none');
+                    if (emptyEl) {
+                        emptyEl.textContent = 'No history available for this metric in the selected window.';
+                        emptyEl.classList.remove('d-none');
+                    }
                     return;
                 }
                 if (typeof Chart === 'undefined') {
