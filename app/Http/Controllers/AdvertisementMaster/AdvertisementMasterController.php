@@ -224,8 +224,8 @@ class AdvertisementMasterController extends Controller
     private function activeChannelAdBadgePack(): array
     {
         $empty = [
-            'values' => ['spend' => null, 'ads' => null, 'clicks' => null, 'cvr' => null],
-            'trends' => ['spend' => 'flat', 'tcos' => 'flat', 'clicks' => 'flat', 'cvr' => 'flat'],
+            'values' => ['spend' => null, 'tcos' => null, 'acos' => null, 'clicks' => null, 'cvr' => null],
+            'trends' => ['spend' => 'flat', 'tcos' => 'flat', 'acos' => 'flat', 'clicks' => 'flat', 'cvr' => 'flat'],
         ];
         try {
             $data = BadgeData::dataForPage('all-marketplace-master');
@@ -246,13 +246,15 @@ class AdvertisementMasterController extends Controller
         return [
             'values' => [
                 'spend' => $value($data, 'ad_spend'),
-                'ads' => $value($data, 'ads_pct'),
+                'tcos' => $value($data, 'ads_pct'),
+                'acos' => $this->activeChannelAcos($value($data, 'ad_spend')),
                 'clicks' => $value($data, 'total_views'),
                 'cvr' => $value($data, 'cvr_pct'),
             ],
             'trends' => [
                 'spend' => $this->badgeHistoryDirection('ad_spend'),
                 'tcos' => $this->badgeHistoryDirection('ads_pct'),
+                'acos' => $this->activeChannelAcosDirection(),
                 'clicks' => $this->badgeHistoryDirection('total_views'),
                 'cvr' => $this->badgeHistoryDirection('cvr_pct'),
             ],
@@ -286,6 +288,135 @@ class AdvertisementMasterController extends Controller
         }
 
         return $last > $prev ? 'up' : 'down';
+    }
+
+    /**
+     * ACOS column total on Active Channel: Total Ad Spend ÷ Ad Sales.
+     */
+    private function activeChannelAcos(?float $spend): ?float
+    {
+        $adSales = $this->activeChannelAdSalesTotal();
+        if ($spend === null && $adSales <= 0) {
+            return null;
+        }
+        $spend = $spend ?? 0.0;
+        if ($adSales <= 0) {
+            return $spend > 0 ? 100.0 : 0.0;
+        }
+
+        return round(($spend / $adSales) * 100, 1);
+    }
+
+    private function activeChannelAdSalesTotal(): float
+    {
+        if (! Schema::hasTable('channel_master') || ! Schema::hasTable('channel_master_calculated_data')) {
+            return 0.0;
+        }
+
+        $active = [];
+        foreach (ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['active'])
+            ->pluck('channel') as $name) {
+            $key = $this->normalizeChannelMatchKey((string) $name);
+            if ($key !== '') {
+                $active[$key] = true;
+            }
+        }
+
+        $sum = 0.0;
+        $seen = [];
+        try {
+            foreach (ChannelMasterCalculatedData::query()->get(['channel', 'ad_sales']) as $row) {
+                $key = $this->normalizeChannelMatchKey((string) ($row->channel ?? ''));
+                if ($key === '' || ! isset($active[$key]) || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $sum += (float) ($row->ad_sales ?? 0);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel ad sales sum failed: '.$e->getMessage());
+
+            return 0.0;
+        }
+
+        return round($sum, 2);
+    }
+
+    private function activeChannelAcosDirection(): string
+    {
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $totals = $this->activeChannelDailyTotals(
+            $today->copy()->subDay()->toDateString(),
+            $today->toDateString()
+        );
+        $pct = [];
+        foreach ($totals as $metric) {
+            $sales = (float) ($metric['ad_sales'] ?? 0);
+            $spend = (float) ($metric['ad_spend'] ?? 0);
+            if ($sales <= 0 && $spend <= 0) {
+                continue;
+            }
+            $pct[] = $sales > 0 ? ($spend / $sales) * 100 : ($spend > 0 ? 100.0 : 0.0);
+        }
+        if (count($pct) < 2 || abs($pct[1] - $pct[0]) < 0.01) {
+            return 'flat';
+        }
+
+        return $pct[1] > $pct[0] ? 'up' : 'down';
+    }
+
+    /**
+     * @return array{0: list<string>, 1: list<float|null>}
+     */
+    private function activeChannelAcosHistory(int $days): array
+    {
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $from = $today->copy()->subDays($days - 1);
+        $totals = $this->activeChannelDailyTotals($from->toDateString(), $today->toDateString());
+        $dates = [];
+        $cursor = $from->copy();
+        while ($cursor->lte($today)) {
+            $dates[] = $cursor->toDateString();
+            $cursor->addDay();
+        }
+
+        $series = [];
+        foreach ($dates as $date) {
+            if (! isset($totals[$date])) {
+                $series[] = null;
+                continue;
+            }
+            $sales = (float) ($totals[$date]['ad_sales'] ?? 0);
+            $spend = (float) ($totals[$date]['ad_spend'] ?? 0);
+            if ($sales <= 0 && $spend <= 0) {
+                $series[] = null;
+                continue;
+            }
+            $series[] = $sales > 0 ? round(($spend / $sales) * 100, 1) : ($spend > 0 ? 100.0 : 0.0);
+        }
+
+        $todayIdx = array_search($today->toDateString(), $dates, true);
+        if ($todayIdx !== false) {
+            $liveSpend = null;
+            try {
+                $cached = BadgeData::dataForPage('all-marketplace-master');
+                if (array_key_exists('ad_spend', $cached) && is_numeric($cached['ad_spend'])) {
+                    $liveSpend = (float) $cached['ad_spend'];
+                }
+            } catch (\Throwable $e) {
+                $liveSpend = null;
+            }
+            $live = $this->activeChannelAcos($liveSpend);
+            if ($live !== null) {
+                $series[$todayIdx] = $live;
+            }
+        }
+
+        return [
+            array_map(fn ($d) => date('M d', strtotime($d)), $dates),
+            $series,
+        ];
     }
 
     /**
@@ -483,6 +614,7 @@ class AdvertisementMasterController extends Controller
                 'clicks' => $adBadges['trends']['clicks'],
                 'tcos' => $adBadges['trends']['tcos'],
                 'cvr' => $adBadges['trends']['cvr'],
+                'acos' => $adBadges['trends']['acos'],
             ];
             $activeChannelSpend = ($chartSpend !== null && $chartSpend > 0)
                 ? $chartSpend
@@ -1724,6 +1856,7 @@ class AdvertisementMasterController extends Controller
             }
             $out[$date]['l30_sales'] = ($out[$date]['l30_sales'] ?? 0) + (float) ($summary['l30_sales'] ?? 0);
             $out[$date]['ad_spend'] = ($out[$date]['ad_spend'] ?? 0) + (float) ($summary['total_ad_spend'] ?? 0);
+            $out[$date]['ad_sales'] = ($out[$date]['ad_sales'] ?? 0) + (float) ($summary['ad_sales'] ?? 0);
             $out[$date]['clicks'] = ($out[$date]['clicks'] ?? 0) + (float) ($summary['total_views'] ?? 0);
         }
         ksort($out);
@@ -2173,6 +2306,8 @@ class AdvertisementMasterController extends Controller
         try {
             if ($metric === 'missing_ads' && $this->historyIsAllChannels($channel)) {
                 [$labels, $series] = $this->missingBadgeHistory($days);
+            } elseif ($metric === 'acos' && $this->historyIsAllChannels($channel)) {
+                [$labels, $series] = $this->activeChannelAcosHistory($days);
             } elseif ($this->historyIsAllChannels($channel) && $this->badgeHistoryField($metric) !== null) {
                 [$labels, $series] = $this->badgePageHistory($metric, $days);
             } else {
