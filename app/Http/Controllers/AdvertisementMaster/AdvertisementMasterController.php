@@ -2021,7 +2021,7 @@ class AdvertisementMasterController extends Controller
                 $this->applyBreakdownAds($row, $metrics, $type);
             } elseif (! $isType && $metrics !== null) {
                 $this->applyChannelAds($row, $metrics);
-            } else {
+            } elseif (! $isType) {
                 $this->zeroAdsMetrics($row);
             }
         }
