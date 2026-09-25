@@ -468,7 +468,7 @@ class BestBuyPricingController extends Controller
                 ->filter(fn ($entry) => (float) ($entry->total_price ?? 0) > 0)
                 ->sortBy(fn ($entry) => (float) ($entry->total_price ?? 0))
                 ->values();
-            $lowestLmp = $allLmpEntries->first(fn ($c) => empty($c->ignored)) ?: $allLmpEntries->first();
+            $lowestLmp = $allLmpEntries->first(fn ($c) => empty($c->ignored));
 
             $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price) && is_numeric($lowestLmp->total_price))
                 ? floatval($lowestLmp->total_price)
@@ -516,7 +516,8 @@ class BestBuyPricingController extends Controller
 
         if (is_object($product)) {
             $status = strtolower(trim((string) ($product->listing_status ?? '')));
-            if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
+            if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)
+                && ! self::soldOutOfferKeepsStoredPrice($product)) {
                 return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
             }
         }
@@ -673,6 +674,50 @@ class BestBuyPricingController extends Controller
     }
 
     /**
+     * OF21 sets active=false when quantity is 0 (inactivity_reasons=ZERO_QUANTITY)
+     * even though the offer price is still the listed price. Only that sold-out
+     * case keeps the price. Any other inactivity reason is not a live listing.
+     *
+     * @param  array<string, mixed>  $offer
+     */
+    public static function mcmOfferKeepsListedPrice(array $offer): bool
+    {
+        if (self::mcmFlagIsTrue($offer['active'] ?? null)) {
+            return true;
+        }
+
+        $reasons = $offer['inactivity_reasons'] ?? null;
+        if (is_string($reasons)) {
+            $reasons = $reasons === '' ? [] : explode(',', $reasons);
+        }
+        if (! is_array($reasons)) {
+            return false;
+        }
+
+        $normalized = [];
+        foreach ($reasons as $reason) {
+            if (is_array($reason)) {
+                continue;
+            }
+            $code = strtoupper(trim((string) $reason));
+            if ($code !== '') {
+                $normalized[$code] = true;
+            }
+        }
+
+        return array_keys($normalized) === ['ZERO_QUANTITY'];
+    }
+
+    private static function mcmFlagIsTrue($value): bool
+    {
+        if (is_array($value) || $value === null) {
+            return false;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
      * listing_status=active only counts when the row was written by the latest OF21 pull.
      * Until OF21 tags a row, a Connect price > 0 stays visible (sold-out stock=0 included).
      */
@@ -683,7 +728,9 @@ class BestBuyPricingController extends Controller
         }
 
         $status = strtolower(trim((string) ($product->listing_status ?? '')));
-        if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
+        $inactive = in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true);
+        $soldOutListed = $inactive && self::soldOutOfferKeepsStoredPrice($product);
+        if ($inactive && ! $soldOutListed) {
             return false;
         }
         if ((float) ($product->price ?? 0) <= 0) {
@@ -699,11 +746,24 @@ class BestBuyPricingController extends Controller
             $inLatestPull = $product->updated_at->gte($freshAfter);
         }
 
-        if ($status === 'active') {
+        if ($status === 'active' || $soldOutListed) {
             return $inLatestPull;
         }
 
         return $inLatestPull && (int) ($product->stock ?? 0) > 0;
+    }
+
+    /**
+     * Mirakl sets active=false and listing_status=inactive when quantity is 0.
+     * The offer price is still the listed price. A real delist stores price 0.
+     */
+    public static function soldOutOfferKeepsStoredPrice($product): bool
+    {
+        if (! is_object($product)) {
+            return false;
+        }
+
+        return (float) ($product->price ?? 0) > 0 && (int) ($product->stock ?? 0) === 0;
     }
 
     public static function isListingMarkedInactive($listingStatus): bool
@@ -1590,7 +1650,7 @@ class BestBuyPricingController extends Controller
                 ->sortBy(fn ($comp) => (float) ($comp->total_price ?? 0))
                 ->values();
 
-            $lowest = $competitors->first(fn ($c) => empty($c->ignored)) ?: $competitors->first();
+            $lowest = $competitors->first(fn ($c) => empty($c->ignored));
 
             return response()->json([
                 'success' => true,

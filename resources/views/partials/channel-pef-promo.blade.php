@@ -3413,7 +3413,11 @@
                 if (isFinite(n) && n > 0) return n;
             }
             if (window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function') {
+                const entries = d && Array.isArray(d.lmp_entries) ? d.lmp_entries : [];
                 const n = Number(LmpIgnore.effectiveLmp(d));
+                // Entries are the source of truth. A 0 here means every competitor
+                // is ignored — do not fall through to a stale lmp_price.
+                if (entries.length) return (isFinite(n) && n > 0) ? n : 0;
                 if (isFinite(n) && n > 0) return n;
             }
             if (window.SpriceLmpCap && typeof SpriceLmpCap.lmpOf === 'function') {
@@ -3522,10 +3526,24 @@
                         : (window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function'
                             ? function(row) { return LmpIgnore.effectiveLmp(row); }
                             : undefined)));
-            if (window.SpriceLmpCap) return SpriceLmpCap.prepare(d, sprice, getLmp);
+            if (window.SpriceLmpCap) {
+                const capped = SpriceLmpCap.prepare(d, sprice, getLmp);
+                // Best Buy: LMP below A Price does not replace S PRC. Keep Amazon.
+                if (typeof chPromoIsBestbuyPromoChannel === 'function'
+                    ? chPromoIsBestbuyPromoChannel()
+                    : CHANNEL_PROMO_CHANNEL === 'bestbuy') {
+                    const amz = chPromoRound2(chPromoAmazonPrice(d));
+                    if (amz > 0 && capped > 0 && capped + 0.0001 < amz) return amz;
+                }
+                return capped;
+            }
             const lmp = chPromoLmp(d);
             let s = chPromoRound2(sprice);
             if (lmp > 0 && s + 0.0001 >= lmp) s = chPromoRound2(lmp);
+            if (chPromoIsBestbuyPromoChannel()) {
+                const amz = chPromoRound2(chPromoAmazonPrice(d));
+                if (amz > 0 && s > 0 && s + 0.0001 < amz) return amz;
+            }
             return s;
         }
         /** Discounted or LMP-capped value that must be persisted after a wipe. */
@@ -3558,7 +3576,7 @@
                 }
                 return chPromoRound2(requested);
             }
-            if (d && CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
+            if (d && (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' || CHANNEL_PROMO_CHANNEL === 'newegg')) {
                 const raw = chPromoRound2(fill);
                 const amzKeep = chPromoRound2(chPromoAmazonPrice(d));
                 if (raw > 0 && amzKeep > 0 && raw > amzKeep) return raw;
@@ -4489,7 +4507,7 @@
                 && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3')) {
                 val = temuPrepareSpriceForSave(rowData, sprice);
             } else {
-                if (rowData && CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
+                if (rowData && (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' || CHANNEL_PROMO_CHANNEL === 'newegg')) {
                     const rawKeep = chPromoRound2(sprice);
                     const amzKeep = chPromoRound2(chPromoAmazonPrice(rowData));
                     if (rawKeep > 0 && amzKeep > 0 && rawKeep > amzKeep) {

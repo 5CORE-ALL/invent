@@ -2,6 +2,7 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Http\Controllers\MarketPlace\BestBuyPricingController;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -127,6 +128,8 @@ class MiraklMcmOfferStatusSync
 
         $skuIdx = $this->csvColumnIndex($headers, ['shop-sku', 'shopsku', 'sku', 'offer-sku']);
         $activeIdx = $this->csvColumnIndex($headers, ['active', 'activated']);
+        $reasonIdx = $this->csvColumnIndex($headers, ['inactivity-reasons', 'inactive-reasons', 'inactivity-reason']);
+        $stateIdx = $this->csvColumnIndex($headers, ['state-code', 'offer-state-code', 'offer-state']);
         if ($skuIdx === null || $activeIdx === null) {
             Log::warning('MiraklMcmOfferStatusSync: OF51 missing shop-sku/active columns', [
                 'headers' => $headers,
@@ -146,7 +149,22 @@ class MiraklMcmOfferStatusSync
             if ($sku === '') {
                 continue;
             }
-            $status = $this->csvActiveToStatus((string) ($cols[$activeIdx] ?? ''));
+            $offer = [
+                'active' => $cols[$activeIdx] ?? null,
+            ];
+            if ($reasonIdx !== null) {
+                $rawReasons = trim((string) ($cols[$reasonIdx] ?? ''));
+                $offer['inactivity_reasons'] = $rawReasons === ''
+                    ? []
+                    : preg_split('/[|,]/', $rawReasons);
+            }
+            if ($stateIdx !== null) {
+                $offer['state_code'] = trim((string) ($cols[$stateIdx] ?? ''));
+            }
+            $status = $this->statusFromMcmOffer($offer);
+            if ($status === null) {
+                $status = $this->csvActiveToStatus((string) ($cols[$activeIdx] ?? ''));
+            }
             if ($status === null) {
                 continue;
             }
@@ -415,6 +433,10 @@ class MiraklMcmOfferStatusSync
      */
     protected function statusFromMcmOffer(array $offer): ?string
     {
+        if (BestBuyPricingController::mcmOfferKeepsListedPrice($offer)) {
+            return 'active';
+        }
+
         if (array_key_exists('active', $offer) && ! is_array($offer['active'])) {
             $raw = $offer['active'];
             if (is_bool($raw)) {

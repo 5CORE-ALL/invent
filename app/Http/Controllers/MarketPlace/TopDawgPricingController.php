@@ -122,7 +122,7 @@ class TopDawgPricingController extends Controller
         $amazonStandardPrices = $this->amazonStandardPricesBySku($skus);
 
         $topdawgData = Schema::hasTable('topdawg_products')
-            ? TopDawgProduct::buildLookupByNormalizedSku($skus)
+            ? TopDawgProduct::buildLookupByNormalizedSku($skus, false, true)
             : [];
 
         // Live L30 qty + sales $ from topdawg_order_metrics (same source as /topdawg/sales-dashboard).
@@ -153,12 +153,9 @@ class TopDawgPricingController extends Controller
             $ovL30 = (float) ($shopifyItem->quantity ?? 0);
 
             $td = $topdawgData[$skuNorm] ?? null;
+            // Price is the live site cost on this SKU's own listing.
+            // MSRP and a sibling pack/combo price are not a listing price.
             $tdPrice = $td ? (float) ($td->price ?? 0) : 0;
-            // TopDawg list API often stores the live amount in cost/msrp and
-            // leaves price at 0 — still show the published storefront price.
-            if ($tdPrice <= 0 && $td) {
-                $tdPrice = (float) ($td->msrp ?? 0);
-            }
             $tdStock = $td ? (int) ($td->remaining_inventory ?? 0) : 0;
             $storedL30 = $td ? (int) ($td->r_l30 ?? 0) : 0;
             $tdL60 = $td ? (int) ($td->r_l60 ?? 0) : 0;

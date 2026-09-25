@@ -116,6 +116,26 @@ class BestBuyListedPriceTest extends TestCase
         $this->assertFalse(BestBuyPricingController::productIsLiveOffer($row));
     }
 
+    public function test_sold_out_inactive_row_still_shows_offer_price(): void
+    {
+        $row = new BestbuyUsaProduct();
+        $row->price = 37.05;
+        $row->stock = 0;
+        $row->listing_status = 'inactive';
+        $row->updated_at = Carbon::now()->subMinutes(2);
+
+        $this->assertTrue(BestBuyPricingController::productIsLiveOffer(
+            $row,
+            Carbon::now()->subMinutes(15)
+        ));
+        $out = BestBuyPricingController::resolveListedPrice(
+            $row,
+            BestBuyPricingController::productIsLiveOffer($row, Carbon::now()->subMinutes(15))
+        );
+        $this->assertTrue($out['listed']);
+        $this->assertEqualsWithDelta(37.05, $out['price'], 0.001);
+    }
+
     public function test_normalize_offer_sku_collapses_nbsp(): void
     {
         $this->assertSame(
@@ -158,6 +178,39 @@ class BestBuyListedPriceTest extends TestCase
         $leftover->updated_at = Carbon::parse('2026-09-12 16:49:53');
 
         $this->assertFalse(BestBuyPricingController::productIsLiveOffer($leftover, $freshAfter));
+    }
+
+    public function test_sold_out_offer_keeps_listed_price(): void
+    {
+        $this->assertTrue(BestBuyPricingController::mcmOfferKeepsListedPrice([
+            'active' => false,
+            'price' => 37.05,
+            'quantity' => 0,
+            'inactivity_reasons' => ['ZERO_QUANTITY'],
+        ]));
+    }
+
+    public function test_other_inactivity_reason_drops_listed_price(): void
+    {
+        $this->assertFalse(BestBuyPricingController::mcmOfferKeepsListedPrice([
+            'active' => false,
+            'price' => 37.05,
+            'inactivity_reasons' => ['ZERO_QUANTITY', 'SHOP_CLOSED'],
+        ]));
+        $this->assertFalse(BestBuyPricingController::mcmOfferKeepsListedPrice([
+            'active' => false,
+            'price' => 37.05,
+            'inactivity_reasons' => [],
+        ]));
+    }
+
+    public function test_active_offer_keeps_listed_price(): void
+    {
+        $this->assertTrue(BestBuyPricingController::mcmOfferKeepsListedPrice([
+            'active' => true,
+            'price' => 37.05,
+            'inactivity_reasons' => [],
+        ]));
     }
 
     public function test_listing_inactive_flag(): void

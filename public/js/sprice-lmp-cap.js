@@ -10,6 +10,7 @@
         if (typeof getLmp === 'function') {
             var custom = num(getLmp(row));
             if (isFinite(custom) && custom > 0) return custom;
+            if (row && Array.isArray(row.lmp_entries) && row.lmp_entries.length) return NaN;
         }
         if (window.PriceGtLmpBadge && typeof PriceGtLmpBadge.lmpOf === 'function') {
             var fromBadge = PriceGtLmpBadge.lmpOf(row);

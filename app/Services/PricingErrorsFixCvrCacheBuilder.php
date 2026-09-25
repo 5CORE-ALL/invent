@@ -495,6 +495,11 @@ class PricingErrorsFixCvrCacheBuilder
         // Match price_increase_view renderMarketplaceData isNoAdsMp (NOT bestbuy/macy/shopify/ae)
         $isTemu = ($norm === 'temu');
         $isTemu2 = ($norm === 'temu2');
+        $isTopdawg = ($norm === 'topdawg' || $norm === 'topdog');
+        // /topdawg-pricing GPFT% / GROI%: (price × margin − LP) / price|LP. Ship is not used.
+        if ($isTopdawg) {
+            $ship = 0.0;
+        }
         $isNoAds = in_array($norm, [
             'doba', 'ppower', 'topdawg', 'shein', 'faire',
         ], true);

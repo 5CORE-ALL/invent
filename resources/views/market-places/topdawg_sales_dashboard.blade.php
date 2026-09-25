@@ -45,7 +45,7 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">GROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
@@ -169,7 +169,7 @@
             $("#total-quantity-badge").text("Total Quantity: " + totalQuantity.toLocaleString());
             $("#total-revenue-badge").text("Total Revenue: $" + totalRevenue.toFixed(2));
             $("#pft-percentage-badge").text("PFT %: " + pftPct.toFixed(1) + "%");
-            $("#roi-percentage-badge").text("ROI %: " + roiPct.toFixed(1) + "%");
+            $("#roi-percentage-badge").text("GROI %: " + roiPct.toFixed(1) + "%");
             $("#avg-price-badge").text("Avg Price: $" + avgPrice.toFixed(2));
             $("#pft-total-badge").text("PFT Total: $" + totalPft.toFixed(2));
             $("#pft-total-badge").toggleClass("bg-danger", totalPft < 0).toggleClass("bg-dark", totalPft >= 0);
