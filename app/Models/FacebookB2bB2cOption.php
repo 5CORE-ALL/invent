@@ -24,6 +24,11 @@ class FacebookB2bB2cOption extends Model
      */
     public static function options(): array
     {
+        static $cached = null;
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         $custom = [];
         if (Schema::hasTable('facebook_b2b_b2c_options')) {
             $custom = self::query()->orderBy('name')->pluck('name')->all();
@@ -40,6 +45,6 @@ class FacebookB2bB2cOption extends Model
             $out[] = $key;
         }
 
-        return $out;
+        return $cached = $out;
     }
 }

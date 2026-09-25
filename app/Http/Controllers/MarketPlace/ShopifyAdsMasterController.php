@@ -1191,6 +1191,8 @@ class ShopifyAdsMasterController extends Controller
         }
 
         $rows = FacebookAllAdsSheet::query()
+            ->whereNotNull('b2b_b2c')
+            ->where('b2b_b2c', '!=', '')
             ->orderByDesc('id')
             ->get(['b2b_b2c', 'row_data']);
 
