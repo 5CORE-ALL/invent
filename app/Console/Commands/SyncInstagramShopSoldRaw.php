@@ -40,6 +40,8 @@ class SyncInstagramShopSoldRaw extends Command
             return self::FAILURE;
         }
 
+        $productUrls = $this->fetchProductUrls($storeUrl, $accessToken, $apiVersion, $rows);
+
         $saved = 0;
         $skipped = 0;
 
@@ -55,6 +57,7 @@ class SyncInstagramShopSoldRaw extends Command
             $gross = round((float) ($row['gross_sales'] ?? 0), 2);
             $payload = [
                 'sale_date' => $row['day'] ?? null,
+                'url' => $this->variantUrl($productUrls, $row),
                 'product_title' => $row['product_title'] ?? null,
                 'quantity' => $quantity,
                 'sold_price' => $quantity > 0 ? round($gross / $quantity, 2) : 0,
@@ -89,7 +92,7 @@ class SyncInstagramShopSoldRaw extends Command
     {
         $query = 'FROM sales SHOW net_items_sold, gross_sales, net_sales, discounts, returns'
             ." WHERE sales_channel = 'Facebook & Instagram'"
-            .' GROUP BY day, order_name, product_variant_sku, product_title'
+            .' GROUP BY day, order_name, product_variant_sku, product_title, product_id, product_variant_id'
             ." SINCE -{$days}d"
             .' ORDER BY day DESC'
             .' LIMIT 1000';
@@ -125,5 +128,76 @@ class SyncInstagramShopSoldRaw extends Command
         }
 
         return $payload['data']['shopifyqlQuery']['tableData']['rows'] ?? [];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, string> product id => online store URL
+     */
+    private function fetchProductUrls(string $domain, string $accessToken, string $apiVersion, array $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            $productId = trim((string) ($row['product_id'] ?? ''));
+            if ($productId !== '') {
+                $ids[$productId] = 'gid://shopify/Product/'.$productId;
+            }
+        }
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $response = Http::withHeaders([
+            'X-Shopify-Access-Token' => $accessToken,
+            'Content-Type' => 'application/json',
+        ])->timeout(60)->post(
+            "https://{$domain}/admin/api/{$apiVersion}/graphql.json",
+            [
+                'query' => 'query($ids: [ID!]!) { nodes(ids: $ids) { ... on Product { id onlineStoreUrl } } }',
+                'variables' => ['ids' => array_values($ids)],
+            ]
+        );
+
+        if (! $response->successful()) {
+            throw new \RuntimeException('HTTP '.$response->status().': '.$response->body());
+        }
+
+        $payload = $response->json();
+        if (! empty($payload['errors'])) {
+            $msgs = array_map(fn ($e) => $e['message'] ?? json_encode($e), $payload['errors']);
+            throw new \RuntimeException('GraphQL errors: '.implode('; ', $msgs));
+        }
+
+        $urls = [];
+        foreach ($payload['data']['nodes'] ?? [] as $node) {
+            if (empty($node['id']) || empty($node['onlineStoreUrl'])) {
+                continue;
+            }
+            $numericId = basename((string) $node['id']);
+            $urls[$numericId] = (string) $node['onlineStoreUrl'];
+        }
+
+        return $urls;
+    }
+
+    /**
+     * @param  array<string, string>  $productUrls
+     * @param  array<string, mixed>  $row
+     */
+    private function variantUrl(array $productUrls, array $row): ?string
+    {
+        $productId = trim((string) ($row['product_id'] ?? ''));
+        $base = $productUrls[$productId] ?? null;
+        if ($base === null || $base === '') {
+            return null;
+        }
+
+        $variantId = trim((string) ($row['product_variant_id'] ?? ''));
+        if ($variantId === '') {
+            return $base;
+        }
+
+        return $base.'?variant='.$variantId;
     }
 }

@@ -17,6 +17,7 @@ return new class extends Migration
             $table->date('sale_date')->nullable()->index();
             $table->string('order_name', 64);
             $table->string('sku', 191)->index();
+            $table->string('url', 500)->nullable();
             $table->string('product_title', 500)->nullable();
             $table->integer('quantity')->default(0);
             $table->decimal('sold_price', 12, 2)->default(0);

@@ -12,6 +12,7 @@ class InstagramShopSoldRaw extends Model
         'sale_date',
         'order_name',
         'sku',
+        'url',
         'product_title',
         'quantity',
         'sold_price',
