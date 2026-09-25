@@ -376,6 +376,9 @@ class Ebay2SyncController extends Controller
         if ($liveShopifyQty === []) {
             $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
         }
+        foreach (MarketplaceListingStockResolver::liveShopifyQtyMapForRows($pageRows, true) as $upper => $qty) {
+            $liveShopifyQty[(string) $upper] = (int) $qty;
+        }
 
         // Always live-hydrate marketplace qty for this page's linked product IDs.
         $pageLiveByProduct = [];
