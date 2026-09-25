@@ -6,6 +6,8 @@ use App\Models\B5cB2bOrder;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\Business5CoreB2bApiService;
 use App\Services\ShopifyStoreSelector;
+use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -16,6 +18,8 @@ use Illuminate\Support\Facades\Log;
 class B5cB2bOrderPushService
 {
     use FindsExistingShopifyOrderByChannelRef;
+
+    public const SHOPIFY_TAG = 'Business 5 Core (B2B)';
 
     public ?string $lastFailureReason = null;
 
@@ -151,10 +155,8 @@ class B5cB2bOrderPushService
 
         [$first, $last] = $this->splitName((string) ($order->customer_name ?? ($payload['customer_name'] ?? '')));
         $shipping = $this->shippingAddress($payload, $first, $last);
-        $tags = array_values(array_filter(array_unique(array_merge(
-            ['b5cb2b', $number],
-            is_array($settings['order']['shopify_order_tags'] ?? null) ? $settings['order']['shopify_order_tags'] : []
-        ))));
+        $extraTags = is_array($settings['order']['shopify_order_tags'] ?? null) ? $settings['order']['shopify_order_tags'] : [];
+        $tags = self::shopifyTags($number, $extraTags);
 
         $orderPayload = [
             'email' => $email,
@@ -327,6 +329,155 @@ class B5cB2bOrderPushService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Tags written on the Shopify order. The channel slug is never used as a visible tag.
+     *
+     * @param  array<int, mixed>  $extra
+     * @return list<string>
+     */
+    public static function shopifyTags(string $orderNumber, array $extra = []): array
+    {
+        $tags = [];
+        foreach (array_merge([self::SHOPIFY_TAG, $orderNumber], $extra) as $tag) {
+            $tag = trim((string) $tag);
+            if ($tag === '' || strcasecmp($tag, 'b5cb2b') === 0) {
+                continue;
+            }
+            if (! in_array($tag, $tags, true)) {
+                $tags[] = $tag;
+            }
+        }
+
+        return $tags;
+    }
+
+    /**
+     * @return array{tags: string, changed: bool}
+     */
+    public static function rewriteTagList(string $csv): array
+    {
+        $tags = [];
+        $changed = false;
+        foreach (preg_split('/\s*,\s*/', $csv) ?: [] as $tag) {
+            $tag = trim((string) $tag);
+            if ($tag === '') {
+                continue;
+            }
+            if (strcasecmp($tag, 'b5cb2b') === 0) {
+                $tag = self::SHOPIFY_TAG;
+                $changed = true;
+            }
+            if (! in_array($tag, $tags, true)) {
+                $tags[] = $tag;
+            }
+        }
+        if (! in_array(self::SHOPIFY_TAG, $tags, true)) {
+            $tags[] = self::SHOPIFY_TAG;
+            $changed = true;
+        }
+
+        return ['tags' => implode(', ', $tags), 'changed' => $changed];
+    }
+
+    /**
+     * Replace the b5cb2b tag on an order that is already in Shopify.
+     *
+     * @return array{success: bool, changed: bool, cached: bool, message: string}
+     */
+    public function renameShopifyTag(string $shopifyOrderId): array
+    {
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($shopifyOrderId === '') {
+            return ['success' => false, 'changed' => false, 'cached' => false, 'message' => 'No Shopify order.'];
+        }
+
+        $cacheKey = 'b5cb2b-display-tag:'.$shopifyOrderId;
+        if (Cache::get($cacheKey)) {
+            return ['success' => true, 'changed' => false, 'cached' => true, 'message' => 'Tag already updated.'];
+        }
+
+        $config = $this->shopifyConfig();
+        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
+            return ['success' => false, 'changed' => false, 'cached' => false, 'message' => 'Shopify store credentials are not configured.'];
+        }
+
+        $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json?fields=id,tags';
+        $response = $this->shopifySend('GET', $url, $config);
+        if ($response === null || ! $response->successful()) {
+            $status = $response ? $response->status() : 0;
+
+            return ['success' => false, 'changed' => false, 'cached' => false, 'message' => 'Could not read Shopify tags'.($status ? ' (HTTP '.$status.')' : '').'.'];
+        }
+
+        $rewritten = self::rewriteTagList((string) $response->json('order.tags'));
+        if (! $rewritten['changed']) {
+            Cache::put($cacheKey, 1, now()->addDays(30));
+
+            return ['success' => true, 'changed' => false, 'cached' => false, 'message' => 'Tag already updated.'];
+        }
+
+        sleep(1);
+        $put = $this->shopifySend('PUT', 'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json', $config, [
+            'order' => [
+                'id' => (int) $shopifyOrderId,
+                'tags' => $rewritten['tags'],
+            ],
+        ]);
+        if ($put === null || ! $put->successful()) {
+            $status = $put ? $put->status() : 0;
+            Log::warning('B5cB2bOrderPushService: Shopify tag update failed', [
+                'shopify_order_id' => $shopifyOrderId,
+                'status' => $status,
+                'body' => $put ? mb_substr($put->body(), 0, 300) : null,
+            ]);
+
+            return ['success' => false, 'changed' => false, 'cached' => false, 'message' => 'Shopify tag update failed'.($status ? ' (HTTP '.$status.')' : '').'.'];
+        }
+
+        Cache::put($cacheKey, 1, now()->addDays(30));
+
+        return ['success' => true, 'changed' => true, 'cached' => false, 'message' => 'Tag updated.'];
+    }
+
+    /**
+     * @param  array{store_url: string, token: string}  $config
+     * @param  array<string, mixed>  $body
+     */
+    protected function shopifySend(string $method, string $url, array $config, array $body = []): ?Response
+    {
+        $pending = Http::withHeaders([
+            'X-Shopify-Access-Token' => $config['token'],
+            'Content-Type' => 'application/json',
+        ])->timeout(30);
+
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            try {
+                $response = strtoupper($method) === 'PUT'
+                    ? $pending->put($url, $body)
+                    : $pending->get($url);
+                if ($response->status() === 429 && $attempt < 5) {
+                    $wait = (int) ($response->header('Retry-After') ?: (2 * $attempt));
+                    sleep(max(2, min(20, $wait)));
+
+                    continue;
+                }
+
+                return $response;
+            } catch (\Throwable $e) {
+                Log::warning('B5cB2bOrderPushService: Shopify tag request failed', [
+                    'error' => $e->getMessage(),
+                    'attempt' => $attempt,
+                ]);
+                if ($attempt >= 5) {
+                    return null;
+                }
+                sleep(2 * $attempt);
+            }
+        }
+
+        return null;
     }
 
     /**
