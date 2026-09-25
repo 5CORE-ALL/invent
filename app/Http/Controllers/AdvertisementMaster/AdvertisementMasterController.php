@@ -273,26 +273,18 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
-     * Last chart point uses the same number as the header badge, matching
-     * All Marketplace Master (the live total replaces only the final day).
-     *
-     * @param  array<string, float>  $series
-     * @return array<string, float>
+     * Latest Active Channel chart point — the number the Total Sales / Spend
+     * graph shows on its last day.
      */
-    private function pinSeriesLastToBadge(array $series, float $badge): array
+    private function latestMarketplaceMetric(string $metric): ?float
     {
-        if ($series === [] || $badge <= 0) {
-            return $series;
+        $series = $this->allMarketplaceMetricSeries(32, $metric);
+        if ($series === []) {
+            return null;
         }
+        $last = end($series);
 
-        $last = array_key_last($series);
-        if ($last === null) {
-            return $series;
-        }
-
-        $series[$last] = round($badge, 2);
-
-        return $series;
+        return $last === false ? null : round((float) $last, 2);
     }
 
     /**
@@ -471,11 +463,18 @@ class AdvertisementMasterController extends Controller
             $acos = $sales > 0
                 ? (int) round(($rowSpend / $sales) * 100)
                 : ($rowSpend > 0 ? 100 : 0);
-            $activeChannelSales = (new static)->activeChannelL30SalesTotal();
+            $page = new static;
+            $chartSales = $page->latestMarketplaceMetric('l30_sales');
+            $activeChannelSales = ($chartSales !== null && $chartSales > 0)
+                ? $chartSales
+                : $page->activeChannelL30SalesTotal();
             if ($activeChannelSales > 0) {
                 $ssales = $activeChannelSales;
             }
-            $activeChannelSpend = (new static)->activeChannelAdSpendTotal();
+            $chartSpend = $page->latestMarketplaceMetric('ad_spend');
+            $activeChannelSpend = ($chartSpend !== null && $chartSpend > 0)
+                ? $chartSpend
+                : $page->activeChannelAdSpendTotal();
             if ($activeChannelSpend > 0) {
                 $spend = $activeChannelSpend;
             }
@@ -545,8 +544,14 @@ class AdvertisementMasterController extends Controller
                 'temu2' => $temu2NetSales,
             ]);
 
-            $activeChannelSpend = $this->activeChannelAdSpendTotal();
-            $totalNetSales = $this->activeChannelL30SalesTotal();
+            $chartSales = $this->latestMarketplaceMetric('l30_sales');
+            $chartSpend = $this->latestMarketplaceMetric('ad_spend');
+            $activeChannelSpend = ($chartSpend !== null && $chartSpend > 0)
+                ? $chartSpend
+                : $this->activeChannelAdSpendTotal();
+            $totalNetSales = ($chartSales !== null && $chartSales > 0)
+                ? $chartSales
+                : $this->activeChannelL30SalesTotal();
             if ($totalNetSales <= 0) {
                 $totalNetSales = round(
                     $amazonNetSales + $ebayNetSales + $ebay2NetSales + $ebay3NetSales + $shopifyNetSales + $tiktokNetSales + $temuNetSales + $temu2NetSales,
@@ -2092,14 +2097,8 @@ class AdvertisementMasterController extends Controller
         // and the same as-of dates as /all-marketplace-master. That chart ends
         // on the previous Pacific day, so do not extend the axis through today.
         $activeHistory = $this->activeChannelHistoryByDate($from, $end);
-        $marketplaceSales = $this->pinSeriesLastToBadge(
-            $this->allMarketplaceMetricSeries($days, 'l30_sales'),
-            $this->activeChannelL30SalesTotal()
-        );
-        $marketplaceSpend = $this->pinSeriesLastToBadge(
-            $this->allMarketplaceMetricSeries($days, 'ad_spend'),
-            $this->activeChannelAdSpendTotal()
-        );
+        $marketplaceSales = $this->allMarketplaceMetricSeries($days, 'l30_sales');
+        $marketplaceSpend = $this->allMarketplaceMetricSeries($days, 'ad_spend');
         $marketplaceDates = array_values(array_unique(array_merge(
             array_keys($marketplaceSales),
             array_keys($marketplaceSpend)
