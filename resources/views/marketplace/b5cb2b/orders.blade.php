@@ -109,11 +109,11 @@ function b5cPushUnlinked() {
                 fail++;
                 $tr.find('.b5c-shopify-cell').text(res.message || 'Failed');
             }
-            next();
+            setTimeout(next, 2000);
         }).fail(function (xhr) {
             fail++;
             $tr.find('.b5c-shopify-cell').text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed');
-            next();
+            setTimeout(next, 2000);
         });
     }
     next();
