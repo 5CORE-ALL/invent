@@ -87,6 +87,55 @@ class AmazonBidUtilizationService
         return is_finite($n) && $n > 0 ? $n : 0.0;
     }
 
+    /**
+     * CPC1 / CPC2 / CPC3 used by the Amazon Ads grid on a daily row: costPerClick on the
+     * campaign's latest calendar day, the day before, and two days before. A missing day
+     * or a zero CPC is 0 so SBID can fall through to Avg CPC + 0.10. This is not the L7
+     * summary CPC.
+     *
+     * @return array{0: float, 1: float, 2: float}
+     */
+    public static function gridDailyCpcTriple(string $table, string $campaignId, ?string $adType = null): array
+    {
+        $campaignId = trim($campaignId);
+        $empty = [0.0, 0.0, 0.0];
+        if ($campaignId === '' || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'costPerClick') || ! Schema::hasColumn($table, 'report_date_range')) {
+            return $empty;
+        }
+        $anchorQuery = DB::table($table)
+            ->where('campaign_id', $campaignId)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10');
+        if ($adType !== null && $adType !== '' && Schema::hasColumn($table, 'ad_type')) {
+            $anchorQuery->where('ad_type', $adType);
+        }
+        $anchor = $anchorQuery->max('report_date_range');
+        if (! is_string($anchor) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $anchor)) {
+            return $empty;
+        }
+        $days = [
+            $anchor,
+            date('Y-m-d', strtotime($anchor.' -1 day')),
+            date('Y-m-d', strtotime($anchor.' -2 day')),
+        ];
+        $rowsQuery = DB::table($table)
+            ->where('campaign_id', $campaignId)
+            ->whereIn('report_date_range', $days);
+        if ($adType !== null && $adType !== '' && Schema::hasColumn($table, 'ad_type')) {
+            $rowsQuery->where('ad_type', $adType);
+        }
+        $byDay = [];
+        foreach ($rowsQuery->get(['report_date_range', 'costPerClick']) as $row) {
+            $n = (float) ($row->costPerClick ?? 0);
+            $byDay[(string) $row->report_date_range] = is_finite($n) && $n > 0 ? $n : 0.0;
+        }
+
+        return [
+            (float) ($byDay[$days[0]] ?? 0.0),
+            (float) ($byDay[$days[1]] ?? 0.0),
+            (float) ($byDay[$days[2]] ?? 0.0),
+        ];
+    }
+
     public static function suggestedSbidStorageValue(mixed $computed): ?string
     {
         if (! is_numeric($computed)) {

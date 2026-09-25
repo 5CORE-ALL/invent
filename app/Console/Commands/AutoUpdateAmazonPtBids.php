@@ -420,23 +420,21 @@ class AutoUpdateAmazonPtBids extends Command
             $l2_spend = floatval($row['l2_spend'] ?? 0);
             $ub2 = AmazonBidUtilizationService::ub2PercentFromL2Spend($budget, $l2_spend);
 
-            $l1_cpc = floatval($row['l1_cpc']);
-            $l2_cpc = floatval($row['l2_cpc'] ?? 0);
-            $l7_cpc = floatval($row['l7_cpc']);
-            $fbL1 = $matchedCampaignL1 ? (float) ($matchedCampaignL1->costPerClick ?? 0) : 0.0;
-            $fbL7 = $matchedCampaignL7 ? (float) ($matchedCampaignL7->costPerClick ?? 0) : 0.0;
-            $cpcFallback = ($l1_cpc <= 0 && $l2_cpc <= 0 && $l7_cpc <= 0) ? max($fbL1, $fbL7) : null;
-            if ($cpcFallback === null || $cpcFallback <= 0) {
-                $cpcFallback = null;
-            }
+            // Same CPC1/CPC2/CPC3 as the ads grid (latest day, day before, two days before).
+            // L7 summary CPC must not stand in for a blank recent day, or SBID stays off the cell.
+            [$cpc1, $cpc2, $cpc3] = AmazonBidUtilizationService::gridDailyCpcTriple(
+                'amazon_sp_campaign_reports',
+                (string) $campaignId,
+                'SPONSORED_PRODUCTS'
+            );
 
             $bidOut = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
                 $ub7,
                 $ub1,
-                $l1_cpc,
-                $l2_cpc,
-                $l7_cpc,
-                $cpcFallback,
+                $cpc1,
+                $cpc2,
+                $cpc3,
+                null,
                 $avgCpc > 0 ? $avgCpc : null
             );
             $row['sbid'] = $bidOut['sbid'];

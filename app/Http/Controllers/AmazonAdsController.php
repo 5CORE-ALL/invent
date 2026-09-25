@@ -3409,8 +3409,9 @@ class AmazonAdsController extends Controller
         $synced = "s.status = 'synced'";
         if ($field === 'bid') {
             $match = self::storedBidMatchesSql($alias);
+            $differ = self::storedBidDiffersSql($alias);
 
-            return "CASE WHEN {$failed} THEN 'red' WHEN {$synced} OR ({$match}) THEN 'green' ELSE 'yellow' END";
+            return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
         }
 
         return "CASE WHEN {$failed} THEN 'red' WHEN {$synced} THEN 'green' ELSE 'yellow' END";
@@ -3436,6 +3437,13 @@ class AmazonAdsController extends Controller
         $t = str_replace('`', '', $table);
 
         return "((`{$t}`.`last_sbid` + 0) > 0 AND (`{$t}`.`sbid` + 0) > 0 AND ABS((`{$t}`.`last_sbid` + 0) - (`{$t}`.`sbid` + 0)) <= 0.015)";
+    }
+
+    private static function storedBidDiffersSql(string $table): string
+    {
+        $t = str_replace('`', '', $table);
+
+        return "((`{$t}`.`last_sbid` + 0) > 0 AND (`{$t}`.`sbid` + 0) > 0 AND ABS((`{$t}`.`last_sbid` + 0) - (`{$t}`.`sbid` + 0)) > 0.015)";
     }
 
     /**

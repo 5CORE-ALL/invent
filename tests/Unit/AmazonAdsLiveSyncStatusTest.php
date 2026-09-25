@@ -102,6 +102,28 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
         $this->assertStringContainsString('429', $out['tip']);
     }
 
+    public function test_synced_bid_is_not_green_when_saved_sbid_differs_from_lbid(): void
+    {
+        $rows = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '531', 'sbid' => 0.68, 'last_sbid' => 0.83]],
+            [
+                'bid' => [
+                    '531' => [
+                        'status' => 'synced',
+                        'reason' => 'already_matched',
+                        'desired_value' => 0.83,
+                        'live_value' => 0.83,
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertSame('yellow', $rows[0]['bid_sync_color']);
+        $this->assertSame('sbid_differs', $rows[0]['bid_sync_reason']);
+        $this->assertStringContainsString('$0.68', $rows[0]['bid_sync_tip']);
+        $this->assertStringContainsString('$0.83', $rows[0]['bid_sync_tip']);
+    }
+
     public function test_green_bid_when_verified_live_matches_sbid(): void
     {
         $out = AmazonAdsLiveSyncStatus::present('bid', [
