@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ShopifyB2BDailyData;
 use App\Models\ShopifySku;
 use App\Services\PricingErrorsFixCvrCacheBuilder;
+use App\Services\TemuShopifySalesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -80,6 +81,7 @@ class ViewsMasterController extends Controller
                     continue;
                 }
                 $row = $this->applyAnalyticsViews($row, $pull, $analyticsViews);
+                $row = $this->applyAnalyticsMargins($row, $pull);
                 $views = $row['views'] ?? null;
                 if (! is_numeric($views) || (float) $views <= 0) {
                     continue;
@@ -116,6 +118,81 @@ class ViewsMasterController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * GPFT / GROI / NPFT / NROI using each channel's analytics formula.
+     * Pricing-errors-fix math is not used.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function applyAnalyticsMargins(array $row, string $pull): array
+    {
+        $price = (float) ($row['price'] ?? 0);
+        $lp = (float) ($row['lp'] ?? 0);
+        $ship = (float) ($row['ship'] ?? 0);
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin = $margin / 100;
+        }
+        $ads = (float) ($row['ads_pct'] ?? 0);
+        $noShip = in_array($pull, ['faire', 'topdawg', 'sb2b'], true);
+        $noAds = in_array($pull, ['doba', 'topdawg', 'shein', 'faire', 'aliexpress'], true);
+        if ($noShip) {
+            $ship = 0.0;
+        }
+        if ($noAds) {
+            $ads = 0.0;
+        }
+
+        if (in_array($pull, ['temu', 'temu2'], true)) {
+            $base = (float) ($row['base_price'] ?? 0);
+            if (! ($base > 0) && $price > 0) {
+                $base = $price > 29.98 ? $price : max(0.0, $price - 2.99);
+            }
+            $rPrice = TemuShopifySalesService::computeRPrice($base);
+            $tPrice = TemuShopifySalesService::computeFullTemuPrice($base);
+            if ($pull === 'temu2') {
+                $ads = 0.0;
+            }
+            if (! ($rPrice > 0) || ! ($tPrice > 0) || ! ($margin > 0)) {
+                $row['gpft'] = null;
+                $row['groi'] = null;
+                $row['npft'] = null;
+                $row['nroi'] = null;
+
+                return $row;
+            }
+            $gross = TemuShopifySalesService::computeGroiProfit($rPrice, $margin, $lp, $ship);
+            $net = $gross - ($tPrice * ($ads / 100));
+            $row['gpft'] = round(($gross / $tPrice) * 100, 2);
+            $row['groi'] = $lp > 0 ? round(($gross / $lp) * 100, 2) : null;
+            $row['npft'] = round(($net / $tPrice) * 100, 2);
+            $row['nroi'] = $lp > 0 ? round(($net / $lp) * 100, 2) : null;
+
+            return $row;
+        }
+
+        if (! ($price > 0) || ! ($margin > 0)) {
+            $row['gpft'] = null;
+            $row['groi'] = null;
+            $row['npft'] = null;
+            $row['nroi'] = null;
+
+            return $row;
+        }
+
+        $gross = ($price * $margin) - $lp - $ship;
+        $gpft = ($gross / $price) * 100;
+        $groi = $lp > 0 ? ($gross / $lp) * 100 : null;
+        $net = $gross - ($price * ($ads / 100));
+        $row['gpft'] = round($gpft, 2);
+        $row['groi'] = $groi === null ? null : round($groi, 2);
+        $row['npft'] = round($gpft - $ads, 2);
+        $row['nroi'] = $lp > 0 ? round(($net / $lp) * 100, 2) : null;
+
+        return $row;
     }
 
     /**

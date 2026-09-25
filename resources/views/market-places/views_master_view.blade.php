@@ -263,6 +263,31 @@
         return '#334155';
     }
 
+    /** Same color bands as analytics pages (metric-percent-colors.js). */
+    function metricHtml(kind, value) {
+        const n = Number(value);
+        if (!isFinite(n)) return '<span class="text-muted">—</span>';
+        if (window.MetricPctColors && typeof MetricPctColors.htmlFor === 'function') {
+            return MetricPctColors.htmlFor(kind, n, { decimals: 0, empty: '—' });
+        }
+        return Math.round(n) + '%';
+    }
+
+    function metricColumn(title, field, kind, tip) {
+        return {
+            title: title,
+            field: field,
+            width: 72,
+            hozAlign: 'center',
+            vertAlign: 'middle',
+            headerSort: true,
+            sorter: 'number',
+            sorterParams: { alignEmptyValues: 'bottom' },
+            headerTooltip: tip,
+            formatter: function(cell) { return metricHtml(kind, cell.getValue()); },
+        };
+    }
+
     function selectedChannels() {
         const keys = [];
         $('.vm-channel-cb:checked').each(function() { keys.push(String($(this).val())); });
@@ -385,6 +410,10 @@
                         return '<span style="color:' + cvrColorHex(band) + ';font-weight:700;">' + label + '</span>';
                     },
                 },
+                metricColumn('GPFT', 'gpft', 'gpft', 'GPFT% from the channel analytics page. Red ≤20, Yellow 20–30, Green 30–43, Pink 43+.'),
+                metricColumn('GROI', 'groi', 'groi', 'GROI% from the channel analytics page. Red <60, Yellow 60–90, Green 90–150, Pink 150+.'),
+                metricColumn('NPFT', 'npft', 'npft', 'NPFT% from the channel analytics page. Red ≤10, Yellow 10–20, Green 20–33, Pink 33+.'),
+                metricColumn('NROI', 'nroi', 'nroi', 'NROI% from the channel analytics page. Red <40, Yellow 40–70, Green 70–125, Pink 125+.'),
                 {
                     title: 'INV', field: 'inv', width: 70, hozAlign: 'center', vertAlign: 'middle',
                     headerSort: true, sorter: 'number',
