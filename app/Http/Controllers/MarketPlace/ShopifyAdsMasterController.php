@@ -182,22 +182,20 @@ class ShopifyAdsMasterController extends Controller
             true
         );
 
-        $facebookSubTypes = [
-            ['G Video', 'shopify_facebook_g_video', ['GROUP VIDEO']],
-            ['G Carousal', 'shopify_facebook_g_carousal', ['GROUP CAROUSAL']],
-            ['P Video', 'shopify_facebook_p_video', ['PARENT VIDEO']],
-            ['P Carousal', 'shopify_facebook_p_carousal', ['PARENT CAROUSAL']],
-        ];
-
         $facebookChildren = [];
-        foreach ($facebookSubTypes as [$suffix, $source, $adTypes]) {
+        foreach ($this->metaAdTypeLenses('shopify_facebook') as [$suffix, $source, $adTypes]) {
             $subMetrics = $this->metaChannelMetrics('Facebook'.$sep.$suffix, 'FB', $adTypes, true);
-            $facebookChildren[] = self::advertisementMasterMetricRow(
+            $child = self::advertisementMasterMetricRow(
                 'Shopify'.$sep.'Facebook'.$sep.$suffix,
                 $source,
                 (object) $subMetrics,
                 true
             );
+            $href = $this->metaAdTypePageUrl($adTypes[0] ?? '');
+            if ($href !== null) {
+                $child['href'] = $href;
+            }
+            $facebookChildren[] = $child;
         }
         $facebookRow['_children'] = $facebookChildren;
         $children[] = $facebookRow;
@@ -216,22 +214,20 @@ class ShopifyAdsMasterController extends Controller
             true
         );
 
-        $instagramSubTypes = [
-            ['G Video', 'shopify_instagram_g_video', ['GROUP VIDEO']],
-            ['G Carousal', 'shopify_instagram_g_carousal', ['GROUP CAROUSAL']],
-            ['P Video', 'shopify_instagram_p_video', ['PARENT VIDEO']],
-            ['P Carousal', 'shopify_instagram_p_carousal', ['PARENT CAROUSAL']],
-        ];
-
         $instagramChildren = [];
-        foreach ($instagramSubTypes as [$suffix, $source, $adTypes]) {
+        foreach ($this->metaAdTypeLenses('shopify_instagram') as [$suffix, $source, $adTypes]) {
             $subMetrics = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
-            $instagramChildren[] = self::advertisementMasterMetricRow(
+            $child = self::advertisementMasterMetricRow(
                 'Shopify'.$sep.'Instagram'.$sep.$suffix,
                 $source,
                 (object) $subMetrics,
                 true
             );
+            $href = $this->metaAdTypePageUrl($adTypes[0] ?? '');
+            if ($href !== null) {
+                $child['href'] = $href;
+            }
+            $instagramChildren[] = $child;
         }
         $instagramRow['_children'] = $instagramChildren;
         $children[] = $instagramRow;
@@ -280,28 +276,24 @@ class ShopifyAdsMasterController extends Controller
         // those pages show, with no double-counting between them.
         //
         // Facebook + Instagram are expandable parent rows (Tabulator data tree, same
-        // UX as /advertisement-master): each carries four typed sub-rows (G Video /
-        // G Carousal / P Video / P Carousal) nested under `_children`, mirroring the
-        // `/facebook-ads/{type}` and `/instagram-ads/{type}` child pages. Children keep
+        // UX as /advertisement-master). Each carries one typed sub-row per Facebook
+        // ad type (G Video, G Carousal, P Video, P Carousal, Music Store, Music
+        // School, and any type later saved on the sheet). Children keep
         // `is_sub_row=true` so the rolled-up badges and history endpoint skip them —
         // they're slices of the parent, not new channels.
         $sep = self::SUBROW_SEPARATOR;
 
         $facebook = $this->metaChannelMetrics('Facebook', 'FB');
-        $facebook['_children'] = [
-            $this->metaChannelMetrics('Facebook'.$sep.'G Video',     'FB',    ['GROUP VIDEO'],     true),
-            $this->metaChannelMetrics('Facebook'.$sep.'G Carousal',  'FB',    ['GROUP CAROUSAL'],  true),
-            $this->metaChannelMetrics('Facebook'.$sep.'P Video',     'FB',    ['PARENT VIDEO'],    true),
-            $this->metaChannelMetrics('Facebook'.$sep.'P Carousal',  'FB',    ['PARENT CAROUSAL'], true),
-        ];
+        $facebook['_children'] = [];
+        foreach ($this->metaAdTypeLenses('shopify_facebook') as [$suffix, , $adTypes]) {
+            $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$suffix, 'FB', $adTypes, true);
+        }
 
         $instagram = $this->metaChannelMetrics('Instagram', 'Insta');
-        $instagram['_children'] = [
-            $this->metaChannelMetrics('Instagram'.$sep.'G Video',    'Insta', ['GROUP VIDEO'],     true),
-            $this->metaChannelMetrics('Instagram'.$sep.'G Carousal', 'Insta', ['GROUP CAROUSAL'],  true),
-            $this->metaChannelMetrics('Instagram'.$sep.'P Video',    'Insta', ['PARENT VIDEO'],    true),
-            $this->metaChannelMetrics('Instagram'.$sep.'P Carousal', 'Insta', ['PARENT CAROUSAL'], true),
-        ];
+        $instagram['_children'] = [];
+        foreach ($this->metaAdTypeLenses('shopify_instagram') as [$suffix, , $adTypes]) {
+            $instagram['_children'][] = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
+        }
 
         $rows = [
             $this->googleShoppingMetrics(),
@@ -907,6 +899,65 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
+     * Typed Meta sub-rows for Facebook and Instagram.
+     *
+     * The original four lenses keep their short labels and source keys so
+     * existing snapshots stay attached. Every other ad type from the Facebook
+     * sheet — Music Store, Music School, Wholesale, Dropship, and any type
+     * later saved in facebook_ad_types — is appended on the next load.
+     *
+     * @return list<array{0: string, 1: string, 2: list<string>}>
+     */
+    private function metaAdTypeLenses(string $sourcePrefix): array
+    {
+        $known = [
+            'GROUP VIDEO' => ['G Video', $sourcePrefix.'_g_video'],
+            'GROUP CAROUSAL' => ['G Carousal', $sourcePrefix.'_g_carousal'],
+            'PARENT VIDEO' => ['P Video', $sourcePrefix.'_p_video'],
+            'PARENT CAROUSAL' => ['P Carousal', $sourcePrefix.'_p_carousal'],
+        ];
+
+        $out = [];
+        foreach ($known as $adType => [$label, $source]) {
+            $out[] = [$label, $source, [$adType]];
+        }
+
+        $covered = array_fill_keys(array_keys($known), true);
+        try {
+            $types = FacebookAllAdsSheet::allAdTypes();
+        } catch (\Throwable $e) {
+            $types = [];
+        }
+
+        foreach ($types as $adType) {
+            $key = mb_strtoupper(trim((string) $adType));
+            if ($key === '' || isset($covered[$key])) {
+                continue;
+            }
+            $covered[$key] = true;
+            $slug = strtolower((string) preg_replace('/[^a-z0-9]+/i', '_', $key));
+            $slug = trim($slug, '_');
+            if ($slug === '') {
+                continue;
+            }
+            $out[] = [mb_convert_case(mb_strtolower($key), MB_CASE_TITLE, 'UTF-8'), $sourcePrefix.'_'.$slug, [$key]];
+        }
+
+        return $out;
+    }
+
+    /** Page for a Meta ad type that has its own sheet. Null keeps the existing channel link. */
+    private function metaAdTypePageUrl(string $adType): ?string
+    {
+        return match (mb_strtoupper(trim($adType))) {
+            'MUSIC STORE' => route('music.store.ads.sheet'),
+            'MUSIC SCHOOL' => route('music.school.ads.sheet'),
+            'GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL' => null,
+            default => route('facebook.all.ads.sheet'),
+        };
+    }
+
+    /**
      * Totals for one Meta channel lens (CH = FB → /facebook-ads,
      * CH = Insta → /instagram-ads). Mirrors the merged view but lensed to
      * the campaigns tagged with $chCode, so each row matches its page.
@@ -944,8 +995,12 @@ class ShopifyAdsMasterController extends Controller
                     continue;
                 }
                 if ($adTypeList !== null) {
-                    $at = $ctx['adTypeMap'][$cid] ?? null;
-                    if ($at === null || ! in_array($at, $adTypeList, true)) {
+                    $at = mb_strtoupper(trim((string) ($ctx['adTypeMap'][$cid] ?? '')));
+                    $wanted = array_map(
+                        fn ($type) => mb_strtoupper(trim((string) $type)),
+                        $adTypeList
+                    );
+                    if ($at === '' || ! in_array($at, $wanted, true)) {
                         continue;
                     }
                 }
