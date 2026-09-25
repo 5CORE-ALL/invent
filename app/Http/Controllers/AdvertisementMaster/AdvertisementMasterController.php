@@ -1808,21 +1808,6 @@ class AdvertisementMasterController extends Controller
         return $flat;
     }
 
-    /**
-     * @param  array<string, mixed>  $byDate
-     * @return array<string, mixed>
-     */
-    private function shiftDatesBackOneDay(array $byDate): array
-    {
-        $out = [];
-        foreach ($byDate as $date => $value) {
-            $asOf = Carbon::parse((string) $date, self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
-            $out[$asOf] = $value;
-        }
-
-        return $out;
-    }
-
     private function isActiveChannelSnapshot(string $channel): bool
     {
         return in_array($channel, [
@@ -2326,11 +2311,11 @@ class AdvertisementMasterController extends Controller
     public function history(Request $request)
     {
         $days = max(1, min(365, (int) $request->query('days', 32)));
-        // Same window as /all-marketplace-master: snapshots from today-(days+1),
-        // drawn on the previous Pacific day, so the axis ends yesterday.
+        // Same span as Active Channel, but a value stays on the day it was saved.
+        // The axis ends yesterday so today's open day is not drawn as the last point.
         $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
         $from = $today->copy()->subDays($days + 1)->toDateString();
-        $end = $today->toDateString();
+        $end = $today->copy()->subDay()->toDateString();
         $this->persistActiveChannelDaily($from, $end);
 
         $histCols = ['snapshot_date', 'channel', 'spend', 'clicks', 'sold', 'sales', 'active'];
@@ -2404,18 +2389,9 @@ class AdvertisementMasterController extends Controller
             \Log::warning('Advertisement Master Amazon history overlay failed: '.$e->getMessage());
         }
 
-        // A row saved on D is the closed day D-1, same as the Active Channel chart.
-        $byDate = $this->shiftDatesBackOneDay($byDate);
-        $ssalesByDate = $this->shiftDatesBackOneDay($ssalesByDate);
-        $activeSpendByDate = $this->shiftDatesBackOneDay($activeSpendByDate);
-        $activeClicksByDate = $this->shiftDatesBackOneDay($activeClicksByDate);
-        foreach ($byChannel as $channel => $perDay) {
-            $byChannel[$channel] = $this->shiftDatesBackOneDay($perDay);
-        }
-
         $labels = [];
-        $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->subDay()->startOfDay();
-        $endC = $today->copy()->subDay()->startOfDay();
+        $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $endC = Carbon::parse($end, self::SNAPSHOT_TIMEZONE)->startOfDay();
         while ($cursor->lte($endC)) {
             $labels[] = $cursor->toDateString();
             $cursor->addDay();
