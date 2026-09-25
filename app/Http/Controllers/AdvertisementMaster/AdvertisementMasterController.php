@@ -273,6 +273,29 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
+     * Last chart point uses the same number as the header badge, matching
+     * All Marketplace Master (the live total replaces only the final day).
+     *
+     * @param  array<string, float>  $series
+     * @return array<string, float>
+     */
+    private function pinSeriesLastToBadge(array $series, float $badge): array
+    {
+        if ($series === [] || $badge <= 0) {
+            return $series;
+        }
+
+        $last = array_key_last($series);
+        if ($last === null) {
+            return $series;
+        }
+
+        $series[$last] = round($badge, 2);
+
+        return $series;
+    }
+
+    /**
      * Daily Active Channel badge history (All Marketplace Master).
      *
      * @return array{ad_spend: array<string, float>, l30_sales: array<string, float>}
@@ -2069,8 +2092,14 @@ class AdvertisementMasterController extends Controller
         // and the same as-of dates as /all-marketplace-master. That chart ends
         // on the previous Pacific day, so do not extend the axis through today.
         $activeHistory = $this->activeChannelHistoryByDate($from, $end);
-        $marketplaceSales = $this->allMarketplaceMetricSeries($days, 'l30_sales');
-        $marketplaceSpend = $this->allMarketplaceMetricSeries($days, 'ad_spend');
+        $marketplaceSales = $this->pinSeriesLastToBadge(
+            $this->allMarketplaceMetricSeries($days, 'l30_sales'),
+            $this->activeChannelL30SalesTotal()
+        );
+        $marketplaceSpend = $this->pinSeriesLastToBadge(
+            $this->allMarketplaceMetricSeries($days, 'ad_spend'),
+            $this->activeChannelAdSpendTotal()
+        );
         $marketplaceDates = array_values(array_unique(array_merge(
             array_keys($marketplaceSales),
             array_keys($marketplaceSpend)
