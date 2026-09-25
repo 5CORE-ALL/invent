@@ -211,24 +211,22 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
-     * One All Marketplace Master chart series (channel = all), keyed by Y-m-d.
-     * Sales uses l30_sales; Spend uses ad_spend — the same points as those badges.
+     * All Marketplace Master chart points (channel = all), in date order.
+     * Dates are the as-of days that page plots — not a calendar through today.
+     * badge_value=0 keeps the last historical point instead of pinning it to
+     * the live table total.
      *
-     * @param  array<int, string>  $labels  Y-m-d dates on the advertisement chart
-     * @return array<string, float>
+     * @return array<string, float> Y-m-d => value
      */
-    private function allMarketplaceMetricByDate(array $labels, string $metric): array
+    private function allMarketplaceMetricSeries(int $days, string $metric): array
     {
-        if ($labels === []) {
-            return [];
-        }
-
         try {
             $response = app(ChannelMasterController::class)->getChannelMetricChartData(
                 Request::create('/channel-metric-chart-data', 'GET', [
                     'channel' => 'all',
                     'metric' => $metric,
-                    'days' => count($labels),
+                    'days' => $days,
+                    'badge_value' => 0,
                 ])
             );
             $payload = $response->getData(true);
@@ -243,23 +241,32 @@ class AdvertisementMasterController extends Controller
             return [];
         }
 
-        $queue = [];
-        foreach ($labels as $ymd) {
-            $stamp = Carbon::parse($ymd, self::SNAPSHOT_TIMEZONE)->format('M d');
-            $queue[$stamp][] = $ymd;
-        }
-
         $out = [];
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $year = (int) $today->year;
+        $prev = null;
         foreach ($points as $point) {
             if (! is_array($point)) {
                 continue;
             }
-            $stamp = (string) ($point['date'] ?? '');
-            if ($stamp === '' || empty($queue[$stamp])) {
+            $stamp = trim((string) ($point['date'] ?? ''));
+            if ($stamp === '') {
                 continue;
             }
-            $ymd = array_shift($queue[$stamp]);
-            $out[$ymd] = round((float) ($point['value'] ?? 0), 2);
+            try {
+                $parsed = Carbon::parse($stamp.' '.$year, self::SNAPSHOT_TIMEZONE)->startOfDay();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if ($prev === null && $parsed->gt($today)) {
+                $year--;
+                $parsed = Carbon::parse($stamp.' '.$year, self::SNAPSHOT_TIMEZONE)->startOfDay();
+            } elseif ($prev !== null && $parsed->lt($prev)) {
+                $year++;
+                $parsed = Carbon::parse($stamp.' '.$year, self::SNAPSHOT_TIMEZONE)->startOfDay();
+            }
+            $prev = $parsed->copy();
+            $out[$parsed->toDateString()] = round((float) ($point['value'] ?? 0), 2);
         }
 
         return $out;
@@ -2058,12 +2065,20 @@ class AdvertisementMasterController extends Controller
             \Log::warning('Advertisement Master Amazon history overlay failed: '.$e->getMessage());
         }
 
-        // All-channels Spend and Total Sales use the same Rolling L30 series as
-        // /all-marketplace-master. Badge history repeats one cached total and
-        // flattens the line, so it is only a fallback.
+        // All-channels Spend and Total Sales use the same Rolling L30 series
+        // and the same as-of dates as /all-marketplace-master. That chart ends
+        // on the previous Pacific day, so do not extend the axis through today.
         $activeHistory = $this->activeChannelHistoryByDate($from, $end);
-        $marketplaceSales = $this->allMarketplaceMetricByDate($labels, 'l30_sales');
-        $marketplaceSpend = $this->allMarketplaceMetricByDate($labels, 'ad_spend');
+        $marketplaceSales = $this->allMarketplaceMetricSeries($days, 'l30_sales');
+        $marketplaceSpend = $this->allMarketplaceMetricSeries($days, 'ad_spend');
+        $marketplaceDates = array_values(array_unique(array_merge(
+            array_keys($marketplaceSales),
+            array_keys($marketplaceSpend)
+        )));
+        sort($marketplaceDates);
+        if ($marketplaceDates !== []) {
+            $labels = $marketplaceDates;
+        }
         if ($marketplaceSales !== []) {
             $ssalesByDate = $marketplaceSales;
         } else {
