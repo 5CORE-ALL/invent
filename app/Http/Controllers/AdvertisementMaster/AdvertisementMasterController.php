@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\AdvertisementMaster;
 
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\AmazonAdsMissingController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
@@ -207,6 +208,61 @@ class AdvertisementMasterController extends Controller
         }
 
         return round($sum, 2);
+    }
+
+    /**
+     * One All Marketplace Master chart series (channel = all), keyed by Y-m-d.
+     * Sales uses l30_sales; Spend uses ad_spend — the same points as those badges.
+     *
+     * @param  array<int, string>  $labels  Y-m-d dates on the advertisement chart
+     * @return array<string, float>
+     */
+    private function allMarketplaceMetricByDate(array $labels, string $metric): array
+    {
+        if ($labels === []) {
+            return [];
+        }
+
+        try {
+            $response = app(ChannelMasterController::class)->getChannelMetricChartData(
+                Request::create('/channel-metric-chart-data', 'GET', [
+                    'channel' => 'all',
+                    'metric' => $metric,
+                    'days' => count($labels),
+                ])
+            );
+            $payload = $response->getData(true);
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master marketplace '.$metric.' chart failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        $points = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        if ($points === [] || empty($payload['success'])) {
+            return [];
+        }
+
+        $queue = [];
+        foreach ($labels as $ymd) {
+            $stamp = Carbon::parse($ymd, self::SNAPSHOT_TIMEZONE)->format('M d');
+            $queue[$stamp][] = $ymd;
+        }
+
+        $out = [];
+        foreach ($points as $point) {
+            if (! is_array($point)) {
+                continue;
+            }
+            $stamp = (string) ($point['date'] ?? '');
+            if ($stamp === '' || empty($queue[$stamp])) {
+                continue;
+            }
+            $ymd = array_shift($queue[$stamp]);
+            $out[$ymd] = round((float) ($point['value'] ?? 0), 2);
+        }
+
+        return $out;
     }
 
     /**
@@ -2002,11 +2058,21 @@ class AdvertisementMasterController extends Controller
             \Log::warning('Advertisement Master Amazon history overlay failed: '.$e->getMessage());
         }
 
-        // All-channels Spend / Total Sales / TCOS use Active Channel history
-        // (same source as the header badges), not the ad-row snapshot sum.
+        // All-channels Spend and Total Sales use the same Rolling L30 series as
+        // /all-marketplace-master. Badge history repeats one cached total and
+        // flattens the line, so it is only a fallback.
         $activeHistory = $this->activeChannelHistoryByDate($from, $end);
-        foreach ($activeHistory['l30_sales'] as $d => $value) {
-            $ssalesByDate[$d] = $value;
+        $marketplaceSales = $this->allMarketplaceMetricByDate($labels, 'l30_sales');
+        $marketplaceSpend = $this->allMarketplaceMetricByDate($labels, 'ad_spend');
+        if ($marketplaceSales !== []) {
+            $ssalesByDate = $marketplaceSales;
+        } else {
+            foreach ($activeHistory['l30_sales'] as $d => $value) {
+                $ssalesByDate[$d] = $value;
+            }
+        }
+        if ($marketplaceSpend !== []) {
+            $activeHistory['ad_spend'] = $marketplaceSpend;
         }
 
         // Rolled-up "All channels" series carries tcos + ssales (both need the
