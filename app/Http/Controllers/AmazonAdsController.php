@@ -3347,10 +3347,14 @@ class AmazonAdsController extends Controller
             if ($field === 'bid') {
                 $inner->addSelect([$table.'.last_sbid', $table.'.sbid']);
             } elseif (in_array('campaignBudgetAmount', Schema::getColumnListing($table), true)) {
-                $inner->addSelect([$table.'.campaignBudgetAmount']);
+                $budgetSelect = [$table.'.campaignBudgetAmount'];
+                if (Schema::hasColumn($table, 'sbgt')) {
+                    $budgetSelect[] = $table.'.sbgt';
+                }
+                $inner->addSelect($budgetSelect);
             }
             $channel = self::liveSyncChannelForTable($table);
-            $colorSql = self::liveSyncColorSql('r', $field);
+            $colorSql = self::liveSyncColorSql('r', $field, Schema::hasColumn($table, 'sbgt'));
             $row = DB::query()
                 ->fromSub($inner, 'r')
                 ->leftJoin('amazon_ads_live_sync_states as s', function ($join) use ($channel, $field) {
@@ -3410,9 +3414,9 @@ class AmazonAdsController extends Controller
 
     /**
      * Same green / yellow / red as the dots on the row.
-     * Failed stays red. BID is green when Lbid matches SBID. BGT is green when the live budget matches the last SBGT, unless that row failed.
+     * Failed stays red. BID is green when Lbid matches SBID. BGT is green when Lbgt matches the saved SBGT, unless that row failed.
      */
-    private static function liveSyncColorSql(string $alias, string $field): string
+    private static function liveSyncColorSql(string $alias, string $field, bool $storedSbgtColumn = false): string
     {
         $failed = "s.status = 'failed'";
         $synced = "s.status = 'synced'";
@@ -3423,8 +3427,12 @@ class AmazonAdsController extends Controller
             return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
         }
         if ($field === 'bgt') {
-            $match = self::storedBudgetMatchesSql($alias);
-            $differ = self::storedBudgetDiffersSql($alias);
+            $match = $storedSbgtColumn
+                ? self::storedBudgetMatchesSql($alias)
+                : self::storedBudgetDesiredMatchesSql($alias);
+            $differ = $storedSbgtColumn
+                ? self::storedBudgetDiffersSql($alias)
+                : self::storedBudgetDesiredDiffersSql($alias);
 
             return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
         }
@@ -3437,7 +3445,7 @@ class AmazonAdsController extends Controller
         $field = $field === 'bid' ? 'bid' : 'bgt';
         $channel = self::liveSyncChannelForTable($table);
         $t = str_replace('`', '', $table);
-        $colorSql = self::liveSyncColorSql($t, $field);
+        $colorSql = self::liveSyncColorSql($t, $field, Schema::hasColumn($table, 'sbgt'));
         $query->whereRaw(
             '(SELECT '.$colorSql.' FROM (SELECT 1) AS amz_sync_one'
             .' LEFT JOIN amazon_ads_live_sync_states AS s'
@@ -3468,14 +3476,37 @@ class AmazonAdsController extends Controller
         return $t === 'r' ? 'r.campaignBudgetAmount' : "`{$t}`.`campaignBudgetAmount`";
     }
 
+    private static function storedSbgtColumnSql(string $table): string
+    {
+        $t = str_replace('`', '', $table);
+
+        return $t === 'r' ? 'r.sbgt' : "`{$t}`.`sbgt`";
+    }
+
     private static function storedBudgetMatchesSql(string $table): string
+    {
+        $budget = self::storedBudgetAmountSql($table);
+        $sbgt = self::storedSbgtColumnSql($table);
+
+        return "({$budget} IS NOT NULL AND {$sbgt} IS NOT NULL AND ABS(({$budget} + 0) - ({$sbgt} + 0)) <= 0.015)";
+    }
+
+    private static function storedBudgetDiffersSql(string $table): string
+    {
+        $budget = self::storedBudgetAmountSql($table);
+        $sbgt = self::storedSbgtColumnSql($table);
+
+        return "({$budget} IS NOT NULL AND {$sbgt} IS NOT NULL AND ABS(({$budget} + 0) - ({$sbgt} + 0)) > 0.015)";
+    }
+
+    private static function storedBudgetDesiredMatchesSql(string $table): string
     {
         $col = self::storedBudgetAmountSql($table);
 
         return "({$col} IS NOT NULL AND s.desired_value IS NOT NULL AND ABS(({$col} + 0) - (s.desired_value + 0)) <= 0.015)";
     }
 
-    private static function storedBudgetDiffersSql(string $table): string
+    private static function storedBudgetDesiredDiffersSql(string $table): string
     {
         $col = self::storedBudgetAmountSql($table);
 
@@ -4889,6 +4920,8 @@ class AmazonAdsController extends Controller
         $data = [];
         $suggestedSbidByRowId = [];
         $suggestedSbidByCampaign = [];
+        $suggestedSbgtByRowId = [];
+        $suggestedSbgtByCampaign = [];
         foreach ($rows as $row) {
             $rowArr = (array) $row;
             $arr = array_merge($empty, $rowArr);
@@ -5180,6 +5213,18 @@ class AmazonAdsController extends Controller
                     $arr['bgtReviews'] ?? null,
                     $arr['bgtDil'] ?? null
                 );
+                if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
+                    $wantSbgt = AmazonAdsSbgt::storageValue($arr['sbgt'] ?? null);
+                    $cidSbgt = trim((string) ($rowArr['campaign_id'] ?? ''));
+                    if ($cidSbgt !== '') {
+                        $suggestedSbgtByCampaign[$cidSbgt] = $wantSbgt;
+                    }
+                    $sbgtRowId = $rowArr['id'] ?? null;
+                    if ($sbgtRowId !== null && $sbgtRowId !== ''
+                        && ! AmazonAdsSbgt::storedMatches($rowArr['sbgt'] ?? null, $wantSbgt)) {
+                        $suggestedSbgtByRowId[$sbgtRowId] = $wantSbgt;
+                    }
+                }
             }
             if (in_array('Cvr', $columns, true)) {
                 $soldForCvr = $arr['Prchase'] ?? null;
@@ -5228,6 +5273,9 @@ class AmazonAdsController extends Controller
 
         if ($suggestedSbidByRowId !== [] || $suggestedSbidByCampaign !== []) {
             AmazonBidUtilizationService::persistSuggestedSbidByRowId($table, $suggestedSbidByRowId, $suggestedSbidByCampaign);
+        }
+        if ($suggestedSbgtByRowId !== [] || $suggestedSbgtByCampaign !== []) {
+            AmazonAdsSbgt::persistByRowId($table, $suggestedSbgtByRowId, $suggestedSbgtByCampaign);
         }
 
         if ($usePhpSort && ! $phpSortPaged) {
