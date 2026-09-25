@@ -5285,7 +5285,7 @@
         if (noTrackingTable) {
             setTimeout(function () {
                 try { noTrackingTable.redraw(true); } catch (e) {}
-                if (!noTrackingTableLoaded) {
+                if (!noTrackingTableLoaded && !noTrackingTableLoading) {
                     try { noTrackingTable.replaceData(); } catch (e2) {}
                 }
             }, 50);
@@ -5324,15 +5324,17 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                noTrackingRows = sofAnnotateOrderOver24h(sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
+                const payload = (response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : []));
+                    : (Array.isArray(response) ? response : []);
+                noTrackingRows = sofAnnotateOrderOver24h(sofNormalizeOrderRows(payload));
                 noTrackingTableLoaded = true;
                 noTrackingTableLoading = false;
+                const count = noTrackingRows.length;
+                if (response && typeof response === 'object' && !Array.isArray(response)) {
+                    response.no_tracking_count = count;
+                }
                 sofApplyLabelCreatedSplitCounts(response);
-                const count = (response && response.count != null)
-                    ? Number(response.count)
-                    : noTrackingRows.length;
                 const tabCount = document.getElementById('sof-no-tracking-tab-count');
                 if (tabCount) tabCount.textContent = count.toLocaleString();
                 const totalEl = document.getElementById('sof-no-tracking-total');
