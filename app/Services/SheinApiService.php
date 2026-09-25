@@ -1424,7 +1424,7 @@ class SheinApiService
      */
     public function fetchOrdersRaw(int $days = 2, int $queryType = 1, bool $includeDetails = true, bool $saveToStorage = true): array
     {
-        $days = max(1, min(30, $days));
+        $days = max(1, min(60, $days));
         $tz = new \DateTimeZone('Asia/Shanghai');
         $end = new \DateTimeImmutable('now', $tz);
         $overallStart = $end->modify('-'.$days.' days');

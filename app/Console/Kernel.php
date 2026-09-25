@@ -792,23 +792,31 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // L30 orders → shein_daily_data (/shein-tabulator)
-        $ist($schedule->command('shein:fetch orders --days=30 --target=l30')
-            ->dailyAt('15:10')
-            ->timezone('Asia/Kolkata')
-            ->name('shein-fetch-orders-l30')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // Shein sales → shein_daily_data / shein_daily_data_l60.
+        // Do not wrap in $ist(). between(09:00, 20:00) is checked against the
+        // clock when schedule:run starts, so cron:run-missed at 20:15 never
+        // sees a skipped 15:10 slot and that day stays stale. Pacific yesterday
+        // closes at 12:30 IST; later slots cover a missed minute (schedule:run
+        // is overloaded and has skipped single daily slots).
+        foreach (['13:20', '15:10', '19:40'] as $slot) {
+            $schedule->command('shein:fetch orders --days=30 --target=l30')
+                ->dailyAt($slot)
+                ->timezone('Asia/Kolkata')
+                ->name('shein-fetch-orders-l30-'.str_replace(':', '', $slot))
+                ->withoutOverlapping(90)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
 
-        // L60 orders → shein_daily_data_l60
-        $ist($schedule->command('shein:fetch orders --days=60 --target=l60')
-            ->dailyAt('15:20')
-            ->timezone('Asia/Kolkata')
-            ->name('shein-fetch-orders-l60')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
+        foreach (['13:35', '15:20', '19:50'] as $slot) {
+            $schedule->command('shein:fetch orders --days=60 --target=l60')
+                ->dailyAt($slot)
+                ->timezone('Asia/Kolkata')
+                ->name('shein-fetch-orders-l60-'.str_replace(':', '', $slot))
+                ->withoutOverlapping(90)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
         $ist($schedule->command('app:fetch-pls-data')
             ->twiceDaily(9, 18)
             ->name('fetch-pls-data')
