@@ -248,6 +248,7 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
 
         $this->assertStringContainsString('SBID:', $failed[0]['pushAlert']);
         $this->assertStringContainsString('No keywords and no product targets', $failed[0]['pushAlert']);
+        $this->assertSame('', $failed[0]['sbgtAlert']);
 
         $synced = AmazonAdsLiveSyncStatus::attachToRows(
             [['campaign_id' => '222', 'sbid' => 0.75, 'last_sbid' => 0.75, 'sbgt' => 4]],
@@ -272,6 +273,7 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
         );
 
         $this->assertSame('', $synced[0]['pushAlert']);
+        $this->assertSame('', $synced[0]['sbgtAlert']);
     }
 
     public function test_alert_column_explains_zero_sbgt_pause(): void
@@ -290,8 +292,85 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
             ]
         );
 
-        $this->assertStringContainsString('SBGT:', $rows[0]['pushAlert']);
-        $this->assertStringContainsString('PAUSED', $rows[0]['pushAlert']);
+        $this->assertSame('', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('SBGT:', $rows[0]['sbgtAlert']);
+        $this->assertStringContainsString('PAUSED', $rows[0]['sbgtAlert']);
+    }
+
+    public function test_synced_budget_is_not_green_when_lbgt_differs_from_sbgt(): void
+    {
+        $rows = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '497', 'bgt' => 1, 'sbgt' => 4]],
+            [
+                'bgt' => [
+                    '497' => [
+                        'status' => 'synced',
+                        'reason' => 'paused_zero_sbgt',
+                        'desired_value' => 0,
+                        'live_value' => 1,
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertSame('yellow', $rows[0]['bgt_sync_color']);
+        $this->assertSame('sbgt_differs', $rows[0]['bgt_sync_reason']);
+        $this->assertSame('', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('SBGT:', $rows[0]['sbgtAlert']);
+        $this->assertStringContainsString('$4.00', $rows[0]['sbgtAlert']);
+        $this->assertStringContainsString('$1.00', $rows[0]['sbgtAlert']);
+    }
+
+    public function test_matching_lbgt_and_sbgt_clears_stale_pause_alert(): void
+    {
+        $rows = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '497', 'bgt' => 1, 'sbgt' => 1, 'sbid' => 0.83, 'last_sbid' => 0.83]],
+            [
+                'bgt' => [
+                    '497' => [
+                        'status' => 'synced',
+                        'reason' => 'paused_zero_sbgt',
+                        'desired_value' => 0,
+                        'live_value' => 1,
+                    ],
+                ],
+                'bid' => [
+                    '497' => [
+                        'status' => 'synced',
+                        'reason' => 'verified_after_push',
+                        'desired_value' => 0.83,
+                        'live_value' => 0.83,
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertSame('green', $rows[0]['bgt_sync_color']);
+        $this->assertSame('green', $rows[0]['bid_sync_color']);
+        $this->assertSame('', $rows[0]['pushAlert']);
+        $this->assertSame('', $rows[0]['sbgtAlert']);
+    }
+
+    public function test_failed_budget_stays_on_sbgt_alert_when_numbers_match(): void
+    {
+        $rows = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '498', 'bgt' => 4, 'sbgt' => 4]],
+            [
+                'bgt' => [
+                    '498' => [
+                        'status' => 'failed',
+                        'reason' => 'verify_failed: live 4 !== desired 4',
+                        'desired_value' => 4,
+                        'live_value' => 4,
+                        'detail' => ['push_attempts' => 1],
+                    ],
+                ],
+            ]
+        );
+
+        $this->assertSame('red', $rows[0]['bgt_sync_color']);
+        $this->assertSame('', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('SBGT:', $rows[0]['sbgtAlert']);
     }
 
     public function test_red_bid_verify_failed_is_independent_of_bgt(): void

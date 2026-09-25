@@ -137,4 +137,20 @@ class AmazonAdsSbgtTest extends TestCase
         $this->assertSame(1, AmazonAcosSbgtRule::sbgtFromAcosAndBands(40.0, $bands));
         $this->assertSame(12, AmazonAcosSbgtRule::sbgtFromAcosAndBands(0.0, $bands));
     }
+
+    public function test_sbgt_cell_is_stored_like_sbid_and_keeps_zero(): void
+    {
+        $this->assertSame('4.00', AmazonAdsSbgt::storageValue(4));
+        $this->assertSame('0.00', AmazonAdsSbgt::storageValue(0));
+        $this->assertNull(AmazonAdsSbgt::storageValue(null));
+        $this->assertNull(AmazonAdsSbgt::storageValue(''));
+
+        $want = AmazonAdsSbgt::storageValue(4);
+        $this->assertTrue(AmazonAdsSbgt::storedMatches('4.00', $want));
+        $this->assertTrue(AmazonAdsSbgt::storedMatches(4, $want));
+        $this->assertFalse(AmazonAdsSbgt::storedMatches('1.00', $want));
+        $this->assertFalse(AmazonAdsSbgt::storedMatches(null, $want));
+        $this->assertTrue(AmazonAdsSbgt::storedMatches('0', AmazonAdsSbgt::storageValue(0)));
+        $this->assertTrue(AmazonAdsSbgt::storedMatches(null, null));
+    }
 }

@@ -122,6 +122,22 @@ final class AmazonAdsLiveSyncStatus
                         'reason' => 'sbid_differs',
                         'tip' => 'Pending — saved SBID '.self::money($row['sbid']).' does not match live BID '.self::money($row['last_sbid']),
                     ];
+                } elseif ($field === 'bgt' && $presented['color'] !== self::RED && self::displayedBudgetsMatch($row['bgt'] ?? null, $row['sbgt'] ?? null)) {
+                    $shown = self::money($row['bgt'] ?? null);
+                    $want = self::money($row['sbgt'] ?? null);
+                    $presented = [
+                        'color' => self::GREEN,
+                        'status' => 'synced',
+                        'reason' => 'already_matched',
+                        'tip' => self::greenTip('BGT', 'SBGT', 'already_matched', $shown, $want),
+                    ];
+                } elseif ($field === 'bgt' && $presented['color'] === self::GREEN && self::displayedBudgetsDiffer($row['bgt'] ?? null, $row['sbgt'] ?? null)) {
+                    $presented = [
+                        'color' => self::YELLOW,
+                        'status' => 'pending',
+                        'reason' => 'sbgt_differs',
+                        'tip' => 'Pending — saved SBGT '.self::money($row['sbgt']).' does not match live BGT '.self::money($row['bgt']),
+                    ];
                 }
                 $row[$field.'_sync_color'] = $presented['color'];
                 $row[$field.'_sync_tip'] = $presented['tip'];
@@ -129,6 +145,7 @@ final class AmazonAdsLiveSyncStatus
                 $row[$field.'_sync_reason'] = $presented['reason'];
             }
             $row['pushAlert'] = self::pushAlertText($row);
+            $row['sbgtAlert'] = self::sbgtAlertText($row);
         }
         unset($row);
 
@@ -136,26 +153,42 @@ final class AmazonAdsLiveSyncStatus
     }
 
     /**
-     * Hover text for the Alert column. Empty when nothing failed to push.
+     * Hover text for the SBID Alert column. Empty when the bid push did not fail.
      *
      * @param  array<string, mixed>  $row
      */
     public static function pushAlertText(array $row): string
     {
-        $parts = [];
-        foreach (['bid' => 'SBID', 'bgt' => 'SBGT'] as $field => $label) {
-            $tip = trim((string) ($row[$field.'_sync_tip'] ?? ''));
-            if ($tip === '') {
-                continue;
-            }
-            $color = (string) ($row[$field.'_sync_color'] ?? '');
-            $reason = (string) ($row[$field.'_sync_reason'] ?? '');
-            if ($color === self::RED || $reason === 'paused_zero_sbgt') {
-                $parts[] = $label.': '.$tip;
-            }
+        return self::fieldAlertText($row, 'bid', 'SBID');
+    }
+
+    /**
+     * Hover text for the SBGT Alert column. Empty when live budget matches SBGT and the push did not fail.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public static function sbgtAlertText(array $row): string
+    {
+        return self::fieldAlertText($row, 'bgt', 'SBGT');
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private static function fieldAlertText(array $row, string $field, string $label): string
+    {
+        $tip = trim((string) ($row[$field.'_sync_tip'] ?? ''));
+        if ($tip === '') {
+            return '';
+        }
+        $color = (string) ($row[$field.'_sync_color'] ?? '');
+        $reason = (string) ($row[$field.'_sync_reason'] ?? '');
+        $budgetMismatch = $field === 'bgt' && ($reason === 'paused_zero_sbgt' || $reason === 'sbgt_differs');
+        if ($color === self::RED || $budgetMismatch) {
+            return $label.': '.$tip;
         }
 
-        return implode(' | ', $parts);
+        return '';
     }
 
     /**
@@ -197,6 +230,28 @@ final class AmazonAdsLiveSyncStatus
         $live = self::numeric($shown);
         $want = self::numeric($desired);
         if ($live === null || $want === null || $live <= 0 || $want <= 0) {
+            return false;
+        }
+
+        return ! AmazonAdsApiRetry::valuesMatch($live, $want, 0.015);
+    }
+
+    public static function displayedBudgetsMatch(mixed $shown, mixed $desired): bool
+    {
+        $live = self::numeric($shown);
+        $want = self::numeric($desired);
+        if ($live === null || $want === null) {
+            return false;
+        }
+
+        return AmazonAdsApiRetry::valuesMatch($live, $want, 0.015);
+    }
+
+    public static function displayedBudgetsDiffer(mixed $shown, mixed $desired): bool
+    {
+        $live = self::numeric($shown);
+        $want = self::numeric($desired);
+        if ($live === null || $want === null) {
             return false;
         }
 

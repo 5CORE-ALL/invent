@@ -2176,6 +2176,7 @@
                                     <option value="Approved">Approved</option>
                                     <option value="Hold">Hold</option>
                                     <option value="Monitor">Monitor</option>
+                                    <option value="Rework">Rework</option>
                                     <option value="Cancelled">Cancelled</option>
                                     <option value="Missed" style="color: #dc3545; font-weight: 600;">Missed</option>
                                 </select>
