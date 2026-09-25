@@ -21,6 +21,7 @@ use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Models\AdvertisementMasterChannelLabel;
 use App\Models\BadgeData;
+use App\Models\BadgeDataHistory;
 use App\Models\AdvertisementMasterCustomRow;
 use App\Models\AdvertisementMasterHiddenRow;
 use App\Models\AdvertisementMasterNrReq;
@@ -206,6 +207,94 @@ class AdvertisementMasterController extends Controller
         }
 
         return round($sum, 2);
+    }
+
+    /**
+     * Daily Active Channel badge history (All Marketplace Master).
+     *
+     * @return array{ad_spend: array<string, float>, l30_sales: array<string, float>}
+     */
+    private function activeChannelHistoryByDate(string $from, string $to): array
+    {
+        $out = ['ad_spend' => [], 'l30_sales' => []];
+        if (! Schema::hasTable('badges_data_histories')) {
+            return $out;
+        }
+
+        try {
+            $rows = BadgeDataHistory::query()
+                ->where('page_name', 'all-marketplace-master')
+                ->whereIn('field', ['ad_spend', 'l30_sales'])
+                ->whereDate('snapshot_date', '>=', $from)
+                ->whereDate('snapshot_date', '<=', $to)
+                ->orderBy('snapshot_date')
+                ->get(['field', 'snapshot_date', 'value']);
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master active-channel graph history failed: '.$e->getMessage());
+
+            return $out;
+        }
+
+        foreach ($rows as $row) {
+            $field = (string) $row->field;
+            if (! isset($out[$field])) {
+                continue;
+            }
+            $date = $row->snapshot_date instanceof \DateTimeInterface
+                ? $row->snapshot_date->format('Y-m-d')
+                : substr((string) $row->snapshot_date, 0, 10);
+            $out[$field][$date] = (float) $row->value;
+        }
+
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
+        if ($today >= $from && $today <= $to) {
+            $spend = $this->activeChannelAdSpendTotal();
+            $sales = $this->activeChannelL30SalesTotal();
+            if ($spend > 0) {
+                $out['ad_spend'][$today] = $spend;
+            }
+            if ($sales > 0) {
+                $out['l30_sales'][$today] = $sales;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Replace the all-channels Spend and Total Sales lines with Active Channel
+     * history, then recompute TCOS from those two series.
+     *
+     * @param  array<string, array<int, float|int|null>>  $metrics
+     * @param  array<int, string>  $labels
+     * @param  array{ad_spend: array<string, float>, l30_sales: array<string, float>}  $history
+     * @return array<string, array<int, float|int|null>>
+     */
+    private function applyActiveChannelGraphSeries(array $metrics, array $labels, array $history): array
+    {
+        if ($history['ad_spend'] !== []) {
+            foreach ($labels as $i => $d) {
+                if (array_key_exists($d, $history['ad_spend'])) {
+                    $metrics['spend'][$i] = round($history['ad_spend'][$d], 2);
+                }
+            }
+        }
+
+        $tcos = [];
+        foreach ($labels as $i => $d) {
+            $spend = $metrics['spend'][$i] ?? null;
+            $sales = $metrics['ssales'][$i] ?? null;
+            if ($spend === null || $sales === null) {
+                $tcos[] = $metrics['tcos'][$i] ?? null;
+                continue;
+            }
+            $sales = (float) $sales;
+            $spend = (float) $spend;
+            $tcos[] = $sales > 0 ? (int) round(($spend / $sales) * 100) : ($spend > 0 ? 100 : 0);
+        }
+        $metrics['tcos'] = $tcos;
+
+        return $metrics;
     }
 
     /**
@@ -1913,6 +2002,13 @@ class AdvertisementMasterController extends Controller
             \Log::warning('Advertisement Master Amazon history overlay failed: '.$e->getMessage());
         }
 
+        // All-channels Spend / Total Sales / TCOS use Active Channel history
+        // (same source as the header badges), not the ad-row snapshot sum.
+        $activeHistory = $this->activeChannelHistoryByDate($from, $end);
+        foreach ($activeHistory['l30_sales'] as $d => $value) {
+            $ssalesByDate[$d] = $value;
+        }
+
         // Rolled-up "All channels" series carries tcos + ssales (both need the
         // store-level net sales). Per-channel series get tcos too, lensed to
         // that channel's spend against the same store S Sales.
@@ -1921,6 +2017,7 @@ class AdvertisementMasterController extends Controller
             fn ($d) => array_key_exists($d, $ssalesByDate) ? round($ssalesByDate[$d], 2) : null,
             $labels
         );
+        $metrics = $this->applyActiveChannelGraphSeries($metrics, $labels, $activeHistory);
 
         return response()->json([
             'status'   => 200,
