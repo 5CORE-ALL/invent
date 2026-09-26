@@ -184,14 +184,31 @@ class FetchDobaDailyData extends Command
     {
         $days = max(1, min(14, $days));
         $maxPages = max(1, min(4, $maxPages));
+        $this->ensureConsoleOutput();
         $now = Carbon::now();
         $cutoff = $now->copy()->subDays($days);
-        $beginTime = $cutoff->format('Y-m-d\TH:i:sP');
-        $endTime = $now->format('Y-m-d\TH:i:sP');
-        $stored = 0;
+        $stored = $this->fetchRecentWindow(
+            $cutoff->format('Y-m-d\TH:i:sP'),
+            $now->format('Y-m-d\TH:i:sP'),
+            $maxPages
+        );
+        if ($stored === 0) {
+            $stored = $this->fetchRecentWindow(
+                $cutoff->format('Y-m-d H:i:s'),
+                $now->format('Y-m-d H:i:s'),
+                $maxPages
+            );
+        }
 
+        return $stored;
+    }
+
+    protected function fetchRecentWindow(string $beginTime, string $endTime, int $maxPages): int
+    {
+        $stored = 0;
+        $l30 = Carbon::now()->subDays(30);
         for ($page = 1; $page <= $maxPages; $page++) {
-            $orders = $this->fetchOrdersPage($page, 25, $beginTime, $endTime);
+            $orders = $this->fetchOrdersPage($page, 25, $beginTime, $endTime, 12);
             if ($orders === null || $orders === []) {
                 break;
             }
@@ -200,7 +217,7 @@ class FetchDobaDailyData extends Command
                 if (! is_array($order)) {
                     continue;
                 }
-                $bulk = array_merge($bulk, $this->parseOrderData($order, $now->copy()->subDays(30)));
+                $bulk = array_merge($bulk, $this->parseOrderData($order, $l30));
             }
             if ($bulk !== []) {
                 $this->bulkUpsertOrders($bulk);
@@ -215,12 +232,42 @@ class FetchDobaDailyData extends Command
     }
 
     /**
+     * @param  array<string, mixed>  $order
+     */
+    public function storeOrderFromApi(array $order): int
+    {
+        $this->ensureConsoleOutput();
+        $rows = $this->parseOrderData($order, Carbon::now()->subDays(30));
+        if ($rows === []) {
+            return 0;
+        }
+        $this->bulkUpsertOrders($rows);
+
+        return count($rows);
+    }
+
+    protected function ensureConsoleOutput(): void
+    {
+        try {
+            if ($this->output !== null) {
+                return;
+            }
+        } catch (\Throwable) {
+        }
+
+        $this->setOutput(new \Illuminate\Console\OutputStyle(
+            new \Symfony\Component\Console\Input\ArrayInput([]),
+            new \Symfony\Component\Console\Output\NullOutput()
+        ));
+    }
+
+    /**
      * Fetch a single page of orders, retrying with a smaller pageSize when the
      * upstream RPC rejects the response as "request is too large!".
      *
      * @return array<int, array<string, mixed>>|null  null = give up on this page after retries
      */
-    protected function fetchOrdersPage(int $pageNo, int $pageSize, string $beginTime, string $endTime): ?array
+    protected function fetchOrdersPage(int $pageNo, int $pageSize, string $beginTime, string $endTime, int $timeout = 60): ?array
     {
         $attempts = [$pageSize];
         if ($pageSize > 25) {
@@ -238,7 +285,7 @@ class FetchDobaDailyData extends Command
             $this->info("  Fetching page {$pageNo} (size {$size})...");
 
             try {
-                $response = Http::timeout(60)->withHeaders([
+                $response = Http::withoutVerifying()->timeout($timeout)->withHeaders([
                     'appKey' => config('services.doba.app_key'),
                     'signType' => 'rsa2',
                     'timestamp' => $timestamp,
