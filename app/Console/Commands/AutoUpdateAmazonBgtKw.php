@@ -362,16 +362,15 @@ class AutoUpdateAmazonBgtKw extends Command
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
                 $shopify = $shopifyData[$pm->sku] ?? null;
 
-                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                    $campaignName = strtoupper(trim(rtrim($item->campaignName ?? '', '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    // Match campaign with or without " KW" suffix (like PT matches " PT")
-                    return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
+                $matchedCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($sku) {
+                    return $this->campaignNameMatchesKwSku((string) ($item->campaignName ?? ''), $sku);
                 });
 
-                if (!$matchedCampaignL30) {
+                if ($matchedCampaignsL30->isEmpty()) {
                     continue;
                 }
+
+                foreach ($matchedCampaignsL30 as $matchedCampaignL30) {
 
                 // INV: for PARENT rows use sum of children's INV; for child rows use shopify inv.
                 // Do not skip INV=0 — budget must still follow SBGT (e.g. lower BGT when OOS / zero L30 spend).
@@ -424,6 +423,7 @@ class AutoUpdateAmazonBgtKw extends Command
                 $totalSpend += $spend;
                 $totalSales += $sales;
                 $validCampaignsForTotal[] = $row;
+                }
             }
 
             // Calculate total ACOS from valid campaigns only (matching frontend logic)
@@ -439,7 +439,7 @@ class AutoUpdateAmazonBgtKw extends Command
             }
 
             DB::connection()->disconnect();
-            return $result;
+            return $this->uniqueCampaignRows($result);
         } catch (\Exception $e) {
             $this->error("Error in amazonAcosKwControlData: " . $e->getMessage());
             $this->info("Error trace: " . $e->getTraceAsString());
@@ -450,6 +450,47 @@ class AutoUpdateAmazonBgtKw extends Command
             }
             return [];
         }
+    }
+
+    /**
+     * SKU, "SKU KW", and "SKU FBA KW" (CAPO GLD → CAPO GLD FBA KW).
+     */
+    private function campaignNameMatchesKwSku(string $campaignName, string $sku): bool
+    {
+        $name = $this->normalizeCampaignMatchKey($campaignName);
+        $clean = $this->normalizeCampaignMatchKey($sku);
+        if ($name === '' || $clean === '') {
+            return false;
+        }
+
+        return in_array($name, [$clean, $clean.' KW', $clean.' FBA KW'], true);
+    }
+
+    private function normalizeCampaignMatchKey(string $value): string
+    {
+        $value = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $value);
+
+        return rtrim(strtoupper(trim(preg_replace('/\s+/', ' ', $value) ?? '')), '.');
+    }
+
+    /**
+     * @param  list<object>  $rows
+     * @return list<object>
+     */
+    private function uniqueCampaignRows(array $rows): array
+    {
+        $seen = [];
+        $out = [];
+        foreach ($rows as $row) {
+            $id = trim((string) ($row->campaign_id ?? ''));
+            if ($id === '' || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $out[] = $row;
+        }
+
+        return $out;
     }
 
 }

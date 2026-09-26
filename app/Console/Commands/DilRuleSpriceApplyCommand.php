@@ -32,7 +32,10 @@ class DilRuleSpriceApplyCommand extends Command
             return self::FAILURE;
         }
 
-        $lock = Cache::lock(self::LOCK_CACHE_KEY, 10800);
+        $lockKey = count($channels) === 1
+            ? self::LOCK_CACHE_KEY.':'.$channels[0]
+            : self::LOCK_CACHE_KEY;
+        $lock = Cache::lock($lockKey, 10800);
         if (! $lock->get()) {
             $this->warn('Already running — skip');
 

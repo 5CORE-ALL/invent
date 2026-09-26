@@ -5988,7 +5988,8 @@ class CvrMasterController extends Controller
         $tz = 'America/Los_Angeles';
         $end = now($tz)->startOfDay();
         if ($days > 0) {
-            $start = $end->copy()->subDays($days);
+            // Inclusive window: "30 Days" is today plus the 29 days before it, not 31 dates.
+            $start = $end->copy()->subDays($days - 1);
         } else {
             $keys = array_keys($byDateKey);
             sort($keys);

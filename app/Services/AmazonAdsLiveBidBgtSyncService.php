@@ -496,6 +496,8 @@ class AmazonAdsLiveBidBgtSyncService
             return $this->finish($base, 'failed', 'verify_failed: '.($verify['error'] ?? 'not paused'), $source, $campaignName, 0.0, $oldLive);
         }
 
+        $this->persistPausedStatus($channel, $campaignId);
+
         return $this->finish($base, 'synced', 'paused_zero_sbgt', $source, $campaignName, 0.0, $oldLive !== null ? (float) $oldLive : null);
     }
 
@@ -783,6 +785,36 @@ class AmazonAdsLiveBidBgtSyncService
                 'campaign_id' => $campaignId,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * A verified $0 SBGT pause must show as PAUSED on the grid. The daily budget
+     * amount stays, because Amazon will not accept a $0 budget.
+     */
+    private function persistPausedStatus(string $channel, string $campaignId): void
+    {
+        try {
+            $table = $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports';
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'campaignStatus')) {
+                return;
+            }
+            $ranges = ['L30', 'L15', 'L7', 'L1'];
+            $latestDaily = DB::table($table)
+                ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
+                ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+                ->max(DB::raw('LEFT(TRIM(report_date_range), 10)'));
+            if (is_string($latestDaily) && $latestDaily !== '') {
+                $ranges[] = $latestDaily;
+            }
+            DB::table($table)
+                ->where('campaign_id', $campaignId)
+                ->whereIn('report_date_range', $ranges)
+                ->update([
+                    'campaignStatus' => 'PAUSED',
+                    'updated_at' => now(),
+                ]);
+        } catch (Throwable) {
         }
     }
 
