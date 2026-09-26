@@ -306,7 +306,7 @@ class AutoUpdateAmazonPtBids extends Command
                 $cleanSku = preg_replace('/\s+/', ' ', $sku);
                 
                 return (
-                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.') || str_ends_with($cleanName, $cleanSku . ' FBA PT') || str_ends_with($cleanName, $cleanSku . ' FBA PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
                 );
             });
@@ -315,7 +315,7 @@ class AutoUpdateAmazonPtBids extends Command
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
                 $cleanSku = preg_replace('/\s+/', ' ', $sku);
                 return (
-                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.') || str_ends_with($cleanName, $cleanSku . ' FBA PT') || str_ends_with($cleanName, $cleanSku . ' FBA PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
                 );
             });
@@ -324,7 +324,7 @@ class AutoUpdateAmazonPtBids extends Command
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
                 $cleanSku = preg_replace('/\s+/', ' ', $sku);
                 return (
-                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.') || str_ends_with($cleanName, $cleanSku . ' FBA PT') || str_ends_with($cleanName, $cleanSku . ' FBA PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
                 );
             });

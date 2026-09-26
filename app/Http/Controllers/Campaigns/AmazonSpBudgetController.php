@@ -265,6 +265,27 @@ class AmazonSpBudgetController extends Controller
 
             $adGroups = $this->getAdGroupsByCampaigns([$campaignId]);
             if (empty($adGroups)) {
+                // Product-targeting campaigns have no keyword ad groups. Write the bid on targets.
+                $adTargets = $this->getTargetsAdByCampaign([$campaignId]);
+                if (! empty($adTargets)) {
+                    FacadesLog::info('updateAutoCampaignKeywordsBid: no ad groups, using targets API', [
+                        'campaign_id' => $campaignId,
+                        'targets_count' => count($adTargets),
+                    ]);
+                    $targetResult = $this->updateAutoCampaignTargetsBid([$campaignId], [$newBid]);
+                    if (is_array($targetResult) && ($targetResult['status'] ?? 0) === 200) {
+                        $allResults = array_merge($allResults, $targetResult['data'] ?? []);
+                        if ($persistLocalBids) {
+                            AmazonSpCampaignReport::where('campaign_id', $campaignId)
+                                ->where('ad_type', 'SPONSORED_PRODUCTS')
+                                ->whereIn('report_date_range', ['L7', 'L1', 'L30'])
+                                ->update(['sbid' => $newBid, 'last_sbid' => $newBid]);
+                        }
+                    } else {
+                        $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'targets_update_failed', 'error' => is_array($targetResult) ? ($targetResult['error'] ?? 'Unknown') : 'Unknown'];
+                    }
+                    continue;
+                }
                 FacadesLog::warning('updateAutoCampaignKeywordsBid: no ad groups', ['campaign_id' => $campaignId]);
                 $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'no_ad_groups'];
                 continue;

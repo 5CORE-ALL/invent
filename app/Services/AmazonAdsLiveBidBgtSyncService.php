@@ -24,8 +24,8 @@ class AmazonAdsLiveBidBgtSyncService
 {
     public const BGT_TOLERANCE = 0.51;
 
-    /** One cent must not count as a match. 0.37 and 0.36 differ. */
-    public const BID_TOLERANCE = 0.004;
+    /** Bids match only when the cents are equal. One cent is a difference. */
+    public const BID_TOLERANCE = 0;
 
     public const PULL_ATTEMPTS = 5;
 
@@ -331,7 +331,10 @@ class AmazonAdsLiveBidBgtSyncService
                 $live = $existing['live_value'] ?? $existing['desired_value'] ?? null;
                 $tolerance = $field === 'bid' ? self::BID_TOLERANCE : self::BGT_TOLERANCE;
                 $liveNum = is_numeric($live) ? (float) $live : null;
-                if (AmazonAdsApiRetry::valuesMatch($liveNum, $desired, $tolerance)) {
+                $matched = $field === 'bid'
+                    ? AmazonAdsApiRetry::centsMatch($liveNum, $desired)
+                    : AmazonAdsApiRetry::valuesMatch($liveNum, $desired, $tolerance);
+                if ($matched) {
                     return $this->withPresentedStatus([
                         'campaign_id' => $campaignId,
                         'channel' => $channel,
@@ -409,7 +412,10 @@ class AmazonAdsLiveBidBgtSyncService
                 return $this->syncPause($channel, $campaignId, $campaignName, $oldLive, $base, $source);
             }
 
-            if (AmazonAdsApiRetry::valuesMatch((float) $oldLive, $desired, $tolerance)) {
+            $matched = $field === 'bid'
+                ? AmazonAdsApiRetry::centsMatch((float) $oldLive, $desired)
+                : AmazonAdsApiRetry::valuesMatch((float) $oldLive, $desired, $tolerance);
+            if ($matched) {
                 $this->persistVerifiedLive($channel, $field, $campaignId, (float) $oldLive);
 
                 return $this->finish($base, 'synced', 'already_matched', $source, $campaignName, $desired, (float) $oldLive, 'skipped');
@@ -579,7 +585,10 @@ class AmazonAdsLiveBidBgtSyncService
                     : $this->pullBudgets($channel, [$campaignId]);
                 $live = $map[$campaignId] ?? null;
                 $lastLive = $live;
-                if (! AmazonAdsApiRetry::valuesMatch($live !== null ? (float) $live : null, $desired, $tolerance)) {
+                $same = $field === 'bid'
+                    ? AmazonAdsApiRetry::centsMatch($live !== null ? (float) $live : null, $desired)
+                    : AmazonAdsApiRetry::valuesMatch($live !== null ? (float) $live : null, $desired, $tolerance);
+                if (! $same) {
                     throw new \RuntimeException('live '.($live ?? 'null').' !== '.$desired);
                 }
 

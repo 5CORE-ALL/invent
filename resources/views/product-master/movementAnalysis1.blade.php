@@ -281,8 +281,8 @@
                     <input type="text" id="ma-sku-filter" class="form-control form-control-sm" list="ma-sku-filter-list" placeholder="SKU filter" autocomplete="off">
                     <datalist id="ma-sku-filter-list"></datalist>
                     <select id="ma-row-filter" class="form-select form-select-sm" title="Row type">
-                        <option value="all" selected>ALL</option>
-                        <option value="sku">SKU</option>
+                        <option value="all">ALL</option>
+                        <option value="sku" selected>SKU</option>
                         <option value="parent">Parent</option>
                     </select>
                     <select id="ma-inv-filter" class="form-select form-select-sm" title="INV">
@@ -314,6 +314,12 @@
                             <canvas id="ma-dil-amz-pie"></canvas>
                         </div>
                         <div class="ma-dil-pie-legend" id="ma-dil-amz-legend"></div>
+                    </div>
+                    <div class="ma-dil-pie-wrap">
+                        <div class="ma-dil-pie-canvas-wrap">
+                            <canvas id="ma-dil-lp-pie"></canvas>
+                        </div>
+                        <div class="ma-dil-pie-legend" id="ma-dil-lp-legend"></div>
                     </div>
                 </div>
                 <div id="movement-tabulator"></div>
@@ -419,17 +425,19 @@
     let monthlyChart;
     let maDilPieChart = null;
     let maDilAmzPieChart = null;
+    let maDilLpPieChart = null;
     let maDilHistChart = null;
     let maDilLiveCounts = {};
     let maDilLiveAmzValues = {};
+    let maDilLiveLpValues = {};
     let maDilActiveBand = null;
     let maSnapshotHistory = true;
     const MA_DIL_HIST_KEY = 'movement_analysis_dil_hist';
     const MA_DIL_AMZ_HIST_KEY = 'movement_analysis_dil_amz_hist';
+    const MA_DIL_LP_HIST_KEY = 'movement_analysis_dil_lp_hist';
     const MA_DIL_SLABS = [
         { key: '0-oos', label: 'INV 0', min: 0, max: 0, color: '#111111', oos: true },
-        { key: '0', label: '0%', min: 0, max: 0.1, color: '#dc3545' },
-        { key: '0.1-25', label: '0–25%', min: 0.1, max: 25, color: '#ffc107' },
+        { key: '0.1-25', label: '0.1–25%', min: 0.1, max: 25, color: '#ffc107' },
         { key: '25-50', label: '25–50%', min: 25, max: 50, color: '#28a745' },
         { key: '50-100', label: '50–100%', min: 50, max: 100, color: '#e83e8c' },
         { key: 'gt-100', label: '>100%', min: 100, max: Infinity, color: '#4e0dab' },
@@ -442,7 +450,7 @@
         }
         const sku = String(row.sku || '').toUpperCase().replace(/\s+/g, ' ').trim();
         if (!sku) return false;
-        if (sku.startsWith('PARENT')) return true;
+        if (sku.indexOf('PARENT') !== -1) return true;
         const parent = String(row.parent || '').toUpperCase().replace(/\s+/g, ' ').trim();
         return !!(parent && (sku === 'PARENT ' + parent || sku === 'PARENT' + parent.replace(/\s+/g, '')));
     }
@@ -468,6 +476,11 @@
         const price = parseFloat(row && row.amz_price) || 0;
         return inv > 0 ? inv * price : 0;
     }
+    function maRowLpValue(row) {
+        const inv = maRowInv(row);
+        const lp = parseFloat(row && row.lp) || 0;
+        return inv > 0 && lp > 0 ? inv * lp : 0;
+    }
     function maMoneyCompact(n) {
         const v = Math.round(Number(n) || 0);
         const abs = Math.abs(v);
@@ -486,16 +499,17 @@
     }
     function maDilColorStyle(row) {
         const slab = maDilSlabForRow(row);
-        return 'color:' + slab.color + ';font-weight:700;';
+        const color = slab ? slab.color : '#dc3545';
+        return 'color:' + color + ';font-weight:700;';
     }
     function maDilSlabForRow(row) {
         if (maRowInv(row) <= 0) return MA_DIL_SLABS[0];
         const n = Number(maRowDil(row)) || 0;
-        if (n > 100) return MA_DIL_SLABS[5];
-        if (n >= 50) return MA_DIL_SLABS[4];
-        if (n > 25) return MA_DIL_SLABS[3];
-        if (n >= 0.1) return MA_DIL_SLABS[2];
-        return MA_DIL_SLABS[1];
+        if (n > 100) return MA_DIL_SLABS[4];
+        if (n >= 50) return MA_DIL_SLABS[3];
+        if (n > 25) return MA_DIL_SLABS[2];
+        if (n >= 0.1) return MA_DIL_SLABS[1];
+        return null;
     }
     function maTodayKey() {
         try {
@@ -540,18 +554,26 @@
         MA_DIL_SLABS.forEach(function(s) { counts[s.key] = 0; });
         maEachChildSku(rows, function(row) {
             const slab = maDilSlabForRow(row);
+            if (!slab) return;
             counts[slab.key] = (counts[slab.key] || 0) + 1;
         });
         return counts;
     }
-    function maCollectDilAmzValues(rows) {
+    function maCollectDilValues(rows, valueOf) {
         const values = {};
         MA_DIL_SLABS.forEach(function(s) { values[s.key] = 0; });
         maEachChildSku(rows, function(row) {
             const slab = maDilSlabForRow(row);
-            values[slab.key] = (values[slab.key] || 0) + maRowAmzValue(row);
+            if (!slab) return;
+            values[slab.key] = (values[slab.key] || 0) + valueOf(row);
         });
         return values;
+    }
+    function maCollectDilAmzValues(rows) {
+        return maCollectDilValues(rows, maRowAmzValue);
+    }
+    function maCollectDilLpValues(rows) {
+        return maCollectDilValues(rows, maRowLpValue);
     }
     function maSharePercents(counts) {
         const keys = MA_DIL_SLABS.map(function(s) { return s.key; });
@@ -659,15 +681,14 @@
             },
         });
     }
-    function maDrawDilAmzPie(values) {
-        const canvas = document.getElementById('ma-dil-amz-pie');
-        if (!canvas || typeof Chart === 'undefined') return;
+    function maDrawDilMoneyPie(canvasId, prevChart, values) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined') return prevChart || null;
         const shares = maSharePercents(values);
-        if (maDilAmzPieChart) {
-            maDilAmzPieChart.destroy();
-            maDilAmzPieChart = null;
+        if (prevChart) {
+            try { prevChart.destroy(); } catch (e) { /* ignore */ }
         }
-        maDilAmzPieChart = new Chart(canvas.getContext('2d'), {
+        return new Chart(canvas.getContext('2d'), {
             type: 'pie',
             data: {
                 labels: MA_DIL_SLABS.map(function(s) { return s.label; }),
@@ -711,19 +732,25 @@
         if (countLegend) countLegend.innerHTML = maDilLegendHtml('Dil', maDilLiveCounts, 'count', false);
         const amzLegend = document.getElementById('ma-dil-amz-legend');
         if (amzLegend) amzLegend.innerHTML = maDilLegendHtml('Amz $', maDilLiveAmzValues, 'amz', true);
+        const lpLegend = document.getElementById('ma-dil-lp-legend');
+        if (lpLegend) lpLegend.innerHTML = maDilLegendHtml('LP $', maDilLiveLpValues, 'lp', true);
     }
     function maRenderDilPie(rows, snapshot) {
         const counts = maCollectDilCounts(rows);
         const amzValues = maCollectDilAmzValues(rows);
+        const lpValues = maCollectDilLpValues(rows);
         maDilLiveCounts = counts;
         maDilLiveAmzValues = amzValues;
+        maDilLiveLpValues = lpValues;
         if (snapshot) {
             maSnapDilHistory(MA_DIL_HIST_KEY, counts);
             maSnapDilHistory(MA_DIL_AMZ_HIST_KEY, amzValues);
+            maSnapDilHistory(MA_DIL_LP_HIST_KEY, lpValues);
         }
         maRefreshDilLegends();
         maDrawDilPie(counts);
-        maDrawDilAmzPie(amzValues);
+        maDilAmzPieChart = maDrawDilMoneyPie('ma-dil-amz-pie', maDilAmzPieChart, amzValues);
+        maDilLpPieChart = maDrawDilMoneyPie('ma-dil-lp-pie', maDilLpPieChart, lpValues);
     }
     function maFillSkuFilterList(rows) {
         const list = document.getElementById('ma-sku-filter-list');
@@ -761,7 +788,8 @@
             }
             if (maDilActiveBand) {
                 if (maIsParentRow(data)) return false;
-                if (maDilSlabForRow(data).key !== maDilActiveBand) return false;
+                const slab = maDilSlabForRow(data);
+                if (!slab || slab.key !== maDilActiveBand) return false;
             }
             if (skuFilter) {
                 const sku = String((data && data.sku) || '').toLowerCase();
@@ -979,13 +1007,13 @@
         if (band == null || band === '') return;
         band = String(band);
         maDilHistBand = band;
-        maDilHistKind = kind === 'amz' ? 'amz' : 'count';
+        maDilHistKind = kind === 'amz' ? 'amz' : (kind === 'lp' ? 'lp' : 'count');
         const spec = MA_DIL_SLABS.find(function(s) { return s.key === band; })
             || { key: band, label: band, color: '#6f42c1' };
         const bandLabel = spec.oos ? 'INV 0' : spec.label;
         const title = maDilHistKind === 'amz'
             ? ('Dil ' + bandLabel + ' Amz $')
-            : ('Dil ' + bandLabel + ' count');
+            : (maDilHistKind === 'lp' ? ('Dil ' + bandLabel + ' LP $') : ('Dil ' + bandLabel + ' count'));
         const titleEl = document.getElementById('ma-dil-hist-title');
         if (titleEl) titleEl.textContent = title;
         maShowFullWidthModal('maDilHistModal');
@@ -996,9 +1024,13 @@
         if (band == null || band === '') band = maDilHistBand;
         if (band == null || band === '') return;
         band = String(band);
-        const money = maDilHistKind === 'amz';
-        const live = money ? maDilLiveAmzValues : maDilLiveCounts;
-        const storeKey = money ? MA_DIL_AMZ_HIST_KEY : MA_DIL_HIST_KEY;
+        const money = maDilHistKind === 'amz' || maDilHistKind === 'lp';
+        const live = maDilHistKind === 'amz'
+            ? maDilLiveAmzValues
+            : (maDilHistKind === 'lp' ? maDilLiveLpValues : maDilLiveCounts);
+        const storeKey = maDilHistKind === 'amz'
+            ? MA_DIL_AMZ_HIST_KEY
+            : (maDilHistKind === 'lp' ? MA_DIL_LP_HIST_KEY : MA_DIL_HIST_KEY);
         const rows = maLocalDilHistory(storeKey).slice();
         const today = maTodayKey();
         const rec = Object.assign({ date: today, label: today.slice(5) }, live);
@@ -1193,7 +1225,7 @@
                     field: "dil",
                     visKey: "dil",
                     sorter: "number",
-                    headerTooltip: "OV L30 ÷ INV. Black INV 0 · red 0% in stock · 0–25% yellow · 25–50% green · 50–100% pink · >100% purple.",
+                    headerTooltip: "OV L30 ÷ INV. Black INV 0 · 0.1–25% yellow · 25–50% green · 50–100% pink · >100% purple.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         if (maIsParentRow(row)) return '';
@@ -1366,7 +1398,7 @@
             if (band == null || band === '') return;
             maDrawDilHist(String(band), kind);
         });
-        $(document).off('click.maDilFilter').on('click.maDilFilter', '#ma-dil-legend .ma-dil-pie-row.is-filterable, #ma-dil-amz-legend .ma-dil-pie-row.is-filterable', function (e) {
+        $(document).off('click.maDilFilter').on('click.maDilFilter', '#ma-dil-legend .ma-dil-pie-row.is-filterable, #ma-dil-amz-legend .ma-dil-pie-row.is-filterable, #ma-dil-lp-legend .ma-dil-pie-row.is-filterable', function (e) {
             if ($(e.target).closest('.ma-dil-hist-dot').length) return;
             maSetDilBandFilter(String(this.getAttribute('data-band') || ''));
         });

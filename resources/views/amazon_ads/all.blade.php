@@ -1559,7 +1559,7 @@
                 var bidDiffers = (function () {
                     var live = parseFloat(row.last_sbid);
                     var want = parseFloat(row.sbid);
-                    return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.abs(live - want) > 0.004;
+                    return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.round(live * 100) !== Math.round(want * 100);
                 })();
                 if (row.bid_sync_color === 'red' || row.bid_sync_reason === 'sbid_differs' || bidDiffers) {
                     return 'SBID: ' + row.bid_sync_tip;
@@ -2325,7 +2325,7 @@
             function amzShownBidMatches(row) {
                 var live = parseFloat(row && row.last_sbid);
                 var want = parseFloat(row && row.sbid);
-                return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.abs(live - want) <= 0.004;
+                return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.round(live * 100) === Math.round(want * 100);
             }
             function amzShownBudgetMatches(row) {
                 var live = parseFloat(row && row.bgt);

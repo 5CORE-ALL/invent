@@ -416,7 +416,7 @@ class AutoUpdateAmazonKwBids extends Command
                 $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
                 $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
                 // Match campaign with or without " KW" suffix
-                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW' || $campaignName === $cleanSku . ' FBA KW';
             });
 
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
@@ -424,19 +424,19 @@ class AutoUpdateAmazonKwBids extends Command
                 $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
                 $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
                 // Match campaign with or without " KW" suffix
-                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW' || $campaignName === $cleanSku . ' FBA KW';
             });
 
             $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($sku) {
                 $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
                 $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
-                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW' || $campaignName === $cleanSku . ' FBA KW';
             });
 
             $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
                 $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
                 $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
-                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW' || $campaignName === $cleanSku . ' FBA KW';
             });
 
             if (!$matchedCampaignL7 && !$matchedCampaignL1 && !$matchedCampaignL30) {

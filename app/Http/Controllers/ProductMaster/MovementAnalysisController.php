@@ -116,12 +116,7 @@ class MovementAnalysisController extends Controller
             $item->parent = $parent;
 
             $skuUpper = strtoupper(preg_replace('/\s+/', ' ', $childSku));
-            $parentUpper = strtoupper(preg_replace('/\s+/', ' ', $parent));
-            $item->is_parent = str_starts_with($skuUpper, 'PARENT')
-                || ($parentUpper !== '' && (
-                    $skuUpper === 'PARENT '.$parentUpper
-                    || $skuUpper === 'PARENT'.str_replace(' ', '', $parentUpper)
-                ));
+            $item->is_parent = str_contains($skuUpper, 'PARENT');
 
             $shopify = $shopifyData[$childSku] ?? null;
             if (! $item->is_parent) {

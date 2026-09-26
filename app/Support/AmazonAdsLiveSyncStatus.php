@@ -3,7 +3,6 @@
 namespace App\Support;
 
 use App\Models\AmazonAdsLiveSyncState;
-use App\Services\AmazonAdsLiveBidBgtSyncService;
 
 /**
  * Column-wise BGT/BID sync status from verified Amazon live state (not push-API success).
@@ -225,7 +224,7 @@ final class AmazonAdsLiveSyncStatus
             return false;
         }
 
-        return AmazonAdsApiRetry::valuesMatch($live, $want, AmazonAdsLiveBidBgtSyncService::BID_TOLERANCE);
+        return AmazonAdsApiRetry::centsMatch($live, $want);
     }
 
     public static function displayedBidsDiffer(mixed $shown, mixed $desired): bool
@@ -236,7 +235,7 @@ final class AmazonAdsLiveSyncStatus
             return false;
         }
 
-        return ! AmazonAdsApiRetry::valuesMatch($live, $want, AmazonAdsLiveBidBgtSyncService::BID_TOLERANCE);
+        return ! AmazonAdsApiRetry::centsMatch($live, $want);
     }
 
     public static function displayedBudgetsMatch(mixed $shown, mixed $desired): bool
