@@ -136,6 +136,13 @@ class AmazonOrder extends Model
         }
 
         if ($tn === '' && $depth === 0) {
+            $fromPackages = \App\Services\MarketplaceManager\AmazonSpOrdersClient::trackingFromOrderPackages($raw);
+            if (is_array($fromPackages) && trim((string) ($fromPackages['tracking'] ?? '')) !== '') {
+                return [
+                    'tracking' => (string) $fromPackages['tracking'],
+                    'carrier' => (string) ($fromPackages['carrier'] ?? ''),
+                ];
+            }
             foreach ((array) ($raw['OrderItems'] ?? $raw['orderItems'] ?? []) as $item) {
                 if (! is_array($item)) {
                     continue;

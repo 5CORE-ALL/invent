@@ -27,6 +27,47 @@ class AmazonSofTrackingExtractTest extends TestCase
         $this->assertSame('GOFO', $hit['carrier'] ?? null);
     }
 
+    public function test_reads_stored_amazon_packages_as_local_tracking(): void
+    {
+        $hit = AmazonOrder::trackingFromDecoded([
+            'orderId' => '112-2020581-4711422',
+            'packages' => [
+                [
+                    'packageReferenceId' => 'PKG-1',
+                    'carrier' => 'UPS',
+                    'trackingNumber' => '1Z999AA10123456784',
+                ],
+            ],
+        ]);
+
+        $this->assertSame('1Z999AA10123456784', $hit['tracking']);
+        $this->assertSame('UPS', $hit['carrier']);
+    }
+
+    public function test_reads_nested_shipment_package_tracking(): void
+    {
+        $hit = AmazonSpOrdersClient::trackingFromOrderPackages([
+            'orderId' => '112-2020581-4711422',
+            'shipments' => [
+                [
+                    'packages' => [
+                        [
+                            'tracking' => [
+                                'carrier' => [
+                                    'carrierCode' => 'USPS',
+                                    'trackingNumber' => '9400111899223344556677',
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('9400111899223344556677', $hit['tracking'] ?? null);
+        $this->assertSame('USPS', $hit['carrier'] ?? null);
+    }
+
     public function test_ignores_amazon_order_id_stored_as_package_tracking(): void
     {
         $hit = AmazonSpOrdersClient::trackingFromOrderPackages([

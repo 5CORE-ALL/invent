@@ -309,12 +309,19 @@ class AmazonTrackingSyncService
         $this->merchantPackagesSynced = (int) ($bulk['pages'] ?? 0) > 0;
         $scan = min(800, max($limit * 8, 200));
         $query = AmazonOrder::query()
-            ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
+            ->where(function ($q) {
+                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
+                    ->orWhere(function ($unshipped) {
+                        $unshipped->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['UNSHIPPED'])
+                            ->where('order_date', '>=', now()->subDays(21));
+                    });
+            })
             ->where(function ($q) {
                 $q->whereNull('fulfillment_channel')
                     ->orWhereRaw("UPPER(TRIM(COALESCE(fulfillment_channel, ''))) != ?", ['AFN']);
             })
             ->where('order_date', '>=', now()->subDays(45))
+            ->orderByRaw("CASE WHEN UPPER(TRIM(COALESCE(status, ''))) IN ('SHIPPED', 'PARTIALLYSHIPPED') THEN 0 ELSE 1 END")
             ->orderByRaw("CASE WHEN order_date >= ? THEN 0 ELSE 1 END", [now('America/Los_Angeles')->subDays(7)->startOfDay()])
             ->orderByRaw("CASE WHEN shopify_order_id IS NULL OR shopify_order_id = '' OR shopify_order_id LIKE 'manual%' THEN 1 ELSE 0 END")
             ->orderByDesc('order_date')
@@ -600,7 +607,7 @@ class AmazonTrackingSyncService
                 continue;
             }
             $checked++;
-            $result = $this->fillTrackingForOrder($order);
+            $result = $this->fillTrackingForOrder($order, true);
             if (! empty($result['success']) && trim((string) ($result['tracking'] ?? '')) !== '') {
                 $filled++;
             } else {
@@ -642,12 +649,21 @@ class AmazonTrackingSyncService
                 $this->directPackageLookupsLeft--;
             }
             $fromPackages = $this->ordersClient->getMerchantPackageTracking($amazonOrderId);
+            if (is_array($fromPackages) && ! empty($fromPackages['retry'])) {
+                return [
+                    'success' => false,
+                    'tracking' => null,
+                    'carrier' => null,
+                    'retry' => true,
+                    'message' => 'Amazon order lookup did not answer. It will be tried again.',
+                ];
+            }
             if ($fromPackages !== null && trim((string) ($fromPackages['tracking'] ?? '')) !== '') {
                 $hit = $fromPackages;
             }
         }
 
-        if (empty($hit['tracking']) && $shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual')) {
+        if (empty($hit['tracking']) && ! $fast && $shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual')) {
             $itemSkus = $order->items()
                 ->orderBy('id')
                 ->pluck('sku')

@@ -126,10 +126,10 @@ class DobaOrderSyncService
             'endTime' => now()->format('Y-m-d H:i:s'),
         ];
         $order = null;
-        foreach (['ordBusiId', 'platformOrderNo', 'orderNo'] as $field) {
+        foreach (['ordBusiId', 'platformOrderNo'] as $field) {
             $rows = $api->querySellerOrderDetail($window + [$field => $orderId]);
             $order = $this->matchDobaOrder($rows, $orderId);
-            if (is_array($order)) {
+            if (is_array($order) || $rows !== []) {
                 break;
             }
         }
