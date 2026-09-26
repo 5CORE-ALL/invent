@@ -238,6 +238,60 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
         $this->assertEqualsCanonicalizing(['2', '3'], $pushed);
     }
 
+    public function test_lbgt_is_checked_like_lbid_and_only_a_different_sbgt_is_sent(): void
+    {
+        $pushed = [];
+        $paused = [];
+        $svc = $this->service([
+            'pullBudgets' => function () use (&$pushed, &$paused) {
+                $map = ['match' => 3.0, 'diff' => 6.0, 'zero' => 5.0];
+                if (in_array('diff', $pushed, true)) {
+                    $map['diff'] = 3.0;
+                }
+
+                return $map;
+            },
+            'pushBudget' => function ($ch, $cid, $desired) use (&$pushed) {
+                $pushed[] = (string) $cid;
+                $this->assertSame(3.0, (float) $desired);
+
+                return ['status' => 200, 'failed' => []];
+            },
+            'pause' => function ($ch, $ids) use (&$paused) {
+                $paused = $ids;
+
+                return ['paused' => count($ids), 'failed' => 0, 'errors' => []];
+            },
+            'ads' => new class
+            {
+                public function listSpCampaignsByIds(): array
+                {
+                    return [['campaignId' => 'zero', 'state' => 'PAUSED']];
+                }
+
+                public function listSbCampaignsByIds(): array
+                {
+                    return [];
+                }
+            },
+            'persistLive' => static function (): void {},
+        ]);
+
+        $out = $svc->syncRows([
+            ['campaign_id' => 'match', 'channel' => 'sp', 'sbgt' => 3, 'campaign_name' => 'MATCH'],
+            ['campaign_id' => 'diff', 'channel' => 'sp', 'sbgt' => 3, 'campaign_name' => 'DIFF'],
+            ['campaign_id' => 'zero', 'channel' => 'sp', 'sbgt' => 0, 'campaign_name' => 'ZERO'],
+        ], 'cron-live-sync');
+
+        $this->assertSame(['diff'], $pushed);
+        $this->assertSame(['zero'], $paused);
+        $this->assertSame(3, $out['synced']);
+        $this->assertSame(0, $out['failed']);
+        $this->assertSame('already_matched', $out['results'][0]['reason']);
+        $this->assertSame('verified_after_push', $out['results'][1]['reason']);
+        $this->assertSame('paused_zero_sbgt', $out['results'][2]['reason']);
+    }
+
     public function test_pulls_live_bid_and_pushes_only_rows_that_still_differ_from_sbid(): void
     {
         $pushed = [];
