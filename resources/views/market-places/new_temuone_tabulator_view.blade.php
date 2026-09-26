@@ -854,7 +854,8 @@
                 best = base;
             }
         });
-        if (!(best > 0)) return null;
+        // Reject base×1.1364 with the $2.99 missing ($1.63 when Temu Price is $4.62).
+        if (!(best > 0) || bestErr > 0.05) return null;
         const sR = best <= 26.99 ? best + 2.99 : best;
         return ((sR * 0.95 - shipUse - cost) / cost) * 100;
     }
@@ -895,7 +896,7 @@
                 best = base;
             }
         });
-        if (!(best > 0)) return 0;
+        if (!(best > 0) || bestErr > 0.05) return 0;
         return best <= 26.99 ? best + 2.99 : best;
     }
     /** Full Temu Price whose inverted S R matches the target (same as PHP spriceFromTargetSR). */
@@ -1159,7 +1160,8 @@
                 best = base;
             }
         });
-        return best > 0 ? +best.toFixed(2) : 0;
+        if (!(best > 0) || bestErr > 0.05) return 0;
+        return +best.toFixed(2);
     }
 
     /** S R Prc: S Base Prc + $2.99 when that base ≤ $26.99 — same rule as R Price. */

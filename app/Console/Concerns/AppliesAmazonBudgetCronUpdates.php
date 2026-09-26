@@ -28,11 +28,11 @@ trait AppliesAmazonBudgetCronUpdates
         string $sourceLabel,
         bool $dryRun
     ): array {
-        unset($updater, $reportTable);
+        unset($updater);
         $channel = str_starts_with($pushType, 'sb_') ? 'sb' : 'sp';
         $desiredByCid = [];
         try {
-            $desiredByCid = AmazonAdsDesiredSbgtResolver::sbgtForCampaigns($validCampaigns);
+            $desiredByCid = AmazonAdsDesiredSbgtResolver::sbgtForCampaigns($validCampaigns, $channel);
         } catch (Throwable $e) {
             Log::warning('amazon-ads live sync: 6-part SBGT resolver failed, using cron SBGT', [
                 'source' => $sourceLabel,
@@ -77,6 +77,15 @@ trait AppliesAmazonBudgetCronUpdates
             $this->warn('DRY RUN - No updates were made to Amazon.');
 
             return ['exit_code' => 0, 'pushed' => 0, 'unchanged' => 0, 'failed' => 0];
+        }
+
+        try {
+            AmazonAdsSbgt::persistByRowId($reportTable, [], $idToBgt);
+        } catch (Throwable $e) {
+            Log::warning('amazon-ads live sync: could not store SBGT before push', [
+                'source' => $sourceLabel,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         $outcome = app(AmazonAdsLiveBidBgtSyncService::class)->syncBudgetMap($channel, $idToBgt, $names, $sourceLabel);

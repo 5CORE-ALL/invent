@@ -2780,6 +2780,7 @@
                 best = base;
             }
         });
+        if (!(best > 0) || bestErr > 0.05) return 0;
         return best;
     }
     function temuBaseFromRPrice(rPrice) {

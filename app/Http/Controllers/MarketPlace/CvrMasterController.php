@@ -6760,6 +6760,133 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Daily share of rows in one Dil color band.
+     * Red <25%, Green 25–50%, Pink 50%+. Same Dil formula as the page: OV L30 ÷ INV × 100.
+     * Parent group rolls SKUs up to parent first. SKU group counts each SKU.
+     * Today's point is the live badge when current_value is sent.
+     */
+    private function dilColorShareChart(Request $request, string $metric, int $days)
+    {
+        $group = strtolower(trim((string) $request->input('dil_group', 'parent')));
+        if (! in_array($group, ['parent', 'sku'], true)) {
+            $group = 'parent';
+        }
+
+        $start = $days > 0
+            ? now('America/Los_Angeles')->subDays($days)->toDateString()
+            : null;
+
+        $byDate = $group === 'parent'
+            ? $this->dilColorShareCountsByParent($start)
+            : $this->dilColorShareCountsBySku($start);
+
+        $band = match ($metric) {
+            'dil_green' => 'green',
+            'dil_pink' => 'pink',
+            default => 'red',
+        };
+
+        $series = [];
+        foreach ($byDate as $date => $counts) {
+            $n = (int) ($counts['n'] ?? 0);
+            $series[$date] = $n > 0 ? round(((int) ($counts[$band] ?? 0) / $n) * 100, 2) : 0;
+        }
+
+        $currentValue = $request->input('current_value');
+        if (is_numeric($currentValue)) {
+            $series[now('America/Los_Angeles')->toDateString()] = round((float) $currentValue, 2);
+        }
+
+        if ($series === []) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->fillDailyChartSeries($series, $days, false),
+        ]);
+    }
+
+    /**
+     * @return array<string, array{n:int, red:int, green:int, pink:int}>
+     */
+    private function dilColorShareCountsBySku(?string $start): array
+    {
+        $query = DB::table('pricing_master_daily_snapshots_sku')
+            ->selectRaw('
+                snapshot_date,
+                SUM(CASE WHEN inventory > 0 THEN 1 ELSE 0 END) AS n,
+                SUM(CASE WHEN inventory > 0 AND (overall_l30 / NULLIF(inventory, 0)) * 100 < 25 THEN 1 ELSE 0 END) AS red,
+                SUM(CASE WHEN inventory > 0 AND (overall_l30 / NULLIF(inventory, 0)) * 100 >= 25 AND (overall_l30 / NULLIF(inventory, 0)) * 100 < 50 THEN 1 ELSE 0 END) AS green,
+                SUM(CASE WHEN inventory > 0 AND (overall_l30 / NULLIF(inventory, 0)) * 100 >= 50 THEN 1 ELSE 0 END) AS pink
+            ')
+            ->groupBy('snapshot_date')
+            ->orderBy('snapshot_date');
+
+        if ($start) {
+            $query->where('snapshot_date', '>=', $start);
+        }
+
+        $out = [];
+        foreach ($query->get() as $row) {
+            $key = Carbon::parse($row->snapshot_date)->toDateString();
+            $out[$key] = [
+                'n' => (int) $row->n,
+                'red' => (int) $row->red,
+                'green' => (int) $row->green,
+                'pink' => (int) $row->pink,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, array{n:int, red:int, green:int, pink:int}>
+     */
+    private function dilColorShareCountsByParent(?string $start): array
+    {
+        $parentKey = "COALESCE(NULLIF(TRIM(pm.parent), ''), s.sku)";
+        $query = DB::table('pricing_master_daily_snapshots_sku as s')
+            ->leftJoin('product_master as pm', 'pm.sku', '=', 's.sku')
+            ->selectRaw("
+                s.snapshot_date as snapshot_date,
+                {$parentKey} as parent_key,
+                SUM(s.inventory) as inv,
+                SUM(s.overall_l30) as l30
+            ")
+            ->groupBy('s.snapshot_date', DB::raw($parentKey))
+            ->orderBy('s.snapshot_date');
+
+        if ($start) {
+            $query->where('s.snapshot_date', '>=', $start);
+        }
+
+        $out = [];
+        foreach ($query->get() as $row) {
+            $inv = (float) $row->inv;
+            if ($inv <= 0) {
+                continue;
+            }
+            $key = Carbon::parse($row->snapshot_date)->toDateString();
+            $dil = ((float) $row->l30 / $inv) * 100;
+            if (! isset($out[$key])) {
+                $out[$key] = ['n' => 0, 'red' => 0, 'green' => 0, 'pink' => 0];
+            }
+            $out[$key]['n']++;
+            if ($dil < 25) {
+                $out[$key]['red']++;
+            } elseif ($dil < 50) {
+                $out[$key]['green']++;
+            } else {
+                $out[$key]['pink']++;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Get Master Analytics chart data (Rolling L30) for Inv, OV L30, Price, CVR graphs.
      * Data is read from pricing_master_daily_snapshots_sku (SKU-wise, saved on page load/refresh).
      * When "parent" is provided, aggregates data for all SKUs under that parent by snapshot_date.
@@ -6772,13 +6899,17 @@ class CvrMasterController extends Controller
         $skuRaw = $request->input('sku', '');
         $parentRaw = preg_replace('/\s+/', ' ', trim($request->input('parent', '')));
         $aggregate = filter_var($request->input('aggregate', false), FILTER_VALIDATE_BOOLEAN);
-        $allowed = ['inv', 'ov_l30', 'price', 'cvr', 'dil', 'amz_price', 'rating', 'total_views'];
+        $allowed = ['inv', 'ov_l30', 'price', 'cvr', 'dil', 'dil_red', 'dil_green', 'dil_pink', 'amz_price', 'rating', 'total_views'];
         if (!in_array($metric, $allowed)) {
             return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
         }
 
         $isParent = $parentRaw !== '';
         $isAggregate = $aggregate && $parentRaw === '' && trim($skuRaw) === '';
+
+        if ($isAggregate && in_array($metric, ['dil_red', 'dil_green', 'dil_pink'], true)) {
+            return $this->dilColorShareChart($request, $metric, $days);
+        }
 
         // For aggregate chart, use daily totals table when metric has a direct column (correct totals like 180k)
         $aggregateUsesDailyTable = $isAggregate && in_array($metric, ['inv', 'ov_l30', 'price', 'cvr', 'dil'], true);
@@ -6803,6 +6934,10 @@ class CvrMasterController extends Controller
                         : 0,
                     default => (float) ($row->total_inv ?? 0),
                 };
+            }
+            // Today's Dil point is the live badge (Σ OV L30 ÷ Σ INV), not a stale daily snapshot.
+            if ($metric === 'dil' && is_numeric($request->input('current_value'))) {
+                $byDateKey[now('America/Los_Angeles')->toDateString()] = round((float) $request->input('current_value'), 2);
             }
             if (empty($byDateKey)) {
                 return response()->json(['success' => true, 'data' => []]);

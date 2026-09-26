@@ -1101,17 +1101,33 @@ class AnnouncementController extends Controller
         return $stored;
     }
 
+    /** Extra accounts that can add announcements besides directors. */
+    private const ANNOUNCEMENT_EDITOR_EMAILS = [
+        'software5@5core.com',
+        'tech-support@5core.com',
+    ];
+
     private function canAnnounce(?User $user = null): bool
     {
         $user ??= Auth::user();
+        if (! $user) {
+            return false;
+        }
+        if ($user->isDirector()) {
+            return true;
+        }
 
-        return $user?->isDirector() ?? false;
+        return in_array(
+            strtolower(trim((string) $user->email)),
+            self::ANNOUNCEMENT_EDITOR_EMAILS,
+            true
+        );
     }
 
     private function authorizeDirector(): void
     {
         if (! $this->canAnnounce()) {
-            abort(403, 'Only directors can make announcements.');
+            abort(403, 'You are not allowed to add announcements.');
         }
     }
 

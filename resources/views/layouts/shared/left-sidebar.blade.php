@@ -31,14 +31,15 @@
 
 
             {{-- Tasks --}}
+            @php $tasksMenuOpen = request()->routeIs('incentives.*'); @endphp
             <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#actionManager" aria-expanded="false" aria-controls="actionManager"
-                    class="side-nav-link">
+                <a data-bs-toggle="collapse" href="#actionManager" aria-expanded="{{ $tasksMenuOpen ? 'true' : 'false' }}" aria-controls="actionManager"
+                    class="side-nav-link {{ $tasksMenuOpen ? 'active' : '' }}">
                     <i class="ri-settings-3-line"></i>
                     <span>Tasks</span>
                     <span class="menu-arrow"></span>
                 </a>
-                <div class="collapse" id="actionManager">
+                <div class="collapse {{ $tasksMenuOpen ? 'show' : '' }}" id="actionManager">
                     <ul class="side-nav-second-level">
                         <li>
                             <a href="{{ route('tasks.automated') }}">
@@ -58,6 +59,11 @@
                         <li>
                             <a href="{{ route('tasks.summary') }}">
                                 <i class="ri-file-list-3-line me-2"></i>Tasks Summary
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('incentives.index') }}" class="{{ request()->routeIs('incentives.*') ? 'active' : '' }}">
+                                <i class="ri-hand-coin-line me-2"></i>Incentives
                             </a>
                         </li>
                         <li>

@@ -1,6 +1,6 @@
 {{--
     User incentives — Task Summary INC column + ₹ icon beside the login name.
-    Table columns: Target, Incentive, Condition, CutOff Date.
+    Table columns: Target, Incentive, Condition, CutOff Date, Days Left.
     Editable by president@5core.com only. software5@5core.com can view every row.
     Everyone else can view their own row.
 
@@ -53,6 +53,7 @@
         font-size: 1.05rem;
         line-height: 1;
         cursor: pointer;
+        text-decoration: none;
         box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.15);
     }
     .topbar-incentive-dollar-btn.has-amount {
@@ -246,6 +247,7 @@
         justify-content: center;
         font-size: 1.45rem;
         cursor: pointer;
+        text-decoration: none;
         transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
     #ts-incentive-float-btn:hover {
@@ -461,14 +463,14 @@
     }
 </style>
 
-<button type="button"
+<a href="{{ route('incentives.index') }}"
         id="ts-incentive-float-btn"
         class="d-none"
         title="My incentives"
         aria-label="Open my incentives">
     <span aria-hidden="true">₹</span>
     <span class="ts-inc-float-count d-none" id="ts-incentive-float-count"></span>
-</button>
+</a>
 
 <div class="modal fade" id="taskSummaryIncentivesModal" tabindex="-1" aria-labelledby="taskSummaryIncentivesModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
@@ -674,6 +676,21 @@
     }
     function itemCutoffValue(item) {
         return item ? (item.target_date || item.additional_condition || '') : '';
+    }
+    function daysLeftInfo(value) {
+        var days = daysUntilCutoff(value);
+        if (days === null) return { text: '—', hot: false };
+        if (days < 0) {
+            var n = Math.abs(days);
+            return { text: n + (n === 1 ? ' day over' : ' days over'), hot: true };
+        }
+        if (days === 0) return { text: 'Today', hot: true };
+        if (days === 1) return { text: '1 day', hot: true };
+        return { text: days + ' days', hot: false };
+    }
+    function daysLeftCell(value) {
+        var info = daysLeftInfo(value);
+        return '<td class="ts-inc-days' + (info.hot ? ' ts-inc-cutoff-alert' : '') + '">' + escapeHtml(info.text) + '</td>';
     }
     function cutoffAlertText(item) {
         var days = daysUntilCutoff(itemCutoffValue(item));
@@ -924,7 +941,7 @@
         if (empty) empty.classList.add('d-none');
         wrap.classList.remove('d-none');
         wrap.innerHTML = '<div class="table-responsive"><table class="ts-inc-table">'
-            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>CutOff Date</th></tr></thead><tbody>'
+            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>CutOff Date</th><th>Days Left</th></tr></thead><tbody>'
             + active.map(function (item) {
                 var alertOn = isCutoffAlert(itemCutoffValue(item));
                 return '<tr class="' + (alertOn ? 'is-cutoff-alert' : '') + '">'
@@ -932,9 +949,10 @@
                     + '<td class="ts-inc-amt">' + escapeHtml(item.amount_display || '—') + '</td>'
                     + '<td>' + escapeHtml(item.condition || item.body || '—').replace(/\n/g, '<br>') + '</td>'
                     + '<td class="' + (alertOn ? 'ts-inc-cutoff-alert' : '') + '">' + escapeHtml(formatTargetDate(itemCutoffValue(item))) + '</td>'
+                    + daysLeftCell(itemCutoffValue(item))
                     + '</tr>';
             }).join('')
-            + '</tbody>' + incentiveTotalFooter(4) + '</table></div>';
+            + '</tbody>' + incentiveTotalFooter(5) + '</table></div>';
         renderIncentiveTotal();
     }
 
@@ -942,18 +960,20 @@
         var wrap = el('ts-inc-edit-rows');
         if (!wrap) return;
         wrap.innerHTML = '<div class="table-responsive"><table class="ts-inc-table">'
-            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>CutOff Date</th><th></th></tr></thead><tbody>'
+            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>CutOff Date</th><th>Days Left</th><th></th></tr></thead><tbody>'
             + state.editItems.map(function (item, idx) {
+                var cutoff = toDateInputValue(item.target_date || item.additional_condition) || defaultCutoffDate();
                 return '<tr class="ts-inc-edit-row" data-edit-idx="' + idx + '">'
                     + '<td><input type="text" class="form-control form-control-sm ts-inc-field-title" placeholder="Target" value="' + escapeHtml(item.title || item.target || '') + '" maxlength="200"></td>'
                     + '<td><input type="number" class="form-control form-control-sm ts-inc-field-amount" placeholder="₹" value="' + (item.amount != null ? escapeHtml(item.amount) : '') + '" min="0" step="1"></td>'
                     + '<td><textarea class="form-control form-control-sm ts-inc-field-body" rows="2" placeholder="Condition" maxlength="5000">' + escapeHtml(item.body || item.condition || '') + '</textarea></td>'
-                    + '<td><input type="date" class="form-control form-control-sm ts-inc-field-extra" value="' + escapeHtml(toDateInputValue(item.target_date || item.additional_condition) || defaultCutoffDate()) + '">'
+                    + '<td><input type="date" class="form-control form-control-sm ts-inc-field-extra" value="' + escapeHtml(cutoff) + '">'
                     + '<div class="form-check mt-1"><input class="form-check-input ts-inc-field-active" type="checkbox" ' + (item.is_active !== false ? 'checked' : '') + ' id="ts-inc-active-' + idx + '"><label class="form-check-label small" for="ts-inc-active-' + idx + '">Active</label></div></td>'
+                    + daysLeftCell(cutoff)
                     + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ts-inc-remove-row" data-edit-idx="' + idx + '"><i class="ri-delete-bin-line"></i></button></td>'
                     + '</tr>';
             }).join('')
-            + '</tbody>' + incentiveTotalFooter(5) + '</table></div>';
+            + '</tbody>' + incentiveTotalFooter(6) + '</table></div>';
         renderIncentiveTotal();
     }
 
@@ -1300,12 +1320,6 @@
             return;
         }
 
-        if (t.closest('#ts-incentive-float-btn') || t.closest('#ts-incentive-header-btn')) {
-            e.preventDefault();
-            openModal(cfg.viewerId, cfg.viewerName, '');
-            return;
-        }
-
         if (t.closest('#ts-inc-add-multi-btn')) {
             e.preventDefault();
             openBulkAdd();
@@ -1372,6 +1386,14 @@
         if (!t || !t.closest) return;
         if (t.closest('.ts-inc-field-amount') || t.closest('.ts-inc-field-active')) {
             renderIncentiveTotal();
+        }
+        if (t.classList.contains('ts-inc-field-extra')) {
+            var daysCell = t.closest('tr') && t.closest('tr').querySelector('.ts-inc-days');
+            if (daysCell) {
+                var info = daysLeftInfo(t.value);
+                daysCell.textContent = info.text;
+                daysCell.classList.toggle('ts-inc-cutoff-alert', info.hot);
+            }
         }
         if (t.id === 'ts-inc-user-search') {
             state.userSearch = t.value || '';

@@ -1150,6 +1150,7 @@
                 best = base;
             }
         });
+        if (!(best > 0) || bestErr > 0.05) return 0;
         return best;
     }
     // Temu 3 has no ads (channel master Ads% = 0). Net columns match gross: SNROI = SGROI, SNPFT = SGPRFT.
@@ -1207,7 +1208,8 @@
                 best = base;
             }
         });
-        return best > 0 ? (best <= 26.99 ? best + 2.99 : best) : 0;
+        if (!(best > 0) || bestErr > 0.05) return 0;
+        return best <= 26.99 ? best + 2.99 : best;
     }
     function temu2SpftDollars(rowData, spriceOverride) {
         const recovery = temu2SRecovery(temu2RowSpriceValue(rowData, spriceOverride));

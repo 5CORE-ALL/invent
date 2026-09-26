@@ -3459,14 +3459,18 @@ class AmazonAdsController extends Controller
     {
         $t = str_replace('`', '', $table);
 
-        return "((`{$t}`.`last_sbid` + 0) > 0 AND (`{$t}`.`sbid` + 0) > 0 AND ABS((`{$t}`.`last_sbid` + 0) - (`{$t}`.`sbid` + 0)) <= 0.015)";
+        $tol = AmazonAdsLiveBidBgtSyncService::BID_TOLERANCE;
+
+        return "((`{$t}`.`last_sbid` + 0) > 0 AND (`{$t}`.`sbid` + 0) > 0 AND ABS((`{$t}`.`last_sbid` + 0) - (`{$t}`.`sbid` + 0)) <= {$tol})";
     }
 
     private static function storedBidDiffersSql(string $table): string
     {
         $t = str_replace('`', '', $table);
 
-        return "((`{$t}`.`last_sbid` + 0) > 0 AND (`{$t}`.`sbid` + 0) > 0 AND ABS((`{$t}`.`last_sbid` + 0) - (`{$t}`.`sbid` + 0)) > 0.015)";
+        $tol = AmazonAdsLiveBidBgtSyncService::BID_TOLERANCE;
+
+        return "((`{$t}`.`last_sbid` + 0) > 0 AND (`{$t}`.`sbid` + 0) > 0 AND ABS((`{$t}`.`last_sbid` + 0) - (`{$t}`.`sbid` + 0)) > {$tol})";
     }
 
     private static function storedBudgetAmountSql(string $table): string

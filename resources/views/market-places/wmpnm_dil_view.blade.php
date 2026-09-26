@@ -2149,10 +2149,25 @@
                     <span>Total OV L30:</span>
                     <span class="summary-badge-value" id="total-l30-badge">0</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="dil" data-aggregate="1" title="Click to view DIL line graph">
-                    <span class="summary-badge-dot" style="background-color: #0d6efd;"></span>
+                <a href="#" class="summary-chart-badge" id="dil-summary-badge" data-metric="dil" data-aggregate="1" title="Dil% = Σ OV L30 ÷ Σ INV × 100. Red &lt;25% · Green 25–50% · Pink 50%+.">
+                    <span class="summary-badge-dot" id="dil-summary-dot" style="background-color: #6c757d;"></span>
                     <span>DIL:</span>
                     <span class="summary-badge-value" id="avg-dil-badge">0%</span>
+                </a>
+                <a href="#" class="summary-chart-badge" id="dil-red-summary-badge" data-metric="dil_red" data-aggregate="1" title="Red Dil: share of rows with Dil% under 25%. Click for the graph.">
+                    <span class="summary-badge-dot" style="background-color: #dc3545;"></span>
+                    <span>Red Dil:</span>
+                    <span class="summary-badge-value" id="red-dil-badge" data-pct="0">0%</span>
+                </a>
+                <a href="#" class="summary-chart-badge" id="dil-green-summary-badge" data-metric="dil_green" data-aggregate="1" title="Green Dil: share of rows with Dil% from 25% up to 50%. Click for the graph.">
+                    <span class="summary-badge-dot" style="background-color: #28a745;"></span>
+                    <span>Green Dil:</span>
+                    <span class="summary-badge-value" id="green-dil-badge" data-pct="0">0%</span>
+                </a>
+                <a href="#" class="summary-chart-badge" id="dil-pink-summary-badge" data-metric="dil_pink" data-aggregate="1" title="Pink Dil: share of rows with Dil% of 50% or more. Click for the graph.">
+                    <span class="summary-badge-dot" style="background-color: #e83e8c;"></span>
+                    <span>Pink Dil:</span>
+                    <span class="summary-badge-value" id="pink-dil-badge" data-pct="0">0%</span>
                 </a>
                 <a href="#" class="summary-chart-badge" data-metric="total_views" data-aggregate="1" title="Click to view Total Views line graph">
                     <span class="summary-badge-dot" style="background-color: #17a2b8;"></span>
@@ -10476,19 +10491,28 @@
         
         function updateSummary() {
             const data = table.getData('active');
-            let totalInv = 0, totalL30 = 0, totalDil = 0, dilCount = 0;
+            const skuParentFilter = $('#sku-parent-filter').val();
+            // Parent Only uses parent totals. SKU / Both use children so an expanded parent is not counted twice.
+            const metricRows = skuParentFilter === 'parent'
+                ? data.filter(r => r.is_parent_summary === true)
+                : data.filter(r => r.is_parent_summary !== true);
+
+            let totalInv = 0, totalL30 = 0;
+            let redN = 0, greenN = 0, pinkN = 0, bandN = 0;
             let totalViews = 0, totalCvr = 0, cvrCount = 0;
             let totalPrice = 0, priceCount = 0;
             let totalAmzLmp = 0, amzLmpCount = 0;
 
-            data.forEach(row => {
-                totalInv += parseFloat(row['inventory']) || 0;
-                totalL30 += parseFloat(row['overall_l30']) || 0;
-                const dil = parseFloat(row['dil_percent']) || 0;
-                if (dil > 0) {
-                    totalDil += dil;
-                    dilCount++;
-                }
+            metricRows.forEach(row => {
+                const rowInv = parseFloat(row['inventory']) || 0;
+                const rowL30 = parseFloat(row['overall_l30']) || 0;
+                totalInv += rowInv;
+                totalL30 += rowL30;
+                const rowDil = rowInv > 0 ? (rowL30 / rowInv) * 100 : 0;
+                bandN++;
+                if (rowDil < 25) redN++;
+                else if (rowDil < 50) greenN++;
+                else pinkN++;
                 totalViews += parseInt(row['total_views']) || 0;
                 totalCvr += parseFloat(row['avg_cvr']) || 0;
                 cvrCount++;
@@ -10497,6 +10521,8 @@
                     totalPrice += price;
                     priceCount++;
                 }
+            });
+            data.forEach(row => {
                 if (!row.is_parent_summary) {
                     const amzLmp = parseFloat(row['amazon_lmp_price']) || 0;
                     if (amzLmp > 0) {
@@ -10506,17 +10532,17 @@
                 }
             });
 
-            const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
+            // Dil% = (Σ OV L30 / Σ INV) × 100 — same formula as each row, not the mean of row Dil%s
+            const avgDil = totalInv > 0 ? (totalL30 / totalInv) * 100 : 0;
+            const redDilPct = bandN > 0 ? (redN / bandN) * 100 : 0;
+            const greenDilPct = bandN > 0 ? (greenN / bandN) * 100 : 0;
+            const pinkDilPct = bandN > 0 ? (pinkN / bandN) * 100 : 0;
             const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgAmzLmp = amzLmpCount > 0 ? totalAmzLmp / amzLmpCount : 0;
 
-            const skuParentFilter = $('#sku-parent-filter').val();
-            const lqsRows = skuParentFilter === 'parent'
-                ? data.filter(r => r.is_parent_summary === true)
-                : data.filter(r => r.is_parent_summary !== true);
             let lqsSum = 0, lqsCount = 0;
-            lqsRows.forEach(row => {
+            metricRows.forEach(row => {
                 const lqs = row.listing_quality_score;
                 if (lqs == null || lqs === '') return;
                 const num = typeof lqs === 'number' ? lqs : parseFloat(lqs);
@@ -10528,7 +10554,28 @@
 
             $('#total-inv-badge').text(totalInv.toLocaleString());
             $('#total-l30-badge').text(totalL30.toLocaleString());
-            $('#avg-dil-badge').html('<span style="' + styleForCellColor(getDilPercentColor(avgDil)) + '">' + avgDil.toFixed(1) + '%</span>');
+            const dilColor = getDilPercentColor(avgDil);
+            $('#avg-dil-badge').attr('data-pct', avgDil.toFixed(2))
+                .html('<span style="' + styleForCellColor(dilColor) + '">' + avgDil.toFixed(1) + '%</span>');
+            $('#dil-summary-dot').css('background-color', dilColor);
+            $('#dil-summary-badge').attr('title',
+                'Dil% = Σ OV L30 (' + Math.round(totalL30).toLocaleString()
+                + ') ÷ Σ INV (' + Math.round(totalInv).toLocaleString()
+                + ') × 100. Red <25% · Green 25–50% · Pink 50%+. Click to view DIL line graph.');
+            function paintDilShare(id, pct, color) {
+                $('#' + id).attr('data-pct', pct.toFixed(2))
+                    .html('<span style="' + styleForCellColor(color) + '">' + pct.toFixed(1) + '%</span>');
+            }
+            paintDilShare('red-dil-badge', redDilPct, getDilPercentColor(0));
+            paintDilShare('green-dil-badge', greenDilPct, getDilPercentColor(30));
+            paintDilShare('pink-dil-badge', pinkDilPct, getDilPercentColor(60));
+            const bandLabel = bandN.toLocaleString() + ' rows';
+            $('#dil-red-summary-badge').attr('title',
+                'Red Dil: ' + redN.toLocaleString() + ' of ' + bandLabel + ' with Dil% under 25% (' + redDilPct.toFixed(1) + '%). Click for the graph.');
+            $('#dil-green-summary-badge').attr('title',
+                'Green Dil: ' + greenN.toLocaleString() + ' of ' + bandLabel + ' with Dil% from 25% up to 50% (' + greenDilPct.toFixed(1) + '%). Click for the graph.');
+            $('#dil-pink-summary-badge').attr('title',
+                'Pink Dil: ' + pinkN.toLocaleString() + ' of ' + bandLabel + ' with Dil% of 50% or more (' + pinkDilPct.toFixed(1) + '%). Click for the graph.');
             $('#total-views-badge').text(totalViews.toLocaleString());
             $('#avg-cvr-badge').text(avgCvr.toFixed(1) + '%');
             $('#avg-price-badge').text('$' + avgPrice.toFixed(2));
@@ -10743,7 +10790,18 @@
         let currentPricingChartAggregate = false;
         let currentPricingChartDays = 30;
         let currentPricingChartSource = 'cvr'; // 'cvr' | 'temu_views'
-        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views', temu_views: 'Temu Views' };
+        let currentPricingChartLive = null;
+        let currentPricingChartDilGroup = '';
+        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', dil_red: 'Red Dil', dil_green: 'Green Dil', dil_pink: 'Pink Dil', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views', temu_views: 'Temu Views' };
+        function pricingChartLineColor(metric) {
+            if (metric === 'dil_red') return '#dc3545';
+            if (metric === 'dil_green') return '#28a745';
+            if (metric === 'dil_pink') return '#e83e8c';
+            return '#adb5bd';
+        }
+        function isDilShareMetric(metric) {
+            return metric === 'dil_red' || metric === 'dil_green' || metric === 'dil_pink';
+        }
         const pricingChartRangeLabel = (days) => 'L' + days;
 
         /**
@@ -10794,6 +10852,15 @@
             currentPricingChartSku = '';
             currentPricingChartParent = '';
             currentPricingChartAggregate = true;
+            currentPricingChartLive = null;
+            currentPricingChartDilGroup = '';
+            if (metric === 'dil') {
+                currentPricingChartLive = $('#avg-dil-badge').attr('data-pct');
+            } else if (isDilShareMetric(metric)) {
+                const valueId = metric === 'dil_red' ? '#red-dil-badge' : (metric === 'dil_green' ? '#green-dil-badge' : '#pink-dil-badge');
+                currentPricingChartLive = $(valueId).attr('data-pct');
+                currentPricingChartDilGroup = $('#sku-parent-filter').val() === 'parent' ? 'parent' : 'sku';
+            }
             currentPricingChartDays = 30;
             $('#pricingMasterChartRangeSelect').val('30');
             const label = pricingChartMetricLabels[metric] || metric;
@@ -10813,6 +10880,8 @@
             if (!metric) return;
             currentPricingChartSource = 'cvr';
             currentPricingChartAggregate = false;
+            currentPricingChartLive = null;
+            currentPricingChartDilGroup = '';
             const isParentChart = parent !== '' || (sku.indexOf('PARENT ') === 0);
             const displayName = isParentChart ? (parent || sku.replace(/^PARENT\s+/i, '')) : sku;
             if (!isParentChart && !sku) { showToast('SKU not found for chart', 'error'); return; }
@@ -10845,6 +10914,8 @@
             }
             currentPricingChartSource = 'temu_views';
             currentPricingChartMetric = 'temu_views';
+            currentPricingChartLive = null;
+            currentPricingChartDilGroup = '';
             currentPricingChartSku = sku;
             currentPricingChartParent = '';
             currentPricingChartAggregate = false;
@@ -10901,6 +10972,12 @@
             }
 
             const payload = { metric: currentPricingChartMetric, days: currentPricingChartDays };
+            if (currentPricingChartLive != null && currentPricingChartLive !== '') {
+                payload.current_value = currentPricingChartLive;
+            }
+            if (currentPricingChartDilGroup) {
+                payload.dil_group = currentPricingChartDilGroup;
+            }
             if (currentPricingChartAggregate) {
                 payload.aggregate = 1;
             } else if (currentPricingChartParent) {
@@ -10947,7 +11024,7 @@
             const yMax = dataMax + range * 0.1;
             const fmtVal = (v) => {
                 if (currentPricingChartMetric === 'price' || currentPricingChartMetric === 'amz_price') return '$' + (Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-                if (currentPricingChartMetric === 'cvr' || currentPricingChartMetric === 'dil') return Number(v).toFixed(1) + '%';
+                if (currentPricingChartMetric === 'cvr' || currentPricingChartMetric === 'dil' || isDilShareMetric(currentPricingChartMetric)) return Number(v).toFixed(1) + '%';
                 if (currentPricingChartMetric === 'rating') return Number(v).toFixed(1);
                 if (currentPricingChartMetric === 'total_views' || currentPricingChartMetric === 'temu_views') {
                     return Math.round(v).toLocaleString('en-US');
@@ -11015,7 +11092,7 @@
                         label: pricingChartMetricLabels[currentPricingChartMetric] || currentPricingChartMetric,
                         data: values,
                         backgroundColor: 'rgba(108,117,125,0.08)',
-                        borderColor: '#adb5bd',
+                        borderColor: pricingChartLineColor(currentPricingChartMetric),
                         borderWidth: 1.5,
                         fill: true,
                         tension: 0.3,

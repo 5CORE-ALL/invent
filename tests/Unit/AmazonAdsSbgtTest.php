@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Support\AmazonAcosSbgtRule;
+use App\Support\AmazonAdsDesiredSbgtResolver;
 use App\Support\AmazonAdsSbgt;
 use PHPUnit\Framework\TestCase;
 
@@ -152,5 +153,12 @@ class AmazonAdsSbgtTest extends TestCase
         $this->assertFalse(AmazonAdsSbgt::storedMatches(null, $want));
         $this->assertTrue(AmazonAdsSbgt::storedMatches('0', AmazonAdsSbgt::storageValue(0)));
         $this->assertTrue(AmazonAdsSbgt::storedMatches(null, null));
+    }
+
+    public function test_lifetime_acos_matches_the_grid_rule(): void
+    {
+        $this->assertSame(25.0, AmazonAdsDesiredSbgtResolver::lifetimeAcosPercent(25, 100));
+        $this->assertSame(100.0, AmazonAdsDesiredSbgtResolver::lifetimeAcosPercent(12, 0));
+        $this->assertNull(AmazonAdsDesiredSbgtResolver::lifetimeAcosPercent(0, 0));
     }
 }
