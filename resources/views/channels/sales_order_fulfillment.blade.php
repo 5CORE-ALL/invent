@@ -3892,6 +3892,28 @@
         return label || '—';
     }
 
+    function sofCarrierLeftLabelCreated(status) {
+        const label = sofKnownCarrierStatusLabel(status);
+        return label === 'In Transit'
+            || label === 'Out for Delivery'
+            || label === 'Available for Pickup'
+            || label === 'Delivered';
+    }
+
+    function sofDropMovedDobaPrepaidRow(data) {
+        const orderId = String((data && data.order_id) || '').trim();
+        if (!orderId || !Array.isArray(dobaPrepaidRows)) return;
+        const next = dobaPrepaidRows.filter(function (r) {
+            return String(r.order_id || '').trim() !== orderId;
+        });
+        if (next.length === dobaPrepaidRows.length) return;
+        dobaPrepaidRows = next;
+        if (dobaPrepaidTable) {
+            try { dobaPrepaidTable.setData(dobaPrepaidRows); } catch (e) {}
+        }
+        refreshDobaOrderCounts();
+    }
+
     function sofKnownCarrierStatusLabel(value) {
         const key = String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
         const map = {
@@ -3998,6 +4020,9 @@
                 }
                 if (row && typeof row.update === 'function') {
                     row.update(next);
+                }
+                if (sofCarrierLeftLabelCreated(next.shipment_status)) {
+                    sofDropMovedDobaPrepaidRow(Object.assign({}, data, next));
                 }
                 if (btn) btn.title = payload.message || 'Refreshed from the carrier';
             })
@@ -6934,9 +6959,10 @@
                         return !processed[sofPullTargetKey(mapped)];
                     });
                 if (next.length && round + 1 < 80) {
+                    const waitMs = Number(j.retry_after_ms || 0) > 0 ? Number(j.retry_after_ms) : 250;
                     setTimeout(function () {
                         sofAutoFillMissingLabelTracking(next, round + 1);
-                    }, 250);
+                    }, waitMs);
                 }
             })
             .catch(function () {
@@ -6947,7 +6973,7 @@
     // Keep Label Created / Pending tracking in sync while the page is open.
     setInterval(function () {
         window.__sofAutoFillTrackingBusy = false;
-        const rows = [].concat(pendingRows || [], fulfilledRows || []);
+        const rows = [].concat(pendingRows || [], noTrackingRows || [], fulfilledRows || []);
         sofAutoFillMissingLabelTracking(rows, 0);
     }, 15 * 60 * 1000);
 
@@ -7123,7 +7149,15 @@
                         lastMsg = j.message || ('Pull failed (HTTP ' + res.status + ').');
                     }
 
-                    pullQueue(leftover.concat(rest));
+                    const waitMs = Number(j.retry_after_ms || 0);
+                    const continueQueue = function () {
+                        pullQueue(leftover.concat(rest));
+                    };
+                    if (waitMs > 0) {
+                        setTimeout(continueQueue, waitMs);
+                    } else {
+                        continueQueue();
+                    }
                 })
                 .catch(function (err) {
                     const leftover = [];

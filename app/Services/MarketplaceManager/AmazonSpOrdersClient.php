@@ -144,14 +144,33 @@ class AmazonSpOrdersClient
             return null;
         }
 
-        $response = Http::connectTimeout(8)->timeout(20)->withHeaders([
-            'x-amz-access-token' => $token,
-            'accept' => 'application/json',
-        ])->get($this->endpoint.'/orders/2026-01-01/orders/'.rawurlencode($orderId), [
-            'includedData' => 'PACKAGES',
-        ]);
+        try {
+            $response = Http::withoutVerifying()->connectTimeout(5)->timeout(8)->withHeaders([
+                'x-amz-access-token' => $token,
+                'accept' => 'application/json',
+            ])->get($this->endpoint.'/orders/2026-01-01/orders/'.rawurlencode($orderId), [
+                'includedData' => 'PACKAGES',
+            ]);
+        } catch (\Throwable $e) {
+            Log::info('AmazonSpOrdersClient: merchant package tracking failed', [
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
 
-        if ($response->status() === 429 || ! $response->successful()) {
+            return ['tracking' => '', 'carrier' => '', 'retry' => true];
+        }
+
+        if ($response->status() === 429 || $response->serverError()) {
+            Log::info('AmazonSpOrdersClient: merchant package tracking failed', [
+                'order_id' => $orderId,
+                'status' => $response->status(),
+                'body' => substr($response->body(), 0, 400),
+            ]);
+
+            return ['tracking' => '', 'carrier' => '', 'retry' => true];
+        }
+
+        if (! $response->successful()) {
             Log::info('AmazonSpOrdersClient: merchant package tracking failed', [
                 'order_id' => $orderId,
                 'status' => $response->status(),
@@ -161,7 +180,11 @@ class AmazonSpOrdersClient
             return null;
         }
 
-        $order = $response->json('order');
+        $body = $response->json();
+        $order = is_array($body) ? ($body['order'] ?? null) : null;
+        if (! is_array($order) && is_array($body['payload']['order'] ?? null)) {
+            $order = $body['payload']['order'];
+        }
 
         return is_array($order) ? self::trackingFromOrderPackages($order) : null;
     }
@@ -192,7 +215,7 @@ class AmazonSpOrdersClient
             $query['paginationToken'] = $paginationToken;
         }
 
-        $response = Http::connectTimeout(8)->timeout(25)->withHeaders([
+        $response = Http::withoutVerifying()->connectTimeout(8)->timeout(25)->withHeaders([
             'x-amz-access-token' => $token,
             'accept' => 'application/json',
         ])->get($this->endpoint.'/orders/2026-01-01/orders', $query);
@@ -234,16 +257,33 @@ class AmazonSpOrdersClient
      */
     public static function trackingFromOrderPackages(array $order): ?array
     {
-        $packages = $order['packages'] ?? null;
-        if (! is_array($packages)) {
+        $packageLists = [];
+        if (is_array($order['packages'] ?? null)) {
+            $packageLists[] = $order['packages'];
+        }
+        foreach ((array) ($order['shipments'] ?? []) as $shipment) {
+            if (is_array($shipment) && is_array($shipment['packages'] ?? null)) {
+                $packageLists[] = $shipment['packages'];
+            }
+        }
+        if ($packageLists === []) {
             return null;
         }
 
-        foreach ($packages as $package) {
+        foreach ($packageLists as $packages) {
+            foreach ($packages as $package) {
             if (! is_array($package)) {
                 continue;
             }
             $tracking = trim((string) ($package['trackingNumber'] ?? ''));
+            $carrier = trim((string) ($package['carrier'] ?? ''));
+            $nestedCarrier = $package['tracking']['carrier'] ?? null;
+            if ($tracking === '' && is_array($nestedCarrier)) {
+                $tracking = trim((string) ($nestedCarrier['trackingNumber'] ?? ''));
+                if ($carrier === '') {
+                    $carrier = trim((string) ($nestedCarrier['carrierCode'] ?? $nestedCarrier['carrier'] ?? ''));
+                }
+            }
             $compact = strtoupper((string) preg_replace('/\s+/', '', $tracking));
             if ($compact === '' || strlen($compact) < 8) {
                 continue;
@@ -251,7 +291,6 @@ class AmazonSpOrdersClient
             if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $tracking) === 1) {
                 continue;
             }
-            $carrier = trim((string) ($package['carrier'] ?? ''));
             if ($carrier === '') {
                 $carrier = trim((string) ($package['shippingService'] ?? ''));
             }
@@ -260,6 +299,7 @@ class AmazonSpOrdersClient
                 'tracking' => $compact,
                 'carrier' => $carrier !== '' ? $carrier : 'Other',
             ];
+            }
         }
 
         return null;

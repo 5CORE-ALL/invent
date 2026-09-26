@@ -79,7 +79,7 @@ class SalesOrderFulfillmentController extends Controller
     protected const HTTP_PULL_MAX = 8;
 
     /** Stop HTTP Pull Tracking after this many seconds and return partial results. */
-    protected const HTTP_PULL_DEADLINE_SECONDS = 16.0;
+    protected const HTTP_PULL_DEADLINE_SECONDS = 24.0;
 
     /** Calendar and display timezone for this page (EST/EDT). */
     public const SOF_TIMEZONE = 'America/New_York';
@@ -697,6 +697,8 @@ class SalesOrderFulfillmentController extends Controller
             return $empty;
         }
 
+        $this->syncOpenDobaPrepaidOrders();
+
         $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
@@ -852,12 +854,89 @@ class SalesOrderFulfillmentController extends Controller
             $prepaid[] = $row;
         }
 
+        $prepaid = $this->attachShipmentStatusToOrderRows($prepaid);
+        $prepaid = array_values(array_filter(
+            $prepaid,
+            fn (array $row) => ! $this->dobaPrepaidRowHasMoved($row)
+        ));
+        $openCount = count($prepaid) + count($nonPrepaid);
+
         return [
             'non_prepaid' => $nonPrepaid,
             'prepaid' => $prepaid,
             'done' => $done,
             'open_count' => $openCount,
         ];
+    }
+
+    /**
+     * Ask Doba for the open prepaid orders on this tab so a status change
+     * (in transit, delivered) is stored before the grid is built.
+     */
+    protected function syncOpenDobaPrepaidOrders(): void
+    {
+        if (! Schema::hasColumn('doba_daily_data', 'order_type') || ! Schema::hasColumn('doba_daily_data', 'order_no')) {
+            return;
+        }
+
+        try {
+            $sync = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class);
+        } catch (\Throwable) {
+            return;
+        }
+
+        $ids = DobaDailyData::query()
+            ->whereRaw('LOWER(TRIM(COALESCE(order_type, \'\'))) = ?', [self::DOBA_PREPAID_ORDER_TYPE])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED'])
+            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')')
+            ->where('order_time', '>=', now()->subDays(45))
+            ->orderByDesc('order_time')
+            ->limit(12)
+            ->pluck('order_no');
+
+        $deadline = microtime(true) + 18.0;
+        foreach ($ids->unique() as $id) {
+            $id = trim((string) $id);
+            if ($id === '') {
+                continue;
+            }
+            $cacheKey = 'sof.doba.prepaid.sync.'.md5($id);
+            if (! Cache::add($cacheKey, 1, now()->addMinutes(15))) {
+                continue;
+            }
+            if (microtime(true) >= $deadline) {
+                Cache::forget($cacheKey);
+                break;
+            }
+            try {
+                $sync->fetchOrderById($id);
+            } catch (\Throwable) {
+            }
+        }
+    }
+
+    /**
+     * Prepaid labels stay on the Doba tab only until Doba or the carrier moves them.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function dobaPrepaidRowHasMoved(array $row): bool
+    {
+        if ($this->dobaStatusIsInTransit((string) ($row['status'] ?? ''))) {
+            return true;
+        }
+        $marketplace = strtolower(str_replace([' ', '-', '_'], '', trim((string) ($row['status'] ?? ''))));
+        if (in_array($marketplace, ['delivered', 'completed'], true)) {
+            return true;
+        }
+        if ($this->rowDisplayedAsInTransit($row) || $this->rowDisplayedAsDelivered($row)) {
+            return true;
+        }
+
+        return $this->carrierStatusHasLeftLabelCreated($row['shipment_status'] ?? null);
     }
 
     /**
@@ -4372,6 +4451,7 @@ class SalesOrderFulfillmentController extends Controller
             $parts = [];
             $hardFail = false;
             $timedOut = false;
+            $retryAfterMs = 0;
             $processedKeys = [];
             $parts[] = 'Selected rows: '.count($selected).'.';
 
@@ -4413,6 +4493,7 @@ class SalesOrderFulfillmentController extends Controller
                 if (! empty($labelPull['truncated'])) {
                     $timedOut = true;
                 }
+                $retryAfterMs = max($retryAfterMs, (int) ($labelPull['retry_after_ms'] ?? 0));
             } elseif ($labelCandidates !== []) {
                 $timedOut = true;
             }
@@ -4467,6 +4548,7 @@ class SalesOrderFulfillmentController extends Controller
                 'success' => ! $hardFail,
                 'message' => $message,
                 'truncated' => $timedOut,
+                'retry_after_ms' => $retryAfterMs,
                 'processed_keys' => array_values(array_unique($processedKeys)),
                 'summary' => [
                     'checked' => $checked,
@@ -4637,6 +4719,7 @@ class SalesOrderFulfillmentController extends Controller
         $outRows = [];
         $seen = [];
         $truncated = false;
+        $retryAfterMs = 0;
         $processedKeys = [];
 
         foreach ($candidateRows as $row) {
@@ -4682,9 +4765,16 @@ class SalesOrderFulfillmentController extends Controller
                 if ($amazonOrder) {
                     $checked++;
                     $processedKeys[] = $this->sofPullRowKey($row);
-                    $filled = app(AmazonTrackingSyncService::class)->fillTrackingForOrder($amazonOrder);
+                    $filled = app(AmazonTrackingSyncService::class)->fillTrackingForOrder($amazonOrder, true);
                     $tn = trim((string) ($filled['tracking'] ?? ''));
                     if ($tn === '') {
+                        if (! empty($filled['retry'])) {
+                            array_pop($processedKeys);
+                            $checked--;
+                            $truncated = true;
+                            $retryAfterMs = 8000;
+                            break;
+                        }
                         continue;
                     }
                     $carrier = TrackingCarrierGuesser::fill(
@@ -4810,6 +4900,7 @@ class SalesOrderFulfillmentController extends Controller
             'message' => $message,
             'rows' => $outRows,
             'truncated' => $truncated,
+            'retry_after_ms' => $retryAfterMs,
             'processed_keys' => array_values(array_unique(array_filter($processedKeys))),
         ];
     }
