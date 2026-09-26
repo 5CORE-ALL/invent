@@ -4778,7 +4778,7 @@ class VeeqoShopifyFulfillmentService
         $store = trim((string) ($config['store_url'] ?? ''));
         $token = trim((string) ($config['token'] ?? ''));
         if ($store === '' || $token === '' || ! Schema::hasTable('doba_daily_data')) {
-            return 0;
+            return $this->importOpenDobaOrdersFromShopifyRaw();
         }
 
         try {
@@ -4787,21 +4787,21 @@ class VeeqoShopifyFulfillmentService
                 'fulfillment_status' => 'unshipped',
                 'limit' => 50,
                 'created_at_min' => now()->subDays(7)->utc()->toIso8601String(),
-            ]);
+            ], 8, 1);
         } catch (\Throwable $e) {
             Log::info('VeeqoShopifyFulfillmentService: Doba Shopify order list failed', [
                 'error' => $e->getMessage(),
             ]);
 
-            return 0;
+            return $this->importOpenDobaOrdersFromShopifyRaw();
         }
         if ($response === null || ! $response->successful()) {
-            return 0;
+            return $this->importOpenDobaOrdersFromShopifyRaw();
         }
 
         $sync = app(DobaOrderSyncService::class);
         $saved = 0;
-        $deadline = microtime(true) + 25.0;
+        $deadline = microtime(true) + 8.0;
         foreach ((array) $response->json('orders') as $order) {
             if (! is_array($order)) {
                 continue;
@@ -4832,7 +4832,7 @@ class VeeqoShopifyFulfillmentService
             $fromDoba = null;
             if ($dobaNo !== '' && microtime(true) < $deadline) {
                 try {
-                    $fromDoba = $sync->fetchOrderById($dobaNo);
+                    $fromDoba = $sync->fetchOrderById($dobaNo, true);
                 } catch (\Throwable) {
                     $fromDoba = null;
                 }
@@ -4855,7 +4855,7 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        return $saved;
+        return $saved + $this->importOpenDobaOrdersFromShopifyRaw();
     }
 
     /**
@@ -4991,6 +4991,93 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * Shopify orders already stored by the Shopify sync. Used when the live
+     * Shopify call is slow or the Doba API did not return the order.
+     */
+    protected function importOpenDobaOrdersFromShopifyRaw(): int
+    {
+        if (! Schema::hasTable('shopify_raw_orders') || ! Schema::hasTable('doba_daily_data')) {
+            return 0;
+        }
+
+        $rows = DB::table('shopify_raw_orders')
+            ->where('order_date', '>=', now()->subDays(14)->toDateString())
+            ->where(function ($q) {
+                $q->where('source_name', '145019994113')
+                    ->orWhere('source_name', 'like', '%doba%')
+                    ->orWhere('tags', 'like', '%doba%')
+                    ->orWhere('tags', 'like', '%Doba%');
+            })
+            ->where(function ($q) {
+                $q->whereNull('fulfillment_status')
+                    ->orWhere('fulfillment_status', '')
+                    ->orWhereIn('fulfillment_status', ['unfulfilled', 'partial', 'unshipped']);
+            })
+            ->orderByDesc('order_date')
+            ->limit(120)
+            ->get();
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $shopifyId = trim((string) ($row->order_id ?? ''));
+            $tags = strtolower((string) ($row->tags ?? ''));
+            if ($shopifyId === '' || ! str_contains($tags, 'prepaid')) {
+                continue;
+            }
+            if (! isset($grouped[$shopifyId])) {
+                $grouped[$shopifyId] = ['row' => $row, 'lines' => []];
+            }
+            $grouped[$shopifyId]['lines'][] = [
+                'id' => (string) ($row->line_item_id ?? $shopifyId),
+                'sku' => (string) ($row->sku ?? ''),
+                'title' => (string) ($row->product_title ?? ''),
+                'quantity' => (int) ($row->quantity ?? 1),
+                'price' => $row->price ?? null,
+            ];
+        }
+
+        $saved = 0;
+        foreach ($grouped as $shopifyId => $pack) {
+            if ($saved >= 40) {
+                break;
+            }
+            $row = $pack['row'];
+            if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')
+                && DobaDailyData::query()->where('shopify_order_id', $shopifyId)->exists()) {
+                continue;
+            }
+            $orderNo = substr('S'.$shopifyId, 0, 50);
+            if (DobaDailyData::query()->where('order_no', $orderNo)->exists()) {
+                continue;
+            }
+            $day = trim((string) ($row->order_date ?? ''));
+            $tracking = trim((string) ($row->tracking_number ?? ''));
+            $order = [
+                'id' => $shopifyId,
+                'name' => '#'.ltrim((string) ($row->order_number ?? ''), '#'),
+                'tags' => (string) ($row->tags ?? ''),
+                'created_at' => $day !== '' ? $day.' 12:00:00' : '',
+                'total_price' => $row->order_total ?? $row->total_amount ?? null,
+                'currency' => 'USD',
+                'line_items' => $pack['lines'],
+                'shipping_address' => [
+                    'city' => (string) ($row->shipping_city ?? ''),
+                    'country_code' => (string) ($row->shipping_country ?? ''),
+                ],
+                'fulfillments' => $tracking === '' ? [] : [[
+                    'tracking_number' => $tracking,
+                    'tracking_company' => (string) ($row->tracking_company ?? ''),
+                ]],
+            ];
+            if ($this->storeDobaOrderFromShopify($order, '')) {
+                $saved++;
+            }
+        }
+
+        return $saved;
+    }
+
+    /**
      * @return array{store_url: string, token: string, store_key: string}
      */
     protected function shopifyConfigFor(string $marketplace): array
@@ -5006,16 +5093,17 @@ class VeeqoShopifyFulfillmentService
      *
      * @param  array<string, mixed>  $payload
      */
-    protected function shopifyApi(string $storeUrl, string $token, string $method, string $path, array $payload = [])
+    protected function shopifyApi(string $storeUrl, string $token, string $method, string $path, array $payload = [], int $timeout = 30, int $attempts = 4)
     {
         $url = "https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/{$path}";
         $last = null;
-        for ($attempt = 1; $attempt <= 4; $attempt++) {
+        $attempts = max(1, $attempts);
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
             try {
                 $req = Http::withoutVerifying()->withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
-                ])->timeout(30);
+                ])->timeout(max(3, $timeout));
                 $verb = strtoupper($method);
                 $last = match ($verb) {
                     'POST' => $req->post($url, $payload),
