@@ -87,9 +87,16 @@ class AmazonAdsLiveBidBgtSync extends Command
             ->whereNotNull('r.sbid')
             ->where('r.sbid', '!=', '')
             ->where('r.sbid', '!=', '0')
-            ->whereNotNull('r.last_sbid')
-            ->where('r.last_sbid', '!=', '')
-            ->whereRaw('ROUND((r.sbid + 0), 2) <> ROUND((r.last_sbid + 0), 2)');
+            ->where(function ($w) {
+                $w->where(function ($diff) {
+                    $diff->whereNotNull('r.last_sbid')
+                        ->where('r.last_sbid', '!=', '')
+                        ->whereRaw('ROUND((r.sbid + 0), 2) <> ROUND((r.last_sbid + 0), 2)');
+                })->orWhere(function ($missing) {
+                    $missing->whereNull('r.last_sbid')
+                        ->orWhere('r.last_sbid', '=', '');
+                });
+            });
         if ($onlyCid !== '') {
             $q->where('r.campaign_id', $onlyCid);
         }

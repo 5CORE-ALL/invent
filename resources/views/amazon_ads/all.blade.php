@@ -895,7 +895,7 @@
                         Each row is an inclusive <strong>LT ACOS range</strong> (From → To). Rows are checked
                         <strong>top to bottom</strong>; the first range that contains the campaign's lifetime ACOS gets its SBGT.
                         Use <code>9999</code> on <em>To</em> for the catch-all highest band.
-                        <strong>SBGT 0</strong> cannot be pushed as daily budget — those campaigns are paused instead.
+                        A <strong>$0</strong> in this column is added as zero. The campaign is paused only when the six-part SBGT total is $0.
                         <strong>Count</strong> is campaigns on this grid page in that range.
                     </p>
                     <div class="table-responsive">
@@ -1387,8 +1387,6 @@
                 return isNaN(t) ? null : t;
             }
             function amzSumSbgtFromRow(row) {
-                var acos = parseInt(row && row.bgtAcos, 10);
-                if (acos === 0) return 0;
                 var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews, row && row.bgtDil];
                 var sum = 0, has = false;
                 for (var i = 0; i < parts.length; i++) {
@@ -1746,7 +1744,7 @@
                 var t = parseInt(v, 10);
                 if (isNaN(t)) return amzDash();
                 if (t === 0) {
-                    return '<span class="fw-semibold" style="color:#dc2626;" title="BGT ACOS 0 — cannot push $0; campaign will be paused">0</span>';
+                    return '<span class="fw-semibold" style="color:#dc2626;" title="This part adds $0">0</span>';
                 }
                 var color = (field === 'bgtAcos') ? amzAcosTierColor(row && row.ltAcos) : amzSbgtTierColor(t);
                 return '<span class="fw-semibold" style="color:' + color + ';">' + t + '</span>';
@@ -1769,7 +1767,7 @@
                 var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil';
                 tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0);
                 if (t === 0) {
-                    tip += ' · BGT ACOS 0 zeros SBGT — cannot push $0, campaign will be paused';
+                    tip += ' · total is $0 — cannot push $0, campaign will be paused';
                 } else if (isFinite(bgt)) {
                     tip += inSync ? ' · matches BGT' : (' · BGT ' + Math.round(bgt) + ' → auto-push');
                 }
