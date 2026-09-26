@@ -160,6 +160,9 @@ class ChannelMasterController extends Controller
     /** @var array<string, float|null> */
     private static array $pacificDayYSalesCache = [];
 
+    /** @var array<string, float>|null */
+    private ?array $closedDayOrderYSalesByKey = null;
+
     /** Bump when Inv / Inv@SP / Inv@LP formulas change so stale cache is recomputed. */
     private const INV_METRICS_VERSION = 2;
 
@@ -2237,6 +2240,62 @@ class ChannelMasterController extends Controller
         // yesterday_sales cannot stay on the grid after a quiet day.
         $rows = $this->overlayLivePacificYSalesOnChannelRows($rows);
         $rows = $this->overlayLiveShopifyB2cProjectedSalesOnChannelRows($rows);
+        // Last write: every site's closed Pacific day, including Faire / Temu.
+        $rows = $this->applyClosedPacificYSalesOnChannelRows($rows);
+
+        return $rows;
+    }
+
+    /**
+     * Pacific yesterday's order total per channel, from the same order tables
+     * Active Channel already uses. Null means that site could not be summed.
+     *
+     * @return array<string, float>
+     */
+    private function closedDayOrderYSalesByKey(): array
+    {
+        if ($this->closedDayOrderYSalesByKey !== null) {
+            return $this->closedDayOrderYSalesByKey;
+        }
+
+        $out = [];
+        foreach ($this->livePacificYSalesComputers() as $key => $fn) {
+            try {
+                $value = $fn();
+            } catch (\Throwable $e) {
+                Log::warning('Closed-day Y Sales failed for '.$key.': '.$e->getMessage());
+                continue;
+            }
+            if ($value === null) {
+                continue;
+            }
+            $out[$key] = round((float) $value, 2);
+        }
+
+        return $this->closedDayOrderYSalesByKey = $out;
+    }
+
+    /**
+     * Store each channel's Y Sales as every order from the closed Pacific day.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function applyClosedPacificYSalesOnChannelRows(array $rows): array
+    {
+        $values = $this->closedDayOrderYSalesByKey();
+
+        foreach ($rows as &$row) {
+            $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
+            $raw = $this->allMarketplaceYSalesLookupKey($name);
+            $snap = $this->allMarketplaceSnapshotKey($name);
+            $value = $values[$raw] ?? $values[$snap] ?? null;
+            if ($value === null) {
+                continue;
+            }
+            $row['Y Sales'] = $value;
+        }
+        unset($row);
 
         return $rows;
     }
@@ -8619,6 +8678,8 @@ class ChannelMasterController extends Controller
         // totals the table shows (e.g. EbayTwo views = E Stock > 0 tabulator sum).
         $finalData = $this->overlayLiveMapMissNMapOnChannelRows($finalData);
         $finalData = $this->applyDefaultMissingLinks($finalData);
+        // Closed Pacific day: every site's orders, then persist that total.
+        $finalData = $this->applyClosedPacificYSalesOnChannelRows($finalData);
         // Growth = Y Sales vs sales on the Pacific day 30 days before yesterday
         // (must run after overlays that still write the old L30/L60 Growth).
         $finalData = $this->applyGrowthFromYesterdayVsD30($finalData);
@@ -19220,6 +19281,26 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Rewrite every site's closed-day Y Sales from its order total.
+     */
+    private function healAllClosedYSalesSnapshots(): void
+    {
+        $seen = [];
+        foreach (array_keys($this->livePacificYSalesComputers()) as $key) {
+            $snap = $this->allMarketplaceSnapshotKey($key);
+            if ($snap === '' || isset($seen[$snap])) {
+                continue;
+            }
+            $seen[$snap] = true;
+            try {
+                $this->healClosedChannelYSalesSnapshot($snap);
+            } catch (\Throwable $e) {
+                Log::warning('Closed-day Y Sales heal failed for '.$snap.': '.$e->getMessage());
+            }
+        }
+    }
+
+    /**
      * Snapshot D stores Temu 2 L30 for the 30 Pacific days ending D−1.
      * A mid-sync save froze Sep 13 at ~$26k while temu2_orders for that
      * window is ~$31k. Rewrite the last 14 snapshots from the same
@@ -19358,7 +19439,10 @@ class ChannelMasterController extends Controller
         for ($offset = 0; $offset <= $lookback; $offset++) {
             $priorSnapshot = now($tz)->subDays($offset)->toDateString();
             $closedDay = now($tz)->subDays($offset + 1)->toDateString();
-            $live = $this->realPacificDayYSales($channel, $closedDay);
+            $fromOrders = $offset === 0 ? $this->closedDayOrderYSalesByKey() : [];
+            $live = array_key_exists($channel, $fromOrders)
+                ? $fromOrders[$channel]
+                : $this->realPacificDayYSales($channel, $closedDay);
             if ($live === null) {
                 continue;
             }
@@ -21575,20 +21659,9 @@ class ChannelMasterController extends Controller
                 ChannelMasterViewsGuard::repairChannel($repairChannel);
             }
 
-            $this->healClosedAmazonYSalesSnapshot();
-            $this->healClosedChannelYSalesSnapshot('temu2');
+            $this->healAllClosedYSalesSnapshots();
             $this->healClosedTemu2L30Snapshots();
-            $this->healClosedChannelYSalesSnapshot('temu3');
-            $this->healClosedChannelYSalesSnapshot('depop');
-            $this->healClosedChannelYSalesSnapshot('faire');
-            $this->healClosedChannelYSalesSnapshot('shein');
-            $this->healClosedChannelYSalesSnapshot('newegg');
-            $this->healClosedChannelYSalesSnapshot('wayfair');
-            $this->healClosedChannelYSalesSnapshot('reverb');
-            $this->healClosedChannelYSalesSnapshot('ebaythree');
-            $this->healClosedChannelYSalesSnapshot('purchasingpower');
             $this->healClosedPurchasingPowerL30Snapshots();
-            $this->healClosedChannelYSalesSnapshot('tiktokshop2');
             $this->healClosedTiktokTwoL30Snapshots();
 
             foreach ([0, 1, 7] as $dotWindow) {
