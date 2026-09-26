@@ -195,5 +195,65 @@ class SofPendingLabelRulesTest extends TestCase
         $this->assertSame('eBay 2', $filled['channel_label']);
         $this->assertSame('ebay2', $filled['mm_slug']);
         $this->assertSame('/marketplace/ebay2/orders/44', $filled['order_url']);
+
+        $fromOrder = $fill->invoke($ctrl, [
+            'tracking_number' => $tracking,
+            'order_id' => '',
+            'order_date' => 'Sep 25, 06:37 PM EDT',
+            'sku' => '',
+            'quantity' => '',
+            'amount' => null,
+        ], [
+            '9205590348201234567890' => [
+                'slug' => 'amazon',
+                'label' => 'Amazon',
+                'order_id' => '111-1234567-1234567',
+                'sku' => 'KS 2X HAND',
+                'quantity' => 2,
+                'amount' => 19.5,
+                'order_date' => 'Sep 10, 10:09 AM EDT',
+            ],
+        ]);
+        $this->assertSame('111-1234567-1234567', $fromOrder['order_id']);
+        $this->assertSame('Amazon', $fromOrder['channel_label']);
+        $this->assertSame('KS 2X HAND', $fromOrder['sku']);
+        $this->assertSame(2, $fromOrder['quantity']);
+        $this->assertSame(19.5, $fromOrder['amount']);
+        $this->assertSame('Sep 10, 10:09 AM EDT', $fromOrder['order_date']);
+    }
+
+    public function test_order_json_tracking_number_is_readable(): void
+    {
+        $ref = new ReflectionClass(SalesOrderFulfillmentController::class);
+        $ctrl = $ref->newInstanceWithoutConstructor();
+        $read = $ref->getMethod('trackingNumberFromStoredPayload');
+        $payload = json_encode([
+            'orderId' => '12-34567-89012',
+            'fulfillmentStartInstructions' => [
+                ['shippingStep' => ['trackingNumber' => '9334610990150210810950']],
+            ],
+        ]);
+
+        $this->assertSame('9334610990150210810950', $read->invoke($ctrl, 'ebay2', $payload));
+    }
+
+    public function test_shipped_rows_without_tracking_are_split_off_recd_transit(): void
+    {
+        $ref = new ReflectionClass(SalesOrderFulfillmentController::class);
+        $ctrl = $ref->newInstanceWithoutConstructor();
+        $with = $ref->getMethod('rowsWithSofTracking');
+        $missing = $ref->getMethod('rowsMissingSofTracking');
+
+        $rows = [
+            ['id' => 'bestbuy-1', 'status' => 'SHIPPED', 'tracking_number' => ''],
+            ['id' => 'bestbuy-2', 'status' => 'SHIPPED', 'tracking_number' => '—'],
+            ['id' => 'tiktok-9', 'status' => 'IN_TRANSIT', 'tracking_number' => 'GFUS1234567890123456'],
+        ];
+
+        $onTransit = $with->invoke($ctrl, $rows);
+        $onNoTracking = $missing->invoke($ctrl, $rows);
+
+        $this->assertSame(['tiktok-9'], array_column($onTransit, 'id'));
+        $this->assertSame(['bestbuy-1', 'bestbuy-2'], array_column($onNoTracking, 'id'));
     }
 }

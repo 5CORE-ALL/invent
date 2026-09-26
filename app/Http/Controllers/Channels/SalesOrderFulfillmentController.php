@@ -107,6 +107,9 @@ class SalesOrderFulfillmentController extends Controller
     /** @var list<array<string, mixed>>|null */
     protected ?array $cachedInvoicedRows = null;
 
+    /** @var list<array<string, mixed>>|null */
+    protected ?array $cachedRecdTransitCandidates = null;
+
     public function __construct(
         protected MarketplaceApiConfigService $apiConfig
     ) {}
@@ -448,6 +451,8 @@ class SalesOrderFulfillmentController extends Controller
     public function notAuthorizedData(): JsonResponse
     {
         try {
+            @set_time_limit(180);
+            @ini_set('memory_limit', '512M');
             $rows = $this->notAuthorizedTrackingRows();
 
             return response()->json([
@@ -2412,7 +2417,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         $ignored = $this->gofoEmptyOnceIgnoredIds();
 
-        return array_values(array_filter(
+        $labeled = array_values(array_filter(
             $this->labelCreatedLabeledRows(),
             function (array $r) use ($ignored): bool {
                 if ($this->rowHasSofTrackingNumber($r)) {
@@ -2423,6 +2428,10 @@ class SalesOrderFulfillmentController extends Controller
                 return $id === '' || ! isset($ignored[$id]);
             }
         ));
+
+        // Shipped / in-transit marketplace rows with no tracking number
+        // (Best Buy SHIPPED and the same) belong here, not on Recd/Transit.
+        return $this->mergeOrderRowsById($labeled, $this->rowsMissingSofTracking($this->recdTransitCandidateRows()));
     }
 
     /**
@@ -3578,6 +3587,7 @@ class SalesOrderFulfillmentController extends Controller
         $this->cachedLabelCreatedRows = null;
         $this->cachedPendingRows = null;
         $this->cachedInvoicedRows = null;
+        $this->cachedRecdTransitCandidates = null;
     }
 
     /**
@@ -5735,15 +5745,54 @@ class SalesOrderFulfillmentController extends Controller
     protected function recdTransitOrderRows(): array
     {
         return $this->annotateInTransitScanPendingAlerts(
-            $this->excludeDisplayedDeliveredRows(
-                $this->excludeCarrierDeliveredRows(
-                    $this->mergeOrderRowsById(
-                        $this->inTransitOrderRows(),
-                        $this->receivedByCarrierOrderRows()
-                    )
+            $this->rowsWithSofTracking($this->recdTransitCandidateRows())
+        );
+    }
+
+    /**
+     * Recd/Transit membership before the tracking-number split.
+     * Rows with no tracking number are shown on Label Created / No Tracking.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function recdTransitCandidateRows(): array
+    {
+        if ($this->cachedRecdTransitCandidates !== null) {
+            return $this->cachedRecdTransitCandidates;
+        }
+
+        return $this->cachedRecdTransitCandidates = $this->excludeDisplayedDeliveredRows(
+            $this->excludeCarrierDeliveredRows(
+                $this->mergeOrderRowsById(
+                    $this->inTransitOrderRows(),
+                    $this->receivedByCarrierOrderRows()
                 )
             )
         );
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function rowsWithSofTracking(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            fn (array $r) => $this->rowHasSofTrackingNumber($r)
+        ));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function rowsMissingSofTracking(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            fn (array $r) => ! $this->rowHasSofTrackingNumber($r)
+        ));
     }
 
     /**
@@ -5900,7 +5949,7 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             $select = ['tracking_number', $orderCol];
-            if ($orderCol !== 'order_id' && Schema::hasColumn($table, 'order_id')) {
+            if ($orderCol !== 'order_id' && empty($source['skip_id_fallback']) && Schema::hasColumn($table, 'order_id')) {
                 $select[] = 'order_id';
             }
             if (Schema::hasColumn($table, 'platform_order_no')) {
@@ -5912,6 +5961,11 @@ class SalesOrderFulfillmentController extends Controller
             $sofRow = (bool) ($source['sof'] ?? false) && Schema::hasColumn($table, 'id');
             if ($sofRow) {
                 $select[] = 'id';
+            }
+            foreach (['sku', 'quantity', 'amount', 'order_date', 'order_created_at', 'display_title', 'product_name', 'goods_name'] as $extra) {
+                if (! in_array($extra, $select, true) && Schema::hasColumn($table, $extra)) {
+                    $select[] = $extra;
+                }
             }
 
             foreach (array_chunk($missing, 400) as $chunk) {
@@ -5941,6 +5995,12 @@ class SalesOrderFulfillmentController extends Controller
                         $name = strtolower(trim((string) ($hit->channel_name ?? '')));
                         $slug = str_contains($name, 'macy') ? 'macy' : 'bestbuy';
                     }
+                    $orderDate = null;
+                    if (isset($hit->order_date) && $hit->order_date !== '') {
+                        $orderDate = $hit->order_date;
+                    } elseif (isset($hit->order_created_at) && $hit->order_created_at !== '') {
+                        $orderDate = $hit->order_created_at;
+                    }
                     $found[$key] = [
                         'slug' => $slug,
                         'label' => $labels[$slug] ?? ucwords(str_replace(['_', '-'], ' ', $slug)),
@@ -5948,11 +6008,17 @@ class SalesOrderFulfillmentController extends Controller
                         'row_id' => $sofRow ? (int) ($hit->id ?? 0) : 0,
                         'channel_id' => $meta[$slug]['channel_id'] ?? null,
                         'ch_orders_link' => $meta[$slug]['ch_orders_link'] ?? null,
+                        'sku' => trim((string) ($hit->sku ?? '')),
+                        'quantity' => $hit->quantity ?? '',
+                        'amount' => $hit->amount ?? null,
+                        'order_date' => $orderDate !== null && $orderDate !== '' ? $this->formatOrderDate($orderDate) : '',
+                        'display_title' => trim((string) ($hit->display_title ?? $hit->product_name ?? $hit->goods_name ?? '')),
                     ];
                 }
             }
         }
 
+        $this->attachChannelOrdersFromJsonPayloads($wanted, $found, $labels, $meta);
         $this->attachSofShowIds($found);
 
         foreach ($found as &$hit) {
@@ -6122,7 +6188,131 @@ class SalesOrderFulfillmentController extends Controller
             ['table' => 'mirakl_daily_data', 'order_col' => 'channel_order_id', 'slug' => 'bestbuy', 'sof' => true],
             ['table' => 'amazon_orders', 'order_col' => 'amazon_order_id', 'slug' => 'amazon', 'sof' => true],
             ['table' => 'walmart_daily_data', 'order_col' => 'customer_order_id', 'slug' => 'walmart'],
+            ['table' => 'shopify_raw_orders', 'order_col' => 'order_number', 'slug' => 'shopify', 'skip_id_fallback' => true],
         ];
+    }
+
+    /**
+     * Amazon and eBay keep the tracking number inside the order JSON, so a
+     * tracking_number column search never sees the channel order id.
+     *
+     * @param  array<string, string>  $wanted
+     * @param  array<string, array<string, mixed>>  $found
+     * @param  array<string, string>  $labels
+     * @param  array<string, array<string, mixed>>  $meta
+     */
+    protected function attachChannelOrdersFromJsonPayloads(array $wanted, array &$found, array $labels, array $meta): void
+    {
+        $since = now($this->sofTimezone())->subDays(90)->startOfDay();
+        foreach ($this->jsonTrackingOrderSources() as $source) {
+            $missing = array_diff_key($wanted, $found);
+            if ($missing === []) {
+                return;
+            }
+            $table = $source['table'];
+            $jsonCol = $source['json'];
+            $orderCol = $source['order_col'];
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $jsonCol) || ! Schema::hasColumn($table, $orderCol)) {
+                continue;
+            }
+            $select = ['id', $jsonCol, $orderCol];
+            foreach (['order_fallback', 'date_col', 'sku_col', 'qty_col', 'amount_col', 'title_col'] as $name) {
+                $col = $source[$name] ?? null;
+                if (is_string($col) && $col !== '' && $col !== $orderCol && Schema::hasColumn($table, $col)) {
+                    $select[] = $col;
+                }
+            }
+            $slug = (string) $source['slug'];
+            $lastId = null;
+            $scanned = 0;
+            while ($missing !== [] && $scanned < 8000) {
+                $query = DB::table($table)->orderByDesc('id')->limit(200);
+                if ($lastId !== null) {
+                    $query->where('id', '<', $lastId);
+                }
+                $dateCol = $source['date_col'] ?? null;
+                if (is_string($dateCol) && $dateCol !== '' && Schema::hasColumn($table, $dateCol)) {
+                    $query->where($dateCol, '>=', $since->toDateTimeString());
+                }
+                try {
+                    $rows = $query->get($select);
+                } catch (\Throwable) {
+                    break;
+                }
+                if ($rows->isEmpty()) {
+                    break;
+                }
+                foreach ($rows as $row) {
+                    $lastId = (int) ($row->id ?? 0);
+                    $scanned++;
+                    $tn = $this->trackingNumberFromStoredPayload($slug, $row->{$jsonCol} ?? null);
+                    $key = $this->trackingLookupKey((string) $tn);
+                    if ($key === '' || ! isset($missing[$key])) {
+                        continue;
+                    }
+                    $orderId = trim((string) ($row->{$orderCol} ?? ''));
+                    $fallbackCol = $source['order_fallback'] ?? null;
+                    if ($orderId === '' && is_string($fallbackCol) && isset($row->{$fallbackCol})) {
+                        $orderId = trim((string) $row->{$fallbackCol});
+                    }
+                    if ($orderId === '' || $this->trackingLookupKey($orderId) === $key) {
+                        continue;
+                    }
+                    $skuCol = $source['sku_col'] ?? null;
+                    $qtyCol = $source['qty_col'] ?? null;
+                    $amountCol = $source['amount_col'] ?? null;
+                    $titleCol = $source['title_col'] ?? null;
+                    $dateValue = is_string($dateCol) ? ($row->{$dateCol} ?? null) : null;
+                    $found[$key] = [
+                        'slug' => $slug,
+                        'label' => $labels[$slug] ?? ucwords(str_replace(['_', '-'], ' ', $slug)),
+                        'order_id' => $orderId,
+                        'row_id' => (int) ($row->id ?? 0),
+                        'channel_id' => $meta[$slug]['channel_id'] ?? null,
+                        'ch_orders_link' => $meta[$slug]['ch_orders_link'] ?? null,
+                        'sku' => is_string($skuCol) ? trim((string) ($row->{$skuCol} ?? '')) : '',
+                        'quantity' => is_string($qtyCol) ? ($row->{$qtyCol} ?? '') : '',
+                        'amount' => is_string($amountCol) ? ($row->{$amountCol} ?? null) : null,
+                        'order_date' => $dateValue !== null ? $this->formatOrderDate($dateValue) : '',
+                        'display_title' => is_string($titleCol) ? trim((string) ($row->{$titleCol} ?? '')) : '',
+                    ];
+                    unset($missing[$key]);
+                }
+            }
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function jsonTrackingOrderSources(): array
+    {
+        return [
+            ['table' => 'amazon_orders', 'json' => 'raw_data', 'order_col' => 'amazon_order_id', 'date_col' => 'order_date', 'amount_col' => 'total_amount', 'slug' => 'amazon'],
+            ['table' => 'ebay1_order_metrics', 'json' => 'raw_payload', 'order_col' => 'order_number', 'order_fallback' => 'order_id', 'date_col' => 'order_date', 'sku_col' => 'sku', 'qty_col' => 'quantity', 'amount_col' => 'amount', 'title_col' => 'display_title', 'slug' => 'ebay1'],
+            ['table' => 'ebay2_order_metrics', 'json' => 'raw_payload', 'order_col' => 'order_number', 'order_fallback' => 'order_id', 'date_col' => 'order_date', 'sku_col' => 'sku', 'qty_col' => 'quantity', 'amount_col' => 'amount', 'title_col' => 'display_title', 'slug' => 'ebay2'],
+            ['table' => 'ebay3_order_metrics', 'json' => 'raw_payload', 'order_col' => 'order_number', 'order_fallback' => 'order_id', 'date_col' => 'order_date', 'sku_col' => 'sku', 'qty_col' => 'quantity', 'amount_col' => 'amount', 'title_col' => 'display_title', 'slug' => 'ebay3'],
+            ['table' => 'tiktok_orders', 'json' => 'raw_json', 'order_col' => 'order_id', 'date_col' => 'order_created_at', 'sku_col' => 'seller_sku', 'qty_col' => 'quantity', 'amount_col' => 'order_amount', 'title_col' => 'product_name', 'slug' => 'tiktok'],
+            ['table' => 'tiktok2_orders', 'json' => 'raw_json', 'order_col' => 'order_id', 'date_col' => 'order_created_at', 'sku_col' => 'seller_sku', 'qty_col' => 'quantity', 'amount_col' => 'order_amount', 'title_col' => 'product_name', 'slug' => 'tiktok2'],
+        ];
+    }
+
+    protected function trackingNumberFromStoredPayload(string $slug, mixed $payload): string
+    {
+        $tn = $this->extractTrackingNumber($slug, $payload);
+        if (is_string($tn) && trim($tn) !== '') {
+            return trim($tn);
+        }
+        if (is_string($payload)) {
+            $decoded = json_decode($payload, true);
+            $payload = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($payload)) {
+            return '';
+        }
+        $deep = $this->extractTrackingNumberDeep($payload);
+
+        return is_string($deep) ? trim($deep) : '';
     }
 
     /**
@@ -6154,6 +6344,24 @@ class SalesOrderFulfillmentController extends Controller
         $row['ch_orders_link'] = $hit['ch_orders_link'] ?? null;
         $row['orders_url'] = $hit['orders_url'] ?? null;
         $row['order_url'] = $hit['order_url'] ?? null;
+        $sku = trim((string) ($hit['sku'] ?? ''));
+        if ($sku !== '') {
+            $row['sku'] = $sku;
+        }
+        if (isset($hit['quantity']) && $hit['quantity'] !== '' && $hit['quantity'] !== null) {
+            $row['quantity'] = $hit['quantity'];
+        }
+        if (array_key_exists('amount', $hit) && $hit['amount'] !== null && $hit['amount'] !== '') {
+            $row['amount'] = $hit['amount'];
+        }
+        $orderDate = trim((string) ($hit['order_date'] ?? ''));
+        if ($orderDate !== '') {
+            $row['order_date'] = $orderDate;
+        }
+        $title = trim((string) ($hit['display_title'] ?? ''));
+        if ($title !== '') {
+            $row['display_title'] = $title;
+        }
 
         return $row;
     }

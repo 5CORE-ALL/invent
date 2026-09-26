@@ -5818,9 +5818,7 @@
                 applyNotAuthorizedFilters();
             },
             columns: (function () {
-                const cols = orderListColumns('sof-not-authorized-badge').filter(function (c) {
-                    return c.field !== 'sku';
-                });
+                const cols = orderListColumns('sof-not-authorized-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
                         c.title = 'Status';
