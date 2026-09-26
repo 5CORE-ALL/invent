@@ -53,7 +53,7 @@ class EbayThreeController extends Controller
 
         return view('market-places.ebay3_tabulator_view', [
             'ebayTakeHome' => MarketplacePercentage::takeHomeDecimal('EbayThree'),
-            'channelAdsPercent' => app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent(),
+            'channelAdsPercent' => $this->tabulatorChannelAdsPercent(),
             'ordersL30TotalQty' => $agg['qty'],
             'ordersL30TotalSales' => $agg['sales'],
             'ordersL30Gpft' => $agg['gpft'],
@@ -68,6 +68,14 @@ class EbayThreeController extends Controller
      * /ebay3/daily-sales builds (Ebay3SalesController::getData) — excludes CANCELED/
      * FULLY_REFUNDED. Guarantees the tabulator badges match the order page.
      */
+    /**
+     * Ads% the eBay 3 S PRC cell uses. Same Channel Master TACOS the page already shows.
+     */
+    public function tabulatorChannelAdsPercent(): float
+    {
+        return (float) app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+    }
+
     private function fetchEbay3L30OrdersAggregate(): array
     {
         $empty = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'gpft' => 0.0, 'groi' => 0.0];

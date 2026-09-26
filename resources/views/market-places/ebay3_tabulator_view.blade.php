@@ -2852,9 +2852,9 @@
                             formattedValue = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
                         }
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + formattedValue + redTri + blueTri + '</span>';
+                            + blueTri + formattedValue + redTri + '</span>';
                     },
-                    width: 80
+                    width: 118
                 },
                 {
                     title: "SGROI%",

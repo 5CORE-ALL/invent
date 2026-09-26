@@ -91,9 +91,7 @@ class EbayTwoController extends Controller
         // Ads% = TACOS = channel Total Ad Spend ÷ the SAME real-orders L30 sales shown in
         // the Sales badge, so the Ads% stays consistent with this page's Sales.
         $ebayAdSpend = app(ChannelMasterController::class)->getEbaytwoMasterAdSpend();
-        $channelAdsPercent = $agg['sales'] > 0
-            ? round(($ebayAdSpend / $agg['sales']) * 100, 1)
-            : 0.0;
+        $channelAdsPercent = $this->tabulatorChannelAdsPercent((float) ($agg['sales'] ?? 0));
 
         // NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same shape as Amazon / ebay1 NROI badge
         // (do not cut Ads% from GROI%).
@@ -119,6 +117,19 @@ class EbayTwoController extends Controller
      * L30 Sales / Qty / PFT / COGS from ebay2_orders (period=l30) — same shape as
      * EbayController::fetchEbayL30OrdersAggregate, using eBay 2 tables only.
      */
+    /**
+     * Ads% the eBay 2 S PRC cell uses: Total Ad Spend ÷ this page's real-orders L30 sales, 1 decimal.
+     */
+    public function tabulatorChannelAdsPercent(?float $sales = null): float
+    {
+        if ($sales === null) {
+            $sales = (float) ($this->fetchEbay2L30OrdersAggregate()['sales'] ?? 0);
+        }
+        $spend = (float) app(ChannelMasterController::class)->getEbaytwoMasterAdSpend();
+
+        return $sales > 0 ? round(($spend / $sales) * 100, 1) : 0.0;
+    }
+
     private function fetchEbay2L30OrdersAggregate(): array
     {
         $empty = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'gpft' => 0.0, 'groi' => 0.0];

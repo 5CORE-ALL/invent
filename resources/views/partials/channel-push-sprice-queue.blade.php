@@ -1254,6 +1254,12 @@
                 opts = opts || {};
                 // Catalog catch-up is opt-in ({ catalog: true }). Only saved S PRC ≠ live Price.
                 if (!opts.catalog) return;
+                if (opts.catalog && (CH_PUSH_SPRICE_CHANNEL === 'ebay1' || CH_PUSH_SPRICE_CHANNEL === 'ebay2' || CH_PUSH_SPRICE_CHANNEL === 'ebay3')) {
+                    if (typeof global.chPromoTryEbayBluePush === 'function') {
+                        global.chPromoTryEbayBluePush();
+                        return;
+                    }
+                }
                 if (opts.catalog && typeof global.chPromoStartServerBluePush === 'function' && global.chPromoStartServerBluePush()) {
                     return;
                 }
