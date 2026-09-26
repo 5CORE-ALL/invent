@@ -885,7 +885,14 @@ class SalesOrderFulfillmentController extends Controller
             return;
         }
 
-        $ids = DobaDailyData::query()
+        $select = ['id', 'order_no'];
+        if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
+            $select[] = 'shopify_order_id';
+        }
+        if (Schema::hasColumn('doba_daily_data', 'tracking_number')) {
+            $select[] = 'tracking_number';
+        }
+        $rows = DobaDailyData::query()
             ->whereRaw('LOWER(TRIM(COALESCE(order_type, \'\'))) = ?', [self::DOBA_PREPAID_ORDER_TYPE])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
@@ -894,17 +901,18 @@ class SalesOrderFulfillmentController extends Controller
             ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')')
             ->where('order_time', '>=', now()->subDays(45))
             ->orderByDesc('order_time')
-            ->limit(12)
-            ->pluck('order_no');
+            ->limit(8)
+            ->get($select);
 
-        $deadline = microtime(true) + 18.0;
-        foreach ($ids->unique() as $id) {
-            $id = trim((string) $id);
-            if ($id === '') {
+        $deadline = microtime(true) + 45.0;
+        $labels = app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class);
+        foreach ($rows as $row) {
+            $orderNo = trim((string) ($row->order_no ?? ''));
+            if ($orderNo === '') {
                 continue;
             }
-            $cacheKey = 'sof.doba.prepaid.sync.'.md5($id);
-            if (! Cache::add($cacheKey, 1, now()->addMinutes(15))) {
+            $cacheKey = 'sof.doba.prepaid.sync.'.md5($orderNo);
+            if (! Cache::add($cacheKey, 1, now()->addMinutes(10))) {
                 continue;
             }
             if (microtime(true) >= $deadline) {
@@ -912,8 +920,30 @@ class SalesOrderFulfillmentController extends Controller
                 break;
             }
             try {
-                $sync->fetchOrderById($id);
+                $sync->fetchOrderById($orderNo);
             } catch (\Throwable) {
+            }
+
+            $fresh = DobaDailyData::query()->find((int) $row->id);
+            if ($fresh === null) {
+                Cache::forget($cacheKey);
+                continue;
+            }
+            $tracking = \App\Support\DobaTrackingNumber::sanitize((string) ($fresh->tracking_number ?? ''));
+            $shopifyId = trim((string) ($fresh->shopify_order_id ?? ''));
+            if ($shopifyId === '' || strlen($tracking) < 8) {
+                Cache::forget($cacheKey);
+                continue;
+            }
+            try {
+                $pushed = $labels->fulfillMarketplaceOrder('doba', (int) $fresh->id);
+            } catch (\Throwable) {
+                Cache::forget($cacheKey);
+                continue;
+            }
+            $action = (string) ($pushed['action'] ?? '');
+            if (empty($pushed['success']) && $action !== 'already_on_shopify') {
+                Cache::forget($cacheKey);
             }
         }
     }

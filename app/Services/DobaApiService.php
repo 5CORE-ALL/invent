@@ -52,7 +52,7 @@ class DobaApiService
 
         try {
             $response = Http::withoutVerifying()
-                ->timeout(6)
+                ->timeout(12)
                 ->connectTimeout(5)
                 ->withHeaders([
                     'appKey' => config('services.doba.app_key'),
