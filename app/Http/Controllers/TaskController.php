@@ -9288,6 +9288,137 @@ class TaskController extends Controller
         ]);
     }
 
+    /** Incentives page: everyone sees their own; president can edit; privileged viewers can open any user. */
+    public function incentivesPage(Request $request)
+    {
+        $viewer = Auth::user();
+        if (! $viewer) {
+            abort(403);
+        }
+
+        $canEdit = $this->canEditIncentives($viewer);
+        $canViewAll = $this->canViewAllIncentives($viewer);
+        $requestedId = (int) $request->query('user_id', 0);
+
+        if ($requestedId > 0 && $requestedId !== (int) $viewer->id) {
+            $target = User::find($requestedId);
+            if (! $target) {
+                abort(404);
+            }
+            if (! $this->canViewUserIncentives($viewer, $target)) {
+                abort(403, 'You do not have access to this user\'s incentives.');
+            }
+        } else {
+            $target = $viewer;
+        }
+
+        $items = collect();
+        if (Schema::hasTable('user_incentives')) {
+            $items = UserIncentive::query()
+                ->where('user_id', $target->id)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (UserIncentive $row) => $this->formatIncentiveItem($row))
+                ->values();
+        }
+
+        $users = $canViewAll ? $this->incentiveAssignableUsers() : [];
+        $known = collect($users)->contains(fn ($user) => (int) $user['id'] === (int) $target->id);
+        if ($canViewAll && ! $known) {
+            array_unshift($users, [
+                'id' => (int) $target->id,
+                'name' => (string) $target->name,
+                'designation' => $target->designation,
+                'org_level' => $target->org_level,
+            ]);
+        }
+
+        $today = TaskBusinessTime::today()->startOfDay();
+        $alertThrough = $today->copy()->addDay();
+        $alerts = [];
+        $total = 0.0;
+        foreach ($items as $item) {
+            if (empty($item['is_active'])) {
+                continue;
+            }
+            $total += (float) ($item['amount'] ?? 0);
+            $raw = trim((string) ($item['additional_condition'] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            try {
+                $cutoff = \Carbon\Carbon::parse($raw)->startOfDay();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if ($cutoff->gt($alertThrough)) {
+                continue;
+            }
+            $name = trim((string) ($item['title'] ?? ''));
+            $prefix = $name !== '' ? $name.': ' : '';
+            if ($cutoff->lt($today)) {
+                $alerts[] = $prefix.'CutOff Date has passed.';
+            } elseif ($cutoff->equalTo($today)) {
+                $alerts[] = $prefix.'CutOff Date is today.';
+            } else {
+                $alerts[] = $prefix.'CutOff Date is tomorrow.';
+            }
+        }
+
+        return view('incentives.index', [
+            'target' => $target,
+            'items' => $items,
+            'users' => $users,
+            'canEdit' => $canEdit,
+            'canViewAll' => $canViewAll,
+            'total' => $total,
+            'alerts' => $alerts,
+            'defaultCutoff' => TaskBusinessTime::today()->addMonth()->toDateString(),
+        ]);
+    }
+
+    /** President-only save from the incentives page. Replaces one user's rows. */
+    public function updateIncentives(Request $request)
+    {
+        $viewer = Auth::user();
+        if (! $this->canEditIncentives($viewer)) {
+            abort(403, 'Only president@5core.com can edit incentives.');
+        }
+
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'items' => 'nullable|array|max:25',
+            'items.*.id' => 'nullable|integer',
+            'items.*.title' => 'nullable|string|max:200',
+            'items.*.body' => 'nullable|string|max:5000',
+            'items.*.additional_condition' => 'nullable|string|max:5000',
+            'items.*.amount' => 'nullable|numeric|min:0',
+            'items.*.is_active' => 'nullable|boolean',
+        ]);
+
+        $items = [];
+        foreach ($validated['items'] ?? [] as $index => $item) {
+            $title = trim((string) ($item['title'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $item['title'] = $title;
+            $item['sort_order'] = count($items);
+            $rawActive = $item['is_active'] ?? true;
+            $active = filter_var($rawActive, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $item['is_active'] = $active === null ? true : $active;
+            $items[] = $item;
+        }
+
+        $userId = (int) $validated['user_id'];
+        $this->replaceUserIncentiveItems($userId, $items, $viewer);
+
+        return redirect()
+            ->route('incentives.index', ['user_id' => $userId])
+            ->with('success', 'Incentives saved.');
+    }
+
     /** GET incentives for a team member (self, privileged viewers, president). */
     public function getUserIncentives(Request $request): JsonResponse
     {
@@ -9418,9 +9549,35 @@ class TaskController extends Controller
             ], 422);
         }
 
+        $rows = $this->replaceUserIncentiveItems($userId, $validated['items'], $viewer);
+
+        $copied = [];
+        foreach ($alsoIds as $alsoId) {
+            if ($alsoId === $userId) {
+                continue;
+            }
+            $this->appendIncentiveItemsToUser($alsoId, $validated['items'], $viewer);
+            $copied[] = $this->incentiveUserStats($alsoId);
+        }
+
+        return response()->json([
+            'success' => true,
+            'items' => $rows->map(fn (UserIncentive $row) => $this->formatIncentiveItem($row))->values(),
+            'copied_to' => $copied,
+        ]);
+    }
+
+    /**
+     * Replace one user's incentive rows. Omitted ids are deleted.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return \Illuminate\Support\Collection<int, UserIncentive>
+     */
+    protected function replaceUserIncentiveItems(int $userId, array $items, ?User $viewer)
+    {
         $keptIds = [];
 
-        foreach ($validated['items'] as $index => $item) {
+        foreach ($items as $index => $item) {
             $payload = $this->incentiveItemPayload($item, $index, $viewer);
 
             if (! empty($item['id'])) {
@@ -9441,29 +9598,13 @@ class TaskController extends Controller
         UserIncentive::query()
             ->where('user_id', $userId)
             ->when(count($keptIds) > 0, fn ($q) => $q->whereNotIn('id', $keptIds))
-            ->when(count($keptIds) === 0, fn ($q) => $q)
             ->delete();
 
-        $copied = [];
-        foreach ($alsoIds as $alsoId) {
-            if ($alsoId === $userId) {
-                continue;
-            }
-            $this->appendIncentiveItemsToUser($alsoId, $validated['items'], $viewer);
-            $copied[] = $this->incentiveUserStats($alsoId);
-        }
-
-        $items = UserIncentive::query()
+        return UserIncentive::query()
             ->where('user_id', $userId)
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
-
-        return response()->json([
-            'success' => true,
-            'items' => $items->map(fn (UserIncentive $row) => $this->formatIncentiveItem($row))->values(),
-            'copied_to' => $copied,
-        ]);
     }
 
     /**

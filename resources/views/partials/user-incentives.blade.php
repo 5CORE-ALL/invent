@@ -53,6 +53,7 @@
         font-size: 1.05rem;
         line-height: 1;
         cursor: pointer;
+        text-decoration: none;
         box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.15);
     }
     .topbar-incentive-dollar-btn.has-amount {
@@ -246,6 +247,7 @@
         justify-content: center;
         font-size: 1.45rem;
         cursor: pointer;
+        text-decoration: none;
         transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
     #ts-incentive-float-btn:hover {
@@ -461,14 +463,14 @@
     }
 </style>
 
-<button type="button"
+<a href="{{ route('incentives.index') }}"
         id="ts-incentive-float-btn"
         class="d-none"
         title="My incentives"
         aria-label="Open my incentives">
     <span aria-hidden="true">₹</span>
     <span class="ts-inc-float-count d-none" id="ts-incentive-float-count"></span>
-</button>
+</a>
 
 <div class="modal fade" id="taskSummaryIncentivesModal" tabindex="-1" aria-labelledby="taskSummaryIncentivesModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
@@ -1297,12 +1299,6 @@
                 rowBtn.getAttribute('data-user-name'),
                 rowBtn.getAttribute('data-designation')
             );
-            return;
-        }
-
-        if (t.closest('#ts-incentive-float-btn') || t.closest('#ts-incentive-header-btn')) {
-            e.preventDefault();
-            openModal(cfg.viewerId, cfg.viewerName, '');
             return;
         }
 

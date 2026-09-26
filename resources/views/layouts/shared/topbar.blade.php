@@ -164,6 +164,7 @@
                 font-size: 1.05rem;
                 line-height: 1;
                 cursor: pointer;
+                text-decoration: none;
             }
             .topbar-incentive-dollar-btn.has-amount {
                 padding-right: 0.45rem;
@@ -467,12 +468,12 @@
                 $topbarIncLabel = '₹'.number_format($topbarIncTotal, 0);
             @endphp
             <li class="d-flex align-items-center">
-                <button type="button"
+                <a href="{{ route('incentives.index') }}"
                         id="ts-incentive-header-btn"
                         class="topbar-incentive-dollar-btn{{ $topbarIncShow ? ' has-amount' : '' }}{{ $topbarIncAlert ? ' is-cutoff-alert' : '' }}"
                         data-incentive-amount="{{ $topbarIncTotal }}"
                         title="{{ $topbarIncShow ? 'My incentives · '.$topbarIncLabel : 'My incentives' }}"
-                        aria-label="Open my incentives">₹<span id="ts-incentive-header-amount" class="topbar-incentive-amount-badge{{ $topbarIncShow ? '' : ' d-none' }}">{{ $topbarIncLabel }}</span></button>
+                        aria-label="Open my incentives">₹<span id="ts-incentive-header-amount" class="topbar-incentive-amount-badge{{ $topbarIncShow ? '' : ' d-none' }}">{{ $topbarIncLabel }}</span></a>
             </li>
             @endauth
             <li class="dropdown">
