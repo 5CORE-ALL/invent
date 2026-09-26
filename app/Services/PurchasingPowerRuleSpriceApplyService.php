@@ -312,9 +312,6 @@ class PurchasingPowerRuleSpriceApplyService
                     break;
                 }
             }
-            if (! ($lp > 0) && isset($master->lp)) {
-                $lp = (float) $master->lp;
-            }
 
             $pp = $ppBySku[$sku] ?? null;
             $sheet = $sheetBySku[$sku] ?? null;

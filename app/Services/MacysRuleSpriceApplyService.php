@@ -262,16 +262,15 @@ class MacysRuleSpriceApplyService
                 ? $master->Values
                 : (is_string($master->Values) ? json_decode($master->Values, true) : []);
             $lp = 0.0;
+            $ship = 0.0;
             foreach ((array) $values as $k => $v) {
-                if (strtolower((string) $k) === 'lp') {
+                $key = strtolower((string) $k);
+                if ($key === 'lp') {
                     $lp = (float) $v;
-                    break;
+                } elseif ($key === 'ship') {
+                    $ship = (float) $v;
                 }
             }
-            if (! ($lp > 0) && isset($master->lp)) {
-                $lp = (float) $master->lp;
-            }
-            $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($master->ship ?? 0);
 
             $out[] = [
                 'sku' => $sku,

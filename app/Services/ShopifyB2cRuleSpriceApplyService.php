@@ -174,7 +174,7 @@ class ShopifyB2cRuleSpriceApplyService
 
         $masters = ProductMaster::query()
             ->whereIn('sku', $lookupSkus)
-            ->get(['sku', 'Values', 'lp', 'ship'])
+            ->get(['sku', 'Values'])
             ->keyBy(static fn ($r) => strtoupper(trim((string) $r->sku)));
 
         $amzPrices = AmazonDatasheet::query()
@@ -220,8 +220,16 @@ class ShopifyB2cRuleSpriceApplyService
             $values = is_array($master->Values)
                 ? $master->Values
                 : (is_string($master->Values) ? json_decode($master->Values, true) : []);
-            $lp = (float) ($values['lp'] ?? ($master->lp ?? 0));
-            $ship = (float) ($values['ship'] ?? ($master->ship ?? 0));
+            $lp = 0.0;
+            $ship = 0.0;
+            foreach ((array) $values as $k => $v) {
+                $key = strtolower((string) $k);
+                if ($key === 'lp') {
+                    $lp = (float) $v;
+                } elseif ($key === 'ship') {
+                    $ship = (float) $v;
+                }
+            }
             $ovL30 = (float) ($shopify->quantity ?? 0);
             $b2cL30 = (float) ($soldBySku[$sku] ?? 0);
             $views = (float) ($shopify->views ?? 0);
