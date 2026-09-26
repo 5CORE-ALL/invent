@@ -4765,6 +4765,78 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * Shopify already has today's Doba orders (For Doba Supplier integration).
+     * Copy those ids onto doba_daily_data so the prepaid tracking can be fulfilled.
+     */
+    public function linkRecentUnfulfilledDobaOrders(): int
+    {
+        $config = $this->shopifyConfigFor('doba');
+        $store = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        if ($store === '' || $token === '' || ! Schema::hasTable('doba_daily_data')) {
+            return 0;
+        }
+
+        try {
+            $response = $this->shopifyApi($store, $token, 'GET', 'orders.json', [
+                'status' => 'open',
+                'fulfillment_status' => 'unshipped',
+                'limit' => 50,
+                'created_at_min' => now()->subDays(3)->utc()->toIso8601String(),
+                'fields' => 'id,name,tags,note_attributes,source_name',
+            ]);
+        } catch (\Throwable $e) {
+            Log::info('VeeqoShopifyFulfillmentService: Doba Shopify order list failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
+        if ($response === null || ! $response->successful()) {
+            return 0;
+        }
+
+        $linked = 0;
+        foreach ((array) $response->json('orders') as $order) {
+            if (! is_array($order)) {
+                continue;
+            }
+            $tags = strtolower((string) ($order['tags'] ?? ''));
+            $source = strtolower((string) ($order['source_name'] ?? ''));
+            if (! str_contains($tags, 'doba') && ! str_contains($source, 'doba') && $source !== '145019994113') {
+                continue;
+            }
+            $dobaNo = '';
+            foreach ((array) ($order['note_attributes'] ?? []) as $attr) {
+                if (! is_array($attr)) {
+                    continue;
+                }
+                $name = rtrim(strtolower(trim((string) ($attr['name'] ?? ''))), '.');
+                if (! in_array($name, ['doba order no', 'doba order number', 'doba_order_no'], true)) {
+                    continue;
+                }
+                $dobaNo = trim((string) ($attr['value'] ?? ''));
+                if ($dobaNo !== '') {
+                    break;
+                }
+            }
+            $shopifyId = trim((string) ($order['id'] ?? ''));
+            if ($dobaNo === '' || $shopifyId === '' || ! Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
+                continue;
+            }
+            $updated = DobaDailyData::query()
+                ->where('order_no', $dobaNo)
+                ->where(function ($q) {
+                    $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                })
+                ->update(['shopify_order_id' => $shopifyId]);
+            $linked += (int) $updated;
+        }
+
+        return $linked;
+    }
+
+    /**
      * @return array{store_url: string, token: string, store_key: string}
      */
     protected function shopifyConfigFor(string $marketplace): array

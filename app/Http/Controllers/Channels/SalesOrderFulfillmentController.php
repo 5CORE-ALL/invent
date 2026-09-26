@@ -506,7 +506,7 @@ class SalesOrderFulfillmentController extends Controller
     public function dobaOrdersData(): JsonResponse
     {
         try {
-            @set_time_limit(90);
+            @set_time_limit(120);
             $grouped = $this->buildDobaWarehouseOrderRows(true);
 
             return response()->json([
@@ -697,7 +697,7 @@ class SalesOrderFulfillmentController extends Controller
             return $empty;
         }
 
-        $this->syncOpenDobaPrepaidOrders();
+        $this->fetchRecentDobaOrders();
 
         $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
@@ -754,7 +754,7 @@ class SalesOrderFulfillmentController extends Controller
                     'status' => trim((string) ($line->order_status ?? '')),
                     'status_label' => trim((string) ($line->order_status ?? '')) ?: '—',
                     'order_type' => trim((string) ($line->order_type ?? '')),
-                    'is_prepaid' => $this->dobaOrderTypeIsPrepaid((string) ($line->order_type ?? '')),
+                    'is_prepaid' => $this->dobaLineIsPrepaid($line),
                     'sku' => '',
                     'skus' => [],
                     'display_title' => '',
@@ -805,9 +805,9 @@ class SalesOrderFulfillmentController extends Controller
             if ($carrier !== '' && trim((string) ($row['tracking_company'] ?? '')) === '') {
                 $row['tracking_company'] = $carrier;
             }
-            if (! $row['is_prepaid'] && $this->dobaOrderTypeIsPrepaid((string) ($line->order_type ?? ''))) {
+            if (! $row['is_prepaid'] && $this->dobaLineIsPrepaid($line)) {
                 $row['is_prepaid'] = true;
-                $row['order_type'] = trim((string) ($line->order_type ?? ''));
+                $row['order_type'] = trim((string) ($line->order_type ?? $row['order_type'] ?? ''));
             }
             if (($row['prepaid_label_url'] ?? '') === '') {
                 $labelUrl = $this->extractDobaPrepaidLabelUrl($line->order_json ?? null);
@@ -859,6 +859,7 @@ class SalesOrderFulfillmentController extends Controller
             $prepaid,
             fn (array $row) => ! $this->dobaPrepaidRowHasMoved($row)
         ));
+        $this->fulfillOpenDobaPrepaidOnShopify($prepaid);
         $openCount = count($prepaid) + count($nonPrepaid);
 
         return [
@@ -869,74 +870,60 @@ class SalesOrderFulfillmentController extends Controller
         ];
     }
 
-    /**
-     * Ask Doba for the open prepaid orders on this tab so a status change
-     * (in transit, delivered) is stored before the grid is built.
-     */
-    protected function syncOpenDobaPrepaidOrders(): void
+    protected function dobaLineIsPrepaid(object $line): bool
     {
-        if (! Schema::hasColumn('doba_daily_data', 'order_type') || ! Schema::hasColumn('doba_daily_data', 'order_no')) {
+        if ($this->dobaOrderTypeIsPrepaid((string) ($line->order_type ?? ''))) {
+            return true;
+        }
+
+        return $this->extractDobaPrepaidLabelUrl($line->order_json ?? null) !== null;
+    }
+
+    /**
+     * Store the newest Doba orders before the grid is built. The daily job
+     * runs once a day, so orders created after that never reached this tab.
+     */
+    protected function fetchRecentDobaOrders(): void
+    {
+        if (! Cache::add('sof.doba.recent.fetch', 1, now()->addMinutes(10))) {
             return;
         }
 
         try {
             $sync = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class);
-        } catch (\Throwable) {
-            return;
+            $sync->fetchRecentOrders(3, 2);
+            app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class)->linkRecentUnfulfilledDobaOrders();
+        } catch (\Throwable $e) {
+            Cache::forget('sof.doba.recent.fetch');
+            report($e);
         }
+    }
 
-        $select = ['id', 'order_no'];
-        if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
-            $select[] = 'shopify_order_id';
-        }
-        if (Schema::hasColumn('doba_daily_data', 'tracking_number')) {
-            $select[] = 'tracking_number';
-        }
-        $rows = DobaDailyData::query()
-            ->whereRaw('LOWER(TRIM(COALESCE(order_type, \'\'))) = ?', [self::DOBA_PREPAID_ORDER_TYPE])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED'])
-            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')')
-            ->where('order_time', '>=', now()->subDays(45))
-            ->orderByDesc('order_time')
-            ->limit(8)
-            ->get($select);
-
-        $deadline = microtime(true) + 45.0;
+    /**
+     * Write the prepaid tracking number onto the linked Shopify order.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    protected function fulfillOpenDobaPrepaidOnShopify(array $rows): void
+    {
         $labels = app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class);
+        $deadline = microtime(true) + 35.0;
         foreach ($rows as $row) {
-            $orderNo = trim((string) ($row->order_no ?? ''));
-            if ($orderNo === '') {
-                continue;
-            }
-            $cacheKey = 'sof.doba.prepaid.sync.'.md5($orderNo);
-            if (! Cache::add($cacheKey, 1, now()->addMinutes(10))) {
-                continue;
-            }
             if (microtime(true) >= $deadline) {
-                Cache::forget($cacheKey);
                 break;
             }
-            try {
-                $sync->fetchOrderById($orderNo);
-            } catch (\Throwable) {
-            }
-
-            $fresh = DobaDailyData::query()->find((int) $row->id);
-            if ($fresh === null) {
-                Cache::forget($cacheKey);
+            $id = (int) ($row['show_id'] ?? $row['row_id'] ?? 0);
+            $shopifyId = trim((string) ($row['shopify_order_id'] ?? ''));
+            $tracking = \App\Support\DobaTrackingNumber::sanitize((string) ($row['tracking_number'] ?? ''));
+            if ($id <= 0 || $shopifyId === '' || strlen($tracking) < 8) {
                 continue;
             }
-            $tracking = \App\Support\DobaTrackingNumber::sanitize((string) ($fresh->tracking_number ?? ''));
-            $shopifyId = trim((string) ($fresh->shopify_order_id ?? ''));
-            if ($shopifyId === '' || strlen($tracking) < 8) {
-                Cache::forget($cacheKey);
+            $cacheKey = 'sof.doba.prepaid.shopify.'.md5($shopifyId.'|'.$tracking);
+            if (! Cache::add($cacheKey, 1, now()->addMinutes(30))) {
                 continue;
             }
             try {
-                $pushed = $labels->fulfillMarketplaceOrder('doba', (int) $fresh->id);
+                $pushed = $labels->fulfillMarketplaceOrder('doba', $id);
             } catch (\Throwable) {
                 Cache::forget($cacheKey);
                 continue;

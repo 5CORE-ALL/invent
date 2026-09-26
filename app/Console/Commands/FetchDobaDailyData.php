@@ -177,6 +177,44 @@ class FetchDobaDailyData extends Command
     }
 
     /**
+     * Newest Doba orders only. Used when the fulfillment tab opens so today's
+     * prepaid orders are stored before the grid is built.
+     */
+    public function fetchRecentOrders(int $days = 3, int $maxPages = 2): int
+    {
+        $days = max(1, min(14, $days));
+        $maxPages = max(1, min(4, $maxPages));
+        $now = Carbon::now();
+        $cutoff = $now->copy()->subDays($days);
+        $beginTime = $cutoff->format('Y-m-d\TH:i:sP');
+        $endTime = $now->format('Y-m-d\TH:i:sP');
+        $stored = 0;
+
+        for ($page = 1; $page <= $maxPages; $page++) {
+            $orders = $this->fetchOrdersPage($page, 25, $beginTime, $endTime);
+            if ($orders === null || $orders === []) {
+                break;
+            }
+            $bulk = [];
+            foreach ($orders as $order) {
+                if (! is_array($order)) {
+                    continue;
+                }
+                $bulk = array_merge($bulk, $this->parseOrderData($order, $now->copy()->subDays(30)));
+            }
+            if ($bulk !== []) {
+                $this->bulkUpsertOrders($bulk);
+                $stored += count($bulk);
+            }
+            if (count($orders) < 25) {
+                break;
+            }
+        }
+
+        return $stored;
+    }
+
+    /**
      * Fetch a single page of orders, retrying with a smaller pageSize when the
      * upstream RPC rejects the response as "request is too large!".
      *
