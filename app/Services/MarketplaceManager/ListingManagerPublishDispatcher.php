@@ -64,6 +64,7 @@ class ListingManagerPublishDispatcher
                     'package_height' => $details['package_height'] ?? '',
                     'package_weight_lb' => $details['package_weight_lb'] ?? '',
                     'package_weight_oz' => $details['package_weight_oz'] ?? '',
+                    'newegg_feed_request_id' => trim((string) ($details['newegg_feed_request_id'] ?? '')),
                 ];
             }
             if (in_array($key, ['topdawg', 'topdawginc', 'top-dawg', 'top_dawg'], true)) {
