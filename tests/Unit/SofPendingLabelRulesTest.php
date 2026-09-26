@@ -157,4 +157,43 @@ class SofPendingLabelRulesTest extends TestCase
             SalesOrderFulfillmentController::preferShopifyTrackingHit($withTracking, $emptyFulfilled)
         );
     }
+
+    public function test_not_authorized_row_uses_channel_order_number(): void
+    {
+        $ref = new ReflectionClass(SalesOrderFulfillmentController::class);
+        $ctrl = $ref->newInstanceWithoutConstructor();
+        $fill = $ref->getMethod('fillNotAuthorizedChannelOrder');
+
+        $tracking = '9205590348201234567890';
+        $blank = $fill->invoke($ctrl, [
+            'tracking_number' => $tracking,
+            'mm_slug' => 'usps',
+            'channel_label' => 'USPS',
+            'order_id' => $tracking,
+            'order_number' => $tracking,
+        ], []);
+        $this->assertSame('', $blank['order_id']);
+        $this->assertSame('', $blank['channel_label']);
+
+        $filled = $fill->invoke($ctrl, [
+            'tracking_number' => $tracking,
+            'order_id' => '',
+            'channel_label' => '',
+        ], [
+            '9205590348201234567890' => [
+                'slug' => 'ebay2',
+                'label' => 'eBay 2',
+                'order_id' => '12-34567-89012',
+                'row_id' => 44,
+                'channel_id' => 3,
+                'ch_orders_link' => '/marketplace/ebay2/orders',
+                'orders_url' => '/marketplace/ebay2/orders',
+                'order_url' => '/marketplace/ebay2/orders/44',
+            ],
+        ]);
+        $this->assertSame('12-34567-89012', $filled['order_id']);
+        $this->assertSame('eBay 2', $filled['channel_label']);
+        $this->assertSame('ebay2', $filled['mm_slug']);
+        $this->assertSame('/marketplace/ebay2/orders/44', $filled['order_url']);
+    }
 }
