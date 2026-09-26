@@ -2499,13 +2499,27 @@ class ListingManagerController extends Controller
                 $publishDetails['item_specifics'] = ListingManagerEbayTradingPublisher::withoutUpcKeys($publishDetails['item_specifics']);
             }
         }
+        if ($editorFamily === 'newegg' && trim((string) ($publishDetails['newegg_feed_request_id'] ?? '')) === '') {
+            if (preg_match_all('/RequestId\s+([A-Z0-9]+)/i', (string) $draft->notes, $feedIds) && ($feedIds[1] ?? []) !== []) {
+                $publishDetails['newegg_feed_request_id'] = (string) end($feedIds[1]);
+            }
+        }
 
         $result = app(ListingManagerPublishDispatcher::class)->publish($draft, $publishDetails);
 
         if (! ($result['success'] ?? false)) {
             if (! empty($result['queued'])) {
                 $draft->status = 'ready';
-                $draft->notes = trim((string) $draft->notes."\n".$result['message']);
+                $requestId = trim((string) ($result['request_id'] ?? ''));
+                if ($requestId !== '') {
+                    $details['newegg_feed_request_id'] = $requestId;
+                    $draft->listing_details = $details;
+                }
+                $message = trim((string) ($result['message'] ?? ''));
+                $notes = (string) $draft->notes;
+                if ($message !== '' && ! str_contains($notes, $requestId !== '' ? $requestId : $message)) {
+                    $draft->notes = trim($notes."\n".$message);
+                }
                 $draft->save();
 
                 return response()->json([
@@ -2516,6 +2530,8 @@ class ListingManagerController extends Controller
             }
 
             $draft->status = 'failed';
+            unset($details['newegg_feed_request_id']);
+            $draft->listing_details = $details;
             $draft->notes = trim((string) $draft->notes . "\nPublish failed: " . ($result['message'] ?? 'Unknown error'));
             $draft->save();
 
@@ -2526,6 +2542,7 @@ class ListingManagerController extends Controller
             ], 422);
         }
 
+        unset($details['newegg_feed_request_id']);
         $itemId = trim((string) ($result['item_id'] ?? ''));
         $siblingSkus = is_array($result['sibling_skus'] ?? null) ? $result['sibling_skus'] : [(string) $draft->seller_sku];
         $now = now();

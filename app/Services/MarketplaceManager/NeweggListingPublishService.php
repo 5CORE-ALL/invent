@@ -156,12 +156,15 @@ class NeweggListingPublishService
             'height' => $dims['height'],
             'weight' => $dims['weight'],
             'platform' => $channel === 'neweggb2b' ? 'b2b' : 'b2c',
+            'pending_request_id' => trim((string) ($overrides['newegg_feed_request_id'] ?? '')),
         ]);
 
         if (empty($res['success'])) {
             return [
                 'success' => false,
                 'message' => $res['message'] ?? 'Newegg create listing failed.',
+                'queued' => ! empty($res['still_processing']),
+                'request_id' => trim((string) ($res['request_id'] ?? '')),
             ];
         }
 

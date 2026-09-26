@@ -4602,7 +4602,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * eBay / TikTok already have the label on the channel API. Hitting Veeqo/GOFO
+     * eBay / TikTok / Doba already have the label on the channel API. Hitting Veeqo/GOFO
      * first burned the HTTP deadline and left Tracking blank.
      */
     protected function sofPrefersLiveChannelTracking(string $slug): bool
@@ -4613,6 +4613,7 @@ class SalesOrderFulfillmentController extends Controller
             'ebay3',
             'tiktok',
             'tiktok2',
+            'doba',
         ], true);
     }
 
@@ -4745,8 +4746,10 @@ class SalesOrderFulfillmentController extends Controller
                 $found = $labels->lookupLiveChannelTracking($slug, $refs);
             }
             $warehouseBudgetLeft = $deadline === null || ($deadline - microtime(true)) > 4.0;
+            $dobaOrderLookup = $fast && $slug === 'doba';
             if (
-                ($found === null || trim((string) ($found['tracking'] ?? '')) === '')
+                ! $dobaOrderLookup
+                && ($found === null || trim((string) ($found['tracking'] ?? '')) === '')
                 && (! $fast || ! $preferLive || $warehouseBudgetLeft)
             ) {
                 $found = $labels->lookupLabelTracking($refs, $local, $fast);

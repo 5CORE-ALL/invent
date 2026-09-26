@@ -1898,7 +1898,11 @@ class NeweggApiService
         $subcategoryId = trim((string) ($fields['subcategory_id'] ?? config('services.newegg.default_subcategory_id', '')));
 
         $pendingId = trim((string) Cache::get($this->pendingNeweggFeedCacheKey($platform, $sku), ''));
+        if ($pendingId === '') {
+            $pendingId = trim((string) ($fields['pending_request_id'] ?? ''));
+        }
         if ($pendingId !== '') {
+            Cache::put($this->pendingNeweggFeedCacheKey($platform, $sku), $pendingId, now()->addDays(7));
             $resumed = $this->resolveSubmittedNeweggItem($sku, $pendingId, $platform);
             if (! empty($resumed['success']) || ! empty($resumed['terminal']) || ! empty($resumed['still_processing'])) {
                 if (! empty($resumed['success']) || ! empty($resumed['terminal'])) {
@@ -1929,7 +1933,7 @@ class NeweggApiService
 
         $requestId = trim((string) ($submitted['request_id'] ?? ''));
         if ($requestId !== '') {
-            Cache::put($this->pendingNeweggFeedCacheKey($platform, $sku), $requestId, now()->addHours(12));
+            Cache::put($this->pendingNeweggFeedCacheKey($platform, $sku), $requestId, now()->addDays(7));
         }
 
         $resolved = $this->resolveSubmittedNeweggItem($sku, $requestId, $platform);
@@ -1946,6 +1950,44 @@ class NeweggApiService
     }
 
     /**
+     * A feed is still open only when Newegg has not returned a result yet.
+     * An empty status is not enough to skip the processing report.
+     *
+     * @param  array{item_number?: string, errors?: list<string>, success_count?: int, error_count?: int}  $report
+     */
+    public static function neweggFeedStillOpen(string $status, array $report): bool
+    {
+        if (self::feedReportIsActionable($report)) {
+            return false;
+        }
+
+        $collapsed = strtoupper(preg_replace('/[\s_]+/', '', trim($status)) ?? '');
+        if (in_array($collapsed, [
+            'FINISHED', 'COMPLETED', 'SUCCESS', 'COMPLETE', 'DONE', 'PROCESSED', 'FINISH',
+            'CANCELLED', 'CANCELED', 'ABORTED', 'FAILED', 'FAILURE',
+        ], true)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array{item_number?: string, errors?: list<string>, success_count?: int, error_count?: int}  $report
+     */
+    public static function feedReportIsActionable(array $report): bool
+    {
+        if (trim((string) ($report['item_number'] ?? '')) !== '') {
+            return true;
+        }
+        if (($report['errors'] ?? []) !== []) {
+            return true;
+        }
+
+        return (int) ($report['success_count'] ?? 0) > 0 || (int) ($report['error_count'] ?? 0) > 0;
+    }
+
+    /**
      * Check one submitted item feed and attach the 9SI when Newegg has finished it.
      * A feed that is still open is left in cache so the next publish does not send a second feed.
      *
@@ -1957,18 +1999,20 @@ class NeweggApiService
         $feed = $requestId !== ''
             ? $this->getFeedStatus($requestId, $platform)
             : ['success' => true, 'status' => '', 'message' => ''];
-        if (empty($feed['success']) && strtoupper((string) ($feed['status'] ?? '')) !== '') {
+        if (! empty($feed['blocked_by_cloudflare'])) {
             return [
                 'success' => false,
-                'terminal' => true,
-                'message' => (string) ($feed['message'] ?? 'Newegg item feed was rejected.'),
+                'message' => (string) ($feed['message'] ?? 'Blocked by Cloudflare (managed challenge).'),
+                'blocked_by_cloudflare' => true,
                 'request_id' => $requestId,
             ];
         }
 
         $status = strtoupper(trim((string) ($feed['status'] ?? '')));
-        $finished = in_array($status, ['FINISHED', 'COMPLETED', 'SUCCESS'], true);
-        if ($requestId !== '' && ! $finished) {
+        $report = $requestId !== ''
+            ? $this->getFeedResult($requestId, $platform)
+            : ['item_number' => '', 'errors' => [], 'success_count' => 0, 'error_count' => 0];
+        if ($requestId !== '' && self::neweggFeedStillOpen($status, $report)) {
             return [
                 'success' => false,
                 'still_processing' => true,
@@ -1977,9 +2021,6 @@ class NeweggApiService
             ];
         }
 
-        $report = $requestId !== ''
-            ? $this->getFeedResult($requestId, $platform)
-            : ['item_number' => '', 'errors' => [], 'success_count' => 0, 'error_count' => 0];
         if (($report['errors'] ?? []) !== [] && (int) ($report['success_count'] ?? 0) < 1) {
             return [
                 'success' => false,
@@ -2000,6 +2041,18 @@ class NeweggApiService
 
         if (! ChannelListingRegistry::isLiveNeweggListingId($itemNumber, $sku)) {
             $hint = $requestId !== '' ? ' RequestId '.$requestId.'.' : '';
+            $feedMessage = trim((string) ($feed['message'] ?? ''));
+            $collapsed = strtoupper(preg_replace('/[\s_]+/', '', $status) ?? '');
+            $rejected = empty($feed['success'])
+                || in_array($collapsed, ['CANCELLED', 'CANCELED', 'ABORTED', 'FAILED', 'FAILURE'], true);
+            if ($rejected && $feedMessage !== '' && ! str_contains(strtolower($feedMessage), 'not ready yet')) {
+                return [
+                    'success' => false,
+                    'terminal' => true,
+                    'message' => $feedMessage.$hint,
+                    'request_id' => $requestId,
+                ];
+            }
 
             return [
                 'success' => false,
@@ -2031,20 +2084,22 @@ class NeweggApiService
         $paths = $platform === 'b2b'
             ? ['/marketplace/b2b/datafeedmgmt/feeds/status', '/marketplace/datafeedmgmt/feeds/status']
             : ['/marketplace/datafeedmgmt/feeds/status', '/marketplace/b2b/datafeedmgmt/feeds/status'];
-        $body = [
-            'OperationType' => 'GetFeedStatusRequest',
-            'RequestBody' => [
-                'GetRequestStatus' => [
-                    'RequestIDList' => [
-                        'RequestID' => $requestId,
-                    ],
-                    'MaxCount' => 10,
-                ],
-            ],
-        ];
+        $requestIds = [$requestId, [$requestId]];
 
         $last = ['success' => true, 'status' => '', 'message' => 'Newegg feed status is not ready yet.'];
         foreach ($paths as $path) {
+            foreach ($requestIds as $requestIdValue) {
+            $body = [
+                'OperationType' => 'GetFeedStatusRequest',
+                'RequestBody' => [
+                    'GetRequestStatus' => [
+                        'RequestIDList' => [
+                            'RequestID' => $requestIdValue,
+                        ],
+                        'MaxCount' => 10,
+                    ],
+                ],
+            ];
             $res = $this->request('PUT', $path, [], $body);
             if (! empty($res['blocked_by_cloudflare'])) {
                 return ['success' => false, 'status' => '', 'message' => 'Blocked by Cloudflare (managed challenge).'];
@@ -2071,6 +2126,7 @@ class NeweggApiService
                 'status' => $status,
                 'message' => $message,
             ];
+            }
         }
 
         return $last;
@@ -2182,12 +2238,40 @@ class NeweggApiService
             }
         }
 
+        if ($itemNumber === '' && $errors === []) {
+            self::collectFeedResultFields($payload, $errors, $itemNumber);
+        }
+
         return [
             'item_number' => $itemNumber,
             'errors' => $errors,
             'success_count' => $successCount,
             'error_count' => $errorCount,
         ];
+    }
+
+    /**
+     * @param  array<mixed>  $node
+     * @param  list<string>  $errors
+     */
+    protected static function collectFeedResultFields(array $node, array &$errors, string &$itemNumber): void
+    {
+        foreach ($node as $key => $value) {
+            if (is_array($value)) {
+                self::collectFeedResultFields($value, $errors, $itemNumber);
+                continue;
+            }
+            $text = trim((string) $value);
+            if ($text === '') {
+                continue;
+            }
+            if ($itemNumber === '' && in_array((string) $key, ['NeweggItemNumber', 'ItemNumber'], true) && preg_match('/^9SI/i', $text)) {
+                $itemNumber = $text;
+            }
+            if (in_array((string) $key, ['ErrorDescription', 'ErrorMessage'], true) && ! in_array($text, $errors, true)) {
+                $errors[] = $text;
+            }
+        }
     }
 
     /**
@@ -2642,6 +2726,16 @@ class NeweggApiService
      */
     protected function extractNeweggItemNumber(array $json): string
     {
+        return self::itemNumberFromInventoryPayload($json);
+    }
+
+    /**
+     * Get Item Inventory puts the 9SI on ResponseBody.ItemList, not the envelope root.
+     *
+     * @param  array<string, mixed>  $json
+     */
+    public static function itemNumberFromInventoryPayload(array $json): string
+    {
         foreach ([
             'NeweggItemNumber',
             'ItemNumber',
@@ -2655,6 +2749,31 @@ class NeweggApiService
             $value = trim((string) data_get($json, $path, ''));
             if (preg_match('/^9SI/i', $value)) {
                 return $value;
+            }
+        }
+
+        $lists = [
+            data_get($json, 'ResponseBody.ItemList'),
+            data_get($json, 'NeweggAPIResponse.ResponseBody.ItemList'),
+            data_get($json, 'ItemList'),
+            data_get($json, 'ResponseBody.InventoryList'),
+            data_get($json, 'InventoryList'),
+        ];
+        foreach ($lists as $list) {
+            if (! is_array($list) || $list === []) {
+                continue;
+            }
+            if (! array_is_list($list)) {
+                $list = [$list];
+            }
+            foreach ($list as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $value = trim((string) ($row['ItemNumber'] ?? $row['NeweggItemNumber'] ?? ''));
+                if (preg_match('/^9SI/i', $value)) {
+                    return $value;
+                }
             }
         }
 

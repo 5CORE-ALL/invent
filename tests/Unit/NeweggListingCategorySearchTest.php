@@ -111,4 +111,50 @@ class NeweggListingCategorySearchTest extends TestCase
         $this->assertSame(1, $parsed['success_count']);
         $this->assertContains('Manufacturer - The manufacturer does not exist in our system.', $parsed['errors']);
     }
+
+    public function test_inventory_payload_item_number_is_read_from_item_list(): void
+    {
+        $itemNumber = NeweggApiService::itemNumberFromInventoryPayload([
+            'IsSuccess' => true,
+            'ResponseBody' => [
+                'ItemList' => [
+                    [
+                        'ItemNumber' => '9SIA00602A4141',
+                        'SellerPartNumber' => 'LS 100-6 RED',
+                        'Inventory' => '0',
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('9SIA00602A4141', $itemNumber);
+    }
+
+    public function test_open_newegg_feed_still_reads_a_finished_report(): void
+    {
+        $this->assertTrue(NeweggApiService::neweggFeedStillOpen('SUBMITTED', [
+            'item_number' => '',
+            'errors' => [],
+            'success_count' => 0,
+            'error_count' => 0,
+        ]));
+        $this->assertTrue(NeweggApiService::neweggFeedStillOpen('', [
+            'item_number' => '',
+            'errors' => [],
+            'success_count' => 0,
+            'error_count' => 0,
+        ]));
+        $this->assertFalse(NeweggApiService::neweggFeedStillOpen('', [
+            'item_number' => '',
+            'errors' => ['Manufacturer - The manufacturer does not exist in our system.'],
+            'success_count' => 0,
+            'error_count' => 1,
+        ]));
+        $this->assertFalse(NeweggApiService::neweggFeedStillOpen('FINISHED', [
+            'item_number' => '9SIA00602A4141',
+            'errors' => [],
+            'success_count' => 1,
+            'error_count' => 0,
+        ]));
+    }
 }

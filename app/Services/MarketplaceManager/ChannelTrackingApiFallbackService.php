@@ -233,36 +233,32 @@ class ChannelTrackingApiFallbackService
             }
 
             if ($slug === 'doba') {
-                $sync = app(DobaOrderSyncService::class)->fetchAndStore(60);
-                if (empty($sync['success'])) {
-                    return [
-                        'checked' => $checked,
-                        'updated' => 0,
-                        'with_tracking' => 0,
-                        'message' => 'Doba API: '.((string) ($sync['message'] ?? 'failed')),
-                        'rows' => [],
-                    ];
-                }
                 if (! Schema::hasTable('doba_daily_data')) {
                     return $this->emptyResult($checked, 'Doba: table missing.');
                 }
+                $sync = app(DobaOrderSyncService::class);
                 foreach ($orderIds as $oid) {
-                    $line = DobaDailyData::query()
-                        ->where('order_no', $oid)
-                        ->orWhere('platform_order_no', $oid)
-                        ->orderByDesc('id')
-                        ->first();
-                    if (! $line) {
-                        continue;
+                    $order = $sync->fetchOrderById($oid);
+                    $hit = is_array($order) ? \App\Support\DobaTrackingNumber::fromOrderPayload($order) : ['tracking' => '', 'carrier' => ''];
+                    $tn = trim((string) ($hit['tracking'] ?? ''));
+                    if ($tn === '') {
+                        $line = DobaDailyData::query()
+                            ->where(function ($query) use ($oid): void {
+                                $query->where('order_no', $oid)->orWhere('platform_order_no', $oid);
+                            })
+                            ->orderByDesc('id')
+                            ->first();
+                        if ($line !== null) {
+                            $tn = trim((string) ($line->tracking_number ?? ''));
+                            $hit['carrier'] = trim((string) ($line->carrier_name ?? ''));
+                        }
                     }
-                    $tn = trim((string) ($line->tracking_number ?? ''));
-                    $carrier = trim((string) ($line->carrier_name ?? $line->carrier ?? ''));
                     if ($tn === '') {
                         continue;
                     }
                     $withTracking++;
                     $updated++;
-                    $rows[] = $this->resultRow($oid, $tn, $carrier, 'Doba API');
+                    $rows[] = $this->resultRow($oid, $tn, (string) ($hit['carrier'] ?? ''), 'Doba API');
                 }
 
                 return [
