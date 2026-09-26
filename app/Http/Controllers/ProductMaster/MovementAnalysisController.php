@@ -6,7 +6,6 @@ use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDataView;
 use App\Models\MovementAnalysis;
-use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
@@ -45,7 +44,7 @@ class MovementAnalysisController extends Controller
 
     public function getViewMovementAnalysisData(Request $request)
     {
-        $productData = ProductMaster::query()
+        $productData = DB::table('product_master')
             ->select('parent', 'sku', 'Values')
             ->get();
 
