@@ -5741,7 +5741,7 @@ class EbayController extends Controller
         $storedCode = isset($vis['coupon_code']) ? trim((string) $vis['coupon_code']) : '';
         $enabled = $row
             ? filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)
-            : in_array($channel, ['ebay2', 'ebay3'], true);
+            : false;
 
         return [
             'enabled' => $enabled,
