@@ -1581,7 +1581,16 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-no-tracking-pane" role="tabpanel" aria-labelledby="sof-no-tracking-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Label created but no tracking number yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
+                            <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                                <p class="small text-muted mb-0 sof-date-scope-hint">Label created but no tracking number yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
+                                <button type="button"
+                                        id="sof-fetch-tracking-btn"
+                                        class="btn btn-sm btn-outline-primary flex-shrink-0"
+                                        title="Fetch tracking numbers for every order on Label Created / No Tracking">
+                                    <i class="mdi mdi-barcode-scan me-1"></i>
+                                    <span class="sof-fetch-tracking-label">Fetch Tracking</span>
+                                </button>
+                            </div>
                             <div id="sof-no-tracking-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -6968,10 +6977,26 @@
         return out;
     }
 
-    function sofRunPullTracking(selected) {
-        const $btn = $('#sof-pull-tracking-btn');
-        if ($btn.prop('disabled')) return;
-        const $label = $btn.find('.sof-pull-tracking-label');
+    function sofNoTrackingPullTargets() {
+        const seen = {};
+        const out = [];
+        (noTrackingRows || []).forEach(function (r) {
+            if (String(r.tracking_number || '').trim()) return;
+            const mapped = sofMapPullTarget(r);
+            if (!mapped) return;
+            const key = sofPullTargetKey(mapped);
+            if (!key || seen[key]) return;
+            seen[key] = true;
+            out.push(mapped);
+        });
+        return out;
+    }
+
+    function sofRunPullTracking(selected, buttonEl) {
+        const $btn = buttonEl ? $(buttonEl) : $('#sof-pull-tracking-btn');
+        if ($('#sof-pull-tracking-btn').prop('disabled') || $('#sof-fetch-tracking-btn').prop('disabled')) return;
+        const $label = $btn.find('span').first();
+        const progressWord = $btn.is('#sof-fetch-tracking-btn') ? 'Fetching ' : 'Pulling ';
         const prev = $label.text();
         let targets = Array.isArray(selected) ? selected.slice() : [];
         if (!targets.length) {
@@ -6987,7 +7012,7 @@
             return;
         }
 
-        $btn.prop('disabled', true);
+        $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', true);
 
         const totalStarted = targets.length;
         const totals = { checked: 0, with_tracking: 0, updated: 0, empty: 0 };
@@ -7034,14 +7059,14 @@
                     ? ('Saved tracking on ' + totals.updated + ' labeled order' + (totals.updated === 1 ? '' : 's') + '.')
                     : 'Checked all selected orders. No new tracking numbers were found.');
                 showPullResult(ok && !hardFail, msg);
-                $btn.prop('disabled', false);
+                $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', false);
                 $label.text(prev);
                 return;
             }
 
             const chunk = queue.slice(0, SOF_PULL_CHUNK);
             const rest = queue.slice(SOF_PULL_CHUNK);
-            $label.text('Pulling ' + Math.min(doneCount + chunk.length, totalStarted) + '/' + totalStarted + '…');
+            $label.text(progressWord + Math.min(doneCount + chunk.length, totalStarted) + '/' + totalStarted + '…');
 
             sofPullTrackingRequest(chunk)
                 .then(function (res) {
@@ -7112,7 +7137,7 @@
                     lastMsg = err && err.message ? err.message : 'Network error';
                     if (!leftover.length && !rest.length) {
                         showPullResult(false, lastMsg);
-                        $btn.prop('disabled', false);
+                        $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', false);
                         $label.text(prev);
                         return;
                     }
@@ -7122,6 +7147,30 @@
 
         pullQueue(targets);
     }
+
+    $('#sof-fetch-tracking-btn').on('click', function () {
+        if (!noTrackingTableLoaded) {
+            ensureNoTrackingTable();
+            const waitMsg = 'Label Created / No Tracking is still loading. Click Fetch Tracking again when the rows appear.';
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'info', title: 'Still loading', text: waitMsg });
+            } else {
+                alert(waitMsg);
+            }
+            return;
+        }
+        const targets = sofNoTrackingPullTargets();
+        if (!targets.length) {
+            const emptyMsg = 'Every order on Label Created / No Tracking already has a tracking number.';
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'info', title: 'Nothing to fetch', text: emptyMsg });
+            } else {
+                alert(emptyMsg);
+            }
+            return;
+        }
+        sofRunPullTracking(targets, this);
+    });
 
     $('#sof-pull-tracking-btn').on('click', function () {
         const selected = sofSelectedPullTargets();
