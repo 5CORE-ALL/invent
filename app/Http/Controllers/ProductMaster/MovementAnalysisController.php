@@ -6,9 +6,11 @@ use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDataView;
 use App\Models\MovementAnalysis;
+use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
@@ -44,14 +46,14 @@ class MovementAnalysisController extends Controller
 
     public function getViewMovementAnalysisData(Request $request)
     {
-        $productData = DB::table('product_master')
+        $productData = ProductMaster::query()
             ->select('parent', 'sku', 'Values')
+            ->orderBy('parent')
+            ->orderBy('sku')
             ->get();
 
         $filteredData = $productData->filter(function ($item) {
             return trim((string) ($item->sku ?? '')) !== '';
-        })->unique(function ($item) {
-            return strtoupper(preg_replace('/\s+/', ' ', trim((string) $item->sku)));
         })->values();
 
         $skus = $filteredData->map(function ($item) {
@@ -118,14 +120,27 @@ class MovementAnalysisController extends Controller
             $skuUpper = strtoupper(preg_replace('/\s+/', ' ', $childSku));
             $item->is_parent = str_contains($skuUpper, 'PARENT');
 
-            $shopify = $shopifyData[$childSku] ?? null;
-            if (! $item->is_parent) {
-                $item->INV = $shopify ? (int) round((float) ($shopify->inv ?? 0)) : 0;
-                $item->L30 = $shopify ? (int) round((float) ($shopify->quantity ?? 0)) : 0;
-            } else {
+            if ($item->is_parent) {
                 $item->INV = null;
                 $item->L30 = null;
+                $item->months = [];
+                $item->total = null;
+                $item->total_months = null;
+                $item->monthly_average = null;
+                $item->msl = null;
+                $item->s_msl = null;
+                $item->moq = null;
+                $item->dil = null;
+                $item->amz_price = 0;
+                $item->amz_value = null;
+                $item->lp = 0;
+
+                return $item;
             }
+
+            $shopify = $shopifyData[$childSku] ?? null;
+            $item->INV = $shopify ? (int) round((float) ($shopify->inv ?? 0)) : 0;
+            $item->L30 = $shopify ? (int) round((float) ($shopify->quantity ?? 0)) : 0;
 
             $movementItem = $movementBySku[$skuUpper] ?? $movementBySku[str_replace(' ', '', $skuUpper)] ?? null;
             $months = [];
@@ -162,7 +177,103 @@ class MovementAnalysisController extends Controller
             return $item;
         })->values();
 
+        $this->rememberMovementDilHistory($processedData);
+
         return response()->json($processedData);
+    }
+
+    public function movementDilHistory()
+    {
+        return response()->json([
+            'count' => $this->movementDilHistoryRows('movement_analysis_dil_count_hist'),
+            'amz' => $this->movementDilHistoryRows('movement_analysis_dil_amz_hist'),
+            'lp' => $this->movementDilHistoryRows('movement_analysis_dil_lp_hist'),
+        ]);
+    }
+
+    private function rememberMovementDilHistory($rows): void
+    {
+        $bands = ['0', '0.1-25', '25-50', '50-100', 'gt-100'];
+        $count = array_fill_keys($bands, 0);
+        $amz = array_fill_keys($bands, 0);
+        $lp = array_fill_keys($bands, 0);
+
+        foreach ($rows as $item) {
+            $sku = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($item->sku ?? ''))));
+            if ($sku === '' || str_contains($sku, 'PARENT') || ! empty($item->is_parent)) {
+                continue;
+            }
+            $inv = (float) ($item->INV ?? 0);
+            if ($inv <= 0) {
+                continue;
+            }
+            $band = $this->movementDilBand((float) ($item->dil ?? 0));
+            $count[$band]++;
+            $amz[$band] += (float) ($item->amz_value ?? 0);
+            $lpPrice = (float) ($item->lp ?? 0);
+            if ($lpPrice > 0) {
+                $lp[$band] += $inv * $lpPrice;
+            }
+        }
+
+        $today = now('America/Los_Angeles')->toDateString();
+        foreach ([
+            'movement_analysis_dil_count_hist' => $count,
+            'movement_analysis_dil_amz_hist' => $amz,
+            'movement_analysis_dil_lp_hist' => $lp,
+        ] as $key => $day) {
+            $hist = Cache::get($key, []);
+            if (! is_array($hist)) {
+                $hist = [];
+            }
+            $hist[$today] = $day;
+            ksort($hist);
+            $dates = array_keys($hist);
+            while (count($dates) > 90) {
+                unset($hist[$dates[0]]);
+                array_shift($dates);
+            }
+            Cache::put($key, $hist, now()->addDays(120));
+        }
+    }
+
+    private function movementDilBand(float $dil): string
+    {
+        if (round($dil, 2) == 0.0) {
+            return '0';
+        }
+        if ($dil > 100) {
+            return 'gt-100';
+        }
+        if ($dil >= 50) {
+            return '50-100';
+        }
+        if ($dil > 25) {
+            return '25-50';
+        }
+
+        return '0.1-25';
+    }
+
+    private function movementDilHistoryRows(string $cacheKey): array
+    {
+        $hist = Cache::get($cacheKey, []);
+        if (! is_array($hist)) {
+            return [];
+        }
+        $out = [];
+        foreach ($hist as $date => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $date = (string) $date;
+            $out[] = array_merge($row, [
+                'date' => $date,
+                'label' => strlen($date) >= 10 ? substr($date, 5) : $date,
+            ]);
+        }
+
+        return $out;
     }
 
 

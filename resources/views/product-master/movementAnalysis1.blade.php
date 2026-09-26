@@ -39,6 +39,23 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        .tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+            background-color: #f8f9fa;
+            z-index: 12;
+        }
+        .tabulator-row .tabulator-cell.tabulator-frozen {
+            background-color: #fff;
+            z-index: 11;
+        }
+        .tabulator-row.parent-row .tabulator-cell.tabulator-frozen {
+            background-color: #DFF0FF !important;
+        }
+        .tabulator-row:hover .tabulator-cell.tabulator-frozen {
+            background-color: #f1f3f5 !important;
+        }
+        .tabulator-row.parent-row:hover .tabulator-cell.tabulator-frozen {
+            background-color: #cfe6fb !important;
+        }
         #movement-tabulator {
             width: 100%;
         }
@@ -436,7 +453,7 @@
     const MA_DIL_AMZ_HIST_KEY = 'movement_analysis_dil_amz_hist';
     const MA_DIL_LP_HIST_KEY = 'movement_analysis_dil_lp_hist';
     const MA_DIL_SLABS = [
-        { key: '0-oos', label: 'INV 0', min: 0, max: 0, color: '#111111', oos: true },
+        { key: '0', label: '0%', min: 0, max: 0, color: '#dc3545' },
         { key: '0.1-25', label: '0.1–25%', min: 0.1, max: 25, color: '#ffc107' },
         { key: '25-50', label: '25–50%', min: 25, max: 50, color: '#28a745' },
         { key: '50-100', label: '50–100%', min: 50, max: 100, color: '#e83e8c' },
@@ -462,6 +479,10 @@
         return isFinite(v) ? Math.round(v) : 0;
     }
     function maIntCell(cell) {
+        try {
+            const row = cell.getRow && cell.getRow();
+            if (row && maIsParentRow(row.getData())) return '';
+        } catch (e) { /* header or group cell */ }
         const raw = cell.getValue();
         if (raw === null || raw === undefined || raw === '') return '';
         return maRoundInt(raw).toLocaleString('en-US');
@@ -502,14 +523,17 @@
         const color = slab ? slab.color : '#dc3545';
         return 'color:' + color + ';font-weight:700;';
     }
+    function maOvDilIsZero(n) {
+        return Math.round((Number(n) || 0) * 100) / 100 === 0;
+    }
     function maDilSlabForRow(row) {
-        if (maRowInv(row) <= 0) return MA_DIL_SLABS[0];
+        if (maRowInv(row) <= 0) return null;
         const n = Number(maRowDil(row)) || 0;
+        if (maOvDilIsZero(n)) return MA_DIL_SLABS[0];
         if (n > 100) return MA_DIL_SLABS[4];
         if (n >= 50) return MA_DIL_SLABS[3];
         if (n > 25) return MA_DIL_SLABS[2];
-        if (n >= 0.1) return MA_DIL_SLABS[1];
-        return null;
+        return MA_DIL_SLABS[1];
     }
     function maTodayKey() {
         try {
@@ -540,12 +564,9 @@
         }
     }
     function maEachChildSku(rows, fn) {
-        const seen = {};
         (rows || []).forEach(function(row) {
             if (maIsParentRow(row)) return;
-            const sku = maSkuKey(row);
-            if (!sku || seen[sku]) return;
-            seen[sku] = true;
+            if (!maSkuKey(row)) return;
             fn(row);
         });
     }
@@ -947,11 +968,14 @@
                     borderWidth: 1.5,
                     fill: true,
                     tension: 0.3,
-                    pointRadius: 3,
-                    pointHoverRadius: 5,
-                    pointBackgroundColor: dotColors,
-                    pointBorderColor: dotColors,
-                    pointBorderWidth: 1.5,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointHoverBackgroundColor: dotColors,
+                            pointHoverBorderColor: dotColors,
+                            pointBorderWidth: 1.5,
+                            pointHoverBorderWidth: 1.5,
                 }],
             },
             plugins: [medianLinePlugin, valueLabelsPlugin],
@@ -967,6 +991,10 @@
                         bodyFont: { size: 10 },
                         padding: 6,
                         callbacks: {
+                            labelColor: function(context) {
+                                const c = dotColors[context.dataIndex] || '#6c757d';
+                                return { borderColor: c, backgroundColor: c, borderWidth: 2, borderRadius: 8 };
+                            },
                             label: function(context) {
                                 const idx = context.dataIndex;
                                 const parts = ['Value: ' + fmtVal(context.raw)];
@@ -1020,37 +1048,80 @@
         setTimeout(function() { maPaintDilHistChart(maDilHistBand); }, 250);
     }
     window.maDrawDilHist = maDrawDilHist;
+    let maDilHistPaintToken = 0;
+    function maPadHistoryDays(rows, days) {
+        const span = days > 0 ? days : 30;
+        const byDate = {};
+        (rows || []).forEach(function(r) {
+            if (r && r.date) byDate[r.date] = r;
+        });
+        const today = maTodayKey();
+        const parts = today.split('-').map(Number);
+        const end = new Date(Date.UTC(parts[0], (parts[1] || 1) - 1, parts[2] || 1));
+        const out = [];
+        for (let i = span - 1; i >= 0; i--) {
+            const d = new Date(end);
+            d.setUTCDate(d.getUTCDate() - i);
+            const key = d.toISOString().slice(0, 10);
+            const rec = byDate[key] ? Object.assign({}, byDate[key]) : {};
+            rec.date = key;
+            rec.label = key.slice(5);
+            out.push(rec);
+        }
+        return out;
+    }
+    function maMergeDilHistory(localRows, serverRows) {
+        const byDate = {};
+        (serverRows || []).forEach(function(r) {
+            if (r && r.date) byDate[r.date] = Object.assign({}, r);
+        });
+        (localRows || []).forEach(function(r) {
+            if (!r || !r.date) return;
+            byDate[r.date] = Object.assign({}, byDate[r.date] || {}, r);
+        });
+        return Object.keys(byDate).sort().map(function(date) { return byDate[date]; });
+    }
     function maPaintDilHistChart(band) {
         if (band == null || band === '') band = maDilHistBand;
         if (band == null || band === '') return;
         band = String(band);
         const money = maDilHistKind === 'amz' || maDilHistKind === 'lp';
+        const histKey = maDilHistKind === 'amz' ? 'amz' : (maDilHistKind === 'lp' ? 'lp' : 'count');
         const live = maDilHistKind === 'amz'
             ? maDilLiveAmzValues
             : (maDilHistKind === 'lp' ? maDilLiveLpValues : maDilLiveCounts);
         const storeKey = maDilHistKind === 'amz'
             ? MA_DIL_AMZ_HIST_KEY
             : (maDilHistKind === 'lp' ? MA_DIL_LP_HIST_KEY : MA_DIL_HIST_KEY);
-        const rows = maLocalDilHistory(storeKey).slice();
-        const today = maTodayKey();
-        const rec = Object.assign({ date: today, label: today.slice(5) }, live);
-        const last = rows[rows.length - 1];
-        if (last && last.date === today) Object.assign(last, rec);
-        else rows.push(rec);
-        const labels = rows.map(function(r) { return r.label || r.date; });
-        const values = rows.map(function(r) { return Number(r[band]) || 0; });
-        const fmtVal = money
-            ? function(v) { return maMoneyCompact(v); }
-            : function(v) { return Math.round(Number(v) || 0).toLocaleString('en-US'); };
-        maDilHistChart = maPaintActiveChannelChart(
-            'ma-dil-hist',
-            maDilHistChart,
-            labels,
-            values,
-            fmtVal,
-            { highest: 'ma-dil-hist-highest', median: 'ma-dil-hist-median', lowest: 'ma-dil-hist-lowest' },
-            'maDilHist'
-        );
+        const token = ++maDilHistPaintToken;
+        const draw = function(serverRows) {
+            if (token !== maDilHistPaintToken || band !== String(maDilHistBand)) return;
+            const padded = maPadHistoryDays(maMergeDilHistory(maLocalDilHistory(storeKey), serverRows), 30);
+            const today = maTodayKey();
+            const rec = Object.assign({ date: today, label: today.slice(5) }, live);
+            const last = padded[padded.length - 1];
+            if (last && last.date === today) Object.assign(last, rec);
+            const labels = padded.map(function(r) { return r.label || r.date; });
+            const values = padded.map(function(r) { return Number(r[band]) || 0; });
+            const fmtVal = money
+                ? function(v) { return maMoneyCompact(v); }
+                : function(v) { return Math.round(Number(v) || 0).toLocaleString('en-US'); };
+            maDilHistChart = maPaintActiveChannelChart(
+                'ma-dil-hist',
+                maDilHistChart,
+                labels,
+                values,
+                fmtVal,
+                { highest: 'ma-dil-hist-highest', median: 'ma-dil-hist-median', lowest: 'ma-dil-hist-lowest' },
+                'maDilHist'
+            );
+        };
+        fetch('/movement-analysis-dil-history', {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' },
+        }).then(function(r) { return r.ok ? r.json() : {}; })
+            .then(function(payload) { draw((payload && payload[histKey]) || []); })
+            .catch(function() { draw([]); });
     }
     function maPaintMonthlyChart() {
         monthlyChart = maPaintActiveChannelChart(
@@ -1225,12 +1296,13 @@
                     field: "dil",
                     visKey: "dil",
                     sorter: "number",
-                    headerTooltip: "OV L30 ÷ INV. Black INV 0 · 0.1–25% yellow · 25–50% green · 50–100% pink · >100% purple.",
+                    headerTooltip: "OV L30 ÷ INV. Red 0% rounds to 0.00 with INV > 0 · 0.1–25% yellow · 25–50% green · 50–100% pink · >100% purple. INV 0 is left out of the charts.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
-                        if (maIsParentRow(row)) return '';
+                        if (maIsParentRow(row) || maRowInv(row) <= 0) return '';
                         const dil = maRowDil(row);
-                        return '<span style="' + maDilColorStyle(row) + '">' + maRoundInt(dil) + '%</span>';
+                        const shown = maOvDilIsZero(dil) ? 0 : maRoundInt(dil);
+                        return '<span style="' + maDilColorStyle(row) + '">' + shown + '%</span>';
                     }
                 },
                 ...["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => ({title: m.slice(0, 3).toUpperCase(), field: `months.${m}`, visKey: 'month_' + m, headerTooltip: m, formatter: maIntCell})),

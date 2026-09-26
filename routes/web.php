@@ -578,6 +578,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shortfall-analysis-data-view', [ShortFallAnalysisController::class, 'getViewShortFallAnalysisData']);
     Route::get('/costprice-analysis-data-view', [CostpriceAnalysisController::class, 'getViewCostpriceAnalysisData']);
     Route::get('/movement-analysis-data-view', [MovementAnalysisController::class, 'getViewMovementAnalysisData']);
+    Route::get('/movement-analysis-dil-history', [MovementAnalysisController::class, 'movementDilHistory']);
     Route::get('/forecast-analysis-data-view', [ForecastAnalysisController::class, 'getViewForecastAnalysisData']);
     Route::post('/updateForcastSheet', [ForecastAnalysisController::class, 'updateForcastSheet']);
     Route::get('/wayfair-data-view', [WayfairController::class, 'getViewWayfairData']);

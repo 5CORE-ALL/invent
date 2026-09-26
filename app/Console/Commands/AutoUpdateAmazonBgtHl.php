@@ -268,6 +268,14 @@ class AutoUpdateAmazonBgtHl extends Command
                 ->whereRaw("UPPER(campaignStatus) = 'ENABLED'")
                 ->get();
 
+            // Page SBGT treats "… HL" as its own campaign. Those names are not product-master SKUs
+            // and are not "SKU HEAD", so the SKU scan above never sees them.
+            $hlNamedCampaigns = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', 'L30')
+                ->whereRaw("UPPER(campaignStatus) = 'ENABLED'")
+                ->whereRaw("UPPER(TRIM(TRAILING '.' FROM TRIM(campaignName))) LIKE '% HL'")
+                ->get();
+
             DB::connection()->disconnect();
 
             $childInvSumByParent = [];
@@ -346,7 +354,12 @@ class AutoUpdateAmazonBgtHl extends Command
                     $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName ?? '')));
                     $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim($sku)));
 
-                    return $cleanName === $cleanSku || $cleanName === $cleanSku . ' HEAD';
+                    $cleanName = rtrim($cleanName, '.');
+                    $cleanSku = rtrim($cleanSku, '.');
+
+                    return $cleanName === $cleanSku
+                        || $cleanName === $cleanSku . ' HEAD'
+                        || $cleanName === $cleanSku . ' HL';
                 });
 
                 if (!$matchedCampaignL30) {
@@ -397,6 +410,36 @@ class AutoUpdateAmazonBgtHl extends Command
                 $row['TPFT'] = $tpft;
 
                 $validCampaignsForTotal[] = $row;
+            }
+
+            $seenCampaignIds = [];
+            foreach ($validCampaignsForTotal as $row) {
+                $seenId = trim((string) ($row['campaign_id'] ?? ''));
+                if ($seenId !== '') {
+                    $seenCampaignIds[$seenId] = true;
+                }
+            }
+            foreach ($hlNamedCampaigns as $item) {
+                $id = trim((string) ($item->campaign_id ?? ''));
+                if ($id === '' || isset($seenCampaignIds[$id])) {
+                    continue;
+                }
+                $cleanName = rtrim(preg_replace('/\s+/', ' ', strtoupper(trim((string) ($item->campaignName ?? '')))) ?? '', '.');
+                if (! str_ends_with($cleanName, ' HL')) {
+                    continue;
+                }
+                $acosPct = AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($item);
+                $validCampaignsForTotal[] = [
+                    'price' => 0,
+                    'campaign_id' => $id,
+                    'campaignName' => $item->campaignName ?? '',
+                    'current_bgt' => (float) ($item->campaignBudgetAmount ?? 0),
+                    'spend' => AmazonAcosSbgtRule::l30DisplaySpendForAcos($item) ?? 0.0,
+                    'units_ordered_l30' => 0,
+                    'acos_L30' => $acosPct ?? 0.0,
+                    'TPFT' => 0,
+                ];
+                $seenCampaignIds[$id] = true;
             }
 
             foreach ($validCampaignsForTotal as $row) {
