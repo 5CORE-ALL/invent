@@ -139,4 +139,14 @@ final class AmazonAdsApiRetry
 
         return abs($live - $desired) <= $tolerance;
     }
+
+    /** Same cent. 0.75 and 0.74 do not match. */
+    public static function centsMatch(?float $live, ?float $desired): bool
+    {
+        if ($live === null || $desired === null || ! is_finite($live) || ! is_finite($desired)) {
+            return false;
+        }
+
+        return (int) round($live * 100) === (int) round($desired * 100);
+    }
 }

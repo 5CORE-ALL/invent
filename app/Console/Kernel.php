@@ -938,7 +938,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // New Temu One Sprc Dil (Dil→SNROI) + CVR + eBay/Amz/LMP cap → NTO_SPRICE.
+        // New Temu One Sprc Dil (Dil→SNROI) + CVR + eBay/Amz/LMP cap → NTO_SPRICE,
+        // then push S Base to Temu when it differs from the live base.
         // 04:10 and 20:10 IST — same twice-daily idea as Amazon, offset 10 min.
         $schedule->command('newtemuone:sprc-dil-auto-push')
             ->dailyAt('04:10')
@@ -956,18 +957,35 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Same twice-daily Sprc Dil save as Amazon (04:00 / 20:00 IST): write the
-        // cell S PRC into each channel table. Not wrapped in $ist() — 04:00 is
-        // before 09:00 and 20:xx is at the window edge, so between() would skip them.
-        // Staggered so they do not start with Amazon's 04:00 / 20:00 push.
-        // Save only. Listing push stays on channel:push-sprice-daily.
+        // Same twice-daily Sprc Dil as Amazon (04:00 / 20:00 IST): each page saves
+        // its own S PRC, then pushes its own live listing. Not wrapped in $ist() —
+        // 04:00 is before 09:00 and 20:xx is at the window edge, so between() would
+        // skip them. Staggered so they do not start on the same minute.
+        // Purchasing Power already pushes inside its command. FB stays save-only.
+        // Afternoon 15:45 is the server script cron-dil-rest-sprice-daily.sh apply.
         foreach ([
-            ['04:20', '20:20', 'ebay:rule-sprice-apply ebay1', 'ebay1-sprc-dil'],
-            ['04:35', '20:35', 'ebay:rule-sprice-apply ebay2', 'ebay2-sprc-dil'],
-            ['04:50', '20:50', 'ebay:rule-sprice-apply ebay3', 'ebay3-sprc-dil'],
-            ['05:05', '21:05', 'dil:rule-sprice-apply', 'dil-sprc-dil'],
-            ['05:40', '21:40', 'shopify-b2c:rule-sprice-apply', 'shopify-b2c-sprc-dil'],
-            ['05:50', '21:50', 'macys:rule-sprice-apply', 'macys-sprc-dil'],
+            ['04:20', '20:20', 'ebay:rule-sprice-apply ebay1 --push', 'ebay1-sprc-dil'],
+            ['04:35', '20:35', 'ebay:rule-sprice-apply ebay2 --push', 'ebay2-sprc-dil'],
+            ['04:50', '20:50', 'ebay:rule-sprice-apply ebay3 --push', 'ebay3-sprc-dil'],
+            ['05:05', '21:05', 'dil:rule-sprice-apply bestbuy --push', 'bestbuy-sprc-dil'],
+            ['05:15', '21:15', 'dil:rule-sprice-apply aliexpress --push', 'aliexpress-sprc-dil'],
+            ['05:25', '21:25', 'dil:rule-sprice-apply newegg --push', 'newegg-sprc-dil'],
+            ['05:35', '21:35', 'dil:rule-sprice-apply temu --push', 'temu-sprc-dil'],
+            ['05:45', '21:45', 'dil:rule-sprice-apply temu2 --push', 'temu2-sprc-dil'],
+            ['05:55', '21:55', 'dil:rule-sprice-apply temu3 --push', 'temu3-sprc-dil'],
+            ['06:05', '22:05', 'dil:rule-sprice-apply reverb --push', 'reverb-sprc-dil'],
+            ['06:15', '22:15', 'dil:rule-sprice-apply tiktok --push', 'tiktok-sprc-dil'],
+            ['06:25', '22:25', 'dil:rule-sprice-apply tiktok2 --push', 'tiktok2-sprc-dil'],
+            ['06:35', '22:35', 'dil:rule-sprice-apply doba --push', 'doba-sprc-dil'],
+            ['06:45', '22:45', 'dil:rule-sprice-apply faire --push', 'faire-sprc-dil'],
+            ['06:55', '22:55', 'dil:rule-sprice-apply shein --push', 'shein-sprc-dil'],
+            ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],
+            ['07:15', '23:15', 'dil:rule-sprice-apply topdawg --push', 'topdawg-sprc-dil'],
+            ['07:25', '23:25', 'dil:rule-sprice-apply fb_marketplace', 'fb-marketplace-sprc-dil'],
+            ['07:35', '23:35', 'dil:rule-sprice-apply walmart --push', 'walmart-sprc-dil'],
+            ['07:45', '23:45', 'dil:rule-sprice-apply pls --push', 'pls-sprc-dil'],
+            ['05:40', '21:40', 'shopify-b2c:rule-sprice-apply --push', 'shopify-b2c-sprc-dil'],
+            ['05:50', '21:50', 'macys:rule-sprice-apply --push', 'macys-sprc-dil'],
             ['06:00', '22:00', 'purchasing-power:rule-sprice-apply', 'pp-sprc-dil'],
         ] as [$morning, $evening, $command, $slug]) {
             $schedule->command($command)
@@ -1146,14 +1164,15 @@ class Kernel extends ConsoleKernel
 
         // Remaining Dil pages (not eBay / Amazon / Shopify B2C / Macys / PP).
         // Primary fire is /etc/cron.d/dil-rest-sprice-daily (bypasses schedule:run).
-        $schedule->command('dil:rule-sprice-apply')
+        // That script saves each page, then pushes. This backup does the same.
+        $schedule->command('dil:rule-sprice-apply --push')
             ->dailyAt('15:45')
             ->timezone('Asia/Kolkata')
             ->name('dil-rule-sprice-apply-ist')
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log);
-        $schedule->command('dil:rule-sprice-apply')
+        $schedule->command('dil:rule-sprice-apply --push')
             ->dailyAt('16:25')
             ->timezone('Asia/Kolkata')
             ->name('dil-rule-sprice-apply-ist-catchup')

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\MacysRuleSpriceApplyService;
+use App\Services\Support\ChannelPushSpriceDailyEnqueue;
 use Illuminate\Console\Command;
 
 class MacysRuleSpriceApplyCommand extends Command
@@ -13,30 +14,32 @@ class MacysRuleSpriceApplyCommand extends Command
 
     protected $signature = 'macys:rule-sprice-apply
         {--dry-run : Compute S PRC but do not write macy_data_view}
+        {--push : After save, queue S PRC → live Macy\'s price}
         {--limit= : Max SKUs (for testing)}';
 
     protected $description = 'Macys: clear stale SPRICE, apply Sprc Dil + A Price floor, save in the background.';
 
     protected string $monitorJobName = 'Macys Rule S PRC Apply';
 
-    public function handle(MacysRuleSpriceApplyService $service): int
+    public function handle(MacysRuleSpriceApplyService $service, ChannelPushSpriceDailyEnqueue $enqueue): int
     {
         return $this->runMonitored(
-            fn (CronExecutionContext $m) => $this->executeRun($service, $m),
+            fn (CronExecutionContext $m) => $this->executeRun($service, $enqueue, $m),
             $this->monitorJobName
         );
     }
 
-    protected function executeRun(MacysRuleSpriceApplyService $service, CronExecutionContext $monitor): int
+    protected function executeRun(MacysRuleSpriceApplyService $service, ChannelPushSpriceDailyEnqueue $enqueue, CronExecutionContext $monitor): int
     {
         @ini_set('max_execution_time', '0');
         @set_time_limit(0);
 
         $dryRun = (bool) $this->option('dry-run');
+        $push = (bool) $this->option('push');
         $limitOpt = $this->option('limit');
         $limit = ($limitOpt !== null && $limitOpt !== '') ? max(1, (int) $limitOpt) : null;
 
-        $this->info('Macys Rule S PRC Apply'.($dryRun ? ' [DRY RUN]' : ''));
+        $this->info('Macys Rule S PRC Apply'.($dryRun ? ' [DRY RUN]' : '').($push ? ' + push' : ''));
 
         $summary = $service->run(
             dryRun: $dryRun,
@@ -62,6 +65,11 @@ class MacysRuleSpriceApplyCommand extends Command
         $monitor->setUpdated($applied + $cleared + $unchanged);
         $monitor->setSkipped($unchanged);
         $monitor->setFailed($failed);
+
+        if ($push && ! $dryRun) {
+            $res = $enqueue->enqueueChannel('macys');
+            $this->info('Macys push: '.$res['message'].(($res['spawned'] ?? false) ? ' — worker started' : ''));
+        }
 
         $this->info(sprintf(
             'Done. candidates=%d applied=%d cleared=%d unchanged=%d errors=%d',

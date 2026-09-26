@@ -89,7 +89,7 @@ class AmazonAdsLiveBidBgtSync extends Command
             ->where('r.sbid', '!=', '0')
             ->whereNotNull('r.last_sbid')
             ->where('r.last_sbid', '!=', '')
-            ->whereRaw('ABS((r.sbid + 0) - (r.last_sbid + 0)) > ?', [AmazonAdsLiveBidBgtSyncService::BID_TOLERANCE]);
+            ->whereRaw('ROUND((r.sbid + 0), 2) <> ROUND((r.last_sbid + 0), 2)');
         if ($onlyCid !== '') {
             $q->where('r.campaign_id', $onlyCid);
         }

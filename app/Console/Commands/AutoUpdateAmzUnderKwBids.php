@@ -323,28 +323,28 @@ class AutoUpdateAmzUnderKwBids extends Command
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                 // Match campaign with or without " KW" suffix
-                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW') 
+                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW' || $campaignName === $cleanSku . ' FBA KW') 
                     && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
             });
 
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW')
+                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW' || $campaignName === $cleanSku . ' FBA KW')
                     && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
             });
 
             $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW')
+                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW' || $campaignName === $cleanSku . ' FBA KW')
                     && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
             });
 
             $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW') 
+                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW' || $campaignName === $cleanSku . ' FBA KW') 
                     && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
             });
 

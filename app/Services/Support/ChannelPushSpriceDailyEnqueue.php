@@ -10,6 +10,13 @@ use App\Models\EbayDataView;
 use App\Models\EbayMetric;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
+use App\Models\MacysPriceData;
+use App\Models\MacyDataView;
+use App\Models\Shopifyb2cDataView;
+use App\Models\ShopifySku;
+use App\Models\TemuDataView;
+use App\Models\TemuMetric;
+use App\Services\TemuShopifySalesService;
 use App\Services\ChannelPromoPricingService;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\EbayRuleSpriceApplyService;
@@ -25,6 +32,9 @@ class ChannelPushSpriceDailyEnqueue
 {
     public const CHANNELS = ['ebay1', 'ebay2', 'ebay3'];
 
+    /** Sprc Dil pages whose live push is not in the eBay or Dil channel lists. */
+    public const EXTRA_PUSH_CHANNELS = ['shopify_b2c', 'macys', 'newtemuone'];
+
     /**
      * @return list<string>
      */
@@ -37,7 +47,9 @@ class ChannelPushSpriceDailyEnqueue
         if ($arg === 'dil') {
             return DilRuleSpriceApplyService::PUSH_CHANNELS;
         }
-        if (in_array($arg, self::CHANNELS, true) || in_array($arg, DilRuleSpriceApplyService::PUSH_CHANNELS, true)) {
+        if (in_array($arg, self::CHANNELS, true)
+            || in_array($arg, DilRuleSpriceApplyService::PUSH_CHANNELS, true)
+            || in_array($arg, self::EXTRA_PUSH_CHANNELS, true)) {
             return [$arg];
         }
 
@@ -63,7 +75,7 @@ class ChannelPushSpriceDailyEnqueue
                 'message' => 'Skipped — live S PRC push is disabled on local',
             ];
         }
-        $allowed = array_merge(self::CHANNELS, DilRuleSpriceApplyService::PUSH_CHANNELS);
+        $allowed = array_merge(self::CHANNELS, DilRuleSpriceApplyService::PUSH_CHANNELS, self::EXTRA_PUSH_CHANNELS);
         if (! in_array($channel, $allowed, true)) {
             return [
                 'channel' => $channel,
@@ -141,6 +153,15 @@ class ChannelPushSpriceDailyEnqueue
         }
         if (in_array($channel, EbayRuleSpriceApplyService::CHANNELS, true)) {
             return EbayRuleSpriceApplyService::for($channel)->collectPushTasks();
+        }
+        if ($channel === 'shopify_b2c') {
+            return $this->collectSavedAgainstLive(Shopifyb2cDataView::class, ShopifySku::class, 'price', 'b2c_price');
+        }
+        if ($channel === 'macys') {
+            return $this->collectSavedAgainstLive(MacyDataView::class, MacysPriceData::class, 'price');
+        }
+        if ($channel === 'newtemuone') {
+            return $this->collectNewTemuonePushTasks();
         }
 
         $metricClass = match ($channel) {
@@ -284,6 +305,107 @@ class ChannelPushSpriceDailyEnqueue
         }
 
         return $map;
+    }
+
+    /**
+     * Saved SPRICE that differs from the live listing price.
+     *
+     * @param  class-string  $viewClass
+     * @param  class-string  $liveClass
+     * @return list<array{sku: string, price: float}>
+     */
+    private function collectSavedAgainstLive(string $viewClass, string $liveClass, string $priceColumn, ?string $fallbackColumn = null): array
+    {
+        $out = [];
+        $seen = [];
+        $liveClass::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(400, function ($rows) use ($viewClass, $priceColumn, $fallbackColumn, &$out, &$seen) {
+                $skus = [];
+                $liveBySku = [];
+                foreach ($rows as $row) {
+                    $sku = strtoupper(trim((string) $row->sku));
+                    if ($sku === '' || str_contains($sku, 'PARENT') || isset($seen[$sku])) {
+                        continue;
+                    }
+                    $live = round((float) ($row->{$priceColumn} ?? 0), 2);
+                    if (! ($live > 0) && $fallbackColumn !== null) {
+                        $live = round((float) ($row->{$fallbackColumn} ?? 0), 2);
+                    }
+                    if (! ($live > 0)) {
+                        continue;
+                    }
+                    $seen[$sku] = true;
+                    $skus[] = $sku;
+                    $liveBySku[$sku] = $live;
+                }
+                if ($skus === []) {
+                    return;
+                }
+                $saved = $this->savedSprices($viewClass, $skus);
+                foreach ($skus as $sku) {
+                    $price = $saved[$sku] ?? 0;
+                    $live = $liveBySku[$sku] ?? 0;
+                    if (! ($price > 0) || ! ($live > 0) || abs($price - $live) < 0.005) {
+                        continue;
+                    }
+                    $out[] = ['sku' => $sku, 'price' => $price];
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * Temu 1 analytics pushes S Base (the listing base), not the full S PRC.
+     *
+     * @return list<array{sku: string, price: float}>
+     */
+    private function collectNewTemuonePushTasks(): array
+    {
+        $out = [];
+        TemuDataView::query()
+            ->orderBy('id')
+            ->chunkById(400, function ($rows) use (&$out) {
+                $bases = [];
+                foreach ($rows as $row) {
+                    $sku = strtoupper(trim((string) $row->sku));
+                    if ($sku === '' || str_contains($sku, 'PARENT')) {
+                        continue;
+                    }
+                    $value = is_array($row->value) ? $row->value : [];
+                    $full = is_numeric($value['NTO_SPRICE'] ?? null) ? (float) $value['NTO_SPRICE'] : 0.0;
+                    $base = is_numeric($value['NTO_S_BASE'] ?? null) ? round((float) $value['NTO_S_BASE'], 2) : 0.0;
+                    if (! ($base > 0) && $full > 0) {
+                        $base = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($full), 2);
+                    }
+                    if ($base > 0) {
+                        $bases[$sku] = $base;
+                    }
+                }
+                if ($bases === []) {
+                    return;
+                }
+                $liveBySku = [];
+                foreach (TemuMetric::query()->whereIn(DB::raw('UPPER(TRIM(sku))'), array_keys($bases))->get(['sku', 'base_price']) as $metric) {
+                    $key = strtoupper(trim((string) $metric->sku));
+                    $live = round((float) ($metric->base_price ?? 0), 2);
+                    if ($live > 0) {
+                        $liveBySku[$key] = $live;
+                    }
+                }
+                foreach ($bases as $sku => $base) {
+                    $live = $liveBySku[$sku] ?? 0;
+                    if (! ($live > 0) || abs($base - $live) < 0.015) {
+                        continue;
+                    }
+                    $out[] = ['sku' => $sku, 'price' => $base];
+                }
+            });
+
+        return $out;
     }
 
     private function releaseUniqueLock(string $channel): void

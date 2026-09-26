@@ -39,6 +39,23 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        .tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+            background-color: #f8f9fa;
+            z-index: 12;
+        }
+        .tabulator-row .tabulator-cell.tabulator-frozen {
+            background-color: #fff;
+            z-index: 11;
+        }
+        .tabulator-row.parent-row .tabulator-cell.tabulator-frozen {
+            background-color: #DFF0FF !important;
+        }
+        .tabulator-row:hover .tabulator-cell.tabulator-frozen {
+            background-color: #f1f3f5 !important;
+        }
+        .tabulator-row.parent-row:hover .tabulator-cell.tabulator-frozen {
+            background-color: #cfe6fb !important;
+        }
         #movement-tabulator {
             width: 100%;
         }
@@ -281,8 +298,8 @@
                     <input type="text" id="ma-sku-filter" class="form-control form-control-sm" list="ma-sku-filter-list" placeholder="SKU filter" autocomplete="off">
                     <datalist id="ma-sku-filter-list"></datalist>
                     <select id="ma-row-filter" class="form-select form-select-sm" title="Row type">
-                        <option value="all" selected>ALL</option>
-                        <option value="sku">SKU</option>
+                        <option value="all">ALL</option>
+                        <option value="sku" selected>SKU</option>
                         <option value="parent">Parent</option>
                     </select>
                     <select id="ma-inv-filter" class="form-select form-select-sm" title="INV">
@@ -314,6 +331,12 @@
                             <canvas id="ma-dil-amz-pie"></canvas>
                         </div>
                         <div class="ma-dil-pie-legend" id="ma-dil-amz-legend"></div>
+                    </div>
+                    <div class="ma-dil-pie-wrap">
+                        <div class="ma-dil-pie-canvas-wrap">
+                            <canvas id="ma-dil-lp-pie"></canvas>
+                        </div>
+                        <div class="ma-dil-pie-legend" id="ma-dil-lp-legend"></div>
                     </div>
                 </div>
                 <div id="movement-tabulator"></div>
@@ -419,17 +442,19 @@
     let monthlyChart;
     let maDilPieChart = null;
     let maDilAmzPieChart = null;
+    let maDilLpPieChart = null;
     let maDilHistChart = null;
     let maDilLiveCounts = {};
     let maDilLiveAmzValues = {};
+    let maDilLiveLpValues = {};
     let maDilActiveBand = null;
     let maSnapshotHistory = true;
     const MA_DIL_HIST_KEY = 'movement_analysis_dil_hist';
     const MA_DIL_AMZ_HIST_KEY = 'movement_analysis_dil_amz_hist';
+    const MA_DIL_LP_HIST_KEY = 'movement_analysis_dil_lp_hist';
     const MA_DIL_SLABS = [
-        { key: '0-oos', label: '0%', min: 0, max: 0, color: '#111111', oos: true },
-        { key: '0', label: '0%', min: 0, max: 0.1, color: '#dc3545' },
-        { key: '0.1-25', label: '0–25%', min: 0.1, max: 25, color: '#ffc107' },
+        { key: '0', label: '0%', min: 0, max: 0, color: '#dc3545' },
+        { key: '0.1-25', label: '0.1–25%', min: 0.1, max: 25, color: '#ffc107' },
         { key: '25-50', label: '25–50%', min: 25, max: 50, color: '#28a745' },
         { key: '50-100', label: '50–100%', min: 50, max: 100, color: '#e83e8c' },
         { key: 'gt-100', label: '>100%', min: 100, max: Infinity, color: '#4e0dab' },
@@ -442,9 +467,25 @@
         }
         const sku = String(row.sku || '').toUpperCase().replace(/\s+/g, ' ').trim();
         if (!sku) return false;
-        if (sku.startsWith('PARENT')) return true;
+        if (sku.indexOf('PARENT') !== -1) return true;
         const parent = String(row.parent || '').toUpperCase().replace(/\s+/g, ' ').trim();
         return !!(parent && (sku === 'PARENT ' + parent || sku === 'PARENT' + parent.replace(/\s+/g, '')));
+    }
+    function maSkuKey(row) {
+        return String((row && row.sku) || '').toUpperCase().replace(/\s+/g, ' ').trim();
+    }
+    function maRoundInt(n) {
+        const v = Number(n);
+        return isFinite(v) ? Math.round(v) : 0;
+    }
+    function maIntCell(cell) {
+        try {
+            const row = cell.getRow && cell.getRow();
+            if (row && maIsParentRow(row.getData())) return '';
+        } catch (e) { /* header or group cell */ }
+        const raw = cell.getValue();
+        if (raw === null || raw === undefined || raw === '') return '';
+        return maRoundInt(raw).toLocaleString('en-US');
     }
     function maRowInv(row) {
         return parseFloat(row && row.INV) || 0;
@@ -455,6 +496,11 @@
         const inv = maRowInv(row);
         const price = parseFloat(row && row.amz_price) || 0;
         return inv > 0 ? inv * price : 0;
+    }
+    function maRowLpValue(row) {
+        const inv = maRowInv(row);
+        const lp = parseFloat(row && row.lp) || 0;
+        return inv > 0 && lp > 0 ? inv * lp : 0;
     }
     function maMoneyCompact(n) {
         const v = Math.round(Number(n) || 0);
@@ -474,15 +520,19 @@
     }
     function maDilColorStyle(row) {
         const slab = maDilSlabForRow(row);
-        return 'color:' + slab.color + ';font-weight:700;';
+        const color = slab ? slab.color : '#dc3545';
+        return 'color:' + color + ';font-weight:700;';
+    }
+    function maOvDilIsZero(n) {
+        return Math.round((Number(n) || 0) * 100) / 100 === 0;
     }
     function maDilSlabForRow(row) {
-        if (maRowInv(row) <= 0) return MA_DIL_SLABS[0];
+        if (maRowInv(row) <= 0) return null;
         const n = Number(maRowDil(row)) || 0;
-        if (n > 100) return MA_DIL_SLABS[5];
-        if (n >= 50) return MA_DIL_SLABS[4];
-        if (n > 25) return MA_DIL_SLABS[3];
-        if (n >= 0.1) return MA_DIL_SLABS[2];
+        if (maOvDilIsZero(n)) return MA_DIL_SLABS[0];
+        if (n > 100) return MA_DIL_SLABS[4];
+        if (n >= 50) return MA_DIL_SLABS[3];
+        if (n > 25) return MA_DIL_SLABS[2];
         return MA_DIL_SLABS[1];
     }
     function maTodayKey() {
@@ -513,25 +563,55 @@
             return [];
         }
     }
+    function maEachChildSku(rows, fn) {
+        (rows || []).forEach(function(row) {
+            if (maIsParentRow(row)) return;
+            if (!maSkuKey(row)) return;
+            fn(row);
+        });
+    }
     function maCollectDilCounts(rows) {
         const counts = {};
         MA_DIL_SLABS.forEach(function(s) { counts[s.key] = 0; });
-        (rows || []).forEach(function(row) {
-            if (maIsParentRow(row)) return;
+        maEachChildSku(rows, function(row) {
             const slab = maDilSlabForRow(row);
+            if (!slab) return;
             counts[slab.key] = (counts[slab.key] || 0) + 1;
         });
         return counts;
     }
-    function maCollectDilAmzValues(rows) {
+    function maCollectDilValues(rows, valueOf) {
         const values = {};
         MA_DIL_SLABS.forEach(function(s) { values[s.key] = 0; });
-        (rows || []).forEach(function(row) {
-            if (maIsParentRow(row)) return;
+        maEachChildSku(rows, function(row) {
             const slab = maDilSlabForRow(row);
-            values[slab.key] = (values[slab.key] || 0) + maRowAmzValue(row);
+            if (!slab) return;
+            values[slab.key] = (values[slab.key] || 0) + valueOf(row);
         });
         return values;
+    }
+    function maCollectDilAmzValues(rows) {
+        return maCollectDilValues(rows, maRowAmzValue);
+    }
+    function maCollectDilLpValues(rows) {
+        return maCollectDilValues(rows, maRowLpValue);
+    }
+    function maSharePercents(counts) {
+        const keys = MA_DIL_SLABS.map(function(s) { return s.key; });
+        const total = keys.reduce(function(sum, key) { return sum + (Number(counts[key]) || 0); }, 0);
+        const out = {};
+        keys.forEach(function(key) { out[key] = 0; });
+        if (total <= 0) return out;
+        const parts = keys.map(function(key) {
+            const exact = ((Number(counts[key]) || 0) / total) * 100;
+            return { key: key, floor: Math.floor(exact), frac: exact - Math.floor(exact) };
+        });
+        let used = parts.reduce(function(sum, part) { return sum + part.floor; }, 0);
+        parts.sort(function(a, b) { return b.frac - a.frac; });
+        const need = 100 - used;
+        for (let i = 0; i < need && i < parts.length; i++) parts[i].floor += 1;
+        parts.forEach(function(part) { out[part.key] = part.floor; });
+        return out;
     }
     function maHistDotHtml(key, color, label, chart) {
         const band = String(key).replace(/"/g, '&quot;');
@@ -543,27 +623,28 @@
     }
     function maDilLegendHtml(title, counts, chart, money) {
         const total = MA_DIL_SLABS.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
+        const shares = maSharePercents(counts);
         const fmt = money
             ? function(n) { return maMoneyCompact(n); }
-            : function(n) { return String(Math.round(Number(n) || 0)); };
+            : function(n) { return String(maRoundInt(n)); };
         return '<div class="ma-dil-pie-row" style="color:#94a3b8;font-size:10px;font-weight:600;">'
             + '<span class="ma-dil-pie-swatch" style="visibility:hidden;"></span>'
             + '<span class="ma-dil-pie-name">' + title + '</span>'
-            + '<span class="ma-dil-pie-count">' + (money ? '$' : 'count') + '</span>'
+            + '<span class="ma-dil-pie-count">' + (money ? '$' : 'SKU') + '</span>'
             + '<span class="ma-dil-pie-pct">of total</span>'
             + '<span class="ma-dil-hist-dot" style="visibility:hidden;"></span>'
             + '</div>'
             + MA_DIL_SLABS.map(function(s) {
                 const n = counts[s.key] || 0;
-                const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                const pct = shares[s.key] || 0;
                 const active = maDilActiveBand === s.key ? ' is-active' : '';
-                const tip = s.oos ? 'Dil 0% with INV ≤ 0' : s.label;
+                const tip = s.oos ? 'INV 0' : s.label;
                 return '<div class="ma-dil-pie-row is-filterable' + active + '" data-band="' + s.key + '" title="' + tip + '">'
                     + '<span class="ma-dil-pie-swatch" style="background:' + s.color + ';"></span>'
                     + '<span class="ma-dil-pie-name">' + s.label + '</span>'
                     + '<span class="ma-dil-pie-count">' + fmt(n) + '</span>'
                     + '<span class="ma-dil-pie-pct" title="' + pct + '% of total">' + pct + '%</span>'
-                    + maHistDotHtml(s.key, s.color, s.oos ? '0% INV≤0' : s.label, chart)
+                    + maHistDotHtml(s.key, s.color, s.oos ? 'INV 0' : s.label, chart)
                     + '</div>';
             }).join('')
             + '<div class="ma-dil-pie-row" style="border-top:1px dashed #cbd5e1;margin-top:2px;padding-top:3px;">'
@@ -577,7 +658,7 @@
     function maDrawDilPie(counts) {
         const canvas = document.getElementById('ma-dil-pie');
         if (!canvas || typeof Chart === 'undefined') return;
-        const total = MA_DIL_SLABS.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
+        const shares = maSharePercents(counts);
         if (maDilPieChart) {
             maDilPieChart.destroy();
             maDilPieChart = null;
@@ -602,8 +683,9 @@
                         callbacks: {
                             label: function(ctx) {
                                 const n = Number(ctx.raw) || 0;
-                                const pct = total > 0 ? Math.round((n / total) * 100) : 0;
-                                return ' ' + n + '  ·  ' + pct + '% of total';
+                                const slab = MA_DIL_SLABS[ctx.dataIndex];
+                                const pct = slab ? (shares[slab.key] || 0) : 0;
+                                return ' ' + maRoundInt(n) + ' SKU  ·  ' + pct + '% of total';
                             },
                         },
                     },
@@ -620,15 +702,14 @@
             },
         });
     }
-    function maDrawDilAmzPie(values) {
-        const canvas = document.getElementById('ma-dil-amz-pie');
-        if (!canvas || typeof Chart === 'undefined') return;
-        const total = MA_DIL_SLABS.reduce(function(sum, s) { return sum + (values[s.key] || 0); }, 0);
-        if (maDilAmzPieChart) {
-            maDilAmzPieChart.destroy();
-            maDilAmzPieChart = null;
+    function maDrawDilMoneyPie(canvasId, prevChart, values) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined') return prevChart || null;
+        const shares = maSharePercents(values);
+        if (prevChart) {
+            try { prevChart.destroy(); } catch (e) { /* ignore */ }
         }
-        maDilAmzPieChart = new Chart(canvas.getContext('2d'), {
+        return new Chart(canvas.getContext('2d'), {
             type: 'pie',
             data: {
                 labels: MA_DIL_SLABS.map(function(s) { return s.label; }),
@@ -648,7 +729,8 @@
                         callbacks: {
                             label: function(ctx) {
                                 const n = Number(ctx.raw) || 0;
-                                const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                const slab = MA_DIL_SLABS[ctx.dataIndex];
+                                const pct = slab ? (shares[slab.key] || 0) : 0;
                                 return ' ' + maMoneyCompact(n) + '  ·  ' + pct + '% of total';
                             },
                         },
@@ -671,19 +753,25 @@
         if (countLegend) countLegend.innerHTML = maDilLegendHtml('Dil', maDilLiveCounts, 'count', false);
         const amzLegend = document.getElementById('ma-dil-amz-legend');
         if (amzLegend) amzLegend.innerHTML = maDilLegendHtml('Amz $', maDilLiveAmzValues, 'amz', true);
+        const lpLegend = document.getElementById('ma-dil-lp-legend');
+        if (lpLegend) lpLegend.innerHTML = maDilLegendHtml('LP $', maDilLiveLpValues, 'lp', true);
     }
     function maRenderDilPie(rows, snapshot) {
         const counts = maCollectDilCounts(rows);
         const amzValues = maCollectDilAmzValues(rows);
+        const lpValues = maCollectDilLpValues(rows);
         maDilLiveCounts = counts;
         maDilLiveAmzValues = amzValues;
+        maDilLiveLpValues = lpValues;
         if (snapshot) {
             maSnapDilHistory(MA_DIL_HIST_KEY, counts);
             maSnapDilHistory(MA_DIL_AMZ_HIST_KEY, amzValues);
+            maSnapDilHistory(MA_DIL_LP_HIST_KEY, lpValues);
         }
         maRefreshDilLegends();
         maDrawDilPie(counts);
-        maDrawDilAmzPie(amzValues);
+        maDilAmzPieChart = maDrawDilMoneyPie('ma-dil-amz-pie', maDilAmzPieChart, amzValues);
+        maDilLpPieChart = maDrawDilMoneyPie('ma-dil-lp-pie', maDilLpPieChart, lpValues);
     }
     function maFillSkuFilterList(rows) {
         const list = document.getElementById('ma-sku-filter-list');
@@ -721,7 +809,8 @@
             }
             if (maDilActiveBand) {
                 if (maIsParentRow(data)) return false;
-                if (maDilSlabForRow(data).key !== maDilActiveBand) return false;
+                const slab = maDilSlabForRow(data);
+                if (!slab || slab.key !== maDilActiveBand) return false;
             }
             if (skuFilter) {
                 const sku = String((data && data.sku) || '').toLowerCase();
@@ -879,11 +968,14 @@
                     borderWidth: 1.5,
                     fill: true,
                     tension: 0.3,
-                    pointRadius: 3,
-                    pointHoverRadius: 5,
-                    pointBackgroundColor: dotColors,
-                    pointBorderColor: dotColors,
-                    pointBorderWidth: 1.5,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointHoverBackgroundColor: dotColors,
+                            pointHoverBorderColor: dotColors,
+                            pointBorderWidth: 1.5,
+                            pointHoverBorderWidth: 1.5,
                 }],
             },
             plugins: [medianLinePlugin, valueLabelsPlugin],
@@ -899,6 +991,10 @@
                         bodyFont: { size: 10 },
                         padding: 6,
                         callbacks: {
+                            labelColor: function(context) {
+                                const c = dotColors[context.dataIndex] || '#6c757d';
+                                return { borderColor: c, backgroundColor: c, borderWidth: 2, borderRadius: 8 };
+                            },
                             label: function(context) {
                                 const idx = context.dataIndex;
                                 const parts = ['Value: ' + fmtVal(context.raw)];
@@ -939,46 +1035,93 @@
         if (band == null || band === '') return;
         band = String(band);
         maDilHistBand = band;
-        maDilHistKind = kind === 'amz' ? 'amz' : 'count';
+        maDilHistKind = kind === 'amz' ? 'amz' : (kind === 'lp' ? 'lp' : 'count');
         const spec = MA_DIL_SLABS.find(function(s) { return s.key === band; })
             || { key: band, label: band, color: '#6f42c1' };
-        const bandLabel = spec.oos ? '0% (INV≤0)' : spec.label;
+        const bandLabel = spec.oos ? 'INV 0' : spec.label;
         const title = maDilHistKind === 'amz'
             ? ('Dil ' + bandLabel + ' Amz $')
-            : ('Dil ' + bandLabel + ' count');
+            : (maDilHistKind === 'lp' ? ('Dil ' + bandLabel + ' LP $') : ('Dil ' + bandLabel + ' count'));
         const titleEl = document.getElementById('ma-dil-hist-title');
         if (titleEl) titleEl.textContent = title;
         maShowFullWidthModal('maDilHistModal');
         setTimeout(function() { maPaintDilHistChart(maDilHistBand); }, 250);
     }
     window.maDrawDilHist = maDrawDilHist;
+    let maDilHistPaintToken = 0;
+    function maPadHistoryDays(rows, days) {
+        const span = days > 0 ? days : 30;
+        const byDate = {};
+        (rows || []).forEach(function(r) {
+            if (r && r.date) byDate[r.date] = r;
+        });
+        const today = maTodayKey();
+        const parts = today.split('-').map(Number);
+        const end = new Date(Date.UTC(parts[0], (parts[1] || 1) - 1, parts[2] || 1));
+        const out = [];
+        for (let i = span - 1; i >= 0; i--) {
+            const d = new Date(end);
+            d.setUTCDate(d.getUTCDate() - i);
+            const key = d.toISOString().slice(0, 10);
+            const rec = byDate[key] ? Object.assign({}, byDate[key]) : {};
+            rec.date = key;
+            rec.label = key.slice(5);
+            out.push(rec);
+        }
+        return out;
+    }
+    function maMergeDilHistory(localRows, serverRows) {
+        const byDate = {};
+        (serverRows || []).forEach(function(r) {
+            if (r && r.date) byDate[r.date] = Object.assign({}, r);
+        });
+        (localRows || []).forEach(function(r) {
+            if (!r || !r.date) return;
+            byDate[r.date] = Object.assign({}, byDate[r.date] || {}, r);
+        });
+        return Object.keys(byDate).sort().map(function(date) { return byDate[date]; });
+    }
     function maPaintDilHistChart(band) {
         if (band == null || band === '') band = maDilHistBand;
         if (band == null || band === '') return;
         band = String(band);
-        const money = maDilHistKind === 'amz';
-        const live = money ? maDilLiveAmzValues : maDilLiveCounts;
-        const storeKey = money ? MA_DIL_AMZ_HIST_KEY : MA_DIL_HIST_KEY;
-        const rows = maLocalDilHistory(storeKey).slice();
-        const today = maTodayKey();
-        const rec = Object.assign({ date: today, label: today.slice(5) }, live);
-        const last = rows[rows.length - 1];
-        if (last && last.date === today) Object.assign(last, rec);
-        else rows.push(rec);
-        const labels = rows.map(function(r) { return r.label || r.date; });
-        const values = rows.map(function(r) { return Number(r[band]) || 0; });
-        const fmtVal = money
-            ? function(v) { return maMoneyCompact(v); }
-            : function(v) { return Math.round(Number(v) || 0).toLocaleString('en-US'); };
-        maDilHistChart = maPaintActiveChannelChart(
-            'ma-dil-hist',
-            maDilHistChart,
-            labels,
-            values,
-            fmtVal,
-            { highest: 'ma-dil-hist-highest', median: 'ma-dil-hist-median', lowest: 'ma-dil-hist-lowest' },
-            'maDilHist'
-        );
+        const money = maDilHistKind === 'amz' || maDilHistKind === 'lp';
+        const histKey = maDilHistKind === 'amz' ? 'amz' : (maDilHistKind === 'lp' ? 'lp' : 'count');
+        const live = maDilHistKind === 'amz'
+            ? maDilLiveAmzValues
+            : (maDilHistKind === 'lp' ? maDilLiveLpValues : maDilLiveCounts);
+        const storeKey = maDilHistKind === 'amz'
+            ? MA_DIL_AMZ_HIST_KEY
+            : (maDilHistKind === 'lp' ? MA_DIL_LP_HIST_KEY : MA_DIL_HIST_KEY);
+        const token = ++maDilHistPaintToken;
+        const draw = function(serverRows) {
+            if (token !== maDilHistPaintToken || band !== String(maDilHistBand)) return;
+            const padded = maPadHistoryDays(maMergeDilHistory(maLocalDilHistory(storeKey), serverRows), 30);
+            const today = maTodayKey();
+            const rec = Object.assign({ date: today, label: today.slice(5) }, live);
+            const last = padded[padded.length - 1];
+            if (last && last.date === today) Object.assign(last, rec);
+            const labels = padded.map(function(r) { return r.label || r.date; });
+            const values = padded.map(function(r) { return Number(r[band]) || 0; });
+            const fmtVal = money
+                ? function(v) { return maMoneyCompact(v); }
+                : function(v) { return Math.round(Number(v) || 0).toLocaleString('en-US'); };
+            maDilHistChart = maPaintActiveChannelChart(
+                'ma-dil-hist',
+                maDilHistChart,
+                labels,
+                values,
+                fmtVal,
+                { highest: 'ma-dil-hist-highest', median: 'ma-dil-hist-median', lowest: 'ma-dil-hist-lowest' },
+                'maDilHist'
+            );
+        };
+        fetch('/movement-analysis-dil-history', {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' },
+        }).then(function(r) { return r.ok ? r.json() : {}; })
+            .then(function(payload) { draw((payload && payload[histKey]) || []); })
+            .catch(function() { draw([]); });
     }
     function maPaintMonthlyChart() {
         monthlyChart = maPaintActiveChannelChart(
@@ -1129,48 +1272,52 @@
                 // {title: "#", formatter: "rownum", width: 60},
                 {title: "Parent", field: "parent", visKey: "parent", minWidth: 90, width: 110, frozen: true, hozAlign: "left", headerHozAlign: "left", tooltip: true, cssClass: "ma-col-text"},
                 {title: "SKU", field: "sku", visKey: "sku", minWidth: 180, width: 220, frozen: true, hozAlign: "left", headerHozAlign: "left", tooltip: true, cssClass: "ma-col-text"},
-                {title: "INV", field: "INV", visKey: "INV"},
+                {title: "INV", field: "INV", visKey: "INV", formatter: maIntCell},
                 // {title: "Total Month", field: "total_months"},
-                {title: "Avg M", field: "monthly_average", visKey: "avg_m"},
-                {title: "MOQ", field: "moq", visKey: "moq", headerTooltip: "Minimum Order Quantity"},
-                {title: "MSL", field: "msl", visKey: "msl"},
+                {title: "Avg M", field: "monthly_average", visKey: "avg_m", formatter: maIntCell},
+                {title: "MOQ", field: "moq", visKey: "moq", headerTooltip: "Minimum Order Quantity", formatter: maIntCell},
+                {title: "MSL", field: "msl", visKey: "msl", formatter: maIntCell},
                 {
                     title: "INV AMT",
                     field: "lp",
                     visKey: "inv_amt",
                     headerTooltip: "TOTAL INV AMT",
                     formatter: function(cell) {
-                        let inv = cell.getRow().getData().INV || 0;
-                        let lp = cell.getValue() || 0;
-                        return (inv * lp).toFixed(2);
+                        const row = cell.getRow().getData();
+                        if (maIsParentRow(row)) return '';
+                        const inv = Number(row.INV) || 0;
+                        const lp = Number(cell.getValue()) || 0;
+                        return maRoundInt(inv * lp).toLocaleString('en-US');
                     }
                 },
-                {title: "L30", field: "L30", visKey: "L30", headerTooltip: "OV L30"},
+                {title: "L30", field: "L30", visKey: "L30", headerTooltip: "OV L30", formatter: maIntCell},
                 {
                     title: "Dil",
                     field: "dil",
                     visKey: "dil",
                     sorter: "number",
-                    headerTooltip: "OV L30 ÷ INV. Black 0% = INV ≤ 0 · red 0% in stock · 0–25% yellow · 25–50% green · 50–100% pink · >100% purple.",
+                    headerTooltip: "OV L30 ÷ INV. Red 0% rounds to 0.00 with INV > 0 · 0.1–25% yellow · 25–50% green · 50–100% pink · >100% purple. INV 0 is left out of the charts.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
-                        if (maIsParentRow(row)) return '';
+                        if (maIsParentRow(row) || maRowInv(row) <= 0) return '';
                         const dil = maRowDil(row);
-                        return '<span style="' + maDilColorStyle(row) + '">' + Math.round(dil) + '%</span>';
+                        const shown = maOvDilIsZero(dil) ? 0 : maRoundInt(dil);
+                        return '<span style="' + maDilColorStyle(row) + '">' + shown + '%</span>';
                     }
                 },
-                ...["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => ({title: m.slice(0, 3).toUpperCase(), field: `months.${m}`, visKey: 'month_' + m, headerTooltip: m})),
-                {title: "Total", field: "total", visKey: "total"},
+                ...["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => ({title: m.slice(0, 3).toUpperCase(), field: `months.${m}`, visKey: 'month_' + m, headerTooltip: m, formatter: maIntCell})),
+                {title: "Total", field: "total", visKey: "total", formatter: maIntCell},
                 {
                     title: "M Tot",
                     field: "monthly_average",
                     visKey: "m_tot",
                     headerTooltip: "Monthly Total",
                     formatter: function(cell) {
-                        let monthly = cell.getValue() || 0;
-                        let lp = cell.getRow().getData().lp || 0;
-                        return (monthly )
-                        return (monthly * lp).toFixed(0);
+                        const row = cell.getRow().getData();
+                        if (maIsParentRow(row)) return '';
+                        const monthly = Number(cell.getValue()) || 0;
+                        const lp = Number(row.lp) || 0;
+                        return maRoundInt(monthly * lp).toLocaleString('en-US');
                     }
                 },
                 {
@@ -1179,13 +1326,15 @@
                     visKey: "msl_amt",
                     headerTooltip: "TOTAL MSL AMT",
                     formatter: function(cell) {
-                        let msl = cell.getValue() || 0;
-                        let lp = cell.getRow().getData().lp || 0;
-                        return Math.round(msl * lp).toLocaleString('en-US');
+                        const row = cell.getRow().getData();
+                        if (maIsParentRow(row)) return '';
+                        const msl = Number(cell.getValue()) || 0;
+                        const lp = Number(row.lp) || 0;
+                        return maRoundInt(msl * lp).toLocaleString('en-US');
                     }
                 },
                 {
-                    title: "S-MSL", field: "s_msl", visKey: "s_msl", editor: "input",
+                    title: "S-MSL", field: "s_msl", visKey: "s_msl", editor: "input", formatter: maIntCell,
                     cellEdited: function(cell) {
                         const data = cell.getRow().getData();
                         $.post('/update-smsl', {
@@ -1321,7 +1470,7 @@
             if (band == null || band === '') return;
             maDrawDilHist(String(band), kind);
         });
-        $(document).off('click.maDilFilter').on('click.maDilFilter', '#ma-dil-legend .ma-dil-pie-row.is-filterable, #ma-dil-amz-legend .ma-dil-pie-row.is-filterable', function (e) {
+        $(document).off('click.maDilFilter').on('click.maDilFilter', '#ma-dil-legend .ma-dil-pie-row.is-filterable, #ma-dil-amz-legend .ma-dil-pie-row.is-filterable, #ma-dil-lp-legend .ma-dil-pie-row.is-filterable', function (e) {
             if ($(e.target).closest('.ma-dil-hist-dot').length) return;
             maSetDilBandFilter(String(this.getAttribute('data-band') || ''));
         });

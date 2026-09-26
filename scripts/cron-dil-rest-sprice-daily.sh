@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Remaining Dil pages (not eBay / Amazon / Shopify B2C / Macys / PP):
-# save Sprc Dil → SPRICE, then queue S PRC → live listing.
+# Remaining Dil pages (not eBay / Amazon / Shopify B2C / Macys / PP).
+# apply: each page saves S PRC, then pushes its live price (FB saves only).
+# push: catch-up for any listing still different after apply.
 # Direct crontab — schedule:run is overloaded and has missed IST slots.
 #
 # /etc/cron.d (server TZ Asia/Kolkata):
@@ -21,7 +22,6 @@ fi
 MODE="${1:-}"
 case "$MODE" in
   apply)
-    CMD=(dil:rule-sprice-apply)
     LOCKDIR="${ROOT}/storage/framework/dil-rule-sprice-apply.lockdir"
     LOG="${ROOT}/storage/logs/cron-dil-rule-sprice-apply.log"
     ;;
@@ -47,10 +47,29 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
 fi
 trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT INT TERM HUP
 
-echo "$(ts) start ${CMD[*]}" >>"$LOG"
 set +e
+if [[ "$MODE" == "apply" ]]; then
+  code=0
+  for ch in bestbuy aliexpress newegg temu temu2 temu3 reverb tiktok tiktok2 doba faire shein wayfair topdawg fb_marketplace walmart pls; do
+    if [[ "$ch" == "fb_marketplace" ]]; then
+      cmd=(dil:rule-sprice-apply "$ch")
+    else
+      cmd=(dil:rule-sprice-apply "$ch" --push)
+    fi
+    echo "$(ts) start ${cmd[*]}" >>"$LOG"
+    "$PHP_BIN" "$ROOT/artisan" "${cmd[@]}" >>"$LOG" 2>&1
+    one=$?
+    echo "$(ts) ${ch} exit code ${one}" >>"$LOG"
+    if [[ $one -ne 0 ]]; then
+      code=$one
+    fi
+  done
+  echo "$(ts) exit code ${code}" >>"$LOG"
+  exit "$code"
+fi
+
+echo "$(ts) start ${CMD[*]}" >>"$LOG"
 "$PHP_BIN" "$ROOT/artisan" "${CMD[@]}" >>"$LOG" 2>&1
 code=$?
-set -e
 echo "$(ts) exit code ${code}" >>"$LOG"
 exit "$code"

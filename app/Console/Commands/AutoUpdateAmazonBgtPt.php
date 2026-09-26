@@ -348,11 +348,13 @@ class AutoUpdateAmazonBgtPt extends Command
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
                 $shopify = $shopifyData[$pm->sku] ?? null;
 
-                $matchedCampaignL30 = $this->matchCampaign($sku, $amazonSpCampaignReportsL30);
+                $matchedCampaignsL30 = $this->matchCampaigns($sku, $amazonSpCampaignReportsL30);
 
-                if (!$matchedCampaignL30) {
+                if ($matchedCampaignsL30->isEmpty()) {
                     continue;
                 }
+
+                foreach ($matchedCampaignsL30 as $matchedCampaignL30) {
 
                 // INV: for PARENT rows use sum of children's INV; for child rows use shopify inv.
                 // Do not skip INV=0 — budget must still follow SBGT (e.g. lower BGT when OOS / zero L30 spend).
@@ -397,9 +399,21 @@ class AutoUpdateAmazonBgtPt extends Command
                 $row['sbgt'] = AmazonAcosSbgtRule::sbgtFromL30ReportRow($matchedCampaignL30) ?? 0;
 
                 $result[] = (object) $row;
+                }
             }
 
-        return $result;
+        $seen = [];
+        $unique = [];
+        foreach ($result as $row) {
+            $id = trim((string) ($row->campaign_id ?? ''));
+            if ($id === '' || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $unique[] = $row;
+        }
+
+        return $unique;
         } catch (\Exception $e) {
             Log::error("Error in amazonAcosPtControlData: " . $e->getMessage(), [
                 'trace' => $e->getTraceAsString()
@@ -409,16 +423,25 @@ class AutoUpdateAmazonBgtPt extends Command
     }
 
     function matchCampaign($sku, $campaignReports) {
-        $skuClean = preg_replace('/\s+/', ' ', strtoupper(trim($sku)));
+        return $this->matchCampaigns($sku, $campaignReports)->first();
+    }
 
-        $expected1 = $skuClean . ' PT';
-        $expected2 = $skuClean . ' PT.';
+    /**
+     * SKU PT and SKU FBA PT. CAPO GLD → CAPO GLD FBA PT.
+     */
+    private function matchCampaigns($sku, $campaignReports)
+    {
+        $skuClean = rtrim(preg_replace('/\s+/', ' ', strtoupper(trim((string) $sku))) ?? '', '.');
+        $expected = [
+            $skuClean.' PT',
+            $skuClean.' FBA PT',
+        ];
 
-        return $campaignReports->first(function ($item) use ($expected1, $expected2) {
-            $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+        return $campaignReports->filter(function ($item) use ($expected) {
+            $campaignName = rtrim(preg_replace('/\s+/', ' ', strtoupper(trim((string) ($item->campaignName ?? '')))) ?? '', '.');
 
-            return in_array($campaignName, [$expected1, $expected2], true)
-                && strtoupper($item->campaignStatus) === 'ENABLED';
-        });
+            return in_array($campaignName, $expected, true)
+                && strtoupper((string) ($item->campaignStatus ?? '')) === 'ENABLED';
+        })->values();
     }
 }

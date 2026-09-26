@@ -3633,6 +3633,9 @@
             setTimeout(function() {
                 temuClearCapMemo();
                 if (typeof updateSummary === 'function') updateSummary();
+                if (typeof ntoPersistDisplayedSprice === 'function') {
+                    ntoPersistDisplayedSprice().catch(function() {});
+                }
                 ntoTryQueuePushOnReload();
             }, 800);
         });

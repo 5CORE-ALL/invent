@@ -283,7 +283,7 @@ class AutoUpdateAmzUnderPtBids extends Command
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
 
                 return (
-                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.') || str_ends_with($cleanName, $cleanSku . ' FBA PT') || str_ends_with($cleanName, $cleanSku . ' FBA PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
                 );
             });
@@ -291,7 +291,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSku) {
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
                 return (
-                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.') || str_ends_with($cleanName, $cleanSku . ' FBA PT') || str_ends_with($cleanName, $cleanSku . ' FBA PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
                 );
             });
@@ -299,7 +299,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($cleanSku) {
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
                 return (
-                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.') || str_ends_with($cleanName, $cleanSku . ' FBA PT') || str_ends_with($cleanName, $cleanSku . ' FBA PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
                 );
             });

@@ -24,8 +24,8 @@ class AmazonAdsLiveBidBgtSyncService
 {
     public const BGT_TOLERANCE = 0.51;
 
-    /** One cent must not count as a match. 0.37 and 0.36 differ. */
-    public const BID_TOLERANCE = 0.004;
+    /** Bids match only when the cents are equal. One cent is a difference. */
+    public const BID_TOLERANCE = 0;
 
     public const PULL_ATTEMPTS = 5;
 
@@ -331,7 +331,10 @@ class AmazonAdsLiveBidBgtSyncService
                 $live = $existing['live_value'] ?? $existing['desired_value'] ?? null;
                 $tolerance = $field === 'bid' ? self::BID_TOLERANCE : self::BGT_TOLERANCE;
                 $liveNum = is_numeric($live) ? (float) $live : null;
-                if (AmazonAdsApiRetry::valuesMatch($liveNum, $desired, $tolerance)) {
+                $matched = $field === 'bid'
+                    ? AmazonAdsApiRetry::centsMatch($liveNum, $desired)
+                    : AmazonAdsApiRetry::valuesMatch($liveNum, $desired, $tolerance);
+                if ($matched) {
                     return $this->withPresentedStatus([
                         'campaign_id' => $campaignId,
                         'channel' => $channel,
@@ -409,7 +412,10 @@ class AmazonAdsLiveBidBgtSyncService
                 return $this->syncPause($channel, $campaignId, $campaignName, $oldLive, $base, $source);
             }
 
-            if (AmazonAdsApiRetry::valuesMatch((float) $oldLive, $desired, $tolerance)) {
+            $matched = $field === 'bid'
+                ? AmazonAdsApiRetry::centsMatch((float) $oldLive, $desired)
+                : AmazonAdsApiRetry::valuesMatch((float) $oldLive, $desired, $tolerance);
+            if ($matched) {
                 $this->persistVerifiedLive($channel, $field, $campaignId, (float) $oldLive);
 
                 return $this->finish($base, 'synced', 'already_matched', $source, $campaignName, $desired, (float) $oldLive, 'skipped');
@@ -496,6 +502,8 @@ class AmazonAdsLiveBidBgtSyncService
             return $this->finish($base, 'failed', 'verify_failed: '.($verify['error'] ?? 'not paused'), $source, $campaignName, 0.0, $oldLive);
         }
 
+        $this->persistPausedStatus($channel, $campaignId);
+
         return $this->finish($base, 'synced', 'paused_zero_sbgt', $source, $campaignName, 0.0, $oldLive !== null ? (float) $oldLive : null);
     }
 
@@ -577,7 +585,10 @@ class AmazonAdsLiveBidBgtSyncService
                     : $this->pullBudgets($channel, [$campaignId]);
                 $live = $map[$campaignId] ?? null;
                 $lastLive = $live;
-                if (! AmazonAdsApiRetry::valuesMatch($live !== null ? (float) $live : null, $desired, $tolerance)) {
+                $same = $field === 'bid'
+                    ? AmazonAdsApiRetry::centsMatch($live !== null ? (float) $live : null, $desired)
+                    : AmazonAdsApiRetry::valuesMatch($live !== null ? (float) $live : null, $desired, $tolerance);
+                if (! $same) {
                     throw new \RuntimeException('live '.($live ?? 'null').' !== '.$desired);
                 }
 
@@ -783,6 +794,36 @@ class AmazonAdsLiveBidBgtSyncService
                 'campaign_id' => $campaignId,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * A verified $0 SBGT pause must show as PAUSED on the grid. The daily budget
+     * amount stays, because Amazon will not accept a $0 budget.
+     */
+    private function persistPausedStatus(string $channel, string $campaignId): void
+    {
+        try {
+            $table = $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports';
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'campaignStatus')) {
+                return;
+            }
+            $ranges = ['L30', 'L15', 'L7', 'L1'];
+            $latestDaily = DB::table($table)
+                ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
+                ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+                ->max(DB::raw('LEFT(TRIM(report_date_range), 10)'));
+            if (is_string($latestDaily) && $latestDaily !== '') {
+                $ranges[] = $latestDaily;
+            }
+            DB::table($table)
+                ->where('campaign_id', $campaignId)
+                ->whereIn('report_date_range', $ranges)
+                ->update([
+                    'campaignStatus' => 'PAUSED',
+                    'updated_at' => now(),
+                ]);
+        } catch (Throwable) {
         }
     }
 
