@@ -5783,6 +5783,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'saveGtSoldPrcRules'])->name('channel.promo.gt-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'pageReloadPushSetting'])->name('channel.promo.page-reload-push.get');
     Route::post('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'savePageReloadPushSetting'])->name('channel.promo.page-reload-push.save');
+    Route::post('/channel-promo-pricing/{channel}/push-blue', [ChannelPromoPricingController::class, 'startBackgroundBluePush'])->name('channel.promo.push-blue');
     Route::post('/channel-push-prc/{channel}', [ChannelPromoPricingController::class, 'queuePushPrc'])->name('channel.push-prc.queue');
     Route::get('/channel-push-prc/{channel}/status', [ChannelPromoPricingController::class, 'pushPrcJobStatus'])->name('channel.push-prc.status');
     Route::post('/channel-push-prc/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrc'])->name('channel.push-prc.cancel');
