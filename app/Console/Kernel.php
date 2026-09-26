@@ -956,6 +956,36 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Same twice-daily Sprc Dil save as Amazon (04:00 / 20:00 IST): write the
+        // cell S PRC into each channel table. Not wrapped in $ist() — 04:00 is
+        // before 09:00 and 20:xx is at the window edge, so between() would skip them.
+        // Staggered so they do not start with Amazon's 04:00 / 20:00 push.
+        // Save only. Listing push stays on channel:push-sprice-daily.
+        foreach ([
+            ['04:20', '20:20', 'ebay:rule-sprice-apply ebay1', 'ebay1-sprc-dil'],
+            ['04:35', '20:35', 'ebay:rule-sprice-apply ebay2', 'ebay2-sprc-dil'],
+            ['04:50', '20:50', 'ebay:rule-sprice-apply ebay3', 'ebay3-sprc-dil'],
+            ['05:05', '21:05', 'dil:rule-sprice-apply', 'dil-sprc-dil'],
+            ['05:40', '21:40', 'shopify-b2c:rule-sprice-apply', 'shopify-b2c-sprc-dil'],
+            ['05:50', '21:50', 'macys:rule-sprice-apply', 'macys-sprc-dil'],
+            ['06:00', '22:00', 'purchasing-power:rule-sprice-apply', 'pp-sprc-dil'],
+        ] as [$morning, $evening, $command, $slug]) {
+            $schedule->command($command)
+                ->dailyAt($morning)
+                ->timezone('Asia/Kolkata')
+                ->name($slug.'-4am-ist')
+                ->withoutOverlapping(180)
+                ->runInBackground()
+                ->appendOutputTo($log);
+            $schedule->command($command)
+                ->dailyAt($evening)
+                ->timezone('Asia/Kolkata')
+                ->name($slug.'-8pm-ist')
+                ->withoutOverlapping(180)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
         // Amazon CVR vs CPN → 5%/10% coupons (1/day) → Listings our_price (4:05 AM ET).
         // Uses shared pef_cvr_vs_cpn rules; pushes only SKUs whose target price/tier changed.
         $schedule->command('amazon:cvr-cpn-auto-push')
