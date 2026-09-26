@@ -177,8 +177,8 @@ class EbayRuleSpriceApplyService
     }
 
     /**
-     * Blue badge only: displayed S PRC ≠ live eBay Price (listed, INV > 0, not ended).
-     * 0 Sold (E L30 = 0) uses the minimum NROI slab, same as the page badge.
+     * Blue badge: Dil S PRC ≠ live eBay Price (listed, INV > 0, not ended).
+     * eBay 1–3 0 Sold stays on the Dil slab. Minimum NROI is not used on these pages.
      *
      * @return list<array{sku: string, price: float}>
      */
@@ -225,9 +225,7 @@ class EbayRuleSpriceApplyService
             return null;
         }
 
-        $rule = $this->isZeroSoldRow($row)
-            ? AmazonDilGroiRule::lowestGroi($dilRules)
-            : AmazonDilGroiRule::matchOrNearest((float) ($row['dil'] ?? 0), $dilRules);
+        $rule = AmazonDilGroiRule::matchOrNearest((float) ($row['dil'] ?? 0), $dilRules);
         if ($rule === null) {
             return null;
         }
@@ -252,19 +250,6 @@ class EbayRuleSpriceApplyService
             'groi' => $target,
             'nroi' => $target,
         ];
-    }
-
-    /**
-     * Page blue badge: E L30 not at least 1, INV already required by the caller.
-     * Missing ebay_l30 keeps the Dil slab so older callers stay unchanged.
-     */
-    private function isZeroSoldRow(array $row): bool
-    {
-        if (! $this->targetsNroi() || ! array_key_exists('ebay_l30', $row)) {
-            return false;
-        }
-
-        return ! ((float) $row['ebay_l30'] >= 1);
     }
 
     public function targetsNroi(): bool

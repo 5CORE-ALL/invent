@@ -205,26 +205,6 @@ class AmazonDilGroiRule
         return $list[count($list) - 1];
     }
 
-    /**
-     * Lowest Target GROI slab. eBay 0 Sold (E L30 = 0) uses this, not the Dil slab.
-     *
-     * @param  list<array<string, mixed>>  $rules
-     * @return array{key:string,label:string,min:float,max:float,groi:float}|null
-     */
-    public static function lowestGroi(array $rules): ?array
-    {
-        $best = null;
-        foreach (self::normalizeList($rules) as $rule) {
-            if ($best === null
-                || (float) $rule['groi'] < (float) $best['groi']
-                || ((float) $rule['groi'] === (float) $best['groi'] && (float) $rule['min'] < (float) $best['min'])) {
-                $best = $rule;
-            }
-        }
-
-        return $best;
-    }
-
     /** Dil% → slab key, or null when no slab matches. */
     public static function slabKey(float $dil, ?array $rules = null): ?string
     {
