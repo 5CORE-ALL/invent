@@ -103,6 +103,28 @@ class DobaOrderSyncService
     }
 
     /**
+     * Pull the newest Doba orders into doba_daily_data.
+     */
+    public function fetchRecentOrders(int $days = 3, int $maxPages = 2): int
+    {
+        if (! Schema::hasTable('doba_daily_data')) {
+            return 0;
+        }
+        $api = app(DobaApiService::class);
+        if (! $api->isConfigured()) {
+            return 0;
+        }
+
+        try {
+            return app(\App\Console\Commands\FetchDobaDailyData::class)->fetchRecentOrders($days, $maxPages);
+        } catch (\Throwable $e) {
+            Log::warning('DobaOrderSyncService: recent order fetch failed', ['error' => $e->getMessage()]);
+
+            return 0;
+        }
+    }
+
+    /**
      * Ask Doba for one order id and store the waybill on doba_daily_data.
      *
      * @return array<string, mixed>|null
