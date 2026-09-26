@@ -310,6 +310,226 @@ class Ebay1CouponService
     }
 
     /**
+     * Buyer code for the 0-sold coupon. eBay allows 8–15 letters and digits only,
+     * so 5% is SAVE5OFF (the live form of “save 5% off”).
+     */
+    public function zeroSoldCouponCode(int $percent): string
+    {
+        $pct = max(5, min(80, $percent));
+        $code = 'SAVE'.$pct.'OFF';
+        if (strlen($code) < 8) {
+            $code = 'SAVE'.str_pad((string) $pct, 2, '0', STR_PAD_LEFT).'OFF';
+        }
+
+        return substr($code, 0, 15);
+    }
+
+    public function zeroSoldCampaignName(int $percent): string
+    {
+        return '0 Sold '.$this->zeroSoldCouponCode($percent);
+    }
+
+    /**
+     * Add or remove SKUs on the 0-sold public coded coupon only.
+     * Does not touch PEF CPN campaigns (SAVE{nn}PCT).
+     *
+     * @param  list<array{sku?:string,on?:bool}>  $items
+     * @return array{success:bool,message?:string,coupon_code:string,promotion_id:?string,results:list<array<string,mixed>>}
+     */
+    public function syncZeroSoldCoupons(array $items, int $percent, ?string $knownPromoId = null): array
+    {
+        $pctInt = max(0, min(80, (int) $percent));
+        $code = $pctInt >= 5 ? $this->zeroSoldCouponCode($pctInt) : '';
+        $wantCode = strtoupper($code);
+        $promoId = trim((string) $knownPromoId);
+        $results = [];
+
+        $clean = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $clean[] = [
+                'sku' => $sku,
+                'on' => ! empty($item['on']) && $pctInt >= 5,
+            ];
+        }
+        if ($clean === []) {
+            return [
+                'success' => true,
+                'coupon_code' => $code,
+                'promotion_id' => $promoId !== '' ? $promoId : null,
+                'results' => [],
+            ];
+        }
+
+        try {
+            $token = $this->ebay->generateBearerToken();
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $this->label.' token: '.$e->getMessage(),
+                'coupon_code' => $code,
+                'promotion_id' => $promoId !== '' ? $promoId : null,
+                'results' => [],
+            ];
+        }
+
+        $campaignDetail = null;
+        if ($promoId !== '' && $wantCode !== '') {
+            $detail = $this->getItemPromotion($token, $promoId);
+            $liveCode = $this->promotionCouponCode($detail);
+            $status = (string) ($detail['promotionStatus'] ?? '');
+            if ($detail !== null && $liveCode === $wantCode && in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED'], true)) {
+                $campaignDetail = $detail;
+            } else {
+                $promoId = '';
+            }
+        }
+        if ($campaignDetail === null && $wantCode !== '') {
+            $found = $this->findZeroSoldCouponByCode($token, $wantCode);
+            if ($found !== null) {
+                $promoId = $found['promotion_id'];
+                $campaignDetail = $found['detail'];
+            }
+        }
+
+        $createFailed = null;
+        foreach ($clean as $row) {
+            $sku = $row['sku'];
+            $metric = $this->findMetric($sku);
+            $itemId = $metric?->item_id ? trim((string) $metric->item_id) : '';
+            $dv = $this->findOrNewDataView($sku);
+            $val = is_array($dv->value) ? $dv->value : [];
+            $apiSku = trim((string) ($metric->sku ?: $sku));
+
+            if ($itemId === '') {
+                $results[] = ['sku' => $sku, 'success' => false, 'on' => false, 'message' => 'item_id not found'];
+
+                continue;
+            }
+
+            if (! $row['on']) {
+                $removed = $this->removeSkuFromZeroSoldCoupons($token, $apiSku, $itemId, $val, $promoId);
+                if ($removed['success']) {
+                    $this->persistZeroSold($dv, $val, '', 0, '', false);
+                }
+                $results[] = [
+                    'sku' => $sku,
+                    'success' => $removed['success'],
+                    'on' => false,
+                    'coupon_code' => null,
+                    'message' => $removed['message'],
+                ];
+
+                continue;
+            }
+
+            if ($campaignDetail === null) {
+                if ($createFailed !== null) {
+                    $results[] = ['sku' => $sku, 'success' => false, 'on' => false, 'message' => $createFailed];
+
+                    continue;
+                }
+                $imageUrl = $this->resolvePromotionImageUrl($itemId);
+                if ($imageUrl === '') {
+                    $results[] = ['sku' => $sku, 'success' => false, 'on' => false, 'message' => 'listing image required'];
+
+                    continue;
+                }
+                $created = $this->createCodedCoupon(
+                    $token,
+                    $apiSku,
+                    $itemId,
+                    $pctInt,
+                    $imageUrl,
+                    $code,
+                    $this->zeroSoldCampaignName($pctInt)
+                );
+                if (empty($created['success'])) {
+                    if (! empty($created['code_taken'])) {
+                        $found = $this->findZeroSoldCouponByCode($token, $wantCode);
+                        if ($found !== null) {
+                            $promoId = $found['promotion_id'];
+                            $campaignDetail = $found['detail'];
+                        }
+                    }
+                    if ($campaignDetail === null) {
+                        $createFailed = (string) ($created['message'] ?? 'Could not create coupon');
+                        $results[] = ['sku' => $sku, 'success' => false, 'on' => false, 'message' => $createFailed];
+
+                        continue;
+                    }
+                } else {
+                    $promoId = (string) ($created['promotion_id'] ?? '');
+                    $campaignDetail = $promoId !== '' ? $this->getItemPromotion($token, $promoId) : null;
+                    if ($campaignDetail === null) {
+                        $createFailed = 'Coupon created but campaign could not be read';
+                        $results[] = ['sku' => $sku, 'success' => false, 'on' => false, 'message' => $createFailed];
+
+                        continue;
+                    }
+                }
+            }
+
+            $storedPromo = trim((string) ($val['PEF_ZERO_SOLD_COUPON_PROMO_ID'] ?? ''));
+            if ($storedPromo !== '' && $storedPromo !== $promoId) {
+                $this->removeSkuFromZeroSoldCoupons($token, $apiSku, $itemId, $val, $storedPromo);
+                $val = is_array($dv->value) ? $dv->value : $val;
+            }
+
+            if ($this->couponContainsSku($campaignDetail, $apiSku, $itemId)) {
+                $this->persistZeroSold($dv, $val, $promoId, $pctInt, $code, true);
+                $results[] = [
+                    'sku' => $sku,
+                    'success' => true,
+                    'on' => true,
+                    'coupon_code' => $code,
+                    'message' => 'already on '.$code,
+                ];
+
+                continue;
+            }
+
+            $imageUrl = $this->resolvePromotionImageUrl($itemId);
+            $added = $this->addSkuToCodedCoupon($token, $promoId, $apiSku, $itemId, $imageUrl);
+            if (empty($added['success'])) {
+                $results[] = [
+                    'sku' => $sku,
+                    'success' => false,
+                    'on' => false,
+                    'message' => (string) ($added['message'] ?? 'add failed'),
+                ];
+
+                continue;
+            }
+
+            $campaignDetail = $this->getItemPromotion($token, $promoId) ?? $campaignDetail;
+            $this->persistZeroSold($dv, $val, $promoId, $pctInt, $code, true);
+            $results[] = [
+                'sku' => $sku,
+                'success' => true,
+                'on' => true,
+                'coupon_code' => $code,
+                'message' => 'added to '.$code,
+            ];
+        }
+
+        $failed = count(array_filter($results, static fn ($r) => empty($r['success'])));
+
+        return [
+            'success' => $failed === 0,
+            'coupon_code' => $code,
+            'promotion_id' => $promoId !== '' ? $promoId : null,
+            'results' => $results,
+        ];
+    }
+
+    /**
      * Campaign display name (stable per %) so we can recognize our campaigns.
      */
     public function campaignNameForPercent(int $percent): string
@@ -591,13 +811,18 @@ class Ebay1CouponService
         string $sku,
         string $itemId,
         int $pctInt,
-        string $imageUrl
+        string $imageUrl,
+        ?string $codeOverride = null,
+        ?string $campaignName = null
     ): array {
-        $code = $this->couponCodeForPercent($pctInt);
+        $code = ($codeOverride !== null && $codeOverride !== '')
+            ? $codeOverride
+            : $this->couponCodeForPercent($pctInt);
         $lastMsg = 'unknown';
         $listingId = $this->couponListingId($itemId);
+        $maxAttempts = ($codeOverride !== null && $codeOverride !== '') ? 1 : 4;
 
-        for ($attempt = 1; $attempt <= 4; $attempt++) {
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             $tryCode = $attempt === 1
                 ? $code
                 : $this->couponCodeWithSuffix($pctInt);
@@ -614,7 +839,8 @@ class Ebay1CouponService
                     startDate: null,
                     endDate: null,
                     existingDetail: null,
-                    includeMaxDiscount: $withMaxDiscount
+                    includeMaxDiscount: $withMaxDiscount,
+                    campaignName: $campaignName
                 );
 
                 $resp = $this->http($token)
@@ -648,6 +874,14 @@ class Ebay1CouponService
                 }
 
                 if ($this->isCouponCodeTakenError($resp)) {
+                    if ($codeOverride !== null && $codeOverride !== '') {
+                        return [
+                            'success' => false,
+                            'message' => 'Coupon code '.$tryCode.' is already in use',
+                            'promotion_id' => null,
+                            'code_taken' => true,
+                        ];
+                    }
                     $attached = $this->attachSkuToExistingCodedCoupon(
                         $token,
                         $pctInt,
@@ -1024,7 +1258,8 @@ class Ebay1CouponService
         ?string $startDate = null,
         ?string $endDate = null,
         ?array $existingDetail = null,
-        bool $includeMaxDiscount = true
+        bool $includeMaxDiscount = true,
+        ?string $campaignName = null
     ): array {
         $start = ($startDate !== null && $startDate !== '')
             ? $startDate
@@ -1068,7 +1303,9 @@ class Ebay1CouponService
         }
 
         return [
-            'name' => $this->campaignNameForPercent($pctInt),
+            'name' => ($campaignName !== null && trim($campaignName) !== '')
+                ? trim($campaignName)
+                : $this->campaignNameForPercent($pctInt),
             'description' => $this->clipDescription($pctInt.'% off with code '.$couponCode),
             'marketplaceId' => self::MARKETPLACE,
             'startDate' => $start,
@@ -1516,6 +1753,120 @@ class Ebay1CouponService
     /**
      * @param  array<string, mixed>  $val
      */
+    private function promotionCouponCode(?array $detail): string
+    {
+        if ($detail === null) {
+            return '';
+        }
+
+        return strtoupper(trim((string) ($detail['couponConfiguration']['couponCode']
+            ?? $detail['couponConfiguration']['coupon_code']
+            ?? '')));
+    }
+
+    private function isZeroSoldCouponCode(string $code): bool
+    {
+        return (bool) preg_match('/^SAVE\d+OFF$/', strtoupper(trim($code)));
+    }
+
+    /**
+     * @return array{promotion_id:string,detail:array<string,mixed>}|null
+     */
+    private function findZeroSoldCouponByCode(string $token, string $wantCode): ?array
+    {
+        $want = strtoupper(trim($wantCode));
+        if ($want === '') {
+            return null;
+        }
+        foreach ($this->listCodedCouponIds($token) as $promoId) {
+            $detail = $this->getItemPromotion($token, $promoId);
+            if ($detail === null) {
+                continue;
+            }
+            $status = (string) ($detail['promotionStatus'] ?? '');
+            if (! in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED'], true)) {
+                continue;
+            }
+            if ($this->promotionCouponCode($detail) === $want) {
+                return ['promotion_id' => $promoId, 'detail' => $detail];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Remove a SKU only from 0-sold coded coupons (SAVE{n}OFF), not other coupon campaigns.
+     *
+     * @param  array<string, mixed>  $val
+     * @return array{success:bool,message:string}
+     */
+    private function removeSkuFromZeroSoldCoupons(
+        string $token,
+        string $sku,
+        string $itemId,
+        array $val,
+        string $knownPromoId
+    ): array {
+        $ids = [];
+        foreach ([$knownPromoId, trim((string) ($val['PEF_ZERO_SOLD_COUPON_PROMO_ID'] ?? ''))] as $id) {
+            if ($id !== '' && ! in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        }
+        if ($ids === []) {
+            return ['success' => true, 'message' => 'not on 0-sold coupon'];
+        }
+
+        $errors = [];
+        $removed = 0;
+        foreach ($ids as $promoId) {
+            $detail = $this->getItemPromotion($token, $promoId);
+            if ($detail === null || ! $this->isZeroSoldCouponCode($this->promotionCouponCode($detail))) {
+                continue;
+            }
+            if (! $this->couponContainsSku($detail, $sku, $itemId)) {
+                continue;
+            }
+            $rm = $this->removeSkuFromCodedCoupon($token, $promoId, $sku, $itemId, $detail);
+            if (! empty($rm['success'])) {
+                $removed++;
+            } else {
+                $errors[] = (string) ($rm['message'] ?? 'remove failed');
+            }
+        }
+        if ($errors !== []) {
+            return ['success' => false, 'message' => implode(' | ', $errors)];
+        }
+
+        return [
+            'success' => true,
+            'message' => $removed > 0 ? 'removed from 0-sold coupon' : 'not on 0-sold coupon',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $val
+     */
+    private function persistZeroSold(Model $dv, array $val, string $promoId, int $pct, string $code, bool $on): void
+    {
+        if ($on && $code !== '') {
+            $val['PEF_ZERO_SOLD_COUPON_CODE'] = $code;
+            $val['PEF_ZERO_SOLD_COUPON_PCT'] = (float) $pct;
+            if ($promoId !== '') {
+                $val['PEF_ZERO_SOLD_COUPON_PROMO_ID'] = $promoId;
+            }
+        } else {
+            unset(
+                $val['PEF_ZERO_SOLD_COUPON_CODE'],
+                $val['PEF_ZERO_SOLD_COUPON_PCT'],
+                $val['PEF_ZERO_SOLD_COUPON_PROMO_ID']
+            );
+        }
+        $dv->value = $val;
+        $dv->save();
+    }
+
     private function persistDv(Model $dv, array $val, string $promoId, int|float $pct, string $code): void
     {
         if ($promoId !== '') {

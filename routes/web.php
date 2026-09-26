@@ -4877,6 +4877,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Listing Audit ebay
     Route::get('/ebay', [EbayController::class, 'ebayView'])->name('ebay');
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
+    Route::get('/ebay-zero-sold-coupon', [EbayController::class, 'ebayZeroSoldCouponSetting'])->name('ebay.zero-sold-coupon.show');
+    Route::post('/ebay-zero-sold-coupon', [EbayController::class, 'saveEbayZeroSoldCoupon'])->name('ebay.zero-sold-coupon.save');
 
     // Ebay Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
     Route::get('/ebay-listing-variation-verify', [EbayListingVariationVerifyController::class, 'index'])->name('ebay.listing.variation.verify');

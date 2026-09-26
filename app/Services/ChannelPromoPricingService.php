@@ -244,6 +244,8 @@ class ChannelPromoPricingService
         $row['PEF_COUPON_PCT'] = $promo['PEF_COUPON_PCT'] ?? null;
         $row['PEF_COUPON_CODE'] = $promo['PEF_COUPON_CODE'] ?? null;
         $row['coupon_code'] = $promo['coupon_code'] ?? $promo['PEF_COUPON_CODE'] ?? null;
+        $row['zero_sold_coupon_code'] = $promo['zero_sold_coupon_code'] ?? null;
+        $row['zero_sold_coupon_pct'] = $promo['zero_sold_coupon_pct'] ?? null;
         $row['PEF_COUPON_PROMOTION_ID'] = $promo['PEF_COUPON_PROMOTION_ID'] ?? null;
         $row['PEF_SALE_PCT'] = $promo['PEF_SALE_PCT'] ?? null;
         $row['PEF_PRMT_PROMOTION_ID'] = $promo['PEF_PRMT_PROMOTION_ID'] ?? null;
@@ -497,6 +499,8 @@ class ChannelPromoPricingService
         $couponPct = $this->nullablePct($val['PEF_COUPON_PCT'] ?? null);
         $couponCode = isset($val['PEF_COUPON_CODE']) ? trim((string) $val['PEF_COUPON_CODE']) : '';
         $couponPromoId = isset($val['PEF_COUPON_PROMOTION_ID']) ? trim((string) $val['PEF_COUPON_PROMOTION_ID']) : '';
+        $zeroSoldCouponCode = isset($val['PEF_ZERO_SOLD_COUPON_CODE']) ? trim((string) $val['PEF_ZERO_SOLD_COUPON_CODE']) : '';
+        $zeroSoldCouponPct = $this->nullablePct($val['PEF_ZERO_SOLD_COUPON_PCT'] ?? null);
         $salePct = $this->nullablePct($val['PEF_SALE_PCT'] ?? null);
         $salePromoId = isset($val['PEF_PRMT_PROMOTION_ID']) ? trim((string) $val['PEF_PRMT_PROMOTION_ID']) : '';
         $hasAny = $prmt !== null || $zeroSold !== null || $cpn !== null || $dsc !== null
@@ -510,6 +514,8 @@ class ChannelPromoPricingService
             || $couponPct !== null
             || $couponCode !== ''
             || $couponPromoId !== ''
+            || $zeroSoldCouponCode !== ''
+            || $zeroSoldCouponPct !== null
             || $salePct !== null
             || $salePromoId !== '';
 
@@ -542,6 +548,8 @@ class ChannelPromoPricingService
             'PEF_COUPON_PCT' => $couponPct,
             'PEF_COUPON_CODE' => $couponCode !== '' ? $couponCode : null,
             'coupon_code' => $couponCode !== '' ? $couponCode : null,
+            'zero_sold_coupon_code' => $zeroSoldCouponCode !== '' ? $zeroSoldCouponCode : null,
+            'zero_sold_coupon_pct' => $zeroSoldCouponPct,
             'PEF_COUPON_PROMOTION_ID' => $couponPromoId !== '' ? $couponPromoId : null,
             'PEF_SALE_PCT' => $salePct,
             'PEF_PRMT_PROMOTION_ID' => $salePromoId !== '' ? $salePromoId : null,
