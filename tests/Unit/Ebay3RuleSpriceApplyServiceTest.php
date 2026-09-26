@@ -171,6 +171,44 @@ class Ebay3RuleSpriceApplyServiceTest extends TestCase
         );
     }
 
+    public function test_zero_sold_uses_min_nroi_not_the_dil_slab(): void
+    {
+        $rules = [
+            AmazonDilGroiRule::make(0, 5, 50),
+            AmazonDilGroiRule::make(20, 25, 70),
+        ];
+        $adj = ['down_lt' => 7, 'down_adj' => -10, 'up_gt' => 10, 'up_adj' => 10];
+        $base = [
+            'inv' => 10,
+            'dil' => 22,
+            'cvr' => 8,
+            'cvr_60' => 8,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ];
+
+        $zero = EbayRuleSpriceApplyService::for('ebay2')->computeTarget(
+            $base + ['ebay_l30' => 0],
+            $rules,
+            $adj,
+            0.80
+        );
+        $sold = EbayRuleSpriceApplyService::for('ebay2')->computeTarget(
+            $base + ['ebay_l30' => 1],
+            $rules,
+            $adj,
+            0.80
+        );
+
+        $this->assertNotNull($zero);
+        $this->assertNotNull($sold);
+        $this->assertEqualsWithDelta(50.0, $zero['groi'], 0.01);
+        $this->assertEqualsWithDelta(37.5, $zero['sprice'], 0.01);
+        $this->assertEqualsWithDelta(70.0, $sold['groi'], 0.01);
+        $this->assertEqualsWithDelta(42.5, $sold['sprice'], 0.01);
+    }
+
     public function test_channels_from_arg(): void
     {
         $this->assertSame(['ebay1', 'ebay2', 'ebay3'], EbayRuleSpriceApplyService::channelsFromArg('all'));

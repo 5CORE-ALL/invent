@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\MarketPlace;
 
+use App\Models\Ebay2Metric;
+use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\ShopifySku;
 use App\Models\EbayDataView;
@@ -5591,13 +5593,14 @@ class EbayController extends Controller
         }
     }
 
-    public function ebayZeroSoldCouponSetting()
+    public function ebayZeroSoldCouponSetting(string $channel = 'ebay1')
     {
-        return response()->json($this->ebayZeroSoldCouponConfig());
+        return response()->json($this->ebayZeroSoldCouponConfig($this->normalizeZeroSoldChannel($channel)));
     }
 
-    public function saveEbayZeroSoldCoupon(Request $request)
+    public function saveEbayZeroSoldCoupon(Request $request, string $channel = 'ebay1')
     {
+        $channel = $this->normalizeZeroSoldChannel($channel);
         $enabled = filter_var($request->input('enabled'), FILTER_VALIDATE_BOOLEAN);
         $pct = (int) round((float) $request->input('pct', 5));
         if ($pct < 5) {
@@ -5607,7 +5610,7 @@ class EbayController extends Controller
             $pct = 80;
         }
 
-        $cfg = $this->ebayZeroSoldCouponConfig();
+        $cfg = $this->ebayZeroSoldCouponConfig($channel);
         $items = $request->input('items', []);
         if (! is_array($items)) {
             $items = [];
@@ -5627,7 +5630,12 @@ class EbayController extends Controller
 
         $soldBySku = [];
         if ($skus !== []) {
-            $metrics = EbayMetric::query()->whereIn('sku', $skus)->get(['sku', 'ebay_l30']);
+            $metricClass = match ($channel) {
+                'ebay2' => Ebay2Metric::class,
+                'ebay3' => Ebay3Metric::class,
+                default => EbayMetric::class,
+            };
+            $metrics = $metricClass::query()->whereIn('sku', $skus)->get(['sku', 'ebay_l30']);
             foreach ($metrics as $metric) {
                 $soldBySku[strtoupper(trim((string) $metric->sku))] = (float) ($metric->ebay_l30 ?? 0);
             }
@@ -5650,7 +5658,7 @@ class EbayController extends Controller
             $payload[] = ['sku' => $sku, 'on' => $on];
         }
 
-        $service = app(Ebay1CouponService::class);
+        $service = Ebay1CouponService::for($channel);
         $result = [
             'success' => true,
             'coupon_code' => $service->zeroSoldCouponCode($pct),
@@ -5672,7 +5680,7 @@ class EbayController extends Controller
         }
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => 'ebay1_zero_sold_coupon'],
+            ['channel_name' => $channel.'_zero_sold_coupon'],
             [
                 'visibility' => [
                     'enabled' => $enabled,
@@ -5697,24 +5705,35 @@ class EbayController extends Controller
         ], (! empty($result['success']) || $hasResults) ? 200 : 422);
     }
 
+    private function normalizeZeroSoldChannel(string $channel): string
+    {
+        $channel = strtolower(trim($channel));
+
+        return in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true) ? $channel : 'ebay1';
+    }
+
     /**
      * @return array{enabled:bool,pct:int,coupon_code:string,promotion_id:string}
      */
-    private function ebayZeroSoldCouponConfig(): array
+    private function ebayZeroSoldCouponConfig(string $channel = 'ebay1'): array
     {
+        $channel = $this->normalizeZeroSoldChannel($channel);
         $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', 'ebay1_zero_sold_coupon')
+            ->where('channel_name', $channel.'_zero_sold_coupon')
             ->first();
         $vis = is_array($row?->visibility) ? $row->visibility : [];
         $pct = isset($vis['pct']) && is_numeric($vis['pct']) ? (int) round((float) $vis['pct']) : 5;
         if ($pct < 5 || $pct > 80) {
             $pct = 5;
         }
-        $service = app(Ebay1CouponService::class);
+        $service = Ebay1CouponService::for($channel);
         $storedCode = isset($vis['coupon_code']) ? trim((string) $vis['coupon_code']) : '';
+        $enabled = $row
+            ? filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            : in_array($channel, ['ebay2', 'ebay3'], true);
 
         return [
-            'enabled' => filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'enabled' => $enabled,
             'pct' => $pct,
             'coupon_code' => $storedCode !== '' ? $storedCode : $service->zeroSoldCouponCode($pct),
             'promotion_id' => isset($vis['promotion_id']) ? trim((string) $vis['promotion_id']) : '',
