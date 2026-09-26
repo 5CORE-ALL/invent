@@ -9939,9 +9939,6 @@
             if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return false;
             if (!chPromoPageReloadPushAllowed()) return false;
             if (window._chPromoServerBluePushStarted) return true;
-            if (!window._ebaySprcCellSaved && typeof window.ebayScheduleSprcDilAutoApply === 'function') {
-                return true;
-            }
             window._chPromoServerBluePushStarted = true;
             $.ajax({
                 url: CH_PROMO_RULES_BASE + '/push-blue',
@@ -9968,10 +9965,36 @@
             });
             return true;
         }
+        /** Same as Amazon: wait for Dil slabs, wait while S PRC is still saving, then send once. */
+        function chPromoTryEbayBluePush() {
+            if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return;
+            if (!chPromoPageReloadPushAllowed()) return;
+            if (window._chPromoServerBluePushStarted) return;
+            if (!chPromoEbaySpriceSlabsReady() || !window._ebayDilRulesLoaded) {
+                clearTimeout(window._chPromoEbayBluePushTimer);
+                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
+                return;
+            }
+            let saveBusy = false;
+            try {
+                saveBusy = typeof window.ebayDgSpriceSaveBusy === 'function' && window.ebayDgSpriceSaveBusy();
+            } catch (e) { saveBusy = false; }
+            if (saveBusy) {
+                clearTimeout(window._chPromoEbayBluePushTimer);
+                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 600);
+                return;
+            }
+            chPromoStartServerBluePush();
+        }
         window.chPromoStartServerBluePush = chPromoStartServerBluePush;
+        window.chPromoTryEbayBluePush = chPromoTryEbayBluePush;
         function chPromoQueueReloadSpricePush(opts) {
             opts = opts || {};
             if (!chPromoPageReloadPushAllowed()) return;
+            if (/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) {
+                chPromoTryEbayBluePush();
+                return;
+            }
             if (chPromoStartServerBluePush()) return;
             const scan = (typeof scanAndQueueChannelPushSprice === 'function')
                 ? scanAndQueueChannelPushSprice

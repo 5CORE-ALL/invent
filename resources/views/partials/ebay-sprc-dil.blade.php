@@ -1986,8 +1986,9 @@
             } else if (typeof window.updateSummary === 'function') {
                 try { window.updateSummary(); } catch (e) { /* ignore */ }
             }
-            // Shopify B2C pushes only after the background S PRC apply finishes (same as Amazon).
+            // Shopify B2C and eBay 1–3 push only after the S PRC save finishes (same as Amazon).
             if (!(typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
+                && !(typeof ebayDgIsEbay123 === 'function' && ebayDgIsEbay123())
                 && typeof window.chPromoQueueReloadSpricePush === 'function') {
                 try { window.chPromoQueueReloadSpricePush({ delay: 150 }); } catch (e) { /* ignore */ }
             }
@@ -1998,6 +1999,9 @@
         let ebayDgClearApplyPersistOnce = false;
         let ebayDgApplyBusy = false;
         let ebayDgApplyPending = false;
+        window.ebayDgSpriceSaveBusy = function() {
+            return !!(ebayDgApplyBusy || ebayDgApplyPending);
+        };
         function ebaySprcDilRowAdapter(d) {
             if (typeof chPromoDilPrmtRowAdapter === 'function') return chPromoDilPrmtRowAdapter(d);
             return {
@@ -2192,9 +2196,12 @@
         function ebayDgMarkCellSavedAndPush() {
             if (!(typeof ebayDgIsEbay123 === 'function' && ebayDgIsEbay123())) return;
             window._ebaySprcCellSaved = true;
+            if (typeof window.chPromoTryEbayBluePush === 'function') {
+                window.chPromoTryEbayBluePush();
+                return;
+            }
             if (typeof chPromoStartServerBluePush !== 'function') return;
             if (typeof chPromoPageReloadPushAllowed === 'function' && !chPromoPageReloadPushAllowed()) return;
-            window._chPromoServerBluePushStarted = false;
             chPromoStartServerBluePush();
         }
         window.ebayScheduleSprcDilAutoApply = ebayScheduleSprcDilAutoApply;
@@ -2441,7 +2448,7 @@
                 if (typeof window.chPromoClearThenApplyAllRules === 'function') {
                     return await window.chPromoClearThenApplyAllRules({ persist: persist, push: allowPush });
                 }
-                if (ebayDgUsesClearThenApply()) {
+                if (ebayDgUsesClearThenApply() && !(typeof ebayDgIsEbay123 === 'function' && ebayDgIsEbay123())) {
                     return await ebayTiktokClearThenApplyAllRules({ persist: persist, push: allowPush });
                 }
                 const jobs = [];
@@ -2485,7 +2492,6 @@
                     jobs.push({ row: row, sku: sku, price: price, needsFill: needsFill, needsPush: needsPush });
                 });
                 if (!jobs.length) {
-                    ebayDgMarkCellSavedAndPush();
                     return 0;
                 }
                 const fillJobs = jobs.filter(function(j) { return j.needsFill; });
@@ -2572,13 +2578,14 @@
                     ebayDgToast('success', 'S PRC queued: ' + toQueue.length + ' SKU(s) — page close OK');
                 }
                 redrawEbaySprcDilColumn();
-                ebayDgMarkCellSavedAndPush();
                 return jobs.length;
             } finally {
                 ebayDgApplyBusy = false;
                 if (ebayDgApplyPending) {
                     ebayDgApplyPending = false;
                     ebayScheduleSprcDilAutoApply();
+                } else {
+                    ebayDgMarkCellSavedAndPush();
                 }
             }
         }
