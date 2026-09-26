@@ -5663,7 +5663,7 @@ class EbayController extends Controller
             }
             $on = $enabled && ! empty($item['on']);
             $sold = $soldBySku[strtoupper($sku)] ?? 0;
-            if ($sold >= 1) {
+            if ($sold >= 1 && $channel !== 'ebay3') {
                 $on = false;
             }
             $payload[] = ['sku' => $sku, 'on' => $on];

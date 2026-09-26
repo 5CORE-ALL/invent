@@ -73,8 +73,10 @@
     function isParent(data) {
         return rowSku(data).toUpperCase().indexOf('PARENT') !== -1;
     }
+    const includeSold = @json(($ebayZeroSoldChannel ?? '') === 'ebay3');
     function isZeroSold(data) {
         if (!data || isParent(data)) return false;
+        if (includeSold) return true;
         if (!((parseFloat(data.INV) || 0) > 0)) return false;
         return !((parseFloat(data['eBay L30']) || 0) >= 1);
     }
