@@ -988,7 +988,7 @@
                     <label class="form-label small mb-1" for="ebay1-zero-sold-coupon-pct">Coupon %</label>
                     <input type="number" class="form-control form-control-sm" id="ebay1-zero-sold-coupon-pct"
                         min="5" max="80" step="1" value="5">
-                    <div class="small mt-2">eBay code: <strong id="ebay1-zero-sold-coupon-code">SAVE5OFF</strong></div>
+                    <div class="small mt-2">eBay code: <strong id="ebay1-zero-sold-coupon-code">SAVE05OFF</strong></div>
                     <div class="small text-muted" id="ebay1-zero-sold-coupon-hint">Buyers enter this code on eBay. eBay codes are letters and numbers only.</div>
                     <div class="small text-muted mt-2" id="ebay1-zero-sold-coupon-status"></div>
                 </div>
@@ -6437,7 +6437,7 @@
             const ebay1ZeroSoldCoupon = {
                 enabled: false,
                 pct: 5,
-                code: 'SAVE5OFF',
+                code: 'SAVE05OFF',
                 ready: false,
                 loading: false,
                 saving: false,
@@ -6446,11 +6446,7 @@
 
             function ebay1ZeroSoldCouponCode(pct) {
                 const n = Math.max(5, Math.min(80, Math.round(Number(pct) || 5)));
-                let code = 'SAVE' + n + 'OFF';
-                if (code.length < 8) {
-                    code = 'SAVE' + String(n).padStart(2, '0') + 'OFF';
-                }
-                return code.slice(0, 15);
+                return ('SAVE' + String(n).padStart(2, '0') + 'OFF').slice(0, 15);
             }
 
             function ebay1RowSku(data) {

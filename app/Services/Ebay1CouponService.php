@@ -310,18 +310,15 @@ class Ebay1CouponService
     }
 
     /**
-     * Buyer code for the 0-sold coupon. eBay allows 8–15 letters and digits only,
-     * so 5% is SAVE5OFF (the live form of “save 5% off”).
+     * Buyer code for the 0-sold coupon. eBay allows 8–15 letters and digits only.
+     * The percent is always two digits: 5% is SAVE05OFF. SAVE5OFF is 8 characters
+     * and eBay rejects that code.
      */
     public function zeroSoldCouponCode(int $percent): string
     {
         $pct = max(5, min(80, $percent));
-        $code = 'SAVE'.$pct.'OFF';
-        if (strlen($code) < 8) {
-            $code = 'SAVE'.str_pad((string) $pct, 2, '0', STR_PAD_LEFT).'OFF';
-        }
 
-        return substr($code, 0, 15);
+        return substr('SAVE'.str_pad((string) $pct, 2, '0', STR_PAD_LEFT).'OFF', 0, 15);
     }
 
     public function zeroSoldCampaignName(int $percent): string
@@ -459,8 +456,12 @@ class Ebay1CouponService
                         }
                     }
                     if ($campaignDetail === null) {
-                        $createFailed = (string) ($created['message'] ?? 'Could not create coupon');
-                        $results[] = ['sku' => $sku, 'success' => false, 'on' => false, 'message' => $createFailed];
+                        $createFailedMsg = (string) ($created['message'] ?? 'Could not create coupon');
+                        $results[] = ['sku' => $sku, 'success' => false, 'on' => false, 'message' => $createFailedMsg];
+                        // One ended listing is invalid. Keep trying the next SKU.
+                        if (! str_contains(strtolower($createFailedMsg), 'listing id is invalid')) {
+                            $createFailed = $createFailedMsg;
+                        }
 
                         continue;
                     }
@@ -866,13 +867,8 @@ class Ebay1CouponService
 
                 $lastMsg = $this->ebayErrorMessage($resp);
 
-                if (! $withMaxDiscount && $this->isMaxDiscountRequiredError($resp)) {
-                    continue;
-                }
-                if ($withMaxDiscount && $this->isMaxDiscountForbiddenError($resp)) {
-                    continue;
-                }
-
+                // 345145 means this code already exists. Its message also mentions
+                // maxDiscountAmount, so that check must not swallow it.
                 if ($this->isCouponCodeTakenError($resp)) {
                     if ($codeOverride !== null && $codeOverride !== '') {
                         return [
@@ -893,6 +889,13 @@ class Ebay1CouponService
                         return $attached;
                     }
                     break;
+                }
+
+                if (! $withMaxDiscount && $this->isMaxDiscountRequiredError($resp)) {
+                    continue;
+                }
+                if ($withMaxDiscount && $this->isMaxDiscountForbiddenError($resp)) {
+                    continue;
                 }
 
                 Log::error('eBay1 coded coupon create failed', [
@@ -1532,6 +1535,10 @@ class Ebay1CouponService
         if (is_array($errors)) {
             foreach ($errors as $err) {
                 if (! is_array($err)) {
+                    continue;
+                }
+                $errMsg = strtolower((string) ($err['message'] ?? ''));
+                if (str_contains($errMsg, 'maxdiscountamount')) {
                     continue;
                 }
                 if ((int) ($err['errorId'] ?? 0) === 345145) {
