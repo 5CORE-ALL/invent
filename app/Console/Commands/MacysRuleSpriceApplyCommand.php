@@ -59,7 +59,7 @@ class MacysRuleSpriceApplyCommand extends Command
         $monitor->setExpected($candidates);
         $monitor->setFetched($candidates);
         $monitor->setProcessed($applied + $cleared + $unchanged);
-        $monitor->setUpdated($applied + $cleared);
+        $monitor->setUpdated($applied + $cleared + $unchanged);
         $monitor->setSkipped($unchanged);
         $monitor->setFailed($failed);
 

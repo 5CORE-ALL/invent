@@ -64,7 +64,7 @@ class PurchasingPowerRuleSpriceApplyCommand extends Command
         $monitor->setExpected($candidates);
         $monitor->setFetched($candidates);
         $monitor->setProcessed($applied + $cleared + $unchanged);
-        $monitor->setUpdated($applied + $cleared + $pushed);
+        $monitor->setUpdated($applied + $cleared + $pushed + $unchanged);
         $monitor->setSkipped($unchanged);
         $monitor->setFailed($failed + $pushFailed);
 
