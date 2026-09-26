@@ -4569,7 +4569,7 @@
                     fail += 1;
                     const timedOut = xhr.statusText === 'timeout' || xhr.status === 0;
                     errors.push(xhr.responseJSON?.message || (timedOut
-                        ? ('Amazon is still creating ' + (row.sku || 'the listing') + '. Wait a minute, then publish again.')
+                        ? ((row.sku || 'This listing') + ' is still being created. Wait a minute, then click Publish again.')
                         : ('Publish failed for ' + (row.sku || 'listing') + '.')));
                 }).always(next);
             }

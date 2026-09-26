@@ -1897,6 +1897,18 @@ class NeweggApiService
         $upc = $this->normalizeUpc((string) ($fields['upc'] ?? ''));
         $subcategoryId = trim((string) ($fields['subcategory_id'] ?? config('services.newegg.default_subcategory_id', '')));
 
+        $pendingId = trim((string) Cache::get($this->pendingNeweggFeedCacheKey($platform, $sku), ''));
+        if ($pendingId !== '') {
+            $resumed = $this->resolveSubmittedNeweggItem($sku, $pendingId, $platform);
+            if (! empty($resumed['success']) || ! empty($resumed['terminal']) || ! empty($resumed['still_processing'])) {
+                if (! empty($resumed['success']) || ! empty($resumed['terminal'])) {
+                    Cache::forget($this->pendingNeweggFeedCacheKey($platform, $sku));
+                }
+
+                return $resumed;
+            }
+        }
+
         $submitted = null;
         if ($subcategoryId !== '') {
             $fields['subcategory_id'] = $subcategoryId;
@@ -1916,14 +1928,51 @@ class NeweggApiService
         }
 
         $requestId = trim((string) ($submitted['request_id'] ?? ''));
+        if ($requestId !== '') {
+            Cache::put($this->pendingNeweggFeedCacheKey($platform, $sku), $requestId, now()->addHours(12));
+        }
+
+        $resolved = $this->resolveSubmittedNeweggItem($sku, $requestId, $platform);
+        if (! empty($resolved['success']) || ! empty($resolved['terminal'])) {
+            Cache::forget($this->pendingNeweggFeedCacheKey($platform, $sku));
+        }
+
+        return $resolved;
+    }
+
+    protected function pendingNeweggFeedCacheKey(string $platform, string $sku): string
+    {
+        return 'newegg-item-feed:'.$platform.':'.strtoupper(preg_replace('/\s+/', ' ', trim($sku)) ?? trim($sku));
+    }
+
+    /**
+     * Check one submitted item feed and attach the 9SI when Newegg has finished it.
+     * A feed that is still open is left in cache so the next publish does not send a second feed.
+     *
+     * @return array{success: bool, message: string, item_number?: string, request_id?: string, still_processing?: bool, terminal?: bool, blocked_by_cloudflare?: bool}
+     */
+    protected function resolveSubmittedNeweggItem(string $sku, string $requestId, string $platform): array
+    {
+        $requestId = trim($requestId);
         $feed = $requestId !== ''
-            ? $this->waitForFeedStatus($requestId, $platform)
+            ? $this->getFeedStatus($requestId, $platform)
             : ['success' => true, 'status' => '', 'message' => ''];
-        $status = strtoupper(trim((string) ($feed['status'] ?? '')));
-        if (in_array($status, ['CANCELLED', 'CANCELED', 'FAILED', 'FAILURE', 'ABORTED'], true)) {
+        if (empty($feed['success']) && strtoupper((string) ($feed['status'] ?? '')) !== '') {
             return [
                 'success' => false,
+                'terminal' => true,
                 'message' => (string) ($feed['message'] ?? 'Newegg item feed was rejected.'),
+                'request_id' => $requestId,
+            ];
+        }
+
+        $status = strtoupper(trim((string) ($feed['status'] ?? '')));
+        $finished = in_array($status, ['FINISHED', 'COMPLETED', 'SUCCESS'], true);
+        if ($requestId !== '' && ! $finished) {
+            return [
+                'success' => false,
+                'still_processing' => true,
+                'message' => 'Newegg is still processing '.$sku.'. RequestId '.$requestId.'. Click Publish again in a minute. The same feed will be checked, and the 9SI item number will be attached when Data Feeds finishes.',
                 'request_id' => $requestId,
             ];
         }
@@ -1934,6 +1983,7 @@ class NeweggApiService
         if (($report['errors'] ?? []) !== [] && (int) ($report['success_count'] ?? 0) < 1) {
             return [
                 'success' => false,
+                'terminal' => true,
                 'message' => implode(' ', array_slice($report['errors'], 0, 4)),
                 'request_id' => $requestId,
             ];
@@ -1941,32 +1991,21 @@ class NeweggApiService
 
         $itemNumber = trim((string) ($report['item_number'] ?? ''));
         if (! ChannelListingRegistry::isLiveNeweggListingId($itemNumber, $sku)) {
-            $itemNumber = '';
-        }
-        for ($attempt = 0; $attempt < 8 && $itemNumber === ''; $attempt++) {
-            if ($attempt > 0) {
-                usleep(800000);
-            }
             $lookup = $this->lookupSellerItem($sku);
             if (! empty($lookup['blocked_by_cloudflare'])) {
                 return $lookup;
             }
-            $candidate = trim((string) ($lookup['item_number'] ?? ''));
-            if (ChannelListingRegistry::isLiveNeweggListingId($candidate, $sku)) {
-                $itemNumber = $candidate;
-            }
+            $itemNumber = trim((string) ($lookup['item_number'] ?? ''));
         }
 
         if (! ChannelListingRegistry::isLiveNeweggListingId($itemNumber, $sku)) {
             $hint = $requestId !== '' ? ' RequestId '.$requestId.'.' : '';
-            $stillProcessing = in_array($status, ['', 'SUBMITTED', 'IN_PROGRESS', 'UNKNOWN'], true);
 
             return [
                 'success' => false,
-                'message' => $stillProcessing
-                    ? 'Newegg is still processing '.$sku.'.'.$hint.' Wait for Data Feeds to finish, then Save & Publish again to attach the 9SI item number.'
-                    : 'Newegg finished the item feed but '.$sku.' is not in Pricing & Inventory.'.$hint
-                        .' Open Seller Portal > Data Feeds and fix any rejected fields, then publish again.',
+                'terminal' => true,
+                'message' => 'Newegg finished the item feed but '.$sku.' is not in Pricing & Inventory.'.$hint
+                    .' Open Seller Portal > Data Feeds and fix any rejected fields, then publish again.',
                 'request_id' => $requestId,
             ];
         }
