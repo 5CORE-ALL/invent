@@ -1778,6 +1778,7 @@ class SalesOrderFulfillmentController extends Controller
         $rows = $this->attachShipmentStatusToOrderRows($rows);
         $rows = $this->attachSofShipmentOverridesToOrderRows($rows);
         $rows = $this->fillCarrierFromTrackingNumbers($rows);
+        $rows = $this->preferCarrierStatusOnTrackedRows($rows);
 
         try {
             $rows = $this->attachCostShipDetailsToRows($rows);
@@ -3577,6 +3578,27 @@ class SalesOrderFulfillmentController extends Controller
         $this->cachedLabelCreatedRows = null;
         $this->cachedPendingRows = null;
         $this->cachedInvoicedRows = null;
+    }
+
+    /**
+     * A tracking number means the Status column is the carrier result, not the
+     * marketplace order status (Closed, Completed, and similar).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function preferCarrierStatusOnTrackedRows(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            if (! $this->rowHasSofTrackingNumber($row)) {
+                continue;
+            }
+            $label = $this->carrierShipmentStatusLabel((string) ($row['shipment_status'] ?? ''));
+            $row['status_label'] = $label ?? '';
+        }
+        unset($row);
+
+        return $rows;
     }
 
     protected function carrierShipmentStatusLabel(string $shipmentStatus): ?string
@@ -5838,6 +5860,305 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Marketplace order that owns a tracking number.
+     *
+     * @param  list<string>  $trackingNumbers
+     * @return array<string, array<string, mixed>>
+     */
+    protected function channelOrdersByTrackingNumber(array $trackingNumbers): array
+    {
+        $wanted = [];
+        foreach ($trackingNumbers as $tn) {
+            $key = $this->trackingLookupKey($tn);
+            $raw = trim($tn);
+            if ($key !== '' && $raw !== '') {
+                $wanted[$key] = $raw;
+            }
+        }
+        if ($wanted === []) {
+            return [];
+        }
+
+        $labels = [];
+        foreach (MarketplaceManagerRegistry::channels() as $channel) {
+            $slug = (string) ($channel['slug'] ?? '');
+            if ($slug !== '') {
+                $labels[$slug] = (string) ($channel['label'] ?? $slug);
+            }
+        }
+        $meta = $this->channelMasterMetaBySlug();
+        $found = [];
+
+        foreach ($this->trackingToChannelOrderSources() as $source) {
+            $missing = array_values(array_diff(array_keys($wanted), array_keys($found)));
+            if ($missing === []) {
+                break;
+            }
+            $table = $source['table'];
+            $orderCol = $source['order_col'];
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'tracking_number') || ! Schema::hasColumn($table, $orderCol)) {
+                continue;
+            }
+            $select = ['tracking_number', $orderCol];
+            if ($orderCol !== 'order_id' && Schema::hasColumn($table, 'order_id')) {
+                $select[] = 'order_id';
+            }
+            if (Schema::hasColumn($table, 'platform_order_no')) {
+                $select[] = 'platform_order_no';
+            }
+            if ($table === 'mirakl_daily_data' && Schema::hasColumn($table, 'channel_name')) {
+                $select[] = 'channel_name';
+            }
+            $sofRow = (bool) ($source['sof'] ?? false) && Schema::hasColumn($table, 'id');
+            if ($sofRow) {
+                $select[] = 'id';
+            }
+
+            foreach (array_chunk($missing, 400) as $chunk) {
+                $needles = [];
+                foreach ($chunk as $key) {
+                    $needles[] = $wanted[$key];
+                    if ($wanted[$key] !== $key) {
+                        $needles[] = $key;
+                    }
+                }
+                try {
+                    $hits = DB::table($table)->whereIn('tracking_number', array_values(array_unique($needles)))->get($select);
+                } catch (\Throwable) {
+                    continue;
+                }
+                foreach ($hits as $hit) {
+                    $key = $this->trackingLookupKey((string) ($hit->tracking_number ?? ''));
+                    if ($key === '' || isset($found[$key]) || ! isset($wanted[$key])) {
+                        continue;
+                    }
+                    $orderId = $this->displayOrderIdFromTrackingHit($hit, $orderCol);
+                    if ($orderId === '' || $this->trackingLookupKey($orderId) === $key) {
+                        continue;
+                    }
+                    $slug = (string) $source['slug'];
+                    if ($table === 'mirakl_daily_data') {
+                        $name = strtolower(trim((string) ($hit->channel_name ?? '')));
+                        $slug = str_contains($name, 'macy') ? 'macy' : 'bestbuy';
+                    }
+                    $found[$key] = [
+                        'slug' => $slug,
+                        'label' => $labels[$slug] ?? ucwords(str_replace(['_', '-'], ' ', $slug)),
+                        'order_id' => $orderId,
+                        'row_id' => $sofRow ? (int) ($hit->id ?? 0) : 0,
+                        'channel_id' => $meta[$slug]['channel_id'] ?? null,
+                        'ch_orders_link' => $meta[$slug]['ch_orders_link'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        $this->attachSofShowIds($found);
+
+        foreach ($found as &$hit) {
+            $slug = (string) ($hit['slug'] ?? '');
+            $rowId = (int) ($hit['row_id'] ?? 0);
+            $ordersUrl = null;
+            $orderUrl = null;
+            if ($slug !== '' && isset($labels[$slug])) {
+                try {
+                    $ordersUrl = route('marketplace.orders', $slug);
+                } catch (\Throwable) {
+                    $ordersUrl = null;
+                }
+                if ($rowId > 0) {
+                    try {
+                        $orderUrl = route('marketplace.orders.show', [
+                            'marketplace' => $slug,
+                            'order' => $rowId,
+                        ]);
+                    } catch (\Throwable) {
+                        $orderUrl = null;
+                    }
+                }
+            }
+            $hit['orders_url'] = $ordersUrl;
+            $hit['order_url'] = $orderUrl;
+            if (trim((string) ($hit['ch_orders_link'] ?? '')) === '') {
+                $hit['ch_orders_link'] = $ordersUrl;
+            }
+        }
+        unset($hit);
+
+        return $found;
+    }
+
+    protected function trackingLookupKey(string $tracking): string
+    {
+        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $tracking) ?? '');
+    }
+
+    protected function displayOrderIdFromTrackingHit(object $hit, string $orderCol): string
+    {
+        $platform = isset($hit->platform_order_no) ? trim((string) $hit->platform_order_no) : '';
+        if ($platform !== '') {
+            return $platform;
+        }
+        $primary = trim((string) ($hit->{$orderCol} ?? ''));
+        if ($primary !== '') {
+            return $primary;
+        }
+        if ($orderCol !== 'order_id' && isset($hit->order_id)) {
+            return trim((string) $hit->order_id);
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $found
+     */
+    protected function attachSofShowIds(array &$found): void
+    {
+        $pending = [];
+        foreach ($found as $key => $hit) {
+            if ((int) ($hit['row_id'] ?? 0) > 0) {
+                continue;
+            }
+            $slug = (string) ($hit['slug'] ?? '');
+            $orderId = trim((string) ($hit['order_id'] ?? ''));
+            if ($slug === '' || $orderId === '') {
+                continue;
+            }
+            $pending[$slug][$orderId] = $key;
+        }
+
+        foreach ($pending as $slug => $orderIds) {
+            foreach ($this->sofOrderLocators($slug) as [$table, $col]) {
+                $open = [];
+                foreach ($orderIds as $orderId => $key) {
+                    if ((int) ($found[$key]['row_id'] ?? 0) > 0) {
+                        continue;
+                    }
+                    $open[$orderId] = $key;
+                }
+                if ($open === [] || ! Schema::hasTable($table) || ! Schema::hasColumn($table, $col) || ! Schema::hasColumn($table, 'id')) {
+                    continue;
+                }
+                foreach (array_chunk(array_keys($open), 400) as $chunk) {
+                    try {
+                        $rows = DB::table($table)->whereIn($col, $chunk)->get(['id', $col]);
+                    } catch (\Throwable) {
+                        continue;
+                    }
+                    foreach ($rows as $row) {
+                        $oid = trim((string) ($row->{$col} ?? ''));
+                        $id = (int) ($row->id ?? 0);
+                        if ($oid === '' || $id <= 0 || ! isset($open[$oid])) {
+                            continue;
+                        }
+                        $found[$open[$oid]]['row_id'] = $id;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @return list<array{0: string, 1: string}>
+     */
+    protected function sofOrderLocators(string $slug): array
+    {
+        return match ($slug) {
+            'ebay1' => [['ebay1_order_metrics', 'order_id'], ['ebay1_order_metrics', 'order_number']],
+            'ebay2' => [['ebay2_order_metrics', 'order_id'], ['ebay2_order_metrics', 'order_number']],
+            'ebay3' => [['ebay3_order_metrics', 'order_id'], ['ebay3_order_metrics', 'order_number']],
+            'shein' => [['shein_order_metrics', 'order_number'], ['shein_order_metrics', 'order_id']],
+            'aliexpress' => [['aliexpress_order_metrics', 'order_id'], ['aliexpress_order_metrics', 'order_number']],
+            'alibaba' => [['alibaba_order_metrics', 'order_id']],
+            'reverb' => [['reverb_order_metrics', 'order_id']],
+            'newegg' => [['newegg_order_metrics', 'order_id']],
+            'faire' => [['faire_order_metrics', 'order_id']],
+            'topdawg' => [['topdawg_order_metrics', 'order_id']],
+            'temu' => [['temu_orders', 'parent_order_sn'], ['temu_orders', 'order_sn']],
+            'temu2' => [['temu2_orders', 'parent_order_sn'], ['temu2_orders', 'order_sn']],
+            'temu3' => [['temu3_orders', 'parent_order_sn'], ['temu3_orders', 'order_sn']],
+            'tiktok' => [['tiktok_orders', 'order_id']],
+            'tiktok2' => [['tiktok2_orders', 'order_id']],
+            'purchasingpower' => [['purchasing_power_sales', 'order_number'], ['purchasing_power_sales', 'order_id']],
+            'wayfair' => [['wayfair_daily_data', 'po_number']],
+            'bestbuy', 'macy' => [['mirakl_daily_data', 'channel_order_id'], ['mirakl_daily_data', 'order_id']],
+            'doba' => [['doba_daily_data', 'order_no'], ['doba_daily_data', 'platform_order_no']],
+            'amazon' => [['amazon_orders', 'amazon_order_id']],
+            default => [],
+        };
+    }
+
+    /**
+     * @return list<array{table: string, order_col: string, slug: string, sof?: bool}>
+     */
+    protected function trackingToChannelOrderSources(): array
+    {
+        return [
+            ['table' => 'ebay2_order_metrics', 'order_col' => 'order_id', 'slug' => 'ebay2', 'sof' => true],
+            ['table' => 'ebay3_order_metrics', 'order_col' => 'order_id', 'slug' => 'ebay3', 'sof' => true],
+            ['table' => 'ebay1_order_metrics', 'order_col' => 'order_id', 'slug' => 'ebay1', 'sof' => true],
+            ['table' => 'ebay2_daily_data', 'order_col' => 'order_id', 'slug' => 'ebay2'],
+            ['table' => 'ebay3_daily_data', 'order_col' => 'order_id', 'slug' => 'ebay3'],
+            ['table' => 'temu_orders', 'order_col' => 'parent_order_sn', 'slug' => 'temu', 'sof' => true],
+            ['table' => 'temu2_orders', 'order_col' => 'parent_order_sn', 'slug' => 'temu2', 'sof' => true],
+            ['table' => 'temu3_orders', 'order_col' => 'parent_order_sn', 'slug' => 'temu3', 'sof' => true],
+            ['table' => 'temu_daily_data', 'order_col' => 'order_id', 'slug' => 'temu'],
+            ['table' => 'temu2_daily_data', 'order_col' => 'order_id', 'slug' => 'temu2'],
+            ['table' => 'temu3_daily_data', 'order_col' => 'order_id', 'slug' => 'temu3'],
+            ['table' => 'tiktok_orders', 'order_col' => 'order_id', 'slug' => 'tiktok', 'sof' => true],
+            ['table' => 'tiktok2_orders', 'order_col' => 'order_id', 'slug' => 'tiktok2', 'sof' => true],
+            ['table' => 'tiktok_daily_data', 'order_col' => 'order_id', 'slug' => 'tiktok'],
+            ['table' => 'shein_order_metrics', 'order_col' => 'order_number', 'slug' => 'shein', 'sof' => true],
+            ['table' => 'shein_daily_data', 'order_col' => 'order_number', 'slug' => 'shein'],
+            ['table' => 'aliexpress_order_metrics', 'order_col' => 'order_id', 'slug' => 'aliexpress', 'sof' => true],
+            ['table' => 'aliexpress_daily_data', 'order_col' => 'order_id', 'slug' => 'aliexpress'],
+            ['table' => 'doba_daily_data', 'order_col' => 'order_no', 'slug' => 'doba', 'sof' => true],
+            ['table' => 'purchasing_power_sales', 'order_col' => 'order_number', 'slug' => 'purchasingpower', 'sof' => true],
+            ['table' => 'faire_order_metrics', 'order_col' => 'order_id', 'slug' => 'faire', 'sof' => true],
+            ['table' => 'reverb_order_metrics', 'order_col' => 'order_id', 'slug' => 'reverb', 'sof' => true],
+            ['table' => 'newegg_order_metrics', 'order_col' => 'order_id', 'slug' => 'newegg', 'sof' => true],
+            ['table' => 'wayfair_daily_data', 'order_col' => 'po_number', 'slug' => 'wayfair', 'sof' => true],
+            ['table' => 'mirakl_daily_data', 'order_col' => 'channel_order_id', 'slug' => 'bestbuy', 'sof' => true],
+            ['table' => 'amazon_orders', 'order_col' => 'amazon_order_id', 'slug' => 'amazon', 'sof' => true],
+            ['table' => 'walmart_daily_data', 'order_col' => 'customer_order_id', 'slug' => 'walmart'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<string, array<string, mixed>>  $ordersByTracking
+     * @return array<string, mixed>
+     */
+    protected function fillNotAuthorizedChannelOrder(array $row, array $ordersByTracking): array
+    {
+        $key = $this->trackingLookupKey((string) ($row['tracking_number'] ?? ''));
+        $hit = $key !== '' ? ($ordersByTracking[$key] ?? null) : null;
+        $orderId = trim((string) ($hit['order_id'] ?? ''));
+        if ($hit === null || $orderId === '' || $this->trackingLookupKey($orderId) === $key) {
+            $row['mm_slug'] = '';
+            $row['channel_label'] = '';
+            $row['order_id'] = '';
+            $row['order_number'] = '';
+
+            return $row;
+        }
+
+        $row['mm_slug'] = (string) ($hit['slug'] ?? '');
+        $row['channel_label'] = (string) ($hit['label'] ?? '');
+        $row['order_id'] = $orderId;
+        $row['order_number'] = $orderId;
+        $row['row_id'] = (int) ($hit['row_id'] ?? 0);
+        $row['show_id'] = (int) ($hit['row_id'] ?? 0);
+        $row['channel_id'] = $hit['channel_id'] ?? null;
+        $row['ch_orders_link'] = $hit['ch_orders_link'] ?? null;
+        $row['orders_url'] = $hit['orders_url'] ?? null;
+        $row['order_url'] = $hit['order_url'] ?? null;
+
+        return $row;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     protected function notAuthorizedTrackingRows(): array
@@ -5846,8 +6167,18 @@ class SalesOrderFulfillmentController extends Controller
             return [];
         }
 
+        $records = $this->notAuthorizedTrackingQuery()->orderByDesc('shipment_checked_at')->get();
+        $trackingNumbers = [];
+        foreach ($records as $record) {
+            $tn = trim((string) ($record->tracking_number ?? ''));
+            if ($tn !== '') {
+                $trackingNumbers[] = $tn;
+            }
+        }
+        $ordersByTracking = $this->channelOrdersByTrackingNumber($trackingNumbers);
+
         $rows = [];
-        foreach ($this->notAuthorizedTrackingQuery()->orderByDesc('shipment_checked_at')->get() as $record) {
+        foreach ($records as $record) {
             $tn = trim((string) ($record->tracking_number ?? ''));
             if ($tn === '') {
                 continue;
@@ -5858,12 +6189,12 @@ class SalesOrderFulfillmentController extends Controller
             }
             $carrier = trim((string) ($record->carrier ?? ''));
             $checked = $this->formatOrderDate($record->shipment_checked_at ?? null);
-            $rows[] = [
+            $rows[] = $this->fillNotAuthorizedChannelOrder([
                 'id' => 'not-auth-'.$tn,
-                'mm_slug' => 'usps',
-                'channel_label' => $carrier !== '' ? $carrier : 'USPS',
-                'order_id' => $tn,
-                'order_number' => $tn,
+                'mm_slug' => '',
+                'channel_label' => '',
+                'order_id' => '',
+                'order_number' => '',
                 'order_date' => $checked,
                 'updated_at' => $checked,
                 'status' => 'Not Authorized',
@@ -5876,7 +6207,7 @@ class SalesOrderFulfillmentController extends Controller
                 'tracking_company' => $carrier !== '' ? $carrier : 'USPS',
                 'shipment_status' => (string) ($record->shipment_status ?? ''),
                 'shipment_status_detail' => $detail,
-            ];
+            ], $ordersByTracking);
         }
 
         return $rows;

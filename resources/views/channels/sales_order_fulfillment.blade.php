@@ -3883,18 +3883,74 @@
         return label || '—';
     }
 
-    function sofRefreshRowCarrierStatus(cell, btn) {
+    function sofKnownCarrierStatusLabel(value) {
+        const key = String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+        const map = {
+            delivered: 'Delivered',
+            intransit: 'In Transit',
+            outfordelivery: 'Out for Delivery',
+            availableforpickup: 'Available for Pickup',
+            inforeceived: 'Label Created / No Scan',
+            labelcreated: 'Label Created / No Scan',
+            labelcreatednoscan: 'Label Created / No Scan',
+            created: 'Label Created / No Scan',
+            pending: 'Pending Scan',
+            pendingscan: 'Pending Scan',
+            notfound: 'Not Found (carrier)',
+            notfoundcarrier: 'Not Found (carrier)',
+            expired: 'Expired',
+            exception: 'Exception',
+            deliveryfailure: 'Delivery Failure',
+        };
+        return map[key] || '';
+    }
+
+    const sofCarrierFetchSeen = {};
+    const sofCarrierFetchQueue = [];
+    let sofCarrierFetchActive = 0;
+
+    function sofQueueCarrierStatusRefresh(cell) {
+        const rowObj = cell && cell.getRow ? cell.getRow() : null;
+        const data = rowObj ? (rowObj.getData() || {}) : {};
+        const tracking = String(data.tracking_number || '').trim();
+        if (!tracking || sofKnownCarrierStatusLabel(data.shipment_status) || data.status_carrier_note || sofCarrierFetchSeen[tracking]) {
+            return;
+        }
+        sofCarrierFetchSeen[tracking] = true;
+        sofCarrierFetchQueue.push(cell);
+        sofPumpCarrierStatusRefresh();
+    }
+
+    function sofPumpCarrierStatusRefresh() {
+        while (sofCarrierFetchActive < 2 && sofCarrierFetchQueue.length) {
+            const cell = sofCarrierFetchQueue.shift();
+            sofCarrierFetchActive += 1;
+            sofRefreshRowCarrierStatus(cell, null, function () {
+                sofCarrierFetchActive -= 1;
+                sofPumpCarrierStatusRefresh();
+            });
+        }
+    }
+
+    function sofRefreshRowCarrierStatus(cell, btn, onDone) {
         const row = (cell.getRow && cell.getRow()) ? cell.getRow() : null;
         const data = row ? (row.getData() || {}) : {};
         const tracking = String(data.tracking_number || '').trim();
-        const carrier = String(data.tracking_company || '').trim();
+        const carrier = sofDisplayCarrier(data) || String(data.tracking_company || '').trim();
+        const finish = function () {
+            if (typeof onDone === 'function') onDone();
+        };
         if (!tracking) {
-            btn.title = 'No tracking number on this row';
+            if (btn) btn.title = 'No tracking number on this row';
+            finish();
             return;
         }
-        if (btn.disabled) return;
-        btn.disabled = true;
-        const icon = btn.querySelector('i');
+        if (btn && btn.disabled) {
+            finish();
+            return;
+        }
+        if (btn) btn.disabled = true;
+        const icon = btn ? btn.querySelector('i') : null;
         if (icon) icon.classList.add('fa-spin');
         fetch('{{ route("sales.order.fulfillment.refresh.shipment.status.row") }}', {
             method: 'POST',
@@ -3913,39 +3969,67 @@
             .then(function (res) {
                 const payload = res.json || {};
                 if (!res.ok || !payload.success) {
-                    btn.title = payload.message || 'Carrier refresh failed';
+                    const note = payload.message || 'Carrier refresh failed';
+                    if (btn) btn.title = note;
+                    if (row && typeof row.update === 'function') {
+                        row.update({ status_carrier_note: 'No carrier status', status_carrier_detail: note });
+                    }
                     return;
                 }
                 const next = {
                     shipment_status: payload.shipment_status || data.shipment_status,
                     shipment_status_detail: payload.shipment_status_detail || '',
-                    status_label: payload.status_label || data.status_label,
+                    status_label: sofKnownCarrierStatusLabel(payload.shipment_status) || payload.status_label || '',
+                    status_carrier_note: '',
                 };
                 if (payload.tracking_company) {
                     next.tracking_company = payload.tracking_company;
+                } else if (carrier) {
+                    next.tracking_company = carrier;
                 }
                 if (row && typeof row.update === 'function') {
                     row.update(next);
                 }
-                btn.title = payload.message || 'Refreshed from the carrier';
+                if (btn) btn.title = payload.message || 'Refreshed from the carrier';
             })
             .catch(function () {
-                btn.title = 'Carrier refresh failed';
+                if (btn) btn.title = 'Carrier refresh failed';
+                if (row && typeof row.update === 'function') {
+                    row.update({ status_carrier_note: 'No carrier status', status_carrier_detail: 'Carrier refresh failed' });
+                }
             })
             .finally(function () {
-                btn.disabled = false;
+                if (btn) btn.disabled = false;
                 if (icon) icon.classList.remove('fa-spin');
+                finish();
             });
     }
 
     function sofFormatStatusCell(cell, badgeClass) {
         const row = (cell.getRow && cell.getRow()) ? (cell.getRow().getData() || {}) : {};
-        const raw = cell.getValue() || row.status || '—';
+        const tracking = String(row.tracking_number || '').trim();
+        const fromCarrier = sofKnownCarrierStatusLabel(row.shipment_status);
+        let raw;
+        if (tracking) {
+            raw = fromCarrier || String(row.status_carrier_note || '').trim();
+            if (!fromCarrier && !row.status_carrier_note) {
+                sofQueueCarrierStatusRefresh(cell);
+            }
+        } else {
+            raw = cell.getValue() || row.status || '—';
+        }
         const wrap = document.createElement('span');
         wrap.className = 'sof-status-cell';
         const badge = document.createElement('span');
         badge.className = badgeClass || 'sof-pending-badge';
-        badge.textContent = sofDisplayStatusLabel(raw);
+        if (tracking && !fromCarrier && !row.status_carrier_note) {
+            badge.textContent = 'Checking carrier';
+        } else if (tracking && !fromCarrier) {
+            badge.textContent = String(row.status_carrier_note);
+            if (row.status_carrier_detail) badge.title = String(row.status_carrier_detail);
+        } else {
+            badge.textContent = sofDisplayStatusLabel(raw);
+        }
         wrap.appendChild(badge);
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -5743,7 +5827,7 @@
                         c.headerTooltip = 'USPS refused this tracking number';
                     }
                     if (c.field === 'order_id') {
-                        c.title = 'Tracking';
+                        c.headerTooltip = 'Channel order number for this tracking number';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
