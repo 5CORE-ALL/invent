@@ -7649,30 +7649,33 @@
             }
 
             function rangeInputs(rule, key, idx) {
-                const locked = (idx > 0 && key === 'l7_views')
-                    ? ' readonly tabindex="-1" style="background:#f8f9fa;"'
-                    : '';
-                const minTitle = idx > 0 ? ' title="Auto: previous Max + 1"' : '';
-                const maxTitle = idx > 0 ? ' title="Auto: same difference as Rule 1"' : ' title="Sets the difference for all following slabs"';
+                const minTitle = idx > 0 ? ' title="Auto-fills from the previous Max when row 1 changes. Editing this row keeps your value."' : '';
+                const maxTitle = idx > 0 ? ' title="Auto-fills from row 1 when row 1 changes. Editing this row keeps your value."' : ' title="Changing row 1 updates the slabs below and each Count."';
                 return `
-                    <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                    <td><input type="number" step="1" class="form-control form-control-sm text-end"
                                value="${numAttr(rule[key + '_min'])}" data-field="${key}_min"
-                               onchange="window.sbidSlabUpdate(this)" placeholder="—"${locked}${minTitle}></td>
-                    <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                               oninput="window.sbidSlabUpdate(this, {live:true})"
+                               onchange="window.sbidSlabUpdate(this)" placeholder="—"${minTitle}></td>
+                    <td><input type="number" step="1" class="form-control form-control-sm text-end"
                                value="${numAttr(rule[key + '_max'])}" data-field="${key}_max"
-                               onchange="window.sbidSlabUpdate(this)" placeholder="—"${locked}${maxTitle}></td>`;
+                               oninput="window.sbidSlabUpdate(this, {live:true})"
+                               onchange="window.sbidSlabUpdate(this)" placeholder="—"${maxTitle}></td>`;
             }
 
             function getSbidSlabSkuRows() {
-                if (typeof table === 'undefined' || !table) return [];
+                let rows = [];
                 try {
-                    const rows = table.getData('active') || table.getData() || [];
-                    return rows.filter(function(d) {
-                        return typeof ebayIsParentRowData === 'function' ? !ebayIsParentRowData(d) : true;
-                    });
+                    if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
+                        rows = allTableData;
+                    } else if (typeof table !== 'undefined' && table && typeof table.getData === 'function') {
+                        rows = table.getData() || [];
+                    }
                 } catch (e) {
-                    return [];
+                    rows = [];
                 }
+                return (rows || []).filter(function(d) {
+                    return typeof ebayIsParentRowData === 'function' ? !ebayIsParentRowData(d) : true;
+                });
             }
 
             function countRowsBySlab(rules) {
@@ -7826,7 +7829,6 @@
                         No rules yet — click <strong>Add rule / slab</strong> to create one.</td></tr>`;
                     return;
                 }
-                autofillSbidSlabMins(rules);
                 const slabCounts = countRowsBySlab(rules);
                 if (getSbidSlabSkuRows().length) {
                     sbidPersistCounts(sbidCollectCountMap(rules, slabCounts));
@@ -7844,7 +7846,7 @@
                         <td class="text-center fw-semibold sbid-slab-count-td"
                             title="SKU rows in this slab. Click the history dot for the daily graph.">
                             <span class="sbid-slab-count-wrap">
-                                ${count}
+                                <span class="sbid-slab-count-num">${count}</span>
                                 <button type="button" class="sbid-count-hist-dot ${trend}"
                                     data-band="${sbidEscAttr(band)}"
                                     data-label="${sbidEscAttr(label)}"
@@ -7864,6 +7866,43 @@
                 });
             }
 
+            function refreshSbidSlabCountCells(persist, cascade) {
+                const rules = currentSbidSlabRules || [];
+                if (!rules.length) return;
+                if (cascade) autofillSbidSlabMins(rules);
+                const slabCounts = countRowsBySlab(rules);
+                const tbody = document.getElementById('sbid-slab-rules-body');
+                if (!tbody) return;
+                tbody.querySelectorAll('tr[data-idx]').forEach(function(tr) {
+                    const i = parseInt(tr.getAttribute('data-idx'), 10);
+                    const rule = rules[i];
+                    if (!rule) return;
+                    tr.querySelectorAll('input[data-field="l7_views_min"], input[data-field="l7_views_max"]').forEach(function(el) {
+                        if (el === document.activeElement) return;
+                        const v = rule[el.dataset.field];
+                        const next = (v === null || v === undefined || v === '' || isNaN(v)) ? '' : String(v);
+                        if (el.value !== next) el.value = next;
+                    });
+                    const count = slabCounts[i] || 0;
+                    const numEl = tr.querySelector('.sbid-slab-count-num');
+                    if (numEl) numEl.textContent = String(count);
+                    const band = sbidSlabBandKey(rule);
+                    const label = sbidSlabBandLabel(rule);
+                    const trend = sbidCountTrend(count, sbidPrevCount(band));
+                    const dot = tr.querySelector('.sbid-count-hist-dot');
+                    if (dot) {
+                        dot.classList.remove('up', 'down', 'flat', 'none');
+                        dot.classList.add(trend);
+                        dot.setAttribute('data-band', band);
+                        dot.setAttribute('data-label', label);
+                        dot.setAttribute('data-count', String(count));
+                    }
+                });
+                if (persist && getSbidSlabSkuRows().length) {
+                    sbidPersistCounts(sbidCollectCountMap(rules, slabCounts));
+                }
+            }
+
             function cascadeSbidFromFirstRow(rules) {
                 if (!rules || !rules.length) return;
                 const first = parseFloat(rules[0].sbid);
@@ -7873,13 +7912,15 @@
                 }
             }
 
-            window.sbidSlabUpdate = function(el) {
+            window.sbidSlabUpdate = function(el, opts) {
+                const live = !!(opts && opts.live);
                 const tr = el.closest('tr');
+                if (!tr) return;
                 const idx = parseInt(tr.getAttribute('data-idx'), 10);
                 const field = el.dataset.field;
                 if (!currentSbidSlabRules[idx]) return;
                 currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
-                if (field === 'sbid' && idx === 0) {
+                if (field === 'sbid' && idx === 0 && !live) {
                     cascadeSbidFromFirstRow(currentSbidSlabRules);
                     renderSbidSlabRules(currentSbidSlabRules);
                     if (table) table.redraw(true);
@@ -7887,10 +7928,17 @@
                     return;
                 }
                 if (field === 'l7_views_min' || field === 'l7_views_max') {
-                    renderSbidSlabRules(currentSbidSlabRules);
+                    refreshSbidSlabCountCells(!live, idx === 0);
+                    if (!live) {
+                        if (table) table.redraw(true);
+                        scheduleEbay1SbidAutopush();
+                    }
+                    return;
                 }
-                if (table) table.redraw(true);
-                scheduleEbay1SbidAutopush();
+                if (!live) {
+                    if (table) table.redraw(true);
+                    scheduleEbay1SbidAutopush();
+                }
             };
 
             window.sbidSlabRemove = function(idx) {
@@ -7904,6 +7952,7 @@
                     l7_views_min: null, l7_views_max: null, sbid: 2.1
                 });
                 cascadeSbidFromFirstRow(currentSbidSlabRules);
+                autofillSbidSlabMins(currentSbidSlabRules);
                 renderSbidSlabRules(currentSbidSlabRules);
                 scheduleEbay1SbidAutopush();
             });
