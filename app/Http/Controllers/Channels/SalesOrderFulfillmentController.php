@@ -892,7 +892,7 @@ class SalesOrderFulfillmentController extends Controller
         $stored = 0;
         $fromShopify = 0;
         try {
-            $stored = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(7, 3);
+            $stored = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(2, 1);
         } catch (\Throwable $e) {
             report($e);
         }

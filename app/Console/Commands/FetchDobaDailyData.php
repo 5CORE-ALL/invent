@@ -208,7 +208,7 @@ class FetchDobaDailyData extends Command
         $stored = 0;
         $l30 = Carbon::now()->subDays(30);
         for ($page = 1; $page <= $maxPages; $page++) {
-            $orders = $this->fetchOrdersPage($page, 25, $beginTime, $endTime, 12);
+            $orders = $this->fetchOrdersPage($page, 25, $beginTime, $endTime, 8);
             if ($orders === null || $orders === []) {
                 break;
             }

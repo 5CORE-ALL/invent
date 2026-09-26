@@ -34,7 +34,7 @@ class DobaApiService
      * @param  array<string, mixed>  $body
      * @return list<array<string, mixed>>
      */
-    public function querySellerOrderDetail(array $body): array
+    public function querySellerOrderDetail(array $body, int $timeout = 12): array
     {
         if (! $this->isConfigured()) {
             return [];
@@ -52,8 +52,8 @@ class DobaApiService
 
         try {
             $response = Http::withoutVerifying()
-                ->timeout(12)
-                ->connectTimeout(5)
+                ->timeout(max(3, $timeout))
+                ->connectTimeout(4)
                 ->withHeaders([
                     'appKey' => config('services.doba.app_key'),
                     'signType' => 'rsa2',

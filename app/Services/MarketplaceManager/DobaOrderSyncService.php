@@ -129,7 +129,7 @@ class DobaOrderSyncService
      *
      * @return array<string, mixed>|null
      */
-    public function fetchOrderById(string $orderId): ?array
+    public function fetchOrderById(string $orderId, bool $quick = false): ?array
     {
         $orderId = trim($orderId);
         if ($orderId === '' || ! Schema::hasTable('doba_daily_data')) {
@@ -146,16 +146,19 @@ class DobaOrderSyncService
                 'beginTime' => now()->subDays(45)->format('Y-m-d\TH:i:sP'),
                 'endTime' => now()->format('Y-m-d\TH:i:sP'),
             ],
-            [
+        ];
+        if (! $quick) {
+            $windows[] = [
                 'beginTime' => now()->subDays(45)->format('Y-m-d H:i:s'),
                 'endTime' => now()->format('Y-m-d H:i:s'),
-            ],
-        ];
+            ];
+        }
         $order = null;
+        $timeout = $quick ? 6 : 12;
         foreach ($windows as $window) {
             $query = $window + ['pageNo' => 1, 'pageSize' => 10];
             foreach (['ordBusiId', 'platformOrderNo'] as $field) {
-                $rows = $api->querySellerOrderDetail($query + [$field => $orderId]);
+                $rows = $api->querySellerOrderDetail($query + [$field => $orderId], $timeout);
                 $order = $this->matchDobaOrder($rows, $orderId);
                 if (is_array($order)) {
                     break 2;
