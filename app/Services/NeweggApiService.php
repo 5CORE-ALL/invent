@@ -1751,6 +1751,8 @@ class NeweggApiService
 
     public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
+        $description = self::descriptionHtmlForFeed($description);
+
         return $this->pushItemContent($identifier, [
             'ItemDescription' => $description,
             'ProductDescription' => $description,
@@ -2311,6 +2313,26 @@ class NeweggApiService
     }
 
     /**
+     * Newegg rejects item creation when Product Description contains tags outside its allow list.
+     * Shopify HTML often includes colgroup, which produces "Item not created".
+     */
+    public static function descriptionHtmlForFeed(string $html): string
+    {
+        $html = trim($html);
+        if ($html === '') {
+            return '';
+        }
+        $html = html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $html = str_replace(']]>', ']] >', $html);
+
+        $clean = strip_tags($html, '<p><br><b><i><u><strong><em><ul><ol><li><h1><h2><h3><h4><table><tr><td><th><a>');
+        $clean = preg_replace('/<\/?colgroup\b[^>]*>/i', '', $clean) ?? $clean;
+        $clean = preg_replace('/<\/?col\b[^>]*>/i', '', $clean) ?? $clean;
+
+        return trim($clean);
+    }
+
+    /**
      * @param  array<string, mixed>  $fields
      * @return array{success: bool, message: string, request_id?: string, blocked_by_cloudflare?: bool}
      */
@@ -2328,7 +2350,10 @@ class NeweggApiService
         $title = trim((string) ($fields['title'] ?? ''));
         $safeTitle = str_replace(']]>', ']] >', $title);
         $description = trim((string) ($fields['description'] ?? $title));
-        $safeDescription = str_replace(']]>', ']] >', $description);
+        $safeDescription = self::descriptionHtmlForFeed($description);
+        if ($safeDescription === '') {
+            $safeDescription = self::descriptionHtmlForFeed($title);
+        }
         $bullets = [];
         foreach ((array) ($fields['bullets'] ?? []) as $bullet) {
             $bullet = trim((string) $bullet);

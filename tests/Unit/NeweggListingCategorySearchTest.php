@@ -157,4 +157,16 @@ class NeweggListingCategorySearchTest extends TestCase
             'error_count' => 0,
         ]));
     }
+
+    public function test_newegg_description_drops_disallowed_colgroup_tags(): void
+    {
+        $html = NeweggApiService::descriptionHtmlForFeed(
+            '<p>The 5 Core light stand.</p><table><colgroup><col style="width:50%"><col></colgroup><tr><td>Height</td><td>39 in</td></tr></table>'
+        );
+
+        $this->assertStringNotContainsString('colgroup', strtolower($html));
+        $this->assertStringNotContainsString('<col', strtolower($html));
+        $this->assertStringContainsString('<p>The 5 Core light stand.</p>', $html);
+        $this->assertStringContainsString('<td>Height</td>', $html);
+    }
 }
