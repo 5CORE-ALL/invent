@@ -17,20 +17,21 @@ class DobaOrderDetailService
             return ['success' => false, 'message' => 'Order id missing or table unavailable.'];
         }
 
-        $result = app(DobaOrderSyncService::class)->fetchAndStore(60);
-        if (empty($result['success'])) {
-            return ['success' => false, 'message' => $result['message'] ?? 'Fetch failed.'];
+        $order = app(DobaOrderSyncService::class)->fetchOrderById($orderId);
+        if (! is_array($order)) {
+            return ['success' => false, 'message' => 'Doba did not return order '.$orderId.'.'];
         }
 
         $exists = DobaDailyData::query()
             ->where('order_no', $orderId)
+            ->orWhere('platform_order_no', $orderId)
             ->exists();
 
         if (! $exists) {
             return ['success' => false, 'message' => 'Order not found in doba_daily_data after refresh.'];
         }
 
-        return ['success' => true, 'message' => 'Order refreshed from Doba daily fetch.'];
+        return ['success' => true, 'message' => 'Order refreshed from Doba.'];
     }
 
     /**

@@ -32,35 +32,69 @@ class DobaTrackingNumber
      */
     public static function fromOrderPayload(array $order): array
     {
-        foreach (['buyerPrepaidLabelList', 'shippingLabels', 'shippingLabelList'] as $key) {
-            $list = $order[$key] ?? null;
-            if (! is_array($list)) {
+        $hit = self::firstTrackingInPayload($order);
+
+        return $hit['tracking'] !== '' ? $hit : ['tracking' => '', 'carrier' => ''];
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @return array{tracking: string, carrier: string}
+     */
+    protected static function firstTrackingInPayload(array $node): array
+    {
+        $direct = self::trackingFromNode($node);
+        if ($direct['tracking'] !== '') {
+            return $direct;
+        }
+        foreach ($node as $value) {
+            if (! is_array($value)) {
                 continue;
             }
-            $items = array_is_list($list) ? $list : [$list];
+            $items = array_is_list($value) ? $value : [$value];
             foreach ($items as $item) {
                 if (! is_array($item)) {
                     continue;
                 }
-                $tracking = self::sanitize((string) ($item['trackingNumber'] ?? $item['tracking_number'] ?? ''));
-                if (strlen($tracking) < 8) {
-                    continue;
+                $hit = self::firstTrackingInPayload($item);
+                if ($hit['tracking'] !== '') {
+                    return $hit;
                 }
-                $carrier = trim((string) ($item['carrier'] ?? $item['carrierName'] ?? $item['logisticsCompany'] ?? ''));
-
-                return ['tracking' => $tracking, 'carrier' => $carrier];
             }
         }
 
-        $tracking = self::sanitize((string) ($order['trackingNumber'] ?? $order['tracking_number'] ?? ''));
-        if (strlen($tracking) < 8) {
-            return ['tracking' => '', 'carrier' => ''];
+        return ['tracking' => '', 'carrier' => ''];
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @return array{tracking: string, carrier: string}
+     */
+    protected static function trackingFromNode(array $node): array
+    {
+        foreach ([
+            'trackingNumber', 'tracking_number', 'logisticsNo', 'logistics_no',
+            'expressNo', 'express_no', 'waybillNo', 'waybill_no', 'trackingNo', 'shipNo',
+        ] as $key) {
+            if (! isset($node[$key]) || ! is_scalar($node[$key])) {
+                continue;
+            }
+            $tracking = self::sanitize((string) $node[$key]);
+            if (strlen($tracking) < 8) {
+                continue;
+            }
+            $carrier = '';
+            foreach (['carrier', 'carrierName', 'logisticsCompany', 'logisticsType', 'logisticsName', 'shippingCompany'] as $carrierKey) {
+                $carrier = trim((string) ($node[$carrierKey] ?? ''));
+                if ($carrier !== '') {
+                    break;
+                }
+            }
+
+            return ['tracking' => $tracking, 'carrier' => $carrier];
         }
 
-        return [
-            'tracking' => $tracking,
-            'carrier' => trim((string) ($order['logisticsType'] ?? '')),
-        ];
+        return ['tracking' => '', 'carrier' => ''];
     }
 
     public static function needsSanitize(string $tracking): bool

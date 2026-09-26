@@ -5,6 +5,8 @@ namespace App\Services\MarketplaceManager;
 use App\Jobs\ImportDobaOrderToShopify;
 use App\Models\DobaDailyData;
 use App\Models\MarketplaceSyncSettings;
+use App\Services\DobaApiService;
+use App\Support\DobaTrackingNumber;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -98,6 +100,97 @@ class DobaOrderSyncService
             'fetched' => $stored,
             'stored' => $stored,
         ];
+    }
+
+    /**
+     * Ask Doba for one order id and store the waybill on doba_daily_data.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function fetchOrderById(string $orderId): ?array
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '' || ! Schema::hasTable('doba_daily_data')) {
+            return null;
+        }
+
+        $api = app(DobaApiService::class);
+        if (! $api->isConfigured()) {
+            return null;
+        }
+
+        $window = [
+            'pageNo' => 1,
+            'pageSize' => 10,
+            'beginTime' => now()->subDays(45)->format('Y-m-d H:i:s'),
+            'endTime' => now()->format('Y-m-d H:i:s'),
+        ];
+        $order = null;
+        foreach (['ordBusiId', 'platformOrderNo', 'orderNo'] as $field) {
+            $rows = $api->querySellerOrderDetail($window + [$field => $orderId]);
+            $order = $this->matchDobaOrder($rows, $orderId);
+            if (is_array($order)) {
+                break;
+            }
+        }
+        if (! is_array($order)) {
+            return null;
+        }
+
+        $this->storeFetchedDobaOrder($order, $orderId);
+
+        return $order;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, mixed>|null
+     */
+    protected function matchDobaOrder(array $rows, string $orderId): ?array
+    {
+        $want = strtoupper(trim($orderId));
+        foreach ($rows as $row) {
+            foreach (['ordBusiId', 'orderNo', 'platformOrderNo'] as $key) {
+                $value = strtoupper(trim((string) ($row[$key] ?? '')));
+                if ($value !== '' && $value === $want) {
+                    return $row;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    protected function storeFetchedDobaOrder(array $order, string $requestedId): void
+    {
+        $orderNo = trim((string) ($order['ordBusiId'] ?? $order['orderNo'] ?? ''));
+        $platformOrderNo = trim((string) ($order['platformOrderNo'] ?? ''));
+        $hit = DobaTrackingNumber::fromOrderPayload($order);
+        $status = trim((string) ($order['ordStatus'] ?? $order['orderStatus'] ?? ''));
+        $updates = ['order_json' => json_encode($order), 'updated_at' => now()];
+        if ($status !== '') {
+            $updates['order_status'] = substr($status, 0, 50);
+        }
+        if ($hit['tracking'] !== '') {
+            $updates['tracking_number'] = substr($hit['tracking'], 0, 100);
+            if ($hit['carrier'] !== '') {
+                $updates['carrier_name'] = substr($hit['carrier'], 0, 50);
+            }
+        }
+
+        $keys = array_values(array_filter(array_unique([$orderNo, $platformOrderNo, trim($requestedId)])));
+        if ($keys === []) {
+            return;
+        }
+
+        DobaDailyData::query()
+            ->where(function ($query) use ($keys): void {
+                $query->whereIn('order_no', $keys)->orWhereIn('platform_order_no', $keys);
+            })
+            ->update($updates);
     }
 
     public function dispatchImportsForNewOrders(): int

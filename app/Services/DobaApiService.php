@@ -29,6 +29,71 @@ class DobaApiService
     }
 
     /**
+     * One page of seller orders. Pass ordBusiId to look up a single marketplace order.
+     *
+     * @param  array<string, mixed>  $body
+     * @return list<array<string, mixed>>
+     */
+    public function querySellerOrderDetail(array $body): array
+    {
+        if (! $this->isConfigured()) {
+            return [];
+        }
+
+        $timestamp = $this->getMillisecond();
+        $content = $this->getContent($timestamp);
+        try {
+            $sign = $this->generateSignature($content);
+        } catch (\Throwable $e) {
+            Log::warning('Doba order query signature failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(8)
+                ->connectTimeout(5)
+                ->withHeaders([
+                    'appKey' => config('services.doba.app_key'),
+                    'signType' => 'rsa2',
+                    'timestamp' => $timestamp,
+                    'sign' => $sign,
+                    'Content-Type' => 'application/json',
+                ])
+                ->post($this->baseUrl.'/seller/queryOrderDetail', $body);
+        } catch (\Throwable $e) {
+            Log::warning('Doba order query failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        $json = $response->json();
+        if (! is_array($json) || (string) ($json['responseCode'] ?? '') !== '000000') {
+            return [];
+        }
+
+        $businessData = $json['businessData'] ?? null;
+        if (! is_array($businessData)) {
+            return [];
+        }
+        $status = $businessData['businessStatus'] ?? $businessData[0]['businessStatus'] ?? null;
+        if ($status !== null && (string) $status !== '000000') {
+            return [];
+        }
+
+        $rows = $businessData[0]['data'] ?? $businessData['data'] ?? [];
+        if (! is_array($rows)) {
+            return [];
+        }
+        if ($rows !== [] && ! array_is_list($rows)) {
+            $rows = [$rows];
+        }
+
+        return array_values(array_filter($rows, 'is_array'));
+    }
+
+    /**
      * Push available inventory for a Doba itemNo (best-effort across known endpoints).
      *
      * @return array{success: bool, message: string, response?: mixed, errors?: string}

@@ -2631,6 +2631,35 @@ class VeeqoShopifyFulfillmentService
                 : null;
         }
 
+        if ($marketplace === 'doba') {
+            $sync = app(DobaOrderSyncService::class);
+            foreach ($ids as $id) {
+                if (strlen($id) < 4 || $this->isShopifyInternalIdRef($id)) {
+                    continue;
+                }
+                try {
+                    $order = $sync->fetchOrderById($id);
+                } catch (\Throwable $e) {
+                    Log::info('VeeqoShopifyFulfillmentService: Doba order tracking lookup failed', [
+                        'order_id' => $id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+                if (! is_array($order)) {
+                    continue;
+                }
+                $hit = DobaTrackingNumber::fromOrderPayload($order);
+                if (strlen($hit['tracking']) >= 8) {
+                    return [
+                        'tracking' => $hit['tracking'],
+                        'carrier' => trim((string) ($hit['carrier'] ?? '')) ?: 'Other',
+                        'source' => 'channel',
+                    ];
+                }
+            }
+        }
+
         if (in_array($marketplace, ['tiktok', 'tiktok2'], true)) {
             $api = $marketplace === 'tiktok2'
                 ? app(TikTok2ShopService::class)
@@ -2745,6 +2774,22 @@ class VeeqoShopifyFulfillmentService
      */
     protected function trackingFromLoadedMarketplaceModel(string $marketplace, object $model): ?array
     {
+        if ($marketplace === 'doba') {
+            $raw = $model->order_json ?? null;
+            if (is_string($raw)) {
+                $decoded = json_decode($raw, true);
+                $raw = is_array($decoded) ? $decoded : null;
+            }
+            if (is_array($raw)) {
+                $hit = DobaTrackingNumber::fromOrderPayload($raw);
+                if (strlen($hit['tracking']) >= 8) {
+                    return [
+                        'tracking' => $hit['tracking'],
+                        'carrier' => trim((string) ($hit['carrier'] ?? '')) ?: 'Other',
+                    ];
+                }
+            }
+        }
         if ($marketplace === 'amazon' && $model instanceof AmazonOrder) {
             $hit = $model->localTracking();
             if (trim((string) ($hit['tracking'] ?? '')) !== '') {
