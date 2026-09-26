@@ -10,7 +10,6 @@ use App\Models\EbayMetric;
 use App\Models\EbaySkuCompetitor;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
-use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -122,21 +121,19 @@ class EbayRuleSpriceApplyService
                         $stats['skipped']++;
                         continue;
                     }
-                    $next = $computed['sprice'];
-                    $live = (float) ($row['live'] ?? 0);
-                    if ($live > 0 && ! ChannelLivePriceSync::shouldSkipPushAndRepair($this->channel, $row, $next, $dryRun)) {
-                        $pushTasks[] = ['sku' => $row['sku'], 'price' => $next];
-                    }
-                    $saved = (float) ($row['saved_sprice'] ?? 0);
-                    if (abs($saved - $next) < 0.005) {
-                        $stats['skipped_unchanged']++;
-                        continue;
-                    }
-                    if (! $dryRun) {
+                    $next = round((float) $computed['sprice'], 2);
+                    $saved = round((float) ($row['saved_sprice'] ?? 0), 2);
+                    $live = round((float) ($row['live'] ?? 0), 2);
+                    if (! $dryRun && ($saved <= 0 || ! self::sameCents($saved, $next))) {
                         $this->saveSprice($row['sku'], $next, $row, $margin);
+                        $stats['applied']++;
+                        $applied++;
                     }
-                    $applied++;
-                    $stats['applied']++;
+                    if ($live > 0 && ! self::sameCents($live, $next)) {
+                        $pushTasks[] = ['sku' => $row['sku'], 'price' => $next];
+                    } else {
+                        $stats['skipped_unchanged']++;
+                    }
                 } catch (Throwable $e) {
                     $stats['errors'][] = ($row['sku'] ?? '').': '.$e->getMessage();
                     Log::warning('[EbayRuleSpriceApply] sku failed', [
@@ -177,8 +174,8 @@ class EbayRuleSpriceApplyService
     }
 
     /**
-     * Blue badge: Dil S PRC ≠ live eBay Price (listed, INV > 0, not ended).
-     * eBay 1–3 0 Sold stays on the Dil slab. Minimum NROI is not used on these pages.
+     * Same price as the S PRC cell. Writes it into SPRICE, and queues a push only when the
+     * live eBay price is a different cent. Listed, INV > 0, not ended.
      *
      * @return list<array{sku: string, price: float}>
      */
@@ -187,16 +184,19 @@ class EbayRuleSpriceApplyService
         $store = $this->loadDilGroiStore();
         $margin = $this->takeHome();
         $adsPct = $this->channelAdsPercent();
-
         $out = [];
         foreach ($this->hydrateAll($onlySkus) as $row) {
             $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin, $adsPct);
             if ($computed === null) {
                 continue;
             }
-            $live = (float) ($row['live'] ?? 0);
-            $next = $computed['sprice'];
-            if (! ($live > 0) || ChannelLivePriceSync::shouldSkipPushAndRepair($this->channel, $row, $next, false)) {
+            $next = round((float) $computed['sprice'], 2);
+            $saved = round((float) ($row['saved_sprice'] ?? 0), 2);
+            $live = round((float) ($row['live'] ?? 0), 2);
+            if ($saved <= 0 || ! self::sameCents($saved, $next)) {
+                $this->saveSprice((string) $row['sku'], $next, $row, $margin);
+            }
+            if ($live <= 0 || self::sameCents($live, $next)) {
                 continue;
             }
             $out[] = [
@@ -206,6 +206,11 @@ class EbayRuleSpriceApplyService
         }
 
         return $out;
+    }
+
+    public static function sameCents(float $a, float $b): bool
+    {
+        return (int) round($a * 100) === (int) round($b * 100);
     }
 
     /**
@@ -264,12 +269,10 @@ class EbayRuleSpriceApplyService
             return 0.0;
         }
         try {
-            $master = app(ChannelMasterController::class);
-
             return match ($this->channel) {
-                'ebay2' => (float) $master->getEbaytwoMasterAdsPercent(),
-                'ebay3' => (float) $master->getEbaythreeMasterAdsPercent(),
-                default => (float) $master->getEbayMasterAdsPercent(),
+                'ebay2' => app(\App\Http\Controllers\MarketPlace\EbayTwoController::class)->tabulatorChannelAdsPercent(),
+                'ebay3' => app(\App\Http\Controllers\MarketPlace\EbayThreeController::class)->tabulatorChannelAdsPercent(),
+                default => app(\App\Http\Controllers\MarketPlace\EbayController::class)->tabulatorChannelAdsPercent(),
             };
         } catch (Throwable $e) {
             return 0.0;

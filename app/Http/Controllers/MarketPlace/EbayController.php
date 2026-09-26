@@ -89,9 +89,7 @@ class EbayController extends Controller
         // so the Ads% is consistent with this page's Sales (not the marketplace_daily_metrics
         // sales the /all-marketplace-master value uses).
         $ebayAdSpend = app(ChannelMasterController::class)->getEbayMasterAdSpend();
-        $channelAdsPercent = $agg['sales'] > 0
-            ? round(($ebayAdSpend / $agg['sales']) * 100, 1)
-            : 0.0;
+        $channelAdsPercent = $this->tabulatorChannelAdsPercent((float) ($agg['sales'] ?? 0));
 
         // NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same shape as Amazon NROI badge
         // (do not cut Ads% from GROI%).
@@ -123,6 +121,19 @@ class EbayController extends Controller
      *   - GPFT%  = Σ T PFT / Σ (qty × unit price) × 100
      *   - GROI%  = Σ T PFT / Σ COGS × 100
      */
+    /**
+     * Ads% the eBay 1 S PRC cell uses: Total Ad Spend ÷ this page's real-orders L30 sales, 1 decimal.
+     */
+    public function tabulatorChannelAdsPercent(?float $sales = null): float
+    {
+        if ($sales === null) {
+            $sales = (float) ($this->fetchEbayL30OrdersAggregate()['sales'] ?? 0);
+        }
+        $spend = (float) app(ChannelMasterController::class)->getEbayMasterAdSpend();
+
+        return $sales > 0 ? round(($spend / $sales) * 100, 1) : 0.0;
+    }
+
     private function fetchEbayL30OrdersAggregate(): array
     {
         $empty = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'gpft' => 0.0, 'groi' => 0.0];

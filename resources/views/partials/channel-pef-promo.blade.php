@@ -9939,6 +9939,9 @@
             if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return false;
             if (!chPromoPageReloadPushAllowed()) return false;
             if (window._chPromoServerBluePushStarted) return true;
+            if (!window._ebaySprcCellSaved && typeof window.ebayScheduleSprcDilAutoApply === 'function') {
+                return true;
+            }
             window._chPromoServerBluePushStarted = true;
             $.ajax({
                 url: CH_PROMO_RULES_BASE + '/push-blue',
