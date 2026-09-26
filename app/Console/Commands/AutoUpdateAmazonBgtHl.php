@@ -85,14 +85,14 @@ class AutoUpdateAmazonBgtHl extends Command
                     return false;
                 }
                 
-                // Check for invalid SBGT
-                if (!isset($sbgt) || $sbgt <= 0) {
+                // SBGT 0 is valid: it pauses the campaign. Only a missing or negative value is skipped.
+                if (! isset($sbgt) || ! is_numeric($sbgt) || (float) $sbgt < 0) {
                     $skippedCampaigns[] = [
                         'index' => $index,
                         'campaign_id' => $campaignId,
                         'campaign_name' => $campaignName,
                         'sbgt' => $sbgt,
-                        'reason' => 'Invalid SBGT (must be positive number > 0)',
+                        'reason' => 'Invalid SBGT (must be 0 to pause, or a positive budget)',
                     ];
                     return false;
                 }
@@ -174,7 +174,7 @@ class AutoUpdateAmazonBgtHl extends Command
                     $this->info('Campaign: ' . ($campaign->campaignName ?? 'N/A'));
                     $this->info('  Price: $' . number_format($campaign->price ?? 0, 2));
                     $this->info('  ACOS: ' . number_format($campaign->acos_L30 ?? 0, 2) . '%');
-                    $this->info('  New Budget: $' . ($campaign->sbgt ?? 0));
+                    $this->info('  L30 ACOS tier: $' . ($campaign->sbgt ?? 0));
                     $this->info('  Campaign ID: ' . ($campaign->campaign_id ?? 'N/A'));
                     $this->info('---');
                 }
