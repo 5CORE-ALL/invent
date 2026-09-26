@@ -34,6 +34,7 @@ use App\Services\Ebay1PromotionService;
 use App\Services\Support\ChannelPushCpnJobStore;
 use App\Services\Support\ChannelPushPrcJobStore;
 use App\Services\Support\ChannelPushPrmtJobStore;
+use App\Services\Support\ChannelPushSpriceDailyEnqueue;
 use App\Services\Support\ChannelPushSpriceJobStore;
 use App\Services\Support\ChannelPushSpriceRunner;
 use App\Support\AmazonDilGroiRule;
@@ -356,6 +357,37 @@ class ChannelPromoPricingController extends Controller
             'success' => true,
             'channel' => $channel,
             'enabled' => $enabled,
+        ]);
+    }
+
+    /**
+     * Blue badges (S PRC ≠ live Price, INV > 0, not ended) on a server worker.
+     * Same idea as amazon:sprc-dil-auto-push: the browser can close.
+     */
+    public function startBackgroundBluePush(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+        if (! self::isPageReloadPushEnabled($channel)) {
+            return response()->json([
+                'success' => true,
+                'enabled' => false,
+                'queued' => 0,
+                'message' => 'Push on reload is off',
+            ]);
+        }
+
+        $res = app(ChannelPushSpriceDailyEnqueue::class)->enqueueChannel($channel);
+
+        return response()->json([
+            'success' => true,
+            'enabled' => true,
+            'queued' => (int) ($res['queued'] ?? 0),
+            'message' => (int) ($res['queued'] ?? 0) > 0
+                ? ('Background push started for '.$res['queued'].' blue SKU(s). Page can close.')
+                : 'No S PRC to push',
         ]);
     }
 

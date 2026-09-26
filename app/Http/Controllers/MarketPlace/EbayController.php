@@ -14,6 +14,7 @@ use App\Http\Controllers\ApiController;
 use App\Models\LmpCompetitorHistory;
 use App\Services\LmpSkuGroupService;
 use App\Models\ChannelMaster;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
@@ -23,6 +24,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use App\Models\EbayListingStatus;
+use App\Services\Ebay1CouponService;
 use App\Services\EbayApiService;
 use App\Services\Ebay1PromotionService;
 use App\Services\EbayPushService;
@@ -5587,5 +5589,135 @@ class EbayController extends Controller
                 'error' => 'Failed to delete LMP: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    public function ebayZeroSoldCouponSetting()
+    {
+        return response()->json($this->ebayZeroSoldCouponConfig());
+    }
+
+    public function saveEbayZeroSoldCoupon(Request $request)
+    {
+        $enabled = filter_var($request->input('enabled'), FILTER_VALIDATE_BOOLEAN);
+        $pct = (int) round((float) $request->input('pct', 5));
+        if ($pct < 5) {
+            $pct = 5;
+        }
+        if ($pct > 80) {
+            $pct = 80;
+        }
+
+        $cfg = $this->ebayZeroSoldCouponConfig();
+        $items = $request->input('items', []);
+        if (! is_array($items)) {
+            $items = [];
+        }
+        $items = array_slice($items, 0, 6);
+
+        $skus = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+
+        $soldBySku = [];
+        if ($skus !== []) {
+            $metrics = EbayMetric::query()->whereIn('sku', $skus)->get(['sku', 'ebay_l30']);
+            foreach ($metrics as $metric) {
+                $soldBySku[strtoupper(trim((string) $metric->sku))] = (float) ($metric->ebay_l30 ?? 0);
+            }
+        }
+
+        $payload = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $on = $enabled && ! empty($item['on']);
+            $sold = $soldBySku[strtoupper($sku)] ?? 0;
+            if ($sold >= 1) {
+                $on = false;
+            }
+            $payload[] = ['sku' => $sku, 'on' => $on];
+        }
+
+        $service = app(Ebay1CouponService::class);
+        $result = [
+            'success' => true,
+            'coupon_code' => $service->zeroSoldCouponCode($pct),
+            'promotion_id' => $cfg['promotion_id'] !== '' ? $cfg['promotion_id'] : null,
+            'results' => [],
+        ];
+        if ($payload !== []) {
+            $result = $service->syncZeroSoldCoupons(
+                $payload,
+                $pct,
+                $cfg['promotion_id'] !== '' ? $cfg['promotion_id'] : null
+            );
+        }
+
+        $promoId = $result['promotion_id'] ?? ($cfg['promotion_id'] !== '' ? $cfg['promotion_id'] : null);
+        $code = trim((string) ($result['coupon_code'] ?? ''));
+        if ($code === '') {
+            $code = $service->zeroSoldCouponCode($pct);
+        }
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'ebay1_zero_sold_coupon'],
+            [
+                'visibility' => [
+                    'enabled' => $enabled,
+                    'pct' => $pct,
+                    'promotion_id' => $promoId,
+                    'coupon_code' => $code,
+                ],
+                'column_order' => [],
+            ]
+        );
+
+        $hasResults = ! empty($result['results']);
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'enabled' => $enabled,
+            'pct' => $pct,
+            'coupon_code' => $code,
+            'promotion_id' => $promoId,
+            'message' => $result['message'] ?? null,
+            'results' => $result['results'] ?? [],
+        ], (! empty($result['success']) || $hasResults) ? 200 : 422);
+    }
+
+    /**
+     * @return array{enabled:bool,pct:int,coupon_code:string,promotion_id:string}
+     */
+    private function ebayZeroSoldCouponConfig(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'ebay1_zero_sold_coupon')
+            ->first();
+        $vis = is_array($row?->visibility) ? $row->visibility : [];
+        $pct = isset($vis['pct']) && is_numeric($vis['pct']) ? (int) round((float) $vis['pct']) : 5;
+        if ($pct < 5 || $pct > 80) {
+            $pct = 5;
+        }
+        $service = app(Ebay1CouponService::class);
+        $storedCode = isset($vis['coupon_code']) ? trim((string) $vis['coupon_code']) : '';
+
+        return [
+            'enabled' => filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'pct' => $pct,
+            'coupon_code' => $storedCode !== '' ? $storedCode : $service->zeroSoldCouponCode($pct),
+            'promotion_id' => isset($vis['promotion_id']) ? trim((string) $vis['promotion_id']) : '',
+        ];
     }
 }

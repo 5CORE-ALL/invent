@@ -9935,9 +9935,41 @@
             } catch (e) { /* TDZ before let table */ }
             return (typeof window !== 'undefined' && window.table) ? window.table : null;
         }
+        function chPromoStartServerBluePush() {
+            if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return false;
+            if (!chPromoPageReloadPushAllowed()) return false;
+            if (window._chPromoServerBluePushStarted) return true;
+            window._chPromoServerBluePushStarted = true;
+            $.ajax({
+                url: CH_PROMO_RULES_BASE + '/push-blue',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
+                data: { _token: chPromoCsrf() },
+            }).done(function(res) {
+                const n = Number(res && res.queued) || 0;
+                const msg = (res && res.message) || (n > 0 ? ('Background push ' + n) : 'No S PRC to push');
+                if (typeof setChannelPushSpriceProgress === 'function') {
+                    setChannelPushSpriceProgress({
+                        active: n > 0,
+                        done: 0,
+                        total: n,
+                        pct: n > 0 ? 0 : 0,
+                        msg: msg,
+                    });
+                }
+                if (n > 0 && typeof startChannelPushSpricePoll === 'function') {
+                    startChannelPushSpricePoll();
+                }
+            }).fail(function() {
+                window._chPromoServerBluePushStarted = false;
+            });
+            return true;
+        }
+        window.chPromoStartServerBluePush = chPromoStartServerBluePush;
         function chPromoQueueReloadSpricePush(opts) {
             opts = opts || {};
             if (!chPromoPageReloadPushAllowed()) return;
+            if (chPromoStartServerBluePush()) return;
             const scan = (typeof scanAndQueueChannelPushSprice === 'function')
                 ? scanAndQueueChannelPushSprice
                 : (window.scanAndQueueChannelPushSprice || null);
@@ -11281,6 +11313,7 @@
                                 : 'Auto-push off — price edits only save. Daily cron still pushes.'
                         );
                         if (!on) return;
+                        window._chPromoServerBluePushStarted = false;
                         if (typeof chPromoIsTemuPromoChannel === 'function'
                             && chPromoIsTemuPromoChannel()
                             && typeof scanAndQueueTemuListingPush === 'function') {

@@ -781,6 +781,10 @@
                     {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / CVR Up/Dn / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons'])
+                    <button type="button" id="ebay1-zero-sold-coupon-btn" class="btn btn-outline-secondary btn-sm pricing-filter-item"
+                        title="Public eBay coupon on 0 sold only. Turns off as soon as E L30 is 1.">
+                        <i class="fas fa-ticket-alt"></i> 0 Sold CPN Off
+                    </button>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block pricing-filter-item">
@@ -966,6 +970,30 @@
             </div>
         </div>
     </div>
+    </div>
+
+    <div class="modal fade" id="ebay1ZeroSoldCouponModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6">0 Sold coupon</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <p class="small text-muted mb-2">Public coupon on eBay for rows with E L30 = 0 and INV above 0. When E L30 reaches 1, that SKU is taken off the coupon.</p>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="ebay1-zero-sold-coupon-switch">
+                        <label class="form-check-label" for="ebay1-zero-sold-coupon-switch" id="ebay1-zero-sold-coupon-switch-label">Off</label>
+                    </div>
+                    <label class="form-label small mb-1" for="ebay1-zero-sold-coupon-pct">Coupon %</label>
+                    <input type="number" class="form-control form-control-sm" id="ebay1-zero-sold-coupon-pct"
+                        min="5" max="80" step="1" value="5">
+                    <div class="small mt-2">eBay code: <strong id="ebay1-zero-sold-coupon-code">SAVE5OFF</strong></div>
+                    <div class="small text-muted" id="ebay1-zero-sold-coupon-hint">Buyers enter this code on eBay. eBay codes are letters and numbers only.</div>
+                    <div class="small text-muted mt-2" id="ebay1-zero-sold-coupon-status"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- LMP Competitors Modal – right-side drawer -->
@@ -4419,6 +4447,23 @@
                         }
                     },
                     {
+                        title: "Coupon",
+                        field: "zero_sold_coupon_code",
+                        hozAlign: "center",
+                        width: 92,
+                        headerTooltip: "Public eBay coupon code. Only rows with E L30 = 0 and INV > 0. A sale of 1 removes the code.",
+                        formatter: function(cell) {
+                            const data = cell.getRow().getData() || {};
+                            const code = (typeof ebay1CouponColumnCode === 'function') ? ebay1CouponColumnCode(data) : '';
+                            if (!code) return '';
+                            const live = String(data.zero_sold_coupon_code || '').trim().toUpperCase();
+                            const pending = live !== code.toUpperCase();
+                            const color = pending ? '#6c757d' : '#0d6efd';
+                            const title = pending ? 'Sending ' + code + ' to eBay' : code + ' is live on eBay';
+                            return '<span style="color:' + color + ';font-weight:600;font-size:11px;" title="' + title + '">' + code + '</span>';
+                        }
+                    },
+                    {
                         title: "L30 View",
                         field: "views",
                         hozAlign: "center",
@@ -6389,6 +6434,205 @@
                 setTimeout(function() { ebaySortReapplyGuard = false; }, 0);
             });
 
+            const ebay1ZeroSoldCoupon = {
+                enabled: false,
+                pct: 5,
+                code: 'SAVE5OFF',
+                ready: false,
+                loading: false,
+                saving: false,
+                pending: false
+            };
+
+            function ebay1ZeroSoldCouponCode(pct) {
+                const n = Math.max(5, Math.min(80, Math.round(Number(pct) || 5)));
+                let code = 'SAVE' + n + 'OFF';
+                if (code.length < 8) {
+                    code = 'SAVE' + String(n).padStart(2, '0') + 'OFF';
+                }
+                return code.slice(0, 15);
+            }
+
+            function ebay1RowSku(data) {
+                return String((data && (data['(Child) sku'] || data.sku)) || '').trim();
+            }
+
+            function ebay1IsZeroSoldRow(data) {
+                if (!data || (typeof ebayIsParentRowData === 'function' && ebayIsParentRowData(data))) {
+                    return false;
+                }
+                const inv = parseFloat(data.INV) || 0;
+                if (!(inv > 0)) return false;
+                const l30 = parseFloat(data['eBay L30']) || 0;
+                return !(l30 >= 1);
+            }
+
+            function ebay1CouponColumnCode(data) {
+                if (!ebay1ZeroSoldCoupon.enabled || !ebay1IsZeroSoldRow(data)) return '';
+                return ebay1ZeroSoldCoupon.code || ebay1ZeroSoldCouponCode(ebay1ZeroSoldCoupon.pct);
+            }
+            window.ebay1CouponColumnCode = ebay1CouponColumnCode;
+
+            function ebay1PaintZeroSoldCouponUi() {
+                const on = !!ebay1ZeroSoldCoupon.enabled;
+                const code = ebay1ZeroSoldCoupon.code || ebay1ZeroSoldCouponCode(ebay1ZeroSoldCoupon.pct);
+                $('#ebay1-zero-sold-coupon-switch').prop('checked', on);
+                $('#ebay1-zero-sold-coupon-switch-label').text(on ? 'On' : 'Off');
+                $('#ebay1-zero-sold-coupon-pct').val(ebay1ZeroSoldCoupon.pct);
+                $('#ebay1-zero-sold-coupon-code').text(code);
+                $('#ebay1-zero-sold-coupon-hint').text('Buyers enter ' + code + ' on eBay (save ' + ebay1ZeroSoldCoupon.pct + '% off). eBay codes are letters and numbers only.');
+                $('#ebay1-zero-sold-coupon-btn')
+                    .toggleClass('btn-outline-secondary', !on)
+                    .toggleClass('btn-primary', on)
+                    .html('<i class="fas fa-ticket-alt"></i> 0 Sold ' + (on ? code : 'CPN Off'));
+            }
+
+            function ebay1PatchCouponRow(sku, code) {
+                const want = String(sku || '').trim().toUpperCase();
+                if (!want) return;
+                const apply = function(data) {
+                    if (!data || ebay1RowSku(data).toUpperCase() !== want) return;
+                    data.zero_sold_coupon_code = code || null;
+                };
+                if (Array.isArray(allTableData)) allTableData.forEach(apply);
+                if (table) {
+                    table.getRows().forEach(function(row) {
+                        const data = row.getData() || {};
+                        if (ebay1RowSku(data).toUpperCase() === want) {
+                            row.update({ zero_sold_coupon_code: code || null });
+                        }
+                    });
+                }
+            }
+
+            function ebay1ZeroSoldJobs() {
+                const rows = (Array.isArray(allTableData) && allTableData.length)
+                    ? allTableData
+                    : (table ? (table.getData() || []) : []);
+                const code = (ebay1ZeroSoldCoupon.code || ebay1ZeroSoldCouponCode(ebay1ZeroSoldCoupon.pct)).toUpperCase();
+                const jobs = [];
+                rows.forEach(function(data) {
+                    if (!data || (typeof ebayIsParentRowData === 'function' && ebayIsParentRowData(data))) return;
+                    const sku = ebay1RowSku(data);
+                    if (!sku) return;
+                    const stored = String(data.zero_sold_coupon_code || '').trim().toUpperCase();
+                    const wantOn = !!ebay1ZeroSoldCoupon.enabled && ebay1IsZeroSoldRow(data);
+                    if (wantOn && stored === code) return;
+                    if (!wantOn && stored === '') return;
+                    jobs.push({ sku: sku, on: wantOn });
+                });
+                return jobs;
+            }
+
+            function ebay1SyncZeroSoldCoupon() {
+                if (!ebay1ZeroSoldCoupon.ready) return;
+                if (ebay1ZeroSoldCoupon.saving) {
+                    ebay1ZeroSoldCoupon.pending = true;
+                    return;
+                }
+                const jobs = ebay1ZeroSoldJobs();
+                if (!jobs.length) {
+                    $('#ebay1-zero-sold-coupon-status').text(ebay1ZeroSoldCoupon.enabled
+                        ? '0 sold rows are on ' + ebay1ZeroSoldCoupon.code + '.'
+                        : 'Coupon is off.');
+                    return;
+                }
+                ebay1ZeroSoldCoupon.saving = true;
+                let index = 0;
+                let ok = 0;
+                let fail = 0;
+
+                function finish() {
+                    ebay1ZeroSoldCoupon.saving = false;
+                    $('#ebay1-zero-sold-coupon-status').text('eBay coupon ' + ebay1ZeroSoldCoupon.code + ': ' + ok + ' updated, ' + fail + ' failed.');
+                    if (ebay1ZeroSoldCoupon.pending) {
+                        ebay1ZeroSoldCoupon.pending = false;
+                        ebay1SyncZeroSoldCoupon();
+                    }
+                }
+
+                function next() {
+                    if (index >= jobs.length) {
+                        finish();
+                        return;
+                    }
+                    const chunk = jobs.slice(index, index + 4);
+                    index += chunk.length;
+                    $('#ebay1-zero-sold-coupon-status').text('Updating eBay coupon ' + index + ' / ' + jobs.length + '…');
+                    $.ajax({
+                        url: '/ebay-zero-sold-coupon',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: JSON.stringify({
+                            enabled: !!ebay1ZeroSoldCoupon.enabled,
+                            pct: ebay1ZeroSoldCoupon.pct,
+                            items: chunk
+                        }),
+                        success: function(res) {
+                            if (res && res.coupon_code) ebay1ZeroSoldCoupon.code = res.coupon_code;
+                            (res && res.results ? res.results : []).forEach(function(row) {
+                                if (row && row.success) {
+                                    ok++;
+                                    ebay1PatchCouponRow(row.sku, row.on ? (row.coupon_code || ebay1ZeroSoldCoupon.code) : null);
+                                } else {
+                                    fail++;
+                                }
+                            });
+                            ebay1PaintZeroSoldCouponUi();
+                            next();
+                        },
+                        error: function(xhr) {
+                            fail += chunk.length;
+                            const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'eBay coupon update failed';
+                            $('#ebay1-zero-sold-coupon-status').text(msg);
+                            next();
+                        }
+                    });
+                }
+                next();
+            }
+
+            function ebay1ApplyZeroSoldCouponFromModal() {
+                const pct = Math.max(5, Math.min(80, Math.round(Number($('#ebay1-zero-sold-coupon-pct').val()) || 5)));
+                ebay1ZeroSoldCoupon.enabled = $('#ebay1-zero-sold-coupon-switch').is(':checked');
+                ebay1ZeroSoldCoupon.pct = pct;
+                ebay1ZeroSoldCoupon.code = ebay1ZeroSoldCouponCode(pct);
+                ebay1PaintZeroSoldCouponUi();
+                if (table) table.redraw(true);
+                ebay1SyncZeroSoldCoupon();
+            }
+
+            $('#ebay1-zero-sold-coupon-btn').on('click', function() {
+                ebay1PaintZeroSoldCouponUi();
+                const modalEl = document.getElementById('ebay1ZeroSoldCouponModal');
+                if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+            $('#ebay1-zero-sold-coupon-switch').on('change', ebay1ApplyZeroSoldCouponFromModal);
+            $('#ebay1-zero-sold-coupon-pct').on('change', ebay1ApplyZeroSoldCouponFromModal);
+
+            function ebay1LoadZeroSoldCoupon() {
+                if (ebay1ZeroSoldCoupon.ready) {
+                    ebay1SyncZeroSoldCoupon();
+                    return;
+                }
+                if (ebay1ZeroSoldCoupon.loading) return;
+                ebay1ZeroSoldCoupon.loading = true;
+                $.get('/ebay-zero-sold-coupon', function(res) {
+                    ebay1ZeroSoldCoupon.loading = false;
+                    ebay1ZeroSoldCoupon.enabled = !!(res && res.enabled);
+                    ebay1ZeroSoldCoupon.pct = (res && res.pct) ? res.pct : 5;
+                    ebay1ZeroSoldCoupon.code = (res && res.coupon_code) ? res.coupon_code : ebay1ZeroSoldCouponCode(ebay1ZeroSoldCoupon.pct);
+                    ebay1ZeroSoldCoupon.ready = true;
+                    ebay1PaintZeroSoldCouponUi();
+                    if (table) table.redraw(true);
+                    ebay1SyncZeroSoldCoupon();
+                }).fail(function() {
+                    ebay1ZeroSoldCoupon.loading = false;
+                    $('#ebay1-zero-sold-coupon-status').text('Could not load the coupon setting.');
+                });
+            }
+
             table.on('tableBuilt', function() {
                 applySectionColumnVisibility('all');
                 applyColumnVisibilityFromServer();
@@ -6398,6 +6642,7 @@
 
             table.on('dataLoaded', function() {
                 if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
+                ebay1LoadZeroSoldCoupon();
                 // Build the unique parent list for Play/Next/Previous navigation.
                 var allRows = table.getData('all') || [];
                 var parents = [];

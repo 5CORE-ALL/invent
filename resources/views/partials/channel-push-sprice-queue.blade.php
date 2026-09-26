@@ -112,6 +112,8 @@
             let chPushClientFail = 0;
             let chPushClientTotal = 0;
             let chPushClientCancelled = false;
+            let chPushClientTokenDead = false;
+            let chPushClientTokenDeadNotified = false;
             const chPushClientPushed = new Set();
             let chPushClientOkSkus = [];
 
@@ -952,10 +954,42 @@
                 });
                 if (!n && !chPushClientBusy()) return 0;
                 chPushClientCancelled = false;
+                chPushClientTokenDead = false;
+                chPushClientTokenDeadNotified = false;
                 chPushClientTotal = chPushClientDone + chPushClientQ.length + chPushClientInflight;
                 chPushClientSetProgress(true);
                 chPushClientPump();
                 return n;
+            }
+            function chPushSpriceResponseMessage(resp) {
+                if (!resp) return 'Push failed';
+                if (resp.message) return String(resp.message);
+                const errs = resp.errors;
+                if (Array.isArray(errs) && errs.length && errs[0]) {
+                    return String(errs[0].message || errs[0].LongMessage || errs[0].ShortMessage || 'Push failed');
+                }
+                return 'Push failed';
+            }
+            function chPushSpriceStopForDeadToken(msg) {
+                const s = String(msg || '').toLowerCase();
+                const dead = s.indexOf('refresh token expired') !== -1 || s.indexOf('invalid_grant') !== -1;
+                if (!dead) return false;
+                chPushClientQ = [];
+                chPushClientCancelled = true;
+                chPushClientTokenDead = true;
+                if (!chPushClientTokenDeadNotified) {
+                    chPushClientTokenDeadNotified = true;
+                    chPushSpriceToast('error', 'eBay refresh token expired. Price push stopped until a new refresh token is saved.');
+                }
+                setChannelPushSpriceProgress({
+                    active: false,
+                    done: chPushClientDone,
+                    total: chPushClientTotal,
+                    fail: chPushClientFail + 1,
+                    pct: 0,
+                    msg: 'Refresh token expired',
+                });
+                return true;
             }
             function chPushClientPump() {
                 if (chPushClientCancelled) return;
@@ -984,16 +1018,32 @@
                             }
                             chPushClientApplyResult(item, true, live, null);
                         } else {
+                            const msg = chPushSpriceResponseMessage(resp);
+                            if (chPushSpriceStopForDeadToken(msg)) return;
                             chPushClientFail++;
-                            chPushClientApplyResult(item, false, null, (resp && resp.message) || 'Push failed');
+                            chPushClientApplyResult(item, false, null, msg);
                         }
                     }).fail(function(xhr) {
+                        const msg = chPushSpriceResponseMessage(xhr && xhr.responseJSON);
+                        if (chPushSpriceStopForDeadToken(msg)) return;
                         chPushClientFail++;
-                        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Push failed';
                         chPushClientApplyResult(item, false, null, msg);
                     }).always(function() {
                         chPushClientDone++;
                         chPushClientInflight--;
+                        if (chPushClientTokenDead) {
+                            if (!chPushClientInflight) {
+                                setChannelPushSpriceProgress({
+                                    active: false,
+                                    done: chPushClientDone,
+                                    total: chPushClientTotal,
+                                    fail: 1,
+                                    pct: 0,
+                                    msg: 'Refresh token expired',
+                                });
+                            }
+                            return;
+                        }
                         const busy = chPushClientBusy();
                         chPushClientSetProgress(busy);
                         if (!busy) {
@@ -1204,6 +1254,9 @@
                 opts = opts || {};
                 // Catalog catch-up is opt-in ({ catalog: true }). Only saved S PRC ≠ live Price.
                 if (!opts.catalog) return;
+                if (opts.catalog && typeof global.chPromoStartServerBluePush === 'function' && global.chPromoStartServerBluePush()) {
+                    return;
+                }
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
                 if (opts.once !== false && opts.silent) window._chPushSpricePageChecked = true;
                 if (!chPushSpriceAutoPushAllowed()) return;

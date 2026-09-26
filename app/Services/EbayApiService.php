@@ -35,6 +35,9 @@ class EbayApiService
     protected $siteId;
     protected $compatLevel;
 
+    /** @var array<string, array{token: string, expires_at: int}|null> */
+    private static array $bearerMemo = [];
+
     public function __construct()
     {
         $this->appId       = config('services.ebay.app_id');
@@ -101,11 +104,24 @@ class EbayApiService
         // Do NOT send a `scope` parameter in the refresh-token request.
 
         $cacheKey = 'ebay1_bearer_token_' . md5((string) $clientId);
+        $memo = self::$bearerMemo[$cacheKey] ?? null;
+        if (is_array($memo) && ! empty($memo['token']) && (int) ($memo['expires_at'] ?? 0) > time() + 30) {
+            return $memo['token'];
+        }
         if (Cache::has($cacheKey)) {
             $cached = Cache::get($cacheKey);
-            if (!empty($cached)) {
+            if (! empty($cached)) {
+                self::$bearerMemo[$cacheKey] = ['token' => $cached, 'expires_at' => time() + 300];
+
                 return $cached;
             }
+        }
+        $durable = $this->readDurableBearerToken($cacheKey);
+        if ($durable !== null) {
+            Cache::put($cacheKey, $durable['token'], now()->addSeconds(max(60, $durable['expires_at'] - time() - 10)));
+            self::$bearerMemo[$cacheKey] = $durable;
+
+            return $durable['token'];
         }
 
         $response = Http::withoutVerifying()->asForm()
@@ -155,10 +171,100 @@ class EbayApiService
             throw new \Exception('No access token returned from eBay.');
         }
 
-        $ttlSeconds = max(0, $expiresIn - 60);
+        $ttlSeconds = max(60, $expiresIn - 60);
         Cache::put($cacheKey, $accessToken, now()->addSeconds($ttlSeconds));
+        $this->writeDurableBearerToken($cacheKey, $accessToken, time() + $ttlSeconds);
+        self::$bearerMemo[$cacheKey] = ['token' => $accessToken, 'expires_at' => time() + $ttlSeconds];
 
         return $accessToken;
+    }
+
+    /**
+     * Drop a rejected access token so the next call mints a new one from the refresh token.
+     */
+    public function forgetBearerToken(): void
+    {
+        $clientId = (string) config('services.ebay.app_id');
+        $cacheKey = 'ebay1_bearer_token_'.md5($clientId);
+        Cache::forget($cacheKey);
+        self::$bearerMemo[$cacheKey] = null;
+        $path = storage_path('app/ebay1-oauth-token.json');
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+
+    /**
+     * @return array{token: string, expires_at: int}|null
+     */
+    private function readDurableBearerToken(string $cacheKey): ?array
+    {
+        $path = storage_path('app/ebay1-oauth-token.json');
+        if (! is_file($path)) {
+            return null;
+        }
+        try {
+            $raw = json_decode((string) file_get_contents($path), true);
+        } catch (\Throwable) {
+            return null;
+        }
+        if (! is_array($raw) || ($raw['key'] ?? '') !== $cacheKey) {
+            return null;
+        }
+        $token = trim((string) ($raw['token'] ?? ''));
+        $expiresAt = (int) ($raw['expires_at'] ?? 0);
+        if ($token === '' || $expiresAt <= time() + 30) {
+            return null;
+        }
+
+        return ['token' => $token, 'expires_at' => $expiresAt];
+    }
+
+    private function writeDurableBearerToken(string $cacheKey, string $token, int $expiresAt): void
+    {
+        try {
+            $path = storage_path('app/ebay1-oauth-token.json');
+            $dir = dirname($path);
+            if (! is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            @file_put_contents($path, json_encode([
+                'key' => $cacheKey,
+                'token' => $token,
+                'expires_at' => $expiresAt,
+            ], JSON_UNESCAPED_SLASHES));
+        } catch (\Throwable) {
+            // Cache still holds the token for this process.
+        }
+    }
+
+    /**
+     * @param  list<mixed>  $errors
+     */
+    private function responseIsExpiredAuthToken(array $errors, string $raw = ''): bool
+    {
+        $blob = strtolower($raw);
+        foreach ($errors as $error) {
+            if (! is_array($error)) {
+                continue;
+            }
+            $code = (string) ($error['ErrorCode'] ?? $error['code'] ?? '');
+            $blob .= ' '.strtolower((string) ($error['LongMessage'] ?? ''));
+            $blob .= ' '.strtolower((string) ($error['ShortMessage'] ?? ''));
+            $blob .= ' '.strtolower((string) ($error['message'] ?? ''));
+            $blob .= ' '.$code;
+            if (in_array($code, ['931', '932', '17470', '21917053'], true)) {
+                return true;
+            }
+        }
+
+        return str_contains($blob, 'auth token is hard expired')
+            || str_contains($blob, 'auth token is invalid')
+            || str_contains($blob, 'iaf token')
+            || str_contains($blob, 'token has expired')
+            || str_contains($blob, 'token expired')
+            || str_contains($blob, 'invalid token')
+            || str_contains($blob, 'authentication token');
     }
 
     private function postTradingXml(array $headers, string $xmlBody)
@@ -275,7 +381,7 @@ class EbayApiService
         }
     }
 
-    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null, bool $allowVariationFallback = true)
+    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null, bool $allowVariationFallback = true, bool $tokenRetried = false)
     {
         // Multi-variation listings ignore item-level StartPrice (ErrorCode 21916618).
         // When a SKU is provided, revise that variation only — same as EbayThreeApiService.
@@ -468,6 +574,25 @@ class EbayApiService
             }
             
             $isAccountRestricted = false;
+
+            if (! $tokenRetried && $this->responseIsExpiredAuthToken($errors, (string) $body)) {
+                Log::warning('eBay1 access token rejected — refreshing and retrying price revise', [
+                    'itemId' => $itemId,
+                    'sku' => $sku,
+                ]);
+                $this->forgetBearerToken();
+
+                return $this->reviseFixedPriceItem(
+                    $itemId,
+                    $price,
+                    $quantity,
+                    $sku,
+                    $variationSpecifics,
+                    $variationSpecificsSet,
+                    $allowVariationFallback,
+                    true
+                );
+            }
             
             foreach ($errors as $error) {
                 $errorCode = is_array($error) ? ($error['ErrorCode'] ?? '') : '';
