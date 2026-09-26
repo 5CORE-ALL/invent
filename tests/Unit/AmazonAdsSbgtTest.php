@@ -22,11 +22,11 @@ class AmazonAdsSbgtTest extends TestCase
         $this->assertSame(13, AmazonAdsSbgt::sumFromParts(2, 3, 4, 1, 0, 3));
     }
 
-    public function test_explicit_bgt_acos_zero_zeros_the_total(): void
+    public function test_bgt_acos_zero_is_added_not_a_wipe(): void
     {
-        $this->assertSame(0, AmazonAdsSbgt::sumFromParts(5, 4, 0, 3, 2));
+        $this->assertSame(14, AmazonAdsSbgt::sumFromParts(5, 4, 0, 3, 2));
         $this->assertSame(0, AmazonAdsSbgt::sumFromParts(null, null, 0, null, null));
-        $this->assertSame(0, AmazonAdsSbgt::sumFromParts(5, 4, '0', 3, 2));
+        $this->assertSame(14, AmazonAdsSbgt::sumFromParts(5, 4, '0', 3, 2));
     }
 
     public function test_zero_sum_of_present_parts_is_zero_not_null(): void

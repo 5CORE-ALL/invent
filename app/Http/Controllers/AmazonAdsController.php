@@ -560,7 +560,7 @@ class AmazonAdsController extends Controller
 
     /**
      * Grid SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil.
-     * Explicit BGT ACOS of 0 zeros the total (pause — $0 will not push).
+     * A part of 0 is added as zero. The campaign pauses only when the total is 0.
      */
     private static function summedSbgtFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null): ?int
     {
