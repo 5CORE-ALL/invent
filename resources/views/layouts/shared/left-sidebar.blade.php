@@ -2425,6 +2425,34 @@
                 </div>
             </li>
 
+            <!-- Offer Up -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarOfferUp" aria-expanded="false"
+                    aria-controls="sidebarOfferUp">
+                    <span>Offer Up</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarOfferUp">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ route('offerup.analytics') }}">Offer Up Analytics</a></li>
+                    </ul>
+                </div>
+            </li>
+
+            <!-- DH Gate -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarDhGate" aria-expanded="false"
+                    aria-controls="sidebarDhGate">
+                    <span>DH Gate</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarDhGate">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ route('dhgate.analytics') }}">DH Gate Analytics</a></li>
+                    </ul>
+                </div>
+            </li>
+
             <!-- Bestbuy USA -->
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarBestbuyUSA" aria-expanded="false"

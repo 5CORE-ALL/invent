@@ -43,6 +43,9 @@ class EbayTwoController extends Controller
 {
     protected $apiController;
 
+    /** Ads% reused while a Dil batch writes many SKUs. */
+    private ?float $ebay2BatchAdsPercent = null;
+
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
@@ -1939,6 +1942,12 @@ class EbayTwoController extends Controller
 
     public function saveSpriceToDatabase(Request $request)
     {
+        // Dil auto-apply on /ebay2-tabulator-view and /ebay2op posts the painted S PRC cell.
+        $updates = $request->input('updates');
+        if (! $request->filled('sku') && (is_array($updates) || is_object($updates))) {
+            return $this->saveEbay2SpriceUpdates(is_array($updates) ? $updates : (array) $updates);
+        }
+
         $sku = $this->resolveCanonicalEbayTwoSku((string) $request->input('sku'));
 
         if ($sku === '') {
@@ -1979,7 +1988,8 @@ class EbayTwoController extends Controller
         $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
 
         // Ads stay eBay 2 (not eBay 1).
-        $adPercent = (float) app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
+        $adPercent = $this->ebay2BatchAdsPercent
+            ?? (float) app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
 
         $spft = round($sgpft - $adPercent, 2);
         $sgroi = round($lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
@@ -2024,6 +2034,50 @@ class EbayTwoController extends Controller
             'sroi_percent' => $sroi,
             'sgroi_percent' => $sgroi,
             'sgpft_percent' => $sgpft,
+        ]);
+    }
+
+    /**
+     * Dil Save sends { updates: [{ sku, sprice }, ...] } — the same $ the S PRC cell paints.
+     * Used by /ebay2-tabulator-view and /ebay2op.
+     *
+     * @param  array<int, mixed>  $updates
+     */
+    private function saveEbay2SpriceUpdates(array $updates)
+    {
+        $saved = 0;
+        $skipped = 0;
+        $this->ebay2BatchAdsPercent = (float) app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
+        try {
+            foreach ($updates as $update) {
+                $update = (array) $update;
+                $sku = trim((string) ($update['sku'] ?? ''));
+                $sprice = $update['sprice'] ?? $update['price'] ?? null;
+                if ($sku === '' || $sprice === null || $sprice === '') {
+                    $skipped++;
+                    continue;
+                }
+                $sub = Request::create('/save-ebay2-sprice', 'POST', [
+                    'sku' => $sku,
+                    'sprice' => $sprice,
+                    'skip_push' => 1,
+                ]);
+                $response = $this->saveSpriceToDatabase($sub);
+                if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
+                    $saved++;
+                } else {
+                    $skipped++;
+                }
+            }
+        } finally {
+            $this->ebay2BatchAdsPercent = null;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'SPRICE saved for '.$saved.' SKU(s)',
+            'saved' => $saved,
+            'skipped' => $skipped,
         ]);
     }
 

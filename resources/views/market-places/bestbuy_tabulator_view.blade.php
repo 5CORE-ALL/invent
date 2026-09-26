@@ -3329,9 +3329,12 @@
                 visibleColumns.forEach(col => {
                     const field = col.getField();
                     let value = row[field];
-                    
-                    // Clean up values
-                    if (value === null || value === undefined) {
+                    if (field === 'SPRICE' || field === 'sprice') {
+                        const shown = (typeof bestbuyDisplayedSprice === 'function')
+                            ? bestbuyDisplayedSprice(row)
+                            : (parseFloat(value) || 0);
+                        value = shown > 0 ? Math.round(shown * 100) / 100 : '';
+                    } else if (value === null || value === undefined) {
                         value = '';
                     } else if (typeof value === 'number') {
                         value = parseFloat(value.toFixed(2));

@@ -210,6 +210,7 @@ return [
     ['value' => 'listing_syncee', 'text' => 'Listing Syncee', 'group' => 'Marketplace'],
 
     ['value' => 'offerup', 'text' => 'Offerup', 'group' => 'Marketplace'],
+    ['value' => 'offerup_analytics', 'text' => 'Offer Up Analytics', 'group' => 'Marketplace'],
     ['value' => 'listing_offerup', 'text' => 'Listing Offerup', 'group' => 'Marketplace'],
 
     ['value' => 'neweggb2b', 'text' => 'Newegg B2B', 'group' => 'Marketplace'],
@@ -228,6 +229,7 @@ return [
     ['value' => 'listing_yamibuy', 'text' => 'Listing Yamibuy', 'group' => 'Marketplace'],
 
     ['value' => 'dhgate', 'text' => 'DHGate', 'group' => 'Marketplace'],
+    ['value' => 'dhgate_analytics', 'text' => 'DH Gate Analytics', 'group' => 'Marketplace'],
     ['value' => 'bestbuyusa', 'text' => 'Bestbuy USA', 'group' => 'Marketplace'],
     ['value' => 'listing_bestbuyusa', 'text' => 'Listing Bestbuy USA', 'group' => 'Marketplace'],
     ['value' => 'bestbuy_listing_variation_verify', 'text' => 'Bestbuy Listing Variation Verify', 'group' => 'Marketplace'],

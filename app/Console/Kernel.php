@@ -792,23 +792,31 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // L30 orders → shein_daily_data (/shein-tabulator)
-        $ist($schedule->command('shein:fetch orders --days=30 --target=l30')
-            ->dailyAt('15:10')
-            ->timezone('Asia/Kolkata')
-            ->name('shein-fetch-orders-l30')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // Shein sales → shein_daily_data / shein_daily_data_l60.
+        // Do not wrap in $ist(). between(09:00, 20:00) is checked against the
+        // clock when schedule:run starts, so cron:run-missed at 20:15 never
+        // sees a skipped 15:10 slot and that day stays stale. Pacific yesterday
+        // closes at 12:30 IST; later slots cover a missed minute (schedule:run
+        // is overloaded and has skipped single daily slots).
+        foreach (['13:20', '15:10', '19:40'] as $slot) {
+            $schedule->command('shein:fetch orders --days=30 --target=l30')
+                ->dailyAt($slot)
+                ->timezone('Asia/Kolkata')
+                ->name('shein-fetch-orders-l30-'.str_replace(':', '', $slot))
+                ->withoutOverlapping(90)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
 
-        // L60 orders → shein_daily_data_l60
-        $ist($schedule->command('shein:fetch orders --days=60 --target=l60')
-            ->dailyAt('15:20')
-            ->timezone('Asia/Kolkata')
-            ->name('shein-fetch-orders-l60')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
+        foreach (['13:35', '15:20', '19:50'] as $slot) {
+            $schedule->command('shein:fetch orders --days=60 --target=l60')
+                ->dailyAt($slot)
+                ->timezone('Asia/Kolkata')
+                ->name('shein-fetch-orders-l60-'.str_replace(':', '', $slot))
+                ->withoutOverlapping(90)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
         $ist($schedule->command('app:fetch-pls-data')
             ->twiceDaily(9, 18)
             ->name('fetch-pls-data')
@@ -947,6 +955,36 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // Same twice-daily Sprc Dil save as Amazon (04:00 / 20:00 IST): write the
+        // cell S PRC into each channel table. Not wrapped in $ist() — 04:00 is
+        // before 09:00 and 20:xx is at the window edge, so between() would skip them.
+        // Staggered so they do not start with Amazon's 04:00 / 20:00 push.
+        // Save only. Listing push stays on channel:push-sprice-daily.
+        foreach ([
+            ['04:20', '20:20', 'ebay:rule-sprice-apply ebay1', 'ebay1-sprc-dil'],
+            ['04:35', '20:35', 'ebay:rule-sprice-apply ebay2', 'ebay2-sprc-dil'],
+            ['04:50', '20:50', 'ebay:rule-sprice-apply ebay3', 'ebay3-sprc-dil'],
+            ['05:05', '21:05', 'dil:rule-sprice-apply', 'dil-sprc-dil'],
+            ['05:40', '21:40', 'shopify-b2c:rule-sprice-apply', 'shopify-b2c-sprc-dil'],
+            ['05:50', '21:50', 'macys:rule-sprice-apply', 'macys-sprc-dil'],
+            ['06:00', '22:00', 'purchasing-power:rule-sprice-apply', 'pp-sprc-dil'],
+        ] as [$morning, $evening, $command, $slug]) {
+            $schedule->command($command)
+                ->dailyAt($morning)
+                ->timezone('Asia/Kolkata')
+                ->name($slug.'-4am-ist')
+                ->withoutOverlapping(180)
+                ->runInBackground()
+                ->appendOutputTo($log);
+            $schedule->command($command)
+                ->dailyAt($evening)
+                ->timezone('Asia/Kolkata')
+                ->name($slug.'-8pm-ist')
+                ->withoutOverlapping(180)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
 
         // Amazon CVR vs CPN → 5%/10% coupons (1/day) → Listings our_price (4:05 AM ET).
         // Uses shared pef_cvr_vs_cpn rules; pushes only SKUs whose target price/tier changed.

@@ -2917,7 +2917,18 @@
                 } else if (field === 'cpn_pct') {
                     v = temuCpnForRow(row);
                 } else if (field === 'sprice') {
-                    v = (typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : v;
+                    const model = (typeof temuSpriceCellModel === 'function') ? temuSpriceCellModel(row) : null;
+                    const shown = (model && model.value > 0)
+                        ? model.value
+                        : ((typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : v);
+                    v = shown > 0 ? +Number(shown).toFixed(2) : '';
+                } else if (field === 's_base_price') {
+                    const base = (typeof ntoRowSBase === 'function') ? ntoRowSBase(row) : 0;
+                    v = base > 0 ? base : '';
+                } else if (field === 's_r_price') {
+                    const sprice = (typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : 0;
+                    const sR = (typeof temuSRPriceFromSprice === 'function') ? temuSRPriceFromSprice(sprice) : 0;
+                    v = sR > 0 ? sR : '';
                 } else if (field === 'Dil%') {
                     const inv = parseFloat(row.INV) || 0;
                     const ov = parseFloat(row.L30) || 0;

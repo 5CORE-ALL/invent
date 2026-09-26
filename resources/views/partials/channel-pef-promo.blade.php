@@ -10021,7 +10021,7 @@
         function chPromoCollectB2cRuleSpriceJobs() {
             const jobs = [];
             const seen = {};
-            function consider(d) {
+            function consider(row, d) {
                 if (!d) return;
                 if (typeof isShopifyB2cParentRow === 'function' && isShopifyB2cParentRow(d)) return;
                 const sku = (typeof chPromoSku === 'function')
@@ -10041,12 +10041,29 @@
                     : false;
                 if (Math.abs(stored - price) < 0.005 && storedFlag === amzSugg) return;
                 seen[key] = true;
-                jobs.push({ sku: sku, sprice: price, amz_sugg: amzSugg ? 1 : 0 });
+                jobs.push({ row: row, sku: sku, sprice: price, amz_sugg: amzSugg ? 1 : 0 });
             }
             if (typeof ebaySprcDilEachCatalogRow === 'function') {
-                ebaySprcDilEachCatalogRow(function(row, d) { consider(d); });
+                ebaySprcDilEachCatalogRow(function(row, d) { consider(row, d); });
             }
             return jobs;
+        }
+        function chPromoWriteB2cCellSpriceOnRows(jobs) {
+            const tbl = chPromoSafeTable();
+            const blocked = tbl && typeof tbl.blockRedraw === 'function';
+            if (blocked) tbl.blockRedraw();
+            try {
+                (jobs || []).forEach(function(job) {
+                    if (!job || !job.row || typeof job.row.update !== 'function' || !(job.sprice > 0)) return;
+                    const patch = (typeof chPromoSpricePatch === 'function')
+                        ? chPromoSpricePatch(job.sprice)
+                        : { SPRICE: job.sprice, sprice: job.sprice, has_custom_sprice: true };
+                    patch.AMZ_SUGG_APPLIED = !!job.amz_sugg;
+                    job.row.update(patch);
+                });
+            } finally {
+                if (blocked) tbl.restoreRedraw();
+            }
         }
         async function chPromoB2cSaveChunks(updates) {
             const size = 150;
@@ -10076,6 +10093,7 @@
             try {
                 const jobs = chPromoCollectB2cRuleSpriceJobs();
                 if (jobs.length) {
+                    chPromoWriteB2cCellSpriceOnRows(jobs);
                     await chPromoB2cSaveChunks(jobs);
                     if (typeof ebayDgRefreshVisibleRows === 'function') {
                         try { ebayDgRefreshVisibleRows(); } catch (e) { /* ignore */ }
