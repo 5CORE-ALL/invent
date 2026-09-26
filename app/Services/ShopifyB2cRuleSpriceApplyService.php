@@ -19,7 +19,8 @@ use Throwable;
 
 /**
  * Page-less Sprc Dil → S PRC (same as /shopify-b2c-pricing / new-temuone).
- * Sprc Dil stays the Dil suggestion. S PRC uses A Price when that suggestion is below Amz, and keeps Sprc Dil when it is above.
+ * Sprc Dil stays the Dil suggestion. S PRC uses A Price when that suggestion is below Amz.
+ * Sprc Dil above A Price is kept. A stored Amz pin does not cap it down.
  * Dil slabs are Target SNROI (Ads% = Shopify TCOS / page Ads badge).
  * Writes shopifyb2c_data_view SPRICE even if /shopify-b2c-pricing is closed.
  */
@@ -274,37 +275,42 @@ class ShopifyB2cRuleSpriceApplyService
         $prmt = 0.0;
         $cpn = 0.0;
         $amz = (float) ($row['amz'] ?? 0);
-        $amzSugg = ! empty($row['amz_sugg']) && $amz > 0;
+        $amzPinned = ! empty($row['amz_sugg']) && $amz > 0;
 
         $sprice = 0.0;
-        if ($amzSugg) {
-            $sprice = round($amz, 2);
-        } else {
-            $lp = (float) ($row['lp'] ?? 0);
-            $ship = (float) ($row['ship'] ?? 0);
-            $target = $zeroSold
-                ? AmazonDilGroiRule::minTarget($dilRules)
-                : AmazonDilGroiRule::groiForDil($dil, $dilRules);
-            if ($target !== null && $lp > 0 && $margin > 0) {
-                $target = AmazonDilGroiRule::adjustGroiForCvrArrow(
-                    $target,
-                    $cvr,
-                    (float) ($row['cvr_60'] ?? 0),
-                    $cvrAdj
-                );
-                $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, $adsPct, $margin);
-                $sprice = ($raw !== null && $raw >= 0.01) ? round($raw, 2) : 0.0;
-            } elseif (! $zeroSold) {
-                $std = (float) ($row['std'] ?? 0);
-                if (! ($std > 0)) {
-                    return null;
-                }
+        $lp = (float) ($row['lp'] ?? 0);
+        $ship = (float) ($row['ship'] ?? 0);
+        $target = $zeroSold
+            ? AmazonDilGroiRule::minTarget($dilRules)
+            : AmazonDilGroiRule::groiForDil($dil, $dilRules);
+        if ($target !== null && $lp > 0 && $margin > 0) {
+            $target = AmazonDilGroiRule::adjustGroiForCvrArrow(
+                $target,
+                $cvr,
+                (float) ($row['cvr_60'] ?? 0),
+                $cvrAdj
+            );
+            $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, $adsPct, $margin);
+            $sprice = ($raw !== null && $raw >= 0.01) ? round($raw, 2) : 0.0;
+        } elseif (! $zeroSold) {
+            $std = (float) ($row['std'] ?? 0);
+            if (! ($std > 0) && ! $amzPinned) {
+                return null;
+            }
+            if ($std > 0) {
                 $sprice = round($std, 2);
             }
+        }
 
-            if ($sprice > 0 && $amz > 0 && $sprice < $amz) {
-                $sprice = round($amz, 2);
-            }
+        if ($sprice > 0 && $amz > 0 && $sprice > $amz) {
+            // Sprc Dil above A Price stays. A stored Amz pin does not cap it down.
+            $amzPinned = false;
+        } elseif ($sprice > 0 && $amz > 0 && $sprice < $amz) {
+            $sprice = round($amz, 2);
+        } elseif (! ($sprice >= 0.01) && $amzPinned) {
+            $sprice = round($amz, 2);
+        } else {
+            $amzPinned = false;
         }
 
         if (! is_finite($sprice) || $sprice < 0.01) {
@@ -315,7 +321,7 @@ class ShopifyB2cRuleSpriceApplyService
             'sprice' => $sprice,
             'prmt' => round($prmt, 2),
             'cpn' => round($cpn, 2),
-            'amz_sugg' => $amzSugg,
+            'amz_sugg' => $amzPinned,
         ];
     }
 
@@ -333,23 +339,29 @@ class ShopifyB2cRuleSpriceApplyService
         }
     }
 
+    /** Exact cents. 14.32 and 14.3200001 are the same price. No extra tolerance is added. */
+    protected function sameCents(float $a, float $b): bool
+    {
+        return round($a, 2) === round($b, 2);
+    }
+
     /**
      * @param  array{saved_sprice:float,saved_prmt:?float,saved_cpn:?float,amz_sugg?:bool}  $row
      * @param  array{sprice:float,prmt:float,cpn:float,amz_sugg?:bool}  $computed
      */
     protected function isUnchanged(array $row, array $computed): bool
     {
-        if (abs(((float) ($row['saved_sprice'] ?? 0)) - $computed['sprice']) >= 0.005) {
+        if (! $this->sameCents((float) ($row['saved_sprice'] ?? 0), $computed['sprice'])) {
             return false;
         }
-        if (abs(((float) ($row['saved_prmt'] ?? 0)) - $computed['prmt']) >= 0.005) {
+        if (! $this->sameCents((float) ($row['saved_prmt'] ?? 0), $computed['prmt'])) {
             return false;
         }
         if (! empty($row['amz_sugg']) !== ! empty($computed['amz_sugg'])) {
             return false;
         }
 
-        return abs(((float) ($row['saved_cpn'] ?? 0)) - $computed['cpn']) < 0.005;
+        return $this->sameCents((float) ($row['saved_cpn'] ?? 0), $computed['cpn']);
     }
 
     /**

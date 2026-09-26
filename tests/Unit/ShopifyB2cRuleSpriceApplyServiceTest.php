@@ -89,6 +89,27 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         $this->assertTrue($out['amz_sugg']);
     }
 
+    public function test_sugg_amz_does_not_cap_when_sprc_dil_is_above_a_price(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 5,
+            'b2c_l30' => 2,
+            'lp' => 20,
+            'ship' => 0,
+            'std' => 100,
+            'amz' => 10,
+            'cvr' => 8,
+            'amz_sugg' => true,
+            'saved_sprice' => 10,
+        ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
+
+        $this->assertNotNull($out);
+        // Dil $ is 31.58, above A Price 10. Stored Amz pin must not cap S PRC down.
+        $this->assertEqualsWithDelta(31.58, $out['sprice'], 0.001);
+        $this->assertFalse($out['amz_sugg']);
+    }
+
     public function test_cvr_below_7_lowers_target_groi_by_10(): void
     {
         $out = $this->compute([
