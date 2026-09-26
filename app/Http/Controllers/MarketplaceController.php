@@ -29,11 +29,12 @@ use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\AmazonTrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingInstantMapService;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
-use App\Jobs\FetchMarketplaceShopifyTrackingJob;
-use App\Services\MarketplaceManager\MarketplaceChannelFulfillmentHub;
+use App\Jobs\FetchMarketplaceShopifyTrackingNowJob;
 use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\View\View;
 
 /**
@@ -494,27 +495,46 @@ class MarketplaceController extends Controller
         ], ! empty($result['success']) || ! empty($result['skipped']) ? 200 : 422);
     }
 
-    public function fetchTrackingNow(string $marketplace): JsonResponse
+    public function fetchTrackingNow(Request $request, string $marketplace): JsonResponse|RedirectResponse
     {
-        return $this->queueFreshTrackingCatchup();
+        return $this->queueFreshTrackingCatchup($request);
     }
 
-    public function queueFreshTrackingCatchup(): JsonResponse
+    public function queueFreshTrackingCatchup(?Request $request = null): JsonResponse|RedirectResponse
     {
+        $message = 'Tracking catch-up queued. Unfulfilled Shopify copies will fulfill first (no customer email), then Amazon, Faire, Shein, Wayfair, Newegg, AliExpress, TikTok, Reverb, and the other marketplaces. Refresh in a few minutes.';
+
         try {
-            FetchMarketplaceShopifyTrackingJob::dispatch(800, true, true);
-            MarketplaceChannelFulfillmentHub::dispatchAllTrackingJobs(80);
+            try {
+                Artisan::call('queue:ensure-watchdog-daemon');
+            } catch (\Throwable) {
+                // Workers may already be up.
+            }
+            FetchMarketplaceShopifyTrackingNowJob::dispatch(2500, 150);
+
+            if ($request && ! $request->wantsJson() && ! $request->ajax() && ! $request->expectsJson()) {
+                return redirect()
+                    ->back()
+                    ->with('success', $message);
+            }
 
             return response()->json([
                 'success' => true,
                 'queued' => true,
-                'message' => 'Tracking catch-up queued. Shopify copies will fulfill first (no customer email), then AliExpress, Temu 2, and the other marketplaces. Refresh in 2–3 minutes.',
+                'message' => $message,
             ]);
         } catch (\Throwable $e) {
+            $error = 'Could not queue tracking: '.$e->getMessage();
+            if ($request && ! $request->wantsJson() && ! $request->ajax() && ! $request->expectsJson()) {
+                return redirect()
+                    ->back()
+                    ->with('error', $error);
+            }
+
             return response()->json([
                 'success' => false,
                 'queued' => false,
-                'message' => 'Could not queue tracking: '.$e->getMessage(),
+                'message' => $error,
             ], 500);
         }
     }

@@ -40,6 +40,9 @@
         @if(session('success'))
             <div class="alert alert-success py-2">{{ session('success') }}</div>
         @endif
+        @if(session('error'))
+            <div class="alert alert-danger py-2">{{ session('error') }}</div>
+        @endif
 
         <div class="alert alert-light border mb-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
             <div>

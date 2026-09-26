@@ -141,18 +141,25 @@ class DobaOrderSyncService
             return null;
         }
 
-        $window = [
-            'pageNo' => 1,
-            'pageSize' => 10,
-            'beginTime' => now()->subDays(45)->format('Y-m-d\TH:i:sP'),
-            'endTime' => now()->format('Y-m-d\TH:i:sP'),
+        $windows = [
+            [
+                'beginTime' => now()->subDays(45)->format('Y-m-d\TH:i:sP'),
+                'endTime' => now()->format('Y-m-d\TH:i:sP'),
+            ],
+            [
+                'beginTime' => now()->subDays(45)->format('Y-m-d H:i:s'),
+                'endTime' => now()->format('Y-m-d H:i:s'),
+            ],
         ];
         $order = null;
-        foreach (['ordBusiId', 'platformOrderNo'] as $field) {
-            $rows = $api->querySellerOrderDetail($window + [$field => $orderId]);
-            $order = $this->matchDobaOrder($rows, $orderId);
-            if (is_array($order)) {
-                break;
+        foreach ($windows as $window) {
+            $query = $window + ['pageNo' => 1, 'pageSize' => 10];
+            foreach (['ordBusiId', 'platformOrderNo'] as $field) {
+                $rows = $api->querySellerOrderDetail($query + [$field => $orderId]);
+                $order = $this->matchDobaOrder($rows, $orderId);
+                if (is_array($order)) {
+                    break 2;
+                }
             }
         }
         if (! is_array($order)) {
@@ -208,11 +215,14 @@ class DobaOrderSyncService
             return;
         }
 
-        DobaDailyData::query()
+        $updated = DobaDailyData::query()
             ->where(function ($query) use ($keys): void {
                 $query->whereIn('order_no', $keys)->orWhereIn('platform_order_no', $keys);
             })
             ->update($updates);
+        if ($updated === 0) {
+            app(\App\Console\Commands\FetchDobaDailyData::class)->storeOrderFromApi($order);
+        }
     }
 
     public function dispatchImportsForNewOrders(): int

@@ -19,7 +19,7 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
         {--days=7 : Order lookback days}
         {--skip-fetch : Skip marketplace order fetch; only import + fulfill + tracking}
         {--skip-inventory : Skip Shopify → marketplace inventory push}
-        {--tracking-limit=80 : Max orders per channel for tracking push}';
+        {--tracking-limit=150 : Max orders per channel for tracking push}';
 
     protected $description = 'Push all marketplace orders to Shopify, auto-fulfill, and update tracking (no duplicates).';
 

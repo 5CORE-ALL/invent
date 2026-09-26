@@ -249,9 +249,9 @@ class MarketplaceManagerController extends Controller
         return $activeMatch ?? $anyMatch;
     }
 
-    public function fetchTrackingNow(): JsonResponse
+    public function fetchTrackingNow(Request $request): JsonResponse|RedirectResponse
     {
-        return app(MarketplaceController::class)->queueFreshTrackingCatchup();
+        return app(MarketplaceController::class)->queueFreshTrackingCatchup($request);
     }
 
     /**
