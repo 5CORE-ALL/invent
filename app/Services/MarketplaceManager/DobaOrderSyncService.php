@@ -122,14 +122,14 @@ class DobaOrderSyncService
         $window = [
             'pageNo' => 1,
             'pageSize' => 10,
-            'beginTime' => now()->subDays(45)->format('Y-m-d H:i:s'),
-            'endTime' => now()->format('Y-m-d H:i:s'),
+            'beginTime' => now()->subDays(45)->format('Y-m-d\TH:i:sP'),
+            'endTime' => now()->format('Y-m-d\TH:i:sP'),
         ];
         $order = null;
         foreach (['ordBusiId', 'platformOrderNo'] as $field) {
             $rows = $api->querySellerOrderDetail($window + [$field => $orderId]);
             $order = $this->matchDobaOrder($rows, $orderId);
-            if (is_array($order) || $rows !== []) {
+            if (is_array($order)) {
                 break;
             }
         }

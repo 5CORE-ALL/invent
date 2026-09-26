@@ -501,6 +501,32 @@ class VeeqoShopifyFulfillmentService
             ];
         }
 
+        $found = null;
+        if (strtolower(trim($marketplace)) === 'doba') {
+            $prepaid = self::sofLocalTrackingIfReady(is_array($localTracking) ? $localTracking : null);
+            if ($prepaid !== null) {
+                $have = strtoupper((string) preg_replace('/\s+/', '', (string) ($existing['tracking'] ?? '')));
+                $want = strtoupper((string) preg_replace('/\s+/', '', (string) ($prepaid['tracking'] ?? '')));
+                if ($existing !== null && $have !== '' && $have === $want) {
+                    $this->cacheTrackingOnShopifyRawOrder($shopifyOrderId, $want, (string) ($existing['carrier'] ?? ''));
+
+                    return [
+                        'success' => true,
+                        'skipped' => true,
+                        'action' => 'already_on_shopify',
+                        'message' => 'Shopify already has tracking '.$want.'.',
+                        'tracking' => $want,
+                        'carrier' => (string) ($existing['carrier'] ?? ''),
+                        'sku' => $sku !== '' ? $sku : null,
+                    ];
+                }
+                $existing = null;
+                $found = $prepaid;
+            }
+        }
+
+        $openQty = 0;
+        if ($found === null) {
         $existingTrackings = $this->existingShopifyTrackings(
             $shopifyConfig,
             $shopifyOrderId,
@@ -619,6 +645,7 @@ class VeeqoShopifyFulfillmentService
             if ($saved !== null) {
                 $found = $saved;
             }
+        }
         }
 
         if ($found === null) {
