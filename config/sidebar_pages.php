@@ -229,6 +229,7 @@ return [
     ['value' => 'listing_yamibuy', 'text' => 'Listing Yamibuy', 'group' => 'Marketplace'],
 
     ['value' => 'dhgate', 'text' => 'DHGate', 'group' => 'Marketplace'],
+    ['value' => 'dhgate_analytics', 'text' => 'DH Gate Analytics', 'group' => 'Marketplace'],
     ['value' => 'bestbuyusa', 'text' => 'Bestbuy USA', 'group' => 'Marketplace'],
     ['value' => 'listing_bestbuyusa', 'text' => 'Listing Bestbuy USA', 'group' => 'Marketplace'],
     ['value' => 'bestbuy_listing_variation_verify', 'text' => 'Bestbuy Listing Variation Verify', 'group' => 'Marketplace'],

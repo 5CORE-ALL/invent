@@ -2236,6 +2236,40 @@ class ChannelMasterController extends Controller
         // Last: Pacific yesterday Y Sales including $0/NYS so stale calculated
         // yesterday_sales cannot stay on the grid after a quiet day.
         $rows = $this->overlayLivePacificYSalesOnChannelRows($rows);
+        $rows = $this->overlayLiveShopifyB2cProjectedSalesOnChannelRows($rows);
+
+        return $rows;
+    }
+
+    /**
+     * Shopify B2C P-Sales is (L7 ÷ 7) × 30. Cached l7_sales stays 0 while
+     * shopify_b2c_daily_data lags, so the Active Channel cell shows "-".
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveShopifyB2cProjectedSalesOnChannelRows(array $rows): array
+    {
+        try {
+            $l7 = $this->computeShopifyB2xL7SalesLikeAmazon(false);
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C L7 overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+        if ($l7 === null) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
+            if ($this->allMarketplaceSnapshotKey($name) !== 'shopifyb2c') {
+                continue;
+            }
+            $row['L7 Sales'] = round((float) $l7, 2);
+            $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales']);
+        }
+        unset($row);
 
         return $rows;
     }
@@ -9353,23 +9387,34 @@ class ChannelMasterController extends Controller
     {
         $table = $isB2b ? 'shopify_b2b_daily_data' : 'shopify_b2c_daily_data';
 
-        if (! Schema::hasTable($table)
-            || ! DB::table($table)->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])->exists()) {
-            return null;
-        }
-
         [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
             Carbon::now('America/Los_Angeles')
         );
 
-        $sum = (float) DB::table($table)
-            ->where('order_date', '>=', $l7StartPacific)
-            ->where('order_date', '<=', $l7EndPacific)
-            ->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])
-            ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
-            ->value('revenue');
+        $sum = 0.0;
+        $hasRows = Schema::hasTable($table)
+            && DB::table($table)->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])->exists();
 
-        return round($sum, 2);
+        if ($hasRows) {
+            $sum = (float) DB::table($table)
+                ->where('order_date', '>=', $l7StartPacific)
+                ->where('order_date', '<=', $l7EndPacific)
+                ->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])
+                ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
+                ->value('revenue');
+        }
+
+        if ($sum > 0) {
+            return round($sum, 2);
+        }
+
+        // shopify_b2c_daily_data lags behind /shopify. Y Sales already falls back
+        // to shopify_raw_orders; L7 must do the same or P-Sales stays blank.
+        if (! $isB2b) {
+            return $this->computeShopifyDirectL7SalesLikeAmazon();
+        }
+
+        return $hasRows ? round($sum, 2) : null;
     }
 
     private function computeWayfairL7SalesLikeAmazon(): ?float
