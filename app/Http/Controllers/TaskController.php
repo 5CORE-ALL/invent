@@ -9288,7 +9288,7 @@ class TaskController extends Controller
         ]);
     }
 
-    /** Incentives page: everyone sees their own; president can edit; privileged viewers can open any user. */
+    /** Incentives page: own rows, or every team member when the viewer may see all. */
     public function incentivesPage(Request $request)
     {
         $viewer = Auth::user();
@@ -9298,82 +9298,26 @@ class TaskController extends Controller
 
         $canEdit = $this->canEditIncentives($viewer);
         $canViewAll = $this->canViewAllIncentives($viewer);
-        $requestedId = (int) $request->query('user_id', 0);
-
-        if ($requestedId > 0 && $requestedId !== (int) $viewer->id) {
-            $target = User::find($requestedId);
-            if (! $target) {
-                abort(404);
-            }
-            if (! $this->canViewUserIncentives($viewer, $target)) {
-                abort(403, 'You do not have access to this user\'s incentives.');
-            }
-        } else {
-            $target = $viewer;
+        $editUserId = (int) $request->query('user_id', 0);
+        if ($request->old('user_id')) {
+            $editUserId = (int) $request->old('user_id');
+        }
+        if ($editUserId > 0 && ! $canEdit) {
+            $editUserId = 0;
         }
 
-        $items = collect();
-        if (Schema::hasTable('user_incentives')) {
-            $items = UserIncentive::query()
-                ->where('user_id', $target->id)
-                ->orderBy('sort_order')
-                ->orderBy('id')
-                ->get()
-                ->map(fn (UserIncentive $row) => $this->formatIncentiveItem($row))
-                ->values();
-        }
-
-        $users = $canViewAll ? $this->incentiveAssignableUsers() : [];
-        $known = collect($users)->contains(fn ($user) => (int) $user['id'] === (int) $target->id);
-        if ($canViewAll && ! $known) {
-            array_unshift($users, [
-                'id' => (int) $target->id,
-                'name' => (string) $target->name,
-                'designation' => $target->designation,
-                'org_level' => $target->org_level,
-            ]);
-        }
-
-        $today = TaskBusinessTime::today()->startOfDay();
-        $alertThrough = $today->copy()->addDay();
-        $alerts = [];
-        $total = 0.0;
-        foreach ($items as $item) {
-            if (empty($item['is_active'])) {
-                continue;
-            }
-            $total += (float) ($item['amount'] ?? 0);
-            $raw = trim((string) ($item['additional_condition'] ?? ''));
-            if ($raw === '') {
-                continue;
-            }
-            try {
-                $cutoff = \Carbon\Carbon::parse($raw)->startOfDay();
-            } catch (\Throwable $e) {
-                continue;
-            }
-            if ($cutoff->gt($alertThrough)) {
-                continue;
-            }
-            $name = trim((string) ($item['title'] ?? ''));
-            $prefix = $name !== '' ? $name.': ' : '';
-            if ($cutoff->lt($today)) {
-                $alerts[] = $prefix.'CutOff Date has passed.';
-            } elseif ($cutoff->equalTo($today)) {
-                $alerts[] = $prefix.'CutOff Date is today.';
-            } else {
-                $alerts[] = $prefix.'CutOff Date is tomorrow.';
-            }
+        $directory = $this->incentiveDirectory($viewer, $canViewAll);
+        if ($editUserId > 0 && ! collect($directory['people'])->contains(fn ($person) => (int) $person['id'] === $editUserId)) {
+            abort(404);
         }
 
         return view('incentives.index', [
-            'target' => $target,
-            'items' => $items,
-            'users' => $users,
+            'people' => $directory['people'],
+            'alerts' => $directory['alerts'],
+            'total' => $directory['total'],
             'canEdit' => $canEdit,
             'canViewAll' => $canViewAll,
-            'total' => $total,
-            'alerts' => $alerts,
+            'editUserId' => $editUserId,
             'defaultCutoff' => TaskBusinessTime::today()->addMonth()->toDateString(),
         ]);
     }
@@ -9415,8 +9359,121 @@ class TaskController extends Controller
         $this->replaceUserIncentiveItems($userId, $items, $viewer);
 
         return redirect()
-            ->route('incentives.index', ['user_id' => $userId])
+            ->route('incentives.index')
+            ->withFragment('inc-user-'.$userId)
             ->with('success', 'Incentives saved.');
+    }
+
+    /**
+     * Active team members and their incentive rows for the incentives page.
+     *
+     * @return array{people: list<array<string, mixed>>, alerts: list<string>, total: float}
+     */
+    protected function incentiveDirectory(?User $viewer, bool $canViewAll): array
+    {
+        if ($canViewAll) {
+            $users = $this->incentiveAssignableUsers();
+        } elseif ($viewer) {
+            $users = [[
+                'id' => (int) $viewer->id,
+                'name' => (string) $viewer->name,
+                'designation' => $viewer->designation,
+            ]];
+        } else {
+            $users = [];
+        }
+
+        $byUser = [];
+        $ids = array_map(fn ($user) => (int) $user['id'], $users);
+        if ($ids !== [] && Schema::hasTable('user_incentives')) {
+            $rows = UserIncentive::query()
+                ->whereIn('user_id', $ids)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+            foreach ($rows as $row) {
+                $byUser[(int) $row->user_id][] = $this->formatIncentiveItem($row);
+            }
+        }
+
+        $today = TaskBusinessTime::today()->startOfDay();
+        $alertThrough = $today->copy()->addDay();
+        $people = [];
+        $alerts = [];
+        $total = 0.0;
+
+        foreach ($users as $user) {
+            $items = $byUser[(int) $user['id']] ?? [];
+            $personTotal = 0.0;
+            $searchBits = [
+                (string) ($user['name'] ?? ''),
+                (string) ($user['designation'] ?? ''),
+            ];
+            foreach ($items as $item) {
+                $searchBits[] = (string) ($item['title'] ?? '');
+                $searchBits[] = (string) ($item['body'] ?? '');
+                if ($item['amount'] !== null) {
+                    $searchBits[] = (string) $item['amount'];
+                }
+                if (empty($item['is_active'])) {
+                    continue;
+                }
+                $personTotal += (float) ($item['amount'] ?? 0);
+                $raw = trim((string) ($item['additional_condition'] ?? ''));
+                if ($raw === '') {
+                    continue;
+                }
+                try {
+                    $cutoff = \Carbon\Carbon::parse($raw)->startOfDay();
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                if ($cutoff->gt($alertThrough)) {
+                    continue;
+                }
+                $target = trim((string) ($item['title'] ?? ''));
+                $prefix = trim((string) ($user['name'] ?? ''));
+                if ($target !== '') {
+                    $prefix .= ($prefix !== '' ? ': ' : '').$target;
+                }
+                if ($prefix !== '') {
+                    $prefix .= ': ';
+                }
+                if ($cutoff->lt($today)) {
+                    $alerts[] = $prefix.'CutOff Date has passed.';
+                } elseif ($cutoff->equalTo($today)) {
+                    $alerts[] = $prefix.'CutOff Date is today.';
+                } else {
+                    $alerts[] = $prefix.'CutOff Date is tomorrow.';
+                }
+            }
+
+            $people[] = [
+                'id' => (int) $user['id'],
+                'name' => (string) ($user['name'] ?? ''),
+                'designation' => $user['designation'] ?? null,
+                'items' => $items,
+                'total' => $personTotal,
+                'search' => mb_strtolower(implode(' ', array_filter($searchBits, fn ($bit) => trim((string) $bit) !== ''))),
+            ];
+            $total += $personTotal;
+        }
+
+        usort($people, function (array $a, array $b) {
+            $aHas = $a['total'] > 0 || count($a['items']) > 0;
+            $bHas = $b['total'] > 0 || count($b['items']) > 0;
+            if ($aHas !== $bHas) {
+                return $aHas ? -1 : 1;
+            }
+
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        return [
+            'people' => $people,
+            'alerts' => $alerts,
+            'total' => $total,
+        ];
     }
 
     /** GET incentives for a team member (self, privileged viewers, president). */
