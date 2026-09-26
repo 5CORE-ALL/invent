@@ -6935,6 +6935,10 @@ class CvrMasterController extends Controller
                     default => (float) ($row->total_inv ?? 0),
                 };
             }
+            // Today's Dil point is the live badge (Σ OV L30 ÷ Σ INV), not a stale daily snapshot.
+            if ($metric === 'dil' && is_numeric($request->input('current_value'))) {
+                $byDateKey[now('America/Los_Angeles')->toDateString()] = round((float) $request->input('current_value'), 2);
+            }
             if (empty($byDateKey)) {
                 return response()->json(['success' => true, 'data' => []]);
             }

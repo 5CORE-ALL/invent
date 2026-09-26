@@ -10555,7 +10555,8 @@
             $('#total-inv-badge').text(totalInv.toLocaleString());
             $('#total-l30-badge').text(totalL30.toLocaleString());
             const dilColor = getDilPercentColor(avgDil);
-            $('#avg-dil-badge').html('<span style="' + styleForCellColor(dilColor) + '">' + avgDil.toFixed(1) + '%</span>');
+            $('#avg-dil-badge').attr('data-pct', avgDil.toFixed(2))
+                .html('<span style="' + styleForCellColor(dilColor) + '">' + avgDil.toFixed(1) + '%</span>');
             $('#dil-summary-dot').css('background-color', dilColor);
             $('#dil-summary-badge').attr('title',
                 'Dil% = Σ OV L30 (' + Math.round(totalL30).toLocaleString()
@@ -10853,7 +10854,9 @@
             currentPricingChartAggregate = true;
             currentPricingChartLive = null;
             currentPricingChartDilGroup = '';
-            if (isDilShareMetric(metric)) {
+            if (metric === 'dil') {
+                currentPricingChartLive = $('#avg-dil-badge').attr('data-pct');
+            } else if (isDilShareMetric(metric)) {
                 const valueId = metric === 'dil_red' ? '#red-dil-badge' : (metric === 'dil_green' ? '#green-dil-badge' : '#pink-dil-badge');
                 currentPricingChartLive = $(valueId).attr('data-pct');
                 currentPricingChartDilGroup = $('#sku-parent-filter').val() === 'parent' ? 'parent' : 'sku';
