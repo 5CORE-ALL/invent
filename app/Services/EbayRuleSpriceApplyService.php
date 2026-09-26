@@ -177,7 +177,8 @@ class EbayRuleSpriceApplyService
     }
 
     /**
-     * Dil S PRC ≠ live eBay Price (listed, INV > 0, not ended).
+     * Blue badge: Dil S PRC ≠ live eBay Price (listed, INV > 0, not ended).
+     * eBay 1–3 0 Sold stays on the Dil slab. Minimum NROI is not used on these pages.
      *
      * @return list<array{sku: string, price: float}>
      */
@@ -387,6 +388,7 @@ class EbayRuleSpriceApplyService
                 'ship' => $lpShip['ship'],
                 'cvr' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0.0,
                 'cvr_60' => $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0.0,
+                'ebay_l30' => $ebayL30,
                 'lmp' => (float) ($lmpRow['lmp_price'] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
                 'pushed_sprice' => $pushedBySku[$sku] ?? 0.0,

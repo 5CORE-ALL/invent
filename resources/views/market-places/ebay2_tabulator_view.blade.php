@@ -523,6 +523,7 @@
                     {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay2'])
+                    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay2'])
 
                     {{-- Price (eBay Price) min–max range filter --}}
                     <div class="d-inline-flex align-items-center gap-1 pricing-filter-item"
@@ -1072,6 +1073,7 @@
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay2'])
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay2'])
 
 @endsection
 
@@ -1088,6 +1090,7 @@
         /** Take-home from marketplace_percentages (EbayTwo). Used when a row has no percentage. */
         const EBAY2_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
+        @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         /** L30 units / sales from ebay2_order_metrics — same getData as /ebay2/daily-sales. */
@@ -3558,6 +3561,7 @@
                         width: 30,
                         sorter: "number"
                     },
+                    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'column', 'ebayZeroSoldChannel' => 'ebay2'])
                     {
                         title: "Growth",
                         field: "growth_percent",

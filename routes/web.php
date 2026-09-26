@@ -4879,6 +4879,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
     Route::get('/ebay-zero-sold-coupon', [EbayController::class, 'ebayZeroSoldCouponSetting'])->name('ebay.zero-sold-coupon.show');
     Route::post('/ebay-zero-sold-coupon', [EbayController::class, 'saveEbayZeroSoldCoupon'])->name('ebay.zero-sold-coupon.save');
+    Route::get('/ebay2-zero-sold-coupon', [EbayController::class, 'ebayZeroSoldCouponSetting'])->defaults('channel', 'ebay2')->name('ebay2.zero-sold-coupon.show');
+    Route::post('/ebay2-zero-sold-coupon', [EbayController::class, 'saveEbayZeroSoldCoupon'])->defaults('channel', 'ebay2')->name('ebay2.zero-sold-coupon.save');
+    Route::get('/ebay3-zero-sold-coupon', [EbayController::class, 'ebayZeroSoldCouponSetting'])->defaults('channel', 'ebay3')->name('ebay3.zero-sold-coupon.show');
+    Route::post('/ebay3-zero-sold-coupon', [EbayController::class, 'saveEbayZeroSoldCoupon'])->defaults('channel', 'ebay3')->name('ebay3.zero-sold-coupon.save');
 
     // Ebay Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
     Route::get('/ebay-listing-variation-verify', [EbayListingVariationVerifyController::class, 'index'])->name('ebay.listing.variation.verify');

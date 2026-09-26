@@ -616,6 +616,7 @@
 
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay3'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay3'])
+                    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay3'])
 
                 </div>
             </div>
@@ -816,6 +817,7 @@
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay3'])
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay3'])
 @endsection
 
 @section('script-bottom')
@@ -829,6 +831,7 @@
     const EBAY3_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
     const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     let table = null;
@@ -2577,6 +2580,7 @@
                         return Math.round(parseFloat(value) || 0);
                     }
                 },
+                @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'column', 'ebayZeroSoldChannel' => 'ebay3'])
                 {
                     title: "View",
                     field: "views",
