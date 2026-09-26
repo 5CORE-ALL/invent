@@ -2162,11 +2162,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(6)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\FetchMarketplaceShopifyTrackingJob(800))
-            ->everyFiveMinutes()
+        $schedule->job(new \App\Jobs\FetchMarketplaceShopifyTrackingJob(2000, true, true))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('marketplace-fetch-shopify-tracking')
-            ->withoutOverlapping(50)
+            ->withoutOverlapping(40)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncAmazonAddressJob(true, 40))
@@ -2735,8 +2735,17 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(40)
             ->appendOutputTo($log);
 
-        // Daily catch-up: fetch → Shopify import (no dupes) → auto-fulfill → channel tracking.
+        // Every 30 minutes: fulfill leftover Shopify copies and push tracking to every channel.
         // Per-marketplace try/catch inside the command so one channel cannot stop the rest.
+        $schedule->command('mm:push-orders-tracking --days=14 --skip-fetch --skip-inventory --tracking-limit=150')
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('mm-halfhourly-orders-tracking')
+            ->withoutOverlapping(40)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Daily catch-up also re-fetches marketplace orders, then import + fulfill + tracking.
         $schedule->command('mm:push-orders-tracking --days=7 --skip-inventory')
             ->dailyAt('06:30')
             ->timezone('Asia/Kolkata')
