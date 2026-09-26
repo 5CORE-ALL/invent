@@ -51,6 +51,42 @@
             outline-offset: 2px;
         }
         .vinted-select-header { display: flex; align-items: center; justify-content: center; }
+        #vnOpSpriceModal.modal { align-items: flex-start; padding-top: 1.5rem; }
+        #vnOpSpriceModal .vn-op-modal-dialog { margin-top: 0; }
+        #vnOpSpriceModal .vn-op-drag-header {
+            cursor: move; user-select: none; gap: 30px; padding: 2.4rem 1.5rem;
+        }
+        #vnOpSpriceModal .vn-op-header-title {
+            display: flex; align-items: center; gap: 30px; min-width: 0;
+            font-size: 1.24rem; line-height: 1.2; white-space: nowrap;
+        }
+        #vnOpSpriceModal .vn-op-header-img-wrap {
+            flex: 0 0 auto; width: 120px; height: 120px; border-radius: 12px;
+            overflow: hidden; background: #fff; cursor: zoom-in;
+        }
+        #vnOpSpriceModal .vn-op-header-thumb {
+            width: 120px !important; height: 120px !important;
+            max-width: 120px !important; max-height: 120px !important;
+            object-fit: cover !important; display: block;
+        }
+        #vnOpSpriceModal .vn-op-metric-cell { text-align: center; font-weight: 700; vertical-align: middle; }
+        #vnOpSpriceModal .vn-op-price-row {
+            display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap;
+        }
+        #vnOpSpriceModal .vn-sop-icon-btn { border: 0; background: transparent; padding: 0; line-height: 0; cursor: pointer; }
+        #vnOpSpriceModal .vn-sop-icon-btn img { width: 36px; height: 36px; object-fit: contain; display: block; }
+        #vnOpSpriceModal .vn-sop-edit-btn {
+            border: 0; background: transparent; padding: 0 2px; color: #6c757d; line-height: 1; cursor: pointer;
+        }
+        #vnOpSpriceModal .vn-sop-edit-btn:hover { color: #0d6efd; }
+        #vnOpSpriceModal .vn-sop-sheet-input { width: 220px; display: none; }
+        #vnOpSpriceModal .vn-sop-sheet-input.is-open { display: inline-block; }
+        #vnOpImgHoverPreview {
+            position: fixed; display: none; z-index: 200080; pointer-events: none;
+            max-width: min(640px, 90vw); max-height: 80vh; object-fit: contain;
+            background: #fff; border-radius: 10px; padding: 6px;
+            box-shadow: 0 8px 28px rgba(0,0,0,.25);
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'vinted'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'vinted'])
     </style>
@@ -258,6 +294,70 @@
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'vinted'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'vinted'])
+
+    <div class="modal fade" id="vnOpSpriceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog vn-op-modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header vn-op-drag-header" style="background-color: #0d6efd;">
+                    <h5 class="modal-title text-white vn-op-header-title">
+                        <span class="vn-op-header-img-wrap" id="vnOpModalImgWrap" style="display:none;">
+                            <img id="vnOpModalImg" class="vn-op-header-thumb no-img-hover" data-no-img-hover alt="Product">
+                        </span>
+                        <span>Offer Sprice – <span id="vnOpModalSku"></span></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-bordered mb-0">
+                        <tbody>
+                            <tr>
+                                <th style="width: 40%;">Offer Sprice</th>
+                                <td>
+                                    <div class="vn-op-price-row">
+                                        <span class="text-muted">$</span>
+                                        <input type="number" class="form-control form-control-sm d-inline-block"
+                                            id="vnOpSpriceInput" value="" step="0.01" min="0" placeholder="0.00"
+                                            style="width: 90px; text-align: right;">
+                                        <button type="button" class="vn-sop-icon-btn" id="vnSopBtn"
+                                            title="Double-click to open SOP sheet">
+                                            <img src="{{ asset('images/sop-icon.png') }}" alt="SOP" class="no-img-hover" data-no-img-hover>
+                                        </button>
+                                        <button type="button" class="vn-sop-edit-btn" id="vnSopEditBtn"
+                                            title="Add / edit SOP sheet link">
+                                            <i class="fas fa-pencil-alt"></i>
+                                        </button>
+                                        <input type="url" class="form-control form-control-sm vn-sop-sheet-input"
+                                            id="vnSopSheetInput" placeholder="Google Sheet URL"
+                                            value="{{ $sopSheetUrl ?? '' }}"
+                                            autocomplete="off" spellcheck="false">
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th title="SGPFT% = ((price × margin − LP) / price) × 100. No ship.">SGPFT%</th>
+                                <td class="vn-op-metric-cell" id="vnOpSgpft">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SGROI% = ((price × margin − LP) / LP) × 100. No ship.">SGROI%</th>
+                                <td class="vn-op-metric-cell" id="vnOpSgroi">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SPFT% = SGPFT% − Ads%. No ship.">SPFT%</th>
+                                <td class="vn-op-metric-cell" id="vnOpSpft">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SNROI% = ((price × margin − LP − price × Ads%) / LP) × 100. No ship.">SNROI%</th>
+                                <td class="vn-op-metric-cell" id="vnOpSnroi">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -809,6 +909,26 @@
                     }
                 },
                 {
+                    title: "OP",
+                    field: "op_sprice",
+                    hozAlign: "center",
+                    width: 50,
+                    headerSort: true,
+                    sorter: "number",
+                    headerTooltip: "Offer Sprice calculator — stored separately from S Price. Click to view Offer Sprice and SGPFT / SGROI / SPFT / SNROI. No ship.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return '';
+                        return '<i class="fas fa-question-circle vn-op-btn" title="Offer Sprice"'
+                            + ' style="color:#0d6efd;font-size:15px;cursor:pointer;line-height:1;"></i>';
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return;
+                        openVnOpSpriceModal(cell.getRow());
+                    }
+                },
+                {
                     title: "GROI",
                     field: "groi",
                     sorter: "number",
@@ -1280,5 +1400,336 @@
             }
         });
     }
+
+    let vnOpModalRow = null;
+    let vnOpModalCalc = { lp: 0, margin: DP_MARGIN, ads: 0 };
+    let vnOpDirty = false;
+    let vnOpSaveTimer = null;
+
+    function vnPaintOpMetric(sel, value, field) {
+        const el = document.querySelector(sel);
+        if (!el) return;
+        el.style.backgroundColor = '';
+        el.style.color = '';
+        el.style.padding = '0';
+        if (value == null || !isFinite(value)) {
+            el.innerHTML = '<span style="color:#6c757d;font-weight:700;">-</span>';
+            return;
+        }
+        const label = Math.round(value) + '%';
+        let bg = '';
+        let fg = '#212529';
+        if (window.MetricPctColors) {
+            const kind = MetricPctColors.kindFromField(field);
+            const band = MetricPctColors.bandFor(kind, value);
+            bg = MetricPctColors.colorFor(kind, value) || '';
+            if (bg) fg = (band === 'yellow') ? '#000' : '#fff';
+        } else {
+            const isPft = field === 'SGPFT' || field === 'SPFT';
+            bg = isPft
+                ? (value < 0 ? '#dc3545' : (value < 10 ? '#ffc107' : '#28a745'))
+                : (value < 0 ? '#dc3545' : (value < 40 ? '#ffc107' : '#28a745'));
+            fg = (bg === '#ffc107') ? '#000' : '#fff';
+        }
+        el.innerHTML = '<span style="display:block;padding:6px 8px;font-weight:700;background:'
+            + bg + ';color:' + fg + ';">' + label + '</span>';
+    }
+
+    function vnOpSpriceMetrics(opSprice, lp, margin, adsPct) {
+        opSprice = parseFloat(opSprice) || 0;
+        lp = parseFloat(lp) || 0;
+        margin = parseFloat(margin) || 0;
+        adsPct = parseFloat(adsPct) || 0;
+        if (opSprice <= 0) {
+            return { sgpft: null, sgroi: null, spft: null, snroi: null };
+        }
+        const sgpft = ((opSprice * margin - lp) / opSprice) * 100;
+        const sgroi = lp > 0 ? ((opSprice * margin - lp) / lp) * 100 : 0;
+        const spft = sgpft - adsPct;
+        const snroi = lp > 0
+            ? ((opSprice * margin - lp - opSprice * (adsPct / 100)) / lp) * 100
+            : 0;
+        return { sgpft: sgpft, sgroi: sgroi, spft: spft, snroi: snroi };
+    }
+
+    function vnRefreshOpModalMetrics() {
+        const modal = document.getElementById('vnOpSpriceModal');
+        if (!modal) return;
+        const c = vnOpModalCalc || {};
+        const metrics = vnOpSpriceMetrics(
+            parseFloat((document.getElementById('vnOpSpriceInput') || {}).value) || 0,
+            c.lp != null ? c.lp : modal.getAttribute('data-lp'),
+            c.margin != null ? c.margin : modal.getAttribute('data-margin'),
+            c.ads != null ? c.ads : modal.getAttribute('data-ads')
+        );
+        vnPaintOpMetric('#vnOpSgpft', metrics.sgpft, 'SGPFT');
+        vnPaintOpMetric('#vnOpSgroi', metrics.sgroi, 'SGROI');
+        vnPaintOpMetric('#vnOpSpft', metrics.spft, 'SPFT');
+        vnPaintOpMetric('#vnOpSnroi', metrics.snroi, 'SNROI');
+    }
+
+    function vnApplyOpToSku(sku, op) {
+        const key = String(sku || '').trim().toUpperCase();
+        (allTableData || []).forEach(function(d) {
+            if (!d || String(d.sku || '').trim().toUpperCase() !== key) return;
+            d.op_sprice = op;
+            d.OP_SPRICE = op;
+        });
+        if (vnOpModalRow) {
+            try { vnOpModalRow.update({ op_sprice: op, OP_SPRICE: op }); } catch (e) {}
+        }
+    }
+
+    function vnSaveOpSprice(immediate) {
+        const modal = document.getElementById('vnOpSpriceModal');
+        const input = document.getElementById('vnOpSpriceInput');
+        if (!modal || !input || !vnOpDirty) return;
+        const sku = String(modal.getAttribute('data-sku') || '').trim();
+        if (!sku) return;
+        const raw = String(input.value || '').trim();
+        const num = parseFloat(raw);
+        const op = (raw === '' || !isFinite(num) || num <= 0) ? null : Math.round(num * 100) / 100;
+        const send = function() {
+            vnOpDirty = false;
+            fetch("{{ route('vinted.analytics.save.op') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify({ sku: sku, op_sprice: op })
+            }).then(function(res) {
+                if (!res.ok) throw new Error('save failed');
+                vnApplyOpToSku(sku, op);
+            }).catch(function() {
+                vnOpDirty = true;
+                if (typeof showToast === 'function') showToast('Failed to save Offer Sprice', 'error');
+            });
+        };
+        if (vnOpSaveTimer) clearTimeout(vnOpSaveTimer);
+        if (immediate) send();
+        else vnOpSaveTimer = setTimeout(send, 400);
+    }
+
+    function openVnOpSpriceModal(row) {
+        if (!row) return;
+        vnOpModalRow = row;
+        const d = row.getData() || {};
+        if (dpIsParentRow(d)) return;
+        const sku = d.sku || '';
+        const lp = parseFloat(d.lp != null ? d.lp : d.LP_productmaster) || 0;
+        const margin = (typeof chPromoTakehomeMargin === 'function')
+            ? chPromoTakehomeMargin(d)
+            : (parseFloat(d._margin) || DP_MARGIN);
+        const ads = parseFloat(d.ads_pct)
+            || (typeof chPromoAdsFrac === 'function' ? ((chPromoAdsFrac() || 0) * 100) : 0)
+            || 0;
+        vnOpModalCalc = { lp: lp, margin: margin, ads: ads };
+        const stored = parseFloat(d.op_sprice != null ? d.op_sprice : d.OP_SPRICE);
+        const sVal = (isFinite(stored) && stored > 0) ? stored : dpRowSprice(d);
+        const modalEl = document.getElementById('vnOpSpriceModal');
+        const skuEl = document.getElementById('vnOpModalSku');
+        const input = document.getElementById('vnOpSpriceInput');
+        if (!modalEl || !input) return;
+        if (skuEl) skuEl.textContent = sku || '—';
+        const imgWrap = document.getElementById('vnOpModalImgWrap');
+        const imgEl = document.getElementById('vnOpModalImg');
+        const imgSrc = String(d.image_path || d.image || '').trim();
+        if (imgWrap && imgEl) {
+            if (imgSrc) {
+                imgEl.src = imgSrc;
+                imgWrap.style.display = '';
+            } else {
+                imgEl.removeAttribute('src');
+                imgWrap.style.display = 'none';
+            }
+        }
+        modalEl.setAttribute('data-sku', sku);
+        modalEl.setAttribute('data-lp', String(lp));
+        modalEl.setAttribute('data-margin', String(margin));
+        modalEl.setAttribute('data-ads', String(ads));
+        vnOpDirty = false;
+        input.value = (isFinite(sVal) && sVal > 0) ? Number(sVal).toFixed(2) : '';
+        vnRefreshOpModalMetrics();
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+
+    (function initVnOpSpriceModal() {
+        const modal = document.getElementById('vnOpSpriceModal');
+        const input = document.getElementById('vnOpSpriceInput');
+        const sopBtn = document.getElementById('vnSopBtn');
+        const sopEditBtn = document.getElementById('vnSopEditBtn');
+        const sopSheetInput = document.getElementById('vnSopSheetInput');
+        if (!modal || !input) return;
+
+        function vnSopSheetUrl() {
+            return String((sopSheetInput && sopSheetInput.value) || '').trim();
+        }
+        function vnOpenSopSheetEditor() {
+            if (!sopSheetInput) return;
+            sopSheetInput.classList.add('is-open');
+            sopSheetInput.focus();
+            sopSheetInput.select();
+        }
+        function vnSaveSopSheetUrl() {
+            if (!sopSheetInput) return;
+            const url = vnSopSheetUrl();
+            const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            fetch("{{ route('vinted.analytics.sop-sheet') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token
+                },
+                body: JSON.stringify({ url: url })
+            }).then(function(res) {
+                if (!res.ok) throw new Error('save failed');
+                sopSheetInput.classList.remove('is-open');
+                if (typeof showToast === 'function') {
+                    showToast(url ? 'SOP sheet link saved' : 'SOP sheet link cleared', 'success');
+                }
+            }).catch(function() {
+                if (typeof showToast === 'function') showToast('Failed to save SOP sheet link', 'error');
+            });
+        }
+
+        input.addEventListener('input', function() {
+            vnOpDirty = true;
+            vnRefreshOpModalMetrics();
+            vnSaveOpSprice(false);
+        });
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                vnOpDirty = true;
+                vnRefreshOpModalMetrics();
+                vnSaveOpSprice(true);
+            }
+        });
+        if (sopBtn) {
+            sopBtn.addEventListener('click', function(e) { e.preventDefault(); });
+            sopBtn.addEventListener('dblclick', function(e) {
+                e.preventDefault();
+                const url = vnSopSheetUrl();
+                if (!url) {
+                    vnOpenSopSheetEditor();
+                    return;
+                }
+                window.open(url, '_blank', 'noopener,noreferrer');
+            });
+        }
+        if (sopEditBtn) {
+            sopEditBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (sopSheetInput && sopSheetInput.classList.contains('is-open')) {
+                    vnSaveSopSheetUrl();
+                } else {
+                    vnOpenSopSheetEditor();
+                }
+            });
+        }
+        if (sopSheetInput) {
+            sopSheetInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    vnSaveSopSheetUrl();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    sopSheetInput.classList.remove('is-open');
+                }
+            });
+            sopSheetInput.addEventListener('blur', function() {
+                if (sopSheetInput.classList.contains('is-open')) {
+                    vnSaveSopSheetUrl();
+                }
+            });
+        }
+
+        modal.addEventListener('shown.bs.modal', function() {
+            const dialog = modal.querySelector('.modal-dialog');
+            if (dialog) {
+                dialog.style.position = 'fixed';
+                dialog.style.left = '50%';
+                dialog.style.top = '1.5rem';
+                dialog.style.transform = 'translateX(-50%)';
+                dialog.style.margin = '0';
+            }
+            vnRefreshOpModalMetrics();
+            input.focus();
+            input.select();
+        });
+        modal.addEventListener('hide.bs.modal', function() {
+            vnSaveOpSprice(true);
+        });
+
+        let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+        const header = modal.querySelector('.vn-op-drag-header');
+        const dialog = modal.querySelector('.modal-dialog');
+        if (!header || !dialog) return;
+        function onMove(e) {
+            dialog.style.left = (startLeft + (e.clientX - startX)) + 'px';
+            dialog.style.top = (startTop + (e.clientY - startY)) + 'px';
+            dialog.style.transform = 'none';
+        }
+        function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        }
+        function vnOpImgPreview() {
+            let el = document.getElementById('vnOpImgHoverPreview');
+            if (el) return el;
+            el = document.createElement('img');
+            el.id = 'vnOpImgHoverPreview';
+            el.alt = '';
+            document.body.appendChild(el);
+            return el;
+        }
+        function vnOpPlacePreview(e) {
+            const preview = vnOpImgPreview();
+            const pad = 16;
+            const w = preview.offsetWidth || 320;
+            const h = preview.offsetHeight || 320;
+            let left = e.clientX + pad;
+            let top = e.clientY + pad;
+            if (left + w > window.innerWidth - 8) left = Math.max(8, e.clientX - w - pad);
+            if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+            preview.style.left = left + 'px';
+            preview.style.top = top + 'px';
+        }
+        const imgWrap = document.getElementById('vnOpModalImgWrap');
+        if (imgWrap) {
+            imgWrap.addEventListener('mouseenter', function(e) {
+                const img = document.getElementById('vnOpModalImg');
+                const src = img && (img.currentSrc || img.src);
+                if (!src) return;
+                const preview = vnOpImgPreview();
+                preview.src = src;
+                preview.style.display = 'block';
+                vnOpPlacePreview(e);
+            });
+            imgWrap.addEventListener('mousemove', vnOpPlacePreview);
+            imgWrap.addEventListener('mouseleave', function() {
+                const preview = document.getElementById('vnOpImgHoverPreview');
+                if (preview) preview.style.display = 'none';
+            });
+        }
+        modal.addEventListener('hidden.bs.modal', function() {
+            const preview = document.getElementById('vnOpImgHoverPreview');
+            if (preview) preview.style.display = 'none';
+        });
+        header.addEventListener('mousedown', function(e) {
+            if (e.target.closest('.btn-close, .vn-op-header-img-wrap')) return;
+            const r = dialog.getBoundingClientRect();
+            startLeft = r.left;
+            startTop = r.top;
+            startX = e.clientX;
+            startY = e.clientY;
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+            e.preventDefault();
+        });
+    })();
 </script>
 @endsection

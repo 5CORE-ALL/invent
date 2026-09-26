@@ -30,6 +30,19 @@ class VintedInstagramAnalyticsTest extends TestCase
         $this->assertSame(25.0, InstagramAnalyticsController::effectiveSellPrice(25, 40, 2));
     }
 
+    public function test_vinted_op_metrics_ignore_ship_and_stay_separate_from_sprice(): void
+    {
+        $metrics = VintedAnalyticsController::opProfitMetrics(40.0, 10.0, 0.87, 5.0);
+
+        $this->assertSame(62.0, $metrics['sgpft']);
+        $this->assertSame(248.0, $metrics['sgroi']);
+        $this->assertSame(57.0, $metrics['spft']);
+        $this->assertSame(228.0, $metrics['snroi']);
+        $this->assertSame(19.5, VintedAnalyticsController::normalizeOpSprice('19.499'));
+        $this->assertNull(VintedAnalyticsController::normalizeOpSprice(0));
+        $this->assertNull(VintedAnalyticsController::normalizeOpSprice(''));
+    }
+
     public function test_extract_lp_reads_product_master_values(): void
     {
         $pm = new ProductMaster();

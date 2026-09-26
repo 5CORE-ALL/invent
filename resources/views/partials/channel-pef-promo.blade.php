@@ -10039,7 +10039,10 @@
                 const storedFlag = (typeof shopifyB2cIsAmzSuggApplied === 'function')
                     ? !!shopifyB2cIsAmzSuggApplied(d)
                     : false;
-                if (Math.abs(stored - price) < 0.005 && storedFlag === amzSugg) return;
+                const samePrice = (typeof shopifyB2cCents === 'function')
+                    ? shopifyB2cCents(stored) === shopifyB2cCents(price)
+                    : stored === price;
+                if (samePrice && storedFlag === amzSugg) return;
                 seen[key] = true;
                 jobs.push({ row: row, sku: sku, sprice: price, amz_sugg: amzSugg ? 1 : 0 });
             }
