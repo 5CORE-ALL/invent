@@ -5099,7 +5099,7 @@
                             }
 
                             return '<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">'
-                                + formattedValue + redTri + blueTri + dotBtn + '</span>';
+                                + blueTri + formattedValue + redTri + dotBtn + '</span>';
                         },
                         cellClick: function(e) {
                             const el = e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot');
@@ -5111,7 +5111,7 @@
                             }
                             return false;
                         },
-                        width: 92
+                        width: 118
                     },
 
                     {

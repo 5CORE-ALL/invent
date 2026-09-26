@@ -4106,9 +4106,9 @@
                             }
 
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + formattedValue + yellowTri + redTri + blueTri + '</span>';
+                                + blueTri + formattedValue + yellowTri + redTri + '</span>';
                         },
-                        width: 92
+                        width: 118
                     },
 
                     {
