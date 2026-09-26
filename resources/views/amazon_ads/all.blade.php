@@ -1555,8 +1555,16 @@
                 return '<span class="amz-push-alert" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '">!</span>';
             }
             function amzPushAlertText(row) {
-                if (!row || row.bid_sync_color !== 'red' || !row.bid_sync_tip) return '';
-                return 'SBID: ' + row.bid_sync_tip;
+                if (!row || !row.bid_sync_tip) return '';
+                var bidDiffers = (function () {
+                    var live = parseFloat(row.last_sbid);
+                    var want = parseFloat(row.sbid);
+                    return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.abs(live - want) > 0.004;
+                })();
+                if (row.bid_sync_color === 'red' || row.bid_sync_reason === 'sbid_differs' || bidDiffers) {
+                    return 'SBID: ' + row.bid_sync_tip;
+                }
+                return '';
             }
             function amzSbgtAlertText(row) {
                 if (!row || !row.bgt_sync_tip) return '';
@@ -2070,7 +2078,7 @@
                 }
                 if (c === 'pushAlert') {
                     col.title = 'Alert';
-                    col.headerTooltip = 'Shown when SBID was not pushed. Hover the mark for the reason.';
+                    col.headerTooltip = 'Shown when SBID was not pushed, or Lbid does not match SBID. Hover the mark for the reason.';
                     col.formatter = fmtPushAlert;
                     col.headerSort = false;
                     col.width = 48;
@@ -2317,7 +2325,7 @@
             function amzShownBidMatches(row) {
                 var live = parseFloat(row && row.last_sbid);
                 var want = parseFloat(row && row.sbid);
-                return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.abs(live - want) <= 0.015;
+                return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.abs(live - want) <= 0.004;
             }
             function amzShownBudgetMatches(row) {
                 var live = parseFloat(row && row.bgt);
@@ -2492,6 +2500,16 @@
                         patch.bid_sync_reason = r.fields.bid.reason || '';
                         if (r.fields.bid.status === 'synced' && r.fields.bid.verified_live != null) {
                             patch.last_sbid = r.fields.bid.verified_live;
+                        }
+                        var bidView = {};
+                        Object.keys(d).forEach(function (k) { bidView[k] = d[k]; });
+                        Object.keys(patch).forEach(function (k) { bidView[k] = patch[k]; });
+                        if (!bidFailed && patch.bid_sync_color === 'green' && !amzShownBidMatches(bidView)) {
+                            patch.bid_sync_color = 'yellow';
+                            patch.bid_sync_status = 'pending';
+                            patch.bid_sync_reason = 'sbid_differs';
+                            patch.bid_sync_tip = 'Pending — saved SBID $' + Number(bidView.sbid).toFixed(2)
+                                + ' does not match live BID $' + Number(bidView.last_sbid).toFixed(2);
                         }
                     }
                     var next = {};

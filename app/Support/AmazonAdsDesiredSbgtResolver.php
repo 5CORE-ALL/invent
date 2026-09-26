@@ -17,9 +17,10 @@ final class AmazonAdsDesiredSbgtResolver
      * @param  iterable<int, object|array<string, mixed>>  $campaigns  campaign_id, campaignName, optional acos / acos_L30 / sbgt
      * @param  'sp'|'sb'|null  $channel  when set, BGT ACOS comes from lifetime daily rows in that channel's report table
      * @param  array<string, float|null>|null  $lifetimeAcosByCid  test/override map; null loads from the report table
+     * @param  array<string, float|array{rating?: mixed}>|null  $reviewRatingByCid  test/override map; null loads the campaign SKU rating used by the SBGT column
      * @return array<string, int|null>
      */
-    public static function sbgtForCampaigns(iterable $campaigns, ?string $channel = null, ?array $lifetimeAcosByCid = null): array
+    public static function sbgtForCampaigns(iterable $campaigns, ?string $channel = null, ?array $lifetimeAcosByCid = null, ?array $reviewRatingByCid = null): array
     {
         $rows = [];
         $names = [];
@@ -54,38 +55,38 @@ final class AmazonAdsDesiredSbgtResolver
         }
 
         $pageCvr = [];
-        $metricsByKey = [];
+        $metricsByName = [];
+        $ratingsByCid = self::reviewRatingsForCampaigns(array_keys($rows), $reviewRatingByCid);
         try {
             $pageCvr = AmazonAdsCampaignSkuMetrics::parentListingCvrForCampaignNames($names);
-            $keys = [];
-            foreach ($names as $name) {
-                $key = AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($name);
-                if ($key !== '') {
-                    $keys[] = $key;
-                }
-            }
-            $metricsByKey = AmazonAdsCampaignSkuMetrics::metricsForSkuKeys($keys);
+            $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($names);
         } catch (Throwable) {
             $pageCvr = [];
-            $metricsByKey = [];
+            $metricsByName = [];
         }
 
         $out = [];
         foreach ($rows as $cid => $arr) {
             $name = trim((string) ($arr['campaignName'] ?? $arr['campaign_name'] ?? ''));
             $pc = $pageCvr[$name] ?? AmazonAdsCampaignSkuMetrics::emptyParentListingCvr();
-            $key = AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($name);
-            $mSku = ($key !== '' && isset($metricsByKey[$key]) && is_array($metricsByKey[$key]))
-                ? $metricsByKey[$key]
+            $mSku = (isset($metricsByName[$name]) && is_array($metricsByName[$name]))
+                ? $metricsByName[$name]
                 : [];
             $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($mSku);
+            $inv = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
+            $ovl = isset($mSku['ovl30']) && is_numeric($mSku['ovl30']) ? (float) $mSku['ovl30'] : null;
+            $dilVal = AmazonAdsCampaignSkuMetrics::tabulatorDil($inv, $ovl);
+            $digits = preg_replace('/\D+/', '', (string) $cid) ?: '';
+            $fromAds = $digits !== '' ? ($ratingsByCid[$digits] ?? null) : null;
+            $rating = is_array($fromAds) && isset($fromAds['rating']) && is_numeric($fromAds['rating'])
+                ? (float) $fromAds['rating']
+                : (isset($mSku['rating']) && is_numeric($mSku['rating']) ? (float) $mSku['rating'] : null);
 
             $bgtViews = AmazonAdsBgtViewsRule::apply(
                 isset($pc['sess7']) && is_numeric($pc['sess7']) ? (float) $pc['sess7'] : 0.0
             )['bgt'] ?? null;
-            $bgtCvr = AmazonAdsBgtCvrRule::apply(
-                isset($pc['page_cvr']) && is_numeric($pc['page_cvr']) ? (float) $pc['page_cvr'] : null
-            )['bgt'] ?? null;
+            $cvrIn = isset($pc['page_cvr']) && is_numeric($pc['page_cvr']) ? (float) $pc['page_cvr'] : 0.0;
+            $bgtCvr = AmazonAdsBgtCvrRule::apply($cvrIn)['bgt'] ?? null;
 
             if ($useLifetime) {
                 $lt = $lifetimeAcosByCid[$cid] ?? null;
@@ -99,14 +100,53 @@ final class AmazonAdsDesiredSbgtResolver
             }
 
             $bgtPrc = AmazonAdsBgtPrcRule::apply($gm['price'] ?? null)['bgt'] ?? null;
-            $bgtReviews = AmazonAdsBgtReviewsRule::apply($gm['rating'] ?? null)['bgt'] ?? null;
-            $bgtDil = AmazonAdsBgtDilRule::apply($gm['dil'] ?? null)['bgt'] ?? null;
+            $bgtReviews = AmazonAdsBgtReviewsRule::apply($rating)['bgt'] ?? null;
+            $bgtDil = AmazonAdsBgtDilRule::apply($dilVal)['bgt'] ?? null;
 
             $sum = AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil);
             if ($sum === null && isset($arr['sbgt']) && is_numeric($arr['sbgt'])) {
                 $sum = (int) $arr['sbgt'];
             }
             $out[$cid] = $sum;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Same review rating as the SBGT column: lowest campaign-SKU rating, then the metrics rating.
+     *
+     * @param  list<string>  $campaignIds
+     * @param  array<string, float|array{rating?: mixed}>|null  $override
+     * @return array<string, array{rating: float|null}>
+     */
+    private static function reviewRatingsForCampaigns(array $campaignIds, ?array $override): array
+    {
+        if ($override !== null) {
+            $out = [];
+            foreach ($override as $id => $rating) {
+                $digits = preg_replace('/\D+/', '', (string) $id) ?: '';
+                if ($digits === '') {
+                    continue;
+                }
+                $value = is_array($rating) ? ($rating['rating'] ?? null) : $rating;
+                $out[$digits] = ['rating' => is_numeric($value) ? (float) $value : null];
+            }
+
+            return $out;
+        }
+
+        try {
+            $found = AmazonAdsCampaignSkuMetrics::minRatingForCampaignIds($campaignIds);
+        } catch (Throwable) {
+            return [];
+        }
+        $out = [];
+        foreach ($found as $cid => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $out[(string) $cid] = ['rating' => isset($row['rating']) && is_numeric($row['rating']) ? (float) $row['rating'] : null];
         }
 
         return $out;

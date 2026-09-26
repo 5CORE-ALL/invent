@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\AmazonAdsLiveSyncState;
+use App\Services\AmazonAdsLiveBidBgtSyncService;
 
 /**
  * Column-wise BGT/BID sync status from verified Amazon live state (not push-API success).
@@ -183,8 +184,10 @@ final class AmazonAdsLiveSyncStatus
         }
         $color = (string) ($row[$field.'_sync_color'] ?? '');
         $reason = (string) ($row[$field.'_sync_reason'] ?? '');
-        $budgetMismatch = $field === 'bgt' && ($reason === 'paused_zero_sbgt' || $reason === 'sbgt_differs');
-        if ($color === self::RED || $budgetMismatch) {
+        $shownDiffers = $field === 'bgt'
+            ? ($reason === 'paused_zero_sbgt' || $reason === 'sbgt_differs')
+            : ($reason === 'sbid_differs' || self::displayedBidsDiffer($row['last_sbid'] ?? null, $row['sbid'] ?? null));
+        if ($color === self::RED || $shownDiffers) {
             return $label.': '.$tip;
         }
 
@@ -222,7 +225,7 @@ final class AmazonAdsLiveSyncStatus
             return false;
         }
 
-        return AmazonAdsApiRetry::valuesMatch($live, $want, 0.015);
+        return AmazonAdsApiRetry::valuesMatch($live, $want, AmazonAdsLiveBidBgtSyncService::BID_TOLERANCE);
     }
 
     public static function displayedBidsDiffer(mixed $shown, mixed $desired): bool
@@ -233,7 +236,7 @@ final class AmazonAdsLiveSyncStatus
             return false;
         }
 
-        return ! AmazonAdsApiRetry::valuesMatch($live, $want, 0.015);
+        return ! AmazonAdsApiRetry::valuesMatch($live, $want, AmazonAdsLiveBidBgtSyncService::BID_TOLERANCE);
     }
 
     public static function displayedBudgetsMatch(mixed $shown, mixed $desired): bool

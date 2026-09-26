@@ -24,7 +24,8 @@ class AmazonAdsLiveBidBgtSyncService
 {
     public const BGT_TOLERANCE = 0.51;
 
-    public const BID_TOLERANCE = 0.015;
+    /** One cent must not count as a match. 0.37 and 0.36 differ. */
+    public const BID_TOLERANCE = 0.004;
 
     public const PULL_ATTEMPTS = 5;
 

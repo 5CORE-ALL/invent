@@ -368,6 +368,13 @@ class TemuShopifySalesService
             }
         }
 
+        // base×1.1364 without the +$2.99 (for example $1.63 when Temu Price is $4.62)
+        // rebuilds to a different full price. It is not a Temu price — rejecting it
+        // stops Sprc Dil from painting that gap instead of the real full price.
+        if (! ($best > 0) || $bestErr > 0.05) {
+            return 0.0;
+        }
+
         return $best;
     }
 

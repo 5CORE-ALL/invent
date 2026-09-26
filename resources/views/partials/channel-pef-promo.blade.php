@@ -5254,7 +5254,7 @@
                         best = base;
                     }
                 });
-                sR = best > 0 ? (best <= 26.99 ? best + 2.99 : best) : 0;
+                sR = (best > 0 && bestErr <= 0.05) ? (best <= 26.99 ? best + 2.99 : best) : 0;
             }
             if (!(sR > 0)) return null;
             return ((sR * 0.95 - ship - lp) / lp) * 100;
@@ -5285,7 +5285,7 @@
                     best = base;
                 }
             });
-            if (!(best > 0)) return null;
+            if (!(best > 0) || bestErr > 0.05) return null;
             const sR = best <= 26.99 ? best + 2.99 : best;
             return ((sR * 0.95 - shipUse - cost) / cost) * 100;
         }
