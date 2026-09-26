@@ -51,6 +51,42 @@
             outline-offset: 2px;
         }
         .vinted-select-header { display: flex; align-items: center; justify-content: center; }
+        #vnOpSpriceModal.modal { align-items: flex-start; padding-top: 1.5rem; }
+        #vnOpSpriceModal .vn-op-modal-dialog { margin-top: 0; }
+        #vnOpSpriceModal .vn-op-drag-header {
+            cursor: move; user-select: none; gap: 30px; padding: 2.4rem 1.5rem;
+        }
+        #vnOpSpriceModal .vn-op-header-title {
+            display: flex; align-items: center; gap: 30px; min-width: 0;
+            font-size: 1.24rem; line-height: 1.2; white-space: nowrap;
+        }
+        #vnOpSpriceModal .vn-op-header-img-wrap {
+            flex: 0 0 auto; width: 120px; height: 120px; border-radius: 12px;
+            overflow: hidden; background: #fff; cursor: zoom-in;
+        }
+        #vnOpSpriceModal .vn-op-header-thumb {
+            width: 120px !important; height: 120px !important;
+            max-width: 120px !important; max-height: 120px !important;
+            object-fit: cover !important; display: block;
+        }
+        #vnOpSpriceModal .vn-op-metric-cell { text-align: center; font-weight: 700; vertical-align: middle; }
+        #vnOpSpriceModal .vn-op-price-row {
+            display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap;
+        }
+        #vnOpSpriceModal .vn-sop-icon-btn { border: 0; background: transparent; padding: 0; line-height: 0; cursor: pointer; }
+        #vnOpSpriceModal .vn-sop-icon-btn img { width: 36px; height: 36px; object-fit: contain; display: block; }
+        #vnOpSpriceModal .vn-sop-edit-btn {
+            border: 0; background: transparent; padding: 0 2px; color: #6c757d; line-height: 1; cursor: pointer;
+        }
+        #vnOpSpriceModal .vn-sop-edit-btn:hover { color: #0d6efd; }
+        #vnOpSpriceModal .vn-sop-sheet-input { width: 220px; display: none; }
+        #vnOpSpriceModal .vn-sop-sheet-input.is-open { display: inline-block; }
+        #vnOpImgHoverPreview {
+            position: fixed; display: none; z-index: 200080; pointer-events: none;
+            max-width: min(640px, 90vw); max-height: 80vh; object-fit: contain;
+            background: #fff; border-radius: 10px; padding: 6px;
+            box-shadow: 0 8px 28px rgba(0,0,0,.25);
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'vinted'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'vinted'])
     </style>
@@ -258,6 +294,70 @@
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'vinted'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'vinted'])
+
+    <div class="modal fade" id="vnOpSpriceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog vn-op-modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header vn-op-drag-header" style="background-color: #0d6efd;">
+                    <h5 class="modal-title text-white vn-op-header-title">
+                        <span class="vn-op-header-img-wrap" id="vnOpModalImgWrap" style="display:none;">
+                            <img id="vnOpModalImg" class="vn-op-header-thumb no-img-hover" data-no-img-hover alt="Product">
+                        </span>
+                        <span>Offer Sprice – <span id="vnOpModalSku"></span></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-bordered mb-0">
+                        <tbody>
+                            <tr>
+                                <th style="width: 40%;">Offer Sprice</th>
+                                <td>
+                                    <div class="vn-op-price-row">
+                                        <span class="text-muted">$</span>
+                                        <input type="number" class="form-control form-control-sm d-inline-block"
+                                            id="vnOpSpriceInput" value="" step="0.01" min="0" placeholder="0.00"
+                                            style="width: 90px; text-align: right;">
+                                        <button type="button" class="vn-sop-icon-btn" id="vnSopBtn"
+                                            title="Double-click to open SOP sheet">
+                                            <img src="{{ asset('images/sop-icon.png') }}" alt="SOP" class="no-img-hover" data-no-img-hover>
+                                        </button>
+                                        <button type="button" class="vn-sop-edit-btn" id="vnSopEditBtn"
+                                            title="Add / edit SOP sheet link">
+                                            <i class="fas fa-pencil-alt"></i>
+                                        </button>
+                                        <input type="url" class="form-control form-control-sm vn-sop-sheet-input"
+                                            id="vnSopSheetInput" placeholder="Google Sheet URL"
+                                            value="{{ $sopSheetUrl ?? '' }}"
+                                            autocomplete="off" spellcheck="false">
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th title="SGPFT% = ((price × margin − LP) / price) × 100. No ship.">SGPFT%</th>
+                                <td class="vn-op-metric-cell" id="vnOpSgpft">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SGROI% = ((price × margin − LP) / LP) × 100. No ship.">SGROI%</th>
+                                <td class="vn-op-metric-cell" id="vnOpSgroi">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SPFT% = SGPFT% − Ads%. No ship.">SPFT%</th>
+                                <td class="vn-op-metric-cell" id="vnOpSpft">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SNROI% = ((price × margin − LP − price × Ads%) / LP) × 100. No ship.">SNROI%</th>
+                                <td class="vn-op-metric-cell" id="vnOpSnroi">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -806,6 +906,26 @@
                             : '';
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
                             + priceHtml + blueTri + redTri + '</span>';
+                    }
+                },
+                {
+                    title: "OP",
+                    field: "op_sprice",
+                    hozAlign: "center",
+                    width: 50,
+                    headerSort: true,
+                    sorter: "number",
+                    headerTooltip: "Offer Sprice calculator — stored separately from S Price. Click to view Offer Sprice and SGPFT / SGROI / SPFT / SNROI. No ship.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return '';
+                        return '<i class="fas fa-question-circle vn-op-btn" title="Offer Sprice"'
+                            + ' style="color:#0d6efd;font-size:15px;cursor:pointer;line-height:1;"></i>';
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return;
+                        openVnOpSpriceModal(cell.getRow());
                     }
                 },
                 {

@@ -763,6 +763,10 @@
                         title="Push SPRICE to Shopify for selected SKUs">
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
+                    <button type="button" id="shopify-b2c-zero-sold-coupon-btn" class="btn btn-outline-secondary btn-sm"
+                        title="5% coupon on 0 Sold only. On/Off. Percent is editable.">
+                        <i class="fas fa-ticket-alt"></i> 0 Sold CPN Off
+                    </button>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -773,6 +777,27 @@
         </div>
         </div>
     </div>
+    </div>
+    <div class="modal fade" id="shopifyB2cZeroSoldCouponModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6">0 Sold coupon</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <p class="small text-muted mb-3">Applies only when B2C L30 is 0 and INV is above 0. Sold rows stay at 0%.</p>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="shopify-b2c-zero-sold-coupon-switch">
+                        <label class="form-check-label" for="shopify-b2c-zero-sold-coupon-switch" id="shopify-b2c-zero-sold-coupon-switch-label">Off</label>
+                    </div>
+                    <label class="form-label small mb-1" for="shopify-b2c-zero-sold-coupon-pct">Coupon %</label>
+                    <input type="number" class="form-control form-control-sm" id="shopify-b2c-zero-sold-coupon-pct"
+                        min="0" max="100" step="0.01" value="5">
+                    <div class="small text-muted mt-2" id="shopify-b2c-zero-sold-coupon-status"></div>
+                </div>
+            </div>
+        </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shopify_b2c'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'shopify_b2c'])
@@ -3380,6 +3405,24 @@
                 },
                 ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                 {
+                    title: "CPN %",
+                    field: "cpn_pct",
+                    hozAlign: "center",
+                    headerSort: true,
+                    width: 70,
+                    headerTooltip: "Coupon on 0 Sold only (B2C L30 = 0, INV > 0). Turn it on or off, and set the percent, in 0 Sold CPN. Sold rows are 0%.",
+                    sorter: function(a, b, aRow, bRow) {
+                        return shopifyB2cCouponPctForRow(aRow.getData()) - shopifyB2cCouponPctForRow(bRow.getData());
+                    },
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        if (isShopifyB2cParentRow(row)) return '';
+                        const pct = shopifyB2cCouponPctForRow(row);
+                        if (!(pct > 0)) return '';
+                        return '<span style="font-weight:600;">' + pct + '%</span>';
+                    }
+                },
+                {
                     title: "Sprc Dil",
                     field: "SPRC_DIL",
                     hozAlign: "center",
@@ -4262,6 +4305,138 @@
                 });
         }
 
+        let shopifyB2cZeroSoldCoupon = { enabled: false, pct: 5, ready: false, saving: false, pending: false };
+
+        function shopifyB2cIsZeroSoldRow(data) {
+            if (!data || isShopifyB2cParentRow(data)) return false;
+            if (!(parseFloat(data.INV) > 0)) return false;
+            const sold = parseFloat(data['B2B L30'] != null ? data['B2B L30'] : data['B2C L30']) || 0;
+            return !(sold > 0);
+        }
+
+        function shopifyB2cCouponPctForRow(data) {
+            if (!shopifyB2cZeroSoldCoupon.enabled || !shopifyB2cIsZeroSoldRow(data)) return 0;
+            const pct = Number(shopifyB2cZeroSoldCoupon.pct);
+            if (!isFinite(pct) || pct <= 0) return 0;
+            return Math.round(pct * 100) / 100;
+        }
+        window.shopifyB2cCouponPctForRow = shopifyB2cCouponPctForRow;
+
+        function shopifyB2cPaintZeroSoldCouponButton() {
+            const on = !!shopifyB2cZeroSoldCoupon.enabled;
+            const pct = Number(shopifyB2cZeroSoldCoupon.pct) || 0;
+            const label = on ? ('0 Sold CPN ' + pct + '%') : '0 Sold CPN Off';
+            $('#shopify-b2c-zero-sold-coupon-btn')
+                .toggleClass('btn-success', on)
+                .toggleClass('btn-outline-secondary', !on)
+                .html('<i class="fas fa-ticket-alt"></i> ' + label);
+            $('#shopify-b2c-zero-sold-coupon-switch').prop('checked', on);
+            $('#shopify-b2c-zero-sold-coupon-switch-label').text(on ? 'On' : 'Off');
+            const $pct = $('#shopify-b2c-zero-sold-coupon-pct');
+            if (!$pct.is(':focus')) $pct.val(pct);
+        }
+
+        function shopifyB2cRefreshZeroSoldCouponColumn() {
+            if (typeof table === 'undefined' || !table) return;
+            const rows = (typeof table.getRows === 'function') ? table.getRows() : [];
+            rows.forEach(function(row) {
+                const d = row.getData() || {};
+                const pct = shopifyB2cCouponPctForRow(d);
+                if (shopifyB2cCents(d.cpn_pct) === shopifyB2cCents(pct)) return;
+                row.update({ cpn_pct: pct, PEF_CPN_PCT: pct });
+            });
+        }
+
+        function shopifyB2cPersistZeroSoldCoupon() {
+            if (typeof table === 'undefined' || !table) return;
+            if (shopifyB2cZeroSoldCoupon.saving) {
+                shopifyB2cZeroSoldCoupon.pending = true;
+                return;
+            }
+            const items = [];
+            (allTableData || []).forEach(function(d) {
+                if (!d || isShopifyB2cParentRow(d)) return;
+                const sku = String(d['(Child) sku'] || d.sku || '').trim();
+                if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return;
+                const pct = shopifyB2cCouponPctForRow(d);
+                const stored = d.PEF_CPN_PCT != null ? d.PEF_CPN_PCT : d.cpn_pct;
+                if (shopifyB2cCents(stored) === shopifyB2cCents(pct)) return;
+                d.cpn_pct = pct;
+                d.PEF_CPN_PCT = pct;
+                items.push({ sku: sku, cpn: pct });
+            });
+            shopifyB2cPostZeroSoldCoupon(items, 0);
+        }
+
+        function shopifyB2cPostZeroSoldCoupon(items, offset) {
+            const chunk = items.slice(offset, offset + 300);
+            shopifyB2cZeroSoldCoupon.saving = true;
+            $('#shopify-b2c-zero-sold-coupon-status').text(items.length ? ('Saving ' + Math.min(offset + chunk.length, items.length) + ' / ' + items.length) : 'Saved');
+            $.ajax({
+                url: '/shopify-b2c-zero-sold-coupon',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'), 'Accept': 'application/json' },
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    enabled: shopifyB2cZeroSoldCoupon.enabled ? 1 : 0,
+                    pct: shopifyB2cZeroSoldCoupon.pct,
+                    items: chunk
+                }
+            }).done(function() {
+                const next = offset + chunk.length;
+                if (next < items.length) {
+                    shopifyB2cPostZeroSoldCoupon(items, next);
+                    return;
+                }
+                shopifyB2cZeroSoldCoupon.saving = false;
+                $('#shopify-b2c-zero-sold-coupon-status').text('Saved');
+                if (typeof showToast === 'function') showToast('0 Sold coupon saved', 'success');
+                if (shopifyB2cZeroSoldCoupon.pending) {
+                    shopifyB2cZeroSoldCoupon.pending = false;
+                    shopifyB2cPersistZeroSoldCoupon();
+                }
+            }).fail(function() {
+                shopifyB2cZeroSoldCoupon.saving = false;
+                $('#shopify-b2c-zero-sold-coupon-status').text('Save failed');
+                if (typeof showToast === 'function') showToast('0 Sold coupon save failed', 'error');
+            });
+        }
+
+        function shopifyB2cApplyZeroSoldCoupon(persist) {
+            shopifyB2cPaintZeroSoldCouponButton();
+            shopifyB2cRefreshZeroSoldCouponColumn();
+            if (persist) shopifyB2cPersistZeroSoldCoupon();
+        }
+
+        function shopifyB2cLoadZeroSoldCoupon() {
+            $.getJSON('/shopify-b2c-zero-sold-coupon').done(function(resp) {
+                shopifyB2cZeroSoldCoupon.enabled = !!(resp && resp.enabled);
+                const pct = Number(resp && resp.pct);
+                shopifyB2cZeroSoldCoupon.pct = isFinite(pct) ? pct : 5;
+                shopifyB2cZeroSoldCoupon.ready = true;
+                shopifyB2cApplyZeroSoldCoupon(true);
+            });
+        }
+
+        $('#shopify-b2c-zero-sold-coupon-btn').on('click', function() {
+            const modalEl = document.getElementById('shopifyB2cZeroSoldCouponModal');
+            if (!modalEl || typeof bootstrap === 'undefined') return;
+            shopifyB2cPaintZeroSoldCouponButton();
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        });
+        $('#shopify-b2c-zero-sold-coupon-switch').on('change', function() {
+            shopifyB2cZeroSoldCoupon.enabled = $(this).is(':checked');
+            shopifyB2cApplyZeroSoldCoupon(true);
+        });
+        $('#shopify-b2c-zero-sold-coupon-pct').on('change', function() {
+            let pct = Number($(this).val());
+            if (!isFinite(pct) || pct < 0) pct = 0;
+            if (pct > 100) pct = 100;
+            shopifyB2cZeroSoldCoupon.pct = Math.round(pct * 100) / 100;
+            $(this).val(shopifyB2cZeroSoldCoupon.pct);
+            shopifyB2cApplyZeroSoldCoupon(true);
+        });
+
         // Wait for table to be built
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
@@ -4271,6 +4446,8 @@
         });
 
         table.on('dataLoaded', function() {
+            if (!shopifyB2cZeroSoldCoupon.ready) shopifyB2cLoadZeroSoldCoupon();
+            else shopifyB2cApplyZeroSoldCoupon(false);
             shopifyB2cSyncTableHeight();
             setTimeout(function() {
                 applyFilters();

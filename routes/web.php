@@ -4137,6 +4137,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/vinted/analytics/sample', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'downloadSample'])->name('vinted.analytics.sample');
     Route::post('/vinted/analytics/import', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'importCsv'])->name('vinted.analytics.import');
     Route::post('/vinted/analytics/save-sprice', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'saveSprice'])->name('vinted.analytics.save.sprice');
+    Route::post('/vinted/analytics/save-op-sprice', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'saveOpSprice'])->name('vinted.analytics.save.op');
+    Route::post('/vinted/analytics/sop-sheet', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'saveSopSheet'])->name('vinted.analytics.sop-sheet');
 
     // Instagram Shop Analytics — Depop-style Tabulator + CSV template (parent, sku, price, l30)
     Route::get('/instagram/analytics', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'pricingView'])->name('instagram.analytics');
@@ -5815,6 +5817,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shopifyb2c/save-nr', [Shopifyb2cController::class, 'saveNrToDatabase']);
     Route::post('/shopifyb2c/update-listed-live', [Shopifyb2cController::class, 'updateListedLive']);
     Route::post('/shopify/save-sprice', [Shopifyb2cController::class, 'saveSpriceToDatabase']);
+    Route::get('/shopify-b2c-zero-sold-coupon', [Shopifyb2cController::class, 'zeroSoldCouponSetting']);
+    Route::post('/shopify-b2c-zero-sold-coupon', [Shopifyb2cController::class, 'saveZeroSoldCouponSetting']);
     Route::get('/shopify-pricing-cvr', [Shopifyb2cController::class, 'shopifyPricingCvr']);
 
     Route::post('/shopifyb2c-zero/reason-action/update', [Shopifyb2cZeroController::class, 'updateReasonAction']);

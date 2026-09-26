@@ -43,9 +43,11 @@ class ShopifyB2cRuleSpriceApplyService
             $margin = 0.95;
         }
         $adsPct = $this->channelAdsPercent();
+        $coupon = $this->zeroSoldCoupon();
 
         $this->log($logger, 'Loaded Dil slabs='.count($dilRules)
-            .' ads%='.$adsPct.' target=SNROI');
+            .' ads%='.$adsPct.' target=SNROI'
+            .' 0-sold coupon='.($coupon['enabled'] ? $coupon['pct'].'%' : 'off'));
 
         $stats = [
             'candidates' => 0,
@@ -87,6 +89,7 @@ class ShopifyB2cRuleSpriceApplyService
                     $zeroMinRoi,
                     $margin,
                     $adsPct,
+                    $coupon,
                     $dryRun,
                     $limit,
                     $logger,
@@ -105,7 +108,7 @@ class ShopifyB2cRuleSpriceApplyService
                             return false;
                         }
                         try {
-                            $computed = $this->computeTarget($row, [], $zeroRules, $zeroMinRoi, $margin, $dilRules, $cvrAdj, $adsPct);
+                            $computed = $this->computeTarget($row, [], $zeroRules, $zeroMinRoi, $margin, $dilRules, $cvrAdj, $adsPct, $coupon);
                             if ($computed === null) {
                                 $stats['skipped']++;
                                 continue;
@@ -264,9 +267,10 @@ class ShopifyB2cRuleSpriceApplyService
      * @param  array{red:float,green:float,pink:float}  $zeroRules
      * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
      * @param  array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}|null  $cvrAdj
+     * @param  array{enabled?:bool,pct?:float}  $coupon
      * @return array{sprice:float,prmt:float,cpn:float,amz_sugg:bool}|null
      */
-    protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin, array $dilRules = [], ?array $cvrAdj = null, float $adsPct = 0.0): ?array
+    protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin, array $dilRules = [], ?array $cvrAdj = null, float $adsPct = 0.0, array $coupon = []): ?array
     {
         $dil = (float) ($row['dil'] ?? 0);
         $cvr = (float) ($row['cvr'] ?? 0);
@@ -317,12 +321,28 @@ class ShopifyB2cRuleSpriceApplyService
             return null;
         }
 
+        $couponOn = filter_var($coupon['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $couponPct = is_numeric($coupon['pct'] ?? null) ? (float) $coupon['pct'] : 5.0;
+        if ($couponPct < 0) {
+            $couponPct = 0.0;
+        }
+        if ($couponPct > 100) {
+            $couponPct = 100.0;
+        }
+        $cpn = ($couponOn && $zeroSold) ? round($couponPct, 2) : 0.0;
+
         return [
             'sprice' => $sprice,
             'prmt' => round($prmt, 2),
-            'cpn' => round($cpn, 2),
+            'cpn' => $cpn,
             'amz_sugg' => $amzPinned,
         ];
+    }
+
+    /** @return array{enabled:bool,pct:float} */
+    protected function zeroSoldCoupon(): array
+    {
+        return \App\Http\Controllers\MarketPlace\Shopifyb2cController::zeroSoldCouponConfig();
     }
 
     /** Shopify TCOS / Ads% — same source as the /shopify-b2c-pricing Ads badge. */

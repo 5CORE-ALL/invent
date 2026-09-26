@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\MarketplacePercentage;
 use App\Models\Shopifyb2cDataView;
 use App\Models\ShopifySku;
@@ -389,6 +390,95 @@ class Shopifyb2cController extends Controller
     }
 
 
+
+    public const ZERO_SOLD_COUPON_STORE = 'shopify_b2c_zero_sold_coupon';
+
+    /** @return array{enabled:bool,pct:float} */
+    public static function zeroSoldCouponConfig(): array
+    {
+        $pct = 5.0;
+        $enabled = false;
+        try {
+            $row = ChannelTabulatorColumnSetting::query()
+                ->where('channel_name', self::ZERO_SOLD_COUPON_STORE)
+                ->first();
+            $vis = is_array($row?->visibility) ? $row->visibility : [];
+            if (is_numeric($vis['pct'] ?? null)) {
+                $pct = (float) $vis['pct'];
+            }
+            $enabled = filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        } catch (\Throwable) {
+            $enabled = false;
+        }
+        if ($pct < 0) {
+            $pct = 0.0;
+        }
+        if ($pct > 100) {
+            $pct = 100.0;
+        }
+
+        return ['enabled' => $enabled, 'pct' => round($pct, 2)];
+    }
+
+    public function zeroSoldCouponSetting()
+    {
+        $cfg = self::zeroSoldCouponConfig();
+
+        return response()->json([
+            'success' => true,
+            'enabled' => $cfg['enabled'],
+            'pct' => $cfg['pct'],
+        ]);
+    }
+
+    public function saveZeroSoldCouponSetting(Request $request)
+    {
+        $pct = round(max(0, min(100, (float) $request->input('pct', 5))), 2);
+        $enabled = $request->boolean('enabled');
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => self::ZERO_SOLD_COUPON_STORE],
+            ['visibility' => ['enabled' => $enabled, 'pct' => $pct]]
+        );
+
+        $saved = 0;
+        $items = $request->input('items', []);
+        if (is_array($items)) {
+            foreach (array_slice($items, 0, 400) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $sku = trim((string) ($item['sku'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                $cpn = round(max(0, min(100, (float) ($item['cpn'] ?? 0))), 2);
+                $view = Shopifyb2cDataView::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->first();
+                if (! $view) {
+                    $view = new Shopifyb2cDataView(['sku' => $sku]);
+                }
+                $existing = is_array($view->value)
+                    ? $view->value
+                    : (json_decode((string) $view->value, true) ?: []);
+                if (round((float) ($existing['PEF_CPN_PCT'] ?? 0), 2) === $cpn) {
+                    continue;
+                }
+                $existing['PEF_CPN_PCT'] = $cpn;
+                $view->value = $existing;
+                $view->save();
+                $saved++;
+            }
+        }
+        self::forgetTabularDataCache();
+
+        return response()->json([
+            'success' => true,
+            'enabled' => $enabled,
+            'pct' => $pct,
+            'saved' => $saved,
+        ]);
+    }
 
     public function saveSpriceToDatabase(Request $request)
     {
@@ -1053,6 +1143,7 @@ class Shopifyb2cController extends Controller
             $processedItem["SPRICE_STATUS"] = null;
             $processedItem["has_custom_sprice"] = false;
             $processedItem["AMZ_SUGG_APPLIED"] = false;
+            $processedItem["cpn_pct"] = 0;
 
             $valuesArr = $viewBySku[$skuKey] ?? ($viewBySku[$sku] ?? null);
             if (is_array($valuesArr)) {
@@ -1060,6 +1151,9 @@ class Shopifyb2cController extends Controller
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
                 $processedItem["has_custom_sprice"] = $processedItem["SPRICE"] > 0;
                 $processedItem["AMZ_SUGG_APPLIED"] = !empty($valuesArr["AMZ_SUGG_APPLIED"]);
+                $processedItem["cpn_pct"] = isset($valuesArr["PEF_CPN_PCT"]) && is_numeric($valuesArr["PEF_CPN_PCT"])
+                    ? round((float) $valuesArr["PEF_CPN_PCT"], 2)
+                    : 0;
                 $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
                 $processedItem["SNPFT"] = isset($valuesArr["SNPFT"]) ? floatval($valuesArr["SNPFT"]) : 0;
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval($valuesArr["SROI"]) : 0;
