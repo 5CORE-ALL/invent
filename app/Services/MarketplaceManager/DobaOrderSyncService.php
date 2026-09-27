@@ -154,12 +154,13 @@ class DobaOrderSyncService
             ];
         }
         $order = null;
-        $timeout = $quick ? 6 : 12;
+        $timeout = $quick ? 4 : 12;
+        $shortId = preg_match('/^\d{4,9}$/', $orderId) === 1;
         foreach ($windows as $window) {
             $query = $window + ['pageNo' => 1, 'pageSize' => 10];
-            $fields = preg_match('/^\d{4,9}$/', $orderId) === 1
-                ? ['platformOrderNo', 'ordBusiId']
-                : ['ordBusiId', 'platformOrderNo'];
+            $fields = $quick
+                ? ($shortId ? ['platformOrderNo'] : ['ordBusiId'])
+                : ($shortId ? ['platformOrderNo', 'ordBusiId'] : ['ordBusiId', 'platformOrderNo']);
             foreach ($fields as $field) {
                 $rows = $api->querySellerOrderDetail($query + [$field => $orderId], $timeout);
                 $order = $this->matchDobaOrder($rows, $orderId);
@@ -183,13 +184,20 @@ class DobaOrderSyncService
      */
     protected function matchDobaOrder(array $rows, string $orderId): ?array
     {
-        $want = strtoupper(trim($orderId));
+        $want = strtoupper(ltrim(trim($orderId), '#'));
+        if ($want === '') {
+            return null;
+        }
         foreach ($rows as $row) {
-            foreach (['ordBusiId', 'orderNo', 'platformOrderNo'] as $key) {
-                $value = strtoupper(trim((string) ($row[$key] ?? '')));
-                if ($value !== '' && $value === $want) {
+            foreach (['ordBusiId', 'orderNo', 'platformOrderNo', 'storeOrderNo', 'outOrderId', 'saleOrderNo'] as $key) {
+                $value = strtoupper(ltrim(trim((string) ($row[$key] ?? '')), '#'));
+                if ($value !== '' && ($value === $want || str_ends_with($value, $want))) {
                     return $row;
                 }
+            }
+            $blob = strtoupper((string) json_encode($row));
+            if (preg_match('/(?<!\d)'.preg_quote($want, '/').'(?!\d)/', $blob) === 1) {
+                return $row;
             }
         }
 

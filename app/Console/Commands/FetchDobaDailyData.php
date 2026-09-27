@@ -183,7 +183,7 @@ class FetchDobaDailyData extends Command
     public function fetchRecentOrders(int $days = 3, int $maxPages = 2): int
     {
         $days = max(1, min(14, $days));
-        $maxPages = max(1, min(4, $maxPages));
+        $maxPages = max(1, min(12, $maxPages));
         $this->ensureConsoleOutput();
         $now = Carbon::now();
         $cutoff = $now->copy()->subDays($days);
@@ -207,8 +207,12 @@ class FetchDobaDailyData extends Command
     {
         $stored = 0;
         $l30 = Carbon::now()->subDays(30);
+        $deadline = microtime(true) + 20.0;
         for ($page = 1; $page <= $maxPages; $page++) {
-            $orders = $this->fetchOrdersPage($page, 25, $beginTime, $endTime, 8);
+            if (microtime(true) >= $deadline) {
+                break;
+            }
+            $orders = $this->fetchOrdersPage($page, 40, $beginTime, $endTime, 6);
             if ($orders === null || $orders === []) {
                 break;
             }

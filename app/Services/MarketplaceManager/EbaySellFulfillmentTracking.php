@@ -647,9 +647,9 @@ class EbaySellFulfillmentTracking
             return $fromList;
         }
 
-        $order = $this->getEbayOrder($token, $orderId);
-
-        return is_array($order) ? self::trackingFromEbayPayload($order) : null;
+        // The order resource does not include shipmentTrackingNumber. A second
+        // 20s call here used up the fulfillment-page deadline before GOFO/4Seller ran.
+        return null;
     }
 
     /**
@@ -745,8 +745,8 @@ class EbaySellFulfillmentTracking
                     'Authorization' => 'Bearer '.$token,
                     'Accept' => 'application/json',
                 ])
-                ->connectTimeout(8)
-                ->timeout(20)
+                ->connectTimeout(4)
+                ->timeout(8)
                 ->get('https://api.ebay.com/sell/fulfillment/v1/order/'.rawurlencode($orderId).'/shipping_fulfillment');
             if (! $response->successful()) {
                 return [];
