@@ -3147,8 +3147,10 @@ class CvrMasterController extends Controller
                         $avgPrice = $childRows->filter(fn ($r) => isset($r->avg_price) && $r->avg_price > 0)->isNotEmpty()
                             ? round($childRows->filter(fn ($r) => isset($r->avg_price) && $r->avg_price > 0)->avg('avg_price'), 2) : null;
                         $totalViews = $childRows->sum(fn ($r) => (int) ($r->total_views ?? 0));
-                        $avgCvr = $totalViews > 0 && $totalOvL30 > 0
-                            ? round(($totalOvL30 / $totalViews) * 100, 2) : null;
+                        $totalSwL30 = $childRows->sum(fn ($r) => (float) ($r->m_l30 ?? 0));
+                        // Same formula as the page badge and each row: (Σ SW L30 / Σ Views) × 100
+                        $avgCvr = $totalViews > 0
+                            ? round(($totalSwL30 / $totalViews) * 100, 2) : null;
                         PricingMasterDailySnapshot::updateOrCreate(
                             ['snapshot_date' => $today],
                             [
@@ -6936,8 +6938,8 @@ class CvrMasterController extends Controller
                     default => (float) ($row->total_inv ?? 0),
                 };
             }
-            // Today's Dil point is the live badge (Σ OV L30 ÷ Σ INV), not a stale daily snapshot.
-            if ($metric === 'dil' && is_numeric($request->input('current_value'))) {
+            // Today's Dil / CVR point is the live badge, not a stale daily snapshot.
+            if (in_array($metric, ['dil', 'cvr'], true) && is_numeric($request->input('current_value'))) {
                 $byDateKey[now('America/Los_Angeles')->toDateString()] = round((float) $request->input('current_value'), 2);
             }
             if (empty($byDateKey)) {
