@@ -2754,7 +2754,11 @@ class ChannelMasterController extends Controller
             $row['L30 Orders'] = $calc->l30_orders !== null ? (int) $calc->l30_orders : ($row['L30 Orders'] ?? 0);
             $row['Qty'] = $calc->total_quantity !== null ? (int) $calc->total_quantity : ($row['Qty'] ?? 0);
             $row['Total Ad Spend'] = $calc->total_ad_spend !== null ? round((float) $calc->total_ad_spend, 2) : ($row['Total Ad Spend'] ?? 0);
+            // Saved Reverb views are the pricing-page total. A cached row may already
+            // be marked scaled; putting the raw total back without clearing that flag
+            // skips the ÷1000 and drops Active Channel CVR to ~0.13%.
             $row['Total Views'] = $calc->total_views !== null ? (int) $calc->total_views : ($row['Total Views'] ?? 0);
+            unset($row['_reverb_views_scaled']);
             if ($calc->ads_percentage !== null) {
                 $row['Ads%'] = round((float) $calc->ads_percentage, 2).'%';
             }
