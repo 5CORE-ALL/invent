@@ -1329,9 +1329,6 @@
                     }
                     return;
                 }
-                const ebayBadgePush = CH_PUSH_SPRICE_CHANNEL === 'ebay1'
-                    || CH_PUSH_SPRICE_CHANNEL === 'ebay2'
-                    || CH_PUSH_SPRICE_CHANNEL === 'ebay3';
                 // eBay blue badges must go to the server worker. The browser pump
                 // only keeps going while this tab stays open, and the server
                 // recompute was queueing ~60 SKUs while the badge showed 500+.
