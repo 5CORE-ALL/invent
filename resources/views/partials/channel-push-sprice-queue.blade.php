@@ -690,9 +690,11 @@
                 return $.ajax({
                     url: CH_PUSH_SPRICE_URL,
                     method: 'POST',
+                    contentType: 'application/json; charset=UTF-8',
+                    processData: false,
                     headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
-                    data: payload,
-                    timeout: 60000,
+                    data: JSON.stringify(payload),
+                    timeout: 120000,
                 }).done(function(resp) {
                     chPushSpriceExpecting = false;
                     startChannelPushSpricePoll();

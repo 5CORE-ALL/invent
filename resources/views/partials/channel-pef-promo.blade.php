@@ -1265,6 +1265,7 @@
             ebay2: {
                 label: 'eBay2',
                 saveSpriceUrl: '/save-ebay2-sprice',
+                saveSpriceBatchUrl: '/save-ebay2-sprice',
                 pushPriceUrl: '/push-ebay2-price',
                 priceField: 'eBay Price',
                 cvrField: 'SCVR',
@@ -1276,6 +1277,7 @@
             ebay2op: {
                 label: 'eBay2 OP',
                 saveSpriceUrl: '/save-ebay2-sprice',
+                saveSpriceBatchUrl: '/save-ebay2-sprice',
                 pushPriceUrl: '/push-ebay2-price',
                 priceField: 'eBay Price',
                 cvrField: 'SCVR',
@@ -9996,16 +9998,18 @@
                 window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
                 return;
             }
-            let saveBusy = false;
-            try {
-                saveBusy = typeof window.ebayDgSpriceSaveBusy === 'function' && window.ebayDgSpriceSaveBusy();
-            } catch (e) { saveBusy = false; }
-            if (saveBusy) {
-                clearTimeout(window._chPromoEbayBluePushTimer);
-                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 600);
-                return;
-            }
+            // Do not wait for the S PRC database save. That loop posts one SKU
+            // at a time and left the bar on Ready while 500+ blue badges sat there.
             window._chPromoServerBluePushStarted = true;
+            if (typeof setChannelPushSpriceProgress === 'function') {
+                setChannelPushSpriceProgress({
+                    active: true,
+                    done: 0,
+                    total: 0,
+                    pct: 0,
+                    msg: 'Scanning blue badges…',
+                });
+            }
             const scan = (typeof scanAndQueueChannelPushSprice === 'function')
                 ? scanAndQueueChannelPushSprice
                 : (window.scanAndQueueChannelPushSprice || null);

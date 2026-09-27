@@ -2056,32 +2056,101 @@ class EbayTwoController extends Controller
      */
     private function saveEbay2SpriceUpdates(array $updates)
     {
-        $saved = 0;
+        $pending = [];
         $skipped = 0;
-        $this->ebay2BatchAdsPercent = (float) app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
-        try {
-            foreach ($updates as $update) {
-                $update = (array) $update;
-                $sku = trim((string) ($update['sku'] ?? ''));
-                $sprice = $update['sprice'] ?? $update['price'] ?? null;
-                if ($sku === '' || $sprice === null || $sprice === '') {
-                    $skipped++;
-                    continue;
-                }
-                $sub = Request::create('/save-ebay2-sprice', 'POST', [
-                    'sku' => $sku,
-                    'sprice' => $sprice,
-                    'skip_push' => 1,
-                ]);
-                $response = $this->saveSpriceToDatabase($sub);
-                if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
-                    $saved++;
-                } else {
-                    $skipped++;
+        foreach ($updates as $update) {
+            $update = (array) $update;
+            $sku = trim((string) ($update['sku'] ?? ''));
+            $sprice = $update['sprice'] ?? $update['price'] ?? null;
+            if ($sku === '' || $sprice === null || $sprice === '') {
+                $skipped++;
+                continue;
+            }
+            $pending[strtoupper($sku)] = ['sku' => $sku, 'sprice' => (float) $sprice];
+        }
+
+        if ($pending === []) {
+            return response()->json([
+                'success' => true,
+                'message' => 'SPRICE saved for 0 SKU(s)',
+                'saved' => 0,
+                'skipped' => $skipped,
+            ]);
+        }
+
+        $percentage = $this->ebay1StyleTakeHomePercent();
+        $adPercent = (float) app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
+        $adDecimal = $adPercent / 100;
+        $saved = 0;
+
+        foreach (array_chunk($pending, 400, true) as $chunk) {
+            $keys = array_keys($chunk);
+            $lookup = $keys;
+            foreach ($chunk as $row) {
+                $base = $this->ebay2BaseListingSku($row['sku']);
+                if ($base !== '') {
+                    $lookup[] = strtoupper($base);
                 }
             }
-        } finally {
-            $this->ebay2BatchAdsPercent = null;
+
+            $views = $this->ebay2RowsByUpperSku(EbayTwoDataView::class, $keys);
+            $metrics = $this->ebay2RowsByUpperSku(Ebay2Metric::class, $keys);
+            $masters = $this->ebay2RowsByUpperSku(ProductMaster::class, $lookup);
+
+            foreach ($chunk as $key => $row) {
+                try {
+                    $metric = $metrics[$key] ?? null;
+                    $view = $views[$key] ?? null;
+                    $canonical = $row['sku'];
+                    if ($metric && trim((string) $metric->sku) !== '') {
+                        $canonical = trim((string) $metric->sku);
+                    } elseif ($view && trim((string) $view->sku) !== '') {
+                        $canonical = trim((string) $view->sku);
+                    }
+
+                    $pm = $masters[$key] ?? null;
+                    if (! $pm) {
+                        $base = $this->ebay2BaseListingSku($row['sku']);
+                        if ($base !== '') {
+                            $pm = $masters[strtoupper($base)] ?? null;
+                        }
+                    }
+
+                    [$lp, $ship] = $this->ebay2LpShipFromMaster($pm);
+                    $spriceFloat = round($row['sprice'], 2);
+                    $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
+                    $spft = round($sgpft - $adPercent, 2);
+                    $sgroi = round($lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
+                    $sroi = round(
+                        $lp > 0 ? ((($spriceFloat * $percentage - $ship - $lp) - ($spriceFloat * $adDecimal)) / $lp) * 100 : 0,
+                        2
+                    );
+
+                    if (! $view) {
+                        $view = new EbayTwoDataView();
+                        $view->sku = $canonical;
+                    }
+
+                    $existing = is_array($view->value)
+                        ? $view->value
+                        : (json_decode((string) $view->value, true) ?: []);
+                    $view->value = array_merge($existing, [
+                        'SPRICE' => $spriceFloat,
+                        'SPFT' => $spft,
+                        'SROI' => $sroi,
+                        'SGROI' => $sgroi,
+                        'SGPFT' => $sgpft,
+                    ]);
+                    $view->save();
+                    $saved++;
+                } catch (\Throwable $e) {
+                    $skipped++;
+                    Log::warning('eBay2 batch SPRICE save skipped', [
+                        'sku' => $row['sku'],
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
 
         return response()->json([
@@ -2090,6 +2159,64 @@ class EbayTwoController extends Controller
             'saved' => $saved,
             'skipped' => $skipped,
         ]);
+    }
+
+    private function ebay2BaseListingSku(string $listingSku): string
+    {
+        if (stripos($listingSku, 'OPEN BOX') !== false) {
+            return trim(str_ireplace('OPEN BOX', '', $listingSku));
+        }
+        if (stripos($listingSku, 'USED') !== false) {
+            return trim(str_ireplace('USED', '', $listingSku));
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array{0: float, 1: float}
+     */
+    private function ebay2LpShipFromMaster(?ProductMaster $pm): array
+    {
+        if (! $pm) {
+            return [0.0, 0.0];
+        }
+
+        $values = is_array($pm->Values) ? $pm->Values : [];
+        $lp = 0.0;
+        foreach ($values as $k => $v) {
+            if (strtolower((string) $k) === 'lp') {
+                $lp = (float) $v;
+                break;
+            }
+        }
+        if ($lp === 0.0 && isset($pm->lp)) {
+            $lp = (float) $pm->lp;
+        }
+        $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
+
+        return [$lp, $ship];
+    }
+
+    /**
+     * @param  class-string  $class
+     * @param  list<string>  $upperKeys
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function ebay2RowsByUpperSku(string $class, array $upperKeys): array
+    {
+        $upperKeys = array_values(array_unique(array_filter($upperKeys, fn ($key) => $key !== '')));
+        if ($upperKeys === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($upperKeys), '?'));
+        $out = [];
+        foreach ($class::query()->whereRaw('UPPER(TRIM(sku)) IN ('.$placeholders.')', $upperKeys)->get() as $row) {
+            $out[strtoupper(trim((string) $row->sku))] = $row;
+        }
+
+        return $out;
     }
 
     public function importEbayTwoAnalytics(Request $request)
