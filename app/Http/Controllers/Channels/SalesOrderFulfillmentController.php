@@ -506,7 +506,7 @@ class SalesOrderFulfillmentController extends Controller
     public function dobaOrdersData(): JsonResponse
     {
         try {
-            @set_time_limit(45);
+            @set_time_limit(90);
             $grouped = $this->buildDobaWarehouseOrderRows(true);
 
             return response()->json([
@@ -856,6 +856,7 @@ class SalesOrderFulfillmentController extends Controller
 
         $prepaid = $this->attachShipmentStatusToOrderRows($prepaid);
         $prepaid = $this->fillMissingDobaPrepaidLabels($prepaid);
+        $prepaid = $this->fetchMissingDobaPrepaidLabels($prepaid);
         $prepaid = array_values(array_filter(
             $prepaid,
             fn (array $row) => ! $this->dobaPrepaidRowHasMoved($row)
@@ -890,20 +891,20 @@ class SalesOrderFulfillmentController extends Controller
             return;
         }
 
-        $fromShopify = 0;
+        $stored = 0;
         try {
-            $fromShopify = app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class)
-                ->linkRecentUnfulfilledDobaOrders();
+            $stored = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)
+                ->fetchRecentOrders(14, 10);
         } catch (\Throwable $e) {
             report($e);
         }
-
-        if ($fromShopify === 0) {
+        if ($stored === 0) {
             Cache::forget('sof.doba.recent.fetch');
         }
 
         try {
-            app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(3, 1);
+            app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class)
+                ->linkRecentUnfulfilledDobaOrders();
         } catch (\Throwable $e) {
             report($e);
         }
@@ -1154,12 +1155,36 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             $found = $this->findDobaDownloadLabelUrl($data[$key]);
+            if ($found === null && $key !== 'shipping') {
+                $found = $this->firstHttpsUrl($data[$key]);
+            }
             if ($found !== null) {
                 return $found;
             }
         }
 
         return $this->findDobaDownloadLabelUrl($data);
+    }
+
+    protected function firstHttpsUrl(mixed $node, int $depth = 0): ?string
+    {
+        if ($depth > 6) {
+            return null;
+        }
+        if (is_string($node) && preg_match('#^https?://#i', trim($node)) === 1) {
+            return rtrim(trim($node), ')",\'>');
+        }
+        if (! is_array($node)) {
+            return null;
+        }
+        foreach ($node as $value) {
+            $found = $this->firstHttpsUrl($value, $depth + 1);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1188,23 +1213,52 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         $keys = array_keys($need);
-        $relatedQuery = DobaDailyData::query()->where(function ($q) use ($keys) {
-            $q->whereIn('order_no', $keys)->orWhereIn('platform_order_no', $keys);
-            if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
-                $q->orWhereIn('shopify_order_id', $keys);
+        $trackings = [];
+        foreach ($rows as $row) {
+            if (trim((string) ($row['prepaid_label_url'] ?? '')) !== '') {
+                continue;
             }
-        });
+            $tracking = DobaTrackingNumber::sanitize((string) ($row['tracking_number'] ?? ''));
+            if (strlen($tracking) >= 8) {
+                $trackings[$tracking] = $tracking;
+            }
+        }
+        $relatedQuery = DobaDailyData::query()
+            ->where('order_time', '>=', now()->subDays(30))
+            ->where(function ($q) use ($keys, $trackings) {
+                $q->whereIn('order_no', $keys)->orWhereIn('platform_order_no', $keys);
+                if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
+                    $q->orWhereIn('shopify_order_id', $keys);
+                }
+                if ($trackings !== [] && Schema::hasColumn('doba_daily_data', 'tracking_number')) {
+                    $q->orWhereIn('tracking_number', array_values($trackings));
+                }
+                $q->orWhere('order_json', 'like', '%buyerPrepaid%')
+                    ->orWhere('order_json', 'like', '%labelUrl%')
+                    ->orWhere('order_json', 'like', '%LabelList%');
+            })
+            ->orderByDesc('order_time')
+            ->limit(1200);
         $urlByKey = [];
-        foreach ($relatedQuery->get(['order_no', 'platform_order_no', 'shopify_order_id', 'order_json']) as $line) {
+        foreach ($relatedQuery->get(['order_no', 'platform_order_no', 'shopify_order_id', 'tracking_number', 'order_json']) as $line) {
             $url = $this->extractDobaPrepaidLabelUrl($line->order_json ?? null);
             if ($url === null) {
                 continue;
             }
+            $decoded = json_decode((string) ($line->order_json ?? ''), true);
+            $payload = is_array($decoded) ? $decoded : [];
             foreach (['order_no', 'platform_order_no', 'shopify_order_id'] as $column) {
-                $value = ltrim(trim((string) ($line->{$column} ?? '')), '#');
-                if ($value !== '') {
-                    $urlByKey[$value] = $url;
-                }
+                $this->indexDobaLabelKey($urlByKey, (string) ($line->{$column} ?? ''), $url);
+            }
+            foreach ($this->dobaPayloadOrderIds($payload) as $orderKey) {
+                $this->indexDobaLabelKey($urlByKey, $orderKey, $url);
+            }
+            $tracking = DobaTrackingNumber::sanitize((string) ($line->tracking_number ?? ''));
+            if ($tracking === '' && $payload !== []) {
+                $tracking = DobaTrackingNumber::fromOrderPayload($payload)['tracking'];
+            }
+            if ($tracking !== '') {
+                $urlByKey['tn:'.$tracking] = $url;
             }
         }
 
@@ -1220,12 +1274,130 @@ class SalesOrderFulfillmentController extends Controller
                     break;
                 }
             }
+            if ($url === null) {
+                $tracking = DobaTrackingNumber::sanitize((string) ($row['tracking_number'] ?? ''));
+                if ($tracking !== '' && isset($urlByKey['tn:'.$tracking])) {
+                    $url = $urlByKey['tn:'.$tracking];
+                }
+            }
             if ($url !== null) {
                 $rows[$index]['prepaid_label_url'] = $url;
+                $this->rememberDobaPrepaidLabelOnRow((int) ($row['row_id'] ?? 0), $url);
             }
         }
 
         return $rows;
+    }
+
+    /**
+     * Ask Doba for the Shopify order numbers that still have no label file.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function fetchMissingDobaPrepaidLabels(array $rows): array
+    {
+        $sync = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class);
+        $deadline = microtime(true) + 35.0;
+        foreach ($rows as $index => $row) {
+            if (trim((string) ($row['prepaid_label_url'] ?? '')) !== '') {
+                continue;
+            }
+            if (microtime(true) >= $deadline) {
+                break;
+            }
+            $orderId = trim((string) ($row['order_id'] ?? $row['order_number'] ?? ''));
+            if ($orderId === '') {
+                continue;
+            }
+            try {
+                $order = $sync->fetchOrderById($orderId, true);
+            } catch (\Throwable) {
+                continue;
+            }
+            if (! is_array($order)) {
+                continue;
+            }
+            $url = $this->extractDobaPrepaidLabelUrl($order);
+            if ($url === null) {
+                continue;
+            }
+            $rows[$index]['prepaid_label_url'] = $url;
+            $this->rememberDobaPrepaidLabelOnRow((int) ($row['row_id'] ?? 0), $url);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, string>  $urlByKey
+     */
+    protected function indexDobaLabelKey(array &$urlByKey, string $value, string $url): void
+    {
+        $value = ltrim(trim($value), '#');
+        if ($value === '') {
+            return;
+        }
+        $urlByKey[$value] = $url;
+        if (preg_match('/(\d{4,9})$/', $value, $match) === 1 && $match[1] !== $value) {
+            $urlByKey[$match[1]] = $url;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<string>
+     */
+    protected function dobaPayloadOrderIds(array $payload): array
+    {
+        $ids = [];
+        $walk = function (mixed $node, ?string $key) use (&$walk, &$ids): void {
+            if (is_array($node)) {
+                foreach ($node as $childKey => $child) {
+                    $walk($child, is_string($childKey) ? $childKey : $key);
+                }
+
+                return;
+            }
+            if ($key === null || ! is_scalar($node)) {
+                return;
+            }
+            if (preg_match('/order|ordbusi|platform|store|sale/i', $key) !== 1) {
+                return;
+            }
+            $value = ltrim(trim((string) $node), '#');
+            if (preg_match('/^\d{4,20}$/', $value) === 1) {
+                $ids[$value] = $value;
+            }
+        };
+        $walk($payload, null);
+
+        return array_values($ids);
+    }
+
+    protected function rememberDobaPrepaidLabelOnRow(int $rowId, string $url): void
+    {
+        if ($rowId <= 0 || trim($url) === '' || ! Schema::hasTable('doba_daily_data')) {
+            return;
+        }
+        try {
+            $line = DobaDailyData::query()->find($rowId, ['id', 'order_json']);
+            if ($line === null) {
+                return;
+            }
+            $decoded = json_decode((string) ($line->order_json ?? ''), true);
+            if (! is_array($decoded)) {
+                $decoded = [];
+            }
+            if (trim((string) ($decoded['labelUrl'] ?? '')) === $url) {
+                return;
+            }
+            $decoded['labelUrl'] = $url;
+            DobaDailyData::query()->where('id', $rowId)->update([
+                'order_json' => json_encode($decoded),
+            ]);
+        } catch (\Throwable) {
+        }
     }
 
     /**
@@ -4790,8 +4962,8 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * eBay / TikTok / Doba already have the label on the channel API. Hitting Veeqo/GOFO
-     * first burned the HTTP deadline and left Tracking blank.
+     * eBay / TikTok / Doba can already have the label on the channel API.
+     * That lookup stays short so GOFO/4Seller/Veeqo still run in the same request.
      */
     protected function sofPrefersLiveChannelTracking(string $slug): bool
     {
@@ -4869,44 +5041,44 @@ class SalesOrderFulfillmentController extends Controller
                     continue;
                 }
                 if ($amazonOrder) {
-                    $checked++;
-                    $processedKeys[] = $this->sofPullRowKey($row);
                     $filled = app(AmazonTrackingSyncService::class)->fillTrackingForOrder($amazonOrder, true);
                     $tn = trim((string) ($filled['tracking'] ?? ''));
                     if ($tn === '') {
                         if (! empty($filled['retry'])) {
-                            array_pop($processedKeys);
-                            $checked--;
                             $truncated = true;
                             $retryAfterMs = 8000;
                             break;
                         }
+                        // Package API had no number. The label is often in GOFO/4Seller/Veeqo.
+                        $showId = (int) $amazonOrder->id;
+                    } else {
+                        $carrier = TrackingCarrierGuesser::fill(
+                            (string) ($filled['carrier'] ?? ''),
+                            $tn
+                        ) ?? '';
+                        $showId = (int) $amazonOrder->id;
+                        $checked++;
+                        $processedKeys[] = $this->sofPullRowKey($row);
+                        $this->persistPulledChannelTracking($slug, $showId, $row, $tn, $carrier);
+                        $this->fulfillShopifyAfterPulledTracking($labels, $slug, $showId);
+                        $withTracking++;
+                        $updated++;
+                        $outRows[] = [
+                            'id' => (string) ($row['id'] ?? ''),
+                            'mm_slug' => $slug,
+                            'show_id' => $showId,
+                            'order_number' => (string) ($row['order_number'] ?? $row['order_id'] ?? ''),
+                            'shopify_order_id' => $row['shopify_order_id'] ?? null,
+                            'order_id' => (string) ($row['order_id'] ?? ''),
+                            'order_id_api' => (string) ($row['order_id_api'] ?? ''),
+                            'tracking_number' => $tn,
+                            'tracking_company' => $carrier,
+                            'fulfillment_status' => 'AMAZON',
+                            'shipment_status' => '',
+                            'note' => 'Pulled from Shopify/Veeqo/GOFO/Amazon',
+                        ];
                         continue;
                     }
-                    $carrier = TrackingCarrierGuesser::fill(
-                        (string) ($filled['carrier'] ?? ''),
-                        $tn
-                    ) ?? '';
-                    $showId = (int) $amazonOrder->id;
-                    $this->persistPulledChannelTracking($slug, $showId, $row, $tn, $carrier);
-                    $this->fulfillShopifyAfterPulledTracking($labels, $slug, $showId);
-                    $withTracking++;
-                    $updated++;
-                    $outRows[] = [
-                        'id' => (string) ($row['id'] ?? ''),
-                        'mm_slug' => $slug,
-                        'show_id' => $showId,
-                        'order_number' => (string) ($row['order_number'] ?? $row['order_id'] ?? ''),
-                        'shopify_order_id' => $row['shopify_order_id'] ?? null,
-                        'order_id' => (string) ($row['order_id'] ?? ''),
-                        'order_id_api' => (string) ($row['order_id_api'] ?? ''),
-                        'tracking_number' => $tn,
-                        'tracking_company' => $carrier,
-                        'fulfillment_status' => 'AMAZON',
-                        'shipment_status' => '',
-                        'note' => 'Pulled from Shopify/Veeqo/GOFO/Amazon',
-                    ];
-                    continue;
                 }
             }
 
@@ -4938,19 +5110,27 @@ class SalesOrderFulfillmentController extends Controller
 
             $preferLive = $this->sofPrefersLiveChannelTracking($slug);
             $found = null;
-            if ($preferLive) {
+            $secondsLeft = $deadline === null ? 30.0 : ($deadline - microtime(true));
+            // One short channel call, then the warehouse label. Doing the channel
+            // call first with a 20s timeout left every Tracking cell blank.
+            if ($preferLive && $secondsLeft > 10.0) {
                 $found = $labels->lookupLiveChannelTracking($slug, $refs);
+                $secondsLeft = $deadline === null ? 30.0 : ($deadline - microtime(true));
             }
-            $warehouseBudgetLeft = $deadline === null || ($deadline - microtime(true)) > 4.0;
             $dobaOrderLookup = $fast && $slug === 'doba';
             if (
                 ! $dobaOrderLookup
                 && ($found === null || trim((string) ($found['tracking'] ?? '')) === '')
-                && (! $fast || ! $preferLive || $warehouseBudgetLeft)
+                && $secondsLeft > 2.0
             ) {
                 $found = $labels->lookupLabelTracking($refs, $local, $fast);
+                $secondsLeft = $deadline === null ? 30.0 : ($deadline - microtime(true));
             }
-            if (($found === null || trim((string) ($found['tracking'] ?? '')) === '') && ! $preferLive) {
+            if (
+                ($found === null || trim((string) ($found['tracking'] ?? '')) === '')
+                && ! $preferLive
+                && $secondsLeft > 8.0
+            ) {
                 $found = $labels->lookupLiveChannelTracking($slug, $refs);
             }
             if ($found === null || trim((string) ($found['tracking'] ?? '')) === '') {

@@ -2631,6 +2631,12 @@ class VeeqoShopifyFulfillmentService
                     continue;
                 }
                 if (is_array($pulled) && strlen(trim((string) ($pulled['tracking'] ?? ''))) >= 8) {
+                    Cache::put(
+                        'mm.ebay.pull-tracking.'.$marketplace.'.'.$id,
+                        $pulled,
+                        now()->addMinutes(20)
+                    );
+
                     return $pulled;
                 }
             }
@@ -2862,19 +2868,28 @@ class VeeqoShopifyFulfillmentService
             }
         }
         if ($local === null && in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
-            $ebayOrderId = trim((string) ($model->order_id ?? ''));
-            if ($ebayOrderId !== '') {
-                $cacheKey = 'mm.ebay.pull-tracking.'.$marketplace.'.'.$ebayOrderId;
-                $pulled = Cache::remember($cacheKey, now()->addMinutes(20), function () use ($marketplace, $ebayOrderId) {
-                    return app(EbaySellFulfillmentTracking::class)->readTrackingFromEbay($marketplace, $ebayOrderId);
-                });
-                if (is_array($pulled) && trim((string) ($pulled['tracking'] ?? '')) !== '') {
-                    $local = $pulled;
-                }
-            }
+            $local = $this->cachedEbayPullTracking($marketplace, trim((string) ($model->order_id ?? '')));
         }
 
         return $local;
+    }
+
+    /**
+     * A previous successful eBay pull. Empty misses are not cached, so a timeout
+     * does not hide the tracking number for the next attempt.
+     *
+     * @return array{tracking: string, carrier: string}|null
+     */
+    protected function cachedEbayPullTracking(string $marketplace, string $orderId): ?array
+    {
+        if ($orderId === '') {
+            return null;
+        }
+        $pulled = Cache::get('mm.ebay.pull-tracking.'.$marketplace.'.'.$orderId);
+
+        return is_array($pulled) && trim((string) ($pulled['tracking'] ?? '')) !== ''
+            ? $pulled
+            : null;
     }
 
     /**
@@ -3089,16 +3104,7 @@ class VeeqoShopifyFulfillmentService
             }
         }
         if ($local === null && in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
-            $ebayOrderId = trim((string) ($model->order_id ?? ''));
-            if ($ebayOrderId !== '') {
-                $cacheKey = 'mm.ebay.pull-tracking.'.$marketplace.'.'.$ebayOrderId;
-                $pulled = Cache::remember($cacheKey, now()->addMinutes(20), function () use ($marketplace, $ebayOrderId) {
-                    return app(EbaySellFulfillmentTracking::class)->readTrackingFromEbay($marketplace, $ebayOrderId);
-                });
-                if (is_array($pulled) && trim((string) ($pulled['tracking'] ?? '')) !== '') {
-                    $local = $pulled;
-                }
-            }
+            $local = $this->cachedEbayPullTracking($marketplace, trim((string) ($model->order_id ?? '')));
         }
 
         $skus = $this->skuListFromMarketplaceModel($marketplace, $model);
