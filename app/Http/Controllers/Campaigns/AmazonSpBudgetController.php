@@ -286,6 +286,14 @@ class AmazonSpBudgetController extends Controller
                     }
                     continue;
                 }
+                $anyGroups = app(\App\Services\AmazonAdsService::class)->getAdGroups((string) $campaignId);
+                $anyList = is_array($anyGroups['adGroups'] ?? null) ? $anyGroups['adGroups'] : [];
+                $enabled = array_values(array_filter($anyList, static function ($g) {
+                    return is_array($g) && strtoupper((string) ($g['state'] ?? '')) === 'ENABLED';
+                }));
+                if ($this->pushAdGroupDefaultBid($enabled !== [] ? $enabled : $anyList, $campaignId, $newBid, $persistLocalBids, $allResults, $skipped)) {
+                    continue;
+                }
                 FacadesLog::warning('updateAutoCampaignKeywordsBid: no ad groups', ['campaign_id' => $campaignId]);
                 $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'no_ad_groups'];
                 continue;
@@ -319,6 +327,9 @@ class AmazonSpBudgetController extends Controller
                     } else {
                         $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'targets_update_failed', 'error' => $targetResult['error'] ?? 'Unknown'];
                     }
+                    continue;
+                }
+                if ($this->pushAdGroupDefaultBid($adGroups, $campaignId, $newBid, $persistLocalBids, $allResults, $skipped)) {
                     continue;
                 }
                 FacadesLog::warning('updateAutoCampaignKeywordsBid: no keywords and no targets', ['campaign_id' => $campaignId]);
@@ -400,6 +411,56 @@ class AmazonSpBudgetController extends Controller
             'skipped' => $skipped,
             'status' => 200,
         ];
+    }
+
+    /**
+     * Campaigns with an ad group but no keywords and no targets keep the bid
+     * on the ad group default. Returns true when that write was attempted.
+     *
+     * @param  list<array<string, mixed>>  $adGroups
+     * @param  list<mixed>  $allResults
+     * @param  list<array<string, mixed>>  $skipped
+     */
+    private function pushAdGroupDefaultBid(array $adGroups, $campaignId, float $newBid, bool $persistLocalBids, array &$allResults, array &$skipped): bool
+    {
+        $ids = [];
+        foreach ($adGroups as $ag) {
+            if (! is_array($ag)) {
+                continue;
+            }
+            $id = trim((string) ($ag['adGroupId'] ?? ''));
+            if ($id !== '') {
+                $ids[] = $id;
+            }
+        }
+        if ($ids === []) {
+            return false;
+        }
+
+        try {
+            $upd = app(\App\Services\AmazonAdsService::class)->updateSpAdGroupDefaultBids($ids, $newBid);
+        } catch (\Throwable $e) {
+            $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'default_bid_failed', 'error' => $e->getMessage()];
+
+            return true;
+        }
+
+        $errors = $upd['adGroups']['error'] ?? [];
+        if (is_array($errors) && $errors !== []) {
+            $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'default_bid_failed', 'error' => json_encode($errors)];
+
+            return true;
+        }
+
+        $allResults[] = ['campaign_id' => (string) $campaignId, 'default_bid' => round($newBid, 2)];
+        if ($persistLocalBids) {
+            AmazonSpCampaignReport::where('campaign_id', $campaignId)
+                ->where('ad_type', 'SPONSORED_PRODUCTS')
+                ->whereIn('report_date_range', ['L7', 'L1', 'L30'])
+                ->update(['sbid' => $newBid, 'last_sbid' => $newBid]);
+        }
+
+        return true;
     }
 
     public function updateCampaignKeywordsBid(Request $request)

@@ -128,6 +128,16 @@ class AmazonAdsLiveValuePuller
             $out[$cid] = max($out[$cid] ?? 0, $bid);
         }
 
+        foreach ($out as $cid => $bid) {
+            if ($bid !== null) {
+                continue;
+            }
+            $fallback = $this->maxEnabledAdGroupDefaultBid((string) $cid);
+            if ($fallback !== null) {
+                $out[$cid] = $fallback;
+            }
+        }
+
         return $out;
     }
 
@@ -138,6 +148,36 @@ class AmazonAdsLiveValuePuller
     private function pullSbBids(array $campaignIds): array
     {
         return $this->sb->getMaxKeywordBidForCampaigns($campaignIds);
+    }
+
+    private function maxEnabledAdGroupDefaultBid(string $campaignId): ?float
+    {
+        try {
+            $resp = $this->ads->getAdGroups($campaignId);
+        } catch (\Throwable) {
+            return null;
+        }
+        $list = $resp['adGroups'] ?? [];
+        if (! is_array($list)) {
+            return null;
+        }
+        $max = null;
+        foreach ($list as $group) {
+            if (! is_array($group)) {
+                continue;
+            }
+            $state = strtoupper(trim((string) ($group['state'] ?? '')));
+            if ($state !== '' && $state !== 'ENABLED') {
+                continue;
+            }
+            $bid = $group['defaultBid'] ?? null;
+            if (! is_numeric($bid) || (float) $bid <= 0) {
+                continue;
+            }
+            $max = max($max ?? 0, (float) $bid);
+        }
+
+        return $max;
     }
 
     /**

@@ -1031,6 +1031,39 @@ class AmazonAdsService
      * @param  list<array<string, mixed>>  $adGroups
      * @return array<string, mixed>
      */
+    /**
+     * Set Sponsored Products ad-group default bids. Used when a campaign has
+     * no keywords and no targets, so the live bid is the ad group default.
+     *
+     * @param  list<string>  $adGroupIds
+     * @return array<string, mixed>
+     */
+    public function updateSpAdGroupDefaultBids(array $adGroupIds, float $bid): array
+    {
+        $rows = [];
+        $bid = round($bid, 2);
+        foreach ($adGroupIds as $id) {
+            $id = trim((string) $id);
+            if ($id === '') {
+                continue;
+            }
+            $rows[] = [
+                'adGroupId' => $id,
+                'defaultBid' => $bid,
+            ];
+        }
+        if ($rows === []) {
+            return ['adGroups' => ['success' => [], 'error' => [['errors' => [['errorType' => 'empty']]]]]];
+        }
+
+        return $this->put('/sp/adGroups', [
+            'adGroups' => $rows,
+        ], [
+            'Content-Type' => 'application/vnd.spAdGroup.v3+json',
+            'Accept' => 'application/vnd.spAdGroup.v3+json',
+        ]);
+    }
+
     public function createAdGroups(array $adGroups): array
     {
         return $this->post('/sp/adGroups', [
