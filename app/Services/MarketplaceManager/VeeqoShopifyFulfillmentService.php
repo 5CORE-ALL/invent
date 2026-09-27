@@ -4781,41 +4781,19 @@ class VeeqoShopifyFulfillmentService
             return $this->importOpenDobaOrdersFromShopifyRaw();
         }
 
-        $orders = [];
-        $query = [
-            'status' => 'any',
-            'limit' => 250,
-            'created_at_min' => now('America/Los_Angeles')->subDay()->startOfDay()->utc()->toIso8601String(),
-        ];
-        try {
-            $response = $this->shopifyApi($store, $token, 'GET', 'orders.json', $query, 12, 1);
-            if ($response !== null && $response->successful()) {
-                foreach ((array) $response->json('orders') as $order) {
-                    if (is_array($order)) {
-                        $orders[] = $order;
-                    }
-                }
-                $next = $this->shopifyNextPage($response);
-                if ($next !== null && count($orders) >= 250) {
-                    $page = $this->shopifyApi($store, $token, 'GET', $next['path'], $next['query'], 8, 1);
-                    if ($page !== null && $page->successful()) {
-                        foreach ((array) $page->json('orders') as $order) {
-                            if (is_array($order)) {
-                                $orders[] = $order;
-                            }
-                        }
-                    }
-                }
+        $orders = $this->fetchNewestDobaShopifyOrders($store, $token);
+        if ($orders === []) {
+            $main = $this->stores->getConfigForStore('main');
+            $mainStore = trim((string) ($main['store_url'] ?? ''));
+            $mainToken = trim((string) ($main['token'] ?? ''));
+            if ($mainStore !== '' && $mainToken !== '' && $mainStore !== $store) {
+                $orders = $this->fetchNewestDobaShopifyOrders($mainStore, $mainToken);
             }
-        } catch (\Throwable $e) {
-            Log::info('VeeqoShopifyFulfillmentService: Doba Shopify order list failed', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return $this->importOpenDobaOrdersFromShopifyRaw();
         }
         if ($orders === []) {
-            return $this->importOpenDobaOrdersFromShopifyRaw();
+            $this->importOpenDobaOrdersFromShopifyRaw();
+
+            return 0;
         }
 
         $saved = 0;
@@ -4834,6 +4812,7 @@ class VeeqoShopifyFulfillmentService
             }
             $dobaNo = $this->dobaOrderNoFromShopifyOrder($order);
             $number = ltrim(trim((string) ($order['name'] ?? '')), '#');
+            $this->rememberShopifyPrepaidLabel($order);
             if ($dobaNo !== '' && DobaDailyData::query()->where('order_no', $dobaNo)->exists()) {
                 if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
                     DobaDailyData::query()
@@ -4861,7 +4840,154 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        return $saved + $this->importOpenDobaOrdersFromShopifyRaw();
+        $this->importOpenDobaOrdersFromShopifyRaw();
+
+        return $saved;
+    }
+
+    /**
+     * Newest Doba-tagged Shopify orders, not the oldest page of every store order.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function fetchNewestDobaShopifyOrders(string $store, string $token): array
+    {
+        $since = now('America/Los_Angeles')->subDays(3)->startOfDay()->toIso8601String();
+        $gql = <<<'GQL'
+query ($q: String!, $cursor: String) {
+  orders(first: 50, sortKey: CREATED_AT, reverse: true, query: $q, after: $cursor) {
+    pageInfo { hasNextPage endCursor }
+    edges { node {
+      id name tags createdAt displayFulfillmentStatus note
+      customAttributes { key value }
+      totalPriceSet { shopMoney { amount currencyCode } }
+      shippingAddress { city provinceCode zip countryCode }
+      lineItems(first: 15) { edges { node { id sku title quantity originalUnitPriceSet { shopMoney { amount } } } } }
+      fulfillments { trackingInfo { number company url } }
+    } }
+  }
+}
+GQL;
+        $orders = [];
+        $cursor = null;
+        for ($page = 0; $page < 2; $page++) {
+            try {
+                $response = $this->shopifyApi($store, $token, 'POST', 'graphql.json', [
+                    'query' => $gql,
+                    'variables' => [
+                        'q' => 'tag:Doba created_at:>='.$since,
+                        'cursor' => $cursor,
+                    ],
+                ], 12, 1);
+            } catch (\Throwable $e) {
+                Log::info('VeeqoShopifyFulfillmentService: Doba Shopify order list failed', [
+                    'error' => $e->getMessage(),
+                ]);
+                break;
+            }
+            if ($response === null || ! $response->successful()) {
+                break;
+            }
+            $payload = $response->json('data.orders');
+            if (! is_array($payload)) {
+                break;
+            }
+            foreach ((array) ($payload['edges'] ?? []) as $edge) {
+                $node = is_array($edge) ? ($edge['node'] ?? null) : null;
+                if (is_array($node)) {
+                    $orders[] = $this->shopifyGraphqlOrderToRest($node);
+                }
+            }
+            if (empty($payload['pageInfo']['hasNextPage'])) {
+                break;
+            }
+            $cursor = $payload['pageInfo']['endCursor'] ?? null;
+            if (! is_string($cursor) || $cursor === '') {
+                break;
+            }
+        }
+
+        return $orders;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @return array<string, mixed>
+     */
+    protected function shopifyGraphqlOrderToRest(array $node): array
+    {
+        $gid = (string) ($node['id'] ?? '');
+        $id = preg_match('/(\d+)$/', $gid, $match) === 1 ? $match[1] : $gid;
+        $tags = $node['tags'] ?? [];
+        $tagText = is_array($tags) ? implode(', ', $tags) : (string) $tags;
+        $attributes = [];
+        foreach ((array) ($node['customAttributes'] ?? []) as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $attributes[] = [
+                'name' => (string) ($attr['key'] ?? ''),
+                'value' => (string) ($attr['value'] ?? ''),
+            ];
+        }
+        $lines = [];
+        foreach ((array) ($node['lineItems']['edges'] ?? []) as $edge) {
+            $item = is_array($edge) ? ($edge['node'] ?? null) : null;
+            if (! is_array($item)) {
+                continue;
+            }
+            $lineId = (string) ($item['id'] ?? '');
+            if (preg_match('/(\d+)$/', $lineId, $lineMatch) === 1) {
+                $lineId = $lineMatch[1];
+            }
+            $lines[] = [
+                'id' => $lineId,
+                'sku' => (string) ($item['sku'] ?? ''),
+                'title' => (string) ($item['title'] ?? ''),
+                'quantity' => (int) ($item['quantity'] ?? 1),
+                'price' => $item['originalUnitPriceSet']['shopMoney']['amount'] ?? null,
+            ];
+        }
+        $fulfillments = [];
+        foreach ((array) ($node['fulfillments'] ?? []) as $fulfillment) {
+            if (! is_array($fulfillment)) {
+                continue;
+            }
+            foreach ((array) ($fulfillment['trackingInfo'] ?? []) as $info) {
+                if (! is_array($info)) {
+                    continue;
+                }
+                $fulfillments[] = [
+                    'tracking_number' => (string) ($info['number'] ?? ''),
+                    'tracking_company' => (string) ($info['company'] ?? ''),
+                    'tracking_url' => (string) ($info['url'] ?? ''),
+                ];
+            }
+        }
+        $status = strtoupper((string) ($node['displayFulfillmentStatus'] ?? ''));
+        $address = is_array($node['shippingAddress'] ?? null) ? $node['shippingAddress'] : [];
+
+        return [
+            'id' => $id,
+            'name' => (string) ($node['name'] ?? ''),
+            'tags' => $tagText,
+            'source_name' => 'doba',
+            'created_at' => (string) ($node['createdAt'] ?? ''),
+            'note' => (string) ($node['note'] ?? ''),
+            'note_attributes' => $attributes,
+            'cancelled_at' => null,
+            'fulfillment_status' => $status === 'FULFILLED' ? 'fulfilled' : ($status === 'PARTIAL' ? 'partial' : 'unfulfilled'),
+            'total_price' => $node['totalPriceSet']['shopMoney']['amount'] ?? null,
+            'currency' => $node['totalPriceSet']['shopMoney']['currencyCode'] ?? 'USD',
+            'line_items' => $lines,
+            'shipping_address' => [
+                'city' => (string) ($address['city'] ?? ''),
+                'province_code' => (string) ($address['provinceCode'] ?? ''),
+                'zip' => (string) ($address['zip'] ?? ''),
+                'country_code' => (string) ($address['countryCode'] ?? ''),
+            ],
+            'fulfillments' => $fulfillments,
+        ];
     }
 
     /**
@@ -4875,6 +5001,95 @@ class VeeqoShopifyFulfillmentService
         }
 
         return 'Fulfilled';
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    protected function labelUrlFromShopifyOrder(array $order): ?string
+    {
+        $candidates = [];
+        foreach ((array) ($order['note_attributes'] ?? []) as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $name = strtolower(trim((string) ($attr['name'] ?? '')));
+            $value = trim((string) ($attr['value'] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+            if (str_contains($name, 'label') || str_contains($name, 'waybill') || str_contains($name, 'prepaid')) {
+                $candidates[] = $value;
+            } elseif (preg_match('#^https?://#i', $value) === 1) {
+                $candidates[] = $value;
+            }
+        }
+        $candidates[] = trim((string) ($order['note'] ?? ''));
+        foreach ((array) ($order['fulfillments'] ?? []) as $fulfillment) {
+            if (! is_array($fulfillment)) {
+                continue;
+            }
+            foreach (['tracking_url', 'shipment_status_url'] as $key) {
+                $candidates[] = trim((string) ($fulfillment[$key] ?? ''));
+            }
+            foreach ((array) ($fulfillment['tracking_urls'] ?? []) as $url) {
+                $candidates[] = trim((string) $url);
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            if (preg_match('#https?://\S+#i', $candidate, $match) !== 1) {
+                continue;
+            }
+            $url = rtrim($match[0], ')",\'>');
+            $path = strtolower((string) (parse_url($url, PHP_URL_PATH) ?? ''));
+            $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+            $hay = strtolower($url);
+            if (str_contains($host, 'doba.com') || str_contains($hay, 'label') || str_ends_with($path, '.pdf')) {
+                return $url;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    protected function rememberShopifyPrepaidLabel(array $order): void
+    {
+        $url = $this->labelUrlFromShopifyOrder($order);
+        if ($url === null || ! Schema::hasTable('doba_daily_data')) {
+            return;
+        }
+        $shopifyId = trim((string) ($order['id'] ?? ''));
+        $number = ltrim(trim((string) ($order['name'] ?? '')), '#');
+        $rows = DobaDailyData::query()
+            ->where(function ($q) use ($shopifyId, $number) {
+                if ($number !== '') {
+                    $q->orWhere('order_no', $number)->orWhere('platform_order_no', $number);
+                }
+                if ($shopifyId !== '' && Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
+                    $q->orWhere('shopify_order_id', $shopifyId);
+                }
+            })
+            ->get(['id', 'order_json']);
+        foreach ($rows as $row) {
+            $decoded = json_decode((string) ($row->order_json ?? ''), true);
+            if (! is_array($decoded)) {
+                $decoded = [];
+            }
+            if (trim((string) ($decoded['labelUrl'] ?? '')) === $url) {
+                continue;
+            }
+            if (trim((string) ($decoded['labelUrl'] ?? '')) !== '' && ! str_contains(strtolower((string) ($decoded['source'] ?? '')), 'shopify')) {
+                continue;
+            }
+            $decoded['labelUrl'] = $url;
+            DobaDailyData::query()->where('id', $row->id)->update([
+                'order_json' => json_encode($decoded),
+            ]);
+        }
     }
 
     /**
@@ -4971,12 +5186,14 @@ class VeeqoShopifyFulfillmentService
                 'carrier_name' => $carrier !== '' ? substr($carrier, 0, 50) : null,
                 'tracking_number' => $tracking !== '' ? substr($tracking, 0, 100) : null,
                 'platform_name' => 'shopify',
-                'order_json' => json_encode([
+                'order_json' => json_encode(array_filter([
                     'source' => 'shopify',
                     'shopify_order_id' => $shopifyId,
                     'name' => $order['name'] ?? '',
                     'tags' => $order['tags'] ?? '',
-                ]),
+                    'labelUrl' => $this->labelUrlFromShopifyOrder($order),
+                    'note_attributes' => $order['note_attributes'] ?? null,
+                ])),
                 'updated_at' => now(),
             ];
             if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
@@ -5018,7 +5235,7 @@ class VeeqoShopifyFulfillmentService
         }
 
         $rows = DB::table('shopify_raw_orders')
-            ->where('order_date', '>=', now()->subDays(3)->toDateString())
+            ->where('order_date', '>=', now()->subDays(4)->toDateString())
             ->where(function ($q) {
                 $q->where('source_name', '145019994113')
                     ->orWhere('source_name', 'like', '%doba%')

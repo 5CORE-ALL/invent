@@ -855,6 +855,7 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         $prepaid = $this->attachShipmentStatusToOrderRows($prepaid);
+        $prepaid = $this->fillMissingDobaPrepaidLabels($prepaid);
         $prepaid = array_values(array_filter(
             $prepaid,
             fn (array $row) => ! $this->dobaPrepaidRowHasMoved($row)
@@ -901,13 +902,11 @@ class SalesOrderFulfillmentController extends Controller
             Cache::forget('sof.doba.recent.fetch');
         }
 
-        app()->terminating(function () {
-            try {
-                app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(2, 1);
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        });
+        try {
+            app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(3, 1);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -1161,6 +1160,72 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         return $this->findDobaDownloadLabelUrl($data);
+    }
+
+    /**
+     * Shopify-copied rows use the Shopify order number and have no Doba label file.
+     * The label is on the Doba payload stored under the marketplace order id.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function fillMissingDobaPrepaidLabels(array $rows): array
+    {
+        $need = [];
+        foreach ($rows as $row) {
+            if (trim((string) ($row['prepaid_label_url'] ?? '')) !== '') {
+                continue;
+            }
+            foreach (['order_id', 'order_number', 'shopify_order_id', 'shopify_order_number'] as $key) {
+                $value = trim((string) ($row[$key] ?? ''));
+                if ($value !== '') {
+                    $need[$value] = true;
+                }
+            }
+        }
+        if ($need === []) {
+            return $rows;
+        }
+
+        $keys = array_keys($need);
+        $relatedQuery = DobaDailyData::query()->where(function ($q) use ($keys) {
+            $q->whereIn('order_no', $keys)->orWhereIn('platform_order_no', $keys);
+            if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
+                $q->orWhereIn('shopify_order_id', $keys);
+            }
+        });
+        $urlByKey = [];
+        foreach ($relatedQuery->get(['order_no', 'platform_order_no', 'shopify_order_id', 'order_json']) as $line) {
+            $url = $this->extractDobaPrepaidLabelUrl($line->order_json ?? null);
+            if ($url === null) {
+                continue;
+            }
+            foreach (['order_no', 'platform_order_no', 'shopify_order_id'] as $column) {
+                $value = ltrim(trim((string) ($line->{$column} ?? '')), '#');
+                if ($value !== '') {
+                    $urlByKey[$value] = $url;
+                }
+            }
+        }
+
+        foreach ($rows as $index => $row) {
+            if (trim((string) ($row['prepaid_label_url'] ?? '')) !== '') {
+                continue;
+            }
+            $url = null;
+            foreach (['order_id', 'order_number', 'shopify_order_id', 'shopify_order_number'] as $key) {
+                $value = trim((string) ($row[$key] ?? ''));
+                if ($value !== '' && isset($urlByKey[$value])) {
+                    $url = $urlByKey[$value];
+                    break;
+                }
+            }
+            if ($url !== null) {
+                $rows[$index]['prepaid_label_url'] = $url;
+            }
+        }
+
+        return $rows;
     }
 
     /**
@@ -1680,8 +1745,14 @@ class SalesOrderFulfillmentController extends Controller
         }
         if (is_string($node)) {
             $url = trim($node);
-            if ($url !== '' && preg_match('#https?://(?:[a-z0-9.-]+\.)?doba\.com/\S+#i', $url, $m)) {
-                return rtrim($m[0], ')",\'>');
+            if ($url === '' || preg_match('#^https?://#i', $url) !== 1) {
+                return null;
+            }
+            $url = rtrim($url, ')",\'>');
+            $path = strtolower((string) (parse_url($url, PHP_URL_PATH) ?? ''));
+            $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+            if (str_contains($host, 'doba.com') || str_contains(strtolower($url), 'label') || str_ends_with($path, '.pdf')) {
+                return $url;
             }
 
             return null;
@@ -1690,7 +1761,17 @@ class SalesOrderFulfillmentController extends Controller
             return null;
         }
 
-        foreach (['url', 'labelUrl', 'label_url', 'prepaidLabelUrl', 'downloadUrl', 'fileUrl', 'link', 'labelLink'] as $key) {
+        foreach ($node as $key => $value) {
+            if (! is_string($key) || ! is_string($value) || ! str_contains(strtolower($key), 'label')) {
+                continue;
+            }
+            $url = trim($value);
+            if (preg_match('#^https?://#i', $url) === 1) {
+                return rtrim($url, ')",\'>');
+            }
+        }
+
+        foreach (['url', 'labelUrl', 'label_url', 'prepaidLabelUrl', 'downloadUrl', 'fileUrl', 'link', 'labelLink', 'labelFileUrl'] as $key) {
             if (! isset($node[$key])) {
                 continue;
             }
@@ -4285,14 +4366,9 @@ class SalesOrderFulfillmentController extends Controller
             $slug === 'alibaba' && $upper === 'WAIT_BUYER_ACCEPT_GOODS' => 'Shipped',
             $slug === 'faire' && $upper === 'DELIVERED' => 'Delivered',
             $slug === 'wayfair' && $lower === 'open' => 'Pending',
-            in_array($slug, ['bestbuy', 'macy'], true)
-                && str_replace([' ', '-'], '_', $upper) === 'AWAITING_SHIPMENT' => 'Pending',
-            in_array($slug, ['bestbuy', 'macy'], true)
-                && str_replace([' ', '-'], '_', $upper) === 'SHIPPING' => 'In Transit',
-            $slug === 'purchasingpower' && str_replace([' ', '-'], '_', $upper) === 'SHIPPING' => 'In Transit',
-            $slug === 'purchasingpower'
+            in_array($slug, ['bestbuy', 'macy', 'purchasingpower'], true)
                 && (
-                    str_replace([' ', '-'], '_', $upper) === 'TO_COLLECT'
+                    in_array(str_replace([' ', '-'], '_', $upper), ['SHIPPING', 'TO_COLLECT', 'AWAITING_SHIPMENT'], true)
                     || str_contains($lower, 'awaiting shipment')
                 ) => 'Pending',
             $slug === 'doba' && str_replace([' ', '-'], '_', $upper) === 'UNSHIPPED' => 'Pending',
@@ -6941,7 +7017,7 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)",
                 ['AWAITING_COLLECTION', 'PARTIALLY_SHIPPING']
             ),
-            // Purchasing Power SHIPPING / Doba In Transit → In Transit tab
+            // Mirakl SHIPPING is still unshipped (Pending). Doba in-transit uses its own query.
             'purchasingpower', 'doba', 'wayfair' => null,
             default => null,
         };
@@ -6959,14 +7035,7 @@ class SalesOrderFulfillmentController extends Controller
 
         return match ($slug) {
             'doba' => $base->whereRaw($this->dobaInTransitStatusSql()),
-            'purchasingpower' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) = ?",
-                ['SHIPPING']
-            ),
-            'bestbuy', 'macy' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) = ?",
-                ['SHIPPING']
-            ),
+            // Mirakl SHIPPING means the seller still has to ship — Pending, not In Transit.
             'tiktok', 'tiktok2' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(order_status, ''))) = ?",
                 ['IN_TRANSIT']
@@ -7055,8 +7124,8 @@ class SalesOrderFulfillmentController extends Controller
 
         return match ($slug) {
             'faire' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['DELIVERED']),
-            // Shein / Reverb / Purchasing Power Received → Received by carrier tab
-            'shein', 'reverb', 'purchasingpower' => null,
+            // Shein / Reverb Received → Received by carrier tab
+            'shein', 'reverb' => null,
             'ebay1', 'ebay2', 'ebay3', 'newegg', 'wayfair', 'amazon' => null,
             'aliexpress', 'alibaba' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)",
@@ -7067,9 +7136,9 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['DELIVERED', 'PARTIALLY_DELIVERED']
             ),
-            'bestbuy', 'macy' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) = ?",
-                ['DELIVERED']
+            'purchasingpower', 'bestbuy', 'macy' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
+                ['CLOSED', 'DELIVERED']
             ),
             'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['COMPLETED']),
             default => $base->whereRaw(
@@ -7153,10 +7222,12 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['UN_SHIPPING', 'PENDING']
             ),
-            'purchasingpower' => $base->where(function (Builder $q) {
-                // SHIPPING → In Transit tab
-                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['TO_COLLECT'])
-                    ->orWhereRaw("LOWER(TRIM(COALESCE(status, ''))) LIKE ?", ['%awaiting shipment%']);
+            'purchasingpower', 'bestbuy', 'macy' => $base->where(function (Builder $q) {
+                // Mirakl SHIPPING / TO_COLLECT = accepted, still needs a label.
+                $q->whereRaw(
+                    "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)",
+                    ['SHIPPING', 'TO_COLLECT', 'AWAITING_SHIPMENT']
+                )->orWhereRaw("LOWER(TRIM(COALESCE(status, ''))) LIKE ?", ['%awaiting shipment%']);
             }),
             'wayfair' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['open'])
                 ->when(
@@ -7178,10 +7249,6 @@ class SalesOrderFulfillmentController extends Controller
                         });
                     }
                 ),
-            'bestbuy', 'macy' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) = ?",
-                ['AWAITING_SHIPMENT']
-            ),
             'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED'])
                 ->whereRaw(
                     'LOWER(TRIM(COALESCE(order_type, \'\'))) != ?',
@@ -7412,6 +7479,9 @@ class SalesOrderFulfillmentController extends Controller
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
                 'raw_payload' => $order->raw_payload ?? null,
                 'tracking_number' => null,
+                'tracking_company' => isset($order->shipping_carrier)
+                    ? (trim((string) $order->shipping_carrier) ?: null)
+                    : null,
                 'show_id' => (int) $order->id,
             ],
             'purchasingpower' => [
