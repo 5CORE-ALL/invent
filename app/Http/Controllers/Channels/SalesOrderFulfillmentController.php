@@ -4366,14 +4366,9 @@ class SalesOrderFulfillmentController extends Controller
             $slug === 'alibaba' && $upper === 'WAIT_BUYER_ACCEPT_GOODS' => 'Shipped',
             $slug === 'faire' && $upper === 'DELIVERED' => 'Delivered',
             $slug === 'wayfair' && $lower === 'open' => 'Pending',
-            in_array($slug, ['bestbuy', 'macy'], true)
-                && str_replace([' ', '-'], '_', $upper) === 'AWAITING_SHIPMENT' => 'Pending',
-            in_array($slug, ['bestbuy', 'macy'], true)
-                && str_replace([' ', '-'], '_', $upper) === 'SHIPPING' => 'In Transit',
-            $slug === 'purchasingpower' && str_replace([' ', '-'], '_', $upper) === 'SHIPPING' => 'In Transit',
-            $slug === 'purchasingpower'
+            in_array($slug, ['bestbuy', 'macy', 'purchasingpower'], true)
                 && (
-                    str_replace([' ', '-'], '_', $upper) === 'TO_COLLECT'
+                    in_array(str_replace([' ', '-'], '_', $upper), ['SHIPPING', 'TO_COLLECT', 'AWAITING_SHIPMENT'], true)
                     || str_contains($lower, 'awaiting shipment')
                 ) => 'Pending',
             $slug === 'doba' && str_replace([' ', '-'], '_', $upper) === 'UNSHIPPED' => 'Pending',
@@ -7022,7 +7017,7 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)",
                 ['AWAITING_COLLECTION', 'PARTIALLY_SHIPPING']
             ),
-            // Purchasing Power SHIPPING / Doba In Transit → In Transit tab
+            // Mirakl SHIPPING is still unshipped (Pending). Doba in-transit uses its own query.
             'purchasingpower', 'doba', 'wayfair' => null,
             default => null,
         };
@@ -7040,14 +7035,7 @@ class SalesOrderFulfillmentController extends Controller
 
         return match ($slug) {
             'doba' => $base->whereRaw($this->dobaInTransitStatusSql()),
-            'purchasingpower' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) = ?",
-                ['SHIPPING']
-            ),
-            'bestbuy', 'macy' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) = ?",
-                ['SHIPPING']
-            ),
+            // Mirakl SHIPPING means the seller still has to ship — Pending, not In Transit.
             'tiktok', 'tiktok2' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(order_status, ''))) = ?",
                 ['IN_TRANSIT']
@@ -7136,8 +7124,8 @@ class SalesOrderFulfillmentController extends Controller
 
         return match ($slug) {
             'faire' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['DELIVERED']),
-            // Shein / Reverb / Purchasing Power Received → Received by carrier tab
-            'shein', 'reverb', 'purchasingpower' => null,
+            // Shein / Reverb Received → Received by carrier tab
+            'shein', 'reverb' => null,
             'ebay1', 'ebay2', 'ebay3', 'newegg', 'wayfair', 'amazon' => null,
             'aliexpress', 'alibaba' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)",
@@ -7148,9 +7136,9 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['DELIVERED', 'PARTIALLY_DELIVERED']
             ),
-            'bestbuy', 'macy' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) = ?",
-                ['DELIVERED']
+            'purchasingpower', 'bestbuy', 'macy' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
+                ['CLOSED', 'DELIVERED']
             ),
             'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['COMPLETED']),
             default => $base->whereRaw(
@@ -7234,10 +7222,12 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['UN_SHIPPING', 'PENDING']
             ),
-            'purchasingpower' => $base->where(function (Builder $q) {
-                // SHIPPING → In Transit tab
-                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['TO_COLLECT'])
-                    ->orWhereRaw("LOWER(TRIM(COALESCE(status, ''))) LIKE ?", ['%awaiting shipment%']);
+            'purchasingpower', 'bestbuy', 'macy' => $base->where(function (Builder $q) {
+                // Mirakl SHIPPING / TO_COLLECT = accepted, still needs a label.
+                $q->whereRaw(
+                    "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)",
+                    ['SHIPPING', 'TO_COLLECT', 'AWAITING_SHIPMENT']
+                )->orWhereRaw("LOWER(TRIM(COALESCE(status, ''))) LIKE ?", ['%awaiting shipment%']);
             }),
             'wayfair' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['open'])
                 ->when(
@@ -7259,10 +7249,6 @@ class SalesOrderFulfillmentController extends Controller
                         });
                     }
                 ),
-            'bestbuy', 'macy' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) = ?",
-                ['AWAITING_SHIPMENT']
-            ),
             'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED'])
                 ->whereRaw(
                     'LOWER(TRIM(COALESCE(order_type, \'\'))) != ?',
@@ -7493,6 +7479,9 @@ class SalesOrderFulfillmentController extends Controller
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
                 'raw_payload' => $order->raw_payload ?? null,
                 'tracking_number' => null,
+                'tracking_company' => isset($order->shipping_carrier)
+                    ? (trim((string) $order->shipping_carrier) ?: null)
+                    : null,
                 'show_id' => (int) $order->id,
             ],
             'purchasingpower' => [
