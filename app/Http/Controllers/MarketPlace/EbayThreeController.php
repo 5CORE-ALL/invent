@@ -1401,18 +1401,27 @@ class EbayThreeController extends Controller
             foreach ($errors as $error) {
                 // Support both microservice normalized format {code, message}
                 // and raw eBay Trading API format {ErrorCode, LongMessage, ...}
-                $errorCode   = is_array($error) ? ($error['code'] ?? $error['ErrorCode'] ?? '') : '';
+                $errorCode   = is_array($error)
+                    ? \App\Support\EbayApiText::string($error['code'] ?? $error['ErrorCode'] ?? '')
+                    : '';
                 $errorMsg    = is_array($error)
-                    ? ($error['message'] ?? $error['LongMessage'] ?? $error['ShortMessage'] ?? 'Unknown error')
-                    : (string) $error;
+                    ? \App\Support\EbayApiText::string($error['message'] ?? $error['LongMessage'] ?? $error['ShortMessage'] ?? '')
+                    : \App\Support\EbayApiText::string($error);
+                if ($errorMsg === '') {
+                    $errorMsg = 'Unknown error';
+                }
                 $errorParams = is_array($error) ? ($error['ErrorParameters'] ?? []) : [];
 
-                // Append any embedded parameter values into the full error text
+                // Append any embedded parameter values into the full error text.
+                // eBay sometimes returns Value as an empty list; strip_tags() cannot take that.
                 $paramMessages = [];
                 if (is_array($errorParams)) {
                     foreach ($errorParams as $param) {
                         if (is_array($param) && isset($param['Value'])) {
-                            $paramMessages[] = strip_tags($param['Value']);
+                            $paramText = strip_tags(\App\Support\EbayApiText::string($param['Value']));
+                            if ($paramText !== '') {
+                                $paramMessages[] = $paramText;
+                            }
                         }
                     }
                 }

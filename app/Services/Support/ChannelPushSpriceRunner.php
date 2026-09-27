@@ -164,6 +164,8 @@ class ChannelPushSpriceRunner
 
     private function runLocked(ChannelPushSpriceJobStore $store, \Psr\Log\LoggerInterface $logger): int
     {
+        $this->fillCollectingTasks($store, $logger);
+
         while (true) {
             $state = $store->load();
             if (($state['status'] ?? 'idle') !== 'running') {
@@ -363,6 +365,33 @@ class ChannelPushSpriceRunner
             );
             usleep(in_array($this->channel, ['macys', 'macy'], true) ? 50000 : 250000);
         }
+    }
+
+    private function fillCollectingTasks(ChannelPushSpriceJobStore $store, \Psr\Log\LoggerInterface $logger): void
+    {
+        $state = $store->load();
+        if (($state['status'] ?? '') !== 'collecting') {
+            return;
+        }
+
+        $logger->info('S PRC collecting blue SKUs', ['channel' => $this->channel]);
+        try {
+            $tasks = app(ChannelPushSpriceDailyEnqueue::class)->collect($this->channel);
+        } catch (\Throwable $e) {
+            $logger->error('S PRC collect failed', [
+                'channel' => $this->channel,
+                'error' => $e->getMessage(),
+            ]);
+            $store->markFailed($e->getMessage());
+
+            return;
+        }
+
+        $store->finishCollecting($tasks, 'page');
+        $logger->info('S PRC collect finished', [
+            'channel' => $this->channel,
+            'queued' => count($tasks),
+        ]);
     }
 
     private function pullLivePriceAfterPush(string $sku, float $expected): float

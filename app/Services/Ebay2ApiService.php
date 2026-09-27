@@ -353,8 +353,8 @@ class Ebay2ApiService
                 if (! is_array($warnErr)) {
                     continue;
                 }
-                $warnCode = (string) ($warnErr['ErrorCode'] ?? '');
-                $warnMsg = (string) ($warnErr['LongMessage'] ?? $warnErr['ShortMessage'] ?? '');
+                $warnCode = \App\Support\EbayApiText::string($warnErr['ErrorCode'] ?? '');
+                $warnMsg = \App\Support\EbayApiText::string($warnErr['LongMessage'] ?? $warnErr['ShortMessage'] ?? '');
                 if (
                     $warnCode === '21916618'
                     || stripos($warnMsg, 'Item level start price will be ignored') !== false
@@ -386,9 +386,13 @@ class Ebay2ApiService
             $errors = [$errors];
         }
         $first = is_array($errors[0] ?? null) ? $errors[0] : [];
-        $message = (string) ($first['LongMessage'] ?? $first['ShortMessage'] ?? $responseArray['message'] ?? 'Failed to update price on eBay2');
-        if (! empty($first['ErrorCode']) && ! str_contains($message, (string) $first['ErrorCode'])) {
-            $message = '[eBay #'.$first['ErrorCode'].'] '.$message;
+        $message = \App\Support\EbayApiText::string($first['LongMessage'] ?? $first['ShortMessage'] ?? $responseArray['message'] ?? '');
+        if ($message === '') {
+            $message = 'Failed to update price on eBay2';
+        }
+        $errorCode = \App\Support\EbayApiText::string($first['ErrorCode'] ?? '');
+        if ($errorCode !== '' && ! str_contains($message, $errorCode)) {
+            $message = '[eBay #'.$errorCode.'] '.$message;
         }
 
         // Variation SKU path used on a non-variation listing — retry item-level once.
@@ -417,9 +421,9 @@ class Ebay2ApiService
             if (! is_array($err)) {
                 continue;
             }
-            $blob .= ' '.strtolower((string) ($err['LongMessage'] ?? ''));
-            $blob .= ' '.strtolower((string) ($err['ShortMessage'] ?? ''));
-            $blob .= ' '.(string) ($err['ErrorCode'] ?? '');
+            $blob .= ' '.strtolower(\App\Support\EbayApiText::string($err['LongMessage'] ?? ''));
+            $blob .= ' '.strtolower(\App\Support\EbayApiText::string($err['ShortMessage'] ?? ''));
+            $blob .= ' '.\App\Support\EbayApiText::string($err['ErrorCode'] ?? '');
         }
 
         return str_contains($blob, 'not a multi-variation')

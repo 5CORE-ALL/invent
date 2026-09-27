@@ -2665,17 +2665,21 @@ class EbayTwoController extends Controller
                 $errors = [$errors];
             }
             $first = is_array($errors[0] ?? null) ? $errors[0] : [];
-            $message = (string) ($result['message']
+            $message = \App\Support\EbayApiText::string($result['message']
                 ?? $first['message']
                 ?? $first['LongMessage']
                 ?? $first['ShortMessage']
-                ?? 'Failed to update price on eBay2');
-            if (! empty($first['ErrorCode']) && ! str_contains($message, (string) $first['ErrorCode'])) {
-                $message = '[eBay #'.$first['ErrorCode'].'] '.$message;
+                ?? '');
+            if ($message === '') {
+                $message = 'Failed to update price on eBay2';
+            }
+            $errorCode = \App\Support\EbayApiText::string($first['ErrorCode'] ?? '');
+            if ($errorCode !== '' && ! str_contains($message, $errorCode)) {
+                $message = '[eBay #'.$errorCode.'] '.$message;
             }
 
             $ended = EbayListingEnded::looksEndedError($message)
-                || (string) ($first['ErrorCode'] ?? '') === '291';
+                || $errorCode === '291';
             if ($ended) {
                 try {
                     if (Schema::hasColumn('ebay_2_metrics', 'listing_status')) {

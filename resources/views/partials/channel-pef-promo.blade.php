@@ -9940,6 +9940,15 @@
             if (!chPromoPageReloadPushAllowed()) return false;
             if (window._chPromoServerBluePushStarted) return true;
             window._chPromoServerBluePushStarted = true;
+            if (typeof setChannelPushSpriceProgress === 'function') {
+                setChannelPushSpriceProgress({
+                    active: true,
+                    done: 0,
+                    total: 0,
+                    pct: 0,
+                    msg: 'Collecting S PRC…',
+                });
+            }
             $.ajax({
                 url: CH_PROMO_RULES_BASE + '/push-blue',
                 method: 'POST',
@@ -9947,21 +9956,33 @@
                 data: { _token: chPromoCsrf() },
             }).done(function(res) {
                 const n = Number(res && res.queued) || 0;
-                const msg = (res && res.message) || (n > 0 ? ('Background push ' + n) : 'No S PRC to push');
+                const active = !!(res && (res.active || res.collecting || n > 0));
+                const msg = (res && res.message) || (active ? 'Collecting S PRC…' : 'No S PRC to push');
                 if (typeof setChannelPushSpriceProgress === 'function') {
                     setChannelPushSpriceProgress({
-                        active: n > 0,
+                        active: active,
                         done: 0,
                         total: n,
-                        pct: n > 0 ? 0 : 0,
+                        pct: 0,
                         msg: msg,
                     });
                 }
-                if (n > 0 && typeof startChannelPushSpricePoll === 'function') {
+                if (active && typeof startChannelPushSpricePoll === 'function') {
                     startChannelPushSpricePoll();
+                } else {
+                    window._chPromoServerBluePushStarted = false;
                 }
             }).fail(function() {
                 window._chPromoServerBluePushStarted = false;
+                if (typeof setChannelPushSpriceProgress === 'function') {
+                    setChannelPushSpriceProgress({
+                        active: false,
+                        done: 0,
+                        total: 0,
+                        pct: 0,
+                        msg: 'Could not start price push',
+                    });
+                }
             });
             return true;
         }
@@ -9984,7 +10005,15 @@
                 window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 600);
                 return;
             }
-            chPromoStartServerBluePush();
+            window._chPromoServerBluePushStarted = true;
+            const scan = (typeof scanAndQueueChannelPushSprice === 'function')
+                ? scanAndQueueChannelPushSprice
+                : (window.scanAndQueueChannelPushSprice || null);
+            if (typeof scan !== 'function') {
+                window._chPromoServerBluePushStarted = false;
+                return;
+            }
+            scan(chPromoSafeTable(), { catalog: true, once: false, silent: false });
         }
         window.chPromoStartServerBluePush = chPromoStartServerBluePush;
         window.chPromoTryEbayBluePush = chPromoTryEbayBluePush;

@@ -375,19 +375,77 @@ class ChannelPromoPricingController extends Controller
                 'success' => true,
                 'enabled' => false,
                 'queued' => 0,
+                'active' => false,
                 'message' => 'Push on reload is off',
             ]);
         }
 
-        $res = app(ChannelPushSpriceDailyEnqueue::class)->enqueueChannel($channel);
+        $store = ChannelPushSpriceJobStore::for($channel);
+        $state = $store->load();
+        if ($store->isActive($state)) {
+            $api = $store->toApiResponse($state);
+
+            return response()->json([
+                'success' => true,
+                'enabled' => true,
+                'queued' => (int) ($api['pending_count'] ?? 0) + (int) ($api['pushing_count'] ?? 0),
+                'active' => true,
+                'collecting' => ($state['status'] ?? '') === 'collecting',
+                'message' => (string) ($state['last_message'] ?? 'S PRC push already running'),
+            ]);
+        }
+
+        // Collecting every blue SKU can take longer than the page request.
+        // Mark the job and let the worker fill it so the bar can move immediately.
+        $store->update(function (array $s) {
+            $s['id'] = date('YmdHis').'_'.bin2hex(random_bytes(4));
+            $s['source'] = 'page';
+            $s['status'] = 'collecting';
+            $s['tasks'] = [];
+            $s['total'] = 0;
+            $s['current_index'] = 0;
+            $s['current_sku'] = null;
+            $s['ok_count'] = 0;
+            $s['fail_count'] = 0;
+            $s['results'] = [];
+            $s['started_at'] = now()->toDateTimeString();
+            $s['finished_at'] = null;
+            $s['last_message'] = 'Collecting S PRC ≠ Price…';
+            $s['messages'] = [[
+                'time' => now()->format('H:i:s'),
+                'ok' => true,
+                'message' => 'Collecting S PRC ≠ Price…',
+            ]];
+
+            return $s;
+        });
+
+        $this->releaseUniqueSpriceJobLock($channel);
+        $spawned = ChannelPushSpriceRunner::spawnWorker($channel);
+        if (! $spawned) {
+            try {
+                RunChannelPushSpriceJob::dispatch($channel);
+                $spawned = true;
+            } catch (\Throwable $e) {
+                Log::error('Page S PRC worker dispatch failed', [
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+        if (! $spawned) {
+            $store->markFailed('Could not start the price worker');
+        }
 
         return response()->json([
-            'success' => true,
+            'success' => $spawned,
             'enabled' => true,
-            'queued' => (int) ($res['queued'] ?? 0),
-            'message' => (int) ($res['queued'] ?? 0) > 0
-                ? ('Background push started for '.$res['queued'].' blue SKU(s). Page can close.')
-                : 'No S PRC to push',
+            'queued' => 0,
+            'active' => $spawned,
+            'collecting' => $spawned,
+            'message' => $spawned
+                ? 'Collecting S PRC ≠ Price…'
+                : 'Could not start the price worker',
         ]);
     }
 
