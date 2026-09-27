@@ -1129,7 +1129,22 @@
             }
             return null;
         }
-        /** Exact slab, or nearest slab when clamp is on so 0 Sold (Dil 0) and Dil above last To still get GROI. */
+        /** Closest ranged slab. The 0–0 point slab is exact-only, so Dil 0.01–0.09 does not jump to the last To. */
+        function ebayDilGroiNearestSlab(n, list) {
+            const ranged = (list || []).filter(function(r) { return r && r.max !== r.min; });
+            const pool = ranged.length ? ranged : (list || []);
+            let best = null;
+            let bestDist = Infinity;
+            pool.forEach(function(r) {
+                const dist = n < r.min ? (r.min - n) : (n > r.max ? (n - r.max) : 0);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = r;
+                }
+            });
+            return best;
+        }
+        /** Exact slab, or nearest slab when clamp is on so Dil below the first From or above the last To still gets a target. */
         function ebayDilGroiResolve(dil) {
             const exact = ebayDilGroiMatch(dil);
             if (exact) return exact;
@@ -1137,8 +1152,7 @@
             const n = Number(dil);
             const list = ebayDilGroiCurrentList();
             if (!isFinite(n) || n < 0 || !list.length) return null;
-            if (n < list[0].min) return list[0];
-            return list[list.length - 1];
+            return ebayDilGroiNearestSlab(n, list);
         }
         function ebayDilGroiMinSlab() {
             const list = ebayDilGroiCurrentList();

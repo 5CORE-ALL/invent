@@ -621,8 +621,18 @@
             const color = kind === 'gpft' ? sheinGpftColor(v) : sheinRoiColor(v);
             return '<span style="' + sheinPctStyle(color) + '">' + Math.round(v) + '%</span>';
         }
+        /** Live Sprc Dil $, LMP-capped the same way Apply persists it. Saved SPRICE is only a fallback when the rule has no price. */
         function sheinRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
+            let live = 0;
+            if (typeof ebaySprcDilForRow === 'function') {
+                live = Number(ebaySprcDilForRow(data)) || 0;
+            }
+            if (live > 0 && typeof chPromoCapSpriceToLmp === 'function') {
+                const capped = Number(chPromoCapSpriceToLmp(data, live));
+                if (capped > 0) live = capped;
+            }
+            if (live > 0) return Math.round(live * 100) / 100;
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
                 if (saved > 0) return saved;
