@@ -902,13 +902,11 @@ class SalesOrderFulfillmentController extends Controller
             Cache::forget('sof.doba.recent.fetch');
         }
 
-        app()->terminating(function () {
-            try {
-                app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(2, 1);
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        });
+        try {
+            app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(3, 1);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -1203,7 +1201,7 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             foreach (['order_no', 'platform_order_no', 'shopify_order_id'] as $column) {
-                $value = trim((string) ($line->{$column} ?? ''));
+                $value = ltrim(trim((string) ($line->{$column} ?? '')), '#');
                 if ($value !== '') {
                     $urlByKey[$value] = $url;
                 }
