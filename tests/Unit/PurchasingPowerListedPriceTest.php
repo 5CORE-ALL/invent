@@ -125,6 +125,28 @@ class PurchasingPowerListedPriceTest extends TestCase
         $this->assertEqualsWithDelta(93.99, $out['price'], 0.001);
     }
 
+    public function test_mcm_pull_keeps_live_offer_when_stored_sku_case_differs(): void
+    {
+        $shop = '15TG 1PC';
+        $norm = PurchasingPowerController::normalizeOfferSku($shop);
+        $keepNorm = [$norm => true];
+        $keepExact = [$shop => true];
+
+        $this->assertTrue(PurchasingPowerController::storedOfferKeptInMcmPull('15TG 1Pc', $keepNorm, $keepExact));
+        $this->assertTrue(PurchasingPowerController::storedOfferKeptInMcmPull($shop, $keepNorm, $keepExact));
+        $this->assertFalse(PurchasingPowerController::storedOfferKeptInMcmPull('NOT IN MCM', $keepNorm, $keepExact));
+    }
+
+    public function test_mcm_pull_keeps_live_offer_when_stored_sku_uses_nbsp(): void
+    {
+        $shop = 'WF 8120 4 OHM 2PCS';
+        $stored = "WF\u{00A0}8120\u{00A0}4\u{00A0}OHM 2PCS";
+        $keepNorm = [PurchasingPowerController::normalizeOfferSku($shop) => true];
+        $keepExact = [$shop => true];
+
+        $this->assertTrue(PurchasingPowerController::storedOfferKeptInMcmPull($stored, $keepNorm, $keepExact));
+    }
+
     public function test_normalize_offer_sku_collapses_nbsp(): void
     {
         $this->assertSame(

@@ -500,6 +500,25 @@ class PurchasingPowerController extends Controller
     }
 
     /**
+     * A stored row is still in this OF21 pull when the shop SKU matches after
+     * case / NBSP normalization. Exact-only matching zeroed live prices when
+     * the portal SKU differed from the stored row (15TG 1Pc vs 15TG 1PC).
+     *
+     * @param  array<string, true>  $keepNorm
+     * @param  array<string, true>  $keepExact
+     */
+    public static function storedOfferKeptInMcmPull(string $storedSku, array $keepNorm, array $keepExact): bool
+    {
+        $exact = trim($storedSku);
+        $norm = self::normalizeOfferSku($exact);
+        if ($norm === '') {
+            return false;
+        }
+
+        return isset($keepNorm[$norm]) || isset($keepExact[$exact]);
+    }
+
+    /**
      * One product per normalized SKU. Prefer a live OF21 row over a leftover
      * Connect duplicate (nbsp vs space).
      *

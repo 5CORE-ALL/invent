@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\MarketPlace\BestBuyPricingController;
+use App\Http\Controllers\MarketPlace\PurchasingPowerController;
 use App\Models\BestbuyUsaProduct;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -659,15 +660,7 @@ class FetchMacyProducts extends Command
         PurchasingPowerProduct::query()->select($cols)->orderBy('id')->chunkById(200, function ($rows) use ($keepNorm, $keepExact, &$cleared) {
             $ids = [];
             foreach ($rows as $row) {
-                $exact = trim((string) $row->sku);
-                $norm = $this->normalizeMacyOfferSku($exact);
-                if ($norm === '') {
-                    continue;
-                }
-                $kept = $keepExact !== []
-                    ? isset($keepExact[$exact])
-                    : isset($keepNorm[$norm]);
-                if ($kept) {
+                if (PurchasingPowerController::storedOfferKeptInMcmPull((string) $row->sku, $keepNorm, $keepExact)) {
                     continue;
                 }
                 if ((float) $row->price > 0 || (string) ($row->listing_status ?? '') === 'active') {
@@ -772,7 +765,10 @@ class FetchMacyProducts extends Command
                     $seenExactSkus[$sku] = true;
 
                     $price = $this->extractMcmOfferPrice($offer);
-                    if ($price === null) {
+                    // A missing or 0 price must not overwrite a live listed price.
+                    // The shop SKU is already in the keep set, so the leftover
+                    // clear will not zero this row either.
+                    if ($price === null || $price <= 0) {
                         continue;
                     }
 
@@ -818,10 +814,10 @@ class FetchMacyProducts extends Command
                         $sql = $hasListingStatus
                             ? 'INSERT INTO purchasing_power_products (sku, price, stock, m_l30, listing_status, created_at, updated_at) VALUES '
                                 .implode(', ', $values)
-                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), listing_status = VALUES(listing_status), updated_at = VALUES(updated_at)'
+                                .' ON DUPLICATE KEY UPDATE sku = VALUES(sku), price = VALUES(price), stock = VALUES(stock), listing_status = VALUES(listing_status), updated_at = VALUES(updated_at)'
                             : 'INSERT INTO purchasing_power_products (sku, price, stock, m_l30, created_at, updated_at) VALUES '
                                 .implode(', ', $values)
-                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
+                                .' ON DUPLICATE KEY UPDATE sku = VALUES(sku), price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
 
                         DB::statement($sql, $bindings);
                         $totalUpdated += count($chunk);
