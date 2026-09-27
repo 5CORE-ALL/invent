@@ -185,6 +185,20 @@
         }
         next();
     }
+    function persistSetting() {
+        return $.ajax({
+            url: url,
+            method: 'POST',
+            contentType: 'application/json',
+            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+            data: JSON.stringify({ enabled: !!state.enabled, pct: state.pct, items: [] }),
+        });
+    }
+    // eBay 3 covers every child SKU. A page load must not push Off and strip those coupons.
+    function autoSync() {
+        if (includeSold && !state.enabled) return;
+        sync();
+    }
     function applyFromModal() {
         const pct = Math.max(5, Math.min(80, Math.round(Number($('#' + prefix + '-pct').val()) || 5)));
         state.enabled = $('#' + prefix + '-switch').is(':checked');
@@ -192,21 +206,21 @@
         state.code = codeFor(pct);
         paint();
         if (window.table && typeof window.table.redraw === 'function') window.table.redraw(true);
-        sync();
+        persistSetting().always(function() { sync(); });
     }
     function load() {
-        if (state.ready) { sync(); return; }
+        if (state.ready) { autoSync(); return; }
         if (state.loading) return;
         state.loading = true;
         $.get(url, function(res) {
             state.loading = false;
-            state.enabled = !!(res && res.enabled);
+            state.enabled = !!(res && (res.enabled === true || res.enabled === 1 || res.enabled === '1'));
             state.pct = (res && res.pct) ? res.pct : 5;
             state.code = (res && res.coupon_code) ? res.coupon_code : codeFor(state.pct);
             state.ready = true;
             paint();
             if (window.table && typeof window.table.redraw === 'function') window.table.redraw(true);
-            sync();
+            autoSync();
         }).fail(function() {
             state.loading = false;
             $('#' + prefix + '-status').text('Could not load the coupon setting.');

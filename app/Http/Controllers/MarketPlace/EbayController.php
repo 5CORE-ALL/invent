@@ -5670,38 +5670,33 @@ class EbayController extends Controller
         }
 
         $service = Ebay1CouponService::for($channel);
+        $code = $service->zeroSoldCouponCode($pct);
+        $promoId = $cfg['promotion_id'] !== '' ? $cfg['promotion_id'] : null;
+        // Save the switch before the eBay call. A refresh during a slow push
+        // must still read On, instead of Off and then removing the coupon.
+        $this->persistZeroSoldCouponSetting($channel, $enabled, $pct, $promoId, $code);
+
         $result = [
             'success' => true,
-            'coupon_code' => $service->zeroSoldCouponCode($pct),
-            'promotion_id' => $cfg['promotion_id'] !== '' ? $cfg['promotion_id'] : null,
+            'coupon_code' => $code,
+            'promotion_id' => $promoId,
             'results' => [],
         ];
         if ($payload !== []) {
             $result = $service->syncZeroSoldCoupons(
                 $payload,
                 $pct,
-                $cfg['promotion_id'] !== '' ? $cfg['promotion_id'] : null
+                $promoId
             );
         }
 
-        $promoId = $result['promotion_id'] ?? ($cfg['promotion_id'] !== '' ? $cfg['promotion_id'] : null);
+        $promoId = $result['promotion_id'] ?? $promoId;
         $code = trim((string) ($result['coupon_code'] ?? ''));
         if ($code === '') {
             $code = $service->zeroSoldCouponCode($pct);
         }
 
-        ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => $channel.'_zero_sold_coupon'],
-            [
-                'visibility' => [
-                    'enabled' => $enabled,
-                    'pct' => $pct,
-                    'promotion_id' => $promoId,
-                    'coupon_code' => $code,
-                ],
-                'column_order' => [],
-            ]
-        );
+        $this->persistZeroSoldCouponSetting($channel, $enabled, $pct, $promoId, $code);
 
         $hasResults = ! empty($result['results']);
 
@@ -5714,6 +5709,22 @@ class EbayController extends Controller
             'message' => $result['message'] ?? null,
             'results' => $result['results'] ?? [],
         ], (! empty($result['success']) || $hasResults) ? 200 : 422);
+    }
+
+    private function persistZeroSoldCouponSetting(string $channel, bool $enabled, int $pct, ?string $promotionId, string $code): void
+    {
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => $channel.'_zero_sold_coupon'],
+            [
+                'visibility' => [
+                    'enabled' => $enabled,
+                    'pct' => $pct,
+                    'promotion_id' => ($promotionId !== null && $promotionId !== '') ? $promotionId : null,
+                    'coupon_code' => $code,
+                ],
+                'column_order' => [],
+            ]
+        );
     }
 
     private function normalizeZeroSoldChannel(string $channel): string

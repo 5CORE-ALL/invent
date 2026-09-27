@@ -2174,7 +2174,7 @@
                     <span>Total Views:</span>
                     <span class="summary-badge-value" id="total-views-badge">0</span>
                 </a>
-                <a href="#" class="summary-chart-badge" data-metric="cvr" data-aggregate="1" title="Click to view CVR line graph">
+                <a href="#" class="summary-chart-badge" id="cvr-summary-badge" data-metric="cvr" data-aggregate="1" title="CVR = Σ SW L30 ÷ Σ Views × 100. Click to view CVR line graph.">
                     <span class="summary-badge-dot" style="background-color: #ff9c00;"></span>
                     <span>CVR:</span>
                     <span class="summary-badge-value" id="avg-cvr-badge">0%</span>
@@ -10348,23 +10348,27 @@
 
             const wasInDotView = !!dotExpandedParent;
             dotExpandedParent = null;
+            const skuParentFilter = $('#sku-parent-filter').val();
+
+            // Parent Only rebuilds its own dataset from fullDataset
+            if (skuParentFilter === 'parent') {
+                table.clearFilter();
+                expandedParent = null;
+                buildParentView();
+                return;
+            }
 
             const doFilters = function() {
                 const inventoryFilter = $('#inventory-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
-                const skuParentFilter = $('#sku-parent-filter').val();
 
                 table.clearFilter();
 
-                // SKU/Parent filter
+                // SKU Only — hide parent summary rows
                 if (skuParentFilter === 'sku') {
                     table.addFilter(function(data) {
                         return data.is_parent_summary !== true;
                     });
-                } else if (skuParentFilter === 'parent') {
-                    expandedParent = null;
-                    buildParentView();
-                    return;
                 }
 
                 if (inventoryFilter === 'zero') {
@@ -10446,7 +10450,15 @@
                 updateSummary();
             };
 
-            if (wasInDotView && fullDataset.length > 0) {
+            // Parent Only / dot-expand replace table data — must restore fullDataset for SKU Only / Both
+            const currentLen = (typeof table.getDataCount === 'function')
+                ? table.getDataCount('all')
+                : ((table.getData('all') || []).length);
+            const needsFullRestore = fullDataset.length > 0 && (
+                wasInDotView || currentLen !== fullDataset.length
+            );
+
+            if (needsFullRestore) {
                 suppressDataLoadedHandler = true;
                 table.setData(fullDataset).then(doFilters);
             } else {
@@ -10497,9 +10509,9 @@
                 ? data.filter(r => r.is_parent_summary === true)
                 : data.filter(r => r.is_parent_summary !== true);
 
-            let totalInv = 0, totalL30 = 0;
+            let totalInv = 0, totalL30 = 0, totalSwL30 = 0;
             let redN = 0, greenN = 0, pinkN = 0, bandN = 0;
-            let totalViews = 0, totalCvr = 0, cvrCount = 0;
+            let totalViews = 0;
             let totalPrice = 0, priceCount = 0;
             let totalAmzLmp = 0, amzLmpCount = 0;
 
@@ -10513,9 +10525,8 @@
                 if (rowDil < 25) redN++;
                 else if (rowDil < 50) greenN++;
                 else pinkN++;
-                totalViews += parseInt(row['total_views']) || 0;
-                totalCvr += parseFloat(row['avg_cvr']) || 0;
-                cvrCount++;
+                totalViews += parseInt(row['total_views'], 10) || 0;
+                totalSwL30 += parseFloat(row['m_l30']) || 0;
                 const price = parseFloat(row['avg_price']) || 0;
                 if (price > 0) {
                     totalPrice += price;
@@ -10537,7 +10548,8 @@
             const redDilPct = bandN > 0 ? (redN / bandN) * 100 : 0;
             const greenDilPct = bandN > 0 ? (greenN / bandN) * 100 : 0;
             const pinkDilPct = bandN > 0 ? (pinkN / bandN) * 100 : 0;
-            const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
+            // CVR = (Σ SW L30 / Σ Views) × 100 — same formula as each row, not the mean of row CVRs
+            const avgCvr = totalViews > 0 ? (totalSwL30 / totalViews) * 100 : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgAmzLmp = amzLmpCount > 0 ? totalAmzLmp / amzLmpCount : 0;
 
@@ -10555,29 +10567,43 @@
             $('#total-inv-badge').text(totalInv.toLocaleString());
             $('#total-l30-badge').text(totalL30.toLocaleString());
             const dilColor = getDilPercentColor(avgDil);
-            $('#avg-dil-badge').attr('data-pct', avgDil.toFixed(2))
-                .html('<span style="' + styleForCellColor(dilColor) + '">' + avgDil.toFixed(1) + '%</span>');
+            const avgDilRounded = Math.round(avgDil);
+            const redDilRounded = Math.round(redDilPct);
+            const greenDilRounded = Math.round(greenDilPct);
+            const pinkDilRounded = Math.round(pinkDilPct);
+            $('#avg-dil-badge').attr('data-pct', avgDilRounded)
+                .html('<span style="' + styleForCellColor(dilColor) + '">' + avgDilRounded + '%</span>');
             $('#dil-summary-dot').css('background-color', dilColor);
             $('#dil-summary-badge').attr('title',
                 'Dil% = Σ OV L30 (' + Math.round(totalL30).toLocaleString()
                 + ') ÷ Σ INV (' + Math.round(totalInv).toLocaleString()
                 + ') × 100. Red <25% · Green 25–50% · Pink 50%+. Click to view DIL line graph.');
             function paintDilShare(id, pct, color) {
-                $('#' + id).attr('data-pct', pct.toFixed(2))
-                    .html('<span style="' + styleForCellColor(color) + '">' + pct.toFixed(1) + '%</span>');
+                $('#' + id).attr('data-pct', pct)
+                    .html('<span style="' + styleForCellColor(color) + '">' + pct + '%</span>');
             }
-            paintDilShare('red-dil-badge', redDilPct, getDilPercentColor(0));
-            paintDilShare('green-dil-badge', greenDilPct, getDilPercentColor(30));
-            paintDilShare('pink-dil-badge', pinkDilPct, getDilPercentColor(60));
+            paintDilShare('red-dil-badge', redDilRounded, getDilPercentColor(0));
+            paintDilShare('green-dil-badge', greenDilRounded, getDilPercentColor(30));
+            paintDilShare('pink-dil-badge', pinkDilRounded, getDilPercentColor(60));
             const bandLabel = bandN.toLocaleString() + ' rows';
             $('#dil-red-summary-badge').attr('title',
-                'Red Dil: ' + redN.toLocaleString() + ' of ' + bandLabel + ' with Dil% under 25% (' + redDilPct.toFixed(1) + '%). Click for the graph.');
+                'Red Dil: ' + redN.toLocaleString() + ' of ' + bandLabel + ' with Dil% under 25% (' + redDilRounded + '%). Click for the graph.');
             $('#dil-green-summary-badge').attr('title',
-                'Green Dil: ' + greenN.toLocaleString() + ' of ' + bandLabel + ' with Dil% from 25% up to 50% (' + greenDilPct.toFixed(1) + '%). Click for the graph.');
+                'Green Dil: ' + greenN.toLocaleString() + ' of ' + bandLabel + ' with Dil% from 25% up to 50% (' + greenDilRounded + '%). Click for the graph.');
             $('#dil-pink-summary-badge').attr('title',
-                'Pink Dil: ' + pinkN.toLocaleString() + ' of ' + bandLabel + ' with Dil% of 50% or more (' + pinkDilPct.toFixed(1) + '%). Click for the graph.');
+                'Pink Dil: ' + pinkN.toLocaleString() + ' of ' + bandLabel + ' with Dil% of 50% or more (' + pinkDilRounded + '%). Click for the graph.');
             $('#total-views-badge').text(totalViews.toLocaleString());
-            $('#avg-cvr-badge').text(avgCvr.toFixed(1) + '%');
+            let cvrColor = '#6c757d';
+            if (avgCvr > 0 && avgCvr < 1) cvrColor = '#a00211';
+            else if (avgCvr >= 1 && avgCvr < 3) cvrColor = '#ffc107';
+            else if (avgCvr >= 3 && avgCvr < 5) cvrColor = '#28a745';
+            else if (avgCvr >= 5) cvrColor = '#e83e8c';
+            $('#avg-cvr-badge').attr('data-pct', avgCvr.toFixed(2))
+                .html('<span style="' + styleForCellColor(cvrColor) + '">' + avgCvr.toFixed(1) + '%</span>');
+            $('#cvr-summary-badge').attr('title',
+                'CVR = Σ SW L30 (' + Math.round(totalSwL30).toLocaleString()
+                + ') ÷ Σ Views (' + totalViews.toLocaleString()
+                + ') × 100. Click to view CVR line graph.');
             $('#avg-price-badge').text('$' + avgPrice.toFixed(2));
             $('#amz-lmp-badge').text('$' + avgAmzLmp.toFixed(2));
             $('#avg-lqs-badge').text(avgLqs === null ? '-' : avgLqs.toFixed(1));
@@ -10856,6 +10882,8 @@
             currentPricingChartDilGroup = '';
             if (metric === 'dil') {
                 currentPricingChartLive = $('#avg-dil-badge').attr('data-pct');
+            } else if (metric === 'cvr') {
+                currentPricingChartLive = $('#avg-cvr-badge').attr('data-pct');
             } else if (isDilShareMetric(metric)) {
                 const valueId = metric === 'dil_red' ? '#red-dil-badge' : (metric === 'dil_green' ? '#green-dil-badge' : '#pink-dil-badge');
                 currentPricingChartLive = $(valueId).attr('data-pct');
@@ -11024,7 +11052,8 @@
             const yMax = dataMax + range * 0.1;
             const fmtVal = (v) => {
                 if (currentPricingChartMetric === 'price' || currentPricingChartMetric === 'amz_price') return '$' + (Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-                if (currentPricingChartMetric === 'cvr' || currentPricingChartMetric === 'dil' || isDilShareMetric(currentPricingChartMetric)) return Number(v).toFixed(1) + '%';
+                if (currentPricingChartMetric === 'cvr') return Number(v).toFixed(1) + '%';
+                if (currentPricingChartMetric === 'dil' || isDilShareMetric(currentPricingChartMetric)) return Math.round(Number(v)) + '%';
                 if (currentPricingChartMetric === 'rating') return Number(v).toFixed(1);
                 if (currentPricingChartMetric === 'total_views' || currentPricingChartMetric === 'temu_views') {
                     return Math.round(v).toLocaleString('en-US');
