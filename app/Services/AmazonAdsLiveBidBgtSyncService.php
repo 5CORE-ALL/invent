@@ -552,6 +552,11 @@ class AmazonAdsLiveBidBgtSyncService
                     $reason = (string) ($failed[0]['reason'] ?? $failed[0]['error'] ?? 'amazon rejected');
                     throw new \RuntimeException($reason);
                 }
+                $skipped = is_array($result) ? ($result['skipped'] ?? []) : [];
+                if (is_array($skipped) && $skipped !== []) {
+                    $reason = (string) ($skipped[0]['reason'] ?? 'bid was not written');
+                    throw new \RuntimeException($reason);
+                }
                 $status = is_array($result) ? (int) ($result['status'] ?? 200) : 200;
                 if ($status >= 400) {
                     throw new \RuntimeException((string) ($result['error'] ?? $result['message'] ?? 'push http '.$status));
