@@ -885,35 +885,27 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function fetchRecentDobaOrders(): void
     {
+        if (! Cache::add('sof.doba.recent.fetch', 1, now()->addMinutes(2))) {
+            return;
+        }
+
+        $fromShopify = 0;
         try {
-            app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class)
-                ->importOpenDobaOrdersFromShopifyRaw();
+            $fromShopify = app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class)
+                ->linkRecentUnfulfilledDobaOrders();
         } catch (\Throwable $e) {
             report($e);
         }
 
-        if (! Cache::add('sof.doba.recent.fetch', 1, now()->addMinutes(3))) {
-            return;
+        if ($fromShopify === 0) {
+            Cache::forget('sof.doba.recent.fetch');
         }
 
         app()->terminating(function () {
-            $stored = 0;
-            $fromShopify = 0;
             try {
-                $stored = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(2, 1);
+                app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(2, 1);
             } catch (\Throwable $e) {
                 report($e);
-            }
-
-            try {
-                $fromShopify = app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class)
-                    ->linkRecentUnfulfilledDobaOrders();
-            } catch (\Throwable $e) {
-                report($e);
-            }
-
-            if ($stored === 0 && $fromShopify === 0) {
-                Cache::forget('sof.doba.recent.fetch');
             }
         });
     }
