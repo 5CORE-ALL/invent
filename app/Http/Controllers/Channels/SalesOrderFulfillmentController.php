@@ -855,6 +855,7 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         $prepaid = $this->attachShipmentStatusToOrderRows($prepaid);
+        $prepaid = $this->fillMissingDobaPrepaidLabels($prepaid);
         $prepaid = array_values(array_filter(
             $prepaid,
             fn (array $row) => ! $this->dobaPrepaidRowHasMoved($row)
@@ -1161,6 +1162,72 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         return $this->findDobaDownloadLabelUrl($data);
+    }
+
+    /**
+     * Shopify-copied rows use the Shopify order number and have no Doba label file.
+     * The label is on the Doba payload stored under the marketplace order id.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function fillMissingDobaPrepaidLabels(array $rows): array
+    {
+        $need = [];
+        foreach ($rows as $row) {
+            if (trim((string) ($row['prepaid_label_url'] ?? '')) !== '') {
+                continue;
+            }
+            foreach (['order_id', 'order_number', 'shopify_order_id', 'shopify_order_number'] as $key) {
+                $value = trim((string) ($row[$key] ?? ''));
+                if ($value !== '') {
+                    $need[$value] = true;
+                }
+            }
+        }
+        if ($need === []) {
+            return $rows;
+        }
+
+        $keys = array_keys($need);
+        $relatedQuery = DobaDailyData::query()->where(function ($q) use ($keys) {
+            $q->whereIn('order_no', $keys)->orWhereIn('platform_order_no', $keys);
+            if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
+                $q->orWhereIn('shopify_order_id', $keys);
+            }
+        });
+        $urlByKey = [];
+        foreach ($relatedQuery->get(['order_no', 'platform_order_no', 'shopify_order_id', 'order_json']) as $line) {
+            $url = $this->extractDobaPrepaidLabelUrl($line->order_json ?? null);
+            if ($url === null) {
+                continue;
+            }
+            foreach (['order_no', 'platform_order_no', 'shopify_order_id'] as $column) {
+                $value = trim((string) ($line->{$column} ?? ''));
+                if ($value !== '') {
+                    $urlByKey[$value] = $url;
+                }
+            }
+        }
+
+        foreach ($rows as $index => $row) {
+            if (trim((string) ($row['prepaid_label_url'] ?? '')) !== '') {
+                continue;
+            }
+            $url = null;
+            foreach (['order_id', 'order_number', 'shopify_order_id', 'shopify_order_number'] as $key) {
+                $value = trim((string) ($row[$key] ?? ''));
+                if ($value !== '' && isset($urlByKey[$value])) {
+                    $url = $urlByKey[$value];
+                    break;
+                }
+            }
+            if ($url !== null) {
+                $rows[$index]['prepaid_label_url'] = $url;
+            }
+        }
+
+        return $rows;
     }
 
     /**
@@ -1680,8 +1747,14 @@ class SalesOrderFulfillmentController extends Controller
         }
         if (is_string($node)) {
             $url = trim($node);
-            if ($url !== '' && preg_match('#https?://(?:[a-z0-9.-]+\.)?doba\.com/\S+#i', $url, $m)) {
-                return rtrim($m[0], ')",\'>');
+            if ($url === '' || preg_match('#^https?://#i', $url) !== 1) {
+                return null;
+            }
+            $url = rtrim($url, ')",\'>');
+            $path = strtolower((string) (parse_url($url, PHP_URL_PATH) ?? ''));
+            $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+            if (str_contains($host, 'doba.com') || str_contains(strtolower($url), 'label') || str_ends_with($path, '.pdf')) {
+                return $url;
             }
 
             return null;
@@ -1690,7 +1763,17 @@ class SalesOrderFulfillmentController extends Controller
             return null;
         }
 
-        foreach (['url', 'labelUrl', 'label_url', 'prepaidLabelUrl', 'downloadUrl', 'fileUrl', 'link', 'labelLink'] as $key) {
+        foreach ($node as $key => $value) {
+            if (! is_string($key) || ! is_string($value) || ! str_contains(strtolower($key), 'label')) {
+                continue;
+            }
+            $url = trim($value);
+            if (preg_match('#^https?://#i', $url) === 1) {
+                return rtrim($url, ')",\'>');
+            }
+        }
+
+        foreach (['url', 'labelUrl', 'label_url', 'prepaidLabelUrl', 'downloadUrl', 'fileUrl', 'link', 'labelLink', 'labelFileUrl'] as $key) {
             if (! isset($node[$key])) {
                 continue;
             }
