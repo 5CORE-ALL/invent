@@ -157,7 +157,10 @@ class DobaOrderSyncService
         $timeout = $quick ? 6 : 12;
         foreach ($windows as $window) {
             $query = $window + ['pageNo' => 1, 'pageSize' => 10];
-            foreach (['ordBusiId', 'platformOrderNo'] as $field) {
+            $fields = preg_match('/^\d{4,9}$/', $orderId) === 1
+                ? ['platformOrderNo', 'ordBusiId']
+                : ['ordBusiId', 'platformOrderNo'];
+            foreach ($fields as $field) {
                 $rows = $api->querySellerOrderDetail($query + [$field => $orderId], $timeout);
                 $order = $this->matchDobaOrder($rows, $orderId);
                 if (is_array($order)) {

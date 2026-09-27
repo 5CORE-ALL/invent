@@ -856,6 +856,7 @@ class SalesOrderFulfillmentController extends Controller
 
         $prepaid = $this->attachShipmentStatusToOrderRows($prepaid);
         $prepaid = $this->fillMissingDobaPrepaidLabels($prepaid);
+        $prepaid = $this->fetchMissingDobaPrepaidLabels($prepaid);
         $prepaid = array_values(array_filter(
             $prepaid,
             fn (array $row) => ! $this->dobaPrepaidRowHasMoved($row)
@@ -890,20 +891,20 @@ class SalesOrderFulfillmentController extends Controller
             return;
         }
 
-        $fromShopify = 0;
+        $stored = 0;
         try {
-            $fromShopify = app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class)
-                ->linkRecentUnfulfilledDobaOrders();
+            $stored = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)
+                ->fetchRecentOrders(14, 4);
         } catch (\Throwable $e) {
             report($e);
         }
-
-        if ($fromShopify === 0) {
+        if ($stored === 0) {
             Cache::forget('sof.doba.recent.fetch');
         }
 
         try {
-            app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->fetchRecentOrders(3, 1);
+            app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class)
+                ->linkRecentUnfulfilledDobaOrders();
         } catch (\Throwable $e) {
             report($e);
         }
@@ -1154,12 +1155,36 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             $found = $this->findDobaDownloadLabelUrl($data[$key]);
+            if ($found === null && $key !== 'shipping') {
+                $found = $this->firstHttpsUrl($data[$key]);
+            }
             if ($found !== null) {
                 return $found;
             }
         }
 
         return $this->findDobaDownloadLabelUrl($data);
+    }
+
+    protected function firstHttpsUrl(mixed $node, int $depth = 0): ?string
+    {
+        if ($depth > 6) {
+            return null;
+        }
+        if (is_string($node) && preg_match('#^https?://#i', trim($node)) === 1) {
+            return rtrim(trim($node), ')",\'>');
+        }
+        if (! is_array($node)) {
+            return null;
+        }
+        foreach ($node as $value) {
+            $found = $this->firstHttpsUrl($value, $depth + 1);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1188,14 +1213,27 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         $keys = array_keys($need);
-        $relatedQuery = DobaDailyData::query()->where(function ($q) use ($keys) {
+        $trackings = [];
+        foreach ($rows as $row) {
+            if (trim((string) ($row['prepaid_label_url'] ?? '')) !== '') {
+                continue;
+            }
+            $tracking = DobaTrackingNumber::sanitize((string) ($row['tracking_number'] ?? ''));
+            if (strlen($tracking) >= 8) {
+                $trackings[$tracking] = $tracking;
+            }
+        }
+        $relatedQuery = DobaDailyData::query()->where(function ($q) use ($keys, $trackings) {
             $q->whereIn('order_no', $keys)->orWhereIn('platform_order_no', $keys);
             if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
                 $q->orWhereIn('shopify_order_id', $keys);
             }
+            if ($trackings !== [] && Schema::hasColumn('doba_daily_data', 'tracking_number')) {
+                $q->orWhereIn('tracking_number', array_values($trackings));
+            }
         });
         $urlByKey = [];
-        foreach ($relatedQuery->get(['order_no', 'platform_order_no', 'shopify_order_id', 'order_json']) as $line) {
+        foreach ($relatedQuery->get(['order_no', 'platform_order_no', 'shopify_order_id', 'tracking_number', 'order_json']) as $line) {
             $url = $this->extractDobaPrepaidLabelUrl($line->order_json ?? null);
             if ($url === null) {
                 continue;
@@ -1205,6 +1243,10 @@ class SalesOrderFulfillmentController extends Controller
                 if ($value !== '') {
                     $urlByKey[$value] = $url;
                 }
+            }
+            $tracking = DobaTrackingNumber::sanitize((string) ($line->tracking_number ?? ''));
+            if ($tracking !== '') {
+                $urlByKey['tn:'.$tracking] = $url;
             }
         }
 
@@ -1220,12 +1262,86 @@ class SalesOrderFulfillmentController extends Controller
                     break;
                 }
             }
+            if ($url === null) {
+                $tracking = DobaTrackingNumber::sanitize((string) ($row['tracking_number'] ?? ''));
+                if ($tracking !== '' && isset($urlByKey['tn:'.$tracking])) {
+                    $url = $urlByKey['tn:'.$tracking];
+                }
+            }
             if ($url !== null) {
                 $rows[$index]['prepaid_label_url'] = $url;
+                $this->rememberDobaPrepaidLabelOnRow((int) ($row['row_id'] ?? 0), $url);
             }
         }
 
         return $rows;
+    }
+
+    /**
+     * Ask Doba for the Shopify order numbers that still have no label file.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function fetchMissingDobaPrepaidLabels(array $rows): array
+    {
+        $sync = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class);
+        $deadline = microtime(true) + 12.0;
+        $looked = 0;
+        foreach ($rows as $index => $row) {
+            if (trim((string) ($row['prepaid_label_url'] ?? '')) !== '') {
+                continue;
+            }
+            if ($looked >= 8 || microtime(true) >= $deadline) {
+                break;
+            }
+            $orderId = trim((string) ($row['order_id'] ?? $row['order_number'] ?? ''));
+            if ($orderId === '') {
+                continue;
+            }
+            $looked++;
+            try {
+                $order = $sync->fetchOrderById($orderId, true);
+            } catch (\Throwable) {
+                continue;
+            }
+            if (! is_array($order)) {
+                continue;
+            }
+            $url = $this->extractDobaPrepaidLabelUrl($order);
+            if ($url === null) {
+                continue;
+            }
+            $rows[$index]['prepaid_label_url'] = $url;
+            $this->rememberDobaPrepaidLabelOnRow((int) ($row['row_id'] ?? 0), $url);
+        }
+
+        return $rows;
+    }
+
+    protected function rememberDobaPrepaidLabelOnRow(int $rowId, string $url): void
+    {
+        if ($rowId <= 0 || trim($url) === '' || ! Schema::hasTable('doba_daily_data')) {
+            return;
+        }
+        try {
+            $line = DobaDailyData::query()->find($rowId, ['id', 'order_json']);
+            if ($line === null) {
+                return;
+            }
+            $decoded = json_decode((string) ($line->order_json ?? ''), true);
+            if (! is_array($decoded)) {
+                $decoded = [];
+            }
+            if (trim((string) ($decoded['labelUrl'] ?? '')) === $url) {
+                return;
+            }
+            $decoded['labelUrl'] = $url;
+            DobaDailyData::query()->where('id', $rowId)->update([
+                'order_json' => json_encode($decoded),
+            ]);
+        } catch (\Throwable) {
+        }
     }
 
     /**
