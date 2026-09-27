@@ -4897,8 +4897,6 @@ class VeeqoShopifyFulfillmentService
             return false;
         }
         $orderNo = $dobaNo !== '' ? $dobaNo : substr('S'.$shopifyId, 0, 50);
-        $tags = strtolower((string) ($order['tags'] ?? ''));
-        $prepaid = str_contains($tags, 'prepaid');
         $lines = array_values(array_filter(
             (array) ($order['line_items'] ?? []),
             static fn ($line) => is_array($line)
@@ -4938,7 +4936,7 @@ class VeeqoShopifyFulfillmentService
                 'platform_order_no' => substr(ltrim(trim((string) ($order['name'] ?? '')), '#'), 0, 100),
                 'order_time' => $orderTime,
                 'order_status' => 'Unfulfilled',
-                'order_type' => $prepaid ? 'pickup with a prepaid label' : 'shopify',
+                'order_type' => 'pickup with a prepaid label',
                 'period' => 'l30',
                 'item_no' => $itemNo,
                 'sku' => substr(trim((string) ($line['sku'] ?? '')), 0, 100) ?: null,
@@ -4994,7 +4992,7 @@ class VeeqoShopifyFulfillmentService
      * Shopify orders already stored by the Shopify sync. Used when the live
      * Shopify call is slow or the Doba API did not return the order.
      */
-    protected function importOpenDobaOrdersFromShopifyRaw(): int
+    public function importOpenDobaOrdersFromShopifyRaw(): int
     {
         if (! Schema::hasTable('shopify_raw_orders') || ! Schema::hasTable('doba_daily_data')) {
             return 0;
@@ -5011,7 +5009,7 @@ class VeeqoShopifyFulfillmentService
             ->where(function ($q) {
                 $q->whereNull('fulfillment_status')
                     ->orWhere('fulfillment_status', '')
-                    ->orWhereIn('fulfillment_status', ['unfulfilled', 'partial', 'unshipped']);
+                    ->orWhereRaw("LOWER(TRIM(fulfillment_status)) NOT IN ('fulfilled', 'restocked', 'shipped')");
             })
             ->orderByDesc('order_date')
             ->limit(120)
@@ -5020,8 +5018,7 @@ class VeeqoShopifyFulfillmentService
         $grouped = [];
         foreach ($rows as $row) {
             $shopifyId = trim((string) ($row->order_id ?? ''));
-            $tags = strtolower((string) ($row->tags ?? ''));
-            if ($shopifyId === '' || ! str_contains($tags, 'prepaid')) {
+            if ($shopifyId === '') {
                 continue;
             }
             if (! isset($grouped[$shopifyId])) {
@@ -5044,6 +5041,12 @@ class VeeqoShopifyFulfillmentService
             $row = $pack['row'];
             if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')
                 && DobaDailyData::query()->where('shopify_order_id', $shopifyId)->exists()) {
+                DobaDailyData::query()
+                    ->where('shopify_order_id', $shopifyId)
+                    ->where(function ($q) {
+                        $q->whereNull('order_type')->orWhere('order_type', '')->orWhere('order_type', 'shopify');
+                    })
+                    ->update(['order_type' => 'pickup with a prepaid label']);
                 continue;
             }
             $orderNo = substr('S'.$shopifyId, 0, 50);
