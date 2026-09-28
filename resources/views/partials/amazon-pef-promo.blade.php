@@ -3441,7 +3441,11 @@
             $('#amz-reload-push-progress-bar').css('width', pct + '%');
 
             let msg = opts.msg || '';
-            if (!msg && total) {
+            if (active && total) {
+                const remaining = Math.max(0, total - done);
+                const sku = opts.sku ? String(opts.sku) : '';
+                msg = 'Pushing ' + remaining.toLocaleString() + ' left' + (sku ? (': ' + sku) : '');
+            } else if (!msg && total) {
                 msg = done + '/' + total + ' jobs · ' + ok + ' ok'
                     + (fail ? (' · ' + fail + ' failed') : '');
             }
@@ -3688,6 +3692,7 @@
                         ok: ok,
                         fail: fail,
                         pct: pct,
+                        sku: (resp.job && resp.job.current_sku) || '',
                         msg: resp.message || (resp.job && resp.job.last_message) || '',
                     });
                 }

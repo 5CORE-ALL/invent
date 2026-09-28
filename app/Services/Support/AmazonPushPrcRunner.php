@@ -110,7 +110,8 @@ class AmazonPushPrcRunner
                 }
                 $done = ((int) ($state['ok_count'] ?? 0)) + ((int) ($state['fail_count'] ?? 0));
                 $total = (int) ($state['total'] ?? 0);
-                $state['last_message'] = 'Pushing '.($done + 1).'/'.$total.': '.$sku;
+                $remaining = max(0, $total - $done);
+                $state['last_message'] = 'Pushing '.$remaining.' left: '.$sku;
 
                 return $state;
             });
@@ -231,7 +232,8 @@ class AmazonPushPrcRunner
                 ];
                 $done = ((int) ($state['ok_count'] ?? 0)) + ((int) ($state['fail_count'] ?? 0));
                 $total = (int) ($state['total'] ?? 0);
-                $state['last_message'] = ($ok ? 'OK' : 'Fail')." {$sku} — {$done}/{$total}";
+                $remaining = max(0, $total - $done);
+                $state['last_message'] = ($ok ? 'OK' : 'Fail')." {$sku} — {$remaining} left";
                 $state['current_sku'] = null;
 
                 return $state;
