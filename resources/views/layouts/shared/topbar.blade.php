@@ -14,10 +14,10 @@
             <!-- Topbar Brand Logo -->
             <div class="logo-topbar">
                 <a href="{{ route('any', 'index') }}" class="logo-light" aria-label="{{ $__topbarBrand }}">
-                    @include('layouts.shared.brand-wordmark', ['brandMark' => '%'])
+                    @include('layouts.shared.brand-wordmark')
                 </a>
                 <a href="{{ route('any', 'index') }}" class="logo-dark" aria-label="{{ $__topbarBrand }}">
-                    @include('layouts.shared.brand-wordmark', ['brandMark' => '%'])
+                    @include('layouts.shared.brand-wordmark')
                 </a>
             </div>
 
