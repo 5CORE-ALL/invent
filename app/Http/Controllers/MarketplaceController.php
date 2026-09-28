@@ -30,7 +30,9 @@ use App\Services\MarketplaceManager\AmazonTrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingInstantMapService;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Jobs\FetchMarketplaceShopifyTrackingNowJob;
+use App\Services\MarketplaceManager\FetchTrackingNowProgress;
 use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
+use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -500,9 +502,35 @@ class MarketplaceController extends Controller
         return $this->queueFreshTrackingCatchup($request);
     }
 
+    public function fetchTrackingNowStatus(Request $request): JsonResponse
+    {
+        $row = FetchTrackingNowProgress::get($request->query('run'));
+        if ($row === null) {
+            return response()->json([
+                'success' => true,
+                'status' => 'idle',
+                'percent' => 0,
+                'message' => 'No catch-up running.',
+            ]);
+        }
+
+        return response()->json(array_merge(['success' => true], $row));
+    }
+
     public function queueFreshTrackingCatchup(?Request $request = null): JsonResponse|RedirectResponse
     {
-        $message = 'Tracking catch-up queued. Unfulfilled Shopify copies will fulfill first (no customer email), then Amazon, Faire, Shein, Wayfair, Newegg, AliExpress, TikTok, Reverb, and the other marketplaces. Refresh in a few minutes.';
+        $existing = FetchTrackingNowProgress::get();
+        if (FetchTrackingNowProgress::isActive($existing) && ! ($request?->boolean('force'))) {
+            $message = (string) ($existing['message'] ?? 'A tracking catch-up is already running.');
+            if ($request && ! $request->wantsJson() && ! $request->ajax() && ! $request->expectsJson()) {
+                return redirect()->back()->with('success', $message);
+            }
+
+            return response()->json(array_merge(['success' => true, 'queued' => false, 'resumed' => true], $existing));
+        }
+
+        $runId = (string) Str::uuid();
+        $started = FetchTrackingNowProgress::start($runId);
 
         try {
             try {
@@ -510,33 +538,37 @@ class MarketplaceController extends Controller
             } catch (\Throwable) {
                 // Workers may already be up.
             }
-            FetchMarketplaceShopifyTrackingNowJob::dispatch(2500, 150);
-
-            if ($request && ! $request->wantsJson() && ! $request->ajax() && ! $request->expectsJson()) {
-                return redirect()
-                    ->back()
-                    ->with('success', $message);
-            }
-
-            return response()->json([
-                'success' => true,
-                'queued' => true,
-                'message' => $message,
-            ]);
+            FetchMarketplaceShopifyTrackingNowJob::dispatch(2500, 150, $runId);
         } catch (\Throwable $e) {
+            FetchTrackingNowProgress::update($runId, [
+                'status' => 'failed',
+                'percent' => 0,
+                'message' => 'Could not queue tracking: '.$e->getMessage(),
+            ]);
             $error = 'Could not queue tracking: '.$e->getMessage();
             if ($request && ! $request->wantsJson() && ! $request->ajax() && ! $request->expectsJson()) {
-                return redirect()
-                    ->back()
-                    ->with('error', $error);
+                return redirect()->back()->with('error', $error);
             }
 
             return response()->json([
                 'success' => false,
                 'queued' => false,
+                'run_id' => $runId,
                 'message' => $error,
             ], 500);
         }
+
+        $payload = array_merge($started, [
+            'success' => true,
+            'queued' => true,
+            'message' => 'Tracking catch-up started. Unfulfilled Shopify copies will fulfill first (no customer email), then tracking is pushed to the marketplaces.',
+        ]);
+
+        if ($request && ! $request->wantsJson() && ! $request->ajax() && ! $request->expectsJson()) {
+            return redirect()->back()->with('success', $payload['message']);
+        }
+
+        return response()->json($payload);
     }
 
     public function orders(Request $request, string $marketplace): View

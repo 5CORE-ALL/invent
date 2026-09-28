@@ -675,6 +675,76 @@ class SalesOrderFulfillmentController extends Controller
         }
     }
 
+    public function markDobaOrdersShippedBulk(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_nos' => ['required', 'array', 'min:1', 'max:800'],
+            'order_nos.*' => ['string', 'max:191'],
+            'shipped' => ['required'],
+        ]);
+
+        $shipped = filter_var($validated['shipped'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($shipped === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'shipped is required.',
+            ], 422);
+        }
+
+        $orderNos = array_values(array_unique(array_filter(array_map(
+            static fn ($no) => trim((string) $no),
+            $validated['order_nos']
+        ))));
+        if ($orderNos === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select at least one order.',
+            ], 422);
+        }
+
+        if (! Schema::hasTable('doba_warehouse_ships')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'doba_warehouse_ships table missing — run migrations.',
+            ], 500);
+        }
+
+        try {
+            $userId = $request->user()?->id;
+            $now = now();
+            $updated = 0;
+            foreach ($orderNos as $orderNo) {
+                if ($shipped) {
+                    DobaWarehouseShip::query()->updateOrCreate(
+                        ['order_no' => $orderNo],
+                        [
+                            'shipped' => true,
+                            'shipped_at' => $now,
+                            'shipped_by' => $userId,
+                        ]
+                    );
+                } else {
+                    DobaWarehouseShip::query()->where('order_no', $orderNo)->delete();
+                }
+                $updated++;
+            }
+
+            return response()->json([
+                'success' => true,
+                'shipped' => $shipped,
+                'updated' => $updated,
+                'order_nos' => $orderNos,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update Doba shipped flags.',
+            ], 500);
+        }
+    }
+
     protected function requestWantsShippedDobaOrders(): bool
     {
         $raw = request()->input('include_shipped', false);
@@ -702,8 +772,7 @@ class SalesOrderFulfillmentController extends Controller
         $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED'])
-            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')');
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED']);
 
         $select = [
             'id', 'order_no', 'platform_order_no', 'order_time', 'updated_at',
@@ -805,7 +874,16 @@ class SalesOrderFulfillmentController extends Controller
             if ($carrier !== '' && trim((string) ($row['tracking_company'] ?? '')) === '') {
                 $row['tracking_company'] = $carrier;
             }
-            if (! $row['is_prepaid'] && $this->dobaLineIsPrepaid($line)) {
+            $tagKind = $this->dobaShopifyTagKind($line->order_json ?? null);
+            if ($tagKind === 'seller' && empty($row['prepaid_tag'])) {
+                $row['seller_delivery'] = true;
+                $row['is_prepaid'] = false;
+            } elseif ($tagKind === 'prepaid') {
+                $row['prepaid_tag'] = true;
+                $row['seller_delivery'] = false;
+                $row['is_prepaid'] = true;
+                $row['order_type'] = trim((string) ($line->order_type ?? $row['order_type'] ?? ''));
+            } elseif (! $row['is_prepaid'] && $this->dobaLineIsPrepaid($line)) {
                 $row['is_prepaid'] = true;
                 $row['order_type'] = trim((string) ($line->order_type ?? $row['order_type'] ?? ''));
             }
@@ -834,33 +912,31 @@ class SalesOrderFulfillmentController extends Controller
         $prepaid = [];
         $done = [];
         $openCount = 0;
+        $labelCandidates = [];
         foreach ($byOrder as $row) {
             $row['sku'] = implode(', ', $row['skus']);
             $row['display_title'] = implode(' · ', $row['titles']);
             unset($row['skus'], $row['titles'], $row['shipping_city'], $row['item_price']);
-            if ($this->dobaStatusIsInTransit((string) ($row['status'] ?? ''))) {
-                continue;
-            }
-            if (! $row['is_prepaid'] && ! $row['warehouse_shipped']) {
-                continue;
-            }
-            if (! $row['warehouse_shipped']) {
-                $openCount++;
-            }
             if ($row['warehouse_shipped']) {
                 $done[] = $row;
                 continue;
             }
-            $prepaid[] = $row;
+            if (empty($row['is_prepaid']) || ! empty($row['seller_delivery'])) {
+                continue;
+            }
+            $labelCandidates[] = $row;
         }
 
-        $prepaid = $this->attachShipmentStatusToOrderRows($prepaid);
-        $prepaid = $this->fillMissingDobaPrepaidLabels($prepaid);
-        $prepaid = $this->fetchMissingDobaPrepaidLabels($prepaid);
-        $prepaid = array_values(array_filter(
-            $prepaid,
-            fn (array $row) => ! $this->dobaPrepaidRowHasMoved($row)
-        ));
+        $labelCandidates = $this->attachShipmentStatusToOrderRows($labelCandidates);
+        $labelCandidates = $this->fillMissingDobaPrepaidLabels($labelCandidates);
+        $labelCandidates = $this->fetchMissingDobaPrepaidLabels($labelCandidates);
+        foreach ($labelCandidates as $row) {
+            if (! empty($row['seller_delivery'])) {
+                continue;
+            }
+            $row['is_prepaid'] = true;
+            $prepaid[] = $row;
+        }
         $this->fulfillOpenDobaPrepaidOnShopify($prepaid);
         $openCount = count($prepaid) + count($nonPrepaid);
 
@@ -874,11 +950,51 @@ class SalesOrderFulfillmentController extends Controller
 
     protected function dobaLineIsPrepaid(object $line): bool
     {
-        if ($this->dobaOrderTypeIsPrepaid((string) ($line->order_type ?? ''))) {
+        $tagKind = $this->dobaShopifyTagKind($line->order_json ?? null);
+        if ($tagKind === 'seller') {
+            return false;
+        }
+        if ($tagKind === 'prepaid') {
+            return true;
+        }
+        $type = strtolower(trim((string) ($line->order_type ?? '')));
+        if (str_contains($type, 'seller') && str_contains($type, 'deliver')) {
+            return false;
+        }
+        if ($this->dobaOrderTypeIsPrepaid($type)) {
             return true;
         }
 
         return $this->extractDobaPrepaidLabelUrl($line->order_json ?? null) !== null;
+    }
+
+    /**
+     * Shopify tag on a stored Doba row: prepaid label, or seller delivery.
+     */
+    protected function dobaShopifyTagKind(mixed $orderJson): ?string
+    {
+        if (is_string($orderJson)) {
+            $decoded = json_decode($orderJson, true);
+            $orderJson = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($orderJson)) {
+            return null;
+        }
+        $tags = strtolower(trim((string) ($orderJson['tags'] ?? '')));
+        if ($tags === '' && isset($orderJson['order']) && is_array($orderJson['order'])) {
+            $tags = strtolower(trim((string) ($orderJson['order']['tags'] ?? '')));
+        }
+        if ($tags === '') {
+            return null;
+        }
+        if (preg_match('/prepaid[\s\-]*label/', $tags) === 1) {
+            return 'prepaid';
+        }
+        if (preg_match('/seller[\s\-]*delivery/', $tags) === 1) {
+            return 'seller';
+        }
+
+        return null;
     }
 
     /**
@@ -905,6 +1021,13 @@ class SalesOrderFulfillmentController extends Controller
         try {
             app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class)
                 ->linkRecentUnfulfilledDobaOrders();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            app(\App\Services\MarketplaceManager\DobaOrderPushService::class)
+                ->backfillMissingShopifyTypeTags(15);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -2025,13 +2148,13 @@ class SalesOrderFulfillmentController extends Controller
                             : null;
                     }
                 } else {
-                    $tracking = $this->extractTrackingNumber($slug, $n['raw_payload'] ?? null);
-                    if ($tracking === null || $tracking === '') {
-                        $tracking = isset($n['tracking_number']) ? trim((string) $n['tracking_number']) ?: null : null;
-                    }
-                    $company = isset($n['tracking_company']) && trim((string) $n['tracking_company']) !== ''
-                        ? trim((string) $n['tracking_company'])
-                        : $this->extractCarrierFromPayload($n['raw_payload'] ?? null);
+                $tracking = $this->extractTrackingNumber($slug, $n['raw_payload'] ?? null);
+                if ($tracking === null || $tracking === '') {
+                    $tracking = isset($n['tracking_number']) ? trim((string) $n['tracking_number']) ?: null : null;
+                }
+                $company = isset($n['tracking_company']) && trim((string) $n['tracking_company']) !== ''
+                    ? trim((string) $n['tracking_company'])
+                    : $this->extractCarrierFromPayload($n['raw_payload'] ?? null);
                 }
                 // Carrier is decided from the tracking number after channel-specific fields below.
                 $apiOrderId = trim((string) ($n['order_id'] ?? ''));
@@ -3404,7 +3527,7 @@ class SalesOrderFulfillmentController extends Controller
     protected function rowDisplayedAsInTransit(array $row): bool
     {
         if ($this->rowDisplayedAsDelivered($row)) {
-            return false;
+        return false;
         }
         if (strtolower(trim((string) ($row['status_label'] ?? ''))) === 'in transit') {
             return true;
@@ -4016,15 +4139,15 @@ class SalesOrderFulfillmentController extends Controller
         $shopifyBySku = ShopifySku::mapByProductSkus(array_keys($skus));
 
         foreach ($rows as &$row) {
-            $row['INV'] = 0;
+                $row['INV'] = 0;
             foreach ($this->rowLookupSkus($row) as $sku) {
                 $shopify = $shopifyBySku->get($sku);
                 if (! $shopify) {
-                    continue;
-                }
+                continue;
+            }
                 $row['INV'] = (int) ($shopify->inv ?? 0);
                 if (empty($row['sku_image'])) {
-                    $row['sku_image'] = $this->resolveSkuImageUrl($shopify->image_src ?? null);
+                $row['sku_image'] = $this->resolveSkuImageUrl($shopify->image_src ?? null);
                 }
                 break;
             }
@@ -5123,7 +5246,7 @@ class SalesOrderFulfillmentController extends Controller
                 && ($found === null || trim((string) ($found['tracking'] ?? '')) === '')
                 && $secondsLeft > 2.0
             ) {
-                $found = $labels->lookupLabelTracking($refs, $local, $fast);
+            $found = $labels->lookupLabelTracking($refs, $local, $fast);
                 $secondsLeft = $deadline === null ? 30.0 : ($deadline - microtime(true));
             }
             if (
@@ -8296,8 +8419,8 @@ class SalesOrderFulfillmentController extends Controller
             $end = now($tz)->startOfDay();
             $byDate = [];
             if (Schema::hasTable('sales_order_fulfillment_daily_data')) {
-                $query = SalesOrderFulfillmentDailySummary::query()->orderBy('snapshot_date', 'asc');
-                if ($days > 0) {
+            $query = SalesOrderFulfillmentDailySummary::query()->orderBy('snapshot_date', 'asc');
+            if ($days > 0) {
                     $query->where('snapshot_date', '>=', $end->copy()->subDays(max(0, $days - 1))->toDateString());
                 }
                 foreach ($query->get() as $row) {

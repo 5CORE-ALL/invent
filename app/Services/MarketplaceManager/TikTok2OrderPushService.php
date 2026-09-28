@@ -153,6 +153,54 @@ class TikTok2OrderPushService
         return $shopifyOrderId;
     }
 
+    /**
+     * Link a TikTok 2 order to a Shopify order that already exists. Does not create one.
+     */
+    public function linkExistingShopifyOrder(Tiktok2Order $order): ?string
+    {
+        if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
+            return (string) $order->shopify_order_id;
+        }
+
+        $orderId = trim((string) $order->order_id);
+        if ($orderId === '') {
+            return null;
+        }
+
+        $localLinked = Tiktok2Order::query()
+            ->where('order_id', $orderId)
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->value('shopify_order_id');
+        if ($localLinked) {
+            $this->linkTikTok2OrderToShopify($orderId, (string) $localLinked);
+
+            return (string) $localLinked;
+        }
+
+        $localCatalog = $this->findLocalShopifyTikTokCopy($orderId, 'TT2-', 'tiktok2');
+        if ($localCatalog) {
+            $this->linkTikTok2OrderToShopify($orderId, $localCatalog);
+
+            return $localCatalog;
+        }
+
+        $existing = $this->findExistingShopifyOrderByRefs(
+            $this->shopifyConfig(),
+            $this->tikTokShopifyDuplicateRefs($orderId, 'TT2-'),
+            ['tiktok2-', 'tiktok-'],
+            ['tiktok2_order_id', 'tiktok_order_id'],
+            'TikTok2OrderPushService'
+        );
+        if (! empty($existing['id'])) {
+            $this->linkTikTok2OrderToShopify($orderId, (string) $existing['id']);
+
+            return (string) $existing['id'];
+        }
+
+        return null;
+    }
+
     protected function linkTikTok2OrderToShopify(string $orderId, string $shopifyOrderId): void
     {
         Tiktok2Order::query()
@@ -398,7 +446,7 @@ class TikTok2OrderPushService
             ],
             'financial_status' => 'paid',
             'fulfillment_status' => null,
-            'inventory_behaviour' => 'decrement_obeying_policy',
+            'inventory_behaviour' => 'decrement_ignoring_policy',
             'send_receipt' => false,
             'send_fulfillment_receipt' => false,
         ];
@@ -469,7 +517,7 @@ class TikTok2OrderPushService
 
         try {
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                $response = Http::withHeaders([
+                $response = Http::withoutVerifying()->withHeaders([
                     'X-Shopify-Access-Token' => $config['token'],
                     'Content-Type' => 'application/json',
                 ])->timeout(60)->post($url, $payload);

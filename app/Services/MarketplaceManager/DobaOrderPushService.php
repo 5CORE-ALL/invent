@@ -39,6 +39,8 @@ class DobaOrderPushService
         $this->lastDuplicateLinkMessage = null;
 
         if ($order->shopify_order_id) {
+            $this->ensureShopifyTypeTag($order, (string) $order->shopify_order_id);
+
             return (string) $order->shopify_order_id;
         }
 
@@ -88,6 +90,8 @@ class DobaOrderPushService
     {
         $order->refresh();
         if ($order->shopify_order_id) {
+            $this->ensureShopifyTypeTag($order, (string) $order->shopify_order_id);
+
             return (string) $order->shopify_order_id;
         }
 
@@ -97,6 +101,7 @@ class DobaOrderPushService
             ->where('shopify_order_id', '!=', '')
             ->value('shopify_order_id');
         if ($localLinked) {
+            $this->ensureShopifyTypeTag($order, (string) $localLinked);
             $this->linkDobaOrderToShopify($orderId, (string) $localLinked);
             $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
 
@@ -118,6 +123,7 @@ class DobaOrderPushService
             return null;
         }
         if (! empty($existing['id'])) {
+            $this->ensureShopifyTypeTag($order, (string) $existing['id']);
             $this->linkDobaOrderToShopify($orderId, (string) $existing['id']);
             $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$existing['id']
                 .' (matched '.$existing['matched_by'].'). No new order created.';
@@ -258,7 +264,7 @@ class DobaOrderPushService
 
         $settings = MarketplaceSyncSettings::getFor('doba');
         $tags = array_values(array_unique(array_merge(
-            ['Doba', 'doba-'.$orderId],
+            ['Doba', 'doba-'.$orderId, $this->shopifyFulfillmentTag($head)],
             is_array($settings['order']['shopify_order_tags'] ?? null) ? $settings['order']['shopify_order_tags'] : []
         )));
 
@@ -383,6 +389,145 @@ class DobaOrderPushService
         ];
 
         return $map[strtoupper($raw)] ?? '';
+    }
+
+    /**
+     * Same labels the Doba Shopify app writes: "Prepaid label" or "Seller-Delivery".
+     */
+    public function shopifyFulfillmentTag(DobaDailyData $order): string
+    {
+        $type = strtolower(trim((string) ($order->order_type ?? '')));
+        $json = $order->order_json;
+        if (is_string($json)) {
+            $decoded = json_decode($json, true);
+            $json = is_array($decoded) ? $decoded : [];
+        } elseif (! is_array($json)) {
+            $json = [];
+        }
+        if ($type === '' || $type === 'shopify') {
+            $type = strtolower(trim((string) ($json['deliveryMethod'] ?? $json['orderType'] ?? '')));
+        }
+        if (str_contains($type, 'seller') && str_contains($type, 'deliver')) {
+            return 'Seller-Delivery';
+        }
+        if (str_contains($type, 'prepaid')) {
+            return 'Prepaid label';
+        }
+        $labels = $json['buyerPrepaidLabelList'] ?? $json['shippingLabels'] ?? null;
+        if (is_array($labels) && $labels !== []) {
+            return 'Prepaid label';
+        }
+
+        return 'Seller-Delivery';
+    }
+
+    /**
+     * Add Prepaid label or Seller-Delivery when the order was created with only the Doba id tag.
+     */
+    public function ensureShopifyTypeTag(DobaDailyData $order, string $shopifyOrderId): bool
+    {
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($shopifyOrderId === '' || Cache::has('doba.shopify.type-tag.'.$shopifyOrderId)) {
+            return false;
+        }
+        $config = $this->shopifyConfig();
+        $store = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        if ($store === '' || $token === '') {
+            return false;
+        }
+
+        $tag = $this->shopifyFulfillmentTag($order);
+        $headers = [
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type' => 'application/json',
+        ];
+        $base = 'https://'.$store.'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json';
+        try {
+            $response = Http::withoutVerifying()->withHeaders($headers)->timeout(15)->get($base, [
+                'fields' => 'id,tags',
+            ]);
+        } catch (\Throwable $e) {
+            Log::info('DobaOrderPushService: could not read Shopify tags', [
+                'shopify_order_id' => $shopifyOrderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+        if (! $response->successful()) {
+            return false;
+        }
+
+        $existing = (string) ($response->json('order.tags') ?? '');
+        $lower = strtolower($existing);
+        if (str_contains($lower, 'prepaid label') || preg_match('/seller[\s\-]*delivery/', $lower) === 1) {
+            Cache::put('doba.shopify.type-tag.'.$shopifyOrderId, 1, now()->addDays(7));
+
+            return false;
+        }
+
+        $tags = trim($existing) === '' ? $tag : trim($existing).', '.$tag;
+        try {
+            $put = Http::withoutVerifying()->withHeaders($headers)->timeout(20)->put($base, [
+                'order' => [
+                    'id' => (int) $shopifyOrderId,
+                    'tags' => $tags,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::info('DobaOrderPushService: could not write Shopify type tag', [
+                'shopify_order_id' => $shopifyOrderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+        if (! $put->successful()) {
+            Log::info('DobaOrderPushService: Shopify type tag update failed', [
+                'shopify_order_id' => $shopifyOrderId,
+                'status' => $put->status(),
+            ]);
+
+            return false;
+        }
+        Cache::put('doba.shopify.type-tag.'.$shopifyOrderId, 1, now()->addDays(7));
+
+        return true;
+    }
+
+    /**
+     * Orders already on Shopify from the importer are missing the type tag.
+     */
+    public function backfillMissingShopifyTypeTags(int $limit = 20): int
+    {
+        $limit = max(1, min(40, $limit));
+        $deadline = microtime(true) + 18.0;
+        $rows = DobaDailyData::query()
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->where('order_time', '>=', now()->subDays(14))
+            ->orderByDesc('order_time')
+            ->limit(250)
+            ->get();
+
+        $seen = [];
+        $updated = 0;
+        foreach ($rows as $row) {
+            if (microtime(true) >= $deadline || count($seen) >= $limit) {
+                break;
+            }
+            $shopifyId = trim((string) $row->shopify_order_id);
+            if ($shopifyId === '' || isset($seen[$shopifyId])) {
+                continue;
+            }
+            $seen[$shopifyId] = true;
+            if ($this->ensureShopifyTypeTag($row, $shopifyId)) {
+                $updated++;
+            }
+        }
+
+        return $updated;
     }
 
     /**

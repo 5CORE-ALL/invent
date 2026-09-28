@@ -63,6 +63,8 @@ class FetchDobaDailyData extends Command
             if (\App\Models\MarketplaceSyncSettings::canAutoImportToShopify('doba')) {
                 $queued = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->dispatchImportsForNewOrders();
                 $this->info("Queued {$queued} Doba order(s) for Shopify.");
+                $tagged = app(\App\Services\MarketplaceManager\DobaOrderPushService::class)->backfillMissingShopifyTypeTags(30);
+                $this->info("Added the Prepaid label or Seller-Delivery tag on {$tagged} Shopify order(s).");
             }
         } catch (\Throwable $e) {
             $this->warn('Could not queue Doba Shopify imports: '.$e->getMessage());

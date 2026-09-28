@@ -4818,6 +4818,7 @@ class VeeqoShopifyFulfillmentService
             }
             $dobaNo = $this->dobaOrderNoFromShopifyOrder($order);
             $number = ltrim(trim((string) ($order['name'] ?? '')), '#');
+            $this->syncShopifyDobaOrderType($order, $dobaNo, $number, $shopifyId);
             $this->rememberShopifyPrepaidLabel($order);
             if ($dobaNo !== '' && DobaDailyData::query()->where('order_no', $dobaNo)->exists()) {
                 if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
@@ -5126,6 +5127,68 @@ GQL;
     }
 
     /**
+     * Shopify tags the two Doba kinds separately. "Prepaid label" already has
+     * a label and tracking. "Seller-Delivery" still needs a label purchased.
+     */
+    protected function shopifyDobaOrderType(array $order): ?string
+    {
+        $tags = strtolower((string) ($order['tags'] ?? ''));
+        if (preg_match('/prepaid[\s\-]*label/', $tags) === 1) {
+            return 'pickup with a prepaid label';
+        }
+        if (preg_match('/seller[\s\-]*delivery/', $tags) === 1) {
+            return 'seller delivery';
+        }
+
+        return null;
+    }
+
+    /**
+     * Correct a Shopify copy that was stored as prepaid. A Doba API row keeps
+     * the delivery method Doba sent.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    protected function syncShopifyDobaOrderType(array $order, string $dobaNo, string $number, string $shopifyId): void
+    {
+        if (! Schema::hasTable('doba_daily_data')) {
+            return;
+        }
+        $type = $this->shopifyDobaOrderType($order);
+        if ($type === null) {
+            return;
+        }
+
+        $query = DobaDailyData::query()->where(function ($q) use ($dobaNo, $number, $shopifyId) {
+            $matched = false;
+            if ($shopifyId !== '' && Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
+                $q->orWhere('shopify_order_id', $shopifyId);
+                $matched = true;
+            }
+            if ($number !== '') {
+                $q->orWhere('order_no', $number)->orWhere('platform_order_no', $number);
+                $matched = true;
+            }
+            if ($dobaNo !== '') {
+                $q->orWhere('order_no', $dobaNo);
+                $matched = true;
+            }
+            if (! $matched) {
+                $q->whereRaw('1 = 0');
+            }
+        });
+        if ($type === 'seller delivery') {
+            $query->where(function ($q) {
+                $q->where('platform_name', 'shopify')
+                    ->orWhere('order_json', 'like', '%"source":"shopify"%');
+            });
+        }
+        $query->where(function ($q) use ($type) {
+            $q->whereNull('order_type')->orWhere('order_type', '<>', $type);
+        })->update(['order_type' => $type]);
+    }
+
+    /**
      * Last resort when the Doba API has no row for this Shopify order.
      *
      * @param  array<string, mixed>  $order
@@ -5176,7 +5239,7 @@ GQL;
                 'platform_order_no' => substr(ltrim(trim((string) ($order['name'] ?? '')), '#'), 0, 100),
                 'order_time' => $orderTime,
                 'order_status' => $this->dobaStatusFromShopifyOrder($order),
-                'order_type' => 'pickup with a prepaid label',
+                'order_type' => $this->shopifyDobaOrderType($order) ?? 'shopify',
                 'period' => 'l30',
                 'item_no' => $itemNo,
                 'sku' => substr(trim((string) ($line['sku'] ?? '')), 0, 100) ?: null,
@@ -5282,12 +5345,7 @@ GQL;
             $row = $pack['row'];
             if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')
                 && DobaDailyData::query()->where('shopify_order_id', $shopifyId)->exists()) {
-                DobaDailyData::query()
-                    ->where('shopify_order_id', $shopifyId)
-                    ->where(function ($q) {
-                        $q->whereNull('order_type')->orWhere('order_type', '')->orWhere('order_type', 'shopify');
-                    })
-                    ->update(['order_type' => 'pickup with a prepaid label']);
+                $this->syncShopifyDobaOrderType($order, '', $number, $shopifyId);
                 continue;
             }
             $orderNo = substr('S'.$shopifyId, 0, 50);

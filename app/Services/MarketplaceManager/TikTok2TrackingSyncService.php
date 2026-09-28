@@ -19,6 +19,7 @@ class TikTok2TrackingSyncService
      */
     public const TRACKING_ELIGIBLE_STATUSES = [
         'AWAITING_SHIPMENT',
+        'ON_HOLD',
         'PARTIALLY_SHIPPING',
         'AWAITING_COLLECTION',
         'IN_TRANSIT',
