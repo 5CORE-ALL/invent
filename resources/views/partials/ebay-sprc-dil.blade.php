@@ -2459,6 +2459,13 @@
             }
             ebayDgApplyBusy = true;
             try {
+                // Listing push uses the price already on the blue badge. Start it
+                // before the S PRC save, which otherwise blocks the bar on Ready.
+                if (allowPush && typeof ebayDgIsEbay123 === 'function' && ebayDgIsEbay123()
+                    && typeof window.chPromoTryEbayBluePush === 'function') {
+                    window._chPromoServerBluePushStarted = false;
+                    window.chPromoTryEbayBluePush();
+                }
                 if (typeof window.chPromoClearThenApplyAllRules === 'function') {
                     return await window.chPromoClearThenApplyAllRules({ persist: persist, push: allowPush });
                 }
@@ -2511,9 +2518,19 @@
                 const fillJobs = jobs.filter(function(j) { return j.needsFill; });
                 async function ebayPersistSpriceUpdates(updates) {
                     if (!updates.length) return;
-                    if (typeof saveChannelSpriceBatch === 'function'
-                        && typeof chPromoCfg !== 'undefined' && chPromoCfg.saveSpriceBatchUrl) {
-                        await saveChannelSpriceBatch(updates, { skip_push: true, queue_push: false });
+                    if (typeof chPromoCfg !== 'undefined' && chPromoCfg.saveSpriceBatchUrl) {
+                        const size = 200;
+                        for (let i = 0; i < updates.length; i += size) {
+                            const chunk = updates.slice(i, i + size);
+                            await $.ajax({
+                                url: chPromoCfg.saveSpriceBatchUrl,
+                                method: 'POST',
+                                contentType: 'application/json; charset=UTF-8',
+                                processData: false,
+                                headers: { 'X-CSRF-TOKEN': ebayDgCsrf(), 'Accept': 'application/json' },
+                                data: JSON.stringify({ updates: chunk, _token: ebayDgCsrf(), skip_push: 1 }),
+                            });
+                        }
                         return;
                     }
                     if (typeof saveChannelSprice !== 'function') return;
@@ -2532,7 +2549,8 @@
                     }
                 }
                 const blocked = typeof table !== 'undefined' && table && typeof table.blockRedraw === 'function';
-                if (fillJobs.length) {
+                const ebayListingSave = typeof ebayDgIsEbay123 === 'function' && ebayDgIsEbay123();
+                if (fillJobs.length && !ebayListingSave) {
                     if (blocked) table.blockRedraw();
                     try {
                         fillJobs.forEach(function(job) {

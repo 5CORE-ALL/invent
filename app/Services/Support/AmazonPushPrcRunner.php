@@ -159,19 +159,27 @@ class AmazonPushPrcRunner
                         ]);
                     }
 
+                    $offer = self::amazonOfferPayload($task);
                     $applyData = [
                         'sku' => $sku,
-                        'price' => $task['std'],
+                        'price' => $offer['price'],
                         'asin' => $task['asin'] ?? null,
                         'push_shopify' => false,
                         'update_amazon_min_price' => true,
-                        'min_price' => $task['min'] ?? null,
-                        'max_price' => $task['max'] ?? null,
-                        'business_price' => $task['business'] ?? null,
+                        'min_price' => $offer['min_price'],
+                        'max_price' => $offer['max_price'],
+                        'business_price' => $offer['business_price'],
                     ];
-                    if (isset($task['sale']) && $task['sale'] !== null) {
-                        $applyData['sale_price'] = $task['sale'];
+                    if (isset($offer['sale_price'])) {
+                        $applyData['sale_price'] = $offer['sale_price'];
                     }
+                    $logger->info('Amazon Push Prc: offer', [
+                        'sku' => $sku,
+                        'std' => $task['std'] ?? null,
+                        'effective' => $task['effective'] ?? null,
+                        'your_price' => $offer['price'],
+                        'sale_price' => $offer['sale_price'] ?? null,
+                    ]);
                     $applyReq = Request::create('/apply-amazon-price', 'POST', $applyData);
                     $applyRes = $controller->applyAmazonPrice($applyReq);
                     $applyPayload = method_exists($applyRes, 'getData') ? $applyRes->getData(true) : [];
@@ -258,6 +266,50 @@ class AmazonPushPrcRunner
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Amazon Your Price cannot sit below Sale. When S PRC is above Std, raise Your Price to S PRC.
+     * When S PRC is below Std, keep Your = Std and send Sale = S PRC.
+     *
+     * @param  array<string, mixed>  $task
+     * @return array{price: float, max_price: float, min_price: float, business_price: float, sale_price?: float}
+     */
+    public static function amazonOfferPayload(array $task): array
+    {
+        $std = isset($task['std']) && is_numeric($task['std']) ? round((float) $task['std'], 2) : 0.0;
+        $target = isset($task['effective']) && is_numeric($task['effective'])
+            ? round((float) $task['effective'], 2)
+            : 0.0;
+        if ($target <= 0 && isset($task['sale']) && is_numeric($task['sale'])) {
+            $target = round((float) $task['sale'], 2);
+        }
+        if ($target <= 0) {
+            $target = $std;
+        }
+
+        $ourPrice = $std > 0 ? $std : $target;
+        if ($target > $ourPrice) {
+            $ourPrice = $target;
+        }
+
+        $max = isset($task['max']) && is_numeric($task['max']) ? round((float) $task['max'], 2) : 0.0;
+        if ($max < $ourPrice) {
+            $max = round($ourPrice * 1.10, 2);
+        }
+
+        $offerPrice = $target > 0 ? $target : $ourPrice;
+        $payload = [
+            'price' => $ourPrice,
+            'max_price' => $max,
+            'min_price' => $offerPrice,
+            'business_price' => $offerPrice,
+        ];
+        if ($offerPrice > 0 && $offerPrice < $ourPrice) {
+            $payload['sale_price'] = $offerPrice;
+        }
+
+        return $payload;
     }
 
     /**

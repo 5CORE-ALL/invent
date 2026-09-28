@@ -86,4 +86,32 @@ class TemuAdsParentRowsTest extends TestCase
         $this->assertSame('/img/parent.jpg', $parent['image_path']);
         $this->assertSame(1, $rows->where('is_parent', true)->count());
     }
+
+    public function test_create_reject_is_cleared_when_the_ad_already_exists(): void
+    {
+        $rows = TemuAdsController::blankCreateRejectsForExistingAds([
+            [
+                'goods_id' => '602475553743331',
+                'sku' => 'CONGO 3 BLK',
+                'ad_status' => 'Active',
+                'ad_create_reject' => 'The value entered for the daily budget must be between 11 and 999,999',
+            ],
+            [
+                'goods_id' => '602475553743331',
+                'sku' => 'CONGO 3 BLU',
+                'ad_status' => 'No ad',
+                'ad_create_reject' => 'The value entered for the daily budget must be between 11 and 999,999',
+            ],
+            [
+                'goods_id' => '111',
+                'sku' => 'STILL MISSING',
+                'ad_status' => 'No ad',
+                'ad_create_reject' => 'listing not eligible',
+            ],
+        ]);
+
+        $this->assertSame('', $rows->firstWhere('sku', 'CONGO 3 BLK')['ad_create_reject']);
+        $this->assertSame('', $rows->firstWhere('sku', 'CONGO 3 BLU')['ad_create_reject']);
+        $this->assertSame('listing not eligible', $rows->firstWhere('sku', 'STILL MISSING')['ad_create_reject']);
+    }
 }

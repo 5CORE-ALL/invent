@@ -1495,7 +1495,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('amazon:ads-live-bid-bgt-sync --limit=200')
+        $schedule->command('amazon:ads-live-bid-bgt-sync --limit=400')
             ->dailyAt('21:50')
             ->timezone('Asia/Kolkata')
             ->name('amazon-ads-live-bid-bgt-sync')

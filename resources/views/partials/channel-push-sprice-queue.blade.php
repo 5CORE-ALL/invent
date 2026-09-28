@@ -281,7 +281,7 @@
                 if (active) {
                     msg = total
                         ? (done + ' / ' + total + ' · ' + ok + ' ok' + (fail ? (' · ' + fail + ' failed') : ''))
-                        : 'Starting…';
+                        : (opts.msg || 'Starting…');
                 } else if (finished) {
                     msg = (opts.msg && String(opts.msg).trim())
                         ? String(opts.msg)
@@ -639,7 +639,9 @@
                         fail: Number(resp.fail_count) || 0,
                         pct: Number(resp.pct) || 0,
                         title: active ? 'S PRC queue' : ((Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'S PRC failed' : 'S PRC pushed'),
-                        msg: active ? '' : (resp.message || ''),
+                        msg: active
+                            ? ((Number(resp.total) > 0) ? '' : (resp.message || 'Collecting S PRC…'))
+                            : (resp.message || ''),
                     });
                     if (!active) {
                         stopChannelPushSpricePoll();
@@ -688,9 +690,11 @@
                 return $.ajax({
                     url: CH_PUSH_SPRICE_URL,
                     method: 'POST',
+                    contentType: 'application/json; charset=UTF-8',
+                    processData: false,
                     headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
-                    data: payload,
-                    timeout: 60000,
+                    data: JSON.stringify(payload),
+                    timeout: 120000,
                 }).done(function(resp) {
                     chPushSpriceExpecting = false;
                     startChannelPushSpricePoll();
@@ -1254,13 +1258,10 @@
                 opts = opts || {};
                 // Catalog catch-up is opt-in ({ catalog: true }). Only saved S PRC ≠ live Price.
                 if (!opts.catalog) return;
-                if (opts.catalog && (CH_PUSH_SPRICE_CHANNEL === 'ebay1' || CH_PUSH_SPRICE_CHANNEL === 'ebay2' || CH_PUSH_SPRICE_CHANNEL === 'ebay3')) {
-                    if (typeof global.chPromoTryEbayBluePush === 'function') {
-                        global.chPromoTryEbayBluePush();
-                        return;
-                    }
-                }
-                if (opts.catalog && typeof global.chPromoStartServerBluePush === 'function' && global.chPromoStartServerBluePush()) {
+                const ebayBadgePush = CH_PUSH_SPRICE_CHANNEL === 'ebay1'
+                    || CH_PUSH_SPRICE_CHANNEL === 'ebay2'
+                    || CH_PUSH_SPRICE_CHANNEL === 'ebay3';
+                if (opts.catalog && !ebayBadgePush && typeof global.chPromoStartServerBluePush === 'function' && global.chPromoStartServerBluePush()) {
                     return;
                 }
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
@@ -1330,16 +1331,16 @@
                     }
                     return;
                 }
-                if (chPushSpriceUsesClientPump()) {
-                    enqueueChannelPushSpriceClient(jobs, {
-                        replacePending: CH_PUSH_SPRICE_CHANNEL === 'ebay1'
-                            || CH_PUSH_SPRICE_CHANNEL === 'ebay2'
-                            || CH_PUSH_SPRICE_CHANNEL === 'ebay3',
-                    });
+                // eBay blue badges must go to the server worker. The browser pump
+                // only keeps going while this tab stays open, and the server
+                // recompute was queueing ~60 SKUs while the badge showed 500+.
+                if (chPushSpriceUsesClientPump() && !ebayBadgePush) {
+                    enqueueChannelPushSpriceClient(jobs, { replacePending: false });
                 } else {
                     enqueueChannelPushSprice(jobs, {
                         silent: !!opts.silent,
-                        replacePending: CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c'
+                        replacePending: ebayBadgePush
+                            || CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c'
                             || CH_PUSH_SPRICE_CHANNEL === 'shopify_b2b',
                     });
                 }

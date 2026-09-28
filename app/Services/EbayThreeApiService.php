@@ -212,23 +212,23 @@ class EbayThreeApiService
      */
     private function parseEbayError(array $error): string
     {
-        $long   = $error['LongMessage'] ?? null;
-        $short  = $error['ShortMessage'] ?? null;
-        $code   = $error['ErrorCode'] ?? null;
+        $long   = \App\Support\EbayApiText::string($error['LongMessage'] ?? '');
+        $short  = \App\Support\EbayApiText::string($error['ShortMessage'] ?? '');
+        $code   = \App\Support\EbayApiText::string($error['ErrorCode'] ?? '');
         $params = $error['ErrorParameters'] ?? [];
         $parts  = [];
-        if ($long && $long !== $short) {
+        if ($long !== '' && $long !== $short) {
             $parts[] = $long;
-        } elseif ($short) {
+        } elseif ($short !== '') {
             $parts[] = $short;
         }
-        if ($code) {
-            $parts[] = "(eBay code: {$code})";
+        if ($code !== '') {
+            $parts[] = '(eBay code: '.$code.')';
         }
         if (is_array($params)) {
             foreach ($params as $p) {
                 if (is_array($p) && isset($p['Value'])) {
-                    $val = is_string($p['Value']) ? strip_tags($p['Value']) : json_encode($p['Value']);
+                    $val = strip_tags(\App\Support\EbayApiText::string($p['Value']));
                     if (trim($val) !== '') {
                         $parts[] = $val;
                     }
@@ -582,20 +582,25 @@ class EbayThreeApiService
             ]);
             
             foreach ($errors as $error) {
-                $errorCode = is_array($error) ? ($error['ErrorCode'] ?? '') : '';
-                $errorMsg = is_array($error) ? ($error['LongMessage'] ?? $error['ShortMessage'] ?? '') : '';
+                $errorCode = is_array($error) ? \App\Support\EbayApiText::string($error['ErrorCode'] ?? '') : '';
+                $errorMsg = is_array($error)
+                    ? \App\Support\EbayApiText::string($error['LongMessage'] ?? $error['ShortMessage'] ?? '')
+                    : \App\Support\EbayApiText::string($error);
                 $errorParams = is_array($error) ? ($error['ErrorParameters'] ?? []) : [];
                 
-                // Extract error parameter messages
+                // Extract error parameter messages. A repeated/empty Value tag is a list, not a string.
                 $paramMessages = [];
                 if (is_array($errorParams)) {
                     foreach ($errorParams as $param) {
                         if (is_array($param) && isset($param['Value'])) {
-                            $paramMessages[] = strip_tags($param['Value']);
+                            $paramText = strip_tags(\App\Support\EbayApiText::string($param['Value']));
+                            if ($paramText !== '') {
+                                $paramMessages[] = $paramText;
+                            }
                         }
                     }
                 }
-                $fullErrorText = $errorMsg . ' ' . implode(' ', $paramMessages);
+                $fullErrorText = trim($errorMsg.' '.implode(' ', $paramMessages));
                 
                 // Log individual error details
                 \Illuminate\Support\Facades\Log::error('eBay3 Error Details', [
@@ -642,6 +647,33 @@ class EbayThreeApiService
                     'rlogId' => $rlogId
                 ]);
                 return $this->reviseItemWithFullDetails($itemId, $price, $quantity, $itemDetails['Item']);
+            }
+
+            // "Model is not allowed as a variation specific" (21920061). ReviseFixedPriceItem
+            // re-checks every variation name. ReviseInventoryStatus changes StartPrice only.
+            if ($this->ebayErrorsBlockVariationRevise($errors)) {
+                Log::info('eBay3 price revise blocked by variation specifics — trying price-only inventory update', [
+                    'itemId' => $itemId,
+                    'sku' => $variationSku ?: $skuTrim,
+                    'price' => $price,
+                    'rlogId' => $rlogId,
+                ]);
+                $inventory = $this->reviseInventoryPriceOnly(
+                    (string) $itemId,
+                    (float) $price,
+                    $variationSku ?: $skuTrim
+                );
+                if (! empty($inventory['success'])) {
+                    return $inventory;
+                }
+
+                return [
+                    'success' => false,
+                    'message' => (string) ($inventory['message'] ?? 'Model is not allowed as a variation specific.'),
+                    'errors' => $errors,
+                    'data' => $responseArray,
+                    'rlogId' => $rlogId,
+                ];
             }
 
             // Variation revise can fail on true single-SKU listings — retry item-level once.
@@ -1624,6 +1656,111 @@ class EbayThreeApiService
         return trim((string) $appId) !== ''
             && trim((string) $certId) !== ''
             && trim((string) $refresh) !== '';
+    }
+
+    /**
+     * eBay 21920061: an existing variation name (often "Model") is no longer allowed.
+     * ReviseFixedPriceItem re-validates it even when the request only sends SKU + StartPrice.
+     *
+     * @param  list<mixed>  $errors
+     */
+    private function ebayErrorsBlockVariationRevise(array $errors): bool
+    {
+        $blob = strtolower(json_encode($errors) ?: '');
+
+        return str_contains($blob, '21920061')
+            || str_contains($blob, 'not allowed as a variation specific');
+    }
+
+    /**
+     * Price-only update. Quantity is omitted so stock is not changed.
+     *
+     * @return array{success: bool, message: string, data?: array, raw?: string}
+     */
+    private function reviseInventoryPriceOnly(string $itemId, float $price, string $sku): array
+    {
+        $itemId = trim($itemId);
+        $sku = trim($sku);
+        if ($itemId === '' || $sku === '' || ! ($price > 0)) {
+            return ['success' => false, 'message' => 'ItemID, SKU, and price are required.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $status = $xml->addChild('InventoryStatus');
+            $status->addChild('ItemID', $itemId);
+            $status->addChild('SKU', $sku);
+            $status->addChild('StartPrice', number_format($price, 2, '.', ''));
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'ReviseInventoryStatus',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = Http::timeout(60)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            if ($ack === 'Success' || $ack === 'Warning') {
+                Log::info('eBay3 price updated via ReviseInventoryStatus', [
+                    'itemId' => $itemId,
+                    'sku' => $sku,
+                    'price' => $price,
+                    'ack' => $ack,
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Price updated.',
+                    'data' => $data,
+                ];
+            }
+
+            $errors = $data['Errors'] ?? [];
+            $errors = is_array($errors) ? $errors : [$errors];
+            $messages = [];
+            foreach ($errors as $err) {
+                $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => \App\Support\EbayApiText::string($err)]);
+            }
+            $msg = implode('; ', array_filter($messages)) ?: 'ReviseInventoryStatus failed.';
+            Log::warning('eBay3 price-only ReviseInventoryStatus failed', [
+                'itemId' => $itemId,
+                'sku' => $sku,
+                'price' => $price,
+                'ack' => $ack,
+                'message' => $msg,
+            ]);
+
+            return ['success' => false, 'message' => $msg, 'errors' => $errors, 'data' => $data];
+        } catch (\Throwable $e) {
+            Log::warning('eBay3 price-only ReviseInventoryStatus exception', [
+                'itemId' => $itemId,
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 
     /**

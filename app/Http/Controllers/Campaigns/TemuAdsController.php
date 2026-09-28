@@ -180,6 +180,10 @@ class TemuAdsController extends Controller
             ];
         })->values();
 
+        if ($hasCreateReject) {
+            $this->clearStoredCreateRejectsForExistingAds($rows);
+        }
+        $rows = self::blankCreateRejectsForExistingAds($rows);
         $rows = $this->fillMissingParentsOnAdsRows($rows);
         $rows = $this->appendParentRows($rows);
 
@@ -1401,6 +1405,71 @@ class TemuAdsController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * A create-ad failure is only an alert while the goods still has no ad.
+     * Active / Inactive / Paused means the ad already exists.
+     *
+     * @param  iterable<int, array<string, mixed>>  $rows
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    public static function blankCreateRejectsForExistingAds($rows)
+    {
+        $rows = collect($rows);
+        $goodsWithAd = [];
+        foreach ($rows as $row) {
+            $gid = (string) ($row['goods_id'] ?? '');
+            if ($gid !== '' && self::adAlreadyCreated((string) ($row['ad_status'] ?? ''))) {
+                $goodsWithAd[$gid] = true;
+            }
+        }
+        if ($goodsWithAd === []) {
+            return $rows->values();
+        }
+
+        return $rows->map(function (array $row) use ($goodsWithAd): array {
+            $gid = (string) ($row['goods_id'] ?? '');
+            if ($gid !== '' && isset($goodsWithAd[$gid])) {
+                $row['ad_create_reject'] = '';
+            }
+
+            return $row;
+        })->values();
+    }
+
+    public static function adAlreadyCreated(string $status): bool
+    {
+        return in_array($status, ['Active', 'Inactive', 'Paused'], true);
+    }
+
+    /**
+     * Drop leftover create-fail text once Temu already has the ad.
+     *
+     * @param  iterable<int, array<string, mixed>>  $rows
+     */
+    private function clearStoredCreateRejectsForExistingAds($rows): void
+    {
+        $goodsIds = [];
+        foreach ($rows as $row) {
+            $gid = (string) ($row['goods_id'] ?? '');
+            $reject = trim((string) ($row['ad_create_reject'] ?? ''));
+            if ($gid !== '' && $reject !== '' && self::adAlreadyCreated((string) ($row['ad_status'] ?? ''))) {
+                $goodsIds[$gid] = true;
+            }
+        }
+        if ($goodsIds === [] || ! $this->reportHasColumn('ad_create_reject')) {
+            return;
+        }
+
+        TemuAdsApiReport::query()
+            ->whereIn('goods_id', array_keys($goodsIds))
+            ->whereNotNull('ad_create_reject')
+            ->where('ad_create_reject', '!=', '')
+            ->update([
+                'ad_create_reject' => null,
+                'ad_create_reject_at' => null,
+            ]);
     }
 
     /**
