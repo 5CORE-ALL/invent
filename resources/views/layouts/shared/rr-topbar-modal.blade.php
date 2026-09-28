@@ -83,13 +83,18 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title mb-0" id="clrrTopbarModalTitle">
-                        <i class="ri-checkbox-multiple-fill me-2"></i>My CL R&amp;R
-                        <span class="rr-topbar-score ms-2" id="clrrTopbarScore"></span>
+                        <i class="ri-checkbox-multiple-fill me-2"></i>MY Checklist R&amp;R
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body" id="clrrTopbarBody">
                     <div class="rr-topbar-empty">Loading CL R&amp;R…</div>
+                </div>
+                <div class="modal-footer d-none" id="clrrTopbarFooter">
+                    <div class="w-100">
+                        <div id="clrrTopbarSubmitError" class="text-danger small mb-2 d-none">Partial submission is not allowed.</div>
+                        <button type="button" class="btn btn-primary w-100" id="clrrTopbarSubmitBtn">Submit</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -102,7 +107,7 @@
             const userId = @json((int) auth()->id());
             const rrUrl = @json(route('tasks.designationRR.get'));
             const clrrUrl = @json(route('tasks.designationRR.checklist.get'));
-            const progressUrl = @json(route('tasks.designationRR.checklist.progress'));
+            const submitUrl = @json(route('tasks.designationRR.checklist.submit'));
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
             function escapeHtml(value) {
@@ -188,6 +193,26 @@
                 const clrrModal = new bootstrap.Modal(clrrModalEl);
                 let clrrItems = [];
 
+                const clrrFooter = document.getElementById('clrrTopbarFooter');
+                const clrrSubmitError = document.getElementById('clrrTopbarSubmitError');
+                const clrrSubmitBtn = document.getElementById('clrrTopbarSubmitBtn');
+
+                function setClrrFooter(visible) {
+                    if (!clrrFooter) return;
+                    clrrFooter.classList.toggle('d-none', !visible);
+                    if (clrrSubmitError) clrrSubmitError.classList.add('d-none');
+                }
+
+                function clrrCheckpointInputs() {
+                    return clrrBody.querySelectorAll('input[type="checkbox"][data-checkpoint-id]');
+                }
+
+                function clrrAllChecked() {
+                    const boxes = clrrCheckpointInputs();
+                    if (!boxes.length) return false;
+                    return Array.prototype.every.call(boxes, function (box) { return box.checked; });
+                }
+
                 function renderClrr(data) {
                     clrrItems = Array.isArray(data.items) ? data.items : [];
                     const overall = data.overall || {};
@@ -196,6 +221,7 @@
                     }, 0);
                     paintClrrButton(count, overall.percent || 0);
                     if (data.needs_rr_seed || !clrrItems.length) {
+                        setClrrFooter(false);
                         clrrBody.innerHTML = emptyHtml('No CL R&R data for your designation yet.');
                         return;
                     }
@@ -208,16 +234,16 @@
                                 + (cp.description ? '<div class="rr-topbar-card__desc">' + escapeHtml(cp.description) + '</div>' : '')
                                 + '</span></label>';
                         }).join('');
-                        const score = item.score && item.score.percent != null ? item.score.percent + '%' : '';
                         return '<article class="rr-topbar-card">'
-                            + '<div class="d-flex justify-content-between gap-2"><div class="rr-topbar-card__title">' + escapeHtml(item.title) + '</div>'
-                            + '<div class="rr-topbar-score">' + escapeHtml(score) + '</div></div>'
+                            + '<div class="rr-topbar-card__title">' + escapeHtml(item.title) + '</div>'
                             + rows
                             + '</article>';
                     }).join('');
+                    setClrrFooter(clrrCheckpointInputs().length > 0);
                 }
 
                 clrrBtn.addEventListener('click', function () {
+                    setClrrFooter(false);
                     clrrBody.innerHTML = '<div class="rr-topbar-empty">Loading CL R&R…</div>';
                     clrrModal.show();
                     const url = clrrUrl + (clrrUrl.indexOf('?') >= 0 ? '&' : '?') + 'user_id=' + encodeURIComponent(userId);
@@ -235,39 +261,69 @@
                 clrrBody.addEventListener('change', function (event) {
                     const input = event.target;
                     if (!input || !input.matches('input[type="checkbox"][data-checkpoint-id]')) return;
-                    const checkpointId = parseInt(input.getAttribute('data-checkpoint-id'), 10);
-                    const checked = !!input.checked;
-                    input.disabled = true;
-                    fetch(progressUrl, {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: {
-                            Accept: 'application/json',
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrf,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: JSON.stringify({
-                            user_id: userId,
-                            designation_rr_checkpoint_id: checkpointId,
-                            checked: checked
-                        })
-                    })
-                        .then(function (response) {
-                            if (!response.ok) throw new Error('Could not save');
-                            return response.json();
-                        })
-                        .then(function () {
-                            const url = clrrUrl + (clrrUrl.indexOf('?') >= 0 ? '&' : '?') + 'user_id=' + encodeURIComponent(userId);
-                            return fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-                                .then(function (response) { return response.json(); })
-                                .then(renderClrr);
-                        })
-                        .catch(function () {
-                            input.checked = !checked;
-                            input.disabled = false;
-                        });
+                    const label = input.closest('.rr-topbar-check');
+                    if (label) label.classList.toggle('is-checked', input.checked);
+                    if (clrrAllChecked() && clrrSubmitError) clrrSubmitError.classList.add('d-none');
                 });
+
+                if (clrrSubmitBtn) {
+                    clrrSubmitBtn.addEventListener('click', function () {
+                        const boxes = clrrCheckpointInputs();
+                        if (!clrrAllChecked()) {
+                            if (clrrSubmitError) {
+                                clrrSubmitError.textContent = 'Partial submission is not allowed.';
+                                clrrSubmitError.classList.remove('d-none');
+                            }
+                            return;
+                        }
+                        const ids = Array.prototype.map.call(boxes, function (box) {
+                            return parseInt(box.getAttribute('data-checkpoint-id'), 10);
+                        });
+                        clrrSubmitBtn.disabled = true;
+                        if (clrrSubmitError) clrrSubmitError.classList.add('d-none');
+                        fetch(submitUrl, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: {
+                                Accept: 'application/json',
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrf,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({
+                                user_id: userId,
+                                checkpoint_ids: ids
+                            })
+                        })
+                            .then(function (response) {
+                                return response.json().then(function (data) {
+                                    if (!response.ok) {
+                                        const error = new Error((data && data.message) || 'Could not submit');
+                                        error.partial = response.status === 422;
+                                        throw error;
+                                    }
+                                    return data;
+                                });
+                            })
+                            .then(function () {
+                                const url = clrrUrl + (clrrUrl.indexOf('?') >= 0 ? '&' : '?') + 'user_id=' + encodeURIComponent(userId);
+                                return fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                                    .then(function (response) { return response.json(); })
+                                    .then(renderClrr);
+                            })
+                            .catch(function (error) {
+                                if (clrrSubmitError) {
+                                    clrrSubmitError.textContent = error && error.partial
+                                        ? 'Partial submission is not allowed.'
+                                        : 'Could not submit your checklist.';
+                                    clrrSubmitError.classList.remove('d-none');
+                                }
+                            })
+                            .then(function () {
+                                clrrSubmitBtn.disabled = false;
+                            });
+                    });
+                }
             }
         });
     </script>

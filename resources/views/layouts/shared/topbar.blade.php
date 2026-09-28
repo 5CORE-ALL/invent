@@ -425,6 +425,22 @@
                 color: #1d4ed8;
                 box-shadow: none;
             }
+            #clrrTopbarOpenBtn.topbar-rr-btn {
+                width: 126px;
+                height: var(--tz-topbar-height, 70px);
+                border-radius: 0;
+                margin-right: 0.35rem;
+            }
+            #clrrTopbarOpenBtn.topbar-rr-btn:hover {
+                transform: none;
+            }
+            #clrrTopbarOpenBtn.topbar-rr-btn i {
+                font-size: 1.45rem;
+            }
+            #clrrTopbarOpenBtn .topbar-rr-btn__count {
+                top: 6px;
+                right: 6px;
+            }
 
         </style>
 

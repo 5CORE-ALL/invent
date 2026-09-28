@@ -7519,6 +7519,74 @@ class TaskController extends Controller
     }
 
     /**
+     * Save the signed-in user's CL R&R only when every checkpoint is included.
+     * A subset is rejected so a partial checklist cannot be stored.
+     */
+    public function submitUserChecklist(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'checkpoint_ids' => 'required|array|min:1',
+            'checkpoint_ids.*' => 'integer',
+        ]);
+
+        $target = User::find($validated['user_id']);
+        if (! $target || ! $this->canManageRow(Auth::user(), $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to change CL R&R for this user.',
+            ], 403);
+        }
+
+        $designation = trim((string) ($target->designation ?? ''));
+        $requiredIds = $designation === ''
+            ? collect()
+            : DesignationRrCheckpoint::whereIn(
+                'designation_rr_item_id',
+                DesignationRrItem::forDesignation($designation)->pluck('id')
+            )->pluck('id')->map(fn ($id) => (int) $id)->unique()->sort()->values();
+
+        $submittedIds = collect($validated['checkpoint_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->sort()
+            ->values();
+
+        if ($requiredIds->isEmpty() || $requiredIds->all() !== $submittedIds->all()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Partial submission is not allowed.',
+            ], 422);
+        }
+
+        \DB::transaction(function () use ($target, $requiredIds) {
+            foreach ($requiredIds as $checkpointId) {
+                UserRrCheckpointProgress::updateOrCreate(
+                    [
+                        'user_id' => $target->id,
+                        'designation_rr_checkpoint_id' => $checkpointId,
+                    ],
+                    [
+                        'checked' => true,
+                        'checked_at' => now(),
+                    ]
+                );
+            }
+        });
+
+        $this->snapshotUserScore(
+            (int) $target->id,
+            UserScoreHistory::TYPE_CLRR,
+            $this->computeUserClrrPercent($target)
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Checklist submitted.',
+        ]);
+    }
+
+    /**
      * Ask OpenAI for 4–8 weighted checkpoints under one R&R item.
      *
      * @return array<int, array{title: string, description?: string|null, weightage?: int}>
@@ -8539,6 +8607,76 @@ class TaskController extends Controller
      *
      * @return array<int, array{title: string, weightage: int, category: string}>
      */
+    /**
+     * Page of every saved CL score, one row per snapshot, filterable by user.
+     */
+    public function scoreHistory(Request $request): View
+    {
+        $viewer = Auth::user();
+        $visibleIds = $this->getTaskSummaryVisibleUserIds($viewer);
+
+        $usersQuery = User::query()->orderBy('name');
+        if ($visibleIds !== null) {
+            $usersQuery->whereIn('id', $visibleIds ?: [0]);
+        }
+        $users = $usersQuery->get(['id', 'name', 'email', 'designation']);
+
+        $selectedUserId = (int) $request->query('user_id', 0);
+        if ($selectedUserId > 0 && $visibleIds !== null && ! in_array($selectedUserId, $visibleIds, true)) {
+            abort(403);
+        }
+
+        $scoreType = (string) $request->query('score_type', '');
+        if (! in_array($scoreType, UserScoreHistory::TYPES, true)) {
+            $scoreType = '';
+        }
+
+        $history = null;
+        $latest = [];
+        if (Schema::hasTable('user_score_history')) {
+            $historyQuery = UserScoreHistory::query()
+                ->with(['user:id,name,email,designation'])
+                ->orderByDesc('captured_at')
+                ->orderByDesc('id');
+            if ($visibleIds !== null) {
+                $historyQuery->whereIn('user_id', $visibleIds ?: [0]);
+            }
+            if ($selectedUserId > 0) {
+                $historyQuery->where('user_id', $selectedUserId);
+            }
+            if ($scoreType !== '') {
+                $historyQuery->where('score_type', $scoreType);
+            }
+            $history = $historyQuery->paginate(50)->withQueryString();
+
+            if ($selectedUserId > 0) {
+                foreach (UserScoreHistory::TYPES as $type) {
+                    $latest[$type] = UserScoreHistory::query()
+                        ->where('user_id', $selectedUserId)
+                        ->where('score_type', $type)
+                        ->orderByDesc('captured_at')
+                        ->orderByDesc('id')
+                        ->first();
+                }
+            }
+        }
+
+        $scoreTypeLabels = [
+            UserScoreHistory::TYPE_CLRR => 'CL R&R',
+            UserScoreHistory::TYPE_CLMGR => 'CL MGR',
+            UserScoreHistory::TYPE_CLGEN => 'CL GEN',
+        ];
+
+        return view('tasks.score-history', compact(
+            'users',
+            'history',
+            'selectedUserId',
+            'scoreType',
+            'latest',
+            'scoreTypeLabels'
+        ));
+    }
+
     /**
      * Return the lifetime score history for a (user, score_type) pair —
      * powers the small line chart opened from the history dot next to
