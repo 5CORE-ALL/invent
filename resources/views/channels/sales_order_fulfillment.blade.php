@@ -623,7 +623,8 @@
         #sof-in-received-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
         #sof-invoiced-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
         #sof-delivered-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
-        #sof-all-order-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title {
+        #sof-all-order-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
+        #sof-doba-prepaid-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title {
             writing-mode: horizontal-tb;
             text-orientation: mixed;
             transform: none;
@@ -640,7 +641,8 @@
         #sof-in-received-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
         #sof-invoiced-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
         #sof-delivered-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
-        #sof-all-order-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header {
+        #sof-all-order-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+        #sof-doba-prepaid-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header {
             cursor: pointer;
         }
         /* Ensure header/row tickboxes always receive clicks despite vertical-header CSS */
@@ -653,6 +655,7 @@
         #sof-invoiced-table.tabulator .tabulator-header input[type="checkbox"],
         #sof-delivered-table.tabulator .tabulator-header input[type="checkbox"],
         #sof-all-order-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-doba-prepaid-table.tabulator .tabulator-header input[type="checkbox"],
         #sof-pending-table.tabulator .tabulator-cell input[type="checkbox"],
         #sof-fulfilled-table.tabulator .tabulator-cell input[type="checkbox"],
         #sof-no-tracking-table.tabulator .tabulator-cell input[type="checkbox"],
@@ -661,7 +664,8 @@
         #sof-in-received-table.tabulator .tabulator-cell input[type="checkbox"],
         #sof-invoiced-table.tabulator .tabulator-cell input[type="checkbox"],
         #sof-delivered-table.tabulator .tabulator-cell input[type="checkbox"],
-        #sof-all-order-table.tabulator .tabulator-cell input[type="checkbox"] {
+        #sof-all-order-table.tabulator .tabulator-cell input[type="checkbox"],
+        #sof-doba-prepaid-table.tabulator .tabulator-cell input[type="checkbox"] {
             pointer-events: auto !important;
             transform: none !important;
             writing-mode: horizontal-tb !important;
@@ -1572,6 +1576,14 @@
                             </ul>
                             <div class="tab-content">
                                 <div class="tab-pane fade show active" id="sof-doba-sub-prepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-prepaid-tab">
+                                    <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                                        <button type="button" class="btn btn-sm btn-success" id="sof-doba-mark-done-btn" disabled title="Mark the checked prepaid orders done">
+                                            Mark selected done (<span id="sof-doba-mark-done-count">0</span>)
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-success" id="sof-doba-mark-all-done-btn" title="Mark every prepaid order in this list done">
+                                            Mark all orders done
+                                        </button>
+                                    </div>
                                     <div id="sof-doba-prepaid-table" class="sof-doba-table"></div>
                                 </div>
                                 <div class="tab-pane fade" id="sof-doba-sub-done-pane" role="tabpanel" aria-labelledby="sof-doba-sub-done-tab">
@@ -3304,10 +3316,10 @@
     }
 
     function formatCarrierCell(cell) {
-        const row = cell.getRow && cell.getRow() ? cell.getRow().getData() : null;
+            const row = cell.getRow && cell.getRow() ? cell.getRow().getData() : null;
         let v = sofDisplayCarrier(row || { tracking_company: cell.getValue(), tracking_number: row && row.tracking_number });
         if (v && row && typeof row === 'object' && String(row.tracking_company || '') !== v) {
-            row.tracking_company = v;
+                row.tracking_company = v;
         }
         return formatCarrierBadgeHtml(v);
     }
@@ -4797,37 +4809,37 @@
     }
 
     function sofApplySummaryTotals(response, opts) {
-        const channelCount = (response && response.channel_count != null)
-            ? Number(response.channel_count)
-            : allRows.length;
-        const pendingTotal = (response && response.pending_total != null)
-            ? Number(response.pending_total)
-            : sumPending(allRows);
-        const fulfilled24h = (response && response.fulfilled_24h != null)
-            ? Number(response.fulfilled_24h)
-            : 0;
+            const channelCount = (response && response.channel_count != null)
+                ? Number(response.channel_count)
+                : allRows.length;
+            const pendingTotal = (response && response.pending_total != null)
+                ? Number(response.pending_total)
+                : sumPending(allRows);
+            const fulfilled24h = (response && response.fulfilled_24h != null)
+                ? Number(response.fulfilled_24h)
+                : 0;
         const noTrackingTotal = (response && response.label_created_no_tracking != null)
             ? Number(response.label_created_no_tracking)
-            : 0;
+                : 0;
         const scanDone24h = (response && response.received_by_carrier_total != null)
             ? Number(response.received_by_carrier_total)
             : ((response && response.scan_done_24h != null ? Number(response.scan_done_24h) : 0)
                 + (response && response.in_received_total != null ? Number(response.in_received_total) : 0));
-        const inTransitTotal = (response && response.in_transit_total != null)
-            ? Number(response.in_transit_total)
-            : 0;
-        const invoicedTotal = (response && response.invoiced_total != null)
-            ? Number(response.invoiced_total)
-            : 0;
-        const deliveredTotal = (response && response.delivered_total != null)
-            ? Number(response.delivered_total)
-            : 0;
+            const inTransitTotal = (response && response.in_transit_total != null)
+                ? Number(response.in_transit_total)
+                : 0;
+            const invoicedTotal = (response && response.invoiced_total != null)
+                ? Number(response.invoiced_total)
+                : 0;
+            const deliveredTotal = (response && response.delivered_total != null)
+                ? Number(response.delivered_total)
+                : 0;
         const notAuthorizedTotal = (response && response.not_authorized_total != null)
             ? Number(response.not_authorized_total)
             : 0;
-        const allOrderTotal = (response && response.all_order_total != null)
-            ? Number(response.all_order_total)
-            : 0;
+            const allOrderTotal = (response && response.all_order_total != null)
+                ? Number(response.all_order_total)
+                : 0;
 
         sofSetCountText('sof-channel-count', channelCount);
         if (!sofSummarySkipsActive('pending')) {
@@ -4868,8 +4880,8 @@
         }
         if (!opts || opts.history !== false) {
             loadSofHistoryDots();
-        }
-        sofReconcilePendingLabels();
+            }
+            sofReconcilePendingLabels();
     }
 
     table = new Tabulator('#sales-order-fulfillment-table', Object.assign({}, sofLocalTableOpts, {
@@ -6529,7 +6541,23 @@
     }
 
     function makeDobaOrdersTable(selector, placeholder, opts) {
-        return new Tabulator(selector, Object.assign({}, sofLocalTableOpts, {
+        opts = opts || {};
+        const extra = {};
+        if (opts.selectable) {
+            extra.selectableRows = true;
+            extra.rowHeader = {
+                formatter: 'rowSelection',
+                titleFormatter: sofSelectAllTitleFormatter,
+                headerSort: false,
+                resizable: false,
+                frozen: true,
+                headerHozAlign: 'center',
+                hozAlign: 'center',
+                width: 44,
+                minWidth: 44,
+            };
+        }
+        const table = new Tabulator(selector, Object.assign({}, sofLocalTableOpts, extra, {
             layout: 'fitColumns',
             placeholder: placeholder,
             initialSort: [{ column: 'order_date', dir: 'desc' }],
@@ -6540,7 +6568,145 @@
             },
             columns: dobaOrderColumns(opts),
         }));
+        if (opts.selectable) {
+            table.on('rowSelectionChanged', sofDobaUpdateMarkDoneButtons);
+            table.on('dataFiltered', sofDobaUpdateMarkDoneButtons);
+            table.on('pageLoaded', sofDobaUpdateMarkDoneButtons);
+        }
+        return table;
     }
+
+    function sofDobaSelectedOrderIds() {
+        if (!dobaPrepaidTable) return [];
+        try {
+            return (dobaPrepaidTable.getSelectedData() || []).map(function (r) {
+                return String((r && r.order_id) || '').trim();
+            }).filter(Boolean);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function sofDobaVisibleOrderIds() {
+        if (!dobaPrepaidTable) {
+            return dobaPrepaidRows.map(function (r) { return String((r && r.order_id) || '').trim(); }).filter(Boolean);
+        }
+        try {
+            return (dobaPrepaidTable.getRows('active') || []).map(function (row) {
+                const data = row.getData() || {};
+                return String(data.order_id || '').trim();
+            }).filter(Boolean);
+        } catch (e) {
+            return dobaPrepaidRows.map(function (r) { return String((r && r.order_id) || '').trim(); }).filter(Boolean);
+        }
+    }
+
+    function sofDobaUpdateMarkDoneButtons() {
+        const n = sofDobaSelectedOrderIds().length;
+        const countEl = document.getElementById('sof-doba-mark-done-count');
+        const selectedBtn = document.getElementById('sof-doba-mark-done-btn');
+        if (countEl) countEl.textContent = String(n);
+        if (selectedBtn) selectedBtn.disabled = n < 1;
+    }
+
+    function sofDobaApplyShippedLocally(orderNos, shipped) {
+        const wanted = {};
+        (orderNos || []).forEach(function (id) { wanted[String(id)] = true; });
+        const move = [];
+        dobaPrepaidRows = dobaPrepaidRows.filter(function (r) {
+            const id = String((r && r.order_id) || '');
+            if (!wanted[id]) return true;
+            r.warehouse_shipped = !!shipped;
+            move.push(r);
+            return false;
+        });
+        dobaDoneRows = dobaDoneRows.filter(function (r) {
+            return !wanted[String((r && r.order_id) || '')];
+        });
+        if (shipped) {
+            move.reverse().forEach(function (r) { dobaDoneRows.unshift(r); });
+        } else {
+            move.reverse().forEach(function (r) { dobaPrepaidRows.unshift(r); });
+        }
+        applyDobaRowsToTables();
+        refreshDobaOrderCounts();
+        sofDobaUpdateMarkDoneButtons();
+    }
+
+    function sofDobaMarkOrdersDone(orderIds) {
+        const ids = (orderIds || []).map(function (id) { return String(id || '').trim(); }).filter(Boolean);
+        if (!ids.length) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'info', title: 'Nothing selected', text: 'Check one or more orders, or use Mark all orders done.' });
+            }
+            return;
+        }
+        const selectedBtn = document.getElementById('sof-doba-mark-done-btn');
+        const allBtn = document.getElementById('sof-doba-mark-all-done-btn');
+        if (selectedBtn) selectedBtn.disabled = true;
+        if (allBtn) allBtn.disabled = true;
+        $.ajax({
+            url: '{{ route("sales.order.fulfillment.doba.orders.mark.shipped.bulk") }}',
+            type: 'POST',
+            data: { order_nos: ids, shipped: 1 },
+            headers: { 'X-CSRF-TOKEN': sofCsrf() },
+            success: function (res) {
+                if (allBtn) allBtn.disabled = false;
+                if (!res || !res.success) {
+                    sofDobaUpdateMarkDoneButtons();
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'error', title: 'Could not save', text: (res && res.message) || 'Failed to mark orders done.' });
+                    }
+                    return;
+                }
+                sofDobaApplyShippedLocally(res.order_nos || ids, true);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Marked done',
+                        text: (res.updated || ids.length) + ' order(s) moved to Done.',
+                        timer: 1600,
+                        showConfirmButton: false,
+                    });
+                }
+            },
+            error: function (xhr) {
+                if (allBtn) allBtn.disabled = false;
+                sofDobaUpdateMarkDoneButtons();
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to mark orders done.';
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Could not save', text: msg });
+                }
+            },
+        });
+    }
+
+    $(document).on('click', '#sof-doba-mark-done-btn', function () {
+        sofDobaMarkOrdersDone(sofDobaSelectedOrderIds());
+    });
+    $(document).on('click', '#sof-doba-mark-all-done-btn', function () {
+        const ids = sofDobaVisibleOrderIds();
+        if (!ids.length) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'info', title: 'No prepaid orders', text: 'There are no prepaid orders to mark done.' });
+            }
+            return;
+        }
+        const run = function () { sofDobaMarkOrdersDone(ids); };
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'question',
+                title: 'Mark all orders done?',
+                text: 'This will mark ' + ids.length + ' prepaid order(s) done and move them to the Done tab.',
+                showCancelButton: true,
+                confirmButtonText: 'Mark all done',
+            }).then(function (result) {
+                if (result.isConfirmed) run();
+            });
+        } else if (confirm('Mark all ' + ids.length + ' prepaid orders done?')) {
+            run();
+        }
+    });
 
     function sofSetDobaSearchBusy(busy) {
         const btn = document.getElementById('sof-doba-search-btn');
@@ -6616,7 +6782,7 @@
 
     function ensureDobaOrdersTables() {
         if (!dobaPrepaidTable) {
-            dobaPrepaidTable = makeDobaOrdersTable('#sof-doba-prepaid-table', 'No open prepaid Doba orders in this date range.', { includeLabel: true });
+            dobaPrepaidTable = makeDobaOrdersTable('#sof-doba-prepaid-table', 'No open prepaid Doba orders in this date range.', { includeLabel: true, selectable: true });
         }
         if (!dobaDoneTable) {
             dobaDoneTable = makeDobaOrdersTable('#sof-doba-done-table', 'No done Doba orders in this date range.', { includeLabel: true, includeType: true });
@@ -7151,7 +7317,7 @@
 
                     const waitMs = Number(j.retry_after_ms || 0);
                     const continueQueue = function () {
-                        pullQueue(leftover.concat(rest));
+                    pullQueue(leftover.concat(rest));
                     };
                     if (waitMs > 0) {
                         setTimeout(continueQueue, waitMs);
