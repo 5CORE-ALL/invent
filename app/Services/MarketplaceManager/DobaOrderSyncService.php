@@ -241,8 +241,19 @@ class DobaOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        Log::info('DobaOrderSyncService: Shopify import dispatcher skipped until DobaOrderPushService is implemented.');
-
-        return 0;
+        return MarketplaceShopifyImportQueue::dispatchLatestUnpushed(
+            'doba',
+            DobaDailyData::class,
+            static fn (int $id) => new ImportDobaOrderToShopify($id),
+            'order_no',
+            function ($query): void {
+                $query->where('order_time', '>=', now()->subDays(21))
+                    ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%CANCEL%'")
+                    ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%REFUND%'")
+                    ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%VOID%'")
+                    ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%DELIVERED%'")
+                    ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%COMPLETED%'");
+            }
+        );
     }
 }
