@@ -62,6 +62,26 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
         $this->assertSame(0.015, AmazonAdsLiveBidBgtSyncService::BGT_TOLERANCE);
     }
 
+    public function test_fba_budget_is_not_increased(): void
+    {
+        $pushed = [];
+        $svc = $this->service([
+            'pullBudgets' => fn () => ['111' => 12.0],
+            'pushBudget' => function () use (&$pushed) {
+                $pushed[] = true;
+
+                return ['status' => 200];
+            },
+            'persistLive' => static function (): void {},
+        ]);
+
+        $out = $svc->syncField('sp', 'bgt', '111', 'ET 10FT BLU FBA KW', 40.0, 'test');
+
+        $this->assertSame('synced', $out['status']);
+        $this->assertSame('fba_budget_not_increased', $out['reason']);
+        $this->assertSame([], $pushed);
+    }
+
     public function test_missing_live_bid_still_pushes_the_fallback_sbid(): void
     {
         $pushed = [];

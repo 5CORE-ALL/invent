@@ -780,6 +780,10 @@ class TaskController extends Controller
                 'score_clrr' => (int) ($scoresByUser[$member->id]['clrr'] ?? 0),
                 'score_clmgr' => (int) ($scoresByUser[$member->id]['clmgr'] ?? 0),
                 'score_clgen' => (int) ($scoresByUser[$member->id]['clgen'] ?? 0),
+                'has_rr' => (bool) ($scoresByUser[$member->id]['has_rr'] ?? false),
+                'has_clrr' => (bool) ($scoresByUser[$member->id]['has_clrr'] ?? false),
+                'has_clmgr' => (bool) ($scoresByUser[$member->id]['has_clmgr'] ?? false),
+                'has_clgen' => (bool) ($scoresByUser[$member->id]['has_clgen'] ?? false),
                 'can_manage' => $canManage,
                 'a_task' => $counts['a_task'],
                 'a_task_h' => (int) round($counts['a_task_h'] / 60),
@@ -1062,13 +1066,21 @@ class TaskController extends Controller
      *
      * @param  array<int>     $userIds
      * @param  array<string>  $designations
-     * @return array<int, array{clrr:int, clmgr:int, clgen:int}>
+     * @return array<int, array{clrr:int, clmgr:int, clgen:int, has_rr:bool, has_clrr:bool, has_clmgr:bool, has_clgen:bool}>
      */
     protected function bulkComputeCLScores(array $userIds, array $designations): array
     {
         $out = [];
         foreach ($userIds as $uid) {
-            $out[(int) $uid] = ['clrr' => 0, 'clmgr' => 0, 'clgen' => 0];
+            $out[(int) $uid] = [
+                'clrr' => 0,
+                'clmgr' => 0,
+                'clgen' => 0,
+                'has_rr' => false,
+                'has_clrr' => false,
+                'has_clmgr' => false,
+                'has_clgen' => false,
+            ];
         }
         if (empty($userIds)) {
             return $out;
@@ -1076,6 +1088,10 @@ class TaskController extends Controller
 
         // ---------------------- CL Gen (global) ---------------------------
         $genItems = GeneralChecklistItem::get(['id', 'weightage']);
+        $hasClgen = $genItems->isNotEmpty();
+        foreach ($userIds as $uid) {
+            $out[(int) $uid]['has_clgen'] = $hasClgen;
+        }
         if ($genItems->isNotEmpty()) {
             $genWeightById = $genItems->mapWithKeys(fn ($i) => [(int) $i->id => max(1, (int) $i->weightage)]);
             $genTotal = $genWeightById->sum();
@@ -1176,8 +1192,11 @@ class TaskController extends Controller
             $uid = (int) $uid;
             $des = (string) ($userDesignations[$uid] ?? '');
 
-            // CL R&R
+            // CL R&R — "has data" matches the modal empty states (items / checkpoints exist).
+            $rrItemIds = $des !== '' ? ($rrItemIdsByDesignation[$des] ?? []) : [];
+            $out[$uid]['has_rr'] = ! empty($rrItemIds);
             $rrTotal = (int) ($rrTotalByDesignation[$des] ?? 0);
+            $out[$uid]['has_clrr'] = $rrTotal > 0;
             if ($rrTotal > 0) {
                 $earned = (int) ($rrEarnedByUser[$uid] ?? 0);
                 $out[$uid]['clrr'] = (int) round(($earned / $rrTotal) * 100);
@@ -1185,6 +1204,7 @@ class TaskController extends Controller
 
             // CL Mgr (own %; the combined-with-juniors number lives in the modal).
             $mgrTotal = (int) ($mgrTotalByDesignation[$des] ?? 0);
+            $out[$uid]['has_clmgr'] = $mgrTotal > 0;
             if ($mgrTotal > 0) {
                 $earned = (int) ($mgrEarnedByUser[$uid] ?? 0);
                 $out[$uid]['clmgr'] = (int) round(($earned / $mgrTotal) * 100);
@@ -9209,6 +9229,239 @@ class TaskController extends Controller
             'success' => true,
             'assigned' => BadgeDataCatalog::resolveAssignments($record),
         ]);
+    }
+
+    /**
+     * Seed a user's KPI badges with AI, using their designation the same way
+     * R&R is seeded. Picks up to 5 catalog metrics. force=true replaces the
+     * current set.
+     */
+    public function generateUserKpis(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'force' => 'nullable|boolean',
+        ]);
+
+        $viewer = Auth::user();
+        $target = User::find($validated['user_id']);
+        if (! $target || ! $this->canManageRow($viewer, $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to edit KPIs for this user.',
+            ], 403);
+        }
+
+        $designation = trim((string) ($target->designation ?? ''));
+        if ($designation === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Set a designation on this user before generating KPIs.',
+            ], 422);
+        }
+
+        $record = TeamMemberKpi::forUser($target);
+        $force = (bool) ($validated['force'] ?? false);
+        $already = BadgeDataCatalog::resolveAssignments($record);
+        if ($already !== [] && ! $force) {
+            return response()->json([
+                'success' => true,
+                'created' => 0,
+                'assigned' => $already,
+                'message' => 'KPIs already exist for this user.',
+            ]);
+        }
+
+        $catalog = BadgeDataCatalog::allCatalogOptions();
+        if ($catalog === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No KPI badges are available to assign yet.',
+            ], 422);
+        }
+
+        $keys = $this->suggestKpiKeysViaAi($designation, $catalog, [], '', 5);
+        if ($keys === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'AI could not choose KPI badges. Try again.',
+            ], 502);
+        }
+
+        if ($force) {
+            for ($slot = 1; $slot <= 5; $slot++) {
+                $record->clearSlot($slot);
+            }
+        }
+
+        $created = $this->assignKpiKeys($record, $target, $keys);
+
+        return response()->json([
+            'success' => true,
+            'created' => $created,
+            'assigned' => BadgeDataCatalog::resolveAssignments($record->fresh() ?? $record),
+        ]);
+    }
+
+    /**
+     * Ask AI for one more KPI badge for this user, based on designation and
+     * the badges already assigned. Optional hint refines the suggestion.
+     */
+    public function suggestUserKpi(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'hint' => 'nullable|string|max:500',
+        ]);
+
+        $viewer = Auth::user();
+        $target = User::find($validated['user_id']);
+        if (! $target || ! $this->canManageRow($viewer, $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to edit KPIs for this user.',
+            ], 403);
+        }
+
+        $designation = trim((string) ($target->designation ?? ''));
+        if ($designation === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Set a designation on this user before asking AI for a KPI.',
+            ], 422);
+        }
+
+        $record = TeamMemberKpi::forUser($target);
+        if ($record->nextFreeSlot() === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Maximum of 5 KPI badges per user.',
+            ], 422);
+        }
+
+        $catalog = BadgeDataCatalog::allCatalogOptions();
+        $assignedKeys = $record->assignedKeys();
+        $hint = trim((string) ($validated['hint'] ?? ''));
+        $keys = $this->suggestKpiKeysViaAi($designation, $catalog, $assignedKeys, $hint, 1);
+        if ($keys === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'AI could not suggest a new KPI. Try again or add one with +.',
+            ], 502);
+        }
+
+        $created = $this->assignKpiKeys($record, $target, $keys);
+        if ($created === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'AI suggested a badge that is already assigned.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'assigned' => BadgeDataCatalog::resolveAssignments($record->fresh() ?? $record),
+        ]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $catalog
+     * @param  list<string>  $excludeKeys
+     * @return list<string>
+     */
+    protected function suggestKpiKeysViaAi(string $designation, array $catalog, array $excludeKeys, string $hint, int $limit): array
+    {
+        $exclude = array_flip($excludeKeys);
+        $lines = [];
+        foreach ($catalog as $option) {
+            $key = (string) ($option['key'] ?? '');
+            if ($key === '' || isset($exclude[$key])) {
+                continue;
+            }
+            $label = (string) ($option['label'] ?? $key);
+            $lines[] = $key.' | '.$label;
+        }
+        if ($lines === []) {
+            return [];
+        }
+
+        $limit = max(1, min(5, $limit));
+        $catalogText = implode("\n", array_slice($lines, 0, 400));
+        $system = 'You assign Key Performance Index badges. Given a job designation and a catalog of existing metrics, '
+            .'choose the metrics that best measure that role. Use ONLY keys from the catalog. Do not invent keys. '
+            .'Return ONLY valid JSON: {"keys":["badge-key", ...]} with at most '.$limit.' keys, most important first.';
+        $userMsg = "Designation: {$designation}\n\nCatalog (key | label):\n{$catalogText}";
+        if ($hint !== '') {
+            $userMsg .= "\n\nPrefer a metric that matches this hint:\n{$hint}";
+        }
+        $userMsg .= "\n\nReturn {$limit} key(s).";
+
+        $ai = $this->callAiJson($system, $userMsg, 60, 0.3);
+        if ($ai['text'] === null) {
+            return [];
+        }
+
+        $decoded = json_decode($ai['text'], true);
+        $raw = [];
+        if (is_array($decoded)) {
+            $raw = $decoded['keys'] ?? $decoded['items'] ?? [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $allowed = [];
+        foreach ($lines as $line) {
+            $allowed[strstr($line, ' | ', true) ?: $line] = true;
+        }
+
+        $picked = [];
+        foreach ($raw as $key) {
+            if (is_array($key)) {
+                $key = $key['key'] ?? '';
+            }
+            $key = trim((string) $key);
+            if ($key === '' || ! isset($allowed[$key]) || isset($picked[$key])) {
+                continue;
+            }
+            $picked[$key] = true;
+            if (count($picked) >= $limit) {
+                break;
+            }
+        }
+
+        return array_keys($picked);
+    }
+
+    /**
+     * @param  list<string>  $keys
+     */
+    protected function assignKpiKeys(TeamMemberKpi $record, User $user, array $keys): int
+    {
+        $created = 0;
+        foreach ($keys as $key) {
+            if (! BadgeDataCatalog::isValidCatalogKey($key)) {
+                continue;
+            }
+            if (in_array($key, $record->assignedKeys(), true)) {
+                continue;
+            }
+            $slot = $record->nextFreeSlot();
+            if (! $slot) {
+                break;
+            }
+            $parsed = BadgeDataCatalog::parseKey($key);
+            $record->{"kpi_{$slot}_value"} = $key;
+            $record->{"kpi_{$slot}_label"} = BadgeDataCatalog::labelFor($parsed['page'], $parsed['field']);
+            $created++;
+        }
+
+        if ($created > 0) {
+            $record->email = $user->email;
+            $record->save();
+        }
+
+        return $created;
     }
 
     protected function canEditIncentives(?User $viewer): bool

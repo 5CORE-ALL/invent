@@ -5201,13 +5201,17 @@ class AmazonAdsController extends Controller
                     : AmazonAcosSbgtRule::sbgtFromAcosL30($ltForBgt);
             }
             if (in_array('sbgt', $columns, true)) {
-                $arr['sbgt'] = self::summedSbgtFromParts(
-                    $arr['bgtViews'] ?? null,
-                    $arr['bgtCvr'] ?? null,
-                    $arr['bgtAcos'] ?? null,
-                    $arr['bgtPrc'] ?? null,
-                    $arr['bgtReviews'] ?? null,
-                    $arr['bgtDil'] ?? null
+                $arr['sbgt'] = AmazonAdsSbgt::sbgtWithoutIncrease(
+                    (string) ($rowArr['campaignName'] ?? ''),
+                    self::summedSbgtFromParts(
+                        $arr['bgtViews'] ?? null,
+                        $arr['bgtCvr'] ?? null,
+                        $arr['bgtAcos'] ?? null,
+                        $arr['bgtPrc'] ?? null,
+                        $arr['bgtReviews'] ?? null,
+                        $arr['bgtDil'] ?? null
+                    ),
+                    $arr['bgt'] ?? ($rowArr['campaignBudgetAmount'] ?? null)
                 );
                 if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
                     $wantSbgt = AmazonAdsSbgt::storageValue($arr['sbgt'] ?? null);

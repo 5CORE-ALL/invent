@@ -29,6 +29,22 @@
             width: 16px;
             height: 16px;
         }
+        .task-summary-designation-cell {
+            white-space: nowrap;
+        }
+        .task-summary-designation-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            margin-right: 0.35rem;
+            border-radius: 50%;
+            background: #dc2626;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+        .task-summary-designation-dot.is-has-data {
+            background: #16a34a;
+        }
         .task-summary-designation-btn {
             border: 0;
             background: transparent;
@@ -447,6 +463,20 @@
             display: inline-block;
             vertical-align: middle;
             pointer-events: none;
+        }
+        /* R&R / CL columns: red glyph when that list is empty, green when it has data. */
+        .task-checklist-glyph {
+            font-size: 22px;
+            line-height: 1;
+            display: inline-block;
+            vertical-align: middle;
+            pointer-events: none;
+        }
+        .task-checklist-glyph.is-no-data {
+            color: #dc2626;
+        }
+        .task-checklist-glyph.is-has-data {
+            color: #16a34a;
         }
         .task-summary-monitor-btn .task-magnify-icon {
             width: 20px;
@@ -1513,6 +1543,7 @@
                                             $canEditDesignation = $designationUserId !== 0 && (bool) ($row['can_manage'] ?? false);
                                         @endphp
                                         <td class="task-summary-designation-cell" @if(! $canEditDesignation && $designationFull !== '' && $designationCompact !== $designationFull) title="{{ e($designationFull) }}" @endif>
+                                            <span class="task-summary-designation-dot {{ $designationFull !== '' ? 'is-has-data' : 'is-no-data' }}" title="{{ $designationFull !== '' ? 'Designation set' : 'No designation' }}" aria-hidden="true"></span>
                                             @if($canEditDesignation)
                                                 <button type="button"
                                                         class="task-summary-designation-btn"
@@ -1592,6 +1623,8 @@
                                                     $rrLockedTitle = 'Set a designation on this user to view R&R';
                                                 } elseif ($rrPermissionLocked) {
                                                     $rrLockedTitle = 'Managers can only manage their tagged juniors or Executives.';
+                                                } elseif (empty($row['has_rr'])) {
+                                                    $rrLockedTitle = 'No R&R data for ' . e($rrDesignation);
                                                 } else {
                                                     $rrLockedTitle = 'View R&R for ' . e($rrDesignation);
                                                 }
@@ -1605,7 +1638,7 @@
                                                     @if($rrDisabled) disabled @endif
                                                     title="{{ $rrLockedTitle }}"
                                                     aria-label="Open R&R for {{ e($row['team_member']) }}">
-                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
+                                                <i class="ri-search-line task-checklist-glyph {{ !empty($row['has_rr']) ? 'is-has-data' : 'is-no-data' }}" aria-hidden="true"></i>
                                             </button>
                                         </td>
                                         <td class="task-summary-clrr-cell text-center">
@@ -1614,7 +1647,9 @@
                                                     ? 'Managers can only manage their tagged juniors or Executives.'
                                                     : (($rrDesignation === '' || $rrUserId === 0)
                                                         ? 'Set a designation on this user to view CL R&R'
-                                                        : 'View CL R&R checklist & score for ' . e($rrDesignation));
+                                                        : (empty($row['has_clrr'])
+                                                            ? 'No CL R&R data for ' . e($rrDesignation)
+                                                            : 'View CL R&R checklist & score for ' . e($rrDesignation)));
                                             @endphp
                                             <button type="button"
                                                     class="clrr-search-icon-btn task-summary-clrr-btn"
@@ -1625,7 +1660,7 @@
                                                     @if($rrDisabled) disabled @endif
                                                     title="{{ $clrrLockedTitle }}"
                                                     aria-label="Open CL R&R for {{ e($row['team_member']) }}">
-                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
+                                                <i class="ri-search-line task-checklist-glyph {{ !empty($row['has_clrr']) ? 'is-has-data' : 'is-no-data' }}" aria-hidden="true"></i>
                                             </button>
                                         </td>
                                         <td class="task-summary-clmgr-cell text-center">
@@ -1634,7 +1669,9 @@
                                                     ? 'Managers can only manage their tagged juniors or Executives.'
                                                     : (($rrDesignation === '' || $rrUserId === 0)
                                                         ? 'Set a designation on this user to view CL Mgr'
-                                                        : 'View Manager checklist & combined score for ' . e($row['team_member']));
+                                                        : (empty($row['has_clmgr'])
+                                                            ? 'No CL Mgr data for ' . e($rrDesignation)
+                                                            : 'View Manager checklist & combined score for ' . e($row['team_member'])));
                                             @endphp
                                             <button type="button"
                                                     class="clmgr-search-icon-btn task-summary-clmgr-btn"
@@ -1645,7 +1682,7 @@
                                                     @if($rrDisabled) disabled @endif
                                                     title="{{ $clmgrLockedTitle }}"
                                                     aria-label="Open CL Mgr for {{ e($row['team_member']) }}">
-                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
+                                                <i class="ri-search-line task-checklist-glyph {{ !empty($row['has_clmgr']) ? 'is-has-data' : 'is-no-data' }}" aria-hidden="true"></i>
                                             </button>
                                         </td>
                                         <td class="task-summary-clgen-cell text-center">
@@ -1655,6 +1692,8 @@
                                                     $clgenTitle = 'No user record found for this row';
                                                 } elseif ($rrPermissionLocked) {
                                                     $clgenTitle = 'Managers can only manage their tagged juniors or Executives.';
+                                                } elseif (empty($row['has_clgen'])) {
+                                                    $clgenTitle = 'No CL Gen data yet';
                                                 } else {
                                                     $clgenTitle = 'View General Checklist & score for ' . e($row['team_member']);
                                                 }
@@ -1666,7 +1705,7 @@
                                                     @if($clgenDisabled) disabled @endif
                                                     title="{{ $clgenTitle }}"
                                                     aria-label="Open General Checklist for {{ e($row['team_member']) }}">
-                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
+                                                <i class="ri-search-line task-checklist-glyph {{ !empty($row['has_clgen']) ? 'is-has-data' : 'is-no-data' }}" aria-hidden="true"></i>
                                             </button>
                                         </td>
                                         <td class="task-summary-num">{{ $row['task'] }}</td>
@@ -1920,6 +1959,79 @@
     @include('partials.user-kpis')
     @include('partials.user-kpi-index')
     @include('partials.dashboard-kpi-dots')
+
+    @php
+        $checklistPresence = ['by_designation' => [], 'clgen' => false];
+        foreach ($rows ?? [] as $presenceRow) {
+            if (! empty($presenceRow['has_clgen'])) {
+                $checklistPresence['clgen'] = true;
+            }
+            $presenceDesignation = trim((string) ($presenceRow['designation'] ?? ''));
+            if ($presenceDesignation === '') {
+                continue;
+            }
+            $checklistPresence['by_designation'][$presenceDesignation] = [
+                'rr' => ! empty($presenceRow['has_rr']),
+                'clrr' => ! empty($presenceRow['has_clrr']),
+                'clmgr' => ! empty($presenceRow['has_clmgr']),
+            ];
+        }
+    @endphp
+    <script>
+        window.taskSummaryChecklistPresence = @json($checklistPresence);
+        window.taskSummaryPaintChecklistIcon = function (btn, hasData) {
+            if (!btn) return;
+            var icon = btn.querySelector('.task-checklist-glyph');
+            if (!icon) return;
+            icon.classList.toggle('is-has-data', !!hasData);
+            icon.classList.toggle('is-no-data', !hasData);
+        };
+        window.taskSummaryMarkChecklist = function (kind, designation, hasData) {
+            var map = window.taskSummaryChecklistPresence;
+            if (!map) return;
+            hasData = !!hasData;
+            if (kind === 'clgen') {
+                map.clgen = hasData;
+                document.querySelectorAll('.task-summary-clgen-btn').forEach(function (btn) {
+                    window.taskSummaryPaintChecklistIcon(btn, hasData);
+                    if (btn.disabled || btn.getAttribute('data-perm-locked') === '1') return;
+                    var name = btn.getAttribute('data-user-name') || '';
+                    btn.title = hasData
+                        ? ('View General Checklist & score for ' + name)
+                        : 'No CL Gen data yet';
+                });
+                return;
+            }
+            designation = (designation || '').trim();
+            if (!designation) return;
+            if (!map.by_designation[designation]) {
+                map.by_designation[designation] = { rr: false, clrr: false, clmgr: false };
+            }
+            map.by_designation[designation][kind] = hasData;
+            var selector = kind === 'rr'
+                ? '.task-summary-rr-btn'
+                : (kind === 'clrr' ? '.task-summary-clrr-btn' : '.task-summary-clmgr-btn');
+            document.querySelectorAll(selector).forEach(function (btn) {
+                if ((btn.getAttribute('data-designation') || '').trim() !== designation) return;
+                window.taskSummaryPaintChecklistIcon(btn, hasData);
+                if (btn.getAttribute('data-perm-locked') === '1') return;
+                var name = btn.getAttribute('data-user-name') || '';
+                if (kind === 'clmgr') {
+                    btn.title = hasData
+                        ? ('View Manager checklist & combined score for ' + name)
+                        : ('No CL Mgr data for ' + designation);
+                } else if (kind === 'clrr') {
+                    btn.title = hasData
+                        ? ('View CL R&R checklist & score for ' + designation)
+                        : ('No CL R&R data for ' + designation);
+                } else {
+                    btn.title = hasData
+                        ? ('View R&R for ' + designation)
+                        : ('No R&R data for ' + designation);
+                }
+            });
+        };
+    </script>
 
     <div class="modal fade" id="taskSummaryAnalyticsModal" tabindex="-1" aria-labelledby="taskSummaryAnalyticsModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
@@ -4434,6 +4546,9 @@
             function applyState(data) {
                 state.designation = data.designation || '';
                 state.items = Array.isArray(data.items) ? data.items : [];
+                if (window.taskSummaryMarkChecklist) {
+                    window.taskSummaryMarkChecklist('rr', state.designation, !data.needs_ai_seed && state.items.length > 0);
+                }
 
                 var desEl = el('ts-rr-modal-designation');
                 if (desEl) {
@@ -4546,6 +4661,9 @@
                         state.items.push(data.item);
                         renderItems(state.items);
                         renderProgress(state.items);
+                        if (window.taskSummaryMarkChecklist) {
+                            window.taskSummaryMarkChecklist('rr', state.designation, state.items.length > 0);
+                        }
                     })
                     .catch(function (err) {
                         if (addBtn) addBtn.disabled = false;
@@ -4578,6 +4696,9 @@
                             state.items.push(data.item);
                             renderItems(state.items);
                             renderProgress(state.items);
+                            if (window.taskSummaryMarkChecklist) {
+                                window.taskSummaryMarkChecklist('rr', state.designation, state.items.length > 0);
+                            }
                             // If we were in the empty state (no items yet), flip to content.
                             showOnly('content');
                             var regen = el('ts-rr-regenerate-btn');
@@ -4961,6 +5082,12 @@
                 state.designation = data.designation || '';
                 state.items = Array.isArray(data.items) ? data.items : [];
                 state.overall = data.overall || { percent: 0, earned: 0, total: 0, checked: 0, count: 0 };
+                if (window.taskSummaryMarkChecklist) {
+                    var hasClrr = !data.needs_rr_seed && state.items.some(function (item) {
+                        return item.checkpoints && item.checkpoints.length > 0;
+                    });
+                    window.taskSummaryMarkChecklist('clrr', state.designation, hasClrr);
+                }
 
                 var desEl = el('ts-clrr-modal-designation');
                 if (desEl) {
@@ -5566,6 +5693,9 @@
             function applyState(data) {
                 state.designation = data.designation || '';
                 state.items = Array.isArray(data.items) ? data.items : [];
+                if (window.taskSummaryMarkChecklist) {
+                    window.taskSummaryMarkChecklist('clmgr', state.designation, state.items.length > 0);
+                }
                 state.juniors = Array.isArray(data.juniors) ? data.juniors : [];
                 state.eligible = Array.isArray(data.eligible_juniors) ? data.eligible_juniors : [];
                 state.ownScore = data.own_score || { percent: 0, earned: 0, total: 0, checked: 0, count: 0 };
@@ -5713,6 +5843,9 @@
                         recomputeOwnScore();
                         renderItems();
                         renderScores();
+                        if (window.taskSummaryMarkChecklist) {
+                            window.taskSummaryMarkChecklist('clmgr', state.designation, state.items.length > 0);
+                        }
                         if (state.items.length === 0) showOnly('empty');
                     })
                     .catch(function (err) {
@@ -5750,6 +5883,9 @@
                         recomputeOwnScore();
                         renderItems();
                         renderScores();
+                        if (window.taskSummaryMarkChecklist) {
+                            window.taskSummaryMarkChecklist('clmgr', state.designation, state.items.length > 0);
+                        }
                     })
                     .catch(function (err) {
                         if (btn) btn.disabled = false;
@@ -6140,6 +6276,9 @@
             function applyState(data) {
                 state.items = Array.isArray(data.items) ? data.items : [];
                 state.score = data.score || { percent: 0, earned: 0, total: 0, checked: 0, count: 0 };
+                if (window.taskSummaryMarkChecklist) {
+                    window.taskSummaryMarkChecklist('clgen', '', !(data.needs_seed || state.items.length === 0));
+                }
                 renderScore();
                 if (data.needs_seed || state.items.length === 0) {
                     var refresh = el('ts-clgen-refresh-ai-btn');
@@ -6267,6 +6406,9 @@
                         recomputeScore();
                         renderItems();
                         renderScore();
+                        if (window.taskSummaryMarkChecklist) {
+                            window.taskSummaryMarkChecklist('clgen', '', state.items.length > 0);
+                        }
                         if (state.items.length === 0) showOnly('empty');
                     })
                     .catch(function (err) {
@@ -6300,6 +6442,9 @@
                         recomputeScore();
                         renderItems();
                         renderScore();
+                        if (window.taskSummaryMarkChecklist) {
+                            window.taskSummaryMarkChecklist('clgen', '', state.items.length > 0);
+                        }
                     })
                     .catch(function (err) {
                         if (btn) btn.disabled = false;
@@ -6781,22 +6926,43 @@
                     node.setAttribute('data-designation', designation);
                 });
                 var empty = designation === '';
+                var designationDot = tr.querySelector('.task-summary-designation-dot');
+                if (designationDot) {
+                    designationDot.classList.toggle('is-has-data', !empty);
+                    designationDot.classList.toggle('is-no-data', empty);
+                    designationDot.title = empty ? 'No designation' : 'Designation set';
+                }
+                var presence = (window.taskSummaryChecklistPresence && window.taskSummaryChecklistPresence.by_designation) || {};
+                var info = (!empty && presence[designation]) ? presence[designation] : { rr: false, clrr: false, clmgr: false };
                 tr.querySelectorAll('.task-summary-rr-btn, .task-summary-clrr-btn, .task-summary-clmgr-btn').forEach(function (btn) {
+                    var kind = btn.classList.contains('task-summary-clmgr-btn')
+                        ? 'clmgr'
+                        : (btn.classList.contains('task-summary-clrr-btn') ? 'clrr' : 'rr');
+                    var hasData = !empty && !!info[kind];
+                    if (window.taskSummaryPaintChecklistIcon) {
+                        window.taskSummaryPaintChecklistIcon(btn, hasData);
+                    }
                     if (btn.getAttribute('data-perm-locked') === '1') return;
                     btn.disabled = empty;
                     var name = btn.getAttribute('data-user-name') || '';
-                    if (btn.classList.contains('task-summary-clmgr-btn')) {
+                    if (kind === 'clmgr') {
                         btn.title = empty
                             ? 'Set a designation on this user to view CL Mgr'
-                            : 'View Manager checklist & combined score for ' + name;
-                    } else if (btn.classList.contains('task-summary-clrr-btn')) {
+                            : (hasData
+                                ? 'View Manager checklist & combined score for ' + name
+                                : 'No CL Mgr data for ' + designation);
+                    } else if (kind === 'clrr') {
                         btn.title = empty
                             ? 'Set a designation on this user to view CL R&R'
-                            : 'View CL R&R checklist & score for ' + designation;
+                            : (hasData
+                                ? 'View CL R&R checklist & score for ' + designation
+                                : 'No CL R&R data for ' + designation);
                     } else {
                         btn.title = empty
                             ? 'Set a designation on this user to view R&R'
-                            : 'View R&R for ' + designation;
+                            : (hasData
+                                ? 'View R&R for ' + designation
+                                : 'No R&R data for ' + designation);
                     }
                 });
             }

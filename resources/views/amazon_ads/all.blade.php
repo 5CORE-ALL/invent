@@ -1406,7 +1406,13 @@
                     var tier = amzBgtAcosFromAcos(row.ltAcos);
                     if (tier !== null) row.bgtAcos = tier;
                     var sum = amzSumSbgtFromRow(row);
-                    if (sum !== null) row.sbgt = sum;
+                    if (sum !== null) {
+                        if (amzNameBlocksBudgetIncrease(row.campaignName)) {
+                            var liveBgt = parseFloat(row.bgt);
+                            if (isFinite(liveBgt) && sum > liveBgt + 0.015) sum = liveBgt;
+                        }
+                        row.sbgt = sum;
+                    }
                     amzRefreshShownBudgetSync(row);
                 });
                 return rows;
@@ -3554,9 +3560,18 @@
                 if (!isNaN(l) && l > 0) return l;
                 return null;
             }
+            function amzNameBlocksBudgetIncrease(name) {
+                return /\bFBA\b/i.test(String(name || ''));
+            }
             function amzPickSbgtTierFromRow(row) {
                 if (row.sbgt === null || row.sbgt === undefined || row.sbgt === '') return null;
-                var t = parseInt(row.sbgt, 10);
+                var n = parseFloat(row.sbgt);
+                if (!isFinite(n) || n < 0 || n > 9999) return null;
+                if (amzNameBlocksBudgetIncrease(row && row.campaignName)) {
+                    var live = parseFloat(row && row.bgt);
+                    if (isFinite(live) && n + 0.015 >= live) return null;
+                }
+                var t = parseInt(n, 10);
                 if (isNaN(t) || t < 0 || t > 9999) return null;
                 return t;
             }

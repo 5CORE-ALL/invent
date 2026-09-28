@@ -915,40 +915,8 @@ class YesterdayMarketplaceMetricsService
 
     private function aliexpressSales(Carbon $start, Carbon $end): float
     {
-        if (! Schema::hasTable('aliexpress_daily_data')) {
-            return 0.0;
-        }
-        $latest = DB::table('aliexpress_daily_data')->whereNotNull('order_date')->max('order_date');
-        $window = $this->latestCompleteDay($latest, 'to_pacific');
-        if ($window !== null) {
-            [$start, $end] = $window;
-        }
-        $sum = 0.0;
-        foreach (
-            DB::table('aliexpress_daily_data')
-                ->where('order_date', '>=', $start)
-                ->where('order_date', '<=', $end)
-                ->cursor() as $row
-        ) {
-            $status = strtolower((string) ($row->order_status ?? ''));
-            if (str_contains($status, 'refund') || str_contains($status, 'return')
-                || str_contains($status, 'cancel') || str_contains($status, 'closed')) {
-                continue;
-            }
-            if (empty($row->sku_code) || empty($row->order_id)) {
-                continue;
-            }
-            $line = (float) ($row->product_total ?? 0);
-            if ($line <= 0) {
-                $line = (float) ($row->supply_price ?? 0);
-            }
-            if ($line <= 0) {
-                $line = (float) ($row->order_amount ?? 0);
-            }
-            $sum += $line;
-        }
-
-        return $sum;
+        return app(\App\Http\Controllers\MarketPlace\AliexpressController::class)
+            ->sumApiOrderSalesBetween($start, $end);
     }
 
     private function mercariSales(Carbon $start, Carbon $end, bool $withShip): float
