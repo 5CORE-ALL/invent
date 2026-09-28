@@ -59,6 +59,16 @@ class FetchDobaDailyData extends Command
         $elapsed = round(microtime(true) - $startTime, 2);
         $this->info("Doba daily data fetched and stored successfully in {$elapsed} seconds.");
 
+        try {
+            if (\App\Models\MarketplaceSyncSettings::canAutoImportToShopify('doba')) {
+                $queued = app(\App\Services\MarketplaceManager\DobaOrderSyncService::class)->dispatchImportsForNewOrders();
+                $this->info("Queued {$queued} Doba order(s) for Shopify.");
+            }
+        } catch (\Throwable $e) {
+            $this->warn('Could not queue Doba Shopify imports: '.$e->getMessage());
+            Log::warning('Doba daily: Shopify import queue failed', ['error' => $e->getMessage()]);
+        }
+
         return 0;
     }
 
