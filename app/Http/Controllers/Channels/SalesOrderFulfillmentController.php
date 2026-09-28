@@ -5097,6 +5097,7 @@ class SalesOrderFulfillmentController extends Controller
             'tiktok',
             'tiktok2',
             'doba',
+            'wayfair',
         ], true);
     }
 
