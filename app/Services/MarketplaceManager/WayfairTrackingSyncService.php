@@ -6,12 +6,14 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\WayfairDailyData;
 use App\Services\WayfairApiService;
 use App\Services\WayfairDailyOrderFetchService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Tracking push stub — Mirakl shipment API may be wired later.
+ * Copy Wayfair-generated label tracking onto the local PO and the linked Shopify order.
+ * Declaring the shipment back to Wayfair stays a stub.
  */
 class WayfairTrackingSyncService
 {
@@ -55,7 +57,15 @@ class WayfairTrackingSyncService
         }
         $poNumbers = array_keys($byPo);
         if ($poNumbers === []) {
-            return ['success' => true, 'message' => 'Wayfair: no orders missing tracking.', 'checked' => 0, 'filled' => 0, 'skipped' => 0];
+            $shopify = $this->pushStoredTrackingToShopify(min(25, $limit), $deadline);
+
+            return [
+                'success' => true,
+                'message' => 'Wayfair: no orders missing tracking. Shopify fulfillments written: '.$shopify.'.',
+                'checked' => 0,
+                'filled' => 0,
+                'skipped' => 0,
+            ];
         }
 
         $found = $this->labelTrackingByPo($poNumbers, $deadline);
@@ -84,14 +94,156 @@ class WayfairTrackingSyncService
 
         $checked = count($poNumbers);
         $skipped = max(0, $checked - count($found));
+        $shopify = $this->pushStoredTrackingToShopify(min(25, $limit), $deadline);
 
         return [
             'success' => true,
             'checked' => $checked,
             'filled' => $filled,
             'skipped' => $skipped,
-            'message' => "Wayfair SOF tracking: checked {$checked} POs, saved tracking on {$filled} rows, still missing {$skipped}.",
+            'message' => "Wayfair SOF tracking: checked {$checked} POs, saved tracking on {$filled} rows, still missing {$skipped}. Shopify fulfillments written: {$shopify}.",
         ];
+    }
+
+    /**
+     * Wayfair label-generation tracking for one PO. Does not invent a number.
+     *
+     * @return array{tracking: string, carrier: string}|null
+     */
+    public function trackingForPo(string $poNumber): ?array
+    {
+        $poNumber = strtoupper(trim($poNumber));
+        if ($poNumber === '' || preg_match('/^[A-Z]{2}[A-Z0-9-]{6,}$/', $poNumber) !== 1) {
+            return null;
+        }
+
+        $cacheKey = 'wayfair.label-tracking.'.$poNumber;
+        $cached = Cache::get($cacheKey);
+        if ($cached === 'miss') {
+            return null;
+        }
+        if (is_array($cached) && strlen(trim((string) ($cached['tracking'] ?? ''))) >= 8) {
+            return [
+                'tracking' => strtoupper(preg_replace('/\s+/', '', (string) $cached['tracking']) ?? ''),
+                'carrier' => trim((string) ($cached['carrier'] ?? '')),
+            ];
+        }
+
+        $found = $this->labelTrackingByPo([$poNumber], null);
+        $hit = null;
+        foreach ($found as $po => $row) {
+            if (strcasecmp((string) $po, $poNumber) === 0 && is_array($row)) {
+                $hit = $row;
+                break;
+            }
+        }
+        $tn = strtoupper(preg_replace('/\s+/', '', (string) ($hit['tracking'] ?? '')) ?? '');
+        if ($hit === null || strlen($tn) < 8) {
+            Cache::put($cacheKey, 'miss', now()->addMinutes(10));
+
+            return null;
+        }
+
+        $ready = [
+            'tracking' => $tn,
+            'carrier' => trim((string) ($hit['carrier'] ?? '')),
+        ];
+        Cache::put($cacheKey, $ready, now()->addMinutes(30));
+        $this->saveTrackingForPo($poNumber, $ready);
+
+        return $ready;
+    }
+
+    /**
+     * @param  array{tracking: string, carrier: string}  $hit
+     */
+    public function saveTrackingForPo(string $poNumber, array $hit): void
+    {
+        $poNumber = trim($poNumber);
+        $tn = strtoupper(preg_replace('/\s+/', '', (string) ($hit['tracking'] ?? '')) ?? '');
+        if ($poNumber === '' || strlen($tn) < 8 || ! Schema::hasTable('wayfair_daily_data')) {
+            return;
+        }
+
+        $rows = WayfairDailyData::query()->where('po_number', $poNumber)->get();
+        foreach ($rows as $row) {
+            $payload = is_array($row->raw_payload) ? $row->raw_payload : [];
+            if (is_string($row->raw_payload) && $row->raw_payload !== '') {
+                $decoded = json_decode($row->raw_payload, true);
+                $payload = is_array($decoded) ? $decoded : [];
+            }
+            $payload['tracking_number'] = $tn;
+            $carrier = trim((string) ($hit['carrier'] ?? ''));
+            if ($carrier !== '') {
+                $payload['tracking_company'] = $carrier;
+                $payload['carrier'] = $carrier;
+            }
+            $row->raw_payload = $payload;
+            $row->save();
+        }
+    }
+
+    /**
+     * Write a real Wayfair label number onto the linked Shopify order.
+     */
+    public function pushStoredTrackingToShopify(int $limit = 25, ?float $deadline = null): int
+    {
+        if (! Schema::hasTable('wayfair_daily_data') || ! Schema::hasColumn('wayfair_daily_data', 'shopify_order_id')) {
+            return 0;
+        }
+
+        $limit = max(1, min(40, $limit));
+        $rows = WayfairDailyData::query()
+            ->where('po_date', '>=', now()->subDays(21)->toDateString())
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->where('shopify_order_id', 'not like', 'manual%')
+            ->whereRaw("IFNULL(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.tracking_number')), '') <> ''")
+            ->orderByDesc('po_date')
+            ->orderByDesc('id')
+            ->limit($limit * 4)
+            ->get(['id', 'po_number', 'shopify_order_id']);
+
+        $written = 0;
+        $seenPo = [];
+        foreach ($rows as $row) {
+            if ($written >= $limit) {
+                break;
+            }
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                break;
+            }
+            $po = strtoupper(trim((string) $row->po_number));
+            if ($po === '' || isset($seenPo[$po])) {
+                continue;
+            }
+            $seenPo[$po] = true;
+            $cacheKey = 'wayfair.shopify-fulfill-tried.'.(int) $row->id;
+            if (Cache::has($cacheKey)) {
+                continue;
+            }
+            try {
+                $result = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('wayfair', (int) $row->id);
+            } catch (\Throwable $e) {
+                Log::info('WayfairTrackingSyncService: Shopify fulfill failed', [
+                    'po' => $po,
+                    'error' => $e->getMessage(),
+                ]);
+                Cache::put($cacheKey, 1, now()->addMinutes(10));
+                continue;
+            }
+            $action = (string) ($result['action'] ?? '');
+            if ($action === 'shopify_fulfilled') {
+                Cache::put($cacheKey, 1, now()->addHours(12));
+                $written++;
+            } elseif ($action === 'already_on_shopify') {
+                Cache::put($cacheKey, 1, now()->addHours(12));
+            } else {
+                Cache::put($cacheKey, 1, now()->addMinutes(15));
+            }
+        }
+
+        return $written;
     }
 
     /**
