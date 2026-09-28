@@ -43,6 +43,12 @@ class AlibabaAuthUrlCommand extends Command
             if (! empty($result['expires_in'])) {
                 $this->line('expires_in='.$result['expires_in']);
             }
+            if (! empty($result['refresh_expires_in'])) {
+                $this->line('refresh_expires_in='.$result['refresh_expires_in']);
+            }
+            if (! empty($result['account'])) {
+                $this->line('account='.$result['account']);
+            }
 
             return self::SUCCESS;
         }

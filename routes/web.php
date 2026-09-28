@@ -7274,6 +7274,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Task Manager Routes
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
     Route::get('/tasks/summary', [\App\Http\Controllers\TaskController::class, 'taskSummary'])->name('tasks.summary');
+    Route::get('/tasks/score-history', [\App\Http\Controllers\TaskController::class, 'scoreHistory'])->name('tasks.scoreHistory');
     Route::get('/tasks/summary-stats', [\App\Http\Controllers\TaskController::class, 'taskSummaryStats'])->name('tasks.summaryStats');
     Route::get('/tasks/yesterday-done', [\App\Http\Controllers\TaskController::class, 'yesterdayDone'])->name('tasks.yesterdayDone');
     Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
@@ -7331,6 +7332,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::patch('/tasks/designation-rr/checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'updateDesignationChecklistItem'])->whereNumber('id')->name('tasks.designationRR.checklist.update');
     Route::delete('/tasks/designation-rr/checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'deleteDesignationChecklistItem'])->whereNumber('id')->name('tasks.designationRR.checklist.delete');
     Route::post('/tasks/designation-rr/checklist/progress', [\App\Http\Controllers\TaskController::class, 'toggleUserChecklistProgress'])->name('tasks.designationRR.checklist.progress');
+    Route::post('/tasks/designation-rr/checklist/submit', [\App\Http\Controllers\TaskController::class, 'submitUserChecklist'])->name('tasks.designationRR.checklist.submit');
     // CL Gen — Global, team-wide checklist (one shared list for every user)
     Route::get('/tasks/general-checklist', [\App\Http\Controllers\TaskController::class, 'getGeneralChecklist'])->name('tasks.generalChecklist.get');
     Route::post('/tasks/general-checklist/generate', [\App\Http\Controllers\TaskController::class, 'generateGeneralChecklist'])->name('tasks.generalChecklist.generate');

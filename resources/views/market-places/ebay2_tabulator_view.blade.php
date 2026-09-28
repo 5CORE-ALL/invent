@@ -3419,18 +3419,28 @@
                         visible: true,
                         hozAlign: "center",
                         headerSort: false,
+                        headerTooltip: "S = seller listing, B = buyer item. Uses the saved link, or the eBay item id when none is saved.",
                         tooltip: "Double-click to add / edit links",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const buyerLink = rowData['B Link'] || '';
-                            const sellerLink = rowData['S Link'] || '';
+                            let buyerLink = rowData['B Link'] || '';
+                            let sellerLink = rowData['S Link'] || '';
+                            const itemId = String(rowData.eBay_item_id || '').trim();
+                            if (itemId && !isEbay2TabulatorParentRow(rowData)) {
+                                if (!buyerLink) {
+                                    buyerLink = 'https://www.ebay.com/itm/' + encodeURIComponent(itemId);
+                                }
+                                if (!sellerLink) {
+                                    sellerLink = 'https://www.ebay.com/sh/lst/active?keyword=' + encodeURIComponent(itemId) + '&source=filterbar&action=search';
+                                }
+                            }
 
                             let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
                             if (sellerLink) {
-                                html += `<a href="${sellerLink}" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>`;
+                                html += `<a href="${escapeHtmlAttr(sellerLink)}" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" title="Seller link" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>`;
                             }
                             if (buyerLink) {
-                                html += `<a href="${buyerLink}" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>`;
+                                html += `<a href="${escapeHtmlAttr(buyerLink)}" target="_blank" rel="noopener noreferrer" class="text-success" style="font-size:11px;text-decoration:none;" title="Buyer link" onclick="event.stopPropagation();"><i class="fa fa-link"></i> B</a>`;
                             }
                             if (!sellerLink && !buyerLink) {
                                 html += '<span class="text-muted" style="font-size:12px;">-</span>';

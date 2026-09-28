@@ -14,10 +14,10 @@
             <!-- Topbar Brand Logo -->
             <div class="logo-topbar">
                 <a href="{{ route('any', 'index') }}" class="logo-light" aria-label="{{ $__topbarBrand }}">
-                    @include('layouts.shared.brand-wordmark', ['brandMark' => '%'])
+                    @include('layouts.shared.brand-wordmark')
                 </a>
                 <a href="{{ route('any', 'index') }}" class="logo-dark" aria-label="{{ $__topbarBrand }}">
-                    @include('layouts.shared.brand-wordmark', ['brandMark' => '%'])
+                    @include('layouts.shared.brand-wordmark')
                 </a>
             </div>
 
@@ -389,6 +389,12 @@
             }
             .topbar-rr-btn.has-data:hover { background: #15803d; color: #fff; }
             .topbar-rr-btn i { font-size: 1.15rem; }
+            .topbar-rr-btn__mark {
+                font-size: 0.78rem;
+                font-weight: 800;
+                letter-spacing: 0.02em;
+                line-height: 1;
+            }
             .topbar-rr-btn__count {
                 display: none;
                 position: absolute;
@@ -478,7 +484,7 @@
                 data-clrr-percent="{{ $topbarClrrPercent }}"
                 title="{{ $topbarClrrTitle }}"
                 aria-label="{{ $topbarClrrTitle }}">
-                <i class="ri-checkbox-multiple-fill"></i>
+                <span class="topbar-rr-btn__mark">CL</span>
                 <span class="topbar-rr-btn__count">{{ $topbarClrrPercent }}%</span>
             </button>
         @endauth

@@ -70,7 +70,7 @@ class AlibabaSyncController extends Controller
             'apiBase' => $apiBase !== '' ? rtrim($apiBase, '/').(str_ends_with(strtolower($apiBase), '/sync') ? '' : '/sync') : 'https://openapi.alibaba.com/sync',
             'redirectUri' => $this->alibabaAuth->redirectUri(),
             'gateway' => config('services.alibaba.gateway', 'rest'),
-            'restBase' => config('services.alibaba.rest_base', 'https://api-sg.alibaba.com/rest'),
+            'restBase' => config('services.alibaba.rest_base', 'https://openapi-api.alibaba.com/rest'),
             'flashSuccess' => $request->session()->pull('alibaba_connect_success'),
             'flashError' => $request->session()->pull('alibaba_connect_error'),
             'tokenResponse' => $request->session()->pull('alibaba_token_response'),
@@ -334,7 +334,7 @@ class AlibabaSyncController extends Controller
                 'message' => $result['message'] ?? 'Could not reach Alibaba API (network timeout).',
                 'detail' => $result['detail'] ?? null,
                 'tips' => [
-                    'Your PC cannot open TCP to api-sg.alibaba.com:443 — this is a network/firewall issue, not missing .env keys.',
+                    'Your PC cannot open TCP to openapi-api.alibaba.com:443 — this is a network/firewall issue, not missing .env keys.',
                     'Try: mobile hotspot, VPN, disable antivirus HTTPS scanning, or test from your production server.',
                     'Whitelist your server public IP in the Alibaba app console (not only your home IP).',
                     'Optional .env: ALIBABA_GATEWAY=sync, ALIBABA_RESOLVE_IPV4=true, ALIBABA_HTTP_PROXY=http://host:port',

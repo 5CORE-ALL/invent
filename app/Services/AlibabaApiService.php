@@ -30,9 +30,9 @@ class AlibabaApiService extends AliExpressApiService
         $gw = strtolower((string) (config('services.alibaba.gateway') ?: 'rest'));
         $this->gateway = in_array($gw, ['sync', 'rest'], true) ? $gw : 'rest';
 
-        $rest = (string) (config('services.alibaba.rest_base') ?: 'https://api-sg.alibaba.com/rest');
+        $rest = (string) (config('services.alibaba.rest_base') ?: 'https://openapi-api.alibaba.com/rest');
         if (str_contains(strtolower($rest), 'aliexpress.com')) {
-            $rest = 'https://api-sg.alibaba.com/rest';
+            $rest = 'https://openapi-api.alibaba.com/rest';
         }
         $this->restBase = rtrim($rest, '/');
 

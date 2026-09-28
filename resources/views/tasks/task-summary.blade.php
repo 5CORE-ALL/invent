@@ -2783,7 +2783,7 @@
             }
 
             function tsTaskIsOverdueForPanel(t) {
-                if (!t || t.status === 'Archived') {
+                if (!t || t.status === 'Archived' || t.status === 'Done') {
                     return false;
                 }
                 var isAuto = t.is_automate_task == 1 || t.is_automate_task === true || t.is_automate_task === '1';

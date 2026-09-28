@@ -62,6 +62,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="{{ route('tasks.scoreHistory') }}" class="{{ request()->routeIs('tasks.scoreHistory') ? 'active' : '' }}">
+                                <i class="ri-history-line me-2"></i>Score History
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('incentives.index') }}" class="{{ request()->routeIs('incentives.*') ? 'active' : '' }}">
                                 <i class="ri-hand-coin-line me-2"></i>Incentives
                             </a>

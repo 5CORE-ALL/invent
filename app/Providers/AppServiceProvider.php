@@ -322,7 +322,7 @@ class AppServiceProvider extends ServiceProvider
                 try {
                     if (\Illuminate\Support\Facades\Schema::hasTable('designation_rr_items')) {
                         $itemIds = DesignationRrItem::query()
-                            ->where('designation', $designation)
+                            ->forDesignation($designation)
                             ->pluck('id');
                         $rrCount = $itemIds->count();
                         if (
