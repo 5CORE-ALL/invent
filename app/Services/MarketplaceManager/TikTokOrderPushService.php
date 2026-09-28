@@ -70,7 +70,6 @@ class TikTokOrderPushService
             return $localCatalog;
         }
 
-        // Strict Shopify search — refuse to create if check cannot complete.
         $config = $this->shopifyConfig();
         $existing = $this->findExistingShopifyOrderByRefs(
             $config,
@@ -80,11 +79,11 @@ class TikTokOrderPushService
             'TikTokOrderPushService'
         );
         if (($existing['error'] ?? null) !== null) {
-            $this->lastFailureReason = $existing['error'].' Push blocked to avoid duplicates.';
-
-            return null;
-        }
-        if (! empty($existing['id'])) {
+            Log::warning('TikTokOrderPushService: Shopify duplicate search failed, creating the order anyway', [
+                'order_id' => $orderId,
+                'error' => $existing['error'],
+            ]);
+        } elseif (! empty($existing['id'])) {
             if ($orderId !== '') {
                 $this->linkTikTokOrderToShopify($orderId, (string) $existing['id']);
             } else {
@@ -117,20 +116,10 @@ class TikTokOrderPushService
         }
 
         $order->refresh();
-        $shopifyOrderId = $this->postOrderGuarded(
-            $config,
-            ['order' => $plan['payload']],
-            $this->tikTokShopifyDuplicateRefs($orderId, 'TT-'),
-            ['tiktok-'],
-            ['tiktok_order_id'],
-            'TikTokOrderPushService',
-            $order->shopify_order_id
-        );
-        if (! $shopifyOrderId && $this->shopifyFailureIsPhone($this->lastFailureReason)) {
-            $retryPayload = $plan['payload'];
-            $retryPayload = $this->stripShopifyPhone($retryPayload);
-            $shopifyOrderId = $this->postOrder($config, ['order' => $retryPayload]);
+        if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
+            return (string) $order->shopify_order_id;
         }
+        $shopifyOrderId = $this->postTikTokOrder($config, $plan['payload']);
         if (! $shopifyOrderId) {
             return null;
         }
@@ -417,20 +406,14 @@ class TikTokOrderPushService
                 }
             }
 
-            $variantId = $this->findShopifyVariantIdBySku($sku);
             $qty = max(1, (int) ($line->quantity ?? 1));
             $price = number_format((float) ($line->sale_price ?? $line->original_price ?? 0), 2, '.', '');
             $title = mb_substr((string) ($line->product_name ?: $sku), 0, 255);
-
-            if ($variantId) {
-                $lineItems[] = ['variant_id' => $variantId, 'quantity' => $qty];
-            } else {
-                $item = ['title' => $title, 'price' => $price, 'quantity' => $qty];
-                if ($sku !== '') {
-                    $item['sku'] = $sku;
-                }
-                $lineItems[] = $item;
+            $item = ['title' => $title, 'price' => $price, 'quantity' => $qty];
+            if ($sku !== '') {
+                $item['sku'] = $sku;
             }
+            $lineItems[] = $item;
         }
 
         if ($lineItems === []) {
@@ -592,12 +575,44 @@ class TikTokOrderPushService
         );
     }
 
-    protected function shopifyConfig(): array
+    /**
+     * @return array{store_url: string, token: string, store_key: string}
+     */
+    public function shopifyConfig(): array
     {
         $settings = MarketplaceSyncSettings::getFor('tiktok');
         $storeKey = (string) ($settings['order']['shopify_store'] ?? 'main');
+        if ($storeKey === '' || $storeKey === 'business') {
+            $storeKey = 'main';
+        }
 
         return app(ShopifyStoreSelector::class)->getConfigForStore($storeKey);
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderPayload
+     */
+    protected function postTikTokOrder(array $config, array $orderPayload): ?string
+    {
+        $id = $this->postOrder($config, ['order' => $orderPayload]);
+        if ($id) {
+            return $id;
+        }
+
+        $reason = strtolower((string) $this->lastFailureReason);
+        $slim = $this->stripShopifyPhone($orderPayload);
+        unset($slim['source_name'], $slim['name'], $slim['source_identifier']);
+        if (str_contains($reason, 'phone')
+            || str_contains($reason, 'address')
+            || str_contains($reason, 'province')
+            || str_contains($reason, 'country')
+            || str_contains($reason, 'zip')
+            || str_contains($reason, 'postal')
+        ) {
+            unset($slim['shipping_address'], $slim['billing_address']);
+        }
+
+        return $this->postOrder($config, ['order' => $slim]);
     }
 
     /**
