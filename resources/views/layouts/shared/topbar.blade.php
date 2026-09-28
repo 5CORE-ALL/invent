@@ -14,10 +14,10 @@
             <!-- Topbar Brand Logo -->
             <div class="logo-topbar">
                 <a href="{{ route('any', 'index') }}" class="logo-light" aria-label="{{ $__topbarBrand }}">
-                    @include('layouts.shared.brand-wordmark')
+                    @include('layouts.shared.brand-wordmark', ['brandMark' => '%'])
                 </a>
                 <a href="{{ route('any', 'index') }}" class="logo-dark" aria-label="{{ $__topbarBrand }}">
-                    @include('layouts.shared.brand-wordmark')
+                    @include('layouts.shared.brand-wordmark', ['brandMark' => '%'])
                 </a>
             </div>
 
@@ -84,6 +84,10 @@
             }
             .logo-topbar .brand-wordmark {
                 font-size: 26px;
+            }
+            .logo-topbar .brand-wordmark__core {
+                letter-spacing: 0;
+                margin-right: 0;
             }
             .leftside-menu .brand-wordmark {
                 font-size: 34px;
@@ -361,6 +365,67 @@
             }
             .topbar-chat-btn.has-unread .topbar-chat-btn__count { display: inline-block; }
 
+            .topbar-rr-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                flex-shrink: 0;
+                margin-right: 0.5rem;
+                width: 42px;
+                height: 42px;
+                padding: 0;
+                border: none;
+                border-radius: 50%;
+                background: #dc2626;
+                color: #fff;
+                box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
+                transition: transform 0.2s ease, background 0.15s ease;
+            }
+            .topbar-rr-btn:hover { background: #b91c1c; color: #fff; transform: scale(1.08); }
+            .topbar-rr-btn.has-data {
+                background: #16a34a;
+                box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
+            }
+            .topbar-rr-btn.has-data:hover { background: #15803d; color: #fff; }
+            .topbar-rr-btn i { font-size: 1.15rem; }
+            .topbar-rr-btn__count {
+                display: none;
+                position: absolute;
+                top: -4px;
+                right: -4px;
+                min-width: 18px;
+                height: 18px;
+                padding: 0 5px;
+                border-radius: 999px;
+                background: #0f172a;
+                color: #fff;
+                font-size: 0.65rem;
+                font-weight: 800;
+                line-height: 18px;
+                text-align: center;
+            }
+            .topbar-rr-btn.has-data .topbar-rr-btn__count { display: inline-block; }
+            .topbar-rr-btn.is-label {
+                width: auto;
+                min-width: 42px;
+                padding: 0 0.35rem;
+                background: transparent;
+                color: #1d4ed8;
+                box-shadow: none;
+                font-size: 0.95rem;
+                font-weight: 800;
+                letter-spacing: 0.02em;
+                line-height: 1;
+            }
+            .topbar-rr-btn.is-label:hover,
+            .topbar-rr-btn.is-label.has-data,
+            .topbar-rr-btn.is-label.has-data:hover {
+                background: transparent;
+                color: #1d4ed8;
+                box-shadow: none;
+            }
+
         </style>
 
         @php
@@ -386,6 +451,37 @@
             <i class="ri-megaphone-fill"></i>
             <span class="topbar-ann-btn__count">{{ $topbarAnnCount }}</span>
         </button>
+
+        @auth
+            @php
+                $topbarRrCount = (int) ($topbarRrCount ?? 0);
+                $topbarClrrCount = (int) ($topbarClrrCount ?? 0);
+                $topbarClrrPercent = (int) ($topbarClrrPercent ?? 0);
+                $topbarRrTitle = $topbarRrCount > 0
+                    ? 'R&R — '.$topbarRrCount.' item'.($topbarRrCount === 1 ? '' : 's')
+                    : 'R&R — no data';
+                $topbarClrrTitle = $topbarClrrCount > 0
+                    ? 'CL R&R — '.$topbarClrrPercent.'%'
+                    : 'CL R&R — no data';
+            @endphp
+            <button type="button" id="rrTopbarOpenBtn"
+                class="topbar-rr-btn is-label{{ $topbarRrCount > 0 ? ' has-data' : '' }}"
+                data-rr-count="{{ $topbarRrCount }}"
+                title="{{ $topbarRrTitle }}"
+                aria-label="{{ $topbarRrTitle }}">
+                <span class="topbar-rr-btn__label">R&amp;R</span>
+                <span class="topbar-rr-btn__count">{{ $topbarRrCount }}</span>
+            </button>
+            <button type="button" id="clrrTopbarOpenBtn"
+                class="topbar-rr-btn{{ $topbarClrrCount > 0 ? ' has-data' : '' }}"
+                data-clrr-count="{{ $topbarClrrCount }}"
+                data-clrr-percent="{{ $topbarClrrPercent }}"
+                title="{{ $topbarClrrTitle }}"
+                aria-label="{{ $topbarClrrTitle }}">
+                <i class="ri-checkbox-multiple-fill"></i>
+                <span class="topbar-rr-btn__count">{{ $topbarClrrPercent }}%</span>
+            </button>
+        @endauth
 
         @php
             $topbarSoiCount = (int) ($topbarSoiCount ?? 0);

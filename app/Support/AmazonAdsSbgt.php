@@ -37,6 +37,37 @@ public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAc
         return $sum < 1 ? 0 : $sum;
     }
 
+    /**
+     * FBA campaigns do not take a higher daily budget from the shared SBGT rule.
+     * Names such as "SPKN BGO 6PK FBA", "MC-03 4PCS fba KW", "GS EL FBA New KW",
+     * "ET 10FT BLU FBA PT", and "ND-57X FBA" all match.
+     */
+    public static function nameBlocksBudgetIncrease(string $campaignName): bool
+    {
+        return (bool) preg_match('/\bFBA\b/i', $campaignName);
+    }
+
+    /**
+     * Keep the current budget when an FBA campaign's rule SBGT is higher.
+     * A lower SBGT, including 0, is unchanged.
+     */
+    public static function sbgtWithoutIncrease(string $campaignName, mixed $sbgt, mixed $liveBudget): mixed
+    {
+        if (! self::nameBlocksBudgetIncrease($campaignName)) {
+            return $sbgt;
+        }
+        if ($sbgt === null || $sbgt === '' || ! is_numeric($sbgt) || ! is_numeric($liveBudget)) {
+            return $sbgt;
+        }
+        $want = (float) $sbgt;
+        $live = (float) $liveBudget;
+        if ($want > $live + 0.015) {
+            return $live;
+        }
+
+        return $sbgt;
+    }
+
     public static function isExplicitZero(mixed $raw): bool
     {
         if ($raw === null || $raw === '') {

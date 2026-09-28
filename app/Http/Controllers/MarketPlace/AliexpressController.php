@@ -553,6 +553,40 @@ class AliexpressController extends Controller
     }
 
     /**
+     * Pacific calendar day => API line sales. Same status skip and line total
+     * as sumApiOrderSalesBetween() / the Active Channel Y Sales cell.
+     *
+     * @return array<string, float>
+     */
+    public function apiOrderSalesByPacificDate(Carbon $start, Carbon $end): array
+    {
+        $tz = 'America/Los_Angeles';
+        $byDate = [];
+        foreach ($this->aliexpressOrderMetricsAsDailyRows($start, $end) as $row) {
+            $status = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($status, 'refund') || str_contains($status, 'return')
+                || str_contains($status, 'cancel') || str_contains($status, 'closed')) {
+                continue;
+            }
+            $rawDate = $row->order_date ?? null;
+            if ($rawDate === null || $rawDate === '') {
+                continue;
+            }
+            try {
+                $day = Carbon::parse($rawDate)->timezone($tz)->toDateString();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            $byDate[$day] = ($byDate[$day] ?? 0) + (float) ($row->product_total ?? 0);
+        }
+        foreach ($byDate as $day => $sales) {
+            $byDate[$day] = round($sales, 2);
+        }
+
+        return $byDate;
+    }
+
+    /**
      * L30 + L60 summary badges for /aliexpress-tabulator — API orders only.
      */
     public function getTabulatorBadgeStats()

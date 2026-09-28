@@ -172,6 +172,12 @@ class AmazonAdsLiveBidBgtSync extends Command
             $seen[$cid] = true;
             $status = strtoupper(trim((string) ($row->campaignStatus ?? '')));
             $live = is_numeric($row->campaignBudgetAmount) ? (float) $row->campaignBudgetAmount : null;
+            $name = (string) ($row->campaignName ?? '');
+            if ($live !== null
+                && AmazonAdsSbgt::nameBlocksBudgetIncrease($name)
+                && $sbgt > $live + AmazonAdsLiveBidBgtSyncService::BGT_TOLERANCE) {
+                continue;
+            }
             $zeroPause = $sbgt === 0.0 && $status === 'ENABLED';
             $differs = $live === null || abs($sbgt - $live) > AmazonAdsLiveBidBgtSyncService::BGT_TOLERANCE;
             if (! $zeroPause && ! $differs) {

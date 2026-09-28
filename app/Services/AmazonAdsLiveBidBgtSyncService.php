@@ -421,6 +421,13 @@ class AmazonAdsLiveBidBgtSyncService
 
                 return $this->finish($base, 'synced', 'already_matched', $source, $campaignName, $desired, (float) $oldLive, 'skipped');
             }
+            if ($field === 'bgt'
+                && AmazonAdsSbgt::nameBlocksBudgetIncrease($campaignName)
+                && (float) $desired > (float) $oldLive + $tolerance) {
+                $this->persistVerifiedLive($channel, $field, $campaignId, (float) $oldLive);
+
+                return $this->finish($base, 'synced', 'fba_budget_not_increased', $source, $campaignName, (float) $oldLive, (float) $oldLive, 'skipped');
+            }
         }
 
         $push = $this->pushWithRetry($channel, $field, $campaignId, $desired);

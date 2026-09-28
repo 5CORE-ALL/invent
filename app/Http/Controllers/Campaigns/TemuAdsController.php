@@ -185,7 +185,9 @@ class TemuAdsController extends Controller
         }
         $rows = self::blankCreateRejectsForExistingAds($rows);
         $rows = $this->fillMissingParentsOnAdsRows($rows);
+        $rows = self::shareExistingAdStatus($rows);
         $rows = $this->appendParentRows($rows);
+        $rows = self::dropParentDuplicateSkusAlreadyCovered($rows);
 
         $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
         $channelSales = $this->temuChannelSalesForPeriod($tacosPeriod);
@@ -1444,6 +1446,101 @@ class TemuAdsController extends Controller
     }
 
     /**
+     * Temu ads are per goods ID. A sibling SKU that still says "No ad" is a duplicate
+     * of a goods that already has a campaign, so it must not stay in the Create list.
+     *
+     * @param  iterable<int, array<string, mixed>>  $rows
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    public static function shareExistingAdStatus($rows)
+    {
+        $rows = collect($rows);
+        $statusByGoods = [];
+        foreach ($rows as $row) {
+            $gid = (string) ($row['goods_id'] ?? '');
+            $status = (string) ($row['ad_status'] ?? '');
+            if ($gid !== '' && self::adAlreadyCreated($status) && ! isset($statusByGoods[$gid])) {
+                $statusByGoods[$gid] = $status;
+            }
+        }
+        if ($statusByGoods === []) {
+            return $rows->values();
+        }
+
+        return $rows->map(function (array $row) use ($statusByGoods): array {
+            $gid = (string) ($row['goods_id'] ?? '');
+            if ($gid === '' || ! isset($statusByGoods[$gid]) || self::adAlreadyCreated((string) ($row['ad_status'] ?? ''))) {
+                return $row;
+            }
+            $row['ad_status'] = $statusByGoods[$gid];
+            $row['ad_create_reject'] = '';
+
+            return $row;
+        })->values();
+    }
+
+    public static function parentAdsKey(array $row): string
+    {
+        return strtoupper(trim((string) preg_replace('/^PARENT\s+/i', '', (string) ($row['parent'] ?? ''))));
+    }
+
+    /**
+     * SKU text that is the parent itself (PARENT 06 CW / 06 CW), not a variation.
+     */
+    public static function isParentNamedSku(string $sku, string $parentKey): bool
+    {
+        $skuKey = strtoupper(rtrim(trim($sku), '.'));
+        $parentKey = strtoupper(trim($parentKey));
+        if ($skuKey === '' || $parentKey === '') {
+            return false;
+        }
+
+        return $skuKey === $parentKey || $skuKey === 'PARENT '.$parentKey;
+    }
+
+    /**
+     * Drop a parent-named duplicate SKU once a real variation of that parent already has an ad.
+     *
+     * @param  iterable<int, array<string, mixed>>  $rows
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    public static function dropParentDuplicateSkusAlreadyCovered($rows)
+    {
+        $rows = collect($rows);
+        $adStatusByParent = [];
+        foreach ($rows as $row) {
+            if (! empty($row['is_parent'])) {
+                continue;
+            }
+            $parent = self::parentAdsKey($row);
+            if ($parent === '' || self::isParentNamedSku((string) ($row['sku'] ?? ''), $parent)) {
+                continue;
+            }
+            if (! self::adAlreadyCreated((string) ($row['ad_status'] ?? ''))) {
+                continue;
+            }
+            if (! isset($adStatusByParent[$parent])) {
+                $adStatusByParent[$parent] = true;
+            }
+        }
+        if ($adStatusByParent === []) {
+            return $rows->values();
+        }
+
+        return $rows->reject(function (array $row) use ($adStatusByParent): bool {
+            $parent = self::parentAdsKey($row);
+            if ($parent === '' || ! isset($adStatusByParent[$parent])) {
+                return false;
+            }
+            if (! empty($row['is_parent'])) {
+                return ! empty($row['only_duplicate_skus']);
+            }
+
+            return self::isParentNamedSku((string) ($row['sku'] ?? ''), $parent);
+        })->values();
+    }
+
+    /**
      * Drop leftover create-fail text once Temu already has the ad.
      *
      * @param  iterable<int, array<string, mixed>>  $rows
@@ -1567,8 +1664,13 @@ class TemuAdsController extends Controller
 
                 $gid = (string) ($first['goods_id'] ?? '');
                 $period = (string) ($first['period'] ?? '');
+                $parentKey = strtoupper($parent);
+                $withAd = $kids->first(fn (array $k) => self::adAlreadyCreated((string) ($k['ad_status'] ?? '')));
+                $onlyDuplicateSkus = ! $kids->contains(
+                    fn (array $k) => ! self::isParentNamedSku((string) ($k['sku'] ?? ''), $parentKey)
+                );
 
-                return array_merge($first, [
+                $row = array_merge($first, [
                     'id' => 'p-'.$gid.'-'.$period,
                     'raw_id' => $first['id'] ?? null,
                     'is_parent' => true,
@@ -1580,7 +1682,14 @@ class TemuAdsController extends Controller
                     'dil_percent' => $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0,
                     'all_sale' => $allSale,
                     'has_raw' => true,
+                    'only_duplicate_skus' => $onlyDuplicateSkus,
                 ]);
+                if (is_array($withAd)) {
+                    $row['ad_status'] = $withAd['ad_status'];
+                    $row['ad_create_reject'] = '';
+                }
+
+                return $row;
             })
             ->values();
 

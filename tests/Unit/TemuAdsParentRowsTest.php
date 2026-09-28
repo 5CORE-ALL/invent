@@ -114,4 +114,85 @@ class TemuAdsParentRowsTest extends TestCase
         $this->assertSame('', $rows->firstWhere('sku', 'CONGO 3 BLU')['ad_create_reject']);
         $this->assertSame('listing not eligible', $rows->firstWhere('sku', 'STILL MISSING')['ad_create_reject']);
     }
+
+    public function test_sibling_sku_with_no_ad_inherits_the_goods_ad_status(): void
+    {
+        $rows = TemuAdsController::shareExistingAdStatus([
+            [
+                'goods_id' => '602475553743331',
+                'parent' => '06 CW',
+                'sku' => '06 CW RED',
+                'ad_status' => 'Active',
+                'ad_create_reject' => '',
+            ],
+            [
+                'goods_id' => '602475553743331',
+                'parent' => '06 CW',
+                'sku' => '06 CW RED.',
+                'ad_status' => 'No ad',
+                'ad_create_reject' => 'The value entered for the daily budget must be between 11 and 999,999',
+            ],
+        ]);
+
+        $dup = $rows->firstWhere('sku', '06 CW RED.');
+        $this->assertSame('Active', $dup['ad_status']);
+        $this->assertSame('', $dup['ad_create_reject']);
+    }
+
+    public function test_parent_named_duplicate_sku_is_dropped_when_the_parent_already_has_an_ad(): void
+    {
+        $rows = TemuAdsController::synthesizeParentAdsRows([
+            [
+                'id' => 9,
+                'goods_id' => '111',
+                'parent' => '06 CW',
+                'sku' => '06 CW BLU',
+                'sku_id' => 'z',
+                'inv' => 1,
+                'ovl30' => 0,
+                'all_sale' => 0,
+                'period' => 'L30',
+                'ad_spend' => 0,
+                'ad_status' => 'No ad',
+                'ad_create_reject' => 'already created',
+            ],
+            [
+                'id' => 10,
+                'goods_id' => '111',
+                'parent' => '06 CW',
+                'sku' => '06 CW RED',
+                'sku_id' => 'a',
+                'inv' => 4,
+                'ovl30' => 1,
+                'all_sale' => 10,
+                'period' => 'L30',
+                'ad_spend' => 2,
+                'ad_status' => 'Active',
+                'ad_create_reject' => '',
+            ],
+            [
+                'id' => 11,
+                'goods_id' => '222',
+                'parent' => '06 CW',
+                'sku' => 'PARENT 06 CW',
+                'sku_id' => '',
+                'inv' => 26,
+                'ovl30' => 84,
+                'all_sale' => 20,
+                'period' => 'L30',
+                'ad_spend' => 0,
+                'ad_status' => 'No ad',
+                'ad_create_reject' => 'listing not eligible',
+            ],
+        ]);
+
+        $rows = TemuAdsController::dropParentDuplicateSkusAlreadyCovered($rows);
+
+        $this->assertNull($rows->first(fn (array $row) => (string) ($row['goods_id'] ?? '') === '222'));
+        $keptParent = $rows->first(fn (array $row) => ! empty($row['is_parent']) && (string) ($row['goods_id'] ?? '') === '111');
+        $this->assertNotNull($keptParent);
+        $this->assertSame('PARENT 06 CW', $keptParent['sku']);
+        $this->assertSame('Active', $keptParent['ad_status']);
+        $this->assertSame('06 CW RED', $rows->firstWhere('sku', '06 CW RED')['sku']);
+    }
 }
