@@ -23,6 +23,32 @@
             max-height: min(70vh, 640px);
             overflow: auto;
         }
+        #rrTopbarModal .modal-dialog {
+            width: min(1000px, calc(100vw - 1.5rem));
+            max-width: min(1000px, calc(100vw - 1.5rem));
+            height: min(1280px, calc(100vh - 1.5rem));
+            margin: 0.75rem auto;
+        }
+        #rrTopbarModal .modal-content {
+            height: 100%;
+        }
+        #rrTopbarModal #rrTopbarBody {
+            max-height: none;
+            flex: 1 1 auto;
+        }
+        #clrrTopbarModal .modal-dialog {
+            width: min(1600px, calc(100vw - 1.5rem));
+            max-width: min(1600px, calc(100vw - 1.5rem));
+            height: min(1280px, calc(100vh - 1.5rem));
+            margin: 0.75rem auto;
+        }
+        #clrrTopbarModal .modal-content {
+            height: 100%;
+        }
+        #clrrTopbarModal #clrrTopbarBody {
+            max-height: none;
+            flex: 1 1 auto;
+        }
         .rr-topbar-empty {
             text-align: center;
             color: #64748b;

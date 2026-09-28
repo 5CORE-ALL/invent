@@ -389,6 +389,12 @@
             }
             .topbar-rr-btn.has-data:hover { background: #15803d; color: #fff; }
             .topbar-rr-btn i { font-size: 1.15rem; }
+            .topbar-rr-btn__mark {
+                font-size: 0.78rem;
+                font-weight: 800;
+                letter-spacing: 0.02em;
+                line-height: 1;
+            }
             .topbar-rr-btn__count {
                 display: none;
                 position: absolute;
@@ -424,22 +430,6 @@
                 background: transparent;
                 color: #1d4ed8;
                 box-shadow: none;
-            }
-            #clrrTopbarOpenBtn.topbar-rr-btn {
-                width: 126px;
-                height: var(--tz-topbar-height, 70px);
-                border-radius: 0;
-                margin-right: 0.35rem;
-            }
-            #clrrTopbarOpenBtn.topbar-rr-btn:hover {
-                transform: none;
-            }
-            #clrrTopbarOpenBtn.topbar-rr-btn i {
-                font-size: 1.45rem;
-            }
-            #clrrTopbarOpenBtn .topbar-rr-btn__count {
-                top: 6px;
-                right: 6px;
             }
 
         </style>
@@ -494,7 +484,7 @@
                 data-clrr-percent="{{ $topbarClrrPercent }}"
                 title="{{ $topbarClrrTitle }}"
                 aria-label="{{ $topbarClrrTitle }}">
-                <i class="ri-checkbox-multiple-fill"></i>
+                <span class="topbar-rr-btn__mark">CL</span>
                 <span class="topbar-rr-btn__count">{{ $topbarClrrPercent }}%</span>
             </button>
         @endauth
