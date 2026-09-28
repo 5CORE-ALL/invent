@@ -21,7 +21,8 @@
     <h4 class="mb-0">{{ $heading }}</h4>
     @if(str_contains(strtolower($heading), 'orders'))
         <div class="ms-auto d-flex gap-2 align-items-center">
-            <button type="button" class="btn btn-sm btn-success" id="mm-push-tracking-btn" data-slug="{{ $slug }}">
+            <button type="button" class="btn btn-sm btn-success" id="mm-push-tracking-btn" data-slug="{{ $slug }}"
+                title="Send the Shopify tracking number to this marketplace and mark the order shipped. If the order is still Queued, it is created on Shopify first.">
                 <i class="ri-truck-line"></i> Push tracking
             </button>
             @include('marketplace._fetch-tracking-now', ['fetchTrackingMarketplace' => $slug])
@@ -76,6 +77,7 @@
         let failed = 0;
         let rounds = 0;
         let stall = 0;
+        let lastLeft = null;
         try {
             while (rounds < 200) {
                 rounds++;
@@ -106,7 +108,10 @@
                 }
                 paint(pct, 'Shipped ' + pushed + ', skipped ' + skipped + ', failed ' + failed + (data.message ? '. ' + data.message : ''));
                 if (data.finished || Number(data.checked || 0) === 0) break;
-                if (Number(data.pushed || 0) === 0 && Number(data.failed || 0) === 0) {
+                const noProgress = left != null && lastLeft != null && left >= lastLeft
+                    && Number(data.pushed || 0) === 0 && Number(data.failed || 0) === 0;
+                if (left != null) lastLeft = left;
+                if (noProgress) {
                     stall++;
                     if (stall >= 2) break;
                 } else {

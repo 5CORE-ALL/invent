@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
  */
 trait PushesTikTokShopifyTracking
 {
+    protected ?object $trackingShopifyImporter = null;
     /**
      * @return array{success: bool, skipped?: bool, message: string, shopify_tracking?: string|null}
      */
@@ -51,9 +52,19 @@ trait PushesTikTokShopifyTracking
                 $line->shopify_order_id = $shopifyOrderId;
             }
         }
+        if ($shopifyOrderId === '') {
+            $shopifyOrderId = $this->importShopifyOrderForTracking($line);
+            if ($shopifyOrderId !== '') {
+                $line->shopify_order_id = $shopifyOrderId;
+            }
+        }
 
         if ($shopifyOrderId === '') {
-            return ['success' => false, 'skipped' => true, 'message' => 'Order not linked to Shopify yet.'];
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => $this->shopifyImportFailure($line) ?: 'Order not linked to Shopify yet.',
+            ];
         }
 
         $skus = $this->sellerSkusForOrder($model, $orderId, $line);
@@ -144,6 +155,7 @@ trait PushesTikTokShopifyTracking
             return [
                 'success' => false,
                 'skipped' => true,
+                'retry_minutes' => 5,
                 'message' => $error !== ''
                     ? $error
                     : 'No tracking number on '.$this->trackingShopLabel().' or Shopify yet.',
@@ -260,7 +272,10 @@ trait PushesTikTokShopifyTracking
             if (! empty($result['success']) && empty($result['skipped'])) {
                 $pushed++;
             } elseif (! empty($result['skipped'])) {
-                $this->rememberTrackingSkip(trim((string) $line->order_id));
+                $this->rememberTrackingSkip(
+                    trim((string) $line->order_id),
+                    max(1, (int) ($result['retry_minutes'] ?? 20))
+                );
                 $skipped++;
             } else {
                 $this->rememberTrackingSkip(trim((string) $line->order_id));
@@ -400,12 +415,56 @@ trait PushesTikTokShopifyTracking
         return 'mm.'.$this->trackingMarketplaceSlug().'.tracking-skip.'.$orderId;
     }
 
-    protected function rememberTrackingSkip(string $orderId): void
+    protected function rememberTrackingSkip(string $orderId, int $minutes = 20): void
     {
         if ($orderId === '') {
             return;
         }
-        Cache::put($this->trackingSkipCacheKey($orderId), 1, now()->addMinutes(20));
+        Cache::put($this->trackingSkipCacheKey($orderId), 1, now()->addMinutes(max(1, $minutes)));
+    }
+
+    /**
+     * Queued TikTok orders have no Shopify id, so there is nowhere to read a label from.
+     * Import uses the same duplicate check as the row Push button.
+     */
+    protected function importShopifyOrderForTracking(object $line): string
+    {
+        $service = $this->trackingShopifyImporter();
+        if ($service === null) {
+            return '';
+        }
+        try {
+            return (string) ($service->importToShopify($line) ?? '');
+        } catch (\Throwable $e) {
+            Log::warning($this->trackingLogContext().': Shopify import before tracking push failed', [
+                'order_id' => $line->order_id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return '';
+    }
+
+    protected function shopifyImportFailure(object $line): string
+    {
+        unset($line);
+
+        return trim((string) ($this->trackingShopifyImporter?->lastFailureReason ?? ''));
+    }
+
+    protected function trackingShopifyImporter(): ?object
+    {
+        if ($this->trackingShopifyImporter !== null) {
+            return $this->trackingShopifyImporter;
+        }
+        if ($this->trackingMarketplaceSlug() === 'tiktok') {
+            return $this->trackingShopifyImporter = app(TikTokOrderPushService::class);
+        }
+        if ($this->trackingMarketplaceSlug() === 'tiktok2') {
+            return $this->trackingShopifyImporter = app(TikTok2OrderPushService::class);
+        }
+
+        return null;
     }
 
     protected function attachExistingShopifyOrder(object $line): string
