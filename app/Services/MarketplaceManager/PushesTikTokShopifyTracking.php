@@ -60,10 +60,13 @@ trait PushesTikTokShopifyTracking
         }
 
         if ($shopifyOrderId === '') {
+            $message = $this->shopifyImportFailure($line) ?: 'Shopify did not create this TikTok order.';
+            $this->markShopifyImportFailed($line);
+
             return [
                 'success' => false,
-                'skipped' => true,
-                'message' => $this->shopifyImportFailure($line) ?: 'Order not linked to Shopify yet.',
+                'retry_minutes' => 2,
+                'message' => $message,
             ];
         }
 
@@ -235,10 +238,9 @@ trait PushesTikTokShopifyTracking
         $model = $this->trackingOrderModel();
 
         $rows = $this->pendingTrackingQuery($model)
-            ->orderByRaw("CASE WHEN UPPER(TRIM(COALESCE(order_status, ''))) IN ('DELIVERED', 'COMPLETED', 'IN_TRANSIT', 'SHIPPED', 'AWAITING_COLLECTION') THEN 0 ELSE 1 END")
-            ->orderByRaw('pushed_to_shopify_at IS NULL')
-            ->orderBy('pushed_to_shopify_at')
-            ->orderBy('id')
+            ->orderByRaw("CASE WHEN (shopify_order_id IS NULL OR shopify_order_id = '') AND UPPER(REPLACE(REPLACE(TRIM(COALESCE(order_status, '')), ' ', '_'), '-', '_')) IN ('AWAITING_SHIPMENT', 'ON_HOLD', 'PARTIALLY_SHIPPING', 'AWAITING_COLLECTION') THEN 0 ELSE 1 END")
+            ->orderByDesc('order_created_at')
+            ->orderByDesc('id')
             ->limit($limit * 40)
             ->get();
 
@@ -278,7 +280,10 @@ trait PushesTikTokShopifyTracking
                 );
                 $skipped++;
             } else {
-                $this->rememberTrackingSkip(trim((string) $line->order_id));
+                $this->rememberTrackingSkip(
+                    trim((string) $line->order_id),
+                    max(1, (int) ($result['retry_minutes'] ?? 20))
+                );
                 $failed++;
             }
             usleep(250000);
@@ -319,6 +324,11 @@ trait PushesTikTokShopifyTracking
 
         $orderId = trim((string) ($line->order_id ?? ''));
         if ($orderId === '') {
+            return ['tracking' => '', 'carrier' => ''];
+        }
+
+        $status = $this->normalizeTrackingStatus((string) ($line->order_status ?? ''));
+        if (in_array($status, ['AWAITING_SHIPMENT', 'ON_HOLD', 'UNPAID', 'PARTIALLY_SHIPPING'], true)) {
             return ['tracking' => '', 'carrier' => ''];
         }
 
@@ -380,8 +390,8 @@ trait PushesTikTokShopifyTracking
     {
         $rows = $this->pendingTrackingQuery($this->trackingOrderModel())
             ->orderByDesc('id')
-            ->limit(800)
-            ->get(['order_id']);
+            ->limit(4000)
+            ->get(['order_id', 'shopify_order_id']);
         $unique = [];
         foreach ($rows as $row) {
             $ref = trim((string) ($row->order_id ?? ''));
@@ -412,7 +422,7 @@ trait PushesTikTokShopifyTracking
 
     protected function trackingSkipCacheKey(string $orderId): string
     {
-        return 'mm.'.$this->trackingMarketplaceSlug().'.tracking-skip.'.$orderId;
+        return 'mm.'.$this->trackingMarketplaceSlug().'.tracking-skip.v2.'.$orderId;
     }
 
     protected function rememberTrackingSkip(string $orderId, int $minutes = 20): void
@@ -433,6 +443,9 @@ trait PushesTikTokShopifyTracking
         if ($service === null) {
             return '';
         }
+        if (property_exists($service, 'deferInventorySync')) {
+            $service->deferInventorySync = true;
+        }
         try {
             return (string) ($service->importToShopify($line) ?? '');
         } catch (\Throwable $e) {
@@ -443,6 +456,25 @@ trait PushesTikTokShopifyTracking
         }
 
         return '';
+    }
+
+    protected function markShopifyImportFailed(object $line): void
+    {
+        $orderId = trim((string) ($line->order_id ?? ''));
+        if ($orderId === '') {
+            return;
+        }
+        try {
+            $model = $this->trackingOrderModel();
+            $model::query()
+                ->where('order_id', $orderId)
+                ->where(function ($q) {
+                    $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                })
+                ->update(['import_status' => 'import_failed']);
+        } catch (\Throwable) {
+            // The button still reports the Shopify error.
+        }
     }
 
     protected function shopifyImportFailure(object $line): string

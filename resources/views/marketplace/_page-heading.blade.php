@@ -79,7 +79,7 @@
         let stall = 0;
         let lastLeft = null;
         try {
-            while (rounds < 200) {
+            while (rounds < 800) {
                 rounds++;
                 const res = await fetch(url, {
                     method: 'POST',

@@ -24,6 +24,9 @@ class TikTokOrderPushService
     /** Set when import linked an existing Shopify order instead of creating one. */
     public ?string $lastDuplicateLinkMessage = null;
 
+    /** Tracking push creates many orders in one click; inventory sync can run after. */
+    public bool $deferInventorySync = false;
+
     public function importToShopify(TiktokOrder $order): ?string
     {
         $this->lastDuplicateLinkMessage = null;
@@ -123,6 +126,11 @@ class TikTokOrderPushService
             'TikTokOrderPushService',
             $order->shopify_order_id
         );
+        if (! $shopifyOrderId && $this->shopifyFailureIsPhone($this->lastFailureReason)) {
+            $retryPayload = $plan['payload'];
+            $retryPayload = $this->stripShopifyPhone($retryPayload);
+            $shopifyOrderId = $this->postOrder($config, ['order' => $retryPayload]);
+        }
         if (! $shopifyOrderId) {
             return null;
         }
@@ -141,7 +149,7 @@ class TikTokOrderPushService
             $this->syncShopifyCustomerFromAddress($config, $shopifyOrderId, $shipping, $customer);
         }
 
-        if ($this->lastDuplicateLinkMessage === null) {
+        if ($this->lastDuplicateLinkMessage === null && ! $this->deferInventorySync) {
             $this->syncInventoryAfterPush($order);
         }
 
@@ -415,11 +423,7 @@ class TikTokOrderPushService
             $title = mb_substr((string) ($line->product_name ?: $sku), 0, 255);
 
             if ($variantId) {
-                $item = ['variant_id' => $variantId, 'quantity' => $qty, 'title' => $title];
-                if ((float) $price > 0) {
-                    $item['price'] = $price;
-                }
-                $lineItems[] = $item;
+                $lineItems[] = ['variant_id' => $variantId, 'quantity' => $qty];
             } else {
                 $item = ['title' => $title, 'price' => $price, 'quantity' => $qty];
                 if ($sku !== '') {
@@ -446,7 +450,7 @@ class TikTokOrderPushService
             ],
             'financial_status' => 'paid',
             'fulfillment_status' => null,
-            'inventory_behaviour' => 'decrement_obeying_policy',
+            'inventory_behaviour' => 'decrement_ignoring_policy',
             'send_receipt' => false,
             'send_fulfillment_receipt' => false,
         ];
@@ -509,6 +513,28 @@ class TikTokOrderPushService
         }
     }
 
+    protected function shopifyFailureIsPhone(?string $reason): bool
+    {
+        $reason = strtolower((string) $reason);
+
+        return str_contains($reason, 'phone');
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderPayload
+     * @return array<string, mixed>
+     */
+    protected function stripShopifyPhone(array $orderPayload): array
+    {
+        foreach (['shipping_address', 'billing_address', 'customer'] as $key) {
+            if (isset($orderPayload[$key]) && is_array($orderPayload[$key])) {
+                unset($orderPayload[$key]['phone']);
+            }
+        }
+
+        return $orderPayload;
+    }
+
     protected function postOrder(array $config, array $payload): ?string
     {
         $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders.json';
@@ -517,7 +543,7 @@ class TikTokOrderPushService
 
         try {
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                $response = Http::withHeaders([
+                $response = Http::withoutVerifying()->withHeaders([
                     'X-Shopify-Access-Token' => $config['token'],
                     'Content-Type' => 'application/json',
                 ])->timeout(60)->post($url, $payload);

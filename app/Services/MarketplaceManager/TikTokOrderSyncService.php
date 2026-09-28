@@ -135,24 +135,42 @@ class TikTokOrderSyncService
 
         $cutoff = $this->autoImportFromDate();
 
-        $orders = TiktokOrder::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where('order_created_at', '>=', $cutoff)
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->orderByDesc('order_created_at')
-            ->orderByDesc('id')
-            ->limit(200)
-            ->get();
-
         $seenOrderIds = [];
         $dispatched = 0;
+        $cursorTime = null;
+        $cursorId = null;
 
-        foreach ($orders as $order) {
+        for ($page = 0; $page < 25; $page++) {
+            $query = TiktokOrder::query()
+                ->where(function ($q) {
+                    $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                })
+                ->where('order_created_at', '>=', $cutoff)
+                ->where(function ($q) {
+                    $q->whereNull('import_status')
+                        ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
+                });
+            if ($cursorTime !== null && $cursorId !== null) {
+                $query->where(function ($q) use ($cursorTime, $cursorId) {
+                    $q->where('order_created_at', '<', $cursorTime)
+                        ->orWhere(function ($q) use ($cursorTime, $cursorId) {
+                            $q->where('order_created_at', $cursorTime)->where('id', '<', $cursorId);
+                        });
+                });
+            }
+            $orders = $query
+                ->orderByDesc('order_created_at')
+                ->orderByDesc('id')
+                ->limit(400)
+                ->get();
+            if ($orders->isEmpty()) {
+                break;
+            }
+            $last = $orders->last();
+            $cursorTime = $last->order_created_at;
+            $cursorId = (int) $last->id;
+
+            foreach ($orders as $order) {
             $orderId = (string) $order->order_id;
             if ($orderId === '' || isset($seenOrderIds[$orderId])) {
                 continue;
@@ -191,7 +209,9 @@ class TikTokOrderSyncService
                 );
                 TiktokOrder::query()
                     ->where('order_id', $orderId)
-                    ->whereNull('shopify_order_id')
+                    ->where(function ($q) {
+                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                    })
                     ->update(['import_status' => 'queued']);
                 $dispatched++;
             } catch (\Throwable $e) {
@@ -199,6 +219,7 @@ class TikTokOrderSyncService
                     'id' => $order->id,
                     'error' => $e->getMessage(),
                 ]);
+            }
             }
         }
 

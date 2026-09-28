@@ -446,7 +446,7 @@ class TikTok2OrderPushService
             ],
             'financial_status' => 'paid',
             'fulfillment_status' => null,
-            'inventory_behaviour' => 'decrement_obeying_policy',
+            'inventory_behaviour' => 'decrement_ignoring_policy',
             'send_receipt' => false,
             'send_fulfillment_receipt' => false,
         ];
@@ -517,7 +517,7 @@ class TikTok2OrderPushService
 
         try {
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                $response = Http::withHeaders([
+                $response = Http::withoutVerifying()->withHeaders([
                     'X-Shopify-Access-Token' => $config['token'],
                     'Content-Type' => 'application/json',
                 ])->timeout(60)->post($url, $payload);
