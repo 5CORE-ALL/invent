@@ -100,7 +100,6 @@
             if (typeof bootstrap === 'undefined') return;
 
             const userId = @json((int) auth()->id());
-            const summaryUrl = @json(route('tasks.summary'));
             const rrUrl = @json(route('tasks.designationRR.get'));
             const clrrUrl = @json(route('tasks.designationRR.checklist.get'));
             const progressUrl = @json(route('tasks.designationRR.checklist.progress'));
@@ -145,8 +144,7 @@
             }
 
             function emptyHtml(message) {
-                return '<div class="rr-topbar-empty">' + escapeHtml(message)
-                    + '<div class="mt-2"><a href="' + summaryUrl + '">Open Task Summary</a></div></div>';
+                return '<div class="rr-topbar-empty">' + escapeHtml(message) + '</div>';
             }
 
             const rrModalEl = document.getElementById('rrTopbarModal');
@@ -197,7 +195,7 @@
                         return sum + ((item.checkpoints && item.checkpoints.length) || 0);
                     }, 0);
                     paintClrrButton(count, overall.percent || 0);
-                    if (data.needs_rr_seed || !clrrItems.length || count === 0) {
+                    if (data.needs_rr_seed || !clrrItems.length) {
                         clrrBody.innerHTML = emptyHtml('No CL R&R data for your designation yet.');
                         return;
                     }

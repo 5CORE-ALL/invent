@@ -15,6 +15,7 @@ use App\Models\Designation;
 use App\Models\DesignationMgrCheckpoint;
 use App\Models\DesignationRrCheckpoint;
 use App\Models\DesignationRrItem;
+use App\Support\DesignationKey;
 use App\Models\GeneralChecklistItem;
 use App\Models\ManagerJunior;
 use App\Models\PerformanceReview;
@@ -42,6 +43,7 @@ use App\Support\DarL30Metrics;
 use App\Support\MissedPeriodMetrics;
 use App\Support\OpenAiRequest;
 use App\Support\TaskBusinessTime;
+use App\Support\TaskSelfAssign;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -61,6 +63,8 @@ class TaskController extends Controller
 
     public function index()
     {
+        $this->archiveExactSelfAssignedDoneTasks();
+
         $user = Auth::user();
         $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
@@ -1115,10 +1119,16 @@ class TaskController extends Controller
         }
 
         // ---------------------- CL R&R (per designation) ------------------
+        $designationVariants = [];
+        foreach ($designations as $designation) {
+            foreach (DesignationKey::variants((string) $designation) as $variant) {
+                $designationVariants[$variant] = $variant;
+            }
+        }
         $rrItemIdsByDesignation = DesignationRrItem::query()
-            ->whereIn('designation', array_values(array_unique(array_filter($designations))))
+            ->whereIn('designation', array_values($designationVariants))
             ->get(['id', 'designation'])
-            ->groupBy('designation')
+            ->groupBy(fn ($row) => DesignationKey::canonical((string) $row->designation))
             ->map(fn ($coll) => $coll->pluck('id')->all());
 
         // All checkpoints under those items.
@@ -1160,10 +1170,10 @@ class TaskController extends Controller
 
         // ---------------------- CL Mgr (own % per designation) ------------
         $mgrCheckpoints = DesignationMgrCheckpoint::query()
-            ->whereIn('designation', array_values(array_unique(array_filter($designations))))
+            ->whereIn('designation', array_values($designationVariants))
             ->get(['id', 'designation', 'weightage']);
         $mgrWeightById = $mgrCheckpoints->mapWithKeys(fn ($c) => [(int) $c->id => max(1, (int) $c->weightage)]);
-        $mgrTotalByDesignation = $mgrCheckpoints->groupBy('designation')->map(function ($coll) {
+        $mgrTotalByDesignation = $mgrCheckpoints->groupBy(fn ($row) => DesignationKey::canonical((string) $row->designation))->map(function ($coll) {
             return $coll->sum(fn ($c) => max(1, (int) $c->weightage));
         });
 
@@ -1190,7 +1200,7 @@ class TaskController extends Controller
 
         foreach ($userIds as $uid) {
             $uid = (int) $uid;
-            $des = (string) ($userDesignations[$uid] ?? '');
+            $des = DesignationKey::canonical((string) ($userDesignations[$uid] ?? ''));
 
             // CL R&R — "has data" matches the modal empty states (items / checkpoints exist).
             $rrItemIds = $des !== '' ? ($rrItemIdsByDesignation[$des] ?? []) : [];
@@ -2296,6 +2306,8 @@ class TaskController extends Controller
 
     public function getData(Request $request)
     {
+        $this->archiveExactSelfAssignedDoneTasks();
+
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
         $userNameFilter = trim((string) $request->query('user_name', ''));
@@ -2329,7 +2341,8 @@ class TaskController extends Controller
         $defaultAvatar = asset('images/users/avatar-2.jpg');
         $teamUsers = User::query()->get(['id', 'name', 'email', 'avatar', 'designation']);
         [$usersByEmail, $usersByName, $usersByFirst] = $this->taskUserLookupMaps($teamUsers);
-        $tasks->each(function($task) use ($defaultAvatar, $usersByEmail, $usersByName, $usersByFirst) {
+        $selfAssignedArchivedIds = [];
+        $tasks->each(function($task) use ($defaultAvatar, $usersByEmail, $usersByName, $usersByFirst, &$selfAssignedArchivedIds) {
             // Normalize datetime fields to local string format so frontend date parsing
             // doesn't shift dates because of UTC ISO serialization ("...Z").
             foreach (['start_date', 'due_date', 'completion_date', 'created_at', 'updated_at'] as $dtField) {
@@ -2413,7 +2426,17 @@ class TaskController extends Controller
             }
 
             $task->tid_business_date = TaskBusinessTime::businessDateFromStart($task->start_date);
+
+            if ($this->archiveLoadedSelfAssignedDoneTask($task, $usersByEmail, $usersByName, $usersByFirst)) {
+                $selfAssignedArchivedIds[$task->id] = true;
+            }
         });
+
+        if ($selfAssignedArchivedIds !== []) {
+            $tasks = $tasks->reject(function ($task) use ($selfAssignedArchivedIds) {
+                return isset($selfAssignedArchivedIds[$task->id]);
+            })->values();
+        }
 
         $formByAuto = collect();
         $autoIds = $tasks->pluck('automate_task_id')->filter()->unique()->values();
@@ -3265,12 +3288,16 @@ class TaskController extends Controller
             ], 422);
         }
 
+        $archived = ! empty($result['archived']);
+
         return response()->json([
             'success' => true,
-            'message' => 'Task completed successfully!',
-            'archived' => false,
+            'message' => $archived
+                ? 'Task marked Done and moved to Archive.'
+                : 'Task completed successfully!',
+            'archived' => $archived,
             'used_checklist' => ! empty($result['used_checklist']),
-            'task' => $task->fresh(),
+            'task' => $archived ? null : $task->fresh(),
         ]);
     }
 
@@ -3304,6 +3331,7 @@ class TaskController extends Controller
         $tasks = Task::whereIn('id', $validated['task_ids'])->get()->keyBy('id');
 
         $completed = 0;
+        $archived = 0;
         $usedChecklist = 0;
         $skippedUnauthorized = 0;
         $skippedDone = 0;
@@ -3334,6 +3362,9 @@ class TaskController extends Controller
 
             if (! empty($result['ok'])) {
                 $completed++;
+                if (! empty($result['archived'])) {
+                    $archived++;
+                }
                 if (! empty($result['used_checklist'])) {
                     $usedChecklist++;
                 }
@@ -3388,11 +3419,17 @@ class TaskController extends Controller
         if ($skipBits !== []) {
             $message .= ' ('.implode('; ', $skipBits).')';
         }
+        if ($archived > 0) {
+            $message .= $archived === $completed
+                ? ' Moved to Archive because assignor and assignee are the same.'
+                : ' '.$archived.' self-assigned task(s) moved to Archive.';
+        }
 
         return response()->json([
             'success' => true,
             'message' => $message,
             'completed' => $completed,
+            'archived' => $archived,
             'used_checklist' => $usedChecklist > 0,
         ]);
     }
@@ -3410,7 +3447,7 @@ class TaskController extends Controller
 
     /**
      * @param  array<string, mixed>  $payload
-     * @return array{ok: bool, used_checklist: bool, skip?: string, error?: JsonResponse}
+     * @return array{ok: bool, used_checklist: bool, archived?: bool, skip?: string, error?: JsonResponse}
      */
     protected function markTaskAsDone(Task $task, array $payload, bool $strictChecklist): array
     {
@@ -3461,7 +3498,7 @@ class TaskController extends Controller
             $task->save();
             $this->notifyTaskDoneSafe($task);
 
-            return ['ok' => true, 'used_checklist' => true];
+            return ['ok' => true, 'used_checklist' => true, 'archived' => $this->archiveSelfAssignedDoneTask($task)];
         }
 
         $report = trim((string) ($payload['report'] ?? ''));
@@ -3472,7 +3509,7 @@ class TaskController extends Controller
         $task->save();
         $this->notifyTaskDoneSafe($task);
 
-        return ['ok' => true, 'used_checklist' => false];
+        return ['ok' => true, 'used_checklist' => false, 'archived' => $this->archiveSelfAssignedDoneTask($task)];
     }
 
     protected function notifyTaskDoneSafe(Task $task): void
@@ -3689,7 +3726,7 @@ class TaskController extends Controller
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
             }
-            // Auto-archive of completed automated tasks disabled (user request) — completed tasks now stay in the active list.
+            $archived = $this->archiveSelfAssignedDoneTask($task);
         } elseif ($validated['status'] === 'Rework') {
             try {
                 $this->taskWhatsApp->notifyRework($task->fresh());
@@ -3701,11 +3738,140 @@ class TaskController extends Controller
         return response()->json([
             'success' => true,
             'message' => $archived
-                ? 'Status updated to Done & task auto-archived (visible in Today Deleted for 24h).'
+                ? 'Task marked Done and moved to Archive.'
                 : 'Status updated successfully!',
             'archived' => $archived,
-            'task' => $task->fresh()
+            'task' => $archived ? null : $task->fresh()
         ]);
+    }
+
+    /**
+     * Move a Done task to Archive when the assignor and the only assignee are the same person.
+     */
+    protected function archiveSelfAssignedDoneTask(Task $task): bool
+    {
+        if (($task->status ?? '') !== 'Done' || $task->trashed()) {
+            return false;
+        }
+        if (! $this->taskAssignorIsSoleAssignee($task)) {
+            return false;
+        }
+
+        return $this->archiveMatchedSelfAssignedDoneTask($task, Auth::user());
+    }
+
+    /**
+     * Backfill: Done tasks whose assignor and assignee strings already match
+     * (email or name stored the same way) are archived when /tasks loads.
+     */
+    protected function archiveExactSelfAssignedDoneTasks(): void
+    {
+        $tasks = Task::query()
+            ->where('status', 'Done')
+            ->whereNotNull('assignor')
+            ->where('assignor', '!=', '')
+            ->whereNotNull('assign_to')
+            ->where('assign_to', '!=', '')
+            ->where('assign_to', 'not like', '%,%')
+            ->whereRaw('LOWER(TRIM(assignor)) = LOWER(TRIM(assign_to))')
+            ->get();
+
+        if ($tasks->isEmpty()) {
+            return;
+        }
+
+        $users = User::query()->get(['id', 'name', 'email', 'avatar', 'designation']);
+        [$byEmail, $byName, $byFirst] = $this->taskUserLookupMaps($users);
+
+        foreach ($tasks as $task) {
+            $actor = $this->findTaskUserFromMaps((string) $task->assign_to, $byEmail, $byName, $byFirst)
+                ?? Auth::user();
+            $this->archiveMatchedSelfAssignedDoneTask($task, $actor);
+        }
+    }
+
+    /**
+     * @param  array<string, User>  $byEmail
+     * @param  array<string, User>  $byName
+     * @param  array<string, User>  $byFirst
+     */
+    protected function archiveLoadedSelfAssignedDoneTask(Task $task, array $byEmail, array $byName, array $byFirst): bool
+    {
+        if (($task->status ?? '') !== 'Done' || $task->trashed()) {
+            return false;
+        }
+
+        $assignorUser = trim((string) ($task->assignor ?? '')) !== ''
+            ? $this->findTaskUserFromMaps((string) $task->assignor, $byEmail, $byName, $byFirst)
+            : null;
+        $parts = TaskSelfAssign::assigneeParts($task->assign_to);
+        $assigneeUser = count($parts) === 1
+            ? $this->findTaskUserFromMaps($parts[0], $byEmail, $byName, $byFirst)
+            : null;
+
+        if (! TaskSelfAssign::isSamePerson((string) ($task->assignor ?? ''), (string) ($task->assign_to ?? ''), $assignorUser, $assigneeUser)) {
+            return false;
+        }
+
+        $actor = $assigneeUser ?? $assignorUser ?? Auth::user();
+
+        return $this->archiveMatchedSelfAssignedDoneTask($task, $actor);
+    }
+
+    protected function taskAssignorIsSoleAssignee(Task $task): bool
+    {
+        if (TaskSelfAssign::isSamePerson($task->assignor, $task->assign_to)) {
+            return true;
+        }
+
+        $parts = TaskSelfAssign::assigneeParts($task->assign_to);
+        if (count($parts) !== 1) {
+            return false;
+        }
+
+        $assigneeUser = $this->findUserByTaskIdentity($parts[0]);
+        $assignorUser = $this->findUserByTaskIdentity((string) $task->assignor);
+
+        return TaskSelfAssign::isSamePerson($task->assignor, $task->assign_to, $assignorUser, $assigneeUser);
+    }
+
+    protected function findUserByTaskIdentity(string $value): ?User
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        $lower = strtolower($value);
+        $user = User::query()
+            ->where(function ($query) use ($lower) {
+                $query->whereRaw('LOWER(email) = ?', [$lower])
+                    ->orWhereRaw('LOWER(name) = ?', [$lower]);
+            })
+            ->first();
+
+        return $user ?? TaskPolicy::findUserForAssignorValue($value);
+    }
+
+    protected function archiveMatchedSelfAssignedDoneTask(Task $task, ?User $actor = null): bool
+    {
+        if ($task->trashed()) {
+            return false;
+        }
+
+        try {
+            $this->saveDeletedTask($task, $actor);
+            $task->delete();
+
+            return true;
+        } catch (\Throwable $e) {
+            \Log::warning('archiveSelfAssignedDoneTask failed', [
+                'task_id' => $task->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     /**
@@ -5378,10 +5544,10 @@ class TaskController extends Controller
      * Save task to deleted_tasks table before deletion.
      * Never throws: safe for server (no Schema calls, all errors caught).
      */
-    private function saveDeletedTask(Task $task)
+    private function saveDeletedTask(Task $task, ?User $actor = null)
     {
         try {
-            $user = Auth::user();
+            $user = $actor ?? Auth::user();
             $str = function ($v, $max = 255) {
                 if ($v === null || $v === '') {
                     return null;
@@ -5452,8 +5618,8 @@ class TaskController extends Controller
                 'rework_reason' => $task->rework_reason !== null ? $str((string) $task->rework_reason, 65535) : null,
                 'report' => $task->report !== null ? $str((string) $task->report, 65535) : null,
                 'parent_task_id' => $task->parent_task_id ? (int) $task->parent_task_id : null,
-                'deleted_by_email' => $str($user->email ?? ''),
-                'deleted_by_name' => $str($user->name ?? ''),
+                'deleted_by_email' => $str($user?->email ?? ''),
+                'deleted_by_name' => $str($user?->name ?? ''),
                 'deleted_at' => $now,
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -5467,8 +5633,8 @@ class TaskController extends Controller
                     'title' => $str($task->title ?? '', 255),
                     'assignor' => $str($task->assignor),
                     'assign_to' => $str($assignToRaw),
-                    'deleted_by_email' => $str($user->email ?? ''),
-                    'deleted_by_name' => $str($user->name ?? ''),
+                    'deleted_by_email' => $str($user?->email ?? ''),
+                    'deleted_by_name' => $str($user?->name ?? ''),
                     'deleted_at' => $now,
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -6224,7 +6390,7 @@ class TaskController extends Controller
             ]);
         }
 
-        $items = DesignationRrItem::where('designation', $designation)
+        $items = DesignationRrItem::forDesignation($designation)
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -6296,7 +6462,7 @@ class TaskController extends Controller
             ], 422);
         }
 
-        $existing = DesignationRrItem::where('designation', $designation)->count();
+        $existing = DesignationRrItem::forDesignation($designation)->count();
         if ($existing > 0) {
             return response()->json([
                 'success' => true,
@@ -6348,7 +6514,7 @@ class TaskController extends Controller
         ]);
 
         $designation = trim($validated['designation']);
-        $nextOrder = (int) DesignationRrItem::where('designation', $designation)->max('sort_order') + 1;
+        $nextOrder = (int) DesignationRrItem::forDesignation($designation)->max('sort_order') + 1;
 
         $item = DesignationRrItem::create([
             'designation' => $designation,
@@ -6395,7 +6561,7 @@ class TaskController extends Controller
             ], 422);
         }
 
-        $existingTitles = DesignationRrItem::where('designation', $designation)
+        $existingTitles = DesignationRrItem::forDesignation($designation)
             ->orderBy('sort_order')->orderBy('id')
             ->pluck('title')
             ->map(fn ($t) => trim((string) $t))
@@ -6420,7 +6586,7 @@ class TaskController extends Controller
         }
 
         $createdById = optional(Auth::user())->id;
-        $nextOrder = (int) DesignationRrItem::where('designation', $designation)->max('sort_order') + 1;
+        $nextOrder = (int) DesignationRrItem::forDesignation($designation)->max('sort_order') + 1;
 
         $item = DesignationRrItem::create([
             'designation' => $designation,
@@ -6900,7 +7066,7 @@ class TaskController extends Controller
         }
 
         $items = DesignationRrItem::with('checkpoints')
-            ->where('designation', $designation)
+            ->forDesignation($designation)
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -7040,7 +7206,7 @@ class TaskController extends Controller
         $designation = trim($validated['designation']);
         $force = (bool) ($validated['force'] ?? false);
 
-        $itemsQuery = DesignationRrItem::where('designation', $designation);
+        $itemsQuery = DesignationRrItem::forDesignation($designation);
         if (! empty($validated['item_id'])) {
             $itemsQuery->where('id', $validated['item_id']);
         }
@@ -7854,7 +8020,7 @@ class TaskController extends Controller
             ]);
         }
 
-        $items = DesignationMgrCheckpoint::where('designation', $designation)
+        $items = DesignationMgrCheckpoint::forDesignation($designation)
             ->orderBy('sort_order')->orderBy('id')->get();
 
         return response()->json(
@@ -8014,7 +8180,7 @@ class TaskController extends Controller
         }
         $checkpointIds = DesignationRrCheckpoint::whereIn(
             'designation_rr_item_id',
-            DesignationRrItem::where('designation', $designation)->pluck('id')
+            DesignationRrItem::forDesignation($designation)->pluck('id')
         )->pluck('id', 'id');
         if ($checkpointIds->isEmpty()) {
             return 0;
@@ -8077,7 +8243,7 @@ class TaskController extends Controller
         $designation = trim($validated['designation']);
         $force = (bool) ($validated['force'] ?? false);
 
-        $existing = DesignationMgrCheckpoint::where('designation', $designation)->count();
+        $existing = DesignationMgrCheckpoint::forDesignation($designation)->count();
         if ($existing > 0 && ! $force) {
             return response()->json([
                 'success' => true,
@@ -8086,7 +8252,7 @@ class TaskController extends Controller
             ]);
         }
         if ($force && $existing > 0) {
-            DesignationMgrCheckpoint::where('designation', $designation)->delete();
+            DesignationMgrCheckpoint::forDesignation($designation)->delete();
         }
 
         $generated = $this->generateMgrChecklistViaOpenAi($designation);
@@ -8135,7 +8301,7 @@ class TaskController extends Controller
         ]);
 
         $designation = trim($validated['designation']);
-        $nextOrder = (int) DesignationMgrCheckpoint::where('designation', $designation)->max('sort_order') + 1;
+        $nextOrder = (int) DesignationMgrCheckpoint::forDesignation($designation)->max('sort_order') + 1;
 
         $cp = DesignationMgrCheckpoint::create([
             'designation' => $designation,
@@ -8241,7 +8407,7 @@ class TaskController extends Controller
             $designation = (string) ($user->designation ?? '');
             $mgrCheckpoints = $designation === ''
                 ? collect()
-                : DesignationMgrCheckpoint::where('designation', $designation)
+                : DesignationMgrCheckpoint::forDesignation($designation)
                     ->orderBy('sort_order')->orderBy('id')->get();
             $payload = $this->buildMgrChecklistPayload($designation, $mgrCheckpoints, $user);
             $this->snapshotUserScore(
@@ -8432,7 +8598,7 @@ class TaskController extends Controller
                 $designation = (string) ($user->designation ?? '');
                 $cps = $designation === ''
                     ? collect()
-                    : DesignationMgrCheckpoint::where('designation', $designation)
+                    : DesignationMgrCheckpoint::forDesignation($designation)
                         ->orderBy('sort_order')->orderBy('id')->get();
                 $payload = $this->buildMgrChecklistPayload($designation, $cps, $user);
                 $current = (int) ($payload['combined_score']['percent'] ?? 0);
@@ -8508,7 +8674,7 @@ class TaskController extends Controller
         // Build the manager's own Mgr-combined score (own × 60% + juniors-avg × 40%).
         $mgrPayload = $this->buildMgrChecklistPayload(
             (string) ($user->designation ?? ''),
-            DesignationMgrCheckpoint::where('designation', $user->designation)
+            DesignationMgrCheckpoint::forDesignation((string) $user->designation)
                 ->orderBy('sort_order')->orderBy('id')->get(),
             $user
         );
@@ -8572,7 +8738,7 @@ class TaskController extends Controller
         $rrPercent = 0;
         $designation = trim((string) ($user->designation ?? ''));
         if ($designation !== '') {
-            $rrItems = DesignationRrItem::where('designation', $designation)->pluck('id');
+            $rrItems = DesignationRrItem::forDesignation($designation)->pluck('id');
             if ($rrItems->isNotEmpty()) {
                 $progressRows = UserRrProgress::where('user_id', $user->id)
                     ->whereIn('designation_rr_item_id', $rrItems)

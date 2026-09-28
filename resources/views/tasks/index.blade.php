@@ -8204,7 +8204,9 @@
                             table.replaceData();
                             
                             // Show success message
-                            var message = (status === 'Rework' && reworkReason) ? 'Task marked for rework' : 'Status updated successfully!';
+                            var message = (response && response.archived && response.message)
+                                ? response.message
+                                : ((status === 'Rework' && reworkReason) ? 'Task marked for rework' : 'Status updated successfully!');
                             var alertHtml = `
                                 <div class="alert alert-success alert-dismissible fade show" role="alert">
                                     <i class="mdi mdi-check-circle me-2"></i>${message}
