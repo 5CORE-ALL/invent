@@ -1299,6 +1299,7 @@
             var pushSpSbgtsUrl = @json(route('amazon.ads.push-sp-sbgts'));
             var pushSbSbgtsUrl = @json(route('amazon.ads.push-sb-sbgts'));
             var syncLiveBidBgtUrl = @json(route('amazon.ads.sync-live-bid-bgt'));
+            var mismatchSyncRowsUrl = @json(route('amazon.ads.mismatch-sync-rows'));
             var bgtRuleGetUrl = @json(route('amazon.ads.bgt-rule'));
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
             var bgtViewsRuleGetUrl = @json(route('amazon.ads.bgt-views-rule'));
@@ -3123,6 +3124,7 @@
             }
 
             document.getElementById('amz-raw-refresh').addEventListener('click', function () {
+                amzSbgtAutoPushedKey = {};
                 Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
             });
             document.querySelector('.amz-ads-all').addEventListener('click', function (e) {
@@ -3686,19 +3688,31 @@
                     });
                 });
             }
-            function amzAutoPushChangedSbgt() {
-                if (amzSbgtAutoPushBusy) return;
-                var sbidBtn = document.getElementById('amazonAdsPushSbidBtn');
-                var sbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
-                if ((sbidBtn && sbidBtn.disabled && sbidBtn.innerHTML.indexOf('Pushing') !== -1)
-                    || (sbgtBtn && sbgtBtn.disabled && sbgtBtn.innerHTML.indexOf('Pushing') !== -1)) return;
-                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports' && activeRawSourceKey !== 'all_reports') return;
-                var rows = amzCollectChangedSbgtRows().slice(0, 100);
-                if (!rows.length) return;
-                rows.forEach(function (r) {
-                    amzSbgtAutoPushedKey[r.campaign_id + ':' + (r.sbgt == null ? '' : r.sbgt) + ':' + (r.sbid == null ? '' : r.sbid)] = true;
-                });
-                amzSbgtAutoPushBusy = true;
+            function amzMismatchBadgeCount() {
+                var bgt = amzSyncHeaderCounts.bgt || {};
+                var bid = amzSyncHeaderCounts.bid || {};
+                return (Number(bgt.yellow) || 0) + (Number(bgt.red) || 0) + (Number(bid.yellow) || 0) + (Number(bid.red) || 0);
+            }
+            function amzFetchMismatchSyncRows() {
+                var f = amzFilterPayload();
+                var body = new URLSearchParams();
+                Object.keys(f).forEach(function (k) { body.set(k, f[k]); });
+                body.set('source', activeRawSourceKey || 'all_reports');
+                body.set('search', amzSearchQueryVal());
+                body.set('_token', csrfToken);
+                return fetch(mismatchSyncRowsUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                    },
+                    credentials: 'same-origin',
+                    body: body.toString()
+                }).then(function (res) { return res.json(); });
+            }
+            function amzRunMismatchChunks(rows, badgeCount) {
                 var chunkSize = (typeof AMZ_PUSH_CHUNK_SIZE === 'number' && AMZ_PUSH_CHUNK_SIZE > 0) ? AMZ_PUSH_CHUNK_SIZE : 5;
                 var chunks = [];
                 for (var i = 0; i < rows.length; i += chunkSize) chunks.push(rows.slice(i, i + chunkSize));
@@ -3710,15 +3724,20 @@
                         amzSbgtAutoPushBusy = false;
                         amzShowPushResult(
                             failed > 0
-                                ? ('Live sync — ' + synced + ' verified, ' + failed + ' not synced')
-                                : ('Live sync — ' + synced + ' campaign(s) verified'),
-                            'Pulled live Amazon BGT/BID, pushed only mismatches, marked synced only after verify.\n' + messages.join('\n'),
+                                ? ('Mismatch update — ' + synced + ' verified, ' + failed + ' still old')
+                                : ('Mismatch update — ' + synced + ' bid/budget row(s) verified'),
+                            'Badge mismatches ' + badgeCount + '. Ran ' + rows.length + ' campaign(s), not only this page.\n' + messages.join('\n'),
                             failed > 0 ? 'error' : 'success'
                         );
                         if (table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
                         return;
                     }
                     amzMarkChunkPending(chunks[index]);
+                    amzShowPushResult(
+                        'Updating mismatches…',
+                        'Chunk ' + (index + 1) + '/' + chunks.length + ' of ' + rows.length + ' campaign(s). Badge count ' + badgeCount + '.',
+                        'loading'
+                    );
                     amzPostLiveSyncChunk(chunks[index])
                         .then(function (out) {
                             var b = (out && out.body) || {};
@@ -3740,6 +3759,36 @@
                         });
                 }
                 runNext(0);
+            }
+            function amzAutoPushChangedSbgt() {
+                if (amzSbgtAutoPushBusy) return;
+                var sbidBtn = document.getElementById('amazonAdsPushSbidBtn');
+                var sbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
+                if ((sbidBtn && sbidBtn.disabled && sbidBtn.innerHTML.indexOf('Pushing') !== -1)
+                    || (sbgtBtn && sbgtBtn.disabled && sbgtBtn.innerHTML.indexOf('Pushing') !== -1)) return;
+                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports' && activeRawSourceKey !== 'all_reports') return;
+                if (amzMismatchBadgeCount() < 1) return;
+                amzSbgtAutoPushBusy = true;
+                var badgeCount = amzMismatchBadgeCount();
+                amzFetchMismatchSyncRows().then(function (json) {
+                    var rows = (json && Array.isArray(json.rows)) ? json.rows : [];
+                    var pending = [];
+                    rows.forEach(function (r) {
+                        if (!r || r.campaign_id == null) return;
+                        var key = String(r.campaign_id) + ':' + (r.sbgt == null ? '' : r.sbgt) + ':' + (r.sbid == null ? '' : r.sbid);
+                        if (amzSbgtAutoPushedKey[key]) return;
+                        amzSbgtAutoPushedKey[key] = true;
+                        pending.push(r);
+                    });
+                    if (!pending.length) {
+                        amzSbgtAutoPushBusy = false;
+                        return;
+                    }
+                    amzRunMismatchChunks(pending, badgeCount);
+                }).catch(function (err) {
+                    amzSbgtAutoPushBusy = false;
+                    amzShowPushResult('Mismatch update failed', String(err && err.message ? err.message : err), 'error');
+                });
             }
             function amzRunPush(opts) {
                 if (!opts.rows.length) {
