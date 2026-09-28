@@ -153,6 +153,54 @@ class TikTokOrderPushService
         return $shopifyOrderId;
     }
 
+    /**
+     * Link a TikTok order to a Shopify order that already exists. Does not create one.
+     */
+    public function linkExistingShopifyOrder(TiktokOrder $order): ?string
+    {
+        if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
+            return (string) $order->shopify_order_id;
+        }
+
+        $orderId = trim((string) $order->order_id);
+        if ($orderId === '') {
+            return null;
+        }
+
+        $localLinked = TiktokOrder::query()
+            ->where('order_id', $orderId)
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->value('shopify_order_id');
+        if ($localLinked) {
+            $this->linkTikTokOrderToShopify($orderId, (string) $localLinked);
+
+            return (string) $localLinked;
+        }
+
+        $localCatalog = $this->findLocalShopifyTikTokCopy($orderId, 'TT-', 'tiktok');
+        if ($localCatalog) {
+            $this->linkTikTokOrderToShopify($orderId, $localCatalog);
+
+            return $localCatalog;
+        }
+
+        $existing = $this->findExistingShopifyOrderByRefs(
+            $this->shopifyConfig(),
+            $this->tikTokShopifyDuplicateRefs($orderId, 'TT-'),
+            ['tiktok-'],
+            ['tiktok_order_id'],
+            'TikTokOrderPushService'
+        );
+        if (! empty($existing['id'])) {
+            $this->linkTikTokOrderToShopify($orderId, (string) $existing['id']);
+
+            return (string) $existing['id'];
+        }
+
+        return null;
+    }
+
     protected function linkTikTokOrderToShopify(string $orderId, string $shopifyOrderId): void
     {
         TiktokOrder::query()

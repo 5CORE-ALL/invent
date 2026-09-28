@@ -2,6 +2,7 @@
 
 namespace App\Services\MarketplaceManager;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -44,6 +45,12 @@ trait PushesTikTokShopifyTracking
                 ->whereNotNull('shopify_order_id')
                 ->value('shopify_order_id')
         ));
+        if ($shopifyOrderId === '') {
+            $shopifyOrderId = $this->attachExistingShopifyOrder($line);
+            if ($shopifyOrderId !== '') {
+                $line->shopify_order_id = $shopifyOrderId;
+            }
+        }
 
         if ($shopifyOrderId === '') {
             return ['success' => false, 'skipped' => true, 'message' => 'Order not linked to Shopify yet.'];
@@ -153,11 +160,16 @@ trait PushesTikTokShopifyTracking
             ];
         }
 
+        $lineIds = $this->lineItemIdsForOrder($model, $orderId, $line);
+        if ($lineIds === []) {
+            $lineIds = $this->lineItemIdsFromLiveOrder($orderId);
+        }
+
         $result = $api->markOrderShipped(
             $orderId,
             $shopifyTracking,
             $shippingProviderId,
-            $this->lineItemIdsForOrder($model, $orderId, $line)
+            $lineIds
         );
 
         if (! empty($result['success'])) {
@@ -210,10 +222,7 @@ trait PushesTikTokShopifyTracking
         $limit = max(1, min(200, $limit));
         $model = $this->trackingOrderModel();
 
-        $rows = $model::query()
-            ->whereNotNull('shopify_order_id')
-            ->where('shopify_order_id', '!=', '')
-            ->whereNull('tracking_pushed_at')
+        $rows = $this->pendingTrackingQuery($model)
             ->orderByRaw("CASE WHEN UPPER(TRIM(COALESCE(order_status, ''))) IN ('DELIVERED', 'COMPLETED', 'IN_TRANSIT', 'SHIPPED', 'AWAITING_COLLECTION') THEN 0 ELSE 1 END")
             ->orderByRaw('pushed_to_shopify_at IS NULL')
             ->orderBy('pushed_to_shopify_at')
@@ -229,6 +238,9 @@ trait PushesTikTokShopifyTracking
             }
             $status = $this->normalizeTrackingStatus((string) ($row->order_status ?? ''));
             if (in_array($status, ['CANCELLED', 'CANCELED'], true)) {
+                continue;
+            }
+            if (Cache::has($this->trackingSkipCacheKey($ref))) {
                 continue;
             }
             $unique[$ref] = $row;
@@ -248,8 +260,10 @@ trait PushesTikTokShopifyTracking
             if (! empty($result['success']) && empty($result['skipped'])) {
                 $pushed++;
             } elseif (! empty($result['skipped'])) {
+                $this->rememberTrackingSkip(trim((string) $line->order_id));
                 $skipped++;
             } else {
+                $this->rememberTrackingSkip(trim((string) $line->order_id));
                 $failed++;
             }
             usleep(250000);
@@ -345,6 +359,108 @@ trait PushesTikTokShopifyTracking
         $carrier = trim((string) ($order['shipping_provider'] ?? $order['shipping_provider_name'] ?? ''));
 
         return [$tracking, $carrier];
+    }
+
+    public function countPendingTracking(): int
+    {
+        $rows = $this->pendingTrackingQuery($this->trackingOrderModel())
+            ->orderByDesc('id')
+            ->limit(800)
+            ->get(['order_id']);
+        $unique = [];
+        foreach ($rows as $row) {
+            $ref = trim((string) ($row->order_id ?? ''));
+            if ($ref === '' || isset($unique[$ref]) || Cache::has($this->trackingSkipCacheKey($ref))) {
+                continue;
+            }
+            $unique[$ref] = true;
+        }
+
+        return count($unique);
+    }
+
+    /**
+     * @param  class-string  $model
+     */
+    protected function pendingTrackingQuery(string $model)
+    {
+        return $model::query()
+            ->where(function ($q) {
+                $q->where(function ($linked) {
+                    $linked->whereNotNull('shopify_order_id')->where('shopify_order_id', '!=', '');
+                })->orWhereRaw(
+                    "UPPER(REPLACE(REPLACE(TRIM(COALESCE(order_status, '')), ' ', '_'), '-', '_')) IN ('AWAITING_SHIPMENT', 'ON_HOLD', 'PARTIALLY_SHIPPING', 'AWAITING_COLLECTION')"
+                );
+            })
+            ->whereNull('tracking_pushed_at');
+    }
+
+    protected function trackingSkipCacheKey(string $orderId): string
+    {
+        return 'mm.'.$this->trackingMarketplaceSlug().'.tracking-skip.'.$orderId;
+    }
+
+    protected function rememberTrackingSkip(string $orderId): void
+    {
+        if ($orderId === '') {
+            return;
+        }
+        Cache::put($this->trackingSkipCacheKey($orderId), 1, now()->addMinutes(20));
+    }
+
+    protected function attachExistingShopifyOrder(object $line): string
+    {
+        try {
+            if ($this->trackingMarketplaceSlug() === 'tiktok' && $line instanceof \App\Models\TiktokOrder) {
+                return (string) (app(\App\Services\MarketplaceManager\TikTokOrderPushService::class)->linkExistingShopifyOrder($line) ?? '');
+            }
+            if ($this->trackingMarketplaceSlug() === 'tiktok2' && $line instanceof \App\Models\Tiktok2Order) {
+                return (string) (app(\App\Services\MarketplaceManager\TikTok2OrderPushService::class)->linkExistingShopifyOrder($line) ?? '');
+            }
+        } catch (\Throwable $e) {
+            Log::warning($this->trackingLogContext().': Shopify link before tracking push failed', [
+                'order_id' => $line->order_id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function lineItemIdsFromLiveOrder(string $orderId): array
+    {
+        try {
+            $details = $this->trackingApi()->getOrderDetails([$orderId]);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $orders = is_array($details) ? ($details['data']['orders'] ?? $details['orders'] ?? []) : [];
+        $ids = [];
+        foreach (is_array($orders) ? $orders : [] as $order) {
+            if (! is_array($order)) {
+                continue;
+            }
+            foreach (['line_items', 'order_line_list', 'items'] as $key) {
+                $items = $order[$key] ?? null;
+                if (! is_array($items)) {
+                    continue;
+                }
+                foreach ($items as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+                    $id = trim((string) ($item['id'] ?? $item['order_line_id'] ?? ''));
+                    if ($id !== '' && ! in_array($id, $ids, true)) {
+                        $ids[] = $id;
+                    }
+                }
+            }
+        }
+
+        return $ids;
     }
 
     public function fetchShopifyTracking(

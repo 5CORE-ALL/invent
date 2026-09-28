@@ -254,6 +254,11 @@ class MarketplaceManagerController extends Controller
         return app(MarketplaceController::class)->queueFreshTrackingCatchup($request);
     }
 
+    public function fetchTrackingNowStatus(Request $request): JsonResponse
+    {
+        return app(MarketplaceController::class)->fetchTrackingNowStatus($request);
+    }
+
     /**
      * Shared Shopify live master refresh (once for all marketplaces).
      */
