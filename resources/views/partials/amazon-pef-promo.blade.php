@@ -3459,6 +3459,32 @@
             }
         }
 
+        function amzMoneyCents(n) {
+            return Math.round((Number(n) || 0) * 100);
+        }
+        /**
+         * Price column after a successful Push Prc.
+         * The blue badge compares Price to the live S PRC. Writing the queued
+         * target before slabs are ready, or after the live S PRC has moved,
+         * turns rows that already match into new blue alerts.
+         */
+        function amzPriceAfterPushTask(d, pushed) {
+            const cur = parseFloat(d && d.price) || 0;
+            const pushedN = Number(pushed) || 0;
+            if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) {
+                return cur;
+            }
+            const visible = (typeof amazonVisibleSprice === 'function')
+                ? (Number(amazonVisibleSprice(d)) || 0)
+                : 0;
+            if (pushedN > 0 && visible > 0 && amzMoneyCents(pushedN) === amzMoneyCents(visible)) {
+                return pushedN;
+            }
+            if (visible > 0 && cur > 0 && amzMoneyCents(cur) === amzMoneyCents(visible)) {
+                return cur;
+            }
+            return pushedN > 0 ? pushedN : cur;
+        }
         function applyAmzPushPrcTaskStatusesToTable(tasks) {
             if (!table || !Array.isArray(tasks)) return;
             const bySku = {};
@@ -3474,14 +3500,13 @@
                 const st = String(t.status || '');
                 let patch = null;
                 if (st === 'ok') {
-                    const livePrice = Number(t.effective != null ? t.effective : d.SPRICE) || 0;
                     const nextVal = t.effective != null ? t.effective : d.PUSH_PRC_VALUE;
                     const nextSprice = t.effective != null ? t.effective : d.SPRICE;
-                    const nextPrice = livePrice > 0 ? livePrice : d.price;
+                    const nextPrice = amzPriceAfterPushTask(d, t.effective != null ? t.effective : d.SPRICE);
                     if (d.PUSH_PRC_STATUS === 'pushed'
                         && Number(d.PUSH_PRC_VALUE) === Number(nextVal)
                         && Number(d.SPRICE) === Number(nextSprice)
-                        && Number(d.price) === Number(nextPrice)) {
+                        && amzMoneyCents(d.price) === amzMoneyCents(nextPrice)) {
                         return;
                     }
                     patch = {
@@ -3534,7 +3559,18 @@
                 if (!amzPefIsChildRow(d)) return;
                 const live = bySku[amzPefSku(d).toUpperCase()];
                 if (!(live > 0)) return;
-                if (Number(d.price) === live && Number(d.Price) === live) return;
+                if (amzMoneyCents(d.price) === amzMoneyCents(live) && amzMoneyCents(d.Price) === amzMoneyCents(live)) return;
+                const cur = parseFloat(d.price) || 0;
+                const visible = (typeof amazonVisibleSprice === 'function')
+                    ? (Number(amazonVisibleSprice(d)) || 0)
+                    : 0;
+                // A live Amazon read that is not the current S PRC must not
+                // reopen a blue alert on a row that already matches.
+                if (visible > 0 && cur > 0
+                    && amzMoneyCents(cur) === amzMoneyCents(visible)
+                    && amzMoneyCents(live) !== amzMoneyCents(visible)) {
+                    return;
+                }
                 row.update({ price: live, Price: live });
             });
             if (typeof window.updateAmazonSummary === 'function') {
