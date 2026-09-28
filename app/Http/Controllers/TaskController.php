@@ -540,24 +540,13 @@ class TaskController extends Controller
                 if (($task->status ?? '') === 'Need Approval') {
                     $byEmail[$email]['need_approval']++;
                 }
-                $isAuto = ! empty($task->is_automate_task);
-                $isOverdue = false;
-                if (($task->status ?? '') !== 'Archived') {
-                    if ($isAuto && TaskBusinessTime::isWeeklyOrMonthly($task->schedule_type ?? '')) {
-                        $overdueOn = TaskBusinessTime::weeklyMonthlyOverdueOnDate(
-                            $task->getRawOriginal('created_at') ?? $task->created_at,
-                            $task->getRawOriginal('start_date') ?? $task->start_date
-                        );
-                        $isOverdue = $overdueOn !== null
-                            && $overdueOn <= TaskBusinessTime::today()->toDateString();
-                    } else {
-                        $graceEnd = $task->start_date
-                            ? \Carbon\Carbon::parse($task->start_date)->copy()->addDay()
-                            : null;
-                        $isOverdue = $graceEnd && $graceEnd->lt(now());
-                    }
-                }
-                if ($isOverdue) {
+                if (TaskBusinessTime::isTaskOverdue(
+                    $task->status ?? '',
+                    $task->getRawOriginal('start_date') ?? $task->start_date,
+                    $task->getRawOriginal('created_at') ?? $task->created_at,
+                    $task->schedule_type ?? '',
+                    ! empty($task->is_automate_task)
+                )) {
                     $byEmail[$email]['overdue']++;
                 }
                 if (!empty($task->is_automate_task)) {
