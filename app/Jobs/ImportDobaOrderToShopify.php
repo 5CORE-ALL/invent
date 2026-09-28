@@ -48,6 +48,8 @@ class ImportDobaOrderToShopify implements ShouldQueue
         }
 
         if ($order->shopify_order_id) {
+            $pushService->ensureShopifyTypeTag($order, (string) $order->shopify_order_id);
+
             return;
         }
 
