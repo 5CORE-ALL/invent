@@ -22,7 +22,8 @@ use Throwable;
  */
 class AmazonAdsLiveBidBgtSyncService
 {
-    public const BGT_TOLERANCE = 0.51;
+    /** Same gap as the Lbgt/SBGT column. A larger gap is a mismatch and is pushed. */
+    public const BGT_TOLERANCE = 0.015;
 
     /** Bids match only when the cents are equal. One cent is a difference. */
     public const BID_TOLERANCE = 0;

@@ -3908,10 +3908,23 @@
                 setTimeout(amzTryQueuePushOnReload, 600);
                 return;
             }
-            const items = collectAmzReloadPushItems();
             window._amzReloadPushQueued = true;
-            if (!items.length) return;
-            queueAmzPushPrcItems(items, { silent: true });
+            $.ajax({
+                url: '/amazon-push-prc-status',
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                timeout: 15000,
+            }).done(function(resp) {
+                if (resp && resp.active) {
+                    startAmzPushPrcPoll();
+                    return;
+                }
+                const items = collectAmzReloadPushItems();
+                if (!items.length) return;
+                queueAmzPushPrcItems(items, { silent: true });
+            }).fail(function() {
+                window._amzReloadPushQueued = false;
+            });
         }
         function bindAmzReloadPushOnTable() {
             if (typeof table === 'undefined' || !table || !table.on) {
@@ -3921,7 +3934,6 @@
             if (table._amzReloadPushBound) return;
             table._amzReloadPushBound = true;
             table.on('dataLoaded', function() {
-                window._amzReloadPushQueued = false;
                 amzTryQueuePushOnReload();
             });
             try {
