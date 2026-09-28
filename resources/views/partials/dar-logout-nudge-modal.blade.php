@@ -3,13 +3,6 @@
     Uses the same L30 DAR % and pink / green / red bands as /tasks/summary.
 --}}
 @auth
-@php
-    $darPct = (int) ($topbarDarPct ?? 0);
-    $darCount = (int) ($topbarDarCount ?? 0);
-    $darTarget = (int) ($topbarDarTarget ?? \App\Support\DarL30Metrics::TARGET);
-    $darBand = (string) ($topbarDarBand ?? 'low');
-    $darBandClass = $darBand === 'high' ? 'is-dar-high' : ($darBand === 'mid' ? 'is-dar-mid' : 'is-dar-low');
-@endphp
 <style>
     #darLogoutNudgeModal .modal-dialog { max-width: 440px; }
     #darLogoutNudgeModal .modal-content {
@@ -19,7 +12,8 @@
         box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
     }
     #darLogoutNudgeModal .modal-body {
-        padding: 2rem 1.6rem 1.5rem;
+        position: relative;
+        padding: 2rem 1.6rem 1.75rem;
         text-align: center;
         background: linear-gradient(180deg, #fff7ed 0%, #fff 55%);
     }
@@ -82,15 +76,11 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-body">
+                <button type="button" class="btn-close position-absolute top-0 end-0 m-3" id="darLogoutNudgeContinue" aria-label="Close"></button>
                 <span class="dar-nudge-emoji" aria-hidden="true">🔔</span>
-                <div class="dar-nudge-kicker" id="darLogoutNudgeHello">DAR reminder</div>
-                <div class="dar-nudge-pct {{ $darBandClass }}" id="darLogoutNudgePct">{{ $darPct }}%</div>
-                <div class="dar-nudge-label">Your DAR · {{ $darCount }}/{{ $darTarget }} · keep above 90%</div>
-                <p class="dar-nudge-msg" id="darLogoutNudgeMsg"></p>
-                <div class="dar-nudge-actions">
-                    <button type="button" class="btn btn-warning text-dark" id="darLogoutNudgeFill">Fill DAR</button>
-                    <button type="button" class="btn btn-light" id="darLogoutNudgeContinue">Logout anyway</button>
-                </div>
+                <div class="dar-nudge-kicker">DAR reminder</div>
+                <h5 class="fw-bold mb-2" style="color:#1e293b;">Fill your DAR before logout</h5>
+                <p class="dar-nudge-msg mb-0">File today's Daily Activity Report before you leave.</p>
             </div>
         </div>
     </div>
@@ -100,9 +90,7 @@
 (function () {
     var cfg = {
         userId: @json((int) auth()->id()),
-        userName: @json(auth()->user()->name ?? ''),
-        today: @json(\App\Support\TaskBusinessTime::today()->toDateString()),
-        messages: @json(\App\Support\UserDarNudge::logoutMessages())
+        today: @json(\App\Support\TaskBusinessTime::today()->toDateString())
     };
     if (!cfg.userId) return;
 
@@ -115,34 +103,16 @@
     function markShown() {
         try { localStorage.setItem(storageKey(), '1'); } catch (e) {}
     }
-    function pickMessage() {
-        var list = cfg.messages || [];
-        if (!list.length) return 'Fill your DAR and keep it above 90% for promotions and incentives.';
-        return list[Math.floor(Math.random() * list.length)];
-    }
     function submitLogout() {
         var form = document.getElementById('logout-form');
         if (form) form.submit();
     }
-    function openDarModal() {
-        if (window.DarModal && typeof window.DarModal.open === 'function') {
-            window.DarModal.open(null);
-            return;
-        }
-        var btn = document.getElementById('darTopbarOpenBtn');
-        if (btn) btn.click();
-    }
-
     function showNudge() {
         var modalEl = document.getElementById('darLogoutNudgeModal');
-        var msgEl = document.getElementById('darLogoutNudgeMsg');
-        var helloEl = document.getElementById('darLogoutNudgeHello');
         if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
             submitLogout();
             return;
         }
-        if (msgEl) msgEl.textContent = pickMessage();
-        if (helloEl && cfg.userName) helloEl.textContent = 'Hi ' + cfg.userName + ' — reminder';
         markShown();
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
     }
@@ -168,16 +138,6 @@
         if (t.closest('#darLogoutNudgeContinue')) {
             e.preventDefault();
             submitLogout();
-            return;
-        }
-        if (t.closest('#darLogoutNudgeFill')) {
-            e.preventDefault();
-            var m = document.getElementById('darLogoutNudgeModal');
-            if (m && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                var inst = bootstrap.Modal.getInstance(m);
-                if (inst) inst.hide();
-            }
-            openDarModal();
         }
     });
 })();

@@ -2322,7 +2322,8 @@ class TaskController extends Controller
             if ($filterUser && $filterUser->email) {
                 $email = $filterUser->email;
                 $tasksQuery->where(function ($q) use ($email) {
-                    $q->where('assign_to', 'LIKE', '%' . $email . '%');
+                    $q->where('assignor', $email)
+                        ->orWhere('assign_to', 'LIKE', '%' . $email . '%');
                 });
             } else {
                 $tasksQuery->whereRaw('1 = 0');

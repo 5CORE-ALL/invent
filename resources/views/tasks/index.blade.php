@@ -5279,6 +5279,10 @@
                 return true;
             }
 
+            if (!String(taskManagerSessionUserFocus || '').trim() && !urlHasUserTaskScope()) {
+                taskManagerSessionUserFocus = String(currentUserName || '').trim();
+            }
+
             var taskIndexFiltersRestored = false;
             table.on('dataLoaded', function () {
                 if (taskIndexFiltersRestored) return;
