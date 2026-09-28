@@ -3462,6 +3462,11 @@
         function amzMoneyCents(n) {
             return Math.round((Number(n) || 0) * 100);
         }
+        /** S PRC / Std Prc formatters read Price, but those cells do not redraw when only Price changes. */
+        function amzRepaintPriceCompareCells(row) {
+            if (!row || typeof row.reformat !== 'function') return;
+            try { row.reformat(); } catch (e) { /* ignore */ }
+        }
         /**
          * Price column after a successful Push Prc.
          * The blue badge compares Price to the live S PRC. Writing the queued
@@ -3525,7 +3530,10 @@
                     if (d.PUSH_PRC_STATUS === 'processing') return;
                     patch = { PUSH_PRC_STATUS: 'processing' };
                 }
-                if (patch) row.update(patch);
+                if (patch) {
+                    row.update(patch);
+                    amzRepaintPriceCompareCells(row);
+                }
             });
             if (typeof window.updateAmazonSummary === 'function') {
                 try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
@@ -3572,6 +3580,7 @@
                     return;
                 }
                 row.update({ price: live, Price: live });
+                amzRepaintPriceCompareCells(row);
             });
             if (typeof window.updateAmazonSummary === 'function') {
                 try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }

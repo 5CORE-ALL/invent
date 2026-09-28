@@ -3522,6 +3522,7 @@
                                     price: livePrice > 0 ? livePrice : tabRow.getData().price,
                                     Price: livePrice > 0 ? livePrice : tabRow.getData().price,
                                 });
+                                try { tabRow.reformat(); } catch (e) { /* S PRC hover reads Price */ }
                             }
                         }
                         const minPush = response.min_price_push;
