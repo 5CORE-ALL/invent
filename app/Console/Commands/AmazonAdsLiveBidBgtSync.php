@@ -16,7 +16,7 @@ class AmazonAdsLiveBidBgtSync extends Command
         {--channel=all : sp, sb, or all}
         {--campaign-id= : Only this campaign ID}
         {--failed-only : Retry rows that are not verified}
-        {--limit=200 : Max report campaigns to verify in this run}';
+        {--limit=2000 : Max report campaigns to verify in this run}';
 
     protected $description = 'Pull live Amazon BGT/BID, compare Lbgt to SBGT and Lbid to SBID, push mismatches, verify before marking synced';
 
@@ -30,7 +30,7 @@ class AmazonAdsLiveBidBgtSync extends Command
 
         $channelOpt = strtolower((string) $this->option('channel'));
         $onlyCid = trim((string) $this->option('campaign-id'));
-        $limit = max(1, min(500, (int) $this->option('limit')));
+        $limit = max(1, min(2000, (int) $this->option('limit')));
 
         $rows = $this->rowsFromReports($channelOpt, $limit, $onlyCid);
 
