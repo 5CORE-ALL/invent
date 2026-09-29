@@ -11,6 +11,7 @@ class DobaWarehouseShip extends Model
     protected $fillable = [
         'order_no',
         'shipped',
+        'status',
         'shipped_at',
         'shipped_by',
     ];

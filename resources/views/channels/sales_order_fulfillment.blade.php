@@ -471,13 +471,13 @@
             width: 14px;
             height: 14px;
             border-radius: 50%;
-            background: #6c8cff;
-            box-shadow: 0 0 0 2px rgba(108, 140, 255, 0.22);
+            background: #0ab39c;
+            box-shadow: 0 0 0 2px rgba(10, 179, 156, 0.22);
             cursor: default;
             vertical-align: middle;
         }
         .sof-text-dot-wrap:hover .sof-text-dot {
-            box-shadow: 0 0 0 3px rgba(108, 140, 255, 0.35);
+            box-shadow: 0 0 0 3px rgba(10, 179, 156, 0.35);
         }
         .sof-text-dot-box {
             display: none;
@@ -504,6 +504,9 @@
         }
         .sof-text-dot-wrap:hover .sof-text-dot-box {
             display: block;
+        }
+        .sof-text-dot-wrap:hover {
+            z-index: 20;
         }
         .sof-text-dot-box::after {
             content: '';
@@ -722,7 +725,10 @@
         #sof-in-received-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-invoiced-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-delivered-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
-        #sof-all-order-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap) {
+        #sof-all-order-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
+        #sof-doba-prepaid-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
+        #sof-doba-done-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
+        #sof-doba-nonprepaid-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap) {
             overflow: visible !important;
         }
         #sof-pending-table .tabulator-row:has(.sof-order-id-wrap:hover),
@@ -854,6 +860,12 @@
         }
         .sof-doba-ld-select.is-done {
             background: #198754;
+        }
+        .sof-doba-ld-select.is-canceled {
+            background: #6c757d;
+        }
+        .sof-doba-canceled-row {
+            background: #f8f9fa;
         }
         .sof-doba-ld-select option {
             color: #111;
@@ -1140,8 +1152,14 @@
             gap: 6px;
             max-width: 100%;
         }
-        .sof-sku-cell code {
+        .sof-sku-cell code,
+        #sof-doba-prepaid-table code,
+        #sof-doba-done-table code,
+        #sof-doba-nonprepaid-table code {
             white-space: nowrap;
+            color: #000;
+            font-weight: 700;
+            background: transparent;
         }
         .sof-status-cell {
             display: inline-flex;
@@ -1544,7 +1562,7 @@
                         <div class="tab-pane fade" id="sof-doba-orders-pane" role="tabpanel" aria-labelledby="sof-doba-orders-tab">
                             <p class="small text-muted mb-2">
                                 Prepaid lists Doba orders that already include a shipping label and tracking (Shopify tag Prepaid label), including orders already in transit. Seller-Delivery orders still need a label purchased, so they are not on this tab.
-                                Use <strong>ld</strong> to mark a label sent to dispatch. After you mark <strong>done</strong>, the row moves to the Done tab.
+                                Use <strong>Status</strong> to mark a label sent to dispatch. After you mark <strong>done</strong>, the row moves to the Done tab. <strong>Cancel</strong> removes it from Prepaid and moves it to Canceled / Refunded.
                             </p>
                             <div class="sof-doba-export-bar">
                                 <div>
@@ -1573,6 +1591,11 @@
                                         Done <span class="badge ms-1" id="sof-doba-done-count" style="background:#d1e7dd;color:#0f5132;border:1px solid #a3cfbb;">0</span>
                                     </button>
                                 </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="sof-doba-sub-canceled-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-canceled-pane" type="button" role="tab" aria-controls="sof-doba-sub-canceled-pane" aria-selected="false">
+                                        Canceled / Refunded <span class="badge ms-1" id="sof-doba-canceled-count" style="background:#e2e3e5;color:#41464b;border:1px solid #c4c8cb;">0</span>
+                                    </button>
+                                </li>
                             </ul>
                             <div class="tab-content">
                                 <div class="tab-pane fade show active" id="sof-doba-sub-prepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-prepaid-tab">
@@ -1588,6 +1611,9 @@
                                 </div>
                                 <div class="tab-pane fade" id="sof-doba-sub-done-pane" role="tabpanel" aria-labelledby="sof-doba-sub-done-tab">
                                     <div id="sof-doba-done-table" class="sof-doba-table"></div>
+                                </div>
+                                <div class="tab-pane fade" id="sof-doba-sub-canceled-pane" role="tabpanel" aria-labelledby="sof-doba-sub-canceled-tab">
+                                    <div id="sof-doba-canceled-table" class="sof-doba-table"></div>
                                 </div>
                             </div>
                         </div>
@@ -2060,9 +2086,11 @@
     let dobaNonprepaidTable = null;
     let dobaPrepaidTable = null;
     let dobaDoneTable = null;
+    let dobaCanceledTable = null;
     let dobaNonprepaidRows = [];
     let dobaPrepaidRows = [];
     let dobaDoneRows = [];
+    let dobaCanceledRows = [];
     let dobaOrdersTableLoading = false;
     let dobaOrdersXhr = null;
     let dobaOrdersOpenCount = 0;
@@ -2482,6 +2510,7 @@
         if (tbl === dobaNonprepaidTable) return dobaNonprepaidRows;
         if (tbl === dobaPrepaidTable) return dobaPrepaidRows;
         if (tbl === dobaDoneTable) return dobaDoneRows;
+        if (tbl === dobaCanceledTable) return dobaCanceledRows;
         return null;
     }
 
@@ -2489,7 +2518,7 @@
         const caches = [
             pendingRows, noTrackingRows, fulfilledRows, scanDoneRows, inTransitRows,
             inReceivedRows, invoicedRows, deliveredRows, allOrderRows, lossMakingRows,
-            dobaNonprepaidRows, dobaPrepaidRows, dobaDoneRows,
+            dobaNonprepaidRows, dobaPrepaidRows, dobaDoneRows, dobaCanceledRows,
         ];
         let best = [];
         for (let i = 0; i < caches.length; i++) {
@@ -2599,6 +2628,7 @@
 
     function sofActiveDobaExportType() {
         if (sofOrderTabIsActive('#sof-doba-sub-done-tab', '#sof-doba-sub-done-pane')) return 'done';
+        if (sofOrderTabIsActive('#sof-doba-sub-canceled-tab', '#sof-doba-sub-canceled-pane')) return 'canceled';
         return 'prepaid';
     }
 
@@ -2606,6 +2636,7 @@
         const type = sofActiveDobaExportType();
         if (type === 'prepaid') return dobaPrepaidRows;
         if (type === 'done') return dobaDoneRows;
+        if (type === 'canceled') return dobaCanceledRows;
         return dobaNonprepaidRows;
     }
 
@@ -2613,6 +2644,7 @@
         const type = sofActiveDobaExportType();
         if (type === 'prepaid') return dobaPrepaidTable;
         if (type === 'done') return dobaDoneTable;
+        if (type === 'canceled') return dobaCanceledTable;
         return dobaNonprepaidTable;
     }
 
@@ -3101,6 +3133,28 @@
         return wrap;
     }
 
+    function sofProductNameDotFormatter(cell) {
+        const title = (cell.getValue() || '').toString().trim();
+        if (!title) {
+            return '<span class="sof-oc-missing">—</span>';
+        }
+        const wrap = document.createElement('span');
+        wrap.className = 'sof-text-dot-wrap';
+        wrap.title = title;
+
+        const dot = document.createElement('span');
+        dot.className = 'sof-text-dot';
+        dot.setAttribute('aria-label', title);
+        wrap.appendChild(dot);
+
+        const box = document.createElement('span');
+        box.className = 'sof-text-dot-box';
+        box.textContent = title;
+        wrap.appendChild(box);
+
+        return wrap;
+    }
+
     function sofOrderAgeOver24hFromDate(row) {
         if (!row || typeof row !== 'object') return false;
         const raw = String(row.order_date || '').trim();
@@ -3352,7 +3406,7 @@
         [
             fulfilledTable, inTransitTable, deliveredTable, scanDoneTable,
             pendingTable, inReceivedTable, invoicedTable, allOrderTable, table,
-            dobaNonprepaidTable, dobaPrepaidTable, dobaDoneTable,
+            dobaNonprepaidTable, dobaPrepaidTable, dobaDoneTable, dobaCanceledTable,
         ].forEach(function (t) {
             if (!t) return;
             try {
@@ -4622,27 +4676,8 @@
                 minWidth: 70,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                headerTooltip: 'Hover dot to see full product name',
-                formatter: function (cell) {
-                    const title = (cell.getValue() || '').toString().trim();
-                    if (!title) {
-                        return '<span class="sof-oc-missing">—</span>';
-                    }
-                    const wrap = document.createElement('span');
-                    wrap.className = 'sof-text-dot-wrap';
-
-                    const dot = document.createElement('span');
-                    dot.className = 'sof-text-dot';
-                    dot.setAttribute('aria-label', 'Product');
-                    wrap.appendChild(dot);
-
-                    const box = document.createElement('span');
-                    box.className = 'sof-text-dot-box';
-                    box.textContent = title;
-                    wrap.appendChild(box);
-
-                    return wrap;
-                },
+                headerTooltip: 'Hover the green dot to see the full product name',
+                formatter: sofProductNameDotFormatter,
             },
             {
                 title: 'INV',
@@ -6204,11 +6239,12 @@
         sofWireOrderTable(lossMakingTable);
     }
 
-    function updateDobaOrdersCounts(openCount, nonPrepaidCount, prepaidCount, doneCount) {
+    function updateDobaOrdersCounts(openCount, nonPrepaidCount, prepaidCount, doneCount, canceledCount) {
         const open = Number(openCount || 0);
         const np = Number(nonPrepaidCount || 0);
         const pp = Number(prepaidCount || 0);
         const done = Number(doneCount || 0);
+        const canceled = Number(canceledCount || 0);
         dobaOrdersOpenCount = open;
         const tabCount = document.getElementById('sof-doba-orders-tab-count');
         const badgeEl = document.getElementById('sof-doba-orders-total');
@@ -6217,6 +6253,7 @@
         const npEl = document.getElementById('sof-doba-nonprepaid-count');
         const ppEl = document.getElementById('sof-doba-prepaid-count');
         const doneEl = document.getElementById('sof-doba-done-count');
+        const canceledEl = document.getElementById('sof-doba-canceled-count');
         const triangle = ' <i class="fas fa-exclamation-triangle sof-doba-pending-alert" title="Pending labels" aria-hidden="true"></i>';
         if (tabCount) {
             tabCount.innerHTML = open.toLocaleString() + (open > 0 ? triangle : '');
@@ -6230,16 +6267,18 @@
         if (npEl) npEl.textContent = np.toLocaleString();
         if (ppEl) ppEl.textContent = pp.toLocaleString();
         if (doneEl) doneEl.textContent = done.toLocaleString();
+        if (canceledEl) canceledEl.textContent = canceled.toLocaleString();
     }
 
     function refreshDobaOrderCounts() {
-        updateDobaOrdersCounts(dobaNonprepaidRows.length + dobaPrepaidRows.length, dobaNonprepaidRows.length, dobaPrepaidRows.length, dobaDoneRows.length);
+        updateDobaOrdersCounts(dobaNonprepaidRows.length + dobaPrepaidRows.length, dobaNonprepaidRows.length, dobaPrepaidRows.length, dobaDoneRows.length, dobaCanceledRows.length);
     }
 
     function applyDobaOrdersFilters() {
         sofApplyOrderTableFilter(dobaNonprepaidTable, '#sof-order-search');
         sofApplyOrderTableFilter(dobaPrepaidTable, '#sof-order-search');
         sofApplyOrderTableFilter(dobaDoneTable, '#sof-order-search');
+        sofApplyOrderTableFilter(dobaCanceledTable, '#sof-order-search');
     }
 
     function sofDobaOrderIdFormatter(cell) {
@@ -6274,18 +6313,29 @@
         return wrap;
     }
 
-    function sofDobaLdTone(select, isDone) {
-        select.classList.toggle('is-done', !!isDone);
-        select.classList.toggle('is-send', !isDone);
+    function sofDobaWarehouseStatus(row) {
+        const raw = String((row && row.warehouse_status) || '').toLowerCase();
+        if (raw === 'canceled' || raw === 'cancel' || row.warehouse_canceled) return 'canceled';
+        if (raw === 'done' || row.warehouse_shipped) return 'done';
+        return 'send';
     }
 
-    function sofDobaLdFormatter(cell) {
+    function sofDobaLdTone(select, status) {
+        const st = status === true ? 'done' : (status === false ? 'send' : String(status || 'send'));
+        select.classList.toggle('is-done', st === 'done');
+        select.classList.toggle('is-send', st === 'send');
+        select.classList.toggle('is-canceled', st === 'canceled');
+    }
+
+    function sofDobaLdFormatter(cell, opts) {
+        opts = opts || {};
         const row = cell.getRow().getData() || {};
-        const isDone = !!row.warehouse_shipped;
+        const current = sofDobaWarehouseStatus(row);
         const select = document.createElement('select');
-        select.className = 'sof-doba-ld-select ' + (isDone ? 'is-done' : 'is-send');
-        select.title = 'label sent to dispatch';
-        select.setAttribute('aria-label', 'label sent to dispatch');
+        select.className = 'sof-doba-ld-select';
+        sofDobaLdTone(select, current);
+        select.title = 'Status';
+        select.setAttribute('aria-label', 'Status');
         const optSend = document.createElement('option');
         optSend.value = 'send';
         optSend.textContent = 'send label';
@@ -6294,60 +6344,78 @@
         optDone.textContent = 'done';
         select.appendChild(optSend);
         select.appendChild(optDone);
-        select.value = isDone ? 'done' : 'send';
+        if (opts.allowCancel || current === 'canceled') {
+            const optCancel = document.createElement('option');
+            optCancel.value = 'canceled';
+            optCancel.textContent = 'cancel';
+            select.appendChild(optCancel);
+        }
+        select.value = current;
         select.addEventListener('click', function (ev) { ev.stopPropagation(); });
         select.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
         select.addEventListener('change', function () {
-            const done = select.value === 'done';
-            sofDobaLdTone(select, done);
-            markDobaOrderShipped(row, done, select, cell.getRow());
+            sofDobaLdTone(select, select.value);
+            markDobaOrderShipped(row, select.value, select);
         });
         return select;
     }
 
-    function markDobaOrderShipped(row, shipped, control, tabRow) {
+    function sofDobaApplyStatusLocally(row, status) {
         const orderNo = String((row && row.order_id) || '').trim();
+        row.warehouse_status = status;
+        row.warehouse_shipped = status === 'done';
+        row.warehouse_canceled = status === 'canceled';
+        row.warehouse_shipped_at = status === 'send' ? null : (row.warehouse_shipped_at || '');
+        dobaNonprepaidRows = dobaNonprepaidRows.filter(function (r) { return r.order_id !== orderNo; });
+        dobaPrepaidRows = dobaPrepaidRows.filter(function (r) { return r.order_id !== orderNo; });
+        dobaDoneRows = dobaDoneRows.filter(function (r) { return r.order_id !== orderNo; });
+        dobaCanceledRows = dobaCanceledRows.filter(function (r) { return r.order_id !== orderNo; });
+        if (status === 'done') {
+            dobaDoneRows.unshift(row);
+        } else if (status === 'canceled') {
+            dobaCanceledRows.unshift(row);
+        } else if (row.is_prepaid) {
+            dobaPrepaidRows.unshift(row);
+        } else {
+            dobaNonprepaidRows.unshift(row);
+        }
+        applyDobaRowsToTables();
+        refreshDobaOrderCounts();
+    }
+
+    function markDobaOrderShipped(row, status, control) {
+        const orderNo = String((row && row.order_id) || '').trim();
+        const prev = sofDobaWarehouseStatus(row);
         if (!orderNo) {
-            if (control) control.value = shipped ? 'send' : 'done';
+            if (control) {
+                control.value = prev;
+                sofDobaLdTone(control, prev);
+            }
             return;
         }
         control.disabled = true;
         $.ajax({
             url: '{{ route("sales.order.fulfillment.doba.orders.mark.shipped") }}',
             type: 'POST',
-            data: { order_no: orderNo, shipped: shipped ? 1 : 0 },
+            data: { order_no: orderNo, status: status, shipped: status === 'done' ? 1 : 0 },
             headers: { 'X-CSRF-TOKEN': sofCsrf() },
             success: function (res) {
                 control.disabled = false;
                 if (!res || !res.success) {
-                    control.value = shipped ? 'send' : 'done';
-                    sofDobaLdTone(control, !shipped);
+                    control.value = prev;
+                    sofDobaLdTone(control, prev);
                     if (typeof Swal !== 'undefined') {
-                        Swal.fire({ icon: 'error', title: 'Could not save', text: (res && res.message) || 'Failed to update ld status.' });
+                        Swal.fire({ icon: 'error', title: 'Could not save', text: (res && res.message) || 'Failed to update status.' });
                     }
                     return;
                 }
-                row.warehouse_shipped = !!shipped;
-                row.warehouse_shipped_at = shipped ? (row.warehouse_shipped_at || '') : null;
-                sofDobaLdTone(control, shipped);
-                dobaNonprepaidRows = dobaNonprepaidRows.filter(function (r) { return r.order_id !== orderNo; });
-                dobaPrepaidRows = dobaPrepaidRows.filter(function (r) { return r.order_id !== orderNo; });
-                dobaDoneRows = dobaDoneRows.filter(function (r) { return r.order_id !== orderNo; });
-                if (shipped) {
-                    dobaDoneRows.unshift(row);
-                } else if (row.is_prepaid) {
-                    dobaPrepaidRows.unshift(row);
-                } else {
-                    dobaNonprepaidRows.unshift(row);
-                }
-                applyDobaRowsToTables();
-                refreshDobaOrderCounts();
+                sofDobaApplyStatusLocally(row, status);
             },
             error: function (xhr) {
                 control.disabled = false;
-                control.value = shipped ? 'send' : 'done';
-                sofDobaLdTone(control, !shipped);
-                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to update ld status.';
+                control.value = prev;
+                sofDobaLdTone(control, prev);
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to update status.';
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({ icon: 'error', title: 'Could not save', text: msg });
                 }
@@ -6388,14 +6456,16 @@
         opts = opts || {};
         const cols = [
             {
-                title: 'ld',
-                field: 'warehouse_shipped',
-                width: 110,
+                title: 'Status',
+                field: 'warehouse_status',
+                width: 118,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: true,
-                headerTooltip: 'label sent to dispatch',
-                formatter: sofDobaLdFormatter,
+                headerTooltip: 'Warehouse status',
+                formatter: function (cell) {
+                    return sofDobaLdFormatter(cell, opts);
+                },
             },
         ];
         if (opts.includeType) {
@@ -6448,7 +6518,7 @@
                 formatter: sofFormatOrderDateCell,
             },
             {
-                title: 'Status',
+                title: 'Order status',
                 field: 'status_label',
                 minWidth: 118,
                 hozAlign: 'center',
@@ -6469,19 +6539,18 @@
                 sorter: sofStringSorter,
                 formatter: function (cell) {
                     const sku = (cell.getValue() || '').toString().trim();
-                    return sku ? '<code>' + escapeHtml(sku) + '</code>' : '—';
+                    return sku ? '<span class="sof-sku-cell"><code>' + escapeHtml(sku) + '</code></span>' : '—';
                 },
             },
             {
                 title: 'Product',
                 field: 'display_title',
-                minWidth: 160,
+                minWidth: 70,
+                hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: sofStringSorter,
-                formatter: function (cell) {
-                    const t = (cell.getValue() || '').toString().trim();
-                    return t ? escapeHtml(t) : '—';
-                },
+                headerTooltip: 'Hover the green dot to see the full product name',
+                formatter: sofProductNameDotFormatter,
             },
             {
                 title: 'Qty',
@@ -6536,6 +6605,9 @@
         if (dobaDoneTable) {
             try { dobaDoneTable.setData(dobaDoneRows); } catch (e3) {}
         }
+        if (dobaCanceledTable) {
+            try { dobaCanceledTable.setData(dobaCanceledRows); } catch (e4) {}
+        }
         applyDobaOrdersFilters();
         sofUpdateTrackingFilterCounts(sofActiveDobaRows());
     }
@@ -6562,8 +6634,12 @@
             placeholder: placeholder,
             initialSort: [{ column: 'order_date', dir: 'desc' }],
             rowFormatter: function (row) {
-                if ((row.getData() || {}).warehouse_shipped) {
+                const data = row.getData() || {};
+                if (data.warehouse_shipped) {
                     row.getElement().classList.add('sof-doba-shipped-row');
+                }
+                if (data.warehouse_canceled) {
+                    row.getElement().classList.add('sof-doba-canceled-row');
                 }
             },
             columns: dobaOrderColumns(opts),
@@ -6616,11 +6692,16 @@
         dobaPrepaidRows = dobaPrepaidRows.filter(function (r) {
             const id = String((r && r.order_id) || '');
             if (!wanted[id]) return true;
+            r.warehouse_status = shipped ? 'done' : 'send';
             r.warehouse_shipped = !!shipped;
+            r.warehouse_canceled = false;
             move.push(r);
             return false;
         });
         dobaDoneRows = dobaDoneRows.filter(function (r) {
+            return !wanted[String((r && r.order_id) || '')];
+        });
+        dobaCanceledRows = dobaCanceledRows.filter(function (r) {
             return !wanted[String((r && r.order_id) || '')];
         });
         if (shipped) {
@@ -6748,11 +6829,13 @@
                 dobaNonprepaidRows = sofNormalizeOrderRows(ok && Array.isArray(response.non_prepaid) ? response.non_prepaid : []);
                 dobaPrepaidRows = sofNormalizeOrderRows(ok && Array.isArray(response.prepaid) ? response.prepaid : []);
                 dobaDoneRows = sofNormalizeOrderRows(ok && Array.isArray(response.done) ? response.done : []);
+                dobaCanceledRows = sofNormalizeOrderRows(ok && Array.isArray(response.canceled) ? response.canceled : []);
                 updateDobaOrdersCounts(
                     ok && response.open_count != null ? response.open_count : (dobaNonprepaidRows.length + dobaPrepaidRows.length),
                     dobaNonprepaidRows.length,
                     dobaPrepaidRows.length,
-                    dobaDoneRows.length
+                    dobaDoneRows.length,
+                    dobaCanceledRows.length
                 );
                 applyDobaRowsToTables();
             },
@@ -6761,7 +6844,8 @@
                 dobaNonprepaidRows = [];
                 dobaPrepaidRows = [];
                 dobaDoneRows = [];
-                updateDobaOrdersCounts(0, 0, 0, 0);
+                dobaCanceledRows = [];
+                updateDobaOrdersCounts(0, 0, 0, 0, 0);
                 applyDobaRowsToTables();
             },
             complete: function (xhr, status) {
@@ -6782,10 +6866,13 @@
 
     function ensureDobaOrdersTables() {
         if (!dobaPrepaidTable) {
-            dobaPrepaidTable = makeDobaOrdersTable('#sof-doba-prepaid-table', 'No open prepaid Doba orders in this date range.', { includeLabel: true, selectable: true });
+            dobaPrepaidTable = makeDobaOrdersTable('#sof-doba-prepaid-table', 'No open prepaid Doba orders in this date range.', { includeLabel: true, selectable: true, allowCancel: true });
         }
         if (!dobaDoneTable) {
             dobaDoneTable = makeDobaOrdersTable('#sof-doba-done-table', 'No done Doba orders in this date range.', { includeLabel: true, includeType: true });
+        }
+        if (!dobaCanceledTable) {
+            dobaCanceledTable = makeDobaOrdersTable('#sof-doba-canceled-table', 'No canceled or refunded Doba orders in this date range.', { includeLabel: true, includeType: true, allowCancel: true });
         }
         setTimeout(sofRedrawDobaTables, 50);
         loadDobaOrdersData();
@@ -6810,7 +6897,7 @@
     document.getElementById('sof-doba-orders-tab')?.addEventListener('shown.bs.tab', function () {
         ensureDobaOrdersTables();
     });
-    ['sof-doba-sub-prepaid-tab', 'sof-doba-sub-done-tab'].forEach(function (id) {
+    ['sof-doba-sub-prepaid-tab', 'sof-doba-sub-done-tab', 'sof-doba-sub-canceled-tab'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('shown.bs.tab', function () {
             sofRedrawDobaTables();
             sofUpdateTrackingFilterCounts(sofActiveDobaRows());

@@ -514,9 +514,11 @@ class SalesOrderFulfillmentController extends Controller
                 'non_prepaid' => $grouped['non_prepaid'],
                 'prepaid' => $grouped['prepaid'],
                 'done' => $grouped['done'],
+                'canceled' => $grouped['canceled'],
                 'non_prepaid_count' => count($grouped['non_prepaid']),
                 'prepaid_count' => count($grouped['prepaid']),
                 'done_count' => count($grouped['done']),
+                'canceled_count' => count($grouped['canceled']),
                 'open_count' => $grouped['open_count'],
                 'count' => count($grouped['non_prepaid']) + count($grouped['prepaid']),
             ]);
@@ -529,9 +531,11 @@ class SalesOrderFulfillmentController extends Controller
                 'non_prepaid' => [],
                 'prepaid' => [],
                 'done' => [],
+                'canceled' => [],
                 'non_prepaid_count' => 0,
                 'prepaid_count' => 0,
                 'done_count' => 0,
+                'canceled_count' => 0,
                 'open_count' => 0,
                 'count' => 0,
             ], 500);
@@ -545,7 +549,7 @@ class SalesOrderFulfillmentController extends Controller
     public function dobaOrdersExport(Request $request): StreamedResponse|JsonResponse
     {
         $type = strtolower(trim((string) $request->input('type', 'non_prepaid')));
-        if (! in_array($type, ['non_prepaid', 'prepaid', 'done'], true)) {
+        if (! in_array($type, ['non_prepaid', 'prepaid', 'done', 'canceled'], true)) {
             return response()->json(['success' => false, 'message' => 'Invalid Doba export type.'], 422);
         }
 
@@ -564,6 +568,7 @@ class SalesOrderFulfillmentController extends Controller
         $label = match ($type) {
             'prepaid' => 'prepaid',
             'done' => 'done',
+            'canceled' => 'canceled-refunded',
             default => 'non-prepaid',
         };
         $filename = 'doba-'.$label.'-orders-'.$fromYmd.'-to-'.$toYmd.'.'.($format === 'xlsx' ? 'xlsx' : 'csv');
@@ -627,15 +632,19 @@ class SalesOrderFulfillmentController extends Controller
     {
         $validated = $request->validate([
             'order_no' => ['required', 'string', 'max:191'],
-            'shipped' => ['required'],
+            'status' => ['nullable', 'string', 'max:20'],
+            'shipped' => ['nullable'],
         ]);
 
         $orderNo = trim((string) $validated['order_no']);
-        $shipped = filter_var($validated['shipped'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-        if ($orderNo === '' || $shipped === null) {
+        $status = $this->normalizeDobaWarehouseStatusInput(
+            (string) ($validated['status'] ?? ''),
+            $validated['shipped'] ?? null
+        );
+        if ($orderNo === '' || $status === null) {
             return response()->json([
                 'success' => false,
-                'message' => 'order_no and shipped are required.',
+                'message' => 'order_no and status (send, done, or cancel) are required.',
             ], 422);
         }
 
@@ -647,23 +656,14 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         try {
-            if ($shipped) {
-                DobaWarehouseShip::query()->updateOrCreate(
-                    ['order_no' => $orderNo],
-                    [
-                        'shipped' => true,
-                        'shipped_at' => now(),
-                        'shipped_by' => $request->user()?->id,
-                    ]
-                );
-            } else {
-                DobaWarehouseShip::query()->where('order_no', $orderNo)->delete();
-            }
+            $this->persistDobaWarehouseStatus($orderNo, $status, $request->user()?->id);
 
             return response()->json([
                 'success' => true,
                 'order_no' => $orderNo,
-                'shipped' => $shipped,
+                'status' => $status,
+                'shipped' => $status === 'done',
+                'canceled' => $status === 'canceled',
             ]);
         } catch (\Throwable $e) {
             report($e);
@@ -714,18 +714,7 @@ class SalesOrderFulfillmentController extends Controller
             $now = now();
             $updated = 0;
             foreach ($orderNos as $orderNo) {
-                if ($shipped) {
-                    DobaWarehouseShip::query()->updateOrCreate(
-                        ['order_no' => $orderNo],
-                        [
-                            'shipped' => true,
-                            'shipped_at' => $now,
-                            'shipped_by' => $userId,
-                        ]
-                    );
-                } else {
-                    DobaWarehouseShip::query()->where('order_no', $orderNo)->delete();
-                }
+                $this->persistDobaWarehouseStatus($orderNo, $shipped ? 'done' : 'send', $userId, $now);
                 $updated++;
             }
 
@@ -753,11 +742,11 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * @return array{non_prepaid: list<array<string, mixed>>, prepaid: list<array<string, mixed>>, done: list<array<string, mixed>>, open_count: int}
+     * @return array{non_prepaid: list<array<string, mixed>>, prepaid: list<array<string, mixed>>, done: list<array<string, mixed>>, canceled: list<array<string, mixed>>, open_count: int}
      */
     protected function buildDobaWarehouseOrderRows(bool $includeShipped): array
     {
-        $empty = ['non_prepaid' => [], 'prepaid' => [], 'done' => [], 'open_count' => 0];
+        $empty = ['non_prepaid' => [], 'prepaid' => [], 'done' => [], 'canceled' => [], 'open_count' => 0];
         if (! Schema::hasTable('doba_daily_data')) {
             return $empty;
         }
@@ -769,10 +758,7 @@ class SalesOrderFulfillmentController extends Controller
 
         $this->fetchRecentDobaOrders();
 
-        $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED']);
+        $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED']);
 
         $select = [
             'id', 'order_no', 'platform_order_no', 'order_time', 'updated_at',
@@ -790,17 +776,7 @@ class SalesOrderFulfillmentController extends Controller
         }
         $lines = $query->orderByDesc('order_time')->get($select);
 
-        $shippedByOrder = [];
-        if (Schema::hasTable('doba_warehouse_ships')) {
-            foreach (DobaWarehouseShip::query()->where('shipped', true)->get(['order_no', 'shipped_at']) as $ship) {
-                $key = trim((string) ($ship->order_no ?? ''));
-                if ($key !== '') {
-                    $shippedByOrder[$key] = $ship->shipped_at
-                        ? $this->formatOrderDate($ship->shipped_at)
-                        : true;
-                }
-            }
-        }
+        $warehouseByOrder = $this->dobaWarehouseDispositionByOrder();
 
         $byOrder = [];
         foreach ($lines as $line) {
@@ -809,6 +785,9 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             if (! isset($byOrder[$orderNo])) {
+                $whStatus = $warehouseByOrder[$orderNo]['status'] ?? 'send';
+                $apiCanceled = SofOrderCancelDetector::statusLooksCancelled((string) ($line->order_status ?? ''));
+                $effective = ($whStatus === 'canceled' || $apiCanceled) ? 'canceled' : $whStatus;
                 $byOrder[$orderNo] = [
                     'id' => 'doba-wh-'.$orderNo,
                     'row_id' => (int) $line->id,
@@ -837,10 +816,10 @@ class SalesOrderFulfillmentController extends Controller
                     'shopify_order_number' => '',
                     'shipping_city' => trim((string) ($line->shipping_city ?? '')),
                     'item_price' => is_numeric($line->item_price ?? null) ? (float) $line->item_price : null,
-                    'warehouse_shipped' => isset($shippedByOrder[$orderNo]),
-                    'warehouse_shipped_at' => is_string($shippedByOrder[$orderNo] ?? null)
-                        ? $shippedByOrder[$orderNo]
-                        : null,
+                    'warehouse_status' => $effective,
+                    'warehouse_shipped' => $effective === 'done',
+                    'warehouse_canceled' => $effective === 'canceled',
+                    'warehouse_shipped_at' => $warehouseByOrder[$orderNo]['at'] ?? null,
                     'order_url' => route('marketplace.orders.show', [
                         'marketplace' => 'doba',
                         'order' => (int) $line->id,
@@ -850,6 +829,11 @@ class SalesOrderFulfillmentController extends Controller
             }
 
             $row = &$byOrder[$orderNo];
+            if (SofOrderCancelDetector::statusLooksCancelled((string) ($line->order_status ?? ''))) {
+                $row['warehouse_status'] = 'canceled';
+                $row['warehouse_canceled'] = true;
+                $row['warehouse_shipped'] = false;
+            }
             $sku = trim((string) ($line->sku ?? ''));
             if ($sku !== '' && ! in_array($sku, $row['skus'], true)) {
                 $row['skus'][] = $sku;
@@ -911,12 +895,17 @@ class SalesOrderFulfillmentController extends Controller
         $nonPrepaid = [];
         $prepaid = [];
         $done = [];
+        $canceled = [];
         $openCount = 0;
         $labelCandidates = [];
         foreach ($byOrder as $row) {
             $row['sku'] = implode(', ', $row['skus']);
             $row['display_title'] = implode(' · ', $row['titles']);
             unset($row['skus'], $row['titles'], $row['shipping_city'], $row['item_price']);
+            if (! empty($row['warehouse_canceled'])) {
+                $canceled[] = $row;
+                continue;
+            }
             if ($row['warehouse_shipped']) {
                 $done[] = $row;
                 continue;
@@ -944,8 +933,92 @@ class SalesOrderFulfillmentController extends Controller
             'non_prepaid' => $nonPrepaid,
             'prepaid' => $prepaid,
             'done' => $done,
+            'canceled' => $canceled,
             'open_count' => $openCount,
         ];
+    }
+
+    /**
+     * @return array<string, array{status: string, at: string|null}>
+     */
+    protected function dobaWarehouseDispositionByOrder(): array
+    {
+        $out = [];
+        if (! Schema::hasTable('doba_warehouse_ships')) {
+            return $out;
+        }
+
+        $cols = ['order_no', 'shipped', 'shipped_at'];
+        if (Schema::hasColumn('doba_warehouse_ships', 'status')) {
+            $cols[] = 'status';
+        }
+
+        foreach (DobaWarehouseShip::query()->get($cols) as $ship) {
+            $key = trim((string) ($ship->order_no ?? ''));
+            if ($key === '') {
+                continue;
+            }
+            $out[$key] = [
+                'status' => $this->resolveDobaWarehouseStatus($ship),
+                'at' => $ship->shipped_at ? $this->formatOrderDate($ship->shipped_at) : null,
+            ];
+        }
+
+        return $out;
+    }
+
+    protected function resolveDobaWarehouseStatus(DobaWarehouseShip $ship): string
+    {
+        $status = strtolower(trim((string) ($ship->status ?? '')));
+        if ($status === 'cancel') {
+            $status = 'canceled';
+        }
+        if (in_array($status, ['send', 'done', 'canceled'], true)) {
+            return $status;
+        }
+
+        return $ship->shipped ? 'done' : 'canceled';
+    }
+
+    protected function normalizeDobaWarehouseStatusInput(string $status, mixed $shipped): ?string
+    {
+        $status = strtolower(trim($status));
+        if ($status === 'cancel') {
+            $status = 'canceled';
+        }
+        if (in_array($status, ['send', 'done', 'canceled'], true)) {
+            return $status;
+        }
+
+        $flag = filter_var($shipped, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($flag === null) {
+            return null;
+        }
+
+        return $flag ? 'done' : 'send';
+    }
+
+    protected function persistDobaWarehouseStatus(string $orderNo, string $status, ?int $userId, mixed $now = null): void
+    {
+        if ($status === 'send') {
+            DobaWarehouseShip::query()->where('order_no', $orderNo)->delete();
+
+            return;
+        }
+
+        $payload = [
+            'shipped' => $status === 'done',
+            'shipped_at' => $now ?? now(),
+            'shipped_by' => $userId,
+        ];
+        if (Schema::hasColumn('doba_warehouse_ships', 'status')) {
+            $payload['status'] = $status;
+        }
+
+        DobaWarehouseShip::query()->updateOrCreate(
+            ['order_no' => $orderNo],
+            $payload
+        );
     }
 
     protected function dobaLineIsPrepaid(object $line): bool
@@ -1186,10 +1259,12 @@ class SalesOrderFulfillmentController extends Controller
             return [];
         }
 
-        $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
-            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
-            ->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')');
+        if ($type !== 'canceled') {
+            $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
+                ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
+                ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%']);
+        }
+        $query->whereRaw('NOT ('.$this->dobaInTransitStatusSql().')');
 
         $columns = ['order_no', 'order_time', 'order_type', 'sku', 'quantity'];
         foreach ([
@@ -1206,14 +1281,19 @@ class SalesOrderFulfillmentController extends Controller
             }
         }
 
-        $shippedNos = [];
-        if ($type === 'done' && Schema::hasTable('doba_warehouse_ships')) {
-            foreach (DobaWarehouseShip::query()->where('shipped', true)->pluck('order_no') as $orderNo) {
-                $key = trim((string) $orderNo);
-                if ($key !== '') {
-                    $shippedNos[$key] = true;
-                }
+        $doneNos = [];
+        $canceledNos = [];
+        foreach ($this->dobaWarehouseDispositionByOrder() as $orderNo => $info) {
+            if (($info['status'] ?? '') === 'done') {
+                $doneNos[$orderNo] = true;
             }
+            if (($info['status'] ?? '') === 'canceled') {
+                $canceledNos[$orderNo] = true;
+            }
+        }
+
+        if (Schema::hasColumn('doba_daily_data', 'order_status') && ! in_array('order_status', $columns, true)) {
+            $columns[] = 'order_status';
         }
 
         $lines = $query->orderByDesc('order_time')->orderBy('order_no')->get($columns);
@@ -1224,10 +1304,17 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             $isPrepaid = $this->dobaOrderTypeIsPrepaid((string) ($line->order_type ?? ''));
-            if ($type === 'done') {
-                if (! isset($shippedNos[$orderNo])) {
+            $apiCanceled = SofOrderCancelDetector::statusLooksCancelled((string) ($line->order_status ?? ''));
+            if ($type === 'canceled') {
+                if (! $apiCanceled && ! isset($canceledNos[$orderNo])) {
                     continue;
                 }
+            } elseif ($type === 'done') {
+                if (! isset($doneNos[$orderNo]) || $apiCanceled || isset($canceledNos[$orderNo])) {
+                    continue;
+                }
+            } elseif (isset($doneNos[$orderNo]) || isset($canceledNos[$orderNo]) || $apiCanceled) {
+                continue;
             } elseif ($isPrepaid !== ($type === 'prepaid')) {
                 continue;
             }
@@ -3149,8 +3236,7 @@ class SalesOrderFulfillmentController extends Controller
             $base->whereNotExists(function ($q) {
                 $q->selectRaw('1')
                     ->from('doba_warehouse_ships')
-                    ->whereColumn('doba_warehouse_ships.order_no', 'doba_daily_data.order_no')
-                    ->where('doba_warehouse_ships.shipped', true);
+                    ->whereColumn('doba_warehouse_ships.order_no', 'doba_daily_data.order_no');
             });
         }
 
