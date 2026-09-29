@@ -2732,6 +2732,15 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(18)
             ->appendOutputTo($log);
 
+        // Webhook-independent fallback: push only the Shopify SKUs whose qty changed
+        // since the last poll to every enabled channel. Inline so mm-* jobs dispatch.
+        $schedule->command('mm:poll-shopify-inventory-changes')
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('mm-poll-shopify-inventory-changes')
+            ->withoutOverlapping(10)
+            ->appendOutputTo($log);
+
         // Backup: queue Shopify imports for unpushed MM orders even if fetch jobs are stuck.
         // Must run inline — runInBackground() sits on the default queue and never dispatches mm-* imports.
         $schedule->command('mm:dispatch-unpushed-shopify')

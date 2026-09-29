@@ -21,10 +21,15 @@ class StockTransferController extends Controller
      */
     public function index()
     {
-        $warehouses = Warehouse::select('id', 'name')->get();
+        $warehouses = Warehouse::inventoryOptions();
+        $mainId = Warehouse::mainId();
+        $toWarehouses = Warehouse::select('id', 'name')
+            ->when($mainId, fn ($q) => $q->where('id', '!=', $mainId))
+            ->orderBy('name')
+            ->get();
         $skus = ProductMaster::select('id','parent','sku')->get();
 
-        return view('inventory-management.stock-transfer-view', compact('warehouses', 'skus'));
+        return view('inventory-management.stock-transfer-view', compact('warehouses', 'toWarehouses', 'skus'));
     }
 
     /**
@@ -40,6 +45,7 @@ class StockTransferController extends Controller
      */
     public function store(Request $request)
     {
+        Warehouse::forceOnRequest($request);
         $request->validate([
             'sku' => 'required|string',
             'parent' => 'required|string',

@@ -53,6 +53,7 @@ class InventoryLedgerService
         ?int $available,
         ?string $locationId = null,
         array $knownSkus = [],
+        string $source = 'webhook',
     ): ?array {
         $inventoryItemId = preg_replace('/\D+/', '', $inventoryItemId) ?: '';
         if ($inventoryItemId === '') {
@@ -93,7 +94,7 @@ class InventoryLedgerService
                 $row->on_hand = $qty;
                 $row->available = $qty;
                 $row->version = (int) $row->version + 1;
-                $row->source = 'webhook';
+                $row->source = $source;
                 $row->synced_at = $now;
                 $row->save();
             } else {
@@ -105,7 +106,7 @@ class InventoryLedgerService
                     'on_hand' => $qty,
                     'available' => $qty,
                     'version' => 1,
-                    'source' => 'webhook',
+                    'source' => $source,
                     'synced_at' => $now,
                 ]);
             }

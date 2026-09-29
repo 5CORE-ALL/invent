@@ -267,9 +267,9 @@
                                         <div class="mb-3">
                                             <label for="warehouse_id" class="form-label fw-bold">Warehouse</label>
                                             <select class="form-select" id="warehouse_id" name="warehouse_id" required>
-                                                <option selected disabled>Select Warehouse</option>
+                                                <option value="" disabled @selected($warehouses->count() !== 1)>Select Warehouse</option>
                                                 @foreach($warehouses as $warehouse)
-                                                    <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                                    <option value="{{ $warehouse->id }}" @selected($warehouses->count() === 1)>{{ $warehouse->name }}</option>
                                                 @endforeach
                                             </select>
                                         </div>
@@ -379,9 +379,9 @@ MS RBP5 2PCS,100,Main Godawn,Add,Other</pre>
                                                     <small class="text-muted">(for rows without warehouse in CSV)</small>
                                                 </label>
                                                 <select class="form-select" id="bulk_warehouse_id">
-                                                    <option value="" selected>Select Warehouse</option>
+                                                    <option value="" @selected($warehouses->count() !== 1)>Select Warehouse</option>
                                                     @foreach($warehouses as $warehouse)
-                                                        <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                                        <option value="{{ $warehouse->id }}" @selected($warehouses->count() === 1)>{{ $warehouse->name }}</option>
                                                     @endforeach
                                                 </select>
                                             </div>

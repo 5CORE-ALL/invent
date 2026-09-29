@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\MarketplaceManager\AlibabaInventorySyncService;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
+use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\FaireInventorySyncService;
 use App\Services\MarketplaceManager\NeweggInventorySyncService;
@@ -14,7 +15,7 @@ use App\Services\MarketplaceManager\Ebay3InventorySyncService;
 use App\Services\MarketplaceManager\TikTok2InventorySyncService;
 use App\Services\MarketplaceManager\TikTokInventorySyncService;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -26,17 +27,25 @@ use Illuminate\Support\Facades\Log;
  * Fast-path: push SKUs from live Shopify → one marketplace.
  *
  * Deduped per marketplace: page refreshes / webhooks merge SKUs into a pending
- * set and at most one job runs on that channel's queue.
+ * set and at most one job waits on that channel's queue.
+ *
+ * Unique only until processing starts: with a lock held for the whole push,
+ * the "still pending" re-dispatch at the end of handle() was silently dropped
+ * and SKUs that arrived mid-push sat in cache until the next webhook.
  */
-class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
+class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUniqueUntilProcessing
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public const MAX_SKU_ATTEMPTS = 3;
+
+    /** Minutes to wait before attempt 2, 3, ... for a SKU whose push failed. */
+    public const RETRY_BACKOFF_MINUTES = [5, 15, 45];
 
     public int $tries = 3;
 
     public int $timeout = 600;
 
-    /** Keep unique lock for the push duration so page refreshes cannot spawn duplicates. */
     public int $uniqueFor = 1800;
 
     /**
@@ -175,6 +184,7 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
             'doba' => app(\App\Services\MarketplaceManager\DobaInventorySyncService::class),
             'amazon' => app(\App\Services\MarketplaceManager\AmazonInventorySyncService::class),
             'pls' => app(\App\Services\MarketplaceManager\PlsInventorySyncService::class),
+            'b5cb2b' => app(\App\Services\MarketplaceManager\B5cB2bInventorySyncService::class),
             default => null,
         };
 
@@ -207,11 +217,125 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
             'result' => $result,
         ]);
 
+        $this->scheduleRetryForFailedSkus($skus, is_array($result) ? $result : []);
+
         // SKUs may have arrived while we were pushing — schedule one more unique job.
         $stillPending = self::pendingCount($this->marketplace);
         if ($stillPending > 0) {
             static::dispatch([], null, null, $this->marketplace);
         }
+    }
+
+    /**
+     * A SKU whose push failed is re-queued with backoff (5, 15, 45 min), at most
+     * MAX_SKU_ATTEMPTS times. Only SKUs still out of tolerance are retried, so
+     * a partially failed batch does not re-push the SKUs that succeeded.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, mixed>  $result
+     */
+    protected function scheduleRetryForFailedSkus(array $skus, array $result): void
+    {
+        $failed = (int) ($result['failed'] ?? 0);
+        $rateLimited = ! empty($result['rate_limited']);
+        if ($failed <= 0 && ! $rateLimited) {
+            self::forgetAttempts($this->marketplace, $skus);
+
+            return;
+        }
+
+        try {
+            $retry = app(MarketplaceListingQtyMatchService::class)->stillMismatched($this->marketplace, $skus);
+        } catch (\Throwable $e) {
+            $retry = $skus;
+        }
+        // Local channel qty may lag the push; when the check reports nothing but
+        // the service did fail, retry the whole (small) batch.
+        if ($retry === []) {
+            $retry = $skus;
+        }
+
+        $attempts = self::attempts($this->marketplace);
+        $succeeded = array_diff($skus, $retry);
+        foreach ($succeeded as $sku) {
+            unset($attempts[strtoupper($sku)]);
+        }
+
+        $byAttempt = [];
+        $gaveUp = [];
+        foreach ($retry as $sku) {
+            $key = strtoupper($sku);
+            $n = (int) ($attempts[$key] ?? 1);
+            if ($n >= self::MAX_SKU_ATTEMPTS) {
+                $gaveUp[] = $sku;
+                unset($attempts[$key]);
+
+                continue;
+            }
+            $attempts[$key] = $n + 1;
+            $byAttempt[$n + 1][] = $sku;
+        }
+        self::storeAttempts($this->marketplace, $attempts);
+
+        foreach ($byAttempt as $attempt => $list) {
+            $minutes = self::RETRY_BACKOFF_MINUTES[$attempt - 2] ?? 45;
+            if ($rateLimited) {
+                $minutes = max($minutes, 30);
+            }
+            RetryLinkedSkuInventoryPush::dispatch($this->marketplace, array_values($list), $attempt)
+                ->delay(now()->addMinutes($minutes));
+        }
+
+        Log::warning('PushLinkedSkuInventoryFromShopify: SKUs failed — retry scheduled', [
+            'marketplace' => $this->marketplace,
+            'failed_reported' => $failed,
+            'rate_limited' => $rateLimited,
+            'retry' => $byAttempt,
+            'gave_up' => $gaveUp,
+        ]);
+    }
+
+    protected static function attemptsKey(string $marketplace): string
+    {
+        return 'mm.sku_push.attempts.'.strtolower(trim($marketplace));
+    }
+
+    /**
+     * @return array<string, int> upper SKU => attempts so far
+     */
+    protected static function attempts(string $marketplace): array
+    {
+        $map = Cache::get(self::attemptsKey($marketplace), []);
+
+        return is_array($map) ? $map : [];
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     */
+    protected static function storeAttempts(string $marketplace, array $map): void
+    {
+        if ($map === []) {
+            Cache::forget(self::attemptsKey($marketplace));
+
+            return;
+        }
+        Cache::put(self::attemptsKey($marketplace), $map, now()->addHours(6));
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    protected static function forgetAttempts(string $marketplace, array $skus): void
+    {
+        $map = self::attempts($marketplace);
+        if ($map === []) {
+            return;
+        }
+        foreach ($skus as $sku) {
+            unset($map[strtoupper($sku)]);
+        }
+        self::storeAttempts($marketplace, $map);
     }
 
     protected function inventorySyncEnabled(string $marketplace): bool

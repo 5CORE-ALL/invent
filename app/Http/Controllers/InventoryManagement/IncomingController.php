@@ -52,7 +52,7 @@ class IncomingController extends Controller
      */
     public function index()
     {
-        $warehouses = Warehouse::select('id', 'name')->get();
+        $warehouses = Warehouse::inventoryOptions();
 
         return view('inventory-management.incoming-view', compact('warehouses'));
     }
@@ -609,6 +609,7 @@ class IncomingController extends Controller
         $storedVoicePath = null;
 
         try {
+            Warehouse::forceOnRequest($request);
             // Validate input (date is always server-side now; images optional)
             $validated = $request->validate([
                 'sku' => 'required|string|max:255',
@@ -1656,7 +1657,8 @@ class IncomingController extends Controller
         }
         $compact = str_replace(' ', '', $n);
 
-        return $n === 'main' || $n === 'main godown' || $compact === 'maingodown';
+        return $n === 'main' || $n === 'main godown' || $n === 'main warehouse'
+            || $compact === 'maingodown' || $compact === 'mainwarehouse';
     }
 
     /**
@@ -1807,13 +1809,8 @@ class IncomingController extends Controller
 
     public function incomingReturnIndex()
     {
-        $excluded = $this->incomingReturnExcludedWarehouseNamesLower();
-        $placeholders = implode(',', array_fill(0, count($excluded), '?'));
-
-        $warehouses = Warehouse::select('id', 'name')
-            ->whereRaw("LOWER(TRIM(name)) NOT IN ({$placeholders})", $excluded)
-            ->orderBy('name')
-            ->get();
+        $warehouses = Warehouse::inventoryOptions();
+        $filterWarehouses = Warehouse::select('id', 'name')->orderBy('name')->get();
 
         $channels = ChannelMaster::where('status', 'Active')
             ->orderBy('channel')
@@ -1822,7 +1819,7 @@ class IncomingController extends Controller
             ->all();
 
         // incoming-return-view: Condition/Remarks can be filled with the browser speech-to-text control; still posted as `reason`.
-        return view('inventory-management.incoming-return-view', compact('warehouses', 'channels'));
+        return view('inventory-management.incoming-return-view', compact('warehouses', 'filterWarehouses', 'channels'));
     }
 
     /**
@@ -1892,7 +1889,7 @@ class IncomingController extends Controller
 
     public function incomingOrderIndex()
     {
-        $warehouses = Warehouse::select('id', 'name')->get();
+        $warehouses = Warehouse::inventoryOptions();
         $skus = ProductMaster::select('id','parent','sku')->get();
         $reasons = IncomingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
 
@@ -1932,6 +1929,7 @@ class IncomingController extends Controller
 
     public function incomingOrderStore(Request $request)
     {
+        Warehouse::forceOnRequest($request);
         $request->validate([
             'sku' => 'required|string',
             'qty' => 'required|integer|min:1',

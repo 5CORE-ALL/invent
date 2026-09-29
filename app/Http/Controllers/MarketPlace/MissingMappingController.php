@@ -66,12 +66,32 @@ class MissingMappingController extends Controller
                 'data' => $data,
                 'count' => $data->count(),
                 'total_titas' => $totalTitas,
+                'webhook_health' => $this->webhookHealth(),
             ]);
         } catch (\Throwable $e) {
             Log::error('Missing Mapping masterData failed: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Real-time push depends on the Shopify inventory webhook; warn when it has gone quiet.
+     *
+     * @return array{stale: bool, minutes: ?int, message: string}
+     */
+    protected function webhookHealth(): array
+    {
+        $minutes = \App\Services\MarketplaceManager\ShopifyInventoryChangePoller::minutesSinceLastWebhook();
+        $stale = $minutes === null || $minutes > 120;
+        $message = '';
+        if ($stale) {
+            $message = $minutes === null
+                ? 'No Shopify inventory webhook has ever been received — real-time push is off; 5-minute poller is covering.'
+                : 'Last Shopify inventory webhook '.$minutes.' min ago — real-time push may be down; 5-minute poller is covering.';
+        }
+
+        return ['stale' => $stale, 'minutes' => $minutes, 'message' => $message];
     }
 
     /**
