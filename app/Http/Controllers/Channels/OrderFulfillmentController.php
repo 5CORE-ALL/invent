@@ -650,7 +650,6 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             }
         }
 
-        $freshAfter = now()->subHours(12);
         foreach ($rows as &$row) {
             $record = $saved[(string) ($row['id'] ?? '')] ?? null;
             if (! $record) {
@@ -659,9 +658,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $number = trim((string) ($record->tracking_number ?? ''));
             $row['tracking'] = $number;
             $row['tracking_source'] = (string) ($record->source ?? '');
-            $checkedAt = $record->checked_at;
-            $row['tracking_checked'] = $number !== ''
-                || ($checkedAt !== null && $checkedAt->greaterThan($freshAfter));
+            // A saved number is final. An empty miss is looked up again on the next load.
+            $row['tracking_checked'] = $number !== '';
         }
         unset($row);
 
@@ -670,21 +668,16 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
     public function lookupTracking(Request $request): JsonResponse
     {
+        @set_time_limit(40);
+        $this->ensureTrackingTable();
+
         $validated = $request->validate([
-            'rows' => 'required|array|max:8',
+            'rows' => 'required|array|max:3',
             'rows.*.id' => 'required|string|max:191',
             'rows.*.mm_slug' => 'required|string|max:64',
             'rows.*.order_id' => 'nullable|string|max:128',
             'rows.*.sku' => 'nullable|string|max:191',
         ]);
-
-        if (! Schema::hasTable('order_fulfillment_trackings')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tracking table is missing. Run migrations.',
-                'updates' => [],
-            ], 500);
-        }
 
         $groups = [];
         foreach ($validated['rows'] as $row) {
@@ -708,7 +701,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         $updates = [];
-        $deadline = microtime(true) + 16.0;
+        $deadline = microtime(true) + 28.0;
         $lookup = $this->labelTrackingLookup();
 
         foreach ($groups as $group) {
@@ -727,7 +720,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $orderId = (string) $group['order_id'];
             if ($orderId !== '' && $lookup !== null) {
                 try {
-                    $hit = $lookup->lookupLabelTracking([$orderId], null, true, (string) $group['sku']);
+                    $hit = $lookup->lookupLabelTracking(
+                        $this->labelLookupRefs((string) $group['mm_slug'], $orderId),
+                        null,
+                        true,
+                        (string) $group['sku']
+                    );
                 } catch (\Throwable $e) {
                     report($e);
                     $hit = null;
@@ -778,12 +776,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'tracking_number' => 'required|string|max:128',
         ]);
 
-        if (! Schema::hasTable('order_fulfillment_trackings')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tracking table is missing. Run migrations.',
-            ], 500);
-        }
+        $this->ensureTrackingTable();
 
         $slug = strtolower(trim((string) $validated['mm_slug']));
         $rowKey = trim((string) $validated['id']);
@@ -910,20 +903,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             ->first();
 
         if ($known === null) {
-            $recentMiss = OrderFulfillmentTracking::query()
-                ->where('mm_slug', $group['mm_slug'])
-                ->where('order_id', $orderId)
-                ->where(function (Builder $q) {
-                    $q->whereNull('source')->orWhere('source', '');
-                })
-                ->where('checked_at', '>', now()->subHours(12))
-                ->exists();
-            if (! $recentMiss) {
-                return null;
-            }
-            $knownNumber = '';
-            $knownSource = '';
-            $knownCarrier = null;
+            return null;
         } else {
             $knownNumber = trim((string) $known->tracking_number);
             $knownSource = (string) $known->source;
@@ -964,6 +944,47 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         return $updates;
     }
 
+    /**
+     * Marketplace order ids 4Seller, GOFO, and Veeqo actually store on the label.
+     *
+     * @return list<string>
+     */
+    protected function labelLookupRefs(string $slug, string $orderId): array
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '') {
+            return [];
+        }
+
+        if ($slug === 'amazon' || preg_match('/^\d{3}-\d{7}-\d{7}$/', ltrim($orderId, '#')) === 1) {
+            return AmazonOrder::warehouseOrderRefs($orderId);
+        }
+
+        return [$orderId];
+    }
+
+    protected function ensureTrackingTable(): void
+    {
+        if (Schema::hasTable('order_fulfillment_trackings')) {
+            return;
+        }
+
+        Schema::create('order_fulfillment_trackings', function ($table) {
+            $table->id();
+            $table->string('row_key', 191);
+            $table->string('mm_slug', 64);
+            $table->string('order_id', 128)->nullable();
+            $table->string('sku', 191)->nullable();
+            $table->string('tracking_number', 128)->nullable();
+            $table->string('carrier', 64)->nullable();
+            $table->string('source', 32)->nullable();
+            $table->timestamp('checked_at')->nullable();
+            $table->timestamps();
+            $table->unique('row_key', 'of_tracking_row_key_uq');
+            $table->index(['mm_slug', 'order_id'], 'of_tracking_slug_order_idx');
+        });
+    }
+
     protected function labelTrackingLookup(): ?VeeqoShopifyFulfillmentService
     {
         try {
@@ -984,7 +1005,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 $prop->setAccessible(true);
                 $client = $prop->getValue($lookup);
                 if ($client instanceof $class && method_exists($client, 'setTimeout')) {
-                    $client->setTimeout(4);
+                    $client->setTimeout(12);
                 }
             }
         } catch (\Throwable) {

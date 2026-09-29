@@ -385,7 +385,9 @@
                 headerHozAlign: 'center',
                 formatter: function (cell) {
                     const value = String(cell.getValue() || '').trim();
-                    if (!value) return '—';
+                    if (!value) {
+                        return cell.getRow().getData().tracking_checked ? '—' : '…';
+                    }
                     const source = String(cell.getRow().getData().tracking_source || '');
                     const label = source === '4seller' ? '4Seller' : (source === 'gofo' ? 'GOFO' : (source === 'veeqo' ? 'Veeqo' : (source === 'manual' ? 'Manual' : '')));
                     const title = label ? ' title="' + escapeHtml(label) + '"' : '';
@@ -477,6 +479,7 @@
     const saveUrl = @json(route('order.fulfillment.tracking.save'));
     const statusUrl = @json(route('order.fulfillment.tracking.status'));
     let trackingLookupRunning = false;
+    let trackingFailCount = 0;
 
     function csrfToken() {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -511,16 +514,17 @@
     }
 
     function fillTracking(attempt) {
-        if (trackingLookupRunning || attempt > 3) return;
+        if (trackingLookupRunning || attempt > 120) return;
         const pending = table.getData().filter(function (row) {
             return row && row.id && !row.tracking_checked && !String(row.tracking || '').trim();
-        }).slice(0, 8);
+        }).slice(0, 2);
         if (!pending.length) return;
         trackingLookupRunning = true;
         $.ajax({
             url: lookupUrl,
             type: 'POST',
             dataType: 'json',
+            timeout: 35000,
             headers: { 'X-CSRF-TOKEN': csrfToken() },
             data: {
                 rows: pending.map(function (row) {
@@ -535,13 +539,27 @@
         }).done(function (res) {
             const updates = (res && Array.isArray(res.updates)) ? res.updates : [];
             updates.forEach(applyTrackingUpdate);
+            trackingFailCount = 0;
             trackingLookupRunning = false;
-            if (updates.length) fillTrackingStatus(0);
-            if (updates.length && attempt < 3) {
-                fillTracking(attempt + 1);
+            if (updates.some(function (update) { return String(update.tracking || '').trim(); })) {
+                fillTrackingStatus(0);
             }
+            fillTracking(attempt + 1);
         }).fail(function () {
             trackingLookupRunning = false;
+            trackingFailCount += 1;
+            if (trackingFailCount < 3) {
+                setTimeout(function () { fillTracking(attempt); }, 1500);
+                return;
+            }
+            pending.forEach(function (row) {
+                const live = table.getRow(row.id);
+                if (live && !String(live.getData().tracking || '').trim()) {
+                    live.update({ tracking_checked: true });
+                }
+            });
+            trackingFailCount = 0;
+            fillTracking(attempt + 1);
         });
     }
 
