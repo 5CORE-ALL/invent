@@ -137,7 +137,6 @@ $salesCmds = [
     'sync:tiktok-api-data --channel=tiktok2',
     'purchasing-power:sync --days=60',
     'app:fetch-macy-products',
-    'sof:snapshot-daily --catch-up --backfill=3',
 ];
 
 foreach ($metricDates as $date) {

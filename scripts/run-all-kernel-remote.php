@@ -121,7 +121,6 @@ $sales = [
     'tiktok:fetch-orders --channel=tiktok2 --days=60 --prune',
     'sync:tiktok-api-data',
     'sync:tiktok-api-data --channel=tiktok2',
-    'sof:snapshot-daily --catch-up --backfill=7',
 ];
 
 $price = [
@@ -254,9 +253,6 @@ $others = [
     'inventory:snapshot',
     'badges:save-all',
     'reviews:analyze --batch=100',
-    'tracking:sync-status --only-open --repair-quota --catch-up --limit=800',
-    'fulfillment:refresh-shipment-status --skip-tracking --days=30',
-    'sof:pull-missing-tracking --limit=200 --temu-limit=40',
     'cc:pull-pending-messages',
     'attendance:analyze',
     'payroll:fetch-fx-rates',

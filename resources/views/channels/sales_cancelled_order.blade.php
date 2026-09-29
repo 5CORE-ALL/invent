@@ -307,9 +307,6 @@
                             <span class="badge sco-summary-badge" style="background:#fff3cd; color:#856404; border:1px solid #ffe69c;" title="Sum of order amounts">
                                 Amount: <span id="sco-amount-total">0.00</span>
                             </span>
-                            <a href="{{ route('sales.order.fulfillment') }}" class="btn btn-sm btn-outline-secondary ms-1" title="Open Sales Order Fulfillment">
-                                <i class="ri-truck-line me-1"></i>Fulfillment
-                            </a>
                         </div>
                         <div id="sco-toolbar-row2">
                             <div class="sco-filter-field">

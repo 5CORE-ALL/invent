@@ -78,7 +78,6 @@ $sales = [
     'tiktok:fetch-orders --channel=tiktok2 --days=60 --prune',
     'sync:tiktok-api-data',
     'sync:tiktok-api-data --channel=tiktok2',
-    'sof:snapshot-daily --catch-up --backfill=7',
     'app:update-marketplace-daily-metrics',
     'channel:calculate-data --force',
 ];

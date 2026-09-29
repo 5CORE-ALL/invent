@@ -209,7 +209,6 @@ $rest = [
     'inventory:snapshot',
     'badges:save-all',
     'reviews:analyze --batch=100',
-    'fulfillment:refresh-shipment-status --skip-tracking --days=30',
     'attendance:analyze',
     'tasks:assign-amz-lvv-mismatch-daily',
     'tasks:assign-missing-mapping-daily',

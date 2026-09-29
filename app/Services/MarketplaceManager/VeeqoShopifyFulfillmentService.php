@@ -988,18 +988,6 @@ class VeeqoShopifyFulfillmentService
             'failed' => 0,
         ]);
 
-        $sofFromShopify = $this->syncUnfulfilledShopifyFromSofTracking(min(250, max(80, (int) ceil($limit * 0.4))));
-        $checked += (int) ($sofFromShopify['checked'] ?? 0);
-        $fulfilled += (int) ($sofFromShopify['fulfilled'] ?? 0);
-        $skipped += (int) ($sofFromShopify['skipped'] ?? 0);
-        $failed += (int) ($sofFromShopify['failed'] ?? 0);
-
-        $sofSweep = $this->syncSofTrackingToUnfulfilledShopify(min(400, max(150, (int) ceil($limit * 0.6))));
-        $checked += (int) ($sofSweep['checked'] ?? 0);
-        $fulfilled += (int) ($sofSweep['fulfilled'] ?? 0);
-        $skipped += (int) ($sofSweep['skipped'] ?? 0);
-        $failed += (int) ($sofSweep['failed'] ?? 0);
-
         $localSweep = $this->syncLocalTrackedLinkedOrders(min(800, max(150, (int) ceil($limit * 0.55))));
         $checked += (int) ($localSweep['checked'] ?? 0);
         $fulfilled += (int) ($localSweep['fulfilled'] ?? 0);

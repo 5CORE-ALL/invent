@@ -546,9 +546,6 @@
                             <span class="badge slo-summary-badge" id="slo-groi-low-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="Click to filter GROI% under 50%.">
                                 GROI % &lt; 50%: <span id="slo-groi-low-count">0</span>
                             </span>
-                            <a href="{{ route('sales.order.fulfillment') }}" class="btn btn-sm btn-outline-secondary ms-1" title="Open Sales Order Fulfillment">
-                                <i class="ri-truck-line me-1"></i>Fulfillment
-                            </a>
                         </div>
                         <div id="slo-toolbar-row2">
                             <div class="slo-filter-field">
@@ -595,7 +592,7 @@
                             <div id="slo-date-filter-hint">Dates shown as 1 Apr · time EDT only</div>
                         </div>
                     </div>
-                    <p class="small text-muted mb-2">All marketplace orders — every status. Defaults to the last 30 days, same as Sales Order Fulfillment → All Order.</p>
+                    <p class="small text-muted mb-2">All marketplace orders — every status. Defaults to the last 30 days.</p>
                     <div id="sales-loss-order-table" style="height: calc(100vh - 320px);"></div>
                 </div>
             </div>

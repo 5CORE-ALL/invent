@@ -107,10 +107,6 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\MetaAdsProcessQueuePriority::class,
         \App\Console\Commands\SyncFbaShipmentStatus::class,
         \App\Console\Commands\SyncShipmentTrackingStatus::class,
-        \App\Console\Commands\RefreshFulfillmentShipmentStatus::class,
-        \App\Console\Commands\SnapshotSalesOrderFulfillmentDaily::class,
-        \App\Console\Commands\PullSofMissingTracking::class,
-        \App\Console\Commands\MarkSofInTransitNoTrackingDelivered::class,
         \App\Console\Commands\StoreAmazonUtilizationCounts::class,
         \App\Console\Commands\StoreAmazonFbaUtilizationCounts::class,
         \App\Console\Commands\StoreEbayUtilizationCounts::class,
@@ -2162,13 +2158,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(18)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\PushSofTrackingToShopifyJob(200))
-            ->everyFiveMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('sof-tracking-to-shopify')
-            ->withoutOverlapping(6)
-            ->appendOutputTo($log);
-
         $schedule->job(new \App\Jobs\FetchMarketplaceShopifyTrackingJob(2000, true, true))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
@@ -2947,60 +2936,6 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
    
-        /*
-        |--------------------------------------------------------------------------
-        | Sales Order Fulfillment — full-day max allowed tracking refresh
-        |
-        | Use nearly all USPS hourly quota 24/7 (~55/hr → ~1,300/day) on open trackings.
-        | 30-day backlog (null status) is prioritized; Delivered/Expired never re-pulled.
-        | As packages deliver, open qty drops and the same schedule sustains ~500 new/day.
-        |--------------------------------------------------------------------------
-        */
-        // Carrier sync every 15 min, all day — each tick spends remaining hourly USPS budget.
-        // Catch-up sized for large open backlogs (~5k trackings) via 17TRACK batches.
-        $schedule->command('tracking:sync-status --only-open --repair-quota --catch-up --limit=800')
-            ->cron('*/15 * * * *')
-            ->timezone('America/Los_Angeles')
-            ->name('shipment-tracking-sync-status-fullday')
-            ->withoutOverlapping(14)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // Marketplace order refresh (Label Created can advance) — daytime only, no extra USPS burn.
-        $schedule->command('fulfillment:refresh-shipment-status --skip-tracking --days=30')
-            ->hourly()
-            ->timezone('America/Los_Angeles')
-            ->between('07:00', '21:00')
-            ->name('fulfillment-refresh-marketplace-orders-pst')
-            ->withoutOverlapping(50)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // Pull missing SOF tracking every 15 minutes.
-        // `timeout` is the hard stop: a stalled GOFO/Shopify socket ignores PHP's
-        // HTTP timeout and used to stay in poll() for hours. withoutOverlapping(14)
-        // then expired and cron started another copy, until dozens were stuck.
-        // 13m + SIGKILL at 13m30s. The command also holds a file lock and alarms itself.
-        $php = escapeshellarg(PHP_BINARY);
-        $artisan = escapeshellarg(base_path('artisan'));
-        $schedule->exec("timeout -k 30 780 {$php} {$artisan} sof:pull-missing-tracking --limit=400 --temu-limit=40")
-            ->everyFifteenMinutes()
-            ->timezone('America/Los_Angeles')
-            ->name('sof-pull-missing-tracking')
-            ->withoutOverlapping(18)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // Full 30-day pass for every marketplace. The 15-minute pull only continues
-        // a cursor, which is how Amazon tracking stopped updating.
-        $schedule->exec("timeout -k 60 3000 {$php} {$artisan} sof:sync-marketplaces-daily")
-            ->dailyAt('03:14')
-            ->timezone('America/Los_Angeles')
-            ->name('sof-sync-marketplaces-daily')
-            ->withoutOverlapping(70)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('cc:pull-pending-messages')
             ->everyFifteenMinutes()
             ->timezone('America/Los_Angeles')
