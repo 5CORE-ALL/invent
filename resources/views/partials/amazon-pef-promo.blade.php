@@ -3189,7 +3189,6 @@
             if (key) amzRuleReadyBits[key] = true;
             if (amzRuleReadyBits.cvr && amzRuleReadyBits.rev && amzRuleReadyBits.dilgroi) {
                 amzRuleSpriceSlabsReady = true;
-                amzScheduleRuleSpriceSync({ delay: 250 });
             }
         }
         function amzApplyRuleSpriceToAllRows(opts) {
@@ -3277,20 +3276,8 @@
             }, opts.delay != null ? opts.delay : 400);
         }
         function bindAmzRuleSpriceAutofill() {
-            if (typeof table === 'undefined' || !table || !table.on) {
-                setTimeout(bindAmzRuleSpriceAutofill, 400);
-                return;
-            }
-            if (table._amzRuleSpriceAutofillBound) return;
-            table._amzRuleSpriceAutofillBound = true;
-            table.on('dataLoaded', function() {
-                amzScheduleRuleSpriceSync({ delay: 500 });
-            });
-            try {
-                if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
-                    amzScheduleRuleSpriceSync({ delay: 500 });
-                }
-            } catch (e) { /* wait for dataLoaded */ }
+            // Do not clear or rewrite stored S PRC when the table loads.
+            // Recalc stays on the S PRC button and when Dil / CVR / Rev rules are saved.
         }
         window.amzScheduleRuleSpriceSync = amzScheduleRuleSpriceSync;
         window.amzApplyRuleSpriceToAllRows = amzApplyRuleSpriceToAllRows;
@@ -3441,11 +3428,7 @@
             $('#amz-reload-push-progress-bar').css('width', pct + '%');
 
             let msg = opts.msg || '';
-            if (active && total) {
-                const remaining = Math.max(0, total - done);
-                const sku = opts.sku ? String(opts.sku) : '';
-                msg = 'Pushing ' + remaining.toLocaleString() + ' left' + (sku ? (': ' + sku) : '');
-            } else if (!msg && total) {
+            if (!msg && total) {
                 msg = done + '/' + total + ' jobs · ' + ok + ' ok'
                     + (fail ? (' · ' + fail + ' failed') : '');
             }
@@ -3463,37 +3446,6 @@
             }
         }
 
-        function amzMoneyCents(n) {
-            return Math.round((Number(n) || 0) * 100);
-        }
-        /** S PRC / Std Prc formatters read Price, but those cells do not redraw when only Price changes. */
-        function amzRepaintPriceCompareCells(row) {
-            if (!row || typeof row.reformat !== 'function') return;
-            try { row.reformat(); } catch (e) { /* ignore */ }
-        }
-        /**
-         * Price column after a successful Push Prc.
-         * The blue badge compares Price to the live S PRC. Writing the queued
-         * target before slabs are ready, or after the live S PRC has moved,
-         * turns rows that already match into new blue alerts.
-         */
-        function amzPriceAfterPushTask(d, pushed) {
-            const cur = parseFloat(d && d.price) || 0;
-            const pushedN = Number(pushed) || 0;
-            if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) {
-                return cur;
-            }
-            const visible = (typeof amazonVisibleSprice === 'function')
-                ? (Number(amazonVisibleSprice(d)) || 0)
-                : 0;
-            if (pushedN > 0 && visible > 0 && amzMoneyCents(pushedN) === amzMoneyCents(visible)) {
-                return pushedN;
-            }
-            if (visible > 0 && cur > 0 && amzMoneyCents(cur) === amzMoneyCents(visible)) {
-                return cur;
-            }
-            return pushedN > 0 ? pushedN : cur;
-        }
         function applyAmzPushPrcTaskStatusesToTable(tasks) {
             if (!table || !Array.isArray(tasks)) return;
             const bySku = {};
@@ -3509,13 +3461,14 @@
                 const st = String(t.status || '');
                 let patch = null;
                 if (st === 'ok') {
+                    const livePrice = Number(t.effective != null ? t.effective : d.SPRICE) || 0;
                     const nextVal = t.effective != null ? t.effective : d.PUSH_PRC_VALUE;
                     const nextSprice = t.effective != null ? t.effective : d.SPRICE;
-                    const nextPrice = amzPriceAfterPushTask(d, t.effective != null ? t.effective : d.SPRICE);
+                    const nextPrice = livePrice > 0 ? livePrice : d.price;
                     if (d.PUSH_PRC_STATUS === 'pushed'
                         && Number(d.PUSH_PRC_VALUE) === Number(nextVal)
                         && Number(d.SPRICE) === Number(nextSprice)
-                        && amzMoneyCents(d.price) === amzMoneyCents(nextPrice)) {
+                        && Number(d.price) === Number(nextPrice)) {
                         return;
                     }
                     patch = {
@@ -3534,10 +3487,7 @@
                     if (d.PUSH_PRC_STATUS === 'processing') return;
                     patch = { PUSH_PRC_STATUS: 'processing' };
                 }
-                if (patch) {
-                    row.update(patch);
-                    amzRepaintPriceCompareCells(row);
-                }
+                if (patch) row.update(patch);
             });
             if (typeof window.updateAmazonSummary === 'function') {
                 try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
@@ -3571,20 +3521,8 @@
                 if (!amzPefIsChildRow(d)) return;
                 const live = bySku[amzPefSku(d).toUpperCase()];
                 if (!(live > 0)) return;
-                if (amzMoneyCents(d.price) === amzMoneyCents(live) && amzMoneyCents(d.Price) === amzMoneyCents(live)) return;
-                const cur = parseFloat(d.price) || 0;
-                const visible = (typeof amazonVisibleSprice === 'function')
-                    ? (Number(amazonVisibleSprice(d)) || 0)
-                    : 0;
-                // A live Amazon read that is not the current S PRC must not
-                // reopen a blue alert on a row that already matches.
-                if (visible > 0 && cur > 0
-                    && amzMoneyCents(cur) === amzMoneyCents(visible)
-                    && amzMoneyCents(live) !== amzMoneyCents(visible)) {
-                    return;
-                }
+                if (Number(d.price) === live && Number(d.Price) === live) return;
                 row.update({ price: live, Price: live });
-                amzRepaintPriceCompareCells(row);
             });
             if (typeof window.updateAmazonSummary === 'function') {
                 try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
@@ -3692,7 +3630,6 @@
                         ok: ok,
                         fail: fail,
                         pct: pct,
-                        sku: (resp.job && resp.job.current_sku) || '',
                         msg: resp.message || (resp.job && resp.job.last_message) || '',
                     });
                 }
@@ -3958,23 +3895,10 @@
                 setTimeout(amzTryQueuePushOnReload, 600);
                 return;
             }
+            const items = collectAmzReloadPushItems();
             window._amzReloadPushQueued = true;
-            $.ajax({
-                url: '/amazon-push-prc-status',
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-                timeout: 15000,
-            }).done(function(resp) {
-                if (resp && resp.active) {
-                    startAmzPushPrcPoll();
-                    return;
-                }
-                const items = collectAmzReloadPushItems();
-                if (!items.length) return;
-                queueAmzPushPrcItems(items, { silent: true });
-            }).fail(function() {
-                window._amzReloadPushQueued = false;
-            });
+            if (!items.length) return;
+            queueAmzPushPrcItems(items, { silent: true });
         }
         function bindAmzReloadPushOnTable() {
             if (typeof table === 'undefined' || !table || !table.on) {
@@ -3984,6 +3908,7 @@
             if (table._amzReloadPushBound) return;
             table._amzReloadPushBound = true;
             table.on('dataLoaded', function() {
+                window._amzReloadPushQueued = false;
                 amzTryQueuePushOnReload();
             });
             try {

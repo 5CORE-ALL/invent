@@ -308,49 +308,7 @@ class ChannelPushSpriceJobStore
 
     public function isActive(array $state): bool
     {
-        return in_array($state['status'] ?? 'idle', ['running', 'collecting'], true);
-    }
-
-    /**
-     * Page reload marks the job collecting, then the worker fills tasks.
-     * Only replace while it is still collecting so a running queue is left alone.
-     *
-     * @param  list<array<string, mixed>>  $tasks
-     */
-    public function finishCollecting(array $tasks, string $source = 'page'): array
-    {
-        return $this->update(function (array $state) use ($tasks, $source) {
-            if (($state['status'] ?? '') !== 'collecting') {
-                return $state;
-            }
-
-            $normalized = $this->normalizeTasks($tasks);
-            if ($normalized === []) {
-                $state['status'] = 'completed';
-                $state['tasks'] = [];
-                $state['total'] = 0;
-                $state['current_sku'] = null;
-                $state['finished_at'] = now()->toDateTimeString();
-                $state['last_message'] = 'No S PRC to push';
-
-                return $state;
-            }
-
-            $state['id'] = $state['id'] ?: (date('YmdHis').'_'.bin2hex(random_bytes(4)));
-            $state['source'] = $source !== '' ? $source : 'page';
-            $state['status'] = 'running';
-            $state['tasks'] = $normalized;
-            $state['total'] = count($normalized);
-            $state['current_index'] = 0;
-            $state['current_sku'] = null;
-            $state['ok_count'] = 0;
-            $state['fail_count'] = 0;
-            $state['results'] = [];
-            $state['finished_at'] = null;
-            $state['last_message'] = 'S PRC push queued ('.count($normalized).' SKU(s)).';
-
-            return $state;
-        });
+        return in_array($state['status'] ?? 'idle', ['running'], true);
     }
 
     public function isStale(array $state, int $seconds = 180): bool
@@ -396,7 +354,7 @@ class ChannelPushSpriceJobStore
     public function markFailed(string $message): array
     {
         return $this->update(function (array $state) use ($message) {
-            if (! in_array($state['status'] ?? 'idle', ['running', 'collecting'], true)) {
+            if (($state['status'] ?? 'idle') !== 'running') {
                 return $state;
             }
             $state['status'] = 'failed';

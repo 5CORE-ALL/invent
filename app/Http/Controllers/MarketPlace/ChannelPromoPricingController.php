@@ -29,7 +29,6 @@ use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\TiktokSkuDailyData;
 use App\Services\ChannelPromoPricingService;
-use App\Services\EbayRuleSpriceApplyService;
 use App\Services\Ebay1CouponService;
 use App\Services\Ebay1PromotionService;
 use App\Services\Support\ChannelPushCpnJobStore;
@@ -237,7 +236,6 @@ class ChannelPromoPricingController extends Controller
                 'price' => $item['price'] ?? $item['sprice'] ?? $item['sale'] ?? null,
             ];
         }
-        $tasks = $this->applyEbayListingSprice($channel, $tasks);
 
         $store = ChannelPushSpriceJobStore::for($channel);
         $replacePending = $request->boolean('replace_pending')
@@ -296,47 +294,6 @@ class ChannelPromoPricingController extends Controller
                 ? ('Added to running S PRC queue ('.$api['total'].' total). Page close is OK.')
                 : ('S PRC push started in background ('.$api['total'].' SKU(s)). Page close is OK.'),
         ]));
-    }
-
-    /**
-     * eBay catalog rows can send the Dil 0% price when a variation's own OV L30 is 0.
-     * The cell uses listing Dil (every color on the item). Push that price.
-     *
-     * @param  list<array<string, mixed>>  $tasks
-     * @return list<array<string, mixed>>
-     */
-    private function applyEbayListingSprice(string $channel, array $tasks): array
-    {
-        $ruleChannel = match ($channel) {
-            'ebay', 'ebay1' => 'ebay1',
-            'ebay2', 'ebay2op' => 'ebay2',
-            'ebay3' => 'ebay3',
-            default => null,
-        };
-        if ($ruleChannel === null || $tasks === []) {
-            return $tasks;
-        }
-
-        $skus = [];
-        foreach ($tasks as $task) {
-            $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
-            if ($sku !== '') {
-                $skus[] = $sku;
-            }
-        }
-        if ($skus === []) {
-            return $tasks;
-        }
-
-        $prices = EbayRuleSpriceApplyService::for($ruleChannel)->pricesForSkus($skus);
-        foreach ($tasks as $i => $task) {
-            $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
-            if ($sku !== '' && isset($prices[$sku]) && $prices[$sku] > 0) {
-                $tasks[$i]['price'] = $prices[$sku];
-            }
-        }
-
-        return $tasks;
     }
 
     /**
@@ -418,77 +375,19 @@ class ChannelPromoPricingController extends Controller
                 'success' => true,
                 'enabled' => false,
                 'queued' => 0,
-                'active' => false,
                 'message' => 'Push on reload is off',
             ]);
         }
 
-        $store = ChannelPushSpriceJobStore::for($channel);
-        $state = $store->load();
-        if ($store->isActive($state)) {
-            $api = $store->toApiResponse($state);
-
-            return response()->json([
-                'success' => true,
-                'enabled' => true,
-                'queued' => (int) ($api['pending_count'] ?? 0) + (int) ($api['pushing_count'] ?? 0),
-                'active' => true,
-                'collecting' => ($state['status'] ?? '') === 'collecting',
-                'message' => (string) ($state['last_message'] ?? 'S PRC push already running'),
-            ]);
-        }
-
-        // Collecting every blue SKU can take longer than the page request.
-        // Mark the job and let the worker fill it so the bar can move immediately.
-        $store->update(function (array $s) {
-            $s['id'] = date('YmdHis').'_'.bin2hex(random_bytes(4));
-            $s['source'] = 'page';
-            $s['status'] = 'collecting';
-            $s['tasks'] = [];
-            $s['total'] = 0;
-            $s['current_index'] = 0;
-            $s['current_sku'] = null;
-            $s['ok_count'] = 0;
-            $s['fail_count'] = 0;
-            $s['results'] = [];
-            $s['started_at'] = now()->toDateTimeString();
-            $s['finished_at'] = null;
-            $s['last_message'] = 'Collecting S PRC ≠ Price…';
-            $s['messages'] = [[
-                'time' => now()->format('H:i:s'),
-                'ok' => true,
-                'message' => 'Collecting S PRC ≠ Price…',
-            ]];
-
-            return $s;
-        });
-
-        $this->releaseUniqueSpriceJobLock($channel);
-        $spawned = ChannelPushSpriceRunner::spawnWorker($channel);
-        if (! $spawned) {
-            try {
-                RunChannelPushSpriceJob::dispatch($channel);
-                $spawned = true;
-            } catch (\Throwable $e) {
-                Log::error('Page S PRC worker dispatch failed', [
-                    'channel' => $channel,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-        if (! $spawned) {
-            $store->markFailed('Could not start the price worker');
-        }
+        $res = app(ChannelPushSpriceDailyEnqueue::class)->enqueueChannel($channel);
 
         return response()->json([
-            'success' => $spawned,
+            'success' => true,
             'enabled' => true,
-            'queued' => 0,
-            'active' => $spawned,
-            'collecting' => $spawned,
-            'message' => $spawned
-                ? 'Collecting S PRC ≠ Price…'
-                : 'Could not start the price worker',
+            'queued' => (int) ($res['queued'] ?? 0),
+            'message' => (int) ($res['queued'] ?? 0) > 0
+                ? ('Background push started for '.$res['queued'].' blue SKU(s). Page can close.')
+                : 'No S PRC to push',
         ]);
     }
 

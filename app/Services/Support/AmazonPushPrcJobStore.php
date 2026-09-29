@@ -96,7 +96,7 @@ class AmazonPushPrcJobStore
 
                 $existing = $state['tasks'][$idx];
                 $st = (string) ($existing['status'] ?? '');
-                if (in_array($st, ['pending', 'queued', 'pushing'], true)) {
+                if ($st === 'pushing') {
                     $skipped++;
                     continue;
                 }

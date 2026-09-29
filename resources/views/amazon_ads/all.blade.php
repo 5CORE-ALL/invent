@@ -1299,7 +1299,6 @@
             var pushSpSbgtsUrl = @json(route('amazon.ads.push-sp-sbgts'));
             var pushSbSbgtsUrl = @json(route('amazon.ads.push-sb-sbgts'));
             var syncLiveBidBgtUrl = @json(route('amazon.ads.sync-live-bid-bgt'));
-            var mismatchSyncRowsUrl = @json(route('amazon.ads.mismatch-sync-rows'));
             var bgtRuleGetUrl = @json(route('amazon.ads.bgt-rule'));
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
             var bgtViewsRuleGetUrl = @json(route('amazon.ads.bgt-views-rule'));
@@ -1406,37 +1405,9 @@
                     var tier = amzBgtAcosFromAcos(row.ltAcos);
                     if (tier !== null) row.bgtAcos = tier;
                     var sum = amzSumSbgtFromRow(row);
-                    if (sum !== null) {
-                        if (amzNameBlocksBudgetIncrease(row.campaignName)) {
-                            var liveBgt = parseFloat(row.bgt);
-                            if (isFinite(liveBgt) && sum > liveBgt + 0.015) sum = liveBgt;
-                        }
-                        row.sbgt = sum;
-                    }
-                    amzRefreshShownBudgetSync(row);
+                    if (sum !== null) row.sbgt = sum;
                 });
                 return rows;
-            }
-            function amzRefreshShownBudgetSync(row) {
-                if (!row || row.bgt_sync_color === 'red') return;
-                var status = String(row.campaignStatus || '').toUpperCase();
-                var sbgt = parseInt(row.sbgt, 10);
-                var zeroPause = sbgt === 0 && (status === 'ENABLED' || status === '');
-                if (amzShownBudgetMatches(row) && !zeroPause) {
-                    row.bgt_sync_color = 'green';
-                    row.bgt_sync_status = 'synced';
-                    row.bgt_sync_reason = 'already_matched';
-                    row.bgt_sync_tip = 'Updated — Lbgt matches SBGT';
-                    return;
-                }
-                if (zeroPause || amzShownBudgetDiffers(row)) {
-                    row.bgt_sync_color = 'yellow';
-                    row.bgt_sync_status = 'pending';
-                    row.bgt_sync_reason = zeroPause ? 'paused_zero_sbgt' : 'sbgt_differs';
-                    row.bgt_sync_tip = zeroPause
-                        ? 'Pending — SBGT is $0, campaign is still enabled'
-                        : ('Pending — SBGT $' + Number(row.sbgt).toFixed(2) + ' does not match live BGT $' + Number(row.bgt).toFixed(2));
-                }
             }
             function amzAcosTierColor(acos) {
                 var band = amzBandForAcos(acos);
@@ -2697,7 +2668,6 @@
             table.on('pageLoaded', amzRefreshUiSoon);
             table.on('dataLoaded', function () {
                 amzRefreshUiSoon();
-                amzAutoPushChangedSbgt();
             });
             table.on('dataLoadError', function (error) {
                 if (error && (error.name === 'AbortError' || String(error.message || error).indexOf('abort') !== -1)) {
@@ -3130,7 +3100,6 @@
             }
 
             document.getElementById('amz-raw-refresh').addEventListener('click', function () {
-                amzSbgtAutoPushedKey = {};
                 Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
             });
             document.querySelector('.amz-ads-all').addEventListener('click', function (e) {
@@ -3560,18 +3529,9 @@
                 if (!isNaN(l) && l > 0) return l;
                 return null;
             }
-            function amzNameBlocksBudgetIncrease(name) {
-                return /\bFBA\b/i.test(String(name || ''));
-            }
             function amzPickSbgtTierFromRow(row) {
                 if (row.sbgt === null || row.sbgt === undefined || row.sbgt === '') return null;
-                var n = parseFloat(row.sbgt);
-                if (!isFinite(n) || n < 0 || n > 9999) return null;
-                if (amzNameBlocksBudgetIncrease(row && row.campaignName)) {
-                    var live = parseFloat(row && row.bgt);
-                    if (isFinite(live) && n + 0.015 >= live) return null;
-                }
-                var t = parseInt(n, 10);
+                var t = parseInt(row.sbgt, 10);
                 if (isNaN(t) || t < 0 || t > 9999) return null;
                 return t;
             }
@@ -3648,21 +3608,12 @@
                 (table.getData() || []).forEach(function (row) {
                     if (!row) return;
                     var cid = row.campaign_id == null ? '' : String(row.campaign_id).trim();
-                    if (!cid) return;
                     var sbgt = amzPickSbgtTierFromRow(row);
+                    var bid = amzPickBidFromRow(row);
+                    if (!cid || (sbgt === null && bid === null)) return;
                     var status = String(row.campaignStatus || '').toUpperCase();
-                    var budgetMismatch = false;
-                    if (sbgt !== null) {
-                        if (sbgt === 0) {
-                            budgetMismatch = status === 'ENABLED' || status === '';
-                        } else {
-                            budgetMismatch = !amzShownBudgetMatches(row);
-                        }
-                    }
-                    var bidWant = parseFloat(row.sbid);
-                    var bidMismatch = isFinite(bidWant) && bidWant > 0 && !amzShownBidMatches(row);
-                    if (!budgetMismatch && !bidMismatch) return;
-                    var key = cid + ':' + (budgetMismatch ? sbgt : '') + ':' + (bidMismatch ? bidWant : '');
+                    if (sbgt === 0 && (status === 'PAUSED' || status === 'ARCHIVED') && bid === null) return;
+                    var key = cid + ':' + (sbgt == null ? '' : sbgt) + ':' + (bid == null ? '' : bid);
                     if (amzSbgtAutoPushedKey[key]) return;
                     var payload = {
                         campaign_id: cid,
@@ -3670,8 +3621,8 @@
                         campaignName: row.campaignName != null ? String(row.campaignName) : '',
                         ad_type: row.ad_type != null ? String(row.ad_type) : ''
                     };
-                    if (budgetMismatch) payload.sbgt = sbgt;
-                    if (bidMismatch) payload.sbid = bidWant;
+                    if (sbgt !== null) payload.sbgt = sbgt;
+                    if (bid !== null) payload.sbid = bid;
                     out.push(payload);
                 });
                 return out;
@@ -3703,31 +3654,15 @@
                     });
                 });
             }
-            function amzMismatchBadgeCount() {
-                var bgt = amzSyncHeaderCounts.bgt || {};
-                var bid = amzSyncHeaderCounts.bid || {};
-                return (Number(bgt.yellow) || 0) + (Number(bgt.red) || 0) + (Number(bid.yellow) || 0) + (Number(bid.red) || 0);
-            }
-            function amzFetchMismatchSyncRows() {
-                var f = amzFilterPayload();
-                var body = new URLSearchParams();
-                Object.keys(f).forEach(function (k) { body.set(k, f[k]); });
-                body.set('source', activeRawSourceKey || 'all_reports');
-                body.set('search', amzSearchQueryVal());
-                body.set('_token', csrfToken);
-                return fetch(mismatchSyncRowsUrl, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-                    },
-                    credentials: 'same-origin',
-                    body: body.toString()
-                }).then(function (res) { return res.json(); });
-            }
-            function amzRunMismatchChunks(rows, badgeCount) {
+            function amzAutoPushChangedSbgt() {
+                if (amzSbgtAutoPushBusy) return;
+                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports' && activeRawSourceKey !== 'all_reports') return;
+                var rows = amzCollectChangedSbgtRows();
+                if (!rows.length) return;
+                rows.forEach(function (r) {
+                    amzSbgtAutoPushedKey[r.campaign_id + ':' + (r.sbgt == null ? '' : r.sbgt) + ':' + (r.sbid == null ? '' : r.sbid)] = true;
+                });
+                amzSbgtAutoPushBusy = true;
                 var chunkSize = (typeof AMZ_PUSH_CHUNK_SIZE === 'number' && AMZ_PUSH_CHUNK_SIZE > 0) ? AMZ_PUSH_CHUNK_SIZE : 5;
                 var chunks = [];
                 for (var i = 0; i < rows.length; i += chunkSize) chunks.push(rows.slice(i, i + chunkSize));
@@ -3739,20 +3674,15 @@
                         amzSbgtAutoPushBusy = false;
                         amzShowPushResult(
                             failed > 0
-                                ? ('Mismatch update — ' + synced + ' verified, ' + failed + ' still old')
-                                : ('Mismatch update — ' + synced + ' bid/budget row(s) verified'),
-                            'Badge mismatches ' + badgeCount + '. Ran ' + rows.length + ' campaign(s), not only this page.\n' + messages.join('\n'),
+                                ? ('Live sync — ' + synced + ' verified, ' + failed + ' not synced')
+                                : ('Live sync — ' + synced + ' campaign(s) verified'),
+                            'Pulled live Amazon BGT/BID, pushed only mismatches, marked synced only after verify.\n' + messages.join('\n'),
                             failed > 0 ? 'error' : 'success'
                         );
                         if (table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
                         return;
                     }
                     amzMarkChunkPending(chunks[index]);
-                    amzShowPushResult(
-                        'Updating mismatches…',
-                        'Chunk ' + (index + 1) + '/' + chunks.length + ' of ' + rows.length + ' campaign(s). Badge count ' + badgeCount + '.',
-                        'loading'
-                    );
                     amzPostLiveSyncChunk(chunks[index])
                         .then(function (out) {
                             var b = (out && out.body) || {};
@@ -3774,36 +3704,6 @@
                         });
                 }
                 runNext(0);
-            }
-            function amzAutoPushChangedSbgt() {
-                if (amzSbgtAutoPushBusy) return;
-                var sbidBtn = document.getElementById('amazonAdsPushSbidBtn');
-                var sbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
-                if ((sbidBtn && sbidBtn.disabled && sbidBtn.innerHTML.indexOf('Pushing') !== -1)
-                    || (sbgtBtn && sbgtBtn.disabled && sbgtBtn.innerHTML.indexOf('Pushing') !== -1)) return;
-                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports' && activeRawSourceKey !== 'all_reports') return;
-                if (amzMismatchBadgeCount() < 1) return;
-                amzSbgtAutoPushBusy = true;
-                var badgeCount = amzMismatchBadgeCount();
-                amzFetchMismatchSyncRows().then(function (json) {
-                    var rows = (json && Array.isArray(json.rows)) ? json.rows : [];
-                    var pending = [];
-                    rows.forEach(function (r) {
-                        if (!r || r.campaign_id == null) return;
-                        var key = String(r.campaign_id) + ':' + (r.sbgt == null ? '' : r.sbgt) + ':' + (r.sbid == null ? '' : r.sbid);
-                        if (amzSbgtAutoPushedKey[key]) return;
-                        amzSbgtAutoPushedKey[key] = true;
-                        pending.push(r);
-                    });
-                    if (!pending.length) {
-                        amzSbgtAutoPushBusy = false;
-                        return;
-                    }
-                    amzRunMismatchChunks(pending, badgeCount);
-                }).catch(function (err) {
-                    amzSbgtAutoPushBusy = false;
-                    amzShowPushResult('Mismatch update failed', String(err && err.message ? err.message : err), 'error');
-                });
             }
             function amzRunPush(opts) {
                 if (!opts.rows.length) {

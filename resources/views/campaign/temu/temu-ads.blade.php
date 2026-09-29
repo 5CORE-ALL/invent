@@ -1171,13 +1171,7 @@
                 if (gid) delete createAlertByGoods[gid];
             }
 
-            function adAlreadyCreated(data) {
-                const status = String((data && data.ad_status) || '');
-                return status === 'Active' || status === 'Inactive' || status === 'Paused';
-            }
-
             function rowCreateAlertText(data) {
-                if (adAlreadyCreated(data)) return '';
                 const gid = String((data && data.goods_id) || '').trim();
                 return String((data && data.ad_create_reject) || createAlertByGoods[gid] || '').trim();
             }
@@ -1193,19 +1187,15 @@
             function prepareAdsRows(rows) {
                 const byGoods = {};
                 const rejectByGoods = {};
-                const goodsWithAd = {};
                 (rows || []).forEach(function (r) {
                     if (!r) return;
                     const gid = String(r.goods_id || '');
                     const p = String(r.parent || '').trim().replace(/^PARENT\s+/i, '');
                     if (gid && p && !byGoods[gid]) byGoods[gid] = p;
-                    if (gid && adAlreadyCreated(r)) goodsWithAd[gid] = true;
-                    if (adAlreadyCreated(r)) return;
                     const reason = String(r.ad_create_reject || '').trim() || createAlertByGoods[gid] || '';
                     if (gid && reason && !rejectByGoods[gid]) rejectByGoods[gid] = reason;
                 });
                 Object.keys(createAlertByGoods).forEach(function (gid) {
-                    if (goodsWithAd[gid]) return;
                     if (!rejectByGoods[gid]) rejectByGoods[gid] = createAlertByGoods[gid];
                 });
                 (rows || []).forEach(function (r) {
@@ -1215,11 +1205,7 @@
                         r.parent = byGoods[String(r.goods_id || '')];
                     }
                     const gid = String(r.goods_id || '');
-                    if (goodsWithAd[gid]) {
-                        r.ad_create_reject = '';
-                    } else if (rejectByGoods[gid]) {
-                        r.ad_create_reject = rejectByGoods[gid];
-                    }
+                    if (rejectByGoods[gid]) r.ad_create_reject = rejectByGoods[gid];
                     r.is_parent = r.is_parent === true || r.is_parent === 1 || r.is_parent === '1';
                     r._row_key = r.is_parent
                         ? ('p|' + String(r.goods_id || '') + '|' + String(r.period || '') + '|' + String(r.parent || ''))
@@ -2217,7 +2203,7 @@
                         minWidth: 48,
                         hozAlign: 'center',
                         headerHozAlign: 'center',
-                        headerTooltip: 'Triangle when creating an ad failed and that goods still has no ad. Hidden once the ad already exists. Hover to read the full message.',
+                        headerTooltip: 'Triangle when Temu rejected or failed creating an ad. Hover to read the full message.',
                         sorter: function (a, b) {
                             const as = String(a || '').trim() ? 1 : 0;
                             const bs = String(b || '').trim() ? 1 : 0;
