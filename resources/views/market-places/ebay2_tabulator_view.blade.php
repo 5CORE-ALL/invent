@@ -1671,6 +1671,16 @@
             }
             return fromParent;
         }
+        /** ALL view: parent row, then that family's child SKUs, families A–Z. */
+        function ebay2StampAllOrder(rows) {
+            (rows || []).forEach(function(d) {
+                if (!d) return;
+                const group = ebay2ParentKeyFromRow(d).toUpperCase();
+                const kind = isEbay2TabulatorParentRow(d) ? '0' : '1';
+                const sku = String(d['(Child) sku'] || d.sku || '').toUpperCase();
+                d._ebay2_all_ord = group + '|' + kind + '|' + sku;
+            });
+        }
         // Toast notification function
         function showToast(a, b) {
             let type, message;
@@ -2640,6 +2650,7 @@
             let ebay2SkipNextDataLoadedFilter = false;
             let ebay2FiltersBusy = false;
             let ebay2FiltersPending = false;
+            let ebay2AllFamilySort = false;
 
             function ebay2EscHtmlAttr(val) {
                 if (val == null || val === '') return '';
@@ -2772,6 +2783,7 @@
                     var payload = (response && response.data) ? response.data : response;
                     if (!Array.isArray(payload)) payload = [];
                     allTableData = payload;
+                    ebay2StampAllOrder(allTableData);
                     if (window.LmpIgnore) LmpIgnore.applyDataset(allTableData);
                     window.allTableData = allTableData;
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
@@ -2826,6 +2838,13 @@
                     }
                 },
                 columns: [{
+                        field: "_ebay2_all_ord",
+                        visible: false,
+                        headerSort: false,
+                        download: false,
+                        clipboard: false
+                    },
+                    {
                         title: "Parent",
                         field: "Parent",
                         headerFilter: "input",
@@ -4330,6 +4349,17 @@
 
                 if (keepParentRows) table.addFilter = addRowFilter;
 
+                // Parents are loaded first, so a plain sort hides child SKUs behind
+                // hundreds of PARENT rows. ALL keeps each family together: parent, then SKUs.
+                ebay2StampAllOrder(allTableData);
+                if (viewModeFilter === 'all') {
+                    ebay2AllFamilySort = true;
+                    table.setSort('_ebay2_all_ord', 'asc');
+                } else if (ebay2AllFamilySort) {
+                    ebay2AllFamilySort = false;
+                    table.setSort('SCVR', 'asc');
+                }
+
                 updateCalcValues();
                 updateSummary();
                 // Update select-all + pagination counter after filter is applied (same as eBay 1)
@@ -4344,6 +4374,7 @@
                 // Bind the table to the ALL / Parents / SKU slice. Never restore the full
                 // dataset while SKU is selected — that was leaking PARENT rows back in.
                 const viewRows = ebay2RowsForViewMode(viewModeFilter, allTableData);
+                ebay2StampAllOrder(viewRows);
                 const needReplace = allTableData.length && (
                     ebay2BoundViewMode !== viewModeFilter
                     || table.getDataCount() !== viewRows.length
@@ -4661,7 +4692,7 @@
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             if (!def.field) return;
-                            if (def.field === '_parent_expand' || def.field === '_select') return;
+                            if (def.field === '_parent_expand' || def.field === '_select' || def.field === '_ebay2_all_ord') return;
                             if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(def.field)) return;
 
                             const rawTitle = def.title || def.field;
@@ -4732,7 +4763,7 @@
                     .then(savedVisibility => {
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
-                            if (!def.field || def.field === '_parent_expand' || def.field === '_select') return;
+                            if (!def.field || def.field === '_parent_expand' || def.field === '_select' || def.field === '_ebay2_all_ord') return;
                             if (savedVisibility[def.field] === false) {
                                 col.hide();
                             }
@@ -4849,7 +4880,11 @@
                     if (showAll) {
                         e.preventDefault();
                         e.stopPropagation();
-                        table.getColumns().forEach(col => col.show());
+                        table.getColumns().forEach(function(col) {
+                            const field = col.getField();
+                            if (field === '_ebay2_all_ord') return;
+                            col.show();
+                        });
                         buildColumnDropdown();
                         saveColumnVisibilityToServer();
                     }
