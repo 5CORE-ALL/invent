@@ -4882,10 +4882,19 @@ class CvrMasterController extends Controller
 
             // BestBuy — same as /bestbuy-pricing: live MCM OF21 only. Sheet / leftover = 0.
             $bbSkuUpper = strtoupper(trim((string) $fullSku));
-            $bestbuyProduct = $bestbuyProducts->get(BestBuyPricingController::normalizeOfferSku((string) $fullSku));
+            $bbNorm = BestBuyPricingController::normalizeOfferSku((string) $fullSku);
+            $bbFreshAfter = BestBuyPricingController::latestMcmFreshAfter();
+            $bestbuyMatches = $bbNorm === ''
+                ? collect()
+                : BestbuyUsaProduct::query()
+                    ->where('sku', $fullSku)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$bbSkuUpper])
+                    ->orWhereRaw("UPPER(TRIM(REPLACE(sku, CHAR(160), ' '))) = ?", [$bbNorm])
+                    ->get();
+            $bestbuyProduct = BestBuyPricingController::preferredProduct($bestbuyMatches->all(), $bbFreshAfter);
             $bestbuyResolved = BestBuyPricingController::resolveListedPrice(
                 $bestbuyProduct,
-                BestBuyPricingController::productIsLiveOffer($bestbuyProduct, $bbFreshAfter ?? null)
+                BestBuyPricingController::productIsLiveOffer($bestbuyProduct, $bbFreshAfter)
             );
 
             $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
@@ -4909,7 +4918,7 @@ class CvrMasterController extends Controller
                 }
             }
 
-            $hasBestbuyData = ($bestbuyProduct || $bestbuySheetRow) && ($bestbuyL30 > 0 || $bestbuyPrice > 0);
+            $hasBestbuyData = $bestbuyProduct && ($bestbuyL30 > 0 || $bestbuyPrice > 0);
 
             $breakdownData[] = [
                 'marketplace' => 'BestBuy',

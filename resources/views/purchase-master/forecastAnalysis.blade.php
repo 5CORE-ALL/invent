@@ -3208,7 +3208,7 @@
                                 mslShopify:  row["msl_shopify"]  ?? 0,
                                 mAvg:        row["m_avg"]        ?? 0,
                             };
-                            openMonthModal(monthData, sku, fbaMonths, mslInfo);
+                            openMonthModal(monthData, sku, fbaMonths, mslInfo, row["L30"] ?? 0);
                         }
                     }
                 },
@@ -3854,7 +3854,40 @@
                     }
                 },
                 {
-                    title: "NPFT",
+                    title: "Avg NROI",
+                    field: "avg_nroi_pct",
+                    minWidth: 52,
+                    width: 56,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    titleFormatter: function() {
+                        const span = document.createElement("span");
+                        span.textContent = "Avg NROI";
+                        span.setAttribute("title", "Avg NROI% from /pricing-master-cvr (parent blue row = avg of children)");
+                        return span;
+                    },
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.avg_nroi_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const n = Math.round(parseFloat(v));
+                        // Same slabs as /pricing-master-cvr Avg NROI% / GROI%; 50–99 is dark mustard
+                        let col = '#e83e8c';
+                        if (n < 50) col = '#a00211';
+                        else if (n < 100) col = '#B8860B';
+                        else if (n <= 150) col = '#28a745';
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Avg NROI% (pricing-master-cvr)">${n}%</span>`;
+                    }
+                },
+                {
+                    title: "Avg NPFT",
                     field: "avg_npft_pct",
                     minWidth: 52,
                     width: 56,
@@ -3863,7 +3896,7 @@
                     sorter: "number",
                     titleFormatter: function() {
                         const span = document.createElement("span");
-                        span.textContent = "NPFT";
+                        span.textContent = "Avg NPFT";
                         span.setAttribute("title", "Avg NPFT% from /pricing-master-cvr (parent blue row = avg of children)");
                         return span;
                     },
@@ -3884,39 +3917,6 @@
                         else if (n < 40) col = '#ff9c00';
                         else if (n <= 50) col = '#28a745';
                         return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Avg NPFT% (pricing-master-cvr)">${n}%</span>`;
-                    }
-                },
-                {
-                    title: "NROI",
-                    field: "avg_nroi_pct",
-                    minWidth: 52,
-                    width: 56,
-                    headerSort: true,
-                    hozAlign: "center",
-                    sorter: "number",
-                    titleFormatter: function() {
-                        const span = document.createElement("span");
-                        span.textContent = "NROI";
-                        span.setAttribute("title", "Avg NROI% from /pricing-master-cvr (parent blue row = avg of children)");
-                        return span;
-                    },
-                    accessor: function(row) {
-                        if (!row) return null;
-                        const v = parseFloat(row.avg_nroi_pct);
-                        return Number.isFinite(v) ? v : null;
-                    },
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const n = Math.round(parseFloat(v));
-                        // Same slabs as /pricing-master-cvr Avg NROI% / GROI%
-                        let col = '#e83e8c';
-                        if (n < 50) col = '#a00211';
-                        else if (n < 100) col = '#ff9c00';
-                        else if (n <= 150) col = '#28a745';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Avg NROI% (pricing-master-cvr)">${n}%</span>`;
                     }
                 },
                 {
@@ -5839,74 +5839,54 @@
         }
 
         //modals
-        function openMonthModal(monthData, sku, fbaMonths, mslInfo) {
+        function openMonthModal(monthData, sku, fbaMonths, mslInfo, l30) {
             const wrapper = document.getElementById("monthCardWrapper");
             if (!wrapper) return;
 
             wrapper.innerHTML = "";
-            // Keep 12-col grid (from #monthCardWrapper CSS), reset any leftover inline styles
             wrapper.style.cssText = "";
+            // Last 12 months, oldest → current, plus a Last 30 days card
+            wrapper.style.setProperty('grid-template-columns', 'repeat(13, minmax(0, 1fr))', 'important');
 
-            const monthOrder = [
-                "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-                "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
-            ];
+            const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+            const now = new Date();
+            // Trailing 12 calendar months, oldest first (includes the current month)
+            const monthSlots = [];
+            for (let i = 11; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                monthSlots.push({
+                    key: monthNames[d.getMonth()],
+                    label: monthNames[d.getMonth()] + ' ' + d.getFullYear(),
+                });
+            }
 
-            // Get current date to determine year for each month
-            const currentDate = new Date();
-            const currentYear = currentDate.getFullYear();
-            const currentMonth = currentDate.getMonth(); // 0-11 (Jan = 0, Dec = 11)
-
-            // Month index mapping (0 = Jan, 11 = Dec)
-            const monthIndexMap = {
-                "JAN": 0, "FEB": 1, "MAR": 2, "APR": 3,
-                "MAY": 4, "JUN": 5, "JUL": 6, "AUG": 7,
-                "SEP": 8, "OCT": 9, "NOV": 10, "DEC": 11
-            };
-
-            // Determine year for each month based on GenerateMovementAnalysis command logic
-            // Command generates rolling data for last 12-14 months
-            // 
-            // Examples when current month is Jan 2026:
-            //   - Data range: Nov 2025 to Jan 2026 (previousMonths=2)
-            //   - JAN: 2026 (current year, monthIndex 0 <= currentMonth 0)
-            //   - FEB to DEC: 2025 (previous year, monthIndex > currentMonth)
-            //
-            // Year assignment rule (matches rolling data):
-            //   - If monthIndex > currentMonth: previous year (months after current in calendar)
-            //   - If monthIndex <= currentMonth: current year (current month and months before it in same calendar)
-            const getYearForMonth = (monthIndex) => {
-                // If month index is greater than current month, it's from previous year
-                // Example: If current month is Jan (0) and month is Feb (1), Feb is from previous year (2025)
-                if (monthIndex > currentMonth) {
-                    return currentYear - 1;
-                }
-                // If month index is less than or equal to current month, it's current year
-                // Example: If current month is Jan (0) and month is Jan (0), it's current year (2026)
-                return currentYear;
-            };
-
-            // Add 12 main month cards directly as grid children (each = 1 of 12 columns)
-            monthOrder.forEach(month => {
-                const value = monthData[month] ?? 0;
-                const monthIndex = monthIndexMap[month];
-                const year = getYearForMonth(monthIndex);
-
+            function appendQtyCard(parent, label, value, cardStyle) {
                 const card = document.createElement("div");
                 card.className = "month-card";
-
+                if (cardStyle) card.style.cssText = cardStyle;
                 const title = document.createElement("div");
                 title.className = "month-title";
-                title.innerText = `${month} ${year}`;
-
+                title.innerText = label;
                 const count = document.createElement("div");
                 count.className = "month-value";
                 count.innerText = value;
-
                 card.appendChild(title);
                 card.appendChild(count);
-                wrapper.appendChild(card);
+                parent.appendChild(card);
+                return card;
+            }
+
+            monthSlots.forEach(slot => {
+                appendQtyCard(wrapper, slot.label, monthData[slot.key] ?? 0);
             });
+            const l30Card = appendQtyCard(
+                wrapper,
+                "L30",
+                (l30 === null || l30 === undefined || l30 === '') ? 0 : l30,
+                "border-top:2px solid #2563eb;"
+            );
+            l30Card.title = "Last 30 days";
+            l30Card.querySelector(".month-title").title = "Last 30 days";
 
             // MSL formula bar — spans all 12 columns, includes FBA if available
             if (mslInfo) {
@@ -6020,32 +6000,19 @@
                     fbaContainer.appendChild(skuLabel);
                 }
 
-                // FBA cards in their own 12-column grid
+                // Same trailing-12 order as the Shopify row, plus a blank L30 so columns line up
                 const fbaGrid = document.createElement("div");
-                fbaGrid.style.cssText = "display:grid; grid-template-columns:repeat(12,1fr); gap:12px;";
+                fbaGrid.style.cssText = "display:grid; grid-template-columns:repeat(13,minmax(0,1fr)); gap:12px;";
 
-                monthOrder.forEach(month => {
-                    const value = fbaMonths[month] ?? 0;
-                    const monthIndex = monthIndexMap[month];
-                    const year = getYearForMonth(monthIndex);
-
-                    const card = document.createElement("div");
-                    card.className = "month-card";
-                    card.style.borderTop = "2px solid #20c997";
-
-                    const title = document.createElement("div");
-                    title.className = "month-title";
-                    title.innerText = `${month} ${year}`;
-
-                    const count = document.createElement("div");
-                    count.className = "month-value";
-                    count.style.color = "#20c997";
-                    count.innerText = value;
-
-                    card.appendChild(title);
-                    card.appendChild(count);
-                    fbaGrid.appendChild(card);
+                monthSlots.forEach(slot => {
+                    const card = appendQtyCard(fbaGrid, slot.label, fbaMonths[slot.key] ?? 0, "border-top:2px solid #20c997;");
+                    const valueEl = card.querySelector(".month-value");
+                    if (valueEl) valueEl.style.color = "#20c997";
                 });
+                const fbaL30 = appendQtyCard(fbaGrid, "L30", "—", "border-top:2px solid #20c997;");
+                fbaL30.title = "Last 30 days is not stored for FBA";
+                const fbaL30Value = fbaL30.querySelector(".month-value");
+                if (fbaL30Value) fbaL30Value.style.color = "#20c997";
 
                 fbaContainer.appendChild(fbaGrid);
                 wrapper.appendChild(fbaContainer);
@@ -6135,7 +6102,7 @@
             const FA_COL_GROUPS = {
                 basic: ['Image', 'Parent', 'SKU', 'mfrg_supplier', 'Category', 'stage', 'exec'],
                 grp1: ['INV', 'L30', 'ov_dil', 'days_cover', 'msl', 'to_order', 'two_order_qty', 'order_given', 'readyToShipQty', 'transit', 'MOQ', 'nr', 'date_apprvl', 'TAT'],
-                grp2: ['CP', 'LP', 'cbm', 'total_cbm', 'avg_npft_pct', 'avg_nroi_pct', 'mfrg_order_date', 'r2s_amount', 'r2s_new_photo'],
+                grp2: ['CP', 'LP', 'cbm', 'total_cbm', 'avg_nroi_pct', 'avg_npft_pct', 'mfrg_order_date', 'r2s_amount', 'r2s_new_photo'],
                 others: [],
             };
             function faClassifyColumn(field) {
