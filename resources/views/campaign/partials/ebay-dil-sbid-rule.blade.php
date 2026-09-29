@@ -118,8 +118,7 @@ var dilSbidEnabled = false;
 let dilSbidSaveTimer = null;
 
 function campaignSbid(row) {
-    if (dilSbidEnabled) return dilSbidOfRow(row);
-    return { bid: 0, color: '#6c757d', skip: true, title: 'Dil vs SBid is off' };
+    return dilSbidOfRow(row);
 }
 function dilSbidPaintMode() {
     const on = !!dilSbidEnabled;
@@ -263,7 +262,8 @@ function dilSbidOfRow(row) {
     if (dil === null || !isFinite(dil)) {
         return { bid: 0, color: '#6c757d', skip: true, off: false, title: 'No CP Master Dil' };
     }
-    const esBid = parseFloat(row && row.suggested_bid) || 0;
+    const esRaw = row && (row.suggested_bid != null && row.suggested_bid !== '' ? row.suggested_bid : row.ca_suggested_bid);
+    const esBid = parseFloat(esRaw) || 0;
     let prevMax = null;
     for (let i = 0; i < currentDilSbidSlabs.length; i++) {
         const slab = currentDilSbidSlabs[i];
@@ -290,7 +290,6 @@ function dilSbidOfRow(row) {
                 const sign = adj.adj > 0 ? '+' : '';
                 title += ' ' + sign + adj.adj + ' (' + adj.why + ') → ' + adj.bid + '%';
             }
-            if (!(adj.bid > 0)) return { bid: 0, color: '#6c757d', skip: true, off: false, title: title };
             return { bid: adj.bid, color: color, skip: false, off: false, title: title };
         }
         prevMax = parseFloat(slab.max);

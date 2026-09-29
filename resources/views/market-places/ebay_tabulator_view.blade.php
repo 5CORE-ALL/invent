@@ -2426,8 +2426,9 @@
             document.getElementById('sku-link-lmp-save-btn')?.addEventListener('click', function () { saveLinkedSkuFromModal(); });
         });
 
-        function getCombinedSbid() {
-            return { bid: 0, color: '#6c757d', skip: true, title: 'Sbid Rule removed' };
+        function getCombinedSbid(row) {
+            if (typeof campaignSbid === 'function') return campaignSbid(row);
+            return { bid: 0, color: '#6c757d', skip: true, title: 'No Dil vs SBid' };
         }
 
         // Play / Pause parent navigation (same as product-master)
@@ -5147,7 +5148,7 @@
                         field: "ca_suggested_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "S Bid rule removed. Column stays blank.",
+                        headerTooltip: "Dil vs SBid, then the CVR overlay. Blank only when the SKU has no matching slab.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
@@ -5157,10 +5158,10 @@
                                 return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
                             }
                             if (res.skip) {
-                                return `<span class="text-muted" title="S Bid rule removed" style="font-size:11px;">—</span>`;
+                                return `<span class="text-muted" title="${res.title || 'No matching Dil slab'}" style="font-size:11px;">—</span>`;
                             }
                             const color = res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
-                            const title = res.zeroSoldMax ? 'E L30 = 0 → maximum S Bid %' : 'View VS SBID slab';
+                            const title = res.title || 'Dil vs SBid';
                             return `<span title="${title}" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
                         }
                     },
