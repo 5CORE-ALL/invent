@@ -245,13 +245,11 @@ class Shopifyb2cController extends Controller
 
     public function getViewShopifyB2CData(Request $request)
     {
-        // Fetch all relevant SKUs from ShopifySku and ProductMaster
-        $shopifyData = ShopifySku::all()->keyBy('sku');
+        // Product Master first, then Shopify via the same SKU map as Amazon.
         $productMasterData = ProductMaster::all()->keyBy('sku');
-        $nrValues = Shopifyb2cDataView::pluck('value', 'sku');
-
-        // Collect all unique SKUs
         $skus = $productMasterData->keys();
+        $shopifyData = ShopifySku::mapByProductSkus($skus->all());
+        $nrValues = Shopifyb2cDataView::pluck('value', 'sku');
 
         $processedData = $skus->map(function ($sku) use ($shopifyData, $productMasterData, $nrValues) {
             $item = new \stdClass();

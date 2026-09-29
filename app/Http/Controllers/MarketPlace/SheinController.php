@@ -540,11 +540,10 @@ class SheinController extends Controller
                 'total_commission' => round($spCommission, 2),
             ];
 
-            // ── 4. Shopify → INV / OV L30
-            // Load full tables and key in PHP — SQL UPPER(TRIM(sku)) does not fold NBSP / multi-space variants.
-            $shopifyBySku = SupportCollection::make(
-                ShopifySku::query()->get(['sku', 'inv', 'quantity', 'image_src'])->all()
-            )->keyBy(fn ($r) => $normalizeSku($r->sku));
+            // ── 4. Shopify → INV / OV L30 via Product Master SKU (same map as Amazon).
+            $shopifyByProductSku = ShopifySku::mapByProductSkus(
+                $productMasterBySku->map(fn ($pm) => (string) ($pm->sku ?? ''))->filter()->unique()->values()->all()
+            );
 
             $viewMetaBySku = SupportCollection::make(
                 SheinDataView::query()->get(['sku', 'value'])->all()
@@ -582,19 +581,8 @@ class SheinController extends Controller
                 )->keyBy(fn ($r) => $normalizeSku($r->sku));
             }
 
-            // Listed Shein SKUs + in-stock catalog only. Zero-INV SKUs that are not
-            // on Shein were forcing /shein-pricing to ship the entire product_master.
-            $skuSet = [];
-            foreach ($pricingBySku->keys() as $k) {
-                $skuSet[(string) $k] = true;
-            }
-            foreach ($productMasterBySku->keys() as $k) {
-                $shopifyRow = $shopifyBySku->get($k);
-                if ($shopifyRow && (int) ($shopifyRow->inv ?? 0) > 0) {
-                    $skuSet[(string) $k] = true;
-                }
-            }
-            $allNormalizedSkus = collect(array_keys($skuSet));
+            // Dil universe: Product Master first. Shein price/sales join onto that SKU.
+            $allNormalizedSkus = collect($productMasterBySku->keys()->all())->values();
 
             if (! $pmHasLpCol || ! $pmHasShipCol) {
                 $neededPmIds = [];
@@ -691,7 +679,9 @@ class SheinController extends Controller
                     $sales = $al30 * $spOffer;
                 }
 
-                $shopifyRow = $shopifyBySku->get($normalizedSku);
+                $shopifyRow = ($productMaster && isset($shopifyByProductSku[$productMaster->sku]))
+                    ? $shopifyByProductSku[$productMaster->sku]
+                    : null;
                 $inv        = $shopifyRow ? (int) ($shopifyRow->inv      ?? 0) : 0;
                 $ovL30      = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
                 $imageSrc   = $shopifyRow ? ($shopifyRow->image_src      ?? null) : null;

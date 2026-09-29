@@ -113,6 +113,7 @@ class AllMarketplaceMasterBadgeAggregator
         $avgPNpft = $totalPSales > 0 ? (($totalPGross - $totalAdSpend) / $totalPSales) * 100 : 0.0;
         $avgYNpft = $totalYSales > 0 ? ($totalYNet / $totalYSales) * 100 : 0.0;
         $avgYGroi = $totalYCogs > 0 ? ($totalYGross / $totalYCogs) * 100 : 0.0;
+        $avgYNroi = $totalYCogs > 0 ? ($totalYNet / $totalYCogs) * 100 : 0.0;
         $netProfit = $totalPft - $totalAdSpend;
         $avgNroi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0.0;
         $cvrUnits = 0.0;
@@ -148,6 +149,7 @@ class AllMarketplaceMasterBadgeAggregator
             'y_npft_amt' => round($totalYNet, 2),
             'y_npft_pct' => round($avgYNpft, 2),
             'y_groi_pct' => round($avgYGroi, 2),
+            'y_nroi_pct' => round($avgYNroi, 2),
             'today_sales' => round($totalTodaySales, 2),
             'p_sales' => round($totalPSales, 2),
             'p_npft_amt' => round($totalPNet, 2),

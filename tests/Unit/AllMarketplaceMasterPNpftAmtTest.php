@@ -48,4 +48,31 @@ class AllMarketplaceMasterPNpftAmtTest extends TestCase
 
         $this->assertSame(310.0, $out['p_npft_amt']);
     }
+
+    public function test_y_nroi_pct_is_yesterday_net_profit_over_yesterday_cogs(): void
+    {
+        $out = AllMarketplaceMasterBadgeAggregator::aggregate([
+            [
+                'Channel ' => 'Amazon',
+                'L30 Sales' => 1000,
+                'Y Sales' => 200,
+                'Gprofit%' => 40,
+                'N PFT' => 25,
+                'cogs' => 600,
+            ],
+            [
+                'Channel ' => 'Ebay',
+                'L30 Sales' => 500,
+                'Y Sales' => 100,
+                'Gprofit%' => 30,
+                'N PFT' => 10,
+                'cogs' => 350,
+            ],
+        ]);
+
+        // Y COGS = 600*(200/1000) + 350*(100/500) = 190
+        // Y net = 200*0.25 + 100*0.10 = 60
+        // YNROI% = 60 / 190 * 100 = 31.58
+        $this->assertSame(31.58, $out['y_nroi_pct']);
+    }
 }

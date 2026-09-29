@@ -1796,8 +1796,8 @@ class AliexpressController extends Controller
             $linksBySku = AliexpressListingStatus::all()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            // Same row universe as Amazon tabulator: Product Master first.
-            // Shopify-normalized SKUs that map to a PM row are absorbed (NBSP / dash).
+            // Product Master first. Channel price/sales SKUs that already map to a Product Master
+            // stay on that row. Anything left is the AliExpress table only.
             $allNormalizedSkus = collect($productMastersBySku->keys()->all());
             foreach (array_merge(
                 $uploadedPriceBySku->keys()->all(),
@@ -1815,7 +1815,7 @@ class AliexpressController extends Controller
                 }
             }
 
-            // Full Shopify map like Product Master — whereIn(UPPER(TRIM(sku))) misses UTF-8 NBSP / spacing variants.
+            // Shopify after Product Master. Alias match covers NBSP / spacing the PM map missed.
             $shopifyBySku = ShopifySku::all()->keyBy(fn ($row) => $normalizeSku($row->sku));
 
             $aeLmpByNormalizedSku = [];
@@ -1951,7 +1951,7 @@ class AliexpressController extends Controller
                     $aeStock = 0;
                 }
 
-                // INV + OV L30 + image: Product Master SKU → ShopifySku::mapByProductSkus.
+                // INV + OV L30: Product Master SKU → Shopify map, then Shopify by the channel SKU.
                 $shopifyRow = $productMaster
                     ? ($shopifyByProductSku[$productMaster->sku] ?? null)
                     : null;

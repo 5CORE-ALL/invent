@@ -448,7 +448,7 @@
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
                             @if(!empty($ebaySprcDilIsMacys))
-                            Macys also skips parent rows and Missing L (not listed). Dil = OV L30 ÷ Shopify INV.
+                            Macys skips parent rows. Dil = OV L30 ÷ Shopify INV, including SKUs that are not listed.
                             @elseif($ebaySprcDilChannel === 'purchasing_power')
                             Dil = OV L30 ÷ INV. 0 Sold is PP L30 = 0.
                             @elseif($ebaySprcDilChannel === 'topdawg')
@@ -871,7 +871,6 @@
         function ebayDgMacysCountEligible(d) {
             if (!ebayDgIsMacys()) return true;
             if (d && (d.is_parent_summary || d.is_parent || d.is_parent_row)) return false;
-            if (typeof isMacysListed === 'function' && !isMacysListed(d)) return false;
             return true;
         }
         function ebayDgInv(d) {
@@ -1448,31 +1447,30 @@
 
         function ebayDgEachInvChild(fn) {
             const seen = {};
-            const walk = function(row, d) {
-                const data = d || (row && typeof row.getData === 'function' ? row.getData() : row);
-                if (!ebayDgIsChild(data) || !(ebayDgInv(data) > 0) || !ebayDgMacysCountEligible(data)) return;
-                const sku = String((typeof chPromoSku === 'function' ? chPromoSku(data) : (data && (data['(Child) sku'] || data.sku))) || '').trim().toUpperCase();
-                if (sku) {
-                    if (seen[sku]) return;
-                    seen[sku] = true;
+            const visit = function(data) {
+                if (!data || typeof data !== 'object') return;
+                if (ebayDgIsChild(data) && ebayDgInv(data) > 0 && ebayDgMacysCountEligible(data)) {
+                    const sku = String((typeof chPromoSku === 'function' ? chPromoSku(data) : (data && (data['(Child) sku'] || data.sku))) || '').trim().toUpperCase();
+                    if (!sku || !seen[sku]) {
+                        if (sku) seen[sku] = true;
+                        fn(data);
+                    }
                 }
-                fn(data);
+                // eBay 3 stores SKUs under the parent row. Roots alone are the PARENT lines.
+                if (Array.isArray(data._children)) data._children.forEach(visit);
             };
-            // Full catalog, not the current page. Pagination was cutting the 0–0 count.
             let rows = (typeof ebaySprcDilCatalogRows === 'function') ? ebaySprcDilCatalogRows() : [];
             if (!rows.length && typeof table !== 'undefined' && table && typeof table.getData === 'function') {
                 rows = table.getData('all') || [];
             }
             if (rows.length) {
-                rows.forEach(function(d) { walk(null, d); });
+                rows.forEach(visit);
                 return;
             }
             if (typeof chPromoEachTableRow === 'function') {
-                chPromoEachTableRow(walk);
-                return;
-            }
-            if (typeof table !== 'undefined' && table && typeof table.getData === 'function') {
-                (table.getData('all') || []).forEach(function(d) { walk(null, d); });
+                chPromoEachTableRow(function(row, d) {
+                    visit(d || (row && typeof row.getData === 'function' ? row.getData() : row));
+                });
             }
         }
         function ebayDilGroiCollectCounts(list) {
@@ -2063,10 +2061,12 @@
             if (typeof chPromoEachTableRow === 'function') {
                 chPromoEachTableRow(function(row, d) { consider(row, d); });
             }
-            ebaySprcDilCatalogRows().forEach(function(d) {
+            function walkCatalog(d) {
                 if (!d) return;
                 consider(ebaySprcDilRowAdapter(d), d);
-            });
+                if (Array.isArray(d._children)) d._children.forEach(walkCatalog);
+            }
+            ebaySprcDilCatalogRows().forEach(walkCatalog);
         }
         /** Exact $ the S PRC cell paints — this is what we persist to the table. */
         function ebayDgCellSpriceToSave(d) {

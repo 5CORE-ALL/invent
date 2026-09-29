@@ -734,8 +734,8 @@ class WayfairController extends Controller
                 ->get()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            // 7. Shopify inventory / image — load all, key by normalized SKU (NBSP-safe).
-            $shopifyBySku = ShopifySku::all()->keyBy(fn ($row) => $normalizeSku($row->sku));
+            // 7. Shopify INV / OV L30 from the Product Master SKU (normalize + compact).
+            $shopifyByProductSku = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
             // 8. Wayfair listing status (buyer/seller links).
             $listingStatusBySku = WayfairListingStatus::query()
@@ -775,7 +775,7 @@ class WayfairController extends Controller
                 $uploadedPrice = $priceRow ? (float) $priceRow->price : 0;
                 $wfStock      = $priceRow ? (int) ($priceRow->wayfair_stock ?? 0) : 0;
 
-                $shopifyRow = $shopifyBySku->get($normalizedSku);
+                $shopifyRow = $shopifyByProductSku[$productMaster->sku] ?? null;
                 $inv        = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
                 $ovL30      = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
                 $imageSrc   = $shopifyRow ? ($shopifyRow->image_src ?? null) : null;
