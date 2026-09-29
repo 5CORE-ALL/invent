@@ -47,6 +47,7 @@ return [
     ['value' => 'order_fulfillment_delivered', 'text' => 'Order Fulfillment — Delivered', 'group' => 'Channel'],
     ['value' => 'order_fulfillment_transit', 'text' => 'Order Fulfillment — Transit', 'group' => 'Channel'],
     ['value' => 'order_fulfillment_scan_pending', 'text' => 'Order Fulfillment — Scan Pending', 'group' => 'Channel'],
+    ['value' => 'order_fulfillment_unpaid', 'text' => 'Order Fulfillment — Unpaid', 'group' => 'Channel'],
     ['value' => 'variations_verify_masters', 'text' => 'Variations Verify Masters', 'group' => 'Channel'],
     ['value' => 'channel_promotion_master', 'text' => 'Promotion Master', 'group' => 'Channel'],
     ['value' => 'return_analysis_channel', 'text' => 'Return Analysis (Channel)', 'group' => 'Channel'],

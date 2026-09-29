@@ -87,6 +87,17 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         ]);
     }
 
+    public function unpaid(GofoExpressService $gofo, VeeqoApiService $veeqo): View
+    {
+        return $this->index($gofo, $veeqo)->with([
+            'ofPageTitle' => 'Unpaid',
+            'ofDeliveredOnly' => false,
+            'ofTransitOnly' => false,
+            'ofScanPendingOnly' => false,
+            'ofUnpaidOnly' => true,
+        ]);
+    }
+
     public function data(): JsonResponse
     {
         try {
@@ -110,6 +121,11 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 $rows = array_values(array_filter(
                     $rows,
                     fn (array $row) => $this->fulfillmentRowIsScanPending($row)
+                ));
+            } elseif (request()->boolean('unpaid')) {
+                $rows = array_values(array_filter(
+                    $rows,
+                    fn (array $row) => empty($row['paid'])
                 ));
             }
 
