@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\MatchesDesignation;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class DesignationRrItem extends Model
 {
     use HasFactory;
+    use MatchesDesignation;
 
     protected $table = 'designation_rr_items';
 

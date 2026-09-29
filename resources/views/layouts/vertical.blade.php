@@ -900,6 +900,7 @@
          Ideas / Activity buttons on every page). --}}
     @include('layouts.shared.scope-of-improvement-modal')
     @include('layouts.shared.announcement-board-modal')
+    @include('layouts.shared.rr-topbar-modal')
 
     {{-- Runs after Vite so jQuery matches head.js; DataTables and similar plugins attach here --}}
     @yield('script-after-vite')
@@ -956,7 +957,6 @@
         @include('partials.dar-logout-nudge-modal')
         @include('partials.tat-nudge-modal')
         @include('partials.follow-up-nudge-modal')
-        @include('partials.daily-closeout-modals')
         @include('partials.department-feedback-modal')
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')

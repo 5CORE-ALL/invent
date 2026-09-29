@@ -66,13 +66,6 @@
         flex-direction: column;
         gap: 0.5rem;
     }
-    .od-nudge-actions .btn-danger {
-        background: #dc2626;
-        border-color: #dc2626;
-        font-weight: 800;
-        border-radius: 999px;
-        padding: 0.65rem 1rem;
-    }
     .od-nudge-actions .btn-light {
         border-radius: 999px;
         font-weight: 700;
@@ -90,7 +83,6 @@
                 <div class="od-nudge-label">Overdue tasks</div>
                 <p class="od-nudge-msg" id="overdueNudgeMsg"></p>
                 <div class="od-nudge-actions">
-                    <a class="btn btn-danger" id="overdueNudgeGo" href="{{ route('tasks.index') }}">Clear my overdues</a>
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">I'll do it today</button>
                 </div>
             </div>
@@ -119,7 +111,6 @@
         var countEl = document.getElementById('overdueNudgeCount');
         var msgEl = document.getElementById('overdueNudgeMsg');
         var helloEl = document.getElementById('overdueNudgeHello');
-        var goEl = document.getElementById('overdueNudgeGo');
         var modalEl = document.getElementById('overdueNudgeModal');
         if (!countEl || !msgEl || !modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
         var overdue = parseInt(data.overdue, 10) || 0;
@@ -128,7 +119,6 @@
         if (helloEl) {
             helloEl.textContent = data.user_name ? ('Hi ' + data.user_name) : 'Overdue reminder';
         }
-        if (goEl && data.tasks_url) goEl.setAttribute('href', data.tasks_url);
         try {
             localStorage.setItem(storageKey(data.business_today), '1');
         } catch (e) {}

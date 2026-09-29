@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\ResourceMaster;
 use App\Models\User;
 use App\Policies\ResourceMasterPolicy;
+use App\Support\SocialMediaAccess;
 use App\Support\SuperAdminAccess;
 use App\Support\TeamManagementAccess;
 use App\Support\UserSettingsAccess;
@@ -75,5 +76,13 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('user.settings.manage', function (User $user): bool {
             return UserSettingsAccess::canManage($user);
         });
+
+        Gate::define('social_media.view', fn (User $user): bool => SocialMediaAccess::canView($user));
+        Gate::define('social_media.analytics', fn (User $user): bool => SocialMediaAccess::canView($user));
+        Gate::define('social_media.manage', fn (User $user): bool => SocialMediaAccess::canManage($user));
+        Gate::define('social_media.connect', fn (User $user): bool => SocialMediaAccess::canManage($user));
+        Gate::define('social_media.sync', fn (User $user): bool => SocialMediaAccess::canManage($user));
+        Gate::define('social_media.targets', fn (User $user): bool => SocialMediaAccess::canManage($user));
+        Gate::define('social_media.reports', fn (User $user): bool => SocialMediaAccess::canManage($user));
     }
 }

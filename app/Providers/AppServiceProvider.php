@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
 use App\Cache\ResilientFileStore;
 use App\Models\Announcement;
+use App\Models\DesignationRrCheckpoint;
+use App\Models\DesignationRrItem;
 use App\Models\Permission;
+use App\Models\UserRrCheckpointProgress;
 use App\Models\FbaManualData;
 use App\Models\ScopeOfImprovement;
 use App\Models\UserIncentive;
@@ -88,6 +91,7 @@ class AppServiceProvider extends ServiceProvider
             $this->composeUserDarBadge($view);
             $this->composeUserSoiBadge($view);
             $this->composePostedAnnouncementBadge($view);
+            $this->composeUserRrBadge($view);
             $this->composeChatUnread($view);
         });
 
@@ -297,6 +301,70 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $view->with($this->postedAnnouncementBadge);
+    }
+
+    /**
+     * Logged-in user's own R&R item count and CL R&R score for the topbar circles.
+     *
+     * @var array{topbarRrCount: int, topbarClrrCount: int, topbarClrrPercent: int}|null
+     */
+    private ?array $userRrBadge = null;
+
+    private function composeUserRrBadge(ViewInstance $view): void
+    {
+        if ($this->userRrBadge === null) {
+            $rrCount = 0;
+            $clrrCount = 0;
+            $clrrPercent = 0;
+            $user = Auth::user();
+            $designation = trim((string) ($user->designation ?? ''));
+            if ($user && $designation !== '') {
+                try {
+                    if (\Illuminate\Support\Facades\Schema::hasTable('designation_rr_items')) {
+                        $itemIds = DesignationRrItem::query()
+                            ->forDesignation($designation)
+                            ->pluck('id');
+                        $rrCount = $itemIds->count();
+                        if (
+                            $rrCount > 0
+                            && \Illuminate\Support\Facades\Schema::hasTable('designation_rr_checkpoints')
+                        ) {
+                            $weights = DesignationRrCheckpoint::query()
+                                ->whereIn('designation_rr_item_id', $itemIds)
+                                ->pluck('weightage', 'id');
+                            $clrrCount = $weights->count();
+                            $total = (int) $weights->sum(fn ($weight) => max(1, (int) $weight));
+                            if (
+                                $total > 0
+                                && \Illuminate\Support\Facades\Schema::hasTable('user_rr_checkpoint_progress')
+                            ) {
+                                $checkedIds = UserRrCheckpointProgress::query()
+                                    ->where('user_id', (int) $user->id)
+                                    ->where('checked', true)
+                                    ->whereIn('designation_rr_checkpoint_id', $weights->keys())
+                                    ->pluck('designation_rr_checkpoint_id');
+                                $earned = 0;
+                                foreach ($checkedIds as $checkpointId) {
+                                    $earned += max(1, (int) ($weights[$checkpointId] ?? 0));
+                                }
+                                $clrrPercent = (int) round(($earned / $total) * 100);
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $rrCount = 0;
+                    $clrrCount = 0;
+                    $clrrPercent = 0;
+                }
+            }
+            $this->userRrBadge = [
+                'topbarRrCount' => $rrCount,
+                'topbarClrrCount' => $clrrCount,
+                'topbarClrrPercent' => $clrrPercent,
+            ];
+        }
+
+        $view->with($this->userRrBadge);
     }
 
     /**

@@ -6,14 +6,13 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.35rem;
-        padding: 0 0.5rem;
+        gap: 0.15rem;
+        padding: 0 0.25rem;
         overflow: hidden;
     }
     .topbar-world-clocks .wc-zone {
-        flex: 1 1 0;
+        flex: 0 0 auto;
         min-width: 0;
-        max-width: 11rem;
         text-align: left;
     }
     .topbar-world-clocks .wc-flag-row {
@@ -67,7 +66,7 @@
         align-self: stretch;
         max-height: 2.5rem;
         background-color: rgba(0, 0, 0, 0.08);
-        margin: 0 0.15rem;
+        margin: 0;
     }
     html[data-bs-theme="dark"] .topbar-world-clocks .wc-code,
     html[data-bs-theme="dark"] .topbar-world-clocks .wc-meta {
@@ -160,7 +159,6 @@
                     timeZone: z.tz,
                     hour: 'numeric',
                     minute: '2-digit',
-                    second: '2-digit',
                     hour12: true
                 }).format(now);
                 var dateStr = new Intl.DateTimeFormat('en-US', {

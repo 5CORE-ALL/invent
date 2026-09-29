@@ -1243,6 +1243,13 @@ class Kernel extends ConsoleKernel
      */
     protected function scheduleOtherCommands(Schedule $schedule, string $log, \Closure $ist, \Closure $retryFiveTimesUntil): void
     {
+        $schedule->command('social-media:sync')
+            ->dailyAt((string) config('social_media.schedule_time', '06:20'))
+            ->timezone('Asia/Kolkata')
+            ->name('social-media-sync')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         /*
         |--------------------------------------------------------------------------

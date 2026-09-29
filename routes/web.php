@@ -382,6 +382,25 @@ Route::prefix('ai')->middleware(['auth'])->group(function () {
     Route::post('/mark-replies-read', [\App\Http\Controllers\Api\AiChatController::class, 'markRepliesRead'])->name('ai.mark-read');
 });
 
+Route::middleware(['auth'])->prefix('social-media')->name('social-media.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\SocialMediaController::class, 'dashboard'])->name('dashboard');
+    Route::get('/accounts', [\App\Http\Controllers\SocialMediaController::class, 'accounts'])->name('accounts');
+    Route::post('/accounts', [\App\Http\Controllers\SocialMediaController::class, 'storeAccount'])->name('accounts.store');
+    Route::put('/accounts/{account}', [\App\Http\Controllers\SocialMediaController::class, 'updateAccount'])->name('accounts.update');
+    Route::delete('/accounts/{account}', [\App\Http\Controllers\SocialMediaController::class, 'destroyAccount'])->name('accounts.destroy');
+    Route::post('/accounts/{account}/sync', [\App\Http\Controllers\SocialMediaController::class, 'syncAccount'])->name('accounts.sync');
+    Route::get('/content', [\App\Http\Controllers\SocialMediaController::class, 'content'])->name('content');
+    Route::get('/content/{post}', [\App\Http\Controllers\SocialMediaController::class, 'showContent'])->name('content.show');
+    Route::get('/analytics', [\App\Http\Controllers\SocialMediaController::class, 'analytics'])->name('analytics');
+    Route::get('/executive', [\App\Http\Controllers\SocialMediaController::class, 'executive'])->name('executive');
+    Route::get('/targets', [\App\Http\Controllers\SocialMediaController::class, 'targets'])->name('targets');
+    Route::post('/targets', [\App\Http\Controllers\SocialMediaController::class, 'storeTarget'])->name('targets.store');
+    Route::delete('/targets/{target}', [\App\Http\Controllers\SocialMediaController::class, 'destroyTarget'])->name('targets.destroy');
+    Route::get('/reports', [\App\Http\Controllers\SocialMediaController::class, 'reports'])->name('reports');
+    Route::get('/reports/export', [\App\Http\Controllers\SocialMediaController::class, 'exportReport'])->name('reports.export');
+    Route::get('/health', [\App\Http\Controllers\SocialMediaController::class, 'health'])->name('health');
+});
+
 // Help Desk FAQ management (admin UI)
 Route::middleware(['auth'])->group(function () {
     Route::get('/help-desk-faqs', [\App\Http\Controllers\HelpDeskFaqController::class, 'index'])->name('help-desk-faqs.index');
@@ -7254,6 +7273,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Task Manager Routes
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
     Route::get('/tasks/summary', [\App\Http\Controllers\TaskController::class, 'taskSummary'])->name('tasks.summary');
+    Route::get('/tasks/score-history', [\App\Http\Controllers\TaskController::class, 'scoreHistory'])->name('tasks.scoreHistory');
     Route::get('/tasks/summary-stats', [\App\Http\Controllers\TaskController::class, 'taskSummaryStats'])->name('tasks.summaryStats');
     Route::get('/tasks/yesterday-done', [\App\Http\Controllers\TaskController::class, 'yesterdayDone'])->name('tasks.yesterdayDone');
     Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
@@ -7311,6 +7331,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::patch('/tasks/designation-rr/checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'updateDesignationChecklistItem'])->whereNumber('id')->name('tasks.designationRR.checklist.update');
     Route::delete('/tasks/designation-rr/checklist/items/{id}', [\App\Http\Controllers\TaskController::class, 'deleteDesignationChecklistItem'])->whereNumber('id')->name('tasks.designationRR.checklist.delete');
     Route::post('/tasks/designation-rr/checklist/progress', [\App\Http\Controllers\TaskController::class, 'toggleUserChecklistProgress'])->name('tasks.designationRR.checklist.progress');
+    Route::post('/tasks/designation-rr/checklist/submit', [\App\Http\Controllers\TaskController::class, 'submitUserChecklist'])->name('tasks.designationRR.checklist.submit');
     // CL Gen — Global, team-wide checklist (one shared list for every user)
     Route::get('/tasks/general-checklist', [\App\Http\Controllers\TaskController::class, 'getGeneralChecklist'])->name('tasks.generalChecklist.get');
     Route::post('/tasks/general-checklist/generate', [\App\Http\Controllers\TaskController::class, 'generateGeneralChecklist'])->name('tasks.generalChecklist.generate');
@@ -7336,6 +7357,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // KPI — page badges from badges_data (Task Summary "KPI" column)
     Route::get('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'getUserKpis'])->name('tasks.userKpis.get');
     Route::post('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'addUserKpi'])->name('tasks.userKpis.add');
+    Route::post('/tasks/user-kpis/generate', [\App\Http\Controllers\TaskController::class, 'generateUserKpis'])->name('tasks.userKpis.generate');
+    Route::post('/tasks/user-kpis/suggest', [\App\Http\Controllers\TaskController::class, 'suggestUserKpi'])->name('tasks.userKpis.suggest');
     Route::delete('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'removeUserKpi'])->name('tasks.userKpis.remove');
     Route::get('/tasks/overdue-nudge', [\App\Http\Controllers\TaskController::class, 'getOverdueNudge'])->name('tasks.overdueNudge.get');
     Route::get('/tasks/tat-nudge', [\App\Http\Controllers\TaskController::class, 'getTatNudge'])->name('tasks.tatNudge.get');
