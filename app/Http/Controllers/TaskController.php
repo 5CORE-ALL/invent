@@ -20,6 +20,8 @@ use App\Models\GeneralChecklistItem;
 use App\Models\ManagerJunior;
 use App\Models\PerformanceReview;
 use App\Models\ScopeOfImprovement;
+use App\Models\ChatChannelMember;
+use App\Models\ChatMessage;
 use App\Models\Task;
 use App\Models\TeamMemberKpi;
 use App\Models\User;
@@ -2720,11 +2722,17 @@ class TaskController extends Controller
             $taskData['is_corrective_action'] = $request->boolean('is_corrective_action') ? 1 : 0;
         }
 
+        $referenceLink = trim((string) $request->input('reference_link', ''));
+        if ($referenceLink !== '' && Schema::hasColumn('tasks', 'reference_link')) {
+            $taskData['reference_link'] = mb_substr($referenceLink, 0, 2048);
+        }
+
         if (Schema::hasColumn('tasks', 'screenshots')) {
             $taskData['screenshots'] = $screenshotNames;
         }
 
         $task = Task::create($taskData);
+        $this->linkChatMessageToTask($request, $task);
 
         $flash = 'success';
         $message = 'Task created successfully!';
@@ -2770,6 +2778,31 @@ class TaskController extends Controller
         }
 
         return redirect()->back()->with($flash, $message);
+    }
+
+    private function linkChatMessageToTask(Request $request, Task $task): void
+    {
+        $messageId = (int) $request->input('chat_message_id', 0);
+        if ($messageId < 1 || ! Schema::hasTable('chat_messages') || ! Schema::hasColumn('chat_messages', 'task_id')) {
+            return;
+        }
+
+        $message = ChatMessage::query()->find($messageId);
+        $user = Auth::user();
+        if (! $message || ! $user) {
+            return;
+        }
+
+        $isMember = ChatChannelMember::query()
+            ->where('channel_id', $message->channel_id)
+            ->where('user_id', $user->id)
+            ->exists();
+        if (! $isMember || $message->task_id) {
+            return;
+        }
+
+        $message->task_id = $task->id;
+        $message->save();
     }
 
     public function show($id)

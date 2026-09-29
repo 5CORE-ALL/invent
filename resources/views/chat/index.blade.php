@@ -160,6 +160,16 @@
         .slack-composer textarea {
             width: 100%; border: 0; resize: none; min-height: 44px; max-height: 140px; outline: none; font-size: 15px;
         }
+        .slack-composer__preview {
+            display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;
+        }
+        .slack-composer__preview[hidden] { display: none; }
+        .slack-composer__preview img {
+            max-width: 180px; max-height: 120px; border-radius: 6px; border: 1px solid #ddd; object-fit: contain; background: #f8f8f8;
+        }
+        .slack-composer__preview button {
+            border: 0; background: transparent; color: #616061; font-size: 12px; font-weight: 700; padding: 0;
+        }
         .slack-composer__row { display: flex; align-items: center; justify-content: space-between; }
         .slack-send {
             border: 0; border-radius: 6px; background: #007a5a; color: #fff; font-weight: 700; padding: 5px 12px;
@@ -392,6 +402,7 @@
                 <div class="slack-reply" id="slackReplyBar"></div>
                 <div class="slack-mention-pick" id="slackMentionPick"></div>
                 <div class="slack-composer__box">
+                    <div class="slack-composer__preview" id="slackPastePreview" hidden></div>
                     <textarea id="slackBody" rows="2" placeholder="Message"></textarea>
                     <div class="slack-composer__row">
                         <label>
@@ -579,7 +590,6 @@
     document.body.classList.add('invent-chat-page');
     const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const meId = {{ (int) $meId }};
-    const canManage = {{ $canManageChannels ? 'true' : 'false' }};
     const canPin = {{ !empty($canPin) ? 'true' : 'false' }};
     const canAnnounce = {{ !empty($canAnnounce) ? 'true' : 'false' }};
     const startChannel = Number(new URLSearchParams(location.search).get('channel') || 0);
@@ -818,7 +828,7 @@
         }).join('');
         const replies = m.reply_count ? '<button type="button" class="btn btn-link btn-sm p-0" data-thread="' + m.id + '">' + m.reply_count + ' replies</button>' : '';
         const task = m.task_url ? '<div class="small"><a href="' + esc(m.task_url) + '">Open task #' + m.task_id + '</a></div>' : '';
-        const own = Number(m.user_id) === meId || canManage;
+        const own = Number(m.user_id) === meId;
         const actions = m.deleted ? '' : (
             '<div class="slack-msg__act">' +
             '<button type="button" data-reply="' + m.id + '">Reply</button>' +
@@ -1303,8 +1313,7 @@
         appendOptimistic(cid, text);
         bodyEl.value = '';
         localStorage.removeItem(DRAFT_KEY + activeId);
-        fileEl.value = '';
-        fileNameEl.textContent = '';
+        clearComposerFile();
         sending = true;
         if (!navigator.onLine) {
             markFailed(cid, text, activeId, file, parentId);
@@ -1325,24 +1334,203 @@
         }
     });
 
+    const pastePreview = document.getElementById('slackPastePreview');
+    let pastePreviewUrl = '';
+    let settingComposerFile = false;
+
+    function clearComposerFile() {
+        fileEl.value = '';
+        fileNameEl.textContent = '';
+        if (pastePreviewUrl) {
+            URL.revokeObjectURL(pastePreviewUrl);
+            pastePreviewUrl = '';
+        }
+        if (pastePreview) {
+            pastePreview.hidden = true;
+            pastePreview.innerHTML = '';
+        }
+    }
+
+    function renderComposerFile(file) {
+        fileNameEl.textContent = file ? (file.name || 'Snippet') : '';
+        if (pastePreviewUrl) {
+            URL.revokeObjectURL(pastePreviewUrl);
+            pastePreviewUrl = '';
+        }
+        if (!pastePreview) return;
+        if (!file || !file.type || file.type.indexOf('image/') !== 0) {
+            pastePreview.hidden = true;
+            pastePreview.innerHTML = '';
+            return;
+        }
+        pastePreviewUrl = URL.createObjectURL(file);
+        pastePreview.hidden = false;
+        pastePreview.innerHTML = '<img alt="Pasted snippet"><button type="button">Remove</button>';
+        pastePreview.querySelector('img').src = pastePreviewUrl;
+        pastePreview.querySelector('button').addEventListener('click', function () {
+            clearComposerFile();
+            bodyEl.focus();
+        });
+    }
+
+    function setComposerFile(file) {
+        settingComposerFile = true;
+        try {
+            if (!file) {
+                fileEl.value = '';
+            } else {
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                fileEl.files = dt.files;
+            }
+            renderComposerFile(file || null);
+        } finally {
+            settingComposerFile = false;
+        }
+    }
+
+    function snippetExt(type) {
+        const map = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
+        return map[(type || '').toLowerCase()] || '';
+    }
+
+    function blobToPngFile(blob) {
+        return new Promise(function (resolve, reject) {
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = function () {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth || img.width;
+                canvas.height = img.naturalHeight || img.height;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+                canvas.toBlob(function (png) {
+                    if (!png) {
+                        reject(new Error('empty'));
+                        return;
+                    }
+                    resolve(new File([png], 'snippet-' + Date.now() + '.png', { type: 'image/png' }));
+                }, 'image/png');
+            };
+            img.onerror = function () {
+                URL.revokeObjectURL(url);
+                reject(new Error('bad image'));
+            };
+            img.src = url;
+        });
+    }
+
+    function normalizeSnippet(blob) {
+        const type = (blob.type || '').toLowerCase();
+        const ext = snippetExt(type);
+        if (ext) {
+            const mime = type === 'image/jpg' ? 'image/jpeg' : type;
+            const named = blob.name && new RegExp('\\.' + ext + '$', 'i').test(blob.name);
+            return Promise.resolve(new File([blob], named ? blob.name : ('snippet-' + Date.now() + '.' + ext), { type: mime }));
+        }
+        return blobToPngFile(blob);
+    }
+
+    function fileFromDataUrl(dataUrl) {
+        const match = String(dataUrl || '').match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+        if (!match) return null;
+        try {
+            const binary = atob(match[2]);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return new Blob([bytes], { type: match[1].toLowerCase() });
+        } catch (err) {
+            return null;
+        }
+    }
+
+    function fileFromClipboard(clipboardData) {
+        if (!clipboardData) return null;
+        const items = clipboardData.items ? Array.prototype.slice.call(clipboardData.items) : [];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.kind === 'file' && /^image\//i.test(item.type || '')) {
+                const blob = item.getAsFile();
+                if (blob && blob.size) return blob;
+            }
+        }
+        const files = clipboardData.files ? Array.prototype.slice.call(clipboardData.files) : [];
+        for (let i = 0; i < files.length; i++) {
+            if (/^image\//i.test(files[i].type || '') && files[i].size) return files[i];
+        }
+        let html = '';
+        try { html = clipboardData.getData('text/html') || ''; } catch (err) { html = ''; }
+        const src = html.match(/<img[^>]+src=["'](data:image\/[a-z0-9.+-]+;base64,[^"']+)["']/i);
+        return src ? fileFromDataUrl(src[1]) : null;
+    }
+
+    function readClipboardImage() {
+        if (!navigator.clipboard || !navigator.clipboard.read) return Promise.resolve(null);
+        return navigator.clipboard.read().then(function (items) {
+            const jobs = [];
+            items.forEach(function (item) {
+                const type = (item.types || []).find(function (t) { return t.indexOf('image/') === 0; });
+                if (type) jobs.push(item.getType(type));
+            });
+            return jobs.length ? jobs[0] : null;
+        }).catch(function () { return null; });
+    }
+
+    function attachSnippet(blob) {
+        if (!blob) return;
+        normalizeSnippet(blob).then(function (file) {
+            setComposerFile(file);
+            bodyEl.focus();
+        }).catch(function () {});
+    }
+
+    function pasteTargetIsComposer(target) {
+        if (!target || !target.closest) return false;
+        if (target === bodyEl) return true;
+        if (target.closest('input, textarea, select, [contenteditable="true"]')) return false;
+        return !!target.closest('.slack-main');
+    }
+
+    document.addEventListener('paste', function (e) {
+        if (composer.hidden || !activeId) return;
+        if (!pasteTargetIsComposer(e.target)) return;
+        const blob = fileFromClipboard(e.clipboardData);
+        if (blob) {
+            e.preventDefault();
+            attachSnippet(blob);
+            return;
+        }
+        const snippetShortcut = (e.ctrlKey || e.metaKey) && e.shiftKey;
+        if (!snippetShortcut) return;
+        readClipboardImage().then(function (img) {
+            if (img) attachSnippet(img);
+        });
+    });
+
     bodyEl.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             composer.requestSubmit();
+            return;
         }
+        if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || (e.key !== 'v' && e.key !== 'V')) return;
+        window.setTimeout(function () {
+            if (fileEl.files && fileEl.files[0]) return;
+            readClipboardImage().then(function (img) {
+                if (img) attachSnippet(img);
+            });
+        }, 0);
     });
     document.getElementById('slackAttachBtn').addEventListener('click', function () { fileEl.click(); });
     const cameraEl = document.getElementById('slackCamera');
     document.getElementById('slackCameraBtn').addEventListener('click', function () { cameraEl.click(); });
     function takeFile(input) {
         if (!input.files[0]) return;
-        const dt = new DataTransfer();
-        dt.items.add(input.files[0]);
-        fileEl.files = dt.files;
-        fileNameEl.textContent = input.files[0].name;
+        setComposerFile(input.files[0]);
     }
     fileEl.addEventListener('change', function () {
-        fileNameEl.textContent = fileEl.files[0] ? fileEl.files[0].name : '';
+        if (settingComposerFile) return;
+        renderComposerFile(fileEl.files[0] || null);
     });
     cameraEl.addEventListener('change', function () { takeFile(cameraEl); });
 
@@ -1753,12 +1941,29 @@
     });
 
     function openTaskFrom(m) {
+        const authorId = Number(m.user_id) || 0;
+        const title = String(m.body || '').replace(/\s+/g, ' ').trim().slice(0, 1000);
+        const link = m.permalink || (location.origin + '/chat?channel=' + activeId + '&message=' + m.id);
+        if (typeof window.openQuickTaskForm === 'function') {
+            window.openQuickTaskForm({
+                title: title,
+                group: '',
+                assignorId: meId,
+                assigneeIds: (authorId > 0 && !m.is_bot) ? [authorId] : [],
+                chatMessageId: m.id,
+                referenceLink: link
+            });
+            return;
+        }
         document.getElementById('slackTaskMessageId').value = m.id;
         document.getElementById('slackTaskPreview').textContent = m.body || '';
         const sel = document.getElementById('slackTaskAssignee');
-        sel.innerHTML = '<option value="' + meId + '">' + esc(meName) + '</option>' + directory.map(function (u) {
-            return '<option value="' + u.id + '">' + esc(u.name) + '</option>';
+        sel.innerHTML = directory.map(function (u) {
+            return '<option value="' + u.id + '"' + (authorId === Number(u.id) ? ' selected' : '') + '>' + esc(u.name) + '</option>';
         }).join('');
+        if (authorId && sel.querySelector('option[value="' + authorId + '"]')) {
+            sel.value = String(authorId);
+        }
         window.bootstrap && window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackTaskModal')).show();
     }
     document.getElementById('slackTaskForm').addEventListener('submit', async function (e) {

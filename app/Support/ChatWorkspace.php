@@ -850,7 +850,7 @@ class ChatWorkspace
             return false;
         }
 
-        return (int) $message->user_id === (int) $user->id || self::canManageChannels($user);
+        return (int) $message->user_id === (int) $user->id;
     }
 
     public static function canDeleteMessage(?User $user, ChatMessage $message): bool

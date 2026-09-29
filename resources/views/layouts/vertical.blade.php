@@ -191,6 +191,8 @@
             <!-- Hidden Fields with Defaults -->
             <input type="hidden" name="priority" value="normal">
             <input type="hidden" name="tid" value="{{ now()->format('Y-m-d\TH:i') }}">
+            <input type="hidden" name="chat_message_id" id="quick_chat_message_id" value="">
+            <input type="hidden" name="reference_link" id="quick_reference_link" value="">
 
             <!-- More Fields Toggle -->
             <button type="button" class="btn btn-outline-secondary w-100" id="toggle-quick-more-fields" style="font-size: 12px; padding: 3px 6px; height: 33px; margin-bottom: 9px;">
@@ -508,8 +510,7 @@
                 $('body').removeClass('task-form-open').css('overflow', 'auto');
             }
 
-            // Open floating task form
-            $('#open-task-form-btn').on('click', function() {
+            function showQuickTaskForm() {
                 clearTimeout(hideTaskFormTimer);
                 $('#quick-task-success-alert').addClass('d-none').empty();
                 clearTimeout(window.__quickTaskAlertTimer);
@@ -520,7 +521,40 @@
                 $('#task-form-backdrop').fadeIn(300);
                 $('body').addClass('task-form-open');
                 $('body').css('overflow', 'hidden');
+                $('#floating-task-form').scrollTop(0);
+            }
+
+            // Open floating task form
+            $('#open-task-form-btn').on('click', function() {
+                showQuickTaskForm();
             });
+
+            window.openQuickTaskForm = function (opts) {
+                opts = opts || {};
+                var form = document.getElementById('quick-task-form');
+                if (form) form.reset();
+                if (typeof window.resetQuickTaskAssignees === 'function') {
+                    window.resetQuickTaskAssignees();
+                }
+                $('#quick_etc_minutes').val('10');
+                $('input[name="priority"]').val('normal');
+                $('select[name="priority_override"]').val('normal');
+                $('#quick-additional-fields').hide();
+                $('#toggle-quick-more-fields').html('<i class="mdi mdi-chevron-down" id="quick-toggle-icon"></i> More');
+                var assignorId = opts.assignorId || $('#quick_assignor_id').val();
+                if (assignorId) {
+                    $('#quick_assignor_id').val(String(assignorId));
+                }
+                if (opts.title) $('#quick_title').val(opts.title);
+                if (opts.group) $('#quick_group').val(opts.group);
+                $('#quick_chat_message_id').val(opts.chatMessageId || '');
+                $('#quick_reference_link').val(opts.referenceLink || '');
+                if (opts.assigneeIds && typeof window.setQuickTaskAssignees === 'function') {
+                    window.setQuickTaskAssignees(opts.assigneeIds);
+                }
+                showQuickTaskForm();
+                $('#quick_group').trigger('focus');
+            };
 
             function closeQuickAssigneePanel() {
                 var $panel = $('#quick_assignee_ms_panel');
@@ -666,6 +700,21 @@
                 window.resetQuickTaskAssignees = function () {
                     selected.clear();
                     $list.find('.quick-assignee-ms-item').removeClass('is-selected').attr('aria-selected', 'false');
+                    syncHidden();
+                    updateLabel();
+                };
+
+                window.setQuickTaskAssignees = function (ids) {
+                    selected.clear();
+                    $list.find('.quick-assignee-ms-item').removeClass('is-selected').attr('aria-selected', 'false');
+                    (ids || []).forEach(function (raw) {
+                        var id = parseInt(raw, 10);
+                        if (!id) return;
+                        var u = users.find(function (x) { return x.id === id; });
+                        if (!u) return;
+                        selected.set(id, u.name);
+                        $list.find('.quick-assignee-ms-item[data-id="' + id + '"]').addClass('is-selected').attr('aria-selected', 'true');
+                    });
                     syncHidden();
                     updateLabel();
                 };
