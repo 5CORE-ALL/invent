@@ -3189,7 +3189,6 @@
             if (key) amzRuleReadyBits[key] = true;
             if (amzRuleReadyBits.cvr && amzRuleReadyBits.rev && amzRuleReadyBits.dilgroi) {
                 amzRuleSpriceSlabsReady = true;
-                amzScheduleRuleSpriceSync({ delay: 250 });
             }
         }
         function amzApplyRuleSpriceToAllRows(opts) {
@@ -3277,20 +3276,8 @@
             }, opts.delay != null ? opts.delay : 400);
         }
         function bindAmzRuleSpriceAutofill() {
-            if (typeof table === 'undefined' || !table || !table.on) {
-                setTimeout(bindAmzRuleSpriceAutofill, 400);
-                return;
-            }
-            if (table._amzRuleSpriceAutofillBound) return;
-            table._amzRuleSpriceAutofillBound = true;
-            table.on('dataLoaded', function() {
-                amzScheduleRuleSpriceSync({ delay: 500 });
-            });
-            try {
-                if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
-                    amzScheduleRuleSpriceSync({ delay: 500 });
-                }
-            } catch (e) { /* wait for dataLoaded */ }
+            // Do not clear or rewrite stored S PRC when the table loads.
+            // Recalc stays on the S PRC button and when Dil / CVR / Rev rules are saved.
         }
         window.amzScheduleRuleSpriceSync = amzScheduleRuleSpriceSync;
         window.amzApplyRuleSpriceToAllRows = amzApplyRuleSpriceToAllRows;
