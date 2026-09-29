@@ -213,6 +213,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('order.fulfillment') }}" class="side-nav-link {{ request()->routeIs('order.fulfillment') || request()->routeIs('order.fulfillment.*') ? 'active' : '' }}">
+                    <i class="ri-truck-line"></i>
+                    <span>Order Fulfillment</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('variations.verify.masters') }}" class="side-nav-link variations-verify-masters-nav">
                     <i class="ri-layout-grid-line"></i>
                     <span>Variations Verify Masters</span>

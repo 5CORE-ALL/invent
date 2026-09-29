@@ -71,6 +71,7 @@ use App\Http\Controllers\Channels\CustomerCareHealthController;
 use App\Http\Controllers\Channels\AccountHealthMasterDashboardController;
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
 use App\Http\Controllers\Channels\ChannelMasterController;
+use App\Http\Controllers\Channels\OrderFulfillmentController;
 use App\Http\Controllers\Channels\SalesCancelledOrderController;
 use App\Http\Controllers\Channels\SalesLossOrderController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
@@ -638,6 +639,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-loss-order/data', [SalesLossOrderController::class, 'data'])->name('sales.loss.order.data');
     Route::get('/cancelled-orders', [SalesCancelledOrderController::class, 'index'])->name('sales.cancelled.order');
     Route::get('/cancelled-orders/data', [SalesCancelledOrderController::class, 'data'])->name('sales.cancelled.order.data');
+    Route::get('/order-fulfillment', [OrderFulfillmentController::class, 'index'])->name('order.fulfillment');
+    Route::get('/order-fulfillment/data', [OrderFulfillmentController::class, 'data'])->name('order.fulfillment.data');
+    Route::post('/order-fulfillment/tracking/lookup', [OrderFulfillmentController::class, 'lookupTracking'])->name('order.fulfillment.tracking.lookup');
+    Route::post('/order-fulfillment/tracking', [OrderFulfillmentController::class, 'saveTracking'])->name('order.fulfillment.tracking.save');
+    Route::post('/order-fulfillment/tracking-status', [OrderFulfillmentController::class, 'refreshTrackingStatus'])->name('order.fulfillment.tracking.status');
     Route::get('/active-channel-npft-nroi', [ChannelMasterController::class, 'getActiveChannelNpftNroi'])->name('active.channel.npft.nroi');
 
     // Listing Master > Amz Data (Amazon Listings raw from SP-API)
