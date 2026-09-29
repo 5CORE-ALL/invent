@@ -631,6 +631,10 @@ class DilRuleSpriceApplyService
             } elseif ($this->channel === 'temu' || $this->channel === 'temu2') {
                 // Dil = Shopify OV L30, same as /temu1-data. Do not use temu_metrics sales.
                 $ov = (float) ($shopify->quantity ?? 0);
+            } elseif ($this->channel === 'doba') {
+                // Same Dil as /amazon-tabulator-view: Shopify OV L30 ÷ Shopify INV.
+                // doba_metrics.inventory is D INV and is not the Dil denominator.
+                $ov = (float) ($shopify->quantity ?? 0);
             } elseif (! empty($cfg['a_l30'])) {
                 $ov = (float) ($amzBySku[$sku]['l30'] ?? 0);
             } elseif ($l30Overlay !== []) {
@@ -681,7 +685,7 @@ class DilRuleSpriceApplyService
 
         $dilByKey = $this->listingDilByKey($draft);
         foreach ($draft as $i => $row) {
-            if ($this->channel === 'aliexpress' || $this->channel === 'shein' || $this->channel === 'faire') {
+            if ($this->channel === 'aliexpress' || $this->channel === 'shein' || $this->channel === 'faire' || $this->channel === 'doba') {
                 $draft[$i]['dil'] = $row['inv'] > 0
                     ? round(($row['ov_l30'] / $row['inv']) * 100, 2)
                     : 0.0;

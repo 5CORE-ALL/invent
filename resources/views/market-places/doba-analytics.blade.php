@@ -2259,8 +2259,9 @@
                         if (response && response.data) {
                             tableData = response.data.map((item, index) => {
                                 const inv = Number(item.INV) || 0;
+                                const shopInv = Number(item.shopify_inv) || 0;
                                 const l30 = Number(item.L30) || 0;
-                                const ovDil = inv > 0 ? l30 / inv : 0;
+                                const ovDil = shopInv > 0 ? l30 / shopInv : 0;
                                 const valueJson = item.value ? JSON.parse(item.value) : {};
                                 const listedVal = valueJson.Listed !== undefined ? parseInt(
                                     valueJson.Listed) : 0;
@@ -2281,6 +2282,7 @@
                                     '(Child) sku': item['(Child) sku'] || '',
                                     'R&A': item['R&A'] !== undefined ? item['R&A'] : '',
                                     INV: item.INV || 0,
+                                    shopify_inv: shopInv,
                                     L30: item.L30 || 0,
                                     ov_dil: ovDil,
                                     'doba L30': item['doba L30'] || 0,
@@ -4639,6 +4641,7 @@
 
                     const metrics = {
                         invTotal: 0,
+                        shopInvTotal: 0,
                         ovL30Total: 0,
                         ovDilTotal: 0,
                         el30Total: 0,
@@ -4690,6 +4693,7 @@
                             metrics.salesL30Sum += salesL30;
                         }
                         metrics.invTotal += parseFloat(item.INV) || 0;
+                        metrics.shopInvTotal += parseFloat(item.shopify_inv) || 0;
                         metrics.ovL30Total += parseFloat(item.L30) || 0;
                         metrics.el30Total += parseFloat(item['doba L30']) || 0;
                         metrics.viewsTotal += parseFloat(item['Click 90']) || 0;
@@ -4702,8 +4706,8 @@
                     });
 
                     // Calculate percentages
-                    metrics.ovDilTotal = metrics.invTotal > 0 ?
-                        (metrics.ovL30Total / metrics.invTotal) * 100 : 0;
+                    metrics.ovDilTotal = metrics.shopInvTotal > 0 ?
+                        (metrics.ovL30Total / metrics.shopInvTotal) * 100 : 0;
                     metrics.eDilTotal = metrics.ovL30Total > 0 ? (metrics.el30Total / metrics.ovL30Total) * 100 : 0;
 
                     const divisor = metrics.rowCount || 1;

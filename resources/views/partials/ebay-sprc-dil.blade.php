@@ -13,7 +13,7 @@
   CVR overlay Count and Adj: Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold.
   Horizontal / opposite-arrow rows are excluded. Shein applies the overlay only when the SKU has views.
   Macys: 0–0 slab on top for Dil = 0. Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
-  (not the Dil-matching slab). Dil is MC L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price,
+  (not the Dil-matching slab). Dil is OV L30 ÷ Shopify INV. If that Dil / min-ROI S PRC is below A Price,
   S PRC = A Price (do not keep a lower Dil/Std price). Out of box + sold uses Std Prc, then the same A Price floor.
   Purchasing Power / Best Buy / TopDawg / Doba: 0–0 slab on top for Dil = 0. Dil-matching when sold > 0; 0 Sold uses the minimum Target.
   Purchasing Power Target is SNROI (Ads%=0 → same $ as SROI). Dil is OV L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
@@ -448,7 +448,7 @@
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
                             @if(!empty($ebaySprcDilIsMacys))
-                            Macys also skips parent rows and Missing L (not listed). Dil = MC L30 ÷ INV.
+                            Macys also skips parent rows and Missing L (not listed). Dil = OV L30 ÷ Shopify INV.
                             @elseif($ebaySprcDilChannel === 'purchasing_power')
                             Dil = OV L30 ÷ INV. 0 Sold is PP L30 = 0.
                             @elseif($ebaySprcDilChannel === 'topdawg')
@@ -456,7 +456,7 @@
                             @elseif(in_array($ebaySprcDilChannel, ['temu', 'newtemuone', 'newtemutwo', 'temu3'], true))
                             Dil = OV L30 ÷ INV. 0 Sold is Temu L30 = 0.
                             @elseif($ebaySprcDilChannel === 'doba')
-                            Dil = OV L30 ÷ INV. 0 Sold is Doba L30 = 0.
+                            Dil = OV L30 ÷ Shop INV (same Dil as Amazon). 0 Sold is Doba L30 = 0.
                             @elseif(in_array($ebaySprcDilChannel, ['mercari_wship', 'mercari_woship'], true))
                             Dil = OV L30 ÷ INV. 0 Sold is L30 = 0.
                             @elseif($ebaySprcDilChannel === 'pls')
@@ -663,6 +663,7 @@
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsAliexpress() || ebayDgIsShein()
                 || ebayDgIsFaire() || ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
                 || ebayDgIsBestbuy() || ebayDgIsNewegg() || ebayDgIsTopdawg()
+                || EBAY_DIL_GROI_CHANNEL === 'ebay2'
                 || EBAY_DIL_GROI_CHANNEL === 'walmart'
                 || EBAY_DIL_GROI_CHANNEL === 'pls'
                 || EBAY_DIL_GROI_CHANNEL === 'depop'
@@ -874,6 +875,11 @@
             return true;
         }
         function ebayDgInv(d) {
+            // Doba's INV column is channel stock. Dil and the slab count use Shop INV,
+            // the same Shopify inventory Amazon calls INV.
+            if (ebayDgIsDoba() || ebayDgIsDobaWithoutship()) {
+                return Number(d && d.shopify_inv) || 0;
+            }
             if (typeof chPromoInv === 'function') return chPromoInv(d);
             return Number(d && d.INV) || 0;
         }

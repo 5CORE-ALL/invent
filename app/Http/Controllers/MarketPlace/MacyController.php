@@ -267,9 +267,9 @@ class MacyController extends Controller
                 }
             }
 
-            // Calculate DIL%
-            $row["MC Dil%"] = ($row["MC L30"] && $row["INV"] > 0)
-                ? round(($row["MC L30"] / $row["INV"]), 2)
+            // Dil = OV L30 ÷ Shopify INV. 0 Sold stays MC L30 = 0.
+            $row["MC Dil%"] = ($row["INV"] > 0)
+                ? round(($row["L30"] / $row["INV"]), 2)
                 : 0;
 
             // Values: LP & Ship from ProductMaster

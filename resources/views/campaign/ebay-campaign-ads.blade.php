@@ -24,6 +24,10 @@
             <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#dilRuleModal">
                 <i class="fas fa-tint me-1"></i>Dil Rule
             </button>
+            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
+                    title="Set S Bid from Dil. This account keeps its own slabs.">
+                <i class="fas fa-percent me-1"></i>Dil vs SBid
+            </button>
             {{-- Push SBID cron removed — S Bid Autopush runs when a slab or 0-sold value changes. --}}
             <button class="btn btn-sm btn-outline-secondary" onclick="table.download('csv','ebay_campaign_ads.csv')">
                 <i class="fas fa-download me-1"></i>CSV
@@ -251,6 +255,11 @@
     </div>
 </div>
 
+@include('campaign.partials.ebay-dil-sbid-rule', [
+    'part' => 'modal',
+    'account' => 'eBay 1',
+])
+
 @endsection
 
 @section('css')
@@ -310,6 +319,9 @@ function loadData() {
                     if (!allLoadedListingIds.includes(lid)) selectedIds.delete(lid);
                 });
                 table.replaceData(resp.data);
+                if (typeof renderDilSbidTable === 'function' && document.getElementById('dilSbidRuleModal')?.classList.contains('show')) {
+                    renderDilSbidTable();
+                }
                 applyCbidNullFilter();
                 updateSelectedCount();
                 syncSelectAllHeader();
@@ -574,16 +586,19 @@ $(document).ready(function () {
             },
             {
                 title: 'S Bid', field: 'ebay_l30', width: 110, hozAlign: 'center',
-                headerTooltip: 'S Bid from Sbid Rule slabs (For L7 Views / CVR). If E L30 = 0, maximum S Bid % is always applied. Otherwise first matching rule wins. No match → —.',
+                headerTooltip: 'Dil vs SBid switch on: Dil slabs. Switch off: View VS SBID (For L7 Views).',
                 sorter: function(a, b, aRow, bRow) {
-                    return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
+                    return campaignSbid(aRow.getData()).bid - campaignSbid(bRow.getData()).bid;
                 },
                 formatter: function(cell) {
-                    const res = getCombinedSbid(cell.getRow().getData());
-                    if (res.skip) {
-                        return `<span class="text-muted" title="No matching Sbid Rule slab" style="font-size:11px;">— no sbid</span>`;
+                    const res = campaignSbid(cell.getRow().getData());
+                    const title = (res && res.title) ? res.title : '';
+                    if (res && res.off) {
+                        return `<span class="fw-bold" style="color:#842029;" title="${title}">OFF</span>`;
                     }
-                    const title = res.zeroSoldMax ? 'E L30 = 0 → maximum S Bid %' : '';
+                    if (!res || res.skip) {
+                        return `<span class="text-muted" title="${title || 'No matching Dil slab'}" style="font-size:11px;">—</span>`;
+                    }
                     return `<span style="color:${res.color}; font-weight:700;" title="${title}">${res.bid.toFixed(1)}%</span>`;
                 }
             },
@@ -1323,5 +1338,12 @@ document.getElementById('dil-rule-save-btn').addEventListener('click', function(
         }
     });
 });
+@include('campaign.partials.ebay-dil-sbid-rule', [
+    'part' => 'script',
+    'account' => 'eBay 1',
+    'getUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
+    'saveUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
+    'applyUrl' => url('/ebay/campaign-ads/push-selected'),
+])
 </script>
 @endsection

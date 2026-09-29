@@ -3513,11 +3513,11 @@
                         field: "E Dil%",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by variation). Red <25% · Green 25–50% · Pink 50%+. Same Dil Sprc Dil uses.",
+                        headerTooltip: "OV L30 ÷ INV. Same Dil as Amazon. Red <25% · Green 25–50% · Pink 50%+.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const dil = (typeof chPromoListingDil === 'function')
-                                ? chPromoListingDil(rowData)
+                            const dil = (typeof chPromoSkuDil === 'function')
+                                ? chPromoSkuDil(rowData)
                                 : (function() {
                                     const INV = parseFloat(rowData.INV) || 0;
                                     const OVL30 = parseFloat(rowData['L30']) || 0;
@@ -3531,7 +3531,7 @@
                             else if (dil >= 25 && dil < 50) color = '#28a745';
                             else color = '#e83e8c';
 
-                            return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Sprc Dil">${Math.round(dil)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;" title="OV L30 ÷ INV">${Math.round(dil)}%</span>`;
                         },
                         width: 50
                     },
@@ -4767,8 +4767,8 @@
 
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const dil = (typeof chPromoListingDil === 'function')
-                            ? chPromoListingDil(data)
+                        const dil = (typeof chPromoSkuDil === 'function')
+                            ? chPromoSkuDil(data)
                             : (function() {
                                 const INV = parseFloat(data['INV'] || 0);
                                 const OVL30 = parseFloat(data['L30'] || 0);

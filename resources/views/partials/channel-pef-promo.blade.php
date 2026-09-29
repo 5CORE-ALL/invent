@@ -3999,8 +3999,10 @@
         }
         function chPromoDil(d) {
             const inv = chPromoInv(d);
-            // eBay Dil vs PRMT uses listing Dil so the Dil column and Apply slab match
+            // eBay 2 Dil is per SKU (OV L30 ÷ Shopify INV), same as Amazon.
+            // Other eBay pages still use listing Dil (Σ OV L30 ÷ Σ INV).
             if (String(CHANNEL_PROMO_CHANNEL).indexOf('ebay') === 0) {
+                if (CHANNEL_PROMO_CHANNEL === 'ebay2') return chPromoSkuDil(d);
                 return chPromoListingDil(d);
             }
             // Temu Dil column = listing Dil (Σ OV L30 ÷ Σ INV), same as Sprc Dil
@@ -4052,10 +4054,10 @@
                 const ovl30 = Number(d['L30'] != null ? d['L30'] : d.L30) || 0;
                 return (ovl30 / inv) * 100;
             }
-            // Macys Dil = (MC L30 / INV) × 100 — 0 Sold / Sprc Dil must not use Shopify OV L30.
+            // Macys Dil = (OV L30 / Shopify INV) × 100. 0 Sold is still MC L30 = 0.
             if (CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy') {
                 if (inv <= 0) return 0;
-                const ovl30 = Number(d['MC L30'] != null ? d['MC L30'] : (chPromoCfg && chPromoCfg.soldField ? d[chPromoCfg.soldField] : 0)) || 0;
+                const ovl30 = Number(d.L30 != null ? d.L30 : d['L30']) || 0;
                 return (ovl30 / inv) * 100;
             }
             // Best Buy / Purchasing Power Dil column = (OV L30 / INV) × 100
@@ -4071,11 +4073,13 @@
                 const ovl30 = Number(d.ov_l30 != null ? d.ov_l30 : d.L30) || 0;
                 return (ovl30 / inv) * 100;
             }
-            // Doba Dil column = (OV L30 / INV) × 100 — same as the DIL column (ov_dil)
+            // Doba Dil = (OV L30 / Shop INV) × 100 — same denominator as Amazon INV.
+            // Row field INV is Doba stock (D INV) and must not move the slab count.
             if (CHANNEL_PROMO_CHANNEL === 'doba' || CHANNEL_PROMO_CHANNEL === 'doba_withoutship') {
-                if (inv <= 0) return 0;
+                const shopInv = Number(d && d.shopify_inv) || 0;
+                if (shopInv <= 0) return 0;
                 const ovl30 = Number(d.L30 != null ? d.L30 : d['L30']) || 0;
-                return (ovl30 / inv) * 100;
+                return (ovl30 / shopInv) * 100;
             }
             // TopDawg Dil column = (OV L30 / INV) × 100
             if (CHANNEL_PROMO_CHANNEL === 'topdawg') {
@@ -5518,7 +5522,9 @@
         }
         function chPromoIsZeroSoldRow(d) {
             if (!d || d.is_parent_summary || !chPromoIsChildRow(d) || d.is_parent) return false;
-            const inv = chPromoInv(d);
+            const inv = (CHANNEL_PROMO_CHANNEL === 'doba' || CHANNEL_PROMO_CHANNEL === 'doba_withoutship')
+                ? (Number(d.shopify_inv) || 0)
+                : chPromoInv(d);
             const ebayStock = chPromoIsEbayChannel() ? chPromoEbayStockQty(d) : 0;
             const isMercari = CHANNEL_PROMO_CHANNEL === 'mercari_wship'
                 || CHANNEL_PROMO_CHANNEL === 'mercari_woship';

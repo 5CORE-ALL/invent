@@ -629,9 +629,9 @@
                         ? src.reduce(function(s, x) { return s + (parseFloat(x[f]) || 0); }, 0) / src.length
                         : 0;
                 });
-                const inv = parseFloat(r.INV) || 0;
+                const shopInv = parseFloat(r.shopify_inv) || 0;
                 const ovL30 = parseFloat(r.L30) || 0;
-                r.ov_dil = inv > 0 ? ovL30 / inv : 0;
+                r.ov_dil = shopInv > 0 ? ovL30 / shopInv : 0;
                 r['Dil%'] = r.ov_dil * 100;
                 const l30 = parseFloat(r['doba L30']) || 0;
                 const l60 = parseFloat(r['doba L60']) || 0;
@@ -2032,13 +2032,14 @@
                     if (response && response.data) {
                         const processedData = response.data.map((item, index) => {
                             const inv = Number(item.INV) || 0;
+                            const shopInv = Number(item.shopify_inv) || 0;
                             const l30 = Number(item.L30) || 0;
                             const dobaL30 = Number(item['doba L30']) || 0;
                             const dobaL60 = Number(item['doba L60']) || 0;
                             const dobaL45 = Number(item['doba L45']) || 0;
                             const quantityL7 = Number(item.quantity_l7) || 0;
                             const quantityL7Prev = Number(item.quantity_l7_prev) || 0;
-                            const ovDil = inv > 0 ? l30 / inv : 0;
+                            const ovDil = shopInv > 0 ? l30 / shopInv : 0;
                             const price = Number(item['doba Price']) || 0;
                             const amazonPrice = Number(item.amazon_price) || 0;
                             const ship = Number(item.Ship_productmaster) || 0;
@@ -2243,6 +2244,7 @@
                     {
                         title: "DIL",
                         field: "ov_dil",
+                        headerTooltip: "OV L30 ÷ Shop INV. Same Dil as /amazon-tabulator-view. D INV is not used.",
                         width: 80,
                         sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
@@ -2458,7 +2460,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (Doba L30 = 0, INV > 0) uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100) so SNROI = target.",
+                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ Shop INV (same as Amazon). Dil = 0 uses the 0–0 slab. 0 Sold (Doba L30 = 0, Shop INV > 0) uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100) so SNROI = target.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) return '';
@@ -2483,7 +2485,7 @@
                         sorter: dobaNumberSorter,
                         visible: true,
                         editable: false,
-                        headerTooltip: "Not editable. Auto-saved from Sprc Dil so SNROI = Dil + CVR Target NROI. Dil = 0 uses the 0–0 slab. 0 Sold uses the lowest Target NROI. S PRC = (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP (no blue when red).",
+                        headerTooltip: "Not editable. Auto-saved from Sprc Dil so SNROI = Dil + CVR Target NROI. Dil = OV L30 ÷ Shop INV. Dil = 0 uses the 0–0 slab. 0 Sold uses the lowest Target NROI. S PRC = (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP (no blue when red).",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) {

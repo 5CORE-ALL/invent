@@ -120,114 +120,41 @@ class EbayCampaignAdsController extends Controller
         ];
     }
 
+    public function getDilSbidRule()
+    {
+        return response()->json(\App\Support\DilVsSbidRule::load(\App\Support\DilVsSbidRule::KEY_EBAY1));
+    }
+
+    public function saveDilSbidRule(Request $request)
+    {
+        $saved = \App\Support\DilVsSbidRule::save(
+            \App\Support\DilVsSbidRule::KEY_EBAY1,
+            $request->input('slabs', []),
+            $request->exists('enabled') ? $request->boolean('enabled') : null
+        );
+
+        return response()->json($saved, ($saved['success'] ?? false) ? 200 : 422);
+    }
+
     public function pushSelected(Request $request)
     {
         $listingIds = $request->input('listing_ids', []);
-        if (empty($listingIds)) {
+        if (empty($listingIds) || ! is_array($listingIds)) {
             return response()->json(['error' => 'No listings selected'], 422);
         }
 
-        // Load Sbid Rule slabs (CVR / Dil / Esold / Views L30 → S Bid).
-        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
-        $slabs   = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
-
-        // Get ebay metrics for these listings
-        $metrics = \App\Models\EbayMetric::whereIn('item_id', $listingIds)->get()->keyBy('item_id');
-
-        // Shopify inv/quantity for DIL, keyed by normalized SKU
-        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
-
-        // Load campaign ads for these listings
-        $ads = DB::table('ebay_campaign_ads')
-            ->whereIn('listing_id', $listingIds)
-            ->whereNotNull('campaign_id')
-            ->where('funding_strategy', 'COST_PER_SALE')
-            ->get()
-            ->keyBy('listing_id');
-
-        $results   = [];
-        $success   = 0;
-        $failed    = 0;
-        $skipped   = 0;
-
-        // Get eBay access token
-        try {
-            $service = new \App\Services\EbayApiService();
-            $token   = $service->generateBearerToken();
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Token error: ' . $e->getMessage()], 500);
+        $result = app(\App\Services\DilVsSbidApplyService::class)->apply(
+            \App\Support\DilVsSbidRule::KEY_EBAY1,
+            'ebay_campaign_ads',
+            \App\Models\EbayMetric::class,
+            \App\Services\EbayApiService::class,
+            $listingIds
+        );
+        if (! empty($result['error'])) {
+            return response()->json(['error' => $result['error']], 500);
         }
 
-        // Group by campaign_id
-        $byCampaign = [];
-        foreach ($listingIds as $lid) {
-            $lid = (string)$lid;
-            $ad  = $ads->get($lid);
-            if (!$ad || !$ad->campaign_id) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Not in a COST_PER_SALE campaign'];
-                $skipped++;
-                continue;
-            }
-
-            // S Bid from Sbid Rule slabs (CVR / Dil / Esold / Views L30 / L7 Views).
-            $metric   = $metrics->get($lid);
-            $soldL30  = (float) ($metric?->ebay_l30 ?? 0);
-            $views    = (float) ($metric?->views ?? 0);
-            $l7Views  = (float) ($metric?->l7_views ?? 0);
-            $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0;
-            $shopify  = $shopifyMap[$this->normSku($metric?->sku ?? '')] ?? null;
-            $inv      = (float) ($shopify->inv ?? 0);
-            $qty      = (float) ($shopify->quantity ?? 0);
-            $dil      = $inv > 0 ? ($qty / $inv) * 100 : 0;
-            $newBid   = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $slabs);
-            if ($newBid <= 0) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab'];
-                $skipped++;
-                continue;
-            }
-            $byCampaign[$ad->campaign_id][] = ['listingId' => $lid, 'bidPercentage' => (string)$newBid];
-        }
-
-        // Push to eBay API per campaign
-        foreach ($byCampaign as $campaignId => $requests) {
-            try {
-                $response = \Illuminate\Support\Facades\Http::withToken($token)
-                    ->withHeaders(['Content-Type' => 'application/json'])
-                    ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
-                        ['requests' => $requests]);
-
-                if ($response->successful()) {
-                    foreach ($requests as $r) {
-                        DB::table('ebay_campaign_ads')
-                            ->where('listing_id', (string) $r['listingId'])
-                            ->where('campaign_id', (string) $campaignId)
-                            ->update([
-                                'bid_percentage' => round((float) $r['bidPercentage'], 2),
-                                'updated_at' => now(),
-                            ]);
-                        $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => $r['bidPercentage'] . '%'];
-                        $success++;
-                    }
-                } else {
-                    foreach ($requests as $r) {
-                        $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $response->status()];
-                        $failed++;
-                    }
-                }
-            } catch (\Exception $e) {
-                foreach ($requests as $r) {
-                    $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $e->getMessage()];
-                    $failed++;
-                }
-            }
-        }
-
-        return response()->json([
-            'success' => $success,
-            'failed'  => $failed,
-            'skipped' => $skipped,
-            'results' => $results,
-        ]);
+        return response()->json($result);
     }
 
     /**

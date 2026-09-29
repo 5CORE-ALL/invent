@@ -366,7 +366,8 @@ class EbayRuleSpriceApplyService
             $master = $masters[$sku] ?? null;
             $inv = (float) ($shopify->inv ?? 0);
             $ov = (float) ($shopify->quantity ?? 0);
-            if (! ($ov > 0)) {
+            // eBay 2 Dil is OV L30 only. Do not substitute eBay L30 when Shopify sales are 0.
+            if (! ($ov > 0) && $this->channel !== 'ebay2') {
                 $ov = (float) ($metric->ebay_l30 ?? 0);
             }
             $lpShip = $this->lpAndShip($master);
@@ -400,6 +401,13 @@ class EbayRuleSpriceApplyService
 
         $dilByKey = $this->listingDilByKey($draft);
         foreach ($draft as $i => $row) {
+            // eBay 2 matches Amazon: one SKU's OV L30 ÷ Shopify INV, not the variation total.
+            if ($this->channel === 'ebay2') {
+                $draft[$i]['dil'] = $row['inv'] > 0
+                    ? round(($row['ov_l30'] / $row['inv']) * 100, 2)
+                    : 0.0;
+                continue;
+            }
             $key = $this->listingKey($row, $draft);
             $draft[$i]['dil'] = $dilByKey[$key] ?? (
                 $row['inv'] > 0 ? round(($row['ov_l30'] / $row['inv']) * 100, 2) : 0.0

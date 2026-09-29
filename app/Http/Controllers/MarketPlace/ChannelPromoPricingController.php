@@ -1557,7 +1557,7 @@ class ChannelPromoPricingController extends Controller
 
     /**
      * Daily Dil slab counts for Sprc Dil history dots.
-     * Dil = OV L30 ÷ INV (same as the Dil column), except Macys = MC L30 ÷ INV.
+     * Dil = OV L30 ÷ Shopify INV (same as the Dil column), including Macys.
      * Dil = 0 uses the 0–0 slab.
      */
     public function dilGroiSlabHistory(Request $request, string $channel): JsonResponse
@@ -1931,8 +1931,8 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Macys Dil = MC L30 ÷ INV for listed MCM SKUs only (same as the Dil column).
-     * Today uses live macy_products.m_l30 + Shopify INV.
+     * Macys Dil = OV L30 ÷ Shopify INV for listed MCM SKUs only (same as the Dil column).
+     * Today uses live Shopify quantity + Shopify INV.
      * Earlier days use eBay 1/2 INV snapshots and a rolling 30-day Mirakl qty.
      *
      * @param  array<string, array<string, mixed>>  $out
@@ -2047,13 +2047,15 @@ class ChannelPromoPricingController extends Controller
         }
 
         $shopifyInv = [];
+        $shopifyOv = [];
         if (Schema::hasTable((new ShopifySku)->getTable())) {
-            foreach (ShopifySku::query()->select('sku', 'inv')->whereNotNull('sku')->get() as $row) {
+            foreach (ShopifySku::query()->select('sku', 'inv', 'quantity')->whereNotNull('sku')->get() as $row) {
                 $sku = strtoupper(trim((string) $row->sku));
                 if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuFilter[$sku])) {
                     continue;
                 }
                 $shopifyInv[$sku] = (int) ($row->inv ?? 0);
+                $shopifyOv[$sku] = (int) ($row->quantity ?? 0);
             }
         }
 
@@ -2094,13 +2096,13 @@ class ChannelPromoPricingController extends Controller
                 }
                 $seen[$seenKey] = true;
 
-                if ($dateKey === $todayKey && array_key_exists($sku, $liveMcL30)) {
-                    $mcL30 = $liveMcL30[$sku];
+                if ($dateKey === $todayKey) {
+                    $sold = $shopifyOv[$sku] ?? 0;
                 } else {
-                    $mcL30 = $qtyPrefix[$sku][$idx] - ($idx >= 30 ? $qtyPrefix[$sku][$idx - 30] : 0);
+                    $sold = $qtyPrefix[$sku][$idx] - ($idx >= 30 ? $qtyPrefix[$sku][$idx - 30] : 0);
                 }
 
-                $dil = ($mcL30 / $inv) * 100;
+                $dil = ($sold / $inv) * 100;
                 $rule = AmazonDilGroiRule::match($dil, $rules);
                 $slab = $rule['key'] ?? '_outside';
                 $out[$dateKey][$slab] = ((int) ($out[$dateKey][$slab] ?? 0)) + 1;

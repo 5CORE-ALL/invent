@@ -1592,13 +1592,14 @@
                     if (response && response.data) {
                         const processedData = response.data.map((item, index) => {
                             const inv = Number(item.INV) || 0;
+                            const shopInv = Number(item.shopify_inv) || 0;
                             const l30 = Number(item.L30) || 0;
                             const dobaL30 = Number(item['doba L30']) || 0;
                             const dobaL60 = Number(item['doba L60']) || 0;
                             const dobaL45 = Number(item['doba L45']) || 0;
                             const quantityL7 = Number(item.quantity_l7) || 0;
                             const quantityL7Prev = Number(item.quantity_l7_prev) || 0;
-                            const ovDil = inv > 0 ? l30 / inv : 0;
+                            const ovDil = shopInv > 0 ? l30 / shopInv : 0;
                             const selfPickPriceVal = Number(item.self_pick_price) || 0;
                             const price = selfPickPriceVal;
                             const listPriceCol = Number(item.doba_list_price) || 0;
@@ -1862,6 +1863,7 @@
                     {
                         title: "DIL",
                         field: "ov_dil",
+                        headerTooltip: "OV L30 ÷ Shop INV. Same Dil as /amazon-tabulator-view. D INV is not used.",
                         width: 80,
                         sorter: "number",
                         formatter: function(cell, formatterParams) {

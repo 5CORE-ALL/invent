@@ -2052,8 +2052,9 @@
 
                             tableData = validData.map((item, index) => {
                                 const inv = Number(item.INV) || 0;
+                                const shopInv = Number(item.shopify_inv) || 0;
                                 const l30 = Number(item.L30) || 0;
-                                const ovDil = inv > 0 ? l30 / inv : 0;
+                                const ovDil = shopInv > 0 ? l30 / shopInv : 0;
                                 const price = Number(item['doba Price']) || 0;
                                 const ship = Number(item.Ship_productmaster) || 0;
                                 const lp = Number(item.LP_productmaster) || 0;
@@ -2071,6 +2072,7 @@
                                     '(Child) sku': item['(Child) sku'] || '',
                                     'R&A': item['R&A'] !== undefined ? item['R&A'] : '',
                                     INV: inv,
+                                    shopify_inv: shopInv,
                                     L30: l30,
                                     ov_dil: ovDil,
                                     'doba L30': item['doba L30'] || 0,
@@ -4206,6 +4208,7 @@
 
                     const metrics = {
                         invTotal: 0,
+                        shopInvTotal: 0,
                         ovL30Total: 0,
                         ovDilTotal: 0,
                         profitSum: 0, // <-- new
@@ -4234,6 +4237,7 @@
                             metrics.salesL30Sum += salesL30;
                         }
                         metrics.invTotal += parseFloat(item.INV) || 0;
+                        metrics.shopInvTotal += parseFloat(item.shopify_inv) || 0;
                         metrics.ovL30Total += parseFloat(item.L30) || 0;
                         metrics.roiSum += parseFloat(item.Roi) || 0;
                         metrics.npftPctSum += parseFloat(item.npft_pct) || 0;
@@ -4263,8 +4267,8 @@
                     });
 
                     // Calculate percentages
-                    metrics.ovDilTotal = metrics.invTotal > 0 ?
-                        (metrics.ovL30Total / metrics.invTotal) * 100 : 0;
+                    metrics.ovDilTotal = metrics.shopInvTotal > 0 ?
+                        (metrics.ovL30Total / metrics.shopInvTotal) * 100 : 0;
 
                     const divisor = metrics.rowCount || 1;
 

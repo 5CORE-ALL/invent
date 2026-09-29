@@ -953,12 +953,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Same twice-daily Sprc Dil as Amazon (04:00 / 20:00 IST): each page saves
-        // its own S PRC, then pushes its own live listing. Not wrapped in $ist() —
-        // 04:00 is before 09:00 and 20:xx is at the window edge, so between() would
-        // skip them. Staggered so they do not start on the same minute.
-        // Purchasing Power already pushes inside its command. FB stays save-only.
-        // Afternoon 15:45 is the server script cron-dil-rest-sprice-daily.sh apply.
+
         foreach ([
             ['04:20', '20:20', 'ebay:rule-sprice-apply ebay1 --push', 'ebay1-sprc-dil'],
             ['04:35', '20:35', 'ebay:rule-sprice-apply ebay2 --push', 'ebay2-sprc-dil'],

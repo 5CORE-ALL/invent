@@ -1636,7 +1636,7 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const INV = parseFloat(rowData.INV) || 0;
-                        const OVL30 = parseFloat(rowData['MC L30']) || 0;
+                        const OVL30 = parseFloat(rowData.L30) || 0;
                         
                         if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
                         
@@ -2010,7 +2010,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "MC L30 = 0 uses min Target GROI. Sold SKUs use the Dil-matching slab. If that S PRC < A Price, S PRC = A Price.",
+                    headerTooltip: "MC L30 = 0 uses min Target GROI. Sold SKUs use the Dil-matching slab (Dil = OV L30 ÷ Shopify INV). If that S PRC < A Price, S PRC = A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';
@@ -2034,7 +2034,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Dil slab when MC L30 > 0, or min GROI when MC L30 = 0. Out of box + sold uses Std Prc. If that price < A Price, S PRC = A Price.",
+                    headerTooltip: "S PRC from Dil slab (OV L30 ÷ Shopify INV) when MC L30 > 0, or min GROI when MC L30 = 0. Out of box + sold uses Std Prc. If that price < A Price, S PRC = A Price.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
@@ -2351,11 +2351,11 @@
                 });
             }
 
-            // DIL filter (MC L30 / INV * 100) — same Dil as Sprc Dil / 0 Sold
+            // DIL filter (OV L30 / Shopify INV * 100)
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['INV']) || 0;
-                    const l30 = parseFloat(data['MC L30']) || 0;
+                    const l30 = parseFloat(data.L30) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
                     
                     if (dilFilter === 'red') return dil < 25;
