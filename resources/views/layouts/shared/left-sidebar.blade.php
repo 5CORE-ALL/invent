@@ -213,7 +213,7 @@
             </li>
 
             @php
-                $ofNavOpen = request()->routeIs('order.fulfillment') || request()->routeIs('order.fulfillment.delivered') || request()->routeIs('order.fulfillment.transit') || request()->routeIs('order.fulfillment.scan-pending') || request()->routeIs('order.fulfillment.unpaid');
+                $ofNavOpen = request()->routeIs('order.fulfillment') || request()->routeIs('order.fulfillment.delivered') || request()->routeIs('order.fulfillment.transit') || request()->routeIs('order.fulfillment.scan-pending') || request()->routeIs('order.fulfillment.unpaid') || request()->routeIs('order.fulfillment.pending');
             @endphp
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#orderFulfillmentNav" aria-expanded="{{ $ofNavOpen ? 'true' : 'false' }}"
@@ -226,6 +226,9 @@
                     <ul class="side-nav-second-level">
                         <li>
                             <a href="{{ route('order.fulfillment') }}" class="{{ request()->routeIs('order.fulfillment') ? 'active' : '' }}">Orders</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('order.fulfillment.pending') }}" class="{{ request()->routeIs('order.fulfillment.pending') ? 'active' : '' }}">Pending</a>
                         </li>
                         <li>
                             <a href="{{ route('order.fulfillment.unpaid') }}" class="{{ request()->routeIs('order.fulfillment.unpaid') ? 'active' : '' }}">Unpaid</a>

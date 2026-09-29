@@ -98,6 +98,18 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         ]);
     }
 
+    public function pending(GofoExpressService $gofo, VeeqoApiService $veeqo): View
+    {
+        return $this->index($gofo, $veeqo)->with([
+            'ofPageTitle' => 'Pending',
+            'ofDeliveredOnly' => false,
+            'ofTransitOnly' => false,
+            'ofScanPendingOnly' => false,
+            'ofUnpaidOnly' => false,
+            'ofPendingOnly' => true,
+        ]);
+    }
+
     public function data(): JsonResponse
     {
         try {
@@ -126,6 +138,11 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 $rows = array_values(array_filter(
                     $rows,
                     fn (array $row) => empty($row['paid'])
+                ));
+            } elseif (request()->boolean('pending')) {
+                $rows = array_values(array_filter(
+                    $rows,
+                    fn (array $row) => $this->fulfillmentRowIsPending($row)
                 ));
             }
 
@@ -242,6 +259,54 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
         return $tracking === ''
             || in_array($tracking, ['label created / no scan', 'pending scan'], true);
+    }
+
+    /**
+     * Still waiting to ship. Uses each marketplace's pending status and leaves
+     * delivered, in-transit, and scan-pending rows on those pages.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function fulfillmentRowIsPending(array $row): bool
+    {
+        if ($this->fulfillmentRowIsDelivered($row)
+            || $this->fulfillmentRowIsInTransit($row)
+            || $this->fulfillmentRowIsScanPending($row)
+        ) {
+            return false;
+        }
+
+        $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
+        $raw = trim((string) ($row['status'] ?? ''));
+        if ($raw === '' || $raw === '—') {
+            return false;
+        }
+
+        $upper = strtoupper($raw);
+        if (str_contains($upper, 'CANCEL')) {
+            return false;
+        }
+
+        $lower = strtolower($raw);
+        $compact = str_replace([' ', '-'], '_', $upper);
+
+        return match (true) {
+            in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true) => $upper === 'NOT_STARTED',
+            $slug === 'amazon' => $upper === 'UNSHIPPED',
+            $slug === 'newegg' => $raw === '0',
+            $slug === 'reverb' => $lower === 'paid',
+            $slug === 'shein' => in_array($lower, ['pending', 'to be shipped'], true),
+            in_array($slug, ['temu', 'temu2'], true) => in_array($upper, ['UN_SHIPPING', 'PENDING'], true),
+            in_array($slug, ['aliexpress', 'alibaba'], true) => $compact === 'WAIT_SELLER_SEND_GOODS',
+            $slug === 'faire' => in_array($upper, ['PROCESSING', 'NEW'], true),
+            in_array($slug, ['purchasingpower', 'bestbuy', 'macy'], true) => in_array($compact, ['SHIPPING', 'TO_COLLECT', 'AWAITING_SHIPMENT'], true)
+                || str_contains($lower, 'awaiting shipment'),
+            $slug === 'wayfair' => $lower === 'open',
+            $slug === 'doba' => $compact === 'UNSHIPPED',
+            in_array($slug, ['tiktok', 'tiktok2'], true) => $upper === 'AWAITING_SHIPMENT',
+            $slug === 'topdawg' => in_array($lower, ['pending', 'processing', 'saved'], true),
+            default => in_array($compact, ['PENDING', 'UNSHIPPED', 'AWAITING_SHIPMENT', 'NOT_STARTED'], true),
+        };
     }
 
     /**

@@ -129,7 +129,7 @@
                         </select>
                         <input type="text" id="of-search" class="form-control form-control-sm" style="min-width:180px; flex:1;" placeholder="Search order id…" autocomplete="off" title="Filter by order id">
                     </div>
-                    <p class="small text-muted mb-2">@if(!empty($ofDeliveredOnly))Orders from 15 Sep 2026 whose marketplace status or carrier tracking status is Delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofTransitOnly))Orders from 15 Sep 2026 that are shipped or in transit and not yet delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofScanPendingOnly))Orders from 15 Sep 2026 that have a tracking number and no carrier scan yet. The date filter defaults to the last 30 days.@elseif(!empty($ofUnpaidOnly))Unpaid orders from 15 Sep 2026. The date filter defaults to the last 30 days.@else Orders from 15 Sep 2026. The date filter defaults to the last 30 days. Search matches the order id. Carrier and tracking status come from the tracking number (USPS, GOFO, FedEx, UPS).@endif</p>
+                    <p class="small text-muted mb-2">@if(!empty($ofDeliveredOnly))Orders from 15 Sep 2026 whose marketplace status or carrier tracking status is Delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofTransitOnly))Orders from 15 Sep 2026 that are shipped or in transit and not yet delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofScanPendingOnly))Orders from 15 Sep 2026 that have a tracking number and no carrier scan yet. The date filter defaults to the last 30 days.@elseif(!empty($ofUnpaidOnly))Unpaid orders from 15 Sep 2026. The date filter defaults to the last 30 days.@elseif(!empty($ofPendingOnly))Orders from 15 Sep 2026 that are still waiting to ship. The date filter defaults to the last 30 days.@else Orders from 15 Sep 2026. The date filter defaults to the last 30 days. Search matches the order id. Carrier and tracking status come from the tracking number (USPS, GOFO, FedEx, UPS).@endif</p>
                     <div id="order-fulfillment-table" style="height: calc(100vh - 280px);"></div>
                 </div>
             </div>
@@ -199,6 +199,7 @@
     const transitOnly = @json((bool) ($ofTransitOnly ?? false));
     const scanPendingOnly = @json((bool) ($ofScanPendingOnly ?? false));
     const unpaidOnly = @json((bool) ($ofUnpaidOnly ?? false));
+    const pendingOnly = @json((bool) ($ofPendingOnly ?? false));
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     function escapeHtml(value) {
@@ -226,6 +227,7 @@
         if (transitOnly) params.transit = 1;
         if (scanPendingOnly) params.scan_pending = 1;
         if (unpaidOnly) params.unpaid = 1;
+        if (pendingOnly) params.pending = 1;
         return params;
     }
 
