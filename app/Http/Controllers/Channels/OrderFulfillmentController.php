@@ -945,7 +945,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
     public function lookupTracking(Request $request): JsonResponse
     {
-        @set_time_limit(50);
+        @set_time_limit(35);
         $this->ensureTrackingTable();
 
         $validated = $request->validate([
@@ -980,7 +980,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         $updates = [];
-        $deadline = microtime(true) + 42.0;
+        $deadline = microtime(true) + 28.0;
         $lookup = $this->labelTrackingLookup();
 
         foreach ($groups as $group) {
@@ -998,9 +998,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $hit = null;
             $orderId = (string) $group['order_id'];
             if ($orderId !== '' && $lookup !== null) {
-                $refs = $this->trackingSearchRefs($lookup, $group);
+                $primary = $this->primaryTrackingRef((string) $group['mm_slug'], $orderId);
                 try {
-                    $veeqo = $lookup->findVeeqoShipment($refs, false, '', []);
+                    $veeqo = $lookup->findVeeqoShipment([$primary], false, '', [], 2);
                     if (is_array($veeqo) && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
                         $hit = [
                             'tracking' => (string) $veeqo['tracking'],
@@ -1013,15 +1013,26 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 }
                 if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) < $deadline) {
                     try {
-                        $hit = $lookup->lookupLabelTracking($refs, null, true, '');
+                        $fourSeller = app(FourSellerApiService::class);
+                        $fourSeller->setTimeout(5);
+                        $fs = $fourSeller->findShipment([$primary], 1);
+                        if (is_array($fs) && trim((string) ($fs['tracking'] ?? '')) !== '') {
+                            $hit = [
+                                'tracking' => (string) $fs['tracking'],
+                                'carrier' => (string) ($fs['carrier'] ?? 'GOFO'),
+                                'source' => '4seller',
+                            ];
+                        }
                     } catch (\Throwable $e) {
                         report($e);
-                        $hit = null;
                     }
                 }
                 if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) < $deadline) {
                     try {
-                        $channel = $lookup->lookupLiveChannelTracking((string) $group['mm_slug'], $refs);
+                        $channel = $lookup->lookupLiveChannelTracking(
+                            (string) $group['mm_slug'],
+                            $this->trackingSearchRefs($lookup, $group)
+                        );
                     } catch (\Throwable $e) {
                         report($e);
                         $channel = null;
@@ -1249,6 +1260,20 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
+     * The single order id Veeqo and 4Seller should be searched with.
+     */
+    protected function primaryTrackingRef(string $slug, string $orderId): string
+    {
+        $orderId = trim($orderId);
+        $plain = ltrim($orderId, '#');
+        if ($slug === 'amazon' || preg_match('/^\d{3}-\d{7}-\d{7}$/', $plain) === 1) {
+            return 'Amz'.$plain;
+        }
+
+        return $orderId;
+    }
+
+    /**
      * Marketplace order ids 4Seller, GOFO, and Veeqo store on the label.
      * Shopify fulfillment tracking is not used.
      *
@@ -1329,7 +1354,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             foreach ([
                 'gofo' => [GofoExpressService::class, 6],
                 'fourSeller' => [FourSellerApiService::class, 6],
-                'veeqo' => [VeeqoApiService::class, 12],
+                'veeqo' => [VeeqoApiService::class, 6],
             ] as $property => [$class, $seconds]) {
                 if (! $ref->hasProperty($property)) {
                     continue;

@@ -768,7 +768,7 @@
             url: lookupUrl,
             type: 'POST',
             dataType: 'json',
-            timeout: 48000,
+            timeout: 32000,
             headers: { 'X-CSRF-TOKEN': csrfToken() },
             data: {
                 rows: pending.map(function (row) {

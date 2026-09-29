@@ -42,13 +42,18 @@ class FourSellerApiService
      * @param  list<string>  $refs
      * @return array{tracking: string, carrier: string, source: string}|null
      */
-    public function findShipment(array $refs): ?array
+    public function findShipment(array $refs, int $maxRefs = 0): ?array
     {
         if (! $this->isConfigured()) {
             return null;
         }
 
-        foreach (self::searchablePlatformRefs($refs) as $ref) {
+        $list = self::searchablePlatformRefs($refs);
+        if ($maxRefs > 0) {
+            $list = array_slice($list, 0, $maxRefs);
+        }
+
+        foreach ($list as $ref) {
             $hit = $this->searchOne($ref);
             if ($hit !== null) {
                 return $hit;

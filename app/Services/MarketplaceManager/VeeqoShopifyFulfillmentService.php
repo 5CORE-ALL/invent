@@ -3311,7 +3311,7 @@ class VeeqoShopifyFulfillmentService
      * @param  list<string>  $refs
      * @return array{tracking: string, carrier: string, veeqo_order_id: ?int}|null
      */
-    public function findVeeqoShipment(array $refs, bool $fast = false, string $sku = '', array $excludeTrackings = []): ?array
+    public function findVeeqoShipment(array $refs, bool $fast = false, string $sku = '', array $excludeTrackings = [], int $maxLookups = 0): ?array
     {
         $clean = [];
         foreach ($refs as $ref) {
@@ -3356,17 +3356,26 @@ class VeeqoShopifyFulfillmentService
             return null;
         }
 
+        $lookups = 0;
         foreach ($clean as $ref) {
             $hit = $this->searchVeeqoOrders($ref, $clean, $sku, $excludeTrackings);
+            $lookups++;
             if ($hit !== null) {
                 return $hit;
+            }
+            if ($maxLookups > 0 && $lookups >= $maxLookups) {
+                break;
             }
             if ($fast) {
                 continue;
             }
             $hit = $this->searchVeeqoShipments($ref, $clean, $sku, $excludeTrackings);
+            $lookups++;
             if ($hit !== null) {
                 return $hit;
+            }
+            if ($maxLookups > 0 && $lookups >= $maxLookups) {
+                break;
             }
         }
 
