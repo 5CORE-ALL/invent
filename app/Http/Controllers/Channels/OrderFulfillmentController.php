@@ -122,10 +122,11 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 continue;
             }
 
-            $query = $this->scopedToLast30Days($this->allOrdersQuery($slug), $slug);
+            $query = $this->allOrdersQuery($slug);
             if ($query === null) {
                 continue;
             }
+            $query = $this->applyFastOrderDateFilter($query, $slug);
 
             try {
                 $orders = $this->fulfillmentOrdersForChannel($slug, $query);
@@ -219,26 +220,70 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
     protected function fulfillmentOrdersForChannel(string $slug, Builder $query)
     {
-        $load = function (Builder $ordered) use ($slug) {
-            $this->omitHeavyOrderPayloadColumns($ordered);
-            if ($slug === 'amazon') {
-                $this->omitHeavyAmazonItemPayload($ordered);
-            }
+        $this->selectLightOrderColumns($query, $slug);
 
-            return $ordered;
+        return $query->get();
+    }
+
+    /**
+     * Range on the channel date column only. Avoids whereDate() and JSON payloads.
+     */
+    protected function applyFastOrderDateFilter(Builder $query, string $slug): Builder
+    {
+        [$from, $to] = $this->resolveOrderDateRange();
+        $bounds = $this->californiaSqlBounds($from, $to);
+        $column = $this->orderDateColumn($slug) ?? 'order_date';
+        $table = $query->getModel()->getTable();
+        if (! Schema::hasColumn($table, $column)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if (in_array($slug, ['amazon', 'ebay1', 'ebay2', 'ebay3'], true)) {
+            return $query->whereBetween($table.'.'.$column, [
+                $from->copy()->utc()->format('Y-m-d H:i:s'),
+                $to->copy()->utc()->format('Y-m-d H:i:s'),
+            ]);
+        }
+
+        if ($slug === 'wayfair') {
+            return $query->whereBetween($table.'.'.$column, [$bounds['from_date'], $bounds['to_date']]);
+        }
+
+        return $query->whereBetween($table.'.'.$column, [$bounds['from_dt'], $bounds['to_dt']]);
+    }
+
+    protected function selectLightOrderColumns(Builder $query, string $slug): void
+    {
+        $table = $query->getModel()->getTable();
+        $wanted = match ($slug) {
+            'amazon' => ['id', 'amazon_order_id', 'order_date', 'status'],
+            'temu', 'temu2' => ['id', 'parent_order_status_text', 'order_status_text', 'parent_order_time', 'parent_order_sn', 'order_sn', 'display_sku', 'ext_code', 'product_sku_id'],
+            'tiktok', 'tiktok2' => ['id', 'order_id', 'order_status', 'line_status', 'order_created_at', 'seller_sku', 'sku_id'],
+            'bestbuy', 'macy' => ['id', 'status', 'order_created_at', 'sku', 'order_id', 'channel_order_id'],
+            'purchasingpower' => ['id', 'status', 'date_created', 'offer_sku', 'product_sku', 'order_id', 'order_number'],
+            'wayfair' => ['id', 'status', 'po_date', 'sku', 'po_number'],
+            'doba' => ['id', 'order_status', 'order_time', 'sku', 'order_no', 'platform_order_no'],
+            default => ['id', 'status', 'order_date', 'sku', 'order_id', 'order_number'],
         };
 
         try {
-            $ordered = $load(clone $query);
-            $dateCol = $this->orderDateColumn($slug);
-            if ($dateCol !== null && Schema::hasColumn($ordered->getModel()->getTable(), $dateCol)) {
-                $ordered->orderByDesc($dateCol);
-            }
-            $ordered->orderByDesc('id');
-
-            return $ordered->get();
+            $have = array_flip(Schema::getColumnListing($table));
         } catch (\Throwable) {
-            return $load(clone $query)->orderByDesc('id')->get();
+            return;
+        }
+
+        $keep = array_values(array_filter($wanted, static fn (string $column) => isset($have[$column])));
+        if ($keep === []) {
+            return;
+        }
+
+        $query->select(array_map(static fn (string $column) => $table.'.'.$column, $keep));
+
+        if ($slug === 'amazon') {
+            $query->with(['items' => function ($items): void {
+                $itemTable = $items->getModel()->getTable();
+                $items->select([$itemTable.'.id', $itemTable.'.amazon_order_id', $itemTable.'.sku']);
+            }]);
         }
     }
 
@@ -248,7 +293,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
      */
     protected function rowsFromMarketplaceOrder(string $slug, array $channel, object $order): array
     {
-        $n = $this->normalizeOrderFields($slug, $order);
+        $n = $this->lightOrderFields($slug, $order);
         $paid = MarketplaceOrderPaidFilter::isPaid($slug, $order);
         $status = trim((string) ($n['status'] ?? ''));
         $apiOrderId = trim((string) ($n['order_id'] ?? ''));
@@ -311,6 +356,73 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $base['sku'] = $this->inventoryLookupSku($sku);
 
         return [$base];
+    }
+
+    /**
+     * Scalar marketplace columns only. Does not read JSON payloads or Shopify.
+     *
+     * @return array{status: string, order_date: mixed, order_id: string, order_number: string, sku: string}
+     */
+    protected function lightOrderFields(string $slug, object $order): array
+    {
+        return match ($slug) {
+            'amazon' => [
+                'status' => (string) ($order->status ?? ''),
+                'order_date' => $order->order_date ?? null,
+                'order_id' => (string) ($order->amazon_order_id ?? ''),
+                'order_number' => (string) ($order->amazon_order_id ?? ''),
+                'sku' => '',
+            ],
+            'temu', 'temu2' => [
+                'status' => (string) ($order->parent_order_status_text ?: $order->order_status_text ?: ''),
+                'order_date' => $order->parent_order_time ?? null,
+                'order_id' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
+                'order_number' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
+                'sku' => (string) ($order->display_sku ?: $order->ext_code ?: $order->product_sku_id ?: ''),
+            ],
+            'tiktok', 'tiktok2' => [
+                'status' => (string) ($order->order_status ?: $order->line_status ?: ''),
+                'order_date' => $order->order_created_at ?? null,
+                'order_id' => (string) ($order->order_id ?? ''),
+                'order_number' => (string) ($order->order_id ?? ''),
+                'sku' => (string) ($order->seller_sku ?: $order->sku_id ?: ''),
+            ],
+            'bestbuy', 'macy' => [
+                'status' => (string) ($order->status ?? ''),
+                'order_date' => $order->order_created_at ?? null,
+                'order_id' => (string) ($order->channel_order_id ?: $order->order_id ?: ''),
+                'order_number' => (string) ($order->channel_order_id ?: $order->order_id ?: ''),
+                'sku' => (string) ($order->sku ?? ''),
+            ],
+            'purchasingpower' => [
+                'status' => (string) ($order->status ?? ''),
+                'order_date' => $order->date_created ?? null,
+                'order_id' => (string) ($order->order_number ?: $order->order_id ?: ''),
+                'order_number' => (string) ($order->order_number ?: $order->order_id ?: ''),
+                'sku' => (string) ($order->offer_sku ?: $order->product_sku ?: ''),
+            ],
+            'wayfair' => [
+                'status' => (string) ($order->status ?? ''),
+                'order_date' => $order->po_date ?? null,
+                'order_id' => (string) ($order->po_number ?? ''),
+                'order_number' => (string) ($order->po_number ?? ''),
+                'sku' => (string) ($order->sku ?? ''),
+            ],
+            'doba' => [
+                'status' => (string) ($order->order_status ?? ''),
+                'order_date' => $order->order_time ?? null,
+                'order_id' => (string) ($order->platform_order_no ?: $order->order_no ?: ''),
+                'order_number' => (string) ($order->platform_order_no ?: $order->order_no ?: ''),
+                'sku' => (string) ($order->sku ?? ''),
+            ],
+            default => [
+                'status' => (string) ($order->status ?? ''),
+                'order_date' => $order->order_date ?? null,
+                'order_id' => (string) ($order->order_number ?: $order->order_id ?: ''),
+                'order_number' => (string) ($order->order_number ?: $order->order_id ?: ''),
+                'sku' => (string) ($order->sku ?? ''),
+            ],
+        };
     }
 
     /**
@@ -390,20 +502,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         $query = ProductMaster::query();
-        $query->where(function (Builder $q) use ($needles, $compacts) {
-            if ($needles !== []) {
-                $q->whereIn('sku', array_keys($needles));
-            }
-            $compactList = array_keys($compacts);
-            if ($compactList !== []) {
-                $placeholders = implode(',', array_fill(0, count($compactList), '?'));
-                $method = $needles === [] ? 'whereRaw' : 'orWhereRaw';
-                $q->{$method}(
-                    "REPLACE(UPPER(REPLACE(sku, CHAR(160), ' ')), ' ', '') IN ($placeholders)",
-                    $compactList
-                );
-            }
-        });
+        $query->whereIn('sku', array_keys($needles));
 
         $matched = [];
         $query->get(['sku', 'Values'])->each(function ($product) use (&$matched) {
@@ -418,7 +517,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             return [];
         }
 
-        $warehouse = $this->warehouseQtyByCompactSku(array_keys($matched));
+        $warehouse = $this->warehouseQtyByCompactSku(array_keys($needles));
         $out = [];
         foreach ($matched as $key => $fromProduct) {
             if ($fromProduct !== null) {
@@ -480,14 +579,10 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             ? 'on_hand'
             : null;
 
-        $placeholders = implode(',', array_fill(0, count($compacts), '?'));
         $query = Inventory::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
-            ->whereRaw(
-                "REPLACE(UPPER(REPLACE(sku, CHAR(160), ' ')), ' ', '') IN ($placeholders)",
-                array_values($compacts)
-            );
+            ->whereIn('sku', array_values($compacts));
         if (Schema::hasColumn('inventories', 'is_archived')) {
             $query->where(function (Builder $q) {
                 $q->where('is_archived', 0)->orWhereNull('is_archived');

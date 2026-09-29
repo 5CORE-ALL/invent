@@ -271,9 +271,17 @@
                     url: url,
                     type: 'GET',
                     data: Object.assign({}, params || {}, dateParams()),
-                    timeout: 0,
+                    timeout: 90000,
                     success: resolve,
-                    error: reject,
+                    error: function (xhr) {
+                        let message = 'Could not load orders. Narrow the dates and try again.';
+                        try {
+                            const body = JSON.parse(xhr.responseText || '{}');
+                            if (body && body.message) message = body.message;
+                        } catch (e) { /* keep default */ }
+                        if (table) table.options.placeholder = message;
+                        reject(xhr);
+                    },
                 });
             });
         },
@@ -299,8 +307,10 @@
         dataLoaded: function () {
             table.setSort([{ column: 'order_date', dir: 'asc' }]);
             applyFilters(table);
-            fillTracking(0);
-            fillTrackingStatus(0);
+            setTimeout(function () {
+                fillTracking(0);
+                fillTrackingStatus(0);
+            }, 400);
         },
         columns: [
             {
