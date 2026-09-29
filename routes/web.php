@@ -3496,8 +3496,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/chat/messages/{message}/react', 'react')->whereNumber('message')->name('chat.messages.react');
         Route::post('/chat/messages/{message}/pin', 'pin')->whereNumber('message')->name('chat.messages.pin');
         Route::post('/chat/messages/{message}/bookmark', 'bookmark')->whereNumber('message')->name('chat.messages.bookmark');
+        Route::post('/chat/messages/{message}/archive', 'archiveMessage')->whereNumber('message')->name('chat.messages.archive');
         Route::post('/chat/messages/{message}/task', 'createTask')->whereNumber('message')->name('chat.messages.task');
         Route::post('/chat/channels/{channel}/read', 'markRead')->whereNumber('channel')->name('chat.channels.read');
+        Route::post('/chat/channels/{channel}/pin', 'pinChannel')->whereNumber('channel')->name('chat.channels.pin');
         Route::post('/chat/channels/{channel}/members', 'members')->whereNumber('channel')->name('chat.channels.members');
         Route::post('/chat/read-all', 'markAllRead')->name('chat.read-all');
         Route::get('/chat/search', 'search')->name('chat.search');

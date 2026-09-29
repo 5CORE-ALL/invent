@@ -1,6 +1,6 @@
 {{--
     Once-a-day DAR reminder when the user clicks Logout.
-    Uses the same L30 DAR % and pink / green / red bands as /tasks/summary.
+    Shown only when 30-day DAR is below 90%.
 --}}
 @auth
 <style>
@@ -90,7 +90,8 @@
 (function () {
     var cfg = {
         userId: @json((int) auth()->id()),
-        today: @json(\App\Support\TaskBusinessTime::today()->toDateString())
+        today: @json(\App\Support\TaskBusinessTime::today()->toDateString()),
+        remind: @json(\App\Support\UserDarNudge::shouldRemind((int) ($topbarDarPct ?? 0)))
     };
     if (!cfg.userId) return;
 
@@ -119,7 +120,7 @@
 
     window.tsDarLogoutNudge = {
         requestLogout: function () {
-            if (alreadyShown()) {
+            if (!cfg.remind || alreadyShown()) {
                 submitLogout();
                 return;
             }

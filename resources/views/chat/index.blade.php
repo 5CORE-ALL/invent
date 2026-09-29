@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Invent Chat', 'sidenav' => 'full', 'skipHighcharts' => true, 'hideInventSidebar' => true])
+@extends('layouts.vertical', ['title' => 'Chat', 'sidenav' => 'full', 'skipHighcharts' => true, 'hideInventSidebar' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -76,6 +76,19 @@
         .slack-item:hover { background: rgba(0,0,0,.18); color: #fff; }
         .slack-item.is-active { background: #1164a3; color: #fff; }
         .slack-item.is-unread { font-weight: 800; color: #fff; }
+        .slack-item.is-pinned .slack-item__name,
+        .slack-item.is-pinned .slack-item__hash,
+        .slack-item.is-pinned .slack-pin-mark { color: #ff1744; font-weight: 800; }
+        .slack-item.is-pinned.is-active .slack-item__name,
+        .slack-item.is-pinned.is-active .slack-item__hash,
+        .slack-item.is-pinned.is-active .slack-pin-mark { color: #ff8a80; }
+        .slack-pin-mark { font-size: 14px; line-height: 1; flex-shrink: 0; }
+        .slack-item__pin {
+            border: 0; background: transparent; color: #ab9bab; padding: 0 2px; font-size: 14px; line-height: 1;
+            opacity: 0; flex-shrink: 0;
+        }
+        .slack-item:hover .slack-item__pin,
+        .slack-item.is-pinned .slack-item__pin { opacity: 1; color: #ff1744; }
         .slack-item__hash { width: 14px; opacity: .7; }
         .slack-item img { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; background: #fff; }
         .slack-item img.slack-bot-logo { border-radius: 50%; }
@@ -151,6 +164,20 @@
         .slack-msg__act button {
             border: 0; background: #fff; padding: 4px 8px; font-size: 12px; font-weight: 700; color: #1d1c1d;
         }
+        #slackAckDeleteModal .modal-dialog { max-width: 380px; }
+        #slackAckDeleteModal .modal-content { border: none; border-radius: 16px; overflow: hidden; }
+        #slackAckDeleteModal .modal-header {
+            background: #2563eb; color: #fff; border: 0; justify-content: center; position: relative;
+        }
+        #slackAckDeleteModal .modal-title { font-weight: 800; width: 100%; text-align: center; }
+        #slackAckDeleteModal .modal-header .btn-close { position: absolute; right: 0.85rem; filter: invert(1); }
+        #slackAckDeleteModal .modal-body { text-align: center; padding: 1.6rem 1.4rem 1.5rem; }
+        #slackAckDeleteModal .ack-delete-msg { font-size: 1.15rem; font-weight: 800; color: #1d1c1d; margin: 0 0 1.1rem; }
+        #slackAckDeleteTrash {
+            width: 56px; height: 56px; border: 0; border-radius: 50%;
+            background: #fee2e2; color: #b91c1c; font-size: 1.4rem; line-height: 1;
+        }
+        #slackAckDeleteTrash:hover { background: #fecaca; color: #991b1b; }
         .slack-composer { padding: 0 16px 16px; }
         .slack-composer__box {
             border: 1px solid #c9c9c9;
@@ -195,6 +222,7 @@
             border: 1px solid #ddd; background: #fff; border-radius: 6px; font-size: 12px; padding: 3px 8px;
         }
         .slack-head__tools .is-danger { color: #e01e5a; border-color: #f3c6d0; }
+        .slack-head__tools .is-pinned { color: #d32f2f; border-color: #ef9a9a; font-weight: 800; }
         .slack-people-search { margin-bottom: 12px; }
         .slack-people-grid {
             display: grid;
@@ -384,6 +412,7 @@
                     </div>
                 </div>
                 <div class="slack-head__tools">
+                    <button type="button" id="slackPinRoomBtn" hidden>Pin</button>
                     <button type="button" id="slackSearchOpen">Search</button>
                     <button type="button" id="slackMarkReadBtn">Mark as read</button>
                     <select id="slackStatusSel" title="Presence">
@@ -480,6 +509,24 @@
             </div>
         </div>
     @endif
+
+    <div class="modal fade" id="slackAckDeleteModal" tabindex="-1" aria-labelledby="slackAckDeleteTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="slackAckDeleteTitle">Acknowledge & Delete</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="slackAckDeleteMessageId">
+                    <p class="ack-delete-msg">I understand</p>
+                    <button type="button" id="slackAckDeleteTrash" title="Delete and hide this message">
+                        <i class="ri-delete-bin-line" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal fade" id="slackForwardModal" tabindex="-1">
         <div class="modal-dialog">
@@ -735,22 +782,52 @@
 
     function renderNav() {
         Object.keys(lists).forEach(function (k) { lists[k].innerHTML = ''; });
-        channels.forEach(function (ch) {
+        const sectionOrder = { bot: 0, channel: 1, group: 2, dm: 3 };
+        const ordered = channels.slice().sort(function (a, b) {
+            const section = (sectionOrder[bucket(a)] || 9) - (sectionOrder[bucket(b)] || 9);
+            if (section !== 0) return section;
+            if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+            return 0;
+        });
+        ordered.forEach(function (ch) {
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'slack-item' + (ch.id === activeId ? ' is-active' : '') + (ch.unread > 0 ? ' is-unread' : '');
+            btn.className = 'slack-item' + (ch.id === activeId ? ' is-active' : '') + (ch.unread > 0 ? ' is-unread' : '') + (ch.pinned ? ' is-pinned' : '');
             const prefix = (ch.type === 'public' || ch.type === 'private') ? '<span class="slack-item__hash">#</span>' : '';
             const avatar = ch.avatar
                 ? '<img class="' + (ch.type === 'bot' ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
                 : (ch.type === 'bot' ? '<i class="ri-robot-2-line"></i>' : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : ''));
             const dot = (ch.type === 'dm') ? '<span class="' + presenceDotClass('slack-dot', ch) + '" title="' + esc(presenceTitle(ch)) + '"></span>' : '';
             const badge = ch.unread > 0 ? '<span class="slack-item__badge">' + ch.unread + '</span>' : '';
-            btn.innerHTML = avatar + prefix + dot + '<span class="slack-item__name">' + esc(ch.name) + '</span>' + badge;
-            btn.addEventListener('click', function () { openChannel(ch.id); });
+            const pinMark = ch.pinned ? '<i class="ri-pushpin-fill slack-pin-mark" title="Pinned"></i>' : '';
+            btn.innerHTML = avatar + prefix + dot + pinMark + '<span class="slack-item__name">' + esc(ch.name) + '</span>' + badge +
+                '<span class="slack-item__pin" title="' + (ch.pinned ? 'Remove pin' : 'Pin') + '"><i class="ri-pushpin-' + (ch.pinned ? 'fill' : 'line') + '"></i></span>';
+            btn.addEventListener('click', function (e) {
+                if (e.target.closest('.slack-item__pin')) return;
+                openChannel(ch.id);
+            });
+            const pinBtn = btn.querySelector('.slack-item__pin');
+            if (pinBtn) pinBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleRoomPin(ch.id);
+            });
             lists[bucket(ch)].appendChild(btn);
         });
         updateTopbar(channels.reduce(function (n, ch) { return n + (ch.unread || 0); }, 0));
         fillForwardTargets();
+    }
+
+    async function toggleRoomPin(id) {
+        const data = await api('/chat/channels/' + id + '/pin', { method: 'POST' });
+        channels.forEach(function (ch) {
+            if (ch.id === id) ch.pinned = !!data.pinned;
+        });
+        renderNav();
+        if (activeId === id) {
+            const ch = channels.find(function (c) { return c.id === id; });
+            if (ch) setHead(ch, ch);
+        }
     }
 
     function updateTopbar(n) {
@@ -846,6 +923,7 @@
             '<button type="button" data-pin="' + m.id + '">' + (m.pinned ? 'Unpin' : 'Pin') + '</button>' +
             '<button type="button" data-save="' + m.id + '">' + (m.bookmarked ? 'Saved' : 'Save') + '</button>' +
             '<button type="button" data-task="' + m.id + '">Create Task</button>' +
+            '<button type="button" data-ad="' + m.id + '">A &amp; D</button>' +
             '</div>'
         );
         wrap.innerHTML = avatar + '<div style="flex:1;min-width:0">' +
@@ -896,6 +974,8 @@
         });
         const task = wrap.querySelector('[data-task]');
         if (task) task.addEventListener('click', function () { openTaskFrom(m); });
+        const ad = wrap.querySelector('[data-ad]');
+        if (ad) ad.addEventListener('click', function () { openAckDelete(m.id); });
         const thread = wrap.querySelector('[data-thread]');
         if (thread) thread.addEventListener('click', function () { openThread(m.id); });
         wrap.addEventListener('click', function (e) {
@@ -1007,7 +1087,16 @@
         if (addBtn) addBtn.hidden = !canAdd;
         if (delBtn) {
             delBtn.hidden = !canDel;
-            delBtn.textContent = (ch && ch.type === 'group') ? 'Delete group' : 'Delete channel';
+            delBtn.textContent = (ch && ch.type === 'group') ? 'Delete group' : ((ch && ch.type === 'dm') ? 'Delete chat' : 'Delete channel');
+        }
+        const pinRoomBtn = document.getElementById('slackPinRoomBtn');
+        if (pinRoomBtn) {
+            const pinned = !!(ch && (src.pinned || ch.pinned));
+            pinRoomBtn.hidden = !ch;
+            pinRoomBtn.textContent = pinned ? 'Remove pin' : 'Pin';
+            pinRoomBtn.classList.toggle('is-pinned', pinned);
+            const roomName = document.getElementById('slackRoomName');
+            if (roomName) roomName.style.color = pinned ? '#d32f2f' : '';
         }
     }
 
@@ -1664,7 +1753,7 @@
     document.getElementById('slackDeleteRoomBtn').addEventListener('click', async function () {
         const ch = channels.find(function (c) { return c.id === activeId; });
         if (!ch) return;
-        const kind = ch.type === 'group' ? 'group' : 'channel';
+        const kind = ch.type === 'group' ? 'group' : (ch.type === 'dm' ? 'chat' : 'channel');
         if (!confirm('Delete this ' + kind + '? It will disappear for everyone.')) return;
         try {
             await api('/chat/channels/' + ch.id + '/delete', {
@@ -1756,6 +1845,31 @@
         });
     }
 
+    function hideArchivedMessage(id) {
+        document.querySelectorAll('#slack-msg-' + id).forEach(function (el) { el.remove(); });
+        const pinBtn = document.querySelector('#slackPins [data-pinjump="' + id + '"]');
+        if (pinBtn) pinBtn.remove();
+        const pins = document.getElementById('slackPins');
+        if (pins && !pins.querySelector('[data-pinjump]')) {
+            pins.classList.remove('is-on');
+            pins.innerHTML = '';
+        }
+        if (feed && !feed.querySelector('.slack-msg') && !feed.querySelector('.slack-empty')) {
+            feed.innerHTML = '<div class="slack-empty">This is the start of the conversation.</div>';
+        }
+    }
+    function openAckDelete(id) {
+        document.getElementById('slackAckDeleteMessageId').value = id;
+        window.bootstrap && window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackAckDeleteModal')).show();
+    }
+    document.getElementById('slackAckDeleteTrash').addEventListener('click', async function () {
+        const mid = document.getElementById('slackAckDeleteMessageId').value;
+        if (!mid) return;
+        await api('/chat/messages/' + mid + '/archive', { method: 'POST' });
+        window.bootstrap && window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackAckDeleteModal')).hide();
+        hideArchivedMessage(mid);
+    });
+
     function openForward(id) {
         document.getElementById('slackForwardMessageId').value = id;
         fillForwardTargets();
@@ -1826,6 +1940,10 @@
         loadingOlder = false;
     });
 
+    document.getElementById('slackPinRoomBtn').addEventListener('click', function () {
+        if (!activeId) return;
+        toggleRoomPin(activeId);
+    });
     document.getElementById('slackMarkReadBtn').addEventListener('click', async function () {
         if (!activeId) return;
         const data = await api('/chat/channels/' + activeId + '/read', { method: 'POST' });

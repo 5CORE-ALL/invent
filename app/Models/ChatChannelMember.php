@@ -14,10 +14,12 @@ class ChatChannelMember extends Model
         'last_read_at',
         'muted',
         'notify_pref',
+        'pinned_at',
     ];
 
     protected $casts = [
         'last_read_at' => 'datetime',
+        'pinned_at' => 'datetime',
         'muted' => 'boolean',
     ];
 

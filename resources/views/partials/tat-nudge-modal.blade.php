@@ -1,6 +1,7 @@
 {{--
     Once-a-day TAT reminder, 1 hour after login.
     GET /tasks/tat-nudge — same L30 TAT and colours as /tasks/summary.
+    Shown only when 30-day TAT is 2 days or higher.
 --}}
 <style>
     #tatNudgeModal .modal-dialog {
@@ -139,11 +140,10 @@
                 <span class="tat-nudge-emoji" aria-hidden="true">🏆</span>
                 <div class="tat-nudge-kicker" id="tatNudgeHello">Performance reminder</div>
                 <div class="tat-nudge-score is-tat-none" id="tatNudgeScore">—</div>
-                <div class="tat-nudge-label" id="tatNudgeLabel">Your TAT · last 30 days</div>
+                <div class="tat-nudge-label" id="tatNudgeLabel">Your 30 Day TAT</div>
                 <p class="tat-nudge-msg" id="tatNudgeMsg"></p>
                 <div class="tat-nudge-actions">
-                    <a class="btn btn-success" id="tatNudgeGo" href="{{ route('tasks.index') }}">Open my tasks</a>
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">I'll finish on time</button>
+                    <button type="button" class="btn btn-success" data-bs-dismiss="modal">I Understand</button>
                 </div>
             </div>
         </div>
@@ -194,7 +194,6 @@
         var msgEl = document.getElementById('tatNudgeMsg');
         var helloEl = document.getElementById('tatNudgeHello');
         var labelEl = document.getElementById('tatNudgeLabel');
-        var goEl = document.getElementById('tatNudgeGo');
         var modalEl = document.getElementById('tatNudgeModal');
         if (!scoreEl || !msgEl || !modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
 
@@ -207,16 +206,15 @@
         }
         if (labelEl) {
             labelEl.textContent = count > 0
-                ? ('Your TAT · ' + count + ' completed task' + (count === 1 ? '' : 's') + ' · last 30 days')
-                : 'Your TAT · last 30 days';
+                ? ('Your 30 Day TAT · ' + count + ' completed task' + (count === 1 ? '' : 's'))
+                : 'Your 30 Day TAT';
         }
-        if (goEl && data.tasks_url) goEl.setAttribute('href', data.tasks_url);
         markShown(data.business_today);
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
     }
 
     function schedule(data) {
-        if (!data || data.success === false) return;
+        if (!data || data.success === false || data.show !== true) return;
         if (alreadyShown(data.business_today)) return;
         var wait = parseInt(data.wait_ms, 10);
         if (!(wait >= 0)) wait = 0;

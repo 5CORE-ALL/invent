@@ -430,6 +430,9 @@ class InventChatBot
 
         $metrics = DarL30Metrics::forUserId((int) $user->id);
         $pct = (int) ($metrics['dar_l30_pct'] ?? 0);
+        if (! UserDarNudge::shouldRemind($pct)) {
+            return null;
+        }
         $count = (int) ($metrics['dar_l30_count'] ?? 0);
         $goal = (int) ($metrics['dar_l30_target'] ?? DarL30Metrics::TARGET);
         $msg = UserDarNudge::logoutMessages()[array_rand(UserDarNudge::logoutMessages())];
@@ -441,7 +444,7 @@ class InventChatBot
 
     public static function dailyOverdueBody(User $user): ?string
     {
-        $count = UserOverdueNudge::countForUser($user);
+        $count = UserOverdueNudge::countForNudge($user);
         if ($count < 1) {
             return null;
         }

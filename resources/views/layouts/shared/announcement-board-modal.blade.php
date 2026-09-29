@@ -329,7 +329,6 @@
                         + '<span class="ann-board-card__poster">' + avatar + '<span>' + escapeHtml(row.posted_by || '') + '</span></span>'
                         + '</div>'
                         + '<div class="ann-board-card__body">'
-                        + avatar
                         + '<div class="ann-board-card__body-main">'
                         + text
                         + (imgs ? '<div class="ann-board-card__imgs' + (imageList.length > 1 ? ' has-many' : '') + '">' + imgs + '</div>' : '')

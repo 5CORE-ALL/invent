@@ -97,6 +97,7 @@ class ChatController extends Controller
         $query = ChatMessage::query()
             ->with($this->messageRelations())
             ->where('channel_id', $row->id);
+        ChatWorkspace::excludeArchived($query, $user);
 
         if ($parentId > 0 && Schema::hasColumn('chat_messages', 'parent_id')) {
             $query->where(function ($q) use ($parentId) {
@@ -133,8 +134,9 @@ class ChatController extends Controller
                 ->where('channel_id', $row->id)
                 ->whereNotNull('pinned_at')
                 ->orderByDesc('pinned_at')
-                ->limit(20)
-                ->get();
+                ->limit(20);
+            ChatWorkspace::excludeArchived($pins, $user);
+            $pins = $pins->get();
             $pinned = $this->serializeMessages($row, $pins, (int) $user->id, false);
         }
 
@@ -174,8 +176,9 @@ class ChatController extends Controller
                     ->where('channel_id', $row->id)
                     ->where('id', '>', $after)
                     ->orderBy('id')
-                    ->limit(80)
-                    ->get();
+                    ->limit(80);
+                ChatWorkspace::excludeArchived($messages, $user);
+                $messages = $messages->get();
                 $payload = $this->serializeMessages($row, $messages, (int) $user->id, false);
                 $incomingMax = (int) ($messages->where('user_id', '!=', $user->id)->max('id') ?: 0);
                 if ($incomingMax > 0) {
@@ -467,23 +470,22 @@ class ChatController extends Controller
     {
         $user = Auth::user();
         abort_unless($user, 403);
-        $row = ChatWorkspace::canManageChannels($user)
-            ? ChatChannel::query()->findOrFail($channel)
-            : ChatWorkspace::memberOrFail($user, $channel);
+        $row = ChatChannel::query()->findOrFail($channel);
         abort_unless(ChatWorkspace::canDeleteChannel($user, $row), 403, 'You cannot delete this conversation.');
 
         $row->is_archived = true;
         $row->save();
 
+        $kind = $row->isGroup() ? 'group' : ($row->isDm() ? 'chat' : 'channel');
         ChatMessage::query()->create([
             'channel_id' => $row->id,
             'user_id' => null,
             'is_bot' => true,
             'bot_name' => ChatWorkspace::BOT_NAME,
-            'body' => $user->name.' deleted this '.($row->isGroup() ? 'group' : 'channel').'.',
+            'body' => $user->name.' deleted this '.$kind.'.',
             'command' => 'deleted',
         ]);
-        ChatAudit::record($user, $row->isGroup() ? 'group.deleted' : 'channel.deleted', 'chat_channel', (int) $row->id, (int) $row->id, [
+        ChatAudit::record($user, $row->isGroup() ? 'group.deleted' : ($row->isDm() ? 'dm.deleted' : 'channel.deleted'), 'chat_channel', (int) $row->id, (int) $row->id, [
             'name' => $row->name,
         ]);
         ChatWorkspace::forgetUnreadCache((int) $user->id);
@@ -650,6 +652,23 @@ class ChatController extends Controller
         return response()->json(['ok' => true, 'pinned' => (bool) $row->pinned_at]);
     }
 
+    public function pinChannel(int $channel): JsonResponse
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+        abort_unless(Schema::hasColumn('chat_channel_members', 'pinned_at'), 422, 'Room pins are not ready yet.');
+        $row = ChatWorkspace::memberOrFail($user, $channel);
+        $member = ChatChannelMember::query()
+            ->where('channel_id', $row->id)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+        $member->pinned_at = $member->pinned_at ? null : now();
+        $member->save();
+        ChatWorkspace::forgetUnreadCache((int) $user->id);
+
+        return response()->json(['ok' => true, 'pinned' => (bool) $member->pinned_at, 'id' => (int) $row->id]);
+    }
+
     public function bookmark(int $message): JsonResponse
     {
         $user = Auth::user();
@@ -668,6 +687,19 @@ class ChatController extends Controller
         }
 
         return response()->json(['ok' => true, 'bookmarked' => $saved]);
+    }
+
+    public function archiveMessage(int $message): JsonResponse
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+        abort_unless(Schema::hasTable('chat_message_archives'), 422, 'Message archives are not ready yet.');
+        $row = ChatMessage::query()->findOrFail($message);
+        $channel = ChatWorkspace::memberOrFail($user, (int) $row->channel_id);
+        ChatWorkspace::archiveMessageFor($user, $row);
+        ChatAudit::record($user, 'message.acknowledged_deleted', 'chat_message', (int) $row->id, (int) $channel->id);
+
+        return response()->json(['ok' => true, 'id' => (int) $row->id, 'archived' => true]);
     }
 
     public function markRead(int $channel): JsonResponse
@@ -993,6 +1025,7 @@ class ChatController extends Controller
             'notify_pref' => $member->notify_pref ?? 'all',
             'can_manage_members' => ChatWorkspace::canManageMembers($user, $channel),
             'can_delete' => ChatWorkspace::canDeleteChannel($user, $channel),
+            'pinned' => (bool) ($member && Schema::hasColumn('chat_channel_members', 'pinned_at') && $member->pinned_at),
         ];
     }
 

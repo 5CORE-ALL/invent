@@ -15,6 +15,8 @@ final class UserTatNudge
 
     public const WINDOW_DAYS = 30;
 
+    public const NUDGE_MIN_DAYS = 2.0;
+
     /**
      * @return list<string>
      */
@@ -82,7 +84,7 @@ final class UserTatNudge
             return $empty;
         }
 
-        $cacheKey = 'tat_nudge_'.$user->id.'_'.TaskBusinessTime::today()->toDateString();
+        $cacheKey = 'tat_nudge_v2_'.$user->id.'_'.TaskBusinessTime::today()->toDateString();
 
         return Cache::remember($cacheKey, now()->addMinutes(2), function () use ($email, $empty) {
             $cutoff = Carbon::now()->subDays(self::WINDOW_DAYS);
@@ -91,21 +93,19 @@ final class UserTatNudge
                 ->whereNotNull('start_date')
                 ->whereNotNull('completion_date')
                 ->where('completion_date', '>=', $cutoff)
-                ->where(function ($q) use ($email) {
-                    $q->whereRaw('LOWER(TRIM(assign_to)) = ?', [$email])
-                        ->orWhereRaw('LOWER(assign_to) LIKE ?', [$email.',%'])
-                        ->orWhereRaw('LOWER(assign_to) LIKE ?', ['%,'.$email])
-                        ->orWhereRaw('LOWER(assign_to) LIKE ?', ['%,'.$email.',%']);
-                })
-                ->get(['start_date', 'completion_date']);
+                ->whereRaw('LOWER(assign_to) LIKE ?', ['%'.$email.'%'])
+                ->get(['assign_to', 'start_date', 'completion_date']);
 
             $sum = 0.0;
             $count = 0;
             foreach ($tasks as $task) {
+                if (! self::assignToContainsEmail($task->assign_to, $email)) {
+                    continue;
+                }
                 try {
                     $start = Carbon::parse($task->start_date);
                     $end = Carbon::parse($task->completion_date);
-                    if ($end->lessThan($start)) {
+                    if ($end->lessThan($cutoff) || $end->lessThan($start)) {
                         continue;
                     }
                     $days = ($end->getTimestamp() - $start->getTimestamp()) / 86400.0;
@@ -123,7 +123,7 @@ final class UserTatNudge
                 return $empty;
             }
 
-            $avg = $sum / $count;
+            $avg = round($sum / $count, 1);
 
             return [
                 'tat_l30_days' => $avg,
@@ -132,6 +132,34 @@ final class UserTatNudge
                 'tat_band' => self::band($avg),
             ];
         });
+    }
+
+    /**
+     * Popup is only for people whose 30-day TAT is 2 days or slower.
+     */
+    public static function shouldShow(?array $metrics): bool
+    {
+        $days = $metrics['tat_l30_days'] ?? null;
+
+        return $days !== null && (float) $days >= self::NUDGE_MIN_DAYS;
+    }
+
+    /**
+     * Same assignee split as Task Summary: comma-separated emails, trimmed.
+     */
+    public static function assignToContainsEmail(?string $assignTo, string $email): bool
+    {
+        $email = strtolower(trim($email));
+        if ($email === '' || $assignTo === null) {
+            return false;
+        }
+        foreach (explode(',', $assignTo) as $part) {
+            if (strtolower(trim($part)) === $email) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

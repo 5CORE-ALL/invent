@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\ChatChannel;
 use App\Models\ChatChannelMember;
 use App\Models\ChatMessage;
+use App\Models\ChatMessageArchive;
 use App\Models\ChatNotificationPref;
 use App\Models\User;
 use Illuminate\Support\Collection;
@@ -494,6 +495,17 @@ class ChatWorkspace
             ->where('user_id', $user->id)
             ->whereIn('channel_id', $channels->pluck('id'))
             ->pluck('last_read_message_id', 'channel_id');
+        $pinnedIds = [];
+        if (Schema::hasColumn('chat_channel_members', 'pinned_at')) {
+            $pinnedIds = ChatChannelMember::query()
+                ->where('user_id', $user->id)
+                ->whereIn('channel_id', $channels->pluck('id'))
+                ->whereNotNull('pinned_at')
+                ->pluck('channel_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+        $pinnedLookup = array_flip($pinnedIds);
 
         $memberCounts = ChatChannelMember::query()
             ->selectRaw('channel_id, COUNT(*) as c')
@@ -555,6 +567,7 @@ class ChatWorkspace
                 'last_seen_label' => $peerPresence['last_seen_label'] ?? null,
                 'can_manage_members' => self::canManageMembers($user, $channel),
                 'can_delete' => self::canDeleteChannel($user, $channel),
+                'pinned' => isset($pinnedLookup[(int) $channel->id]),
             ];
         }
 
@@ -564,6 +577,9 @@ class ChatWorkspace
             $rb = $rank[$b['type']] ?? 9;
             if ($ra !== $rb) {
                 return $ra <=> $rb;
+            }
+            if (($a['pinned'] ?? false) !== ($b['pinned'] ?? false)) {
+                return ($b['pinned'] ?? false) <=> ($a['pinned'] ?? false);
             }
             if (($b['unread'] > 0) !== ($a['unread'] > 0)) {
                 return ($b['unread'] > 0) <=> ($a['unread'] > 0);
@@ -597,7 +613,9 @@ class ChatWorkspace
             ->where(function ($q) use ($user) {
                 $q->whereNull('chat_messages.user_id')
                     ->orWhere('chat_messages.user_id', '!=', $user->id);
-            })
+            });
+        self::excludeArchived($rows, $user);
+        $rows = $rows
             ->groupBy('chat_messages.channel_id')
             ->pluck('unread', 'channel_id');
 
@@ -897,6 +915,33 @@ class ChatWorkspace
         return self::canEditMessage($user, $message);
     }
 
+    public static function excludeArchived($query, User $user): void
+    {
+        if (! Schema::hasTable('chat_message_archives')) {
+            return;
+        }
+
+        $query->whereNotExists(function ($q) use ($user) {
+            $q->selectRaw('1')
+                ->from('chat_message_archives as cma')
+                ->whereColumn('cma.message_id', 'chat_messages.id')
+                ->where('cma.user_id', $user->id);
+        });
+    }
+
+    public static function archiveMessageFor(User $user, ChatMessage $message): void
+    {
+        if (! Schema::hasTable('chat_message_archives')) {
+            return;
+        }
+
+        ChatMessageArchive::query()->firstOrCreate([
+            'user_id' => $user->id,
+            'message_id' => $message->id,
+        ]);
+        self::forgetUnreadCache((int) $user->id);
+    }
+
     public static function canPin(?User $user): bool
     {
         return (bool) $user;
@@ -928,12 +973,23 @@ class ChatWorkspace
             ->exists();
     }
 
-    public static function canDeleteChannel(?User $user, ChatChannel $channel): bool
+    public static function canDeleteAnyConversation(?User $user): bool
     {
-        if (! $user || $channel->isBotInbox() || $channel->isDm() || $channel->is_archived) {
+        if (! $user) {
             return false;
         }
-        if (self::canManageChannels($user)) {
+
+        $email = strtolower(trim((string) $user->email));
+
+        return in_array($email, ['president@5core.com', 'software@5core.com'], true);
+    }
+
+    public static function canDeleteChannel(?User $user, ChatChannel $channel): bool
+    {
+        if (! $user || $channel->isBotInbox() || $channel->is_archived) {
+            return false;
+        }
+        if (self::canDeleteAnyConversation($user)) {
             return true;
         }
 
@@ -1092,6 +1148,7 @@ class ChatWorkspace
             ->whereIn('channel_id', $memberIds)
             ->orderByDesc('id')
             ->limit(50);
+        self::excludeArchived($q, $user);
 
         $term = trim((string) ($filters['q'] ?? ''));
         if ($term !== '') {

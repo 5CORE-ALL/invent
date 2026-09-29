@@ -4,6 +4,13 @@ namespace App\Support;
 
 final class UserDarNudge
 {
+    public const REMINDER_BELOW_PCT = 90;
+
+    public static function shouldRemind(int $pct): bool
+    {
+        return $pct < self::REMINDER_BELOW_PCT;
+    }
+
     /**
      * @return list<string>
      */

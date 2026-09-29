@@ -9833,18 +9833,20 @@ class TaskController extends Controller
         }
 
         $metrics = \App\Support\UserTatNudge::forUser($viewer);
+        $show = \App\Support\UserTatNudge::shouldShow($metrics);
 
         return response()->json([
             'success' => true,
+            'show' => $show,
             'user_id' => (int) $viewer->id,
             'user_name' => (string) ($viewer->name ?? ''),
             'tat_days' => $metrics['tat_l30_days'],
             'tat_count' => $metrics['tat_l30_count'],
             'tat_display' => $metrics['tat_display'],
             'tat_band' => $metrics['tat_band'],
-            'wait_ms' => \App\Support\UserTatNudge::waitMs(),
+            'wait_ms' => $show ? \App\Support\UserTatNudge::waitMs() : 0,
             'business_today' => TaskBusinessTime::today()->toDateString(),
-            'messages' => \App\Support\UserTatNudge::messages(),
+            'messages' => $show ? \App\Support\UserTatNudge::messages() : [],
             'tasks_url' => route('tasks.index'),
         ]);
     }
@@ -9857,13 +9859,17 @@ class TaskController extends Controller
             return response()->json(['success' => false, 'message' => 'Not signed in.'], 401);
         }
 
+        $overdue = \App\Support\UserOverdueNudge::countForNudge($viewer);
+        $show = $overdue > 0;
+
         return response()->json([
             'success' => true,
+            'show' => $show,
             'user_id' => (int) $viewer->id,
             'user_name' => (string) ($viewer->name ?? ''),
-            'overdue' => \App\Support\UserOverdueNudge::countForUser($viewer),
+            'overdue' => $overdue,
             'business_today' => TaskBusinessTime::today()->toDateString(),
-            'messages' => \App\Support\UserOverdueNudge::messages(),
+            'messages' => $show ? \App\Support\UserOverdueNudge::messages() : [],
             'tasks_url' => route('tasks.index'),
         ]);
     }

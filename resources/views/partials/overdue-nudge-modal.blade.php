@@ -1,6 +1,6 @@
 {{--
     Once-a-day overdue reminder after login.
-    GET /tasks/overdue-nudge
+    GET /tasks/overdue-nudge — only when a task has been overdue more than 3 days.
 --}}
 <style>
     #overdueNudgeModal .modal-dialog {
@@ -137,7 +137,7 @@
         credentials: 'same-origin',
         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
     }).then(function (r) { return r.json(); }).then(function (data) {
-        if (!data || data.success === false) return;
+        if (!data || data.success === false || data.show !== true) return;
         if (alreadyShown(data.business_today)) return;
         showModal(data);
     }).catch(function () {});

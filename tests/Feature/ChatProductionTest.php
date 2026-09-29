@@ -259,6 +259,33 @@ class ChatProductionTest extends TestCase
         $this->actingAs($outsider)->get('/chat/files/'.$id)->assertStatus(403);
     }
 
+    public function test_acknowledge_and_delete_hides_message_for_that_user_only(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('chat_message_archives')) {
+            $this->markTestSkipped('Chat message archives are not ready.');
+        }
+
+        [$a, $b, $channel] = $this->dmPair();
+        $msg = $this->actingAs($a)->postJson('/chat/channels/'.$channel->id.'/messages', [
+            'body' => 'please acknowledge this',
+            'client_id' => 'cid-ad-1',
+        ]);
+        $msg->assertOk();
+        $mid = (int) $msg->json('messages.0.id');
+
+        $this->actingAs($b)->postJson('/chat/messages/'.$mid.'/archive')
+            ->assertOk()
+            ->assertJsonPath('archived', true);
+
+        $forB = $this->actingAs($b)->getJson('/chat/channels/'.$channel->id.'/messages');
+        $forB->assertOk();
+        $this->assertFalse(collect($forB->json('messages'))->contains(fn ($row) => (int) $row['id'] === $mid));
+
+        $forA = $this->actingAs($a)->getJson('/chat/channels/'.$channel->id.'/messages');
+        $forA->assertOk();
+        $this->assertTrue(collect($forA->json('messages'))->contains(fn ($row) => (int) $row['id'] === $mid));
+    }
+
     public function test_message_to_task_stores_reference(): void
     {
         [$a, $b, $channel] = $this->dmPair();
