@@ -29,6 +29,7 @@ use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\TiktokSkuDailyData;
 use App\Services\ChannelPromoPricingService;
+use App\Services\EbayRuleSpriceApplyService;
 use App\Services\Ebay1CouponService;
 use App\Services\Ebay1PromotionService;
 use App\Services\Support\ChannelPushCpnJobStore;
@@ -236,6 +237,7 @@ class ChannelPromoPricingController extends Controller
                 'price' => $item['price'] ?? $item['sprice'] ?? $item['sale'] ?? null,
             ];
         }
+        $tasks = $this->applyEbayListingSprice($channel, $tasks);
 
         $store = ChannelPushSpriceJobStore::for($channel);
         $replacePending = $request->boolean('replace_pending')
@@ -294,6 +296,47 @@ class ChannelPromoPricingController extends Controller
                 ? ('Added to running S PRC queue ('.$api['total'].' total). Page close is OK.')
                 : ('S PRC push started in background ('.$api['total'].' SKU(s)). Page close is OK.'),
         ]));
+    }
+
+    /**
+     * eBay catalog rows can send the Dil 0% price when a variation's own OV L30 is 0.
+     * The cell uses listing Dil (every color on the item). Push that price.
+     *
+     * @param  list<array<string, mixed>>  $tasks
+     * @return list<array<string, mixed>>
+     */
+    private function applyEbayListingSprice(string $channel, array $tasks): array
+    {
+        $ruleChannel = match ($channel) {
+            'ebay', 'ebay1' => 'ebay1',
+            'ebay2', 'ebay2op' => 'ebay2',
+            'ebay3' => 'ebay3',
+            default => null,
+        };
+        if ($ruleChannel === null || $tasks === []) {
+            return $tasks;
+        }
+
+        $skus = [];
+        foreach ($tasks as $task) {
+            $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        if ($skus === []) {
+            return $tasks;
+        }
+
+        $prices = EbayRuleSpriceApplyService::for($ruleChannel)->pricesForSkus($skus);
+        foreach ($tasks as $i => $task) {
+            $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
+            if ($sku !== '' && isset($prices[$sku]) && $prices[$sku] > 0) {
+                $tasks[$i]['price'] = $prices[$sku];
+            }
+        }
+
+        return $tasks;
     }
 
     /**

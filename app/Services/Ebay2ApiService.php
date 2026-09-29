@@ -231,12 +231,29 @@ class Ebay2ApiService
     }
 
 
-    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null)
+    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null, bool $inventoryPriceTried = false)
     {
         // Multi-variation listings ignore item-level StartPrice (ErrorCode 21916618).
-        // When a SKU is provided, revise that variation only — same as EbayThreeApiService.
+        // ReviseInventoryStatus sets that variation's price by SKU. ReviseFixedPriceItem
+        // re-checks the whole listing and eBay answers 21916618 without changing the price.
         $skuTrim = trim((string) $sku);
         $isVariationListing = $skuTrim !== '';
+
+        if ($isVariationListing && ! $inventoryPriceTried) {
+            $inventory = $this->reviseInventoryPriceOnly((string) $itemId, (float) $price, $skuTrim);
+            if (! empty($inventory['success'])) {
+                return $inventory;
+            }
+            $invErrors = is_array($inventory['errors'] ?? null) ? $inventory['errors'] : [];
+            $invMessage = (string) ($inventory['message'] ?? '');
+            if ($this->listingLooksEnded($invMessage) || $this->ebayErrorIsUsageLimit($invErrors, $invMessage)) {
+                return $inventory;
+            }
+            if ($this->ebayErrorLooksLikeNonVariationListing($invErrors, $invMessage)) {
+                return $this->reviseFixedPriceItem($itemId, $price, $quantity, null, $variationSpecifics, $variationSpecificsSet, true);
+            }
+            $inventoryPriceTried = true;
+        }
 
         $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $credentials = $xml->addChild('RequesterCredentials');
@@ -359,6 +376,13 @@ class Ebay2ApiService
                     $warnCode === '21916618'
                     || stripos($warnMsg, 'Item level start price will be ignored') !== false
                 ) {
+                    if ($isVariationListing && ! $inventoryPriceTried) {
+                        $inventory = $this->reviseInventoryPriceOnly((string) $itemId, (float) $price, $skuTrim);
+                        if (! empty($inventory['success'])) {
+                            return $inventory;
+                        }
+                    }
+
                     return [
                         'success' => false,
                         'message' => 'eBay2 ignored the price update because this is a multi-variation listing. Retry with the variation SKU.',
@@ -409,6 +433,126 @@ class Ebay2ApiService
             'errors' => $errors,
             'data' => $responseArray,
         ];
+    }
+
+    /**
+     * Price-only variation update. Omits quantity so stock is left alone.
+     * ReviseFixedPriceItem on these listings returns 21916618 and does not change the price.
+     *
+     * @return array{success: bool, message: string, errors?: list<mixed>, data?: array<string, mixed>, raw?: string}
+     */
+    private function reviseInventoryPriceOnly(string $itemId, float $price, string $sku): array
+    {
+        $itemId = trim($itemId);
+        $sku = trim($sku);
+        if ($itemId === '' || $sku === '' || ! ($price > 0)) {
+            return ['success' => false, 'message' => 'ItemID, SKU, and price are required.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $status = $xml->addChild('InventoryStatus');
+            $status->addChild('ItemID', $itemId);
+            $status->addChild('SKU', $sku);
+            $status->addChild('StartPrice', number_format($price, 2, '.', ''));
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'ReviseInventoryStatus',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = $this->tradingHttp(60)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            $errors = $data['Errors'] ?? [];
+            if ($errors !== [] && ! isset($errors[0]) && is_array($errors)) {
+                $errors = [$errors];
+            }
+            if (! is_array($errors)) {
+                $errors = [$errors];
+            }
+            $message = $this->flattenEbayErrors($data);
+
+            if ($ack === 'Success' || $ack === 'Warning') {
+                Log::info('eBay2 price updated via ReviseInventoryStatus', [
+                    'itemId' => $itemId,
+                    'sku' => $sku,
+                    'price' => $price,
+                    'ack' => $ack,
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Price updated.',
+                    'data' => $data,
+                ];
+            }
+
+            if ($message === '') {
+                $message = 'ReviseInventoryStatus failed.';
+            }
+            Log::warning('eBay2 price-only ReviseInventoryStatus failed', [
+                'itemId' => $itemId,
+                'sku' => $sku,
+                'price' => $price,
+                'ack' => $ack,
+                'message' => $message,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $message,
+                'errors' => $errors,
+                'data' => $data,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('eBay2 price-only ReviseInventoryStatus exception', [
+                'itemId' => $itemId,
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  list<mixed>  $errors
+     */
+    private function ebayErrorIsUsageLimit(array $errors, string $message): bool
+    {
+        $blob = strtolower($message);
+        foreach ($errors as $err) {
+            if (! is_array($err)) {
+                continue;
+            }
+            $blob .= ' '.\App\Support\EbayApiText::string($err['ErrorCode'] ?? '');
+            $blob .= ' '.strtolower(\App\Support\EbayApiText::string($err['LongMessage'] ?? ''));
+        }
+
+        return str_contains($blob, '518')
+            || str_contains($blob, 'usage limit');
     }
 
     /**

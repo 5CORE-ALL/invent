@@ -16,6 +16,7 @@ use App\Models\ShopifySku;
 use App\Support\AmazonDilGroiRule;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\PushedListingPrice;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -179,13 +180,57 @@ class EbayRuleSpriceApplyService
      *
      * @return list<array{sku: string, price: float}>
      */
+    /**
+     * S PRC the tabulator cell shows, keyed by SKU.
+     * Dil is the whole variation listing (every color on the item), so a single
+     * SKU with OV L30 = 0 is not priced on the Dil 0% slab.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, float>
+     */
+    public function pricesForSkus(array $skus): array
+    {
+        $wanted = $this->normalizeSkuList($skus);
+        if ($wanted === []) {
+            return [];
+        }
+
+        $store = $this->loadDilGroiStore();
+        $margin = $this->takeHome();
+        $adsPct = $this->channelAdsPercent();
+        $wantedSet = array_flip($wanted);
+        $out = [];
+        foreach ($this->hydrateAll($this->variationFamilySkus($wanted)) as $row) {
+            $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($sku === '' || ! isset($wantedSet[$sku])) {
+                continue;
+            }
+            $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin, $adsPct);
+            if ($computed === null) {
+                continue;
+            }
+            $next = round((float) $computed['sprice'], 2);
+            if ($next > 0) {
+                $out[$sku] = $next;
+            }
+        }
+
+        return $out;
+    }
+
     public function collectPushTasks(?array $onlySkus = null): array
     {
         $store = $this->loadDilGroiStore();
         $margin = $this->takeHome();
         $adsPct = $this->channelAdsPercent();
+        $wanted = $onlySkus !== null ? array_flip($this->normalizeSkuList($onlySkus)) : null;
+        $scope = $wanted !== null ? $this->variationFamilySkus(array_keys($wanted)) : null;
         $out = [];
-        foreach ($this->hydrateAll($onlySkus) as $row) {
+        foreach ($this->hydrateAll($scope) as $row) {
+            $skuKey = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($wanted !== null && ! isset($wanted[$skuKey])) {
+                continue;
+            }
             $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin, $adsPct);
             if ($computed === null) {
                 continue;
@@ -282,6 +327,39 @@ class EbayRuleSpriceApplyService
     public function capToLmp(float $sprice, float $lmp, float $lp, float $ship, float $margin): float
     {
         return AmazonDilGroiRule::capSpriceToLmp($sprice, $lmp, $lp, $ship, $margin);
+    }
+
+    /**
+     * Requested SKUs plus every other variation on the same eBay item.
+     * Listing Dil is Σ OV L30 ÷ Σ INV. A partial list drops the colors that
+     * have the sales and prices the rest on the Dil 0% slab.
+     *
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    private function variationFamilySkus(array $skus): array
+    {
+        $metricClass = $this->channelConfig()['metric'];
+        $itemIds = [];
+        foreach ($metricClass::query()->whereIn(DB::raw('UPPER(TRIM(sku))'), $skus)->get(['item_id']) as $row) {
+            $itemId = trim((string) ($row->item_id ?? ''));
+            if ($itemId !== '' && $itemId !== '0') {
+                $itemIds[$itemId] = true;
+            }
+        }
+        if ($itemIds === []) {
+            return $skus;
+        }
+
+        $family = $skus;
+        foreach ($metricClass::query()->whereIn('item_id', array_keys($itemIds))->get(['sku']) as $row) {
+            $sku = strtoupper(trim((string) ($row->sku ?? '')));
+            if ($sku !== '' && ! str_contains($sku, 'PARENT')) {
+                $family[] = $sku;
+            }
+        }
+
+        return array_values(array_unique($family));
     }
 
     /**

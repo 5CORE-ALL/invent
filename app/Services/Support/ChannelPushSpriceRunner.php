@@ -17,6 +17,7 @@ use App\Http\Controllers\MarketPlace\Temu3Controller;
 use App\Services\AliExpressApiService;
 use App\Services\SheinApiService;
 use App\Services\ChannelLivePriceSync;
+use App\Services\EbayRuleSpriceApplyService;
 use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
@@ -32,6 +33,9 @@ use Illuminate\Support\Facades\Log;
 class ChannelPushSpriceRunner
 {
     private readonly string $channel;
+
+    /** @var array<string, float|null> */
+    private array $ebayListingSpriceCache = [];
 
     public function __construct(string $channel = 'ebay1')
     {
@@ -207,7 +211,7 @@ class ChannelPushSpriceRunner
                 return 0;
             }
             $sku = (string) ($task['sku'] ?? '');
-            $price = (float) ($task['price'] ?? 0);
+            $price = $this->ebayListingSprice($sku, (float) ($task['price'] ?? 0));
 
             $store->update(function (array $state) use ($index, $sku) {
                 $state['current_index'] = $index;
@@ -464,6 +468,41 @@ class ChannelPushSpriceRunner
         }
 
         return null;
+    }
+
+    /**
+     * Push the listing Dil S PRC (same $ as the S PRC cell), not a Dil 0%
+     * price computed from one color that has no sales of its own.
+     */
+    private function ebayListingSprice(string $sku, float $fallback): float
+    {
+        $ruleChannel = match ($this->channel) {
+            'ebay', 'ebay1' => 'ebay1',
+            'ebay2', 'ebay2op' => 'ebay2',
+            'ebay3' => 'ebay3',
+            default => null,
+        };
+        if ($ruleChannel === null) {
+            return $fallback;
+        }
+
+        $key = strtoupper(trim($sku));
+        if ($key === '') {
+            return $fallback;
+        }
+        if (! array_key_exists($key, $this->ebayListingSpriceCache)) {
+            $map = EbayRuleSpriceApplyService::for($ruleChannel)->pricesForSkus([$sku]);
+            foreach ($map as $familySku => $price) {
+                $this->ebayListingSpriceCache[$familySku] = $price;
+            }
+            if (! array_key_exists($key, $this->ebayListingSpriceCache)) {
+                $this->ebayListingSpriceCache[$key] = null;
+            }
+        }
+
+        $price = $this->ebayListingSpriceCache[$key];
+
+        return (is_numeric($price) && (float) $price > 0) ? round((float) $price, 2) : $fallback;
     }
 
     private function liveListingPriceIfMatches(string $sku, float $price): ?float
