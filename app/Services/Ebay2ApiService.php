@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Ebay2Metric;
 use App\Models\ProductStockMapping;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
+use App\Services\MarketplaceManager\Ebay2InventorySyncService;
+use App\Services\MarketplaceManager\EbayLiveListingMapper;
 use App\Services\Support\Concerns\ResolvesEbayListingItemId;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\EbaySellInventoryListingResolver;
@@ -231,12 +233,40 @@ class Ebay2ApiService
     }
 
 
-    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null)
+    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null, bool $variationResolved = false)
     {
         // Multi-variation listings ignore item-level StartPrice (ErrorCode 21916618).
-        // When a SKU is provided, revise that variation only — same as EbayThreeApiService.
+        // SKU alone is not enough: eBay only applies the price when VariationSpecifics match the live listing.
         $skuTrim = trim((string) $sku);
         $isVariationListing = $skuTrim !== '';
+
+        if ($skuTrim !== '' && ! $variationResolved && empty($variationSpecifics)) {
+            $resolved = $this->resolveEbay2VariationForPrice((string) $itemId, $skuTrim);
+            if ($resolved['action'] === 'variation') {
+                return $this->reviseFixedPriceItem(
+                    $itemId,
+                    $price,
+                    $quantity,
+                    $resolved['sku'],
+                    $resolved['specifics'],
+                    $variationSpecificsSet,
+                    true
+                );
+            }
+            if ($resolved['action'] === 'item') {
+                $skuTrim = '';
+                $isVariationListing = false;
+            } elseif ($resolved['action'] === 'missing') {
+                return [
+                    'success' => false,
+                    'message' => 'Variation SKU '.$skuTrim.' was not found on eBay item '.$itemId.'.',
+                    'errors' => [[
+                        'code' => 'VariationSkuMissing',
+                        'message' => 'Variation SKU '.$skuTrim.' was not found on eBay item '.$itemId.'. Price was not changed.',
+                    ]],
+                ];
+            }
+        }
 
         $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $credentials = $xml->addChild('RequesterCredentials');
@@ -435,6 +465,53 @@ class Ebay2ApiService
             || str_contains($blob, '21916664')
             || str_contains($blob, '21916750')
             || str_contains($blob, '21919188');
+    }
+
+    /**
+     * Match a price push to the live eBay listing.
+     * Variation listings need the listing SKU plus VariationSpecifics or eBay returns 21916618 and leaves the price unchanged.
+     *
+     * @return array{action: string, sku?: string, specifics?: array<string, string>}
+     */
+    private function resolveEbay2VariationForPrice(string $itemId, string $sku): array
+    {
+        $raw = $this->getItem($itemId);
+        $item = is_array($raw) && is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
+        if ($item === []) {
+            return ['action' => 'unknown'];
+        }
+        if (! EbayLiveListingMapper::listingHasVariations($item)) {
+            return ['action' => 'item'];
+        }
+
+        $vars = $item['Variations']['Variation'] ?? [];
+        if (isset($vars['SKU']) || isset($vars['VariationSpecifics']) || isset($vars['StartPrice'])) {
+            $vars = [$vars];
+        }
+
+        foreach (Ebay2InventorySyncService::skuAliasesForPush($sku) as $alias) {
+            foreach ($vars as $variation) {
+                if (! is_array($variation)) {
+                    continue;
+                }
+                $vSku = trim((string) ($variation['SKU'] ?? ''));
+                if ($vSku === '' || ! EbayLiveListingMapper::skuEquals($vSku, $alias)) {
+                    continue;
+                }
+                $specifics = EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null);
+                if ($specifics === []) {
+                    continue;
+                }
+
+                return [
+                    'action' => 'variation',
+                    'sku' => $vSku,
+                    'specifics' => $specifics,
+                ];
+            }
+        }
+
+        return ['action' => 'missing'];
     }
 
     /**
