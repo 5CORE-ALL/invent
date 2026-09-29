@@ -1019,11 +1019,26 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                         $hit = null;
                     }
                 }
+                if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) < $deadline) {
+                    try {
+                        $channel = $lookup->lookupLiveChannelTracking((string) $group['mm_slug'], $refs);
+                    } catch (\Throwable $e) {
+                        report($e);
+                        $channel = null;
+                    }
+                    if (is_array($channel) && empty($channel['retry']) && trim((string) ($channel['tracking'] ?? '')) !== '') {
+                        $hit = [
+                            'tracking' => (string) $channel['tracking'],
+                            'carrier' => (string) ($channel['carrier'] ?? ''),
+                            'source' => 'channel',
+                        ];
+                    }
+                }
             }
 
             $source = strtolower(trim((string) ($hit['source'] ?? '')));
             $number = trim((string) ($hit['tracking'] ?? ''));
-            $allowed = in_array($source, ['gofo', '4seller', 'veeqo'], true) && $number !== '';
+            $allowed = in_array($source, ['gofo', '4seller', 'veeqo', 'channel'], true) && $number !== '';
             if (! $allowed) {
                 $source = null;
                 $number = '';
@@ -1186,7 +1201,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $known = OrderFulfillmentTracking::query()
             ->where('mm_slug', $group['mm_slug'])
             ->where('order_id', $orderId)
-            ->whereIn('source', ['gofo', '4seller', 'veeqo'])
+            ->whereIn('source', ['gofo', '4seller', 'veeqo', 'channel'])
             ->whereNotNull('tracking_number')
             ->where('tracking_number', '!=', '')
             ->first();

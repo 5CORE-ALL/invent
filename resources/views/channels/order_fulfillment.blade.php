@@ -564,7 +564,7 @@
                         return cell.getRow().getData().tracking_checked ? '—' : '…';
                     }
                     const source = String(cell.getRow().getData().tracking_source || '');
-                    const label = source === '4seller' ? '4Seller' : (source === 'gofo' ? 'GOFO' : (source === 'veeqo' ? 'Veeqo' : (source === 'manual' ? 'Manual' : '')));
+                    const label = source === '4seller' ? '4Seller' : (source === 'gofo' ? 'GOFO' : (source === 'veeqo' ? 'Veeqo' : (source === 'channel' ? 'Marketplace' : (source === 'manual' ? 'Manual' : ''))));
                     const title = label ? ' title="' + escapeHtml(label) + '"' : '';
                     return '<span class="of-tracking"' + title + '>' + escapeHtml(value) + '</span>';
                 },
