@@ -1460,6 +1460,16 @@
                 (table.getData('all') || []).forEach(function(d) { walk(null, d); });
                 return;
             }
+            // AliExpress paginates locally. table.getRows() is the current page, so the
+            // 0–0 count was short of the full catalog. Count every loaded SKU.
+            if (ebayDgIsAliexpress()) {
+                let rows = (typeof ebaySprcDilCatalogRows === 'function') ? ebaySprcDilCatalogRows() : [];
+                if (!rows.length && typeof table !== 'undefined' && table && typeof table.getData === 'function') {
+                    rows = table.getData('all') || [];
+                }
+                rows.forEach(function(d) { walk(null, d); });
+                return;
+            }
             if (typeof chPromoEachTableRow === 'function') {
                 chPromoEachTableRow(walk);
                 return;

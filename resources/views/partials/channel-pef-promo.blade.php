@@ -4016,10 +4016,15 @@
                 const ovl30 = Number(d.ovl30 != null ? d.ovl30 : d.L30) || 0;
                 return (ovl30 / inv) * 100;
             }
-            // AliExpress / Shein / Newegg / Faire / PLS: Dil is already 0–100
-            // (e.g. 1.5 = 1.5%). Do NOT ×100 — that maps 1–2% into the >25% slab and
-            // forces PRMT% = 0, so S PRC skips the Dil vs PRMT discount rule.
-            if (CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein'
+            // AliExpress Dil = OV L30 ÷ Shopify INV, same as the Dil column and Amazon.
+            // Shein / Newegg / Faire / PLS store Dil already as 0–100. Do NOT ×100.
+            if (CHANNEL_PROMO_CHANNEL === 'aliexpress') {
+                const shopInv = Number(d && (d.inv != null ? d.inv : d.INV)) || 0;
+                if (!(shopInv > 0)) return 0;
+                const ovl30 = Number(d.ov_l30 != null ? d.ov_l30 : (d.ovl30 != null ? d.ovl30 : d.L30)) || 0;
+                return (ovl30 / shopInv) * 100;
+            }
+            if (CHANNEL_PROMO_CHANNEL === 'shein'
                 || CHANNEL_PROMO_CHANNEL === 'newegg'
                 || CHANNEL_PROMO_CHANNEL === 'faire' || CHANNEL_PROMO_CHANNEL === 'pls'
                 || CHANNEL_PROMO_CHANNEL === 'depop'
