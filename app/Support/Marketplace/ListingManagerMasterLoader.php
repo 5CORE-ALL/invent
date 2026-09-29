@@ -52,6 +52,8 @@ class ListingManagerMasterLoader
         return match ($source) {
             'title', 'title_master' => self::title($sku, $channelName),
             'description', 'description_master' => self::description($sku),
+            'description_text', 'text_description' => self::descriptionText($sku),
+            'description_aplus', 'aplus', 'aplus_description' => self::descriptionAplus($sku),
             'images', 'image_master' => self::images($sku),
             'videos', 'video_master' => self::videos($sku),
             'bullets', 'bullet_points' => self::bullets($sku),
@@ -108,6 +110,8 @@ class ListingManagerMasterLoader
         if ($description === '') {
             $description = trim((string) ($pm['description_html'] ?? $pm['description_1500'] ?? $pm['product_description'] ?? ''));
         }
+        $descriptionText = self::textDescriptionFor($sku, $pm);
+        $aplus = self::storedAplus($pm);
 
         $primaryTitle = '';
         foreach ($titles as $row) {
@@ -128,10 +132,126 @@ class ListingManagerMasterLoader
             'titles' => $titles,
             'bullets' => $bullets,
             'description' => $description,
+            'description_text' => $descriptionText,
+            'description_aplus' => $aplus['html'],
+            'aplus_images' => $aplus['images'],
+            'aplus_fetched_at' => $aplus['fetched_at'],
+            'aplus_error' => $aplus['error'],
             'title' => $primaryTitle,
             'has_title' => $primaryTitle !== '',
             'has_bullets' => $bullets !== [],
             'has_description' => $description !== '',
+            'has_description_text' => $descriptionText !== '',
+            'has_aplus' => $aplus['html'] !== '',
+        ];
+    }
+
+    /**
+     * Plain "Text" description from Description Master (description_1500 and friends).
+     *
+     * @param  array<string, mixed>  $pm
+     */
+    private static function textDescriptionFor(string $sku, array $pm): string
+    {
+        foreach (['description_1500', 'product_description', 'description_1000', 'description_800', 'description_600'] as $col) {
+            $v = trim((string) ($pm[$col] ?? ''));
+            if ($v !== '') {
+                return $v;
+            }
+        }
+        $fromMetrics = ListingManagerAmazonHydrator::descriptionMaster($sku);
+        if ($fromMetrics !== '') {
+            return $fromMetrics;
+        }
+
+        return trim((string) ($pm['description_html'] ?? ''));
+    }
+
+    /**
+     * A+ content already stored on Product Master by the Description Master A+ sync.
+     *
+     * @param  array<string, mixed>  $pm
+     * @return array{html: string, images: list<string>, fetched_at: ?string, error: ?string}
+     */
+    private static function storedAplus(array $pm): array
+    {
+        $html = trim((string) ($pm['shopify_aplus_content'] ?? ''));
+        $images = [];
+        $raw = $pm['shopify_aplus_images'] ?? null;
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $images = array_values(array_filter($decoded, fn ($v) => is_string($v) && trim($v) !== ''));
+            }
+        }
+        $error = trim((string) ($pm['shopify_aplus_fetch_error'] ?? ''));
+
+        return [
+            'html' => $html,
+            'images' => $images,
+            'fetched_at' => ! empty($pm['shopify_aplus_fetched_at']) ? (string) $pm['shopify_aplus_fetched_at'] : null,
+            'error' => $error !== '' ? $error : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function descriptionText(string $sku): array
+    {
+        $text = self::textDescriptionFor($sku, self::productMaster($sku));
+        if ($text === '') {
+            return [
+                'success' => false,
+                'message' => 'No text description found on Description Master for this SKU.',
+                'source' => 'description_text',
+                'kind' => 'text',
+                'description' => '',
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Text description loaded from Description Master.',
+            'source' => 'description_text',
+            'kind' => 'text',
+            'description' => $text,
+        ];
+    }
+
+    /**
+     * A+ content: served from Product Master; fetched from the store once when missing (or when $force).
+     *
+     * @return array<string, mixed>
+     */
+    public static function descriptionAplus(string $sku, bool $force = false): array
+    {
+        $sku = trim($sku);
+        $base = ['source' => 'description_aplus', 'kind' => 'aplus'];
+        if (! \App\Services\Support\ShopifyAplusContentSync::isSchemaReady()) {
+            return $base + ['success' => false, 'message' => 'A+ storage is not set up yet (run migrations).', 'description' => ''];
+        }
+
+        $product = \App\Models\ProductMaster::query()->where('sku', $sku)->first();
+        if (! $product) {
+            return $base + ['success' => false, 'message' => 'SKU not found in Product Master.', 'description' => ''];
+        }
+
+        $fetch = app(\App\Services\Support\ShopifyAplusContentSync::class)->fetchAndStore($product, $force);
+        $product = $fetch['product'] ?? $product;
+        $aplus = self::storedAplus($product->getAttributes());
+        $ok = $aplus['html'] !== '';
+
+        return $base + [
+            'success' => $ok,
+            'message' => $ok
+                ? (($fetch['status'] ?? '') === 'cached' ? 'Loaded stored A+ content.' : (string) ($fetch['message'] ?? 'A+ content loaded.'))
+                : (string) ($fetch['message'] ?? 'No A+ content for this SKU.'),
+            'status' => (string) ($fetch['status'] ?? ''),
+            'description' => $aplus['html'],
+            'images' => $aplus['images'],
+            'fetched_at' => $aplus['fetched_at'],
+            'error' => $aplus['error'],
         ];
     }
 

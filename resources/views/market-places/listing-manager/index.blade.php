@@ -326,7 +326,9 @@
         .lm-product-modal .modal-dialog { max-width: min(1100px, 96vw); margin: .6rem auto; }
         .lm-product-modal .modal-content { height: calc(100vh - 1.2rem); display: flex; flex-direction: column; border-radius: 16px; box-shadow: 0 18px 50px rgba(28,42,58,.12); }
         .lm-product-modal .modal-header { flex-shrink: 0; border-bottom: 1px solid var(--lc-border); gap: .75rem; }
-        .lm-product-modal .modal-title { font-size: 1rem; font-weight: 700; max-width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lm-product-modal .lm-prod-heading { max-width: 62%; min-width: 0; }
+        .lm-product-modal .modal-title { font-size: 1rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lm-product-modal #lm-prod-snapshot-note { font-size: .74rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .lm-product-modal .modal-body { flex: 1; overflow: auto; padding: 0; position: relative; }
         .lm-prod-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--lc-border); padding: 0 .75rem; overflow-x: auto; position: sticky; top: 0; background: #fff; z-index: 2; }
         .lm-prod-tab {
@@ -355,6 +357,33 @@
         }
         .lm-push-badge.listed { background: #dcfce7; color: #166534; }
         .lm-push-badge.draft { background: #dbeafe; color: #1d4ed8; }
+        .lm-push-badge.skipped { background: #fef3c7; color: #92400e; }
+        .lm-channel-row.is-disabled { opacity: .55; cursor: not-allowed; background: #fafafa; }
+        .lm-push-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .5rem; font-size: .78rem; }
+        .lm-push-preview .cell { border: 1px solid var(--lc-border); border-radius: 8px; padding: .45rem .6rem; background: #fafbff; min-width: 0; }
+        .lm-push-preview .cell .k { color: #6b7280; font-weight: 700; font-size: .7rem; text-transform: uppercase; letter-spacing: .02em; }
+        .lm-push-preview .cell .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .lm-push-preview .cell.is-empty .v { color: #b91c1c; }
+        #lmProductPushModal { z-index: 1065; }
+        .lm-img-edit-bar { border: 1px solid #bfdbfe; background: #f8fbff; border-radius: 10px; padding: .75rem .9rem; margin-bottom: .9rem; }
+        .lm-prod-thumbs .lm-thumb { position: relative; }
+        .lm-prod-thumbs .lm-thumb .lm-thumb-tools {
+            position: absolute; inset: auto 0 0 0; display: flex; justify-content: center; gap: 2px;
+            background: rgba(17,24,39,.72); padding: 2px; border-radius: 0 0 6px 6px; opacity: 0; transition: opacity .12s;
+        }
+        .lm-prod-thumbs .lm-thumb:hover .lm-thumb-tools { opacity: 1; }
+        .lm-prod-thumbs .lm-thumb .lm-thumb-tools button {
+            border: 0; background: transparent; color: #fff; font-size: .72rem; width: 20px; height: 20px; line-height: 20px; border-radius: 4px; padding: 0;
+        }
+        .lm-prod-thumbs .lm-thumb .lm-thumb-tools button:hover { background: rgba(255,255,255,.18); }
+        .lm-prod-thumbs .lm-thumb .lm-thumb-tools button:disabled { opacity: .35; }
+        .lm-prod-thumbs .lm-thumb .lm-thumb-main { position: absolute; top: 3px; left: 3px; background: var(--lc-blue); color: #fff; font-size: .62rem; font-weight: 700; padding: 1px 5px; border-radius: 999px; }
+        .lm-editable-table .lm-row-edit-btn { opacity: .55; }
+        .lm-editable-table tr:hover .lm-row-edit-btn { opacity: 1; }
+        .lm-editable-table .lm-inline-input { font-size: .82rem; min-width: 160px; }
+        .lm-editable-table .lm-inline-actions { display: flex; gap: .3rem; margin-top: .3rem; }
+        .lm-editable-table .lm-lock { color: #9ca3af; font-size: .75rem; }
+        .lm-editable-table td.lm-cell-editing { background: #f8fbff; }
         .lm-push-status-row {
             display: flex; align-items: flex-start; gap: .55rem; padding: .45rem .2rem;
             border-bottom: 1px solid #e5e7eb;
@@ -412,7 +441,8 @@
         .lm-char-count.is-short { color: #dc2626; }
         .lm-char-count.is-ok { color: #16a34a; }
         .lm-char-count.is-over { color: #7c3aed; }
-        .lm-masters-head-actions { display: inline-flex; align-items: center; gap: .55rem; }
+        .lm-masters-head-actions { display: inline-flex; align-items: center; gap: .55rem; flex-wrap: wrap; justify-content: flex-end; }
+        .lm-desc-kind-tag { margin-left: .4rem; font-size: .68rem; font-weight: 600; color: #6b7280; background: #f3f4f6; border-radius: 999px; padding: .1rem .5rem; vertical-align: middle; }
         .lm-row-edit-btn {
             border: 1px solid #dbe3ef; background: #fff; color: #1d4ed8; border-radius: 6px;
             width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
@@ -1366,7 +1396,10 @@
         <div class="modal-content">
             <div class="modal-header">
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                <h5 class="modal-title flex-grow-1" id="lm-prod-title">Product</h5>
+                <div class="flex-grow-1 lm-prod-heading">
+                    <h5 class="modal-title mb-0" id="lm-prod-title">Product</h5>
+                    <div class="small text-muted d-none" id="lm-prod-snapshot-note"></div>
+                </div>
                 <div class="d-flex gap-2 flex-wrap">
                     <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-prod-edit-btn">
                         <i class="fas fa-pen me-1"></i>Edit
@@ -1375,10 +1408,10 @@
                     <button type="button" class="btn-lc btn-lc-ghost btn-sm d-none" id="lm-prod-save-btn">
                         <i class="fas fa-save me-1"></i>Save Changes
                     </button>
-                    <button type="button" class="btn-lc btn-lc-primary btn-sm d-none" id="lm-prod-push-btn">
-                        <i class="fas fa-cloud-upload-alt me-1"></i>Update on All Platforms
+                    <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-prod-push-btn" title="Update the existing listings on the marketplaces you choose">
+                        <i class="fas fa-cloud-upload-alt me-1"></i>Push to Marketplaces
                     </button>
-                    <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-prod-update-btn">
+                    <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-prod-update-btn">
                         <i class="fas fa-sync-alt me-1"></i>Update from Store
                     </button>
                 </div>
@@ -1426,41 +1459,7 @@
                             <div class="lm-prod-desc" id="lm-prod-description"></div>
                         </div>
                         <form id="lm-prod-edit-form" class="d-none" autocomplete="off" onsubmit="return false;">
-                            <p class="lc-help">Edit the fields below, then Save Changes or Update on All Platforms.</p>
-                            <div id="lm-prod-push-panel" class="lm-push-panel d-none">
-                                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
-                                    <div>
-                                        <div class="lc-section-title mb-0">Choose marketplaces</div>
-                                        <p class="lc-help mb-0">Listed channels update the live marketplace listing. Channels that are not live yet are saved as a draft in this app only.</p>
-                                    </div>
-                                    <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-prod-push-hide-btn">Hide</button>
-                                </div>
-                                <div class="d-flex flex-wrap gap-3 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="lm-push-part-title" checked>
-                                        <label class="form-check-label" for="lm-push-part-title">Title</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="lm-push-part-description" checked>
-                                        <label class="form-check-label" for="lm-push-part-description">Description</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="lm-push-part-price" checked>
-                                        <label class="form-check-label" for="lm-push-part-price">Price</label>
-                                    </div>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="lm-push-select-all">
-                                    <label class="form-check-label fw-semibold" for="lm-push-select-all">Select All</label>
-                                </div>
-                                <div class="lm-channel-list" id="lm-prod-push-channels"></div>
-                                <div class="lm-push-results mt-3 d-none" id="lm-push-results"></div>
-                                <div class="d-flex justify-content-end gap-2 mt-3">
-                                    <button type="button" class="btn-lc btn-lc-primary" id="lm-push-now-btn">
-                                        <i class="fas fa-cloud-upload-alt me-1"></i>Push Updates
-                                    </button>
-                                </div>
-                            </div>
+                            <p class="lc-help">Edit the fields below, then Save Changes. Use Push to Marketplaces to update the live listings.</p>
                             <div class="lm-prod-edit-grid mb-3">
                                 <label>Product Name</label>
                                 <input type="text" class="form-control" id="lm-edit-title" maxlength="500">
@@ -1495,9 +1494,6 @@
                     </div>
                     <div class="lm-prod-pane" data-pane="title">
                         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-master-sync-btn" data-master-source="content">
-                                <i class="fas fa-sync-alt me-1"></i>Sync from Title Master
-                            </button>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="title">
                                 <i class="fas fa-file-import me-1"></i>Apply to Product Info
                             </button>
@@ -1521,9 +1517,6 @@
                     </div>
                     <div class="lm-prod-pane" data-pane="bullets">
                         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-master-sync-btn" data-master-source="bullets">
-                                <i class="fas fa-sync-alt me-1"></i>Sync from Bullet Points
-                            </button>
                             <a class="btn-lc btn-lc-ghost btn-sm" href="{{ route('bullet.points') }}" target="_blank" rel="noopener">Open Bullet Points</a>
                             <span class="text-muted small lm-master-status" data-for="bullets"></span>
                         </div>
@@ -1544,11 +1537,11 @@
                     </div>
                     <div class="lm-prod-pane" data-pane="description">
                         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-master-sync-btn" data-master-source="description">
-                                <i class="fas fa-sync-alt me-1"></i>Sync from Description Master
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-desc-fetch-btn" data-kind="text">
+                                <i class="fas fa-align-left me-1"></i>Fetch Text
                             </button>
-                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="description">
-                                <i class="fas fa-file-import me-1"></i>Apply to Product Info
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-desc-fetch-btn" data-kind="aplus">
+                                <i class="fas fa-layer-group me-1"></i>Fetch A+
                             </button>
                             <a class="btn-lc btn-lc-ghost btn-sm" href="{{ route('product.description') }}" target="_blank" rel="noopener">Open Description Master</a>
                             <span class="text-muted small lm-master-status" data-for="description"></span>
@@ -1563,22 +1556,50 @@
                                 <span class="form-check-label">Sync to parent and vice versa</span>
                             </label>
                         </div>
-                        <section class="lm-masters-block">
+                        <section class="lm-masters-block mb-3">
                             <div class="lm-masters-head">
-                                <span>Description Master</span>
+                                <span>Text Description <span class="lm-desc-kind-tag">Description Master</span></span>
                                 <div class="lm-masters-head-actions">
+                                    <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="description_text" title="Use this as the Product Info description (what gets pushed)">
+                                        <i class="fas fa-file-import me-1"></i>Apply to Product Info
+                                    </button>
                                     <button type="button" class="lm-row-edit-btn" data-field="description_html" title="Edit description"><i class="fas fa-pen"></i></button>
                                     <span class="lm-char-count is-short" id="lm-desc-char-count">0</span>
                                 </div>
                             </div>
                             <div class="lm-prod-desc" id="lm-masters-description"></div>
                         </section>
+                        <section class="lm-masters-block">
+                            <div class="lm-masters-head">
+                                <span>A+ Content <span class="lm-desc-kind-tag">stored from Main Store</span></span>
+                                <div class="lm-masters-head-actions">
+                                    <span class="text-muted small" id="lm-aplus-meta"></span>
+                                    <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="description_aplus" title="Use the A+ content as the Product Info description (what gets pushed)">
+                                        <i class="fas fa-file-import me-1"></i>Apply to Product Info
+                                    </button>
+                                    <span class="lm-char-count is-short" id="lm-aplus-char-count">0</span>
+                                </div>
+                            </div>
+                            <div class="lm-prod-desc" id="lm-masters-aplus"></div>
+                        </section>
                     </div>
                     <div class="lm-prod-pane" data-pane="images">
-                        <div class="mb-3">
-                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-prod-master-btn" data-master-source="images">
-                                <i class="fas fa-images me-1"></i>Fetch from Image Master
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-img-edit-btn">
+                                <i class="fas fa-pen me-1"></i>Edit Images
                             </button>
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm d-none" id="lm-img-save-btn">
+                                <i class="fas fa-save me-1"></i>Save Images
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm d-none" id="lm-img-cancel-btn">Cancel</button>
+                            <span class="text-muted small" id="lm-img-count"></span>
+                        </div>
+                        <div class="lm-img-edit-bar d-none" id="lm-img-edit-bar">
+                            <p class="lc-help mb-2">First image is the main photo. Use the arrows to reorder, the star to make an image the main photo, and the cross to remove it. Saved to Product Master; use Push to Marketplaces (Images) to update the live galleries.</p>
+                            <div class="d-flex gap-2">
+                                <input type="url" class="form-control form-control-sm" id="lm-img-add-url" placeholder="https://… paste an image URL">
+                                <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-img-add-btn"><i class="fas fa-plus me-1"></i>Add</button>
+                            </div>
                         </div>
                         <div class="lm-prod-images">
                             <div class="lm-prod-main-img"><img id="lm-prod-main-image" src="" alt=""></div>
@@ -1587,19 +1608,21 @@
                     </div>
                     <div class="lm-prod-pane" data-pane="variations">
                         <div class="lm-family-bar">
-                            <div class="lc-help mb-0">Variations grouped by Product Master parent.</div>
+                            <div class="lc-help mb-0">Variations grouped by Product Master parent. Click the pencil to edit a sibling's title (saved to its Product Master). Qty and price are live marketplace values; change price with Push to Marketplaces.</div>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-prod-copy-siblings-btn">
                                 <i class="fas fa-copy me-1"></i>Copy details to siblings
                             </button>
                         </div>
-                        <table class="lm-list-table"><thead><tr><th>SKU</th><th>Pack</th><th>Title</th><th>ASIN</th><th>Qty</th><th>Price</th></tr></thead><tbody id="lm-prod-variations"></tbody></table>
+                        <table class="lm-list-table lm-editable-table"><thead><tr><th>SKU</th><th>Pack</th><th>Title</th><th>ASIN</th><th>Qty</th><th>Price</th><th></th></tr></thead><tbody id="lm-prod-variations"></tbody></table>
                     </div>
                     <div class="lm-prod-pane" data-pane="metafields">
-                        <table class="lm-meta-table"><thead><tr><th>Attribute name</th><th>Attribute value</th></tr></thead><tbody id="lm-prod-metafields"></tbody></table>
+                        <p class="lc-help">Attributes stored on Product Master can be edited here. Locked rows come from the Amazon / Main Store listing and are read-only.</p>
+                        <table class="lm-meta-table lm-editable-table"><thead><tr><th>Attribute name</th><th>Attribute value</th><th style="width:70px"></th></tr></thead><tbody id="lm-prod-metafields"></tbody></table>
                     </div>
                     <div class="lm-prod-pane" data-pane="listings">
                         <div class="lm-listed-head">Listed On</div>
-                        <table class="lm-list-table"><thead><tr><th>Channel</th><th>Product Name</th><th>Qty</th><th>Price</th><th>Status</th></tr></thead><tbody id="lm-prod-listed"></tbody></table>
+                        <p class="lc-help">Edit a row to change the product name or price on that marketplace only. The existing listing is updated in place; nothing new is created.</p>
+                        <table class="lm-list-table lm-editable-table"><thead><tr><th>Channel</th><th>Product Name</th><th>Qty</th><th>Price</th><th>Status</th><th></th></tr></thead><tbody id="lm-prod-listed"></tbody></table>
                         <div class="lm-unlist-head">Not Listed On</div>
                         <table class="lm-list-table"><thead><tr><th>Channel</th><th></th></tr></thead><tbody id="lm-prod-unlisted"></tbody></table>
                     </div>
@@ -1610,6 +1633,66 @@
                         <table class="lm-list-table"><thead><tr><th></th><th>Change Details</th><th>Change Time</th></tr></thead><tbody id="lm-prod-changelog"></tbody></table>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Push to Marketplaces: choose channels + fields, then update the existing listings in place --}}
+<div class="modal fade" id="lmProductPushModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="flex-grow-1">
+                    <h5 class="modal-title mb-0">Push to Marketplaces</h5>
+                    <div class="small text-muted" id="lm-push-modal-sub"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="lc-section-title mb-1">What to update</div>
+                <p class="lc-help">Only the ticked fields are sent. Values come from what is currently shown in the product window (including unsaved edits).</p>
+                <div class="d-flex flex-wrap gap-3 mb-3" id="lm-push-parts">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-title" checked>
+                        <label class="form-check-label" for="lm-push-part-title">Title</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-bullets">
+                        <label class="form-check-label" for="lm-push-part-bullets">Bullet Points</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-description" checked>
+                        <label class="form-check-label" for="lm-push-part-description">Description</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-price" checked>
+                        <label class="form-check-label" for="lm-push-part-price">Price</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-images">
+                        <label class="form-check-label" for="lm-push-part-images">Images</label>
+                    </div>
+                </div>
+                <div class="lm-push-preview mb-3" id="lm-push-preview"></div>
+                <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
+                    <div>
+                        <div class="lc-section-title mb-0">Marketplaces</div>
+                        <p class="lc-help mb-0">Only marketplaces where this SKU is already listed can be selected. The existing product is updated; nothing new is created.</p>
+                    </div>
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" id="lm-push-select-all">
+                        <label class="form-check-label fw-semibold" for="lm-push-select-all">Select all listed</label>
+                    </div>
+                </div>
+                <div class="lm-channel-list" id="lm-prod-push-channels"></div>
+                <div class="lm-push-results mt-3 d-none" id="lm-push-results"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-lc btn-lc-ghost" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn-lc btn-lc-primary" id="lm-push-now-btn">
+                    <i class="fas fa-cloud-upload-alt me-1"></i>Push Updates
+                </button>
             </div>
         </div>
     </div>
@@ -1907,10 +1990,11 @@
         const data = pack && typeof pack === 'object' ? pack : {};
         const titles = Array.isArray(data.titles) ? data.titles : [];
         const bullets = Array.isArray(data.bullets) ? data.bullets : [];
-        const description = String(data.description || '');
+        const description = String(data.description_text != null ? data.description_text : (data.description || ''));
+        const aplus = String(data.description_aplus || '');
         $('.lm-master-status[data-for="title"]').text(data.has_title === false ? (data.message || '') : '');
         $('.lm-master-status[data-for="bullets"]').text(data.has_bullets === false && data.source === 'bullets' ? (data.message || '') : '');
-        $('.lm-master-status[data-for="description"]').text(data.has_description === false && data.source === 'description' ? (data.message || '') : '');
+        $('.lm-master-status[data-for="description"]').text('');
         const titleRows = titles.length ? titles : [
             { key: 'title150', label: 'Title 170', value: '', chars: 0 },
             { key: 'title100', label: 'Title 100', value: '', chars: 0 },
@@ -1948,12 +2032,21 @@
         setCharCount($('#lm-desc-char-count'), description.length);
         $('#lm-masters-description').removeClass('lm-desc-edit-wrap').html(description
             ? description
-            : '<span class="text-muted">No description on Description Master for this SKU.</span>');
+            : '<span class="text-muted">No text description on Description Master for this SKU. Click <strong>Fetch Text</strong> to reload, or edit to add one.</span>');
+        setCharCount($('#lm-aplus-char-count'), aplus.length);
+        $('#lm-masters-aplus').html(aplus
+            ? aplus
+            : '<span class="text-muted">No A+ content stored for this SKU yet. Click <strong>Fetch A+</strong> to pull it from the Main Store once and store it.</span>');
+        const metaBits = [];
+        if (data.aplus_fetched_at) metaBits.push('fetched ' + String(data.aplus_fetched_at).slice(0, 16));
+        if (Array.isArray(data.aplus_images) && data.aplus_images.length) metaBits.push(data.aplus_images.length + ' image(s)');
+        if (!aplus && data.aplus_error) metaBits.push('last fetch failed: ' + data.aplus_error);
+        $('#lm-aplus-meta').text(metaBits.join(' · ')).toggleClass('text-danger', !aplus && !!data.aplus_error);
     }
 
     function masterFieldValue(field) {
         const pack = (currentProduct && currentProduct.master_content) || {};
-        if (field === 'description_html') return String(pack.description || '');
+        if (field === 'description_html') return String(pack.description_text != null ? pack.description_text : (pack.description || ''));
         if (String(field).indexOf('bullet') === 0) {
             const idx = parseInt(String(field).replace('bullet', ''), 10) - 1;
             return String((pack.bullets || [])[idx] || '');
@@ -2130,9 +2223,7 @@
         $('#lm-prod-edit-btn').toggleClass('d-none', productEditMode);
         $('#lm-prod-cancel-edit-btn').toggleClass('d-none', !productEditMode);
         $('#lm-prod-save-btn').toggleClass('d-none', !productEditMode);
-        $('#lm-prod-push-btn').toggleClass('d-none', !productEditMode);
         if (!productEditMode) {
-            $('#lm-prod-push-panel').addClass('d-none');
             $('#lm-prod-push-overlay').addClass('d-none');
         }
         if (productEditMode && currentProduct) {
@@ -2141,44 +2232,119 @@
         }
     }
 
+    // Gallery shown in the Images tab. In edit mode the list is a working copy until Save Images.
+    let currentImages = [];
+    let imagesEditMode = false;
+    let imagesBeforeEdit = [];
+
     function renderProductImages(images) {
-        const list = Array.isArray(images) ? images.filter(Boolean) : [];
+        currentImages = (Array.isArray(images) ? images : []).map(u => String(u || '').trim()).filter(Boolean);
+        drawProductImages();
+    }
+
+    function drawProductImages() {
+        const list = currentImages;
         const main = document.getElementById('lm-prod-main-image');
         const thumbs = document.getElementById('lm-prod-thumbs');
+        $('#lm-img-count').text(list.length ? (list.length + ' image' + (list.length === 1 ? '' : 's')) : '');
         if (!list.length) {
             main.removeAttribute('src');
             main.alt = 'No images';
-            thumbs.innerHTML = '<div class="text-muted">No images from Image Master / Amz / Main Store.</div>';
+            thumbs.innerHTML = '<div class="text-muted">' + (imagesEditMode
+                ? 'No images yet. Paste an image URL above to add one.'
+                : 'No images on Image Master / Amz / Main Store for this SKU.') + '</div>';
             return;
         }
         main.src = list[0];
-        thumbs.innerHTML = list.map((u, i) =>
-            `<img src="${escapeHtml(u)}" alt="" class="${i === 0 ? 'active' : ''}" data-idx="${i}">`
-        ).join('');
+        thumbs.innerHTML = list.map((u, i) => {
+            const img = `<img src="${escapeHtml(u)}" alt="" class="${i === 0 ? 'active' : ''}" data-idx="${i}">`;
+            if (!imagesEditMode) return img;
+            return `<div class="lm-thumb" data-idx="${i}">
+                ${img}
+                ${i === 0 ? '<span class="lm-thumb-main">MAIN</span>' : ''}
+                <div class="lm-thumb-tools">
+                    <button type="button" data-act="left" title="Move left" ${i === 0 ? 'disabled' : ''}><i class="fas fa-arrow-left"></i></button>
+                    <button type="button" data-act="main" title="Make main photo" ${i === 0 ? 'disabled' : ''}><i class="fas fa-star"></i></button>
+                    <button type="button" data-act="right" title="Move right" ${i === list.length - 1 ? 'disabled' : ''}><i class="fas fa-arrow-right"></i></button>
+                    <button type="button" data-act="remove" title="Remove"><i class="fas fa-times"></i></button>
+                </div>
+            </div>`;
+        }).join('');
         $(thumbs).off('click', 'img').on('click', 'img', function () {
             $(thumbs).find('img').removeClass('active');
             $(this).addClass('active');
             main.src = this.src;
         });
+        $(thumbs).off('click', '.lm-thumb-tools button').on('click', '.lm-thumb-tools button', function (e) {
+            e.stopPropagation();
+            const idx = parseInt($(this).closest('.lm-thumb').data('idx'), 10);
+            const act = $(this).data('act');
+            if (Number.isNaN(idx) || !currentImages[idx]) return;
+            const next = currentImages.slice();
+            if (act === 'remove') next.splice(idx, 1);
+            else if (act === 'left' && idx > 0) [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+            else if (act === 'right' && idx < next.length - 1) [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+            else if (act === 'main' && idx > 0) next.unshift(next.splice(idx, 1)[0]);
+            currentImages = next;
+            drawProductImages();
+        });
+    }
+
+    function setImagesEditMode(on) {
+        imagesEditMode = !!on;
+        if (imagesEditMode) imagesBeforeEdit = currentImages.slice();
+        $('#lm-img-edit-btn').toggleClass('d-none', imagesEditMode);
+        $('#lm-img-save-btn, #lm-img-cancel-btn, #lm-img-edit-bar').toggleClass('d-none', !imagesEditMode);
+        $('#lm-img-add-url').val('');
+        drawProductImages();
+    }
+
+    function saveProductImages() {
+        if (!currentProductSku) { toast('Open a product first.', 'error'); return; }
+        const $btn = $('#lm-img-save-btn');
+        if ($btn.data('loading')) return;
+        const idle = $btn.html();
+        $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
+        $.ajax({
+            url: "{{ url('/listing-manager/product/save') }}",
+            method: 'POST',
+            // jQuery drops empty arrays; send one blank entry so "no images" still clears Product Master.
+            data: { sku: currentProductSku, images: currentImages.length ? currentImages : [''] },
+            success: function (res) {
+                if (currentProduct) {
+                    currentProduct.images = currentImages.slice();
+                    currentProduct.hero_image = currentImages[0] || null;
+                }
+                setImagesEditMode(false);
+                toast((res && res.message) || 'Images saved.', 'success');
+                loadTable();
+            },
+            error: xhr => toast(xhr.responseJSON?.message || 'Could not save images.', 'error'),
+            complete: () => $btn.data('loading', false).prop('disabled', false).html(idle),
+        });
     }
 
     function renderProductListings(p) {
         const listed = p.listed_on || [];
-        $('#lm-prod-listed').html(listed.length ? listed.map(r => {
+        $('#lm-prod-listed').html(listed.length ? listed.map((r, i) => {
             const name = escapeHtml(r.product_name || p.title || '');
             // Keep listed channel name inside app (open draft editor when available)
             const nameCell = r.draft_id
                 ? `<a href="#" class="lm-open-listed-draft" data-id="${r.draft_id}">${name}</a>`
                 : name;
             const logo = logoSrc(r.logo);
-            return `<tr>
+            const canEdit = Number(r.channel_id || 0) > 0;
+            return `<tr class="lm-listed-row" data-idx="${i}" data-channel-id="${escapeHtml(String(r.channel_id || ''))}">
                 <td>${logo ? `<img src="${escapeHtml(logo)}" alt="" style="height:18px;margin-right:6px">` : ''}${escapeHtml(r.channel || '')}</td>
-                <td>${nameCell}</td>
+                <td class="lm-listed-name">${nameCell}</td>
                 <td>${r.qty != null ? escapeHtml(String(r.qty)) : '—'}</td>
-                <td>${money(r.price)}</td>
+                <td class="lm-listed-price">${money(r.price)}</td>
                 <td><span class="lm-status-active">${escapeHtml(r.status || 'ACTIVE')}</span></td>
+                <td class="text-end">${canEdit
+                    ? `<button type="button" class="lm-row-edit-btn lm-listed-edit-btn" title="Edit name / price on ${escapeHtml(r.channel || 'this marketplace')}"><i class="fas fa-pen"></i></button>`
+                    : '<span class="lm-lock" title="No connected channel to update"><i class="fas fa-lock"></i></span>'}</td>
             </tr>`;
-        }).join('') : '<tr><td colspan="5" class="text-muted">Not listed on any channel yet.</td></tr>');
+        }).join('') : '<tr><td colspan="6" class="text-muted">Not listed on any channel yet.</td></tr>');
 
         const unlisted = p.not_listed_on || [];
         $('#lm-prod-unlisted').html(unlisted.length ? unlisted.map(r => {
@@ -2195,20 +2361,24 @@
 
     function renderProductExtras(p) {
         const vars = p.variations || [];
-        $('#lm-prod-variations').html(vars.length ? vars.map(v => `<tr class="${v.is_current ? 'lm-var-current' : ''}">
+        $('#lm-prod-variations').html(vars.length ? vars.map((v, i) => `<tr class="lm-var-row ${v.is_current ? 'lm-var-current' : ''}" data-idx="${i}" data-sku="${escapeHtml(v.sku || '')}">
             <td><a href="#" class="lm-name-link lm-open-sibling" data-sku="${escapeHtml(v.sku || '')}">${escapeHtml(v.sku || '')}</a></td>
             <td><span class="lm-var-label">${escapeHtml(v.variation_label || v.sku || '')}</span></td>
-            <td>${escapeHtml(v.title || '')}</td>
+            <td class="lm-var-title">${escapeHtml(v.title || '')}</td>
             <td>${escapeHtml(v.asin || '—')}</td>
             <td>${v.quantity != null ? escapeHtml(String(v.quantity)) : '—'}</td>
             <td>${money(v.price)}</td>
-        </tr>`).join('') : '<tr><td colspan="6" class="text-muted">No parent variations in Product Master</td></tr>');
+            <td class="text-end"><button type="button" class="lm-row-edit-btn lm-var-edit-btn" title="Edit title"><i class="fas fa-pen"></i></button></td>
+        </tr>`).join('') : '<tr><td colspan="7" class="text-muted">No parent variations in Product Master</td></tr>');
 
         const meta = p.metafields || [];
-        $('#lm-prod-metafields').html(meta.length ? meta.map(m => `<tr>
+        $('#lm-prod-metafields').html(meta.length ? meta.map((m, i) => `<tr class="lm-meta-row" data-idx="${i}" data-name="${escapeHtml(m.name || '')}">
             <th>${escapeHtml(m.name || '')}</th>
-            <td><code style="white-space:pre-wrap;font-size:.78rem">${escapeHtml(m.value || '')}</code></td>
-        </tr>`).join('') : '<tr><td colspan="2" class="text-muted">No metafields</td></tr>');
+            <td class="lm-meta-value"><code style="white-space:pre-wrap;font-size:.78rem">${escapeHtml(m.value || '')}</code></td>
+            <td class="text-end">${m.editable
+                ? '<button type="button" class="lm-row-edit-btn lm-meta-edit-btn" title="Edit"><i class="fas fa-pen"></i></button>'
+                : '<span class="lm-lock" title="From the Amazon / Main Store listing — read-only"><i class="fas fa-lock"></i></span>'}</td>
+        </tr>`).join('') : '<tr><td colspan="3" class="text-muted">No metafields</td></tr>');
 
         const log = p.changelog || [];
         $('#lm-prod-changelog').html(log.length ? log.map(c => {
@@ -2254,20 +2424,39 @@
         window.open(listingManagerProductUrl(s, true), '_blank', 'noopener');
     }
 
+    function renderProductSnapshotNote(p) {
+        const $note = $('#lm-prod-snapshot-note');
+        const snap = p && p.snapshot;
+        if (!snap) { $note.addClass('d-none').text(''); return; }
+        let text;
+        if (snap.from_store) {
+            text = 'Stored listing data' + (snap.built_at_human ? ' · updated ' + snap.built_at_human : '');
+            if (snap.refreshing) text += ' · refreshing from marketplaces in background';
+        } else {
+            text = 'Fetched live from Amazon / Main Store just now' + (snap.build_ms ? ' (' + (snap.build_ms / 1000).toFixed(1) + 's)' : '');
+        }
+        $note.removeClass('d-none').text(text);
+    }
+
     function openProductModal(sku, pane, opts) {
         if (!sku) { toast('Missing SKU.', 'error'); return; }
+        const refresh = !!(opts && opts.refresh);
         currentProductSku = sku;
         currentProduct = null;
-        $('#lm-prod-loading').removeClass('d-none').text('Loading product from Amz / Main Store…');
+        $('#lm-prod-loading').removeClass('d-none').text(refresh ? 'Fetching latest data from Amz / Main Store…' : 'Loading product…');
         $('#lm-prod-content').addClass('d-none');
+        $('#lm-prod-snapshot-note').addClass('d-none').text('');
         bootstrap.Modal.getOrCreateInstance(document.getElementById('lmProductModal')).show();
-        $.getJSON("{{ route('listing.manager.product') }}", { sku })
+        const params = { sku };
+        if (refresh) params.refresh = 1;
+        $.getJSON("{{ route('listing.manager.product') }}", params)
             .done(function (res) {
                 if (!res || !res.success || !res.product) {
                     $('#lm-prod-loading').text(res?.message || 'Could not load product.');
                     return;
                 }
                 fillProductModal(res.product);
+                renderProductSnapshotNote(res.product);
                 if (pane) setProductPane(pane);
                 if (opts && opts.edit) setProductEditMode(true);
                 $('#lm-prod-loading').addClass('d-none');
@@ -4201,19 +4390,58 @@
                 toast('Applied Title Master to Product Info.', 'success');
                 return;
             }
-            if (which === 'description') {
-                const description = String(pack.description || '').trim();
-                if (!description) { toast('No Description Master value to apply. Sync first.', 'error'); return; }
+            if (which === 'description' || which === 'description_text' || which === 'description_aplus') {
+                const isAplus = which === 'description_aplus';
+                const description = String(isAplus
+                    ? (pack.description_aplus || '')
+                    : (pack.description_text != null ? pack.description_text : (pack.description || ''))).trim();
+                if (!description) {
+                    toast(isAplus ? 'No A+ content to apply. Click Fetch A+ first.' : 'No text description to apply. Click Fetch Text or add one.', 'error');
+                    return;
+                }
                 currentProduct.description = description;
                 if (productEditMode) fillProductEditForm(currentProduct);
                 else renderProductInfo(currentProduct);
-                toast('Applied Description Master to Product Info.', 'success');
+                toast('Applied ' + (isAplus ? 'A+ content' : 'text description') + ' to Product Info. Push to Marketplaces sends this description.', 'success');
             }
+        });
+
+        // Description tab: Fetch Text (Description Master) / Fetch A+ (Main Store, stored once)
+        $(document).on('click', '.lm-desc-fetch-btn', function () {
+            const sku = currentProductSku;
+            if (!sku) { toast('Open a product first.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const kind = String($btn.attr('data-kind') || 'text');
+            const pack = (currentProduct && currentProduct.master_content) || {};
+            const params = { sku, source: kind === 'aplus' ? 'description_aplus' : 'description_text' };
+            if (kind === 'aplus' && String(pack.description_aplus || '').trim()) {
+                if (!confirm('A+ content is already stored for this SKU. Fetch it again from the Main Store and replace the stored copy?')) return;
+                params.force = 1;
+            }
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Fetching…');
+            $.getJSON("{{ url('/listing-manager/product/from-master') }}", params)
+                .done(function (res) {
+                    const patch = kind === 'aplus'
+                        ? { description_aplus: String(res.description || ''), aplus_images: res.images || [], aplus_fetched_at: res.fetched_at || null, aplus_error: res.error || null, has_aplus: !!res.description }
+                        : { description_text: String(res.description || ''), has_description_text: !!res.description };
+                    mergeMasterContent(patch);
+                    toast(res.message || 'Fetched.', res.success ? 'success' : 'error');
+                })
+                .fail(function (xhr) {
+                    const res = xhr.responseJSON || {};
+                    if (kind === 'aplus' && res.error) mergeMasterContent({ aplus_error: res.error });
+                    toast(res.message || 'Could not fetch description.', 'error');
+                })
+                .always(function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                });
         });
         $('#lm-prod-update-btn').on('click', function () {
             if (!currentProductSku) return;
             const $btn = $(this).prop('disabled', true);
-            openProductModal(currentProductSku);
+            openProductModal(currentProductSku, null, { refresh: true });
             setTimeout(() => $btn.prop('disabled', false), 800);
         });
         $('#lm-prod-edit-btn').on('click', function () {
@@ -4269,21 +4497,26 @@
             return { listed, drafted, listedIds, draftedIds };
         }
 
+        function channelIsListed(c, flags) {
+            const name = String(c.channel || '').toLowerCase();
+            return !!(flags && ((flags.listed && flags.listed.has(name)) || (flags.listedIds && flags.listedIds.has(Number(c.id)))));
+        }
+
+        // Update-only: channels where the SKU is not listed are shown but cannot be selected.
         function renderPushChannelRows(channels, prechecked, flags) {
             const checked = new Set((prechecked || []).map(Number));
-            const listed = flags && flags.listed ? flags.listed : new Set();
             const drafted = flags && flags.drafted ? flags.drafted : new Set();
+            const draftedIds = flags && flags.draftedIds ? flags.draftedIds : new Set();
             $('#lm-prod-push-channels').html(channels.map(function (c) {
-                const on = checked.has(Number(c.id));
                 const src = logoSrc(c.logo);
                 const name = String(c.channel || '').toLowerCase();
-                const listedIds = flags && flags.listedIds ? flags.listedIds : new Set();
-                const draftedIds = flags && flags.draftedIds ? flags.draftedIds : new Set();
-                let badge = '<span class="lm-push-badge">Not listed</span>';
-                if (listed.has(name) || listedIds.has(Number(c.id))) badge = '<span class="lm-push-badge listed">Listed</span>';
-                else if (drafted.has(name) || draftedIds.has(Number(c.id))) badge = '<span class="lm-push-badge draft">Draft</span>';
-                return `<label class="lm-channel-row ${on ? 'is-checked' : ''}">
-                    <input type="checkbox" class="form-check-input lm-channel-cb" value="${c.id}" ${on ? 'checked' : ''}>
+                const isListed = channelIsListed(c, flags);
+                const on = isListed && checked.has(Number(c.id));
+                let badge = '<span class="lm-push-badge skipped">Not listed · will be skipped</span>';
+                if (isListed) badge = '<span class="lm-push-badge listed">Listed</span>';
+                else if (drafted.has(name) || draftedIds.has(Number(c.id))) badge = '<span class="lm-push-badge draft">Draft only · not live</span>';
+                return `<label class="lm-channel-row ${on ? 'is-checked' : ''} ${isListed ? '' : 'is-disabled'}" title="${isListed ? '' : 'This SKU is not listed here yet, so there is nothing to update.'}">
+                    <input type="checkbox" class="form-check-input lm-channel-cb" value="${c.id}" ${on ? 'checked' : ''} ${isListed ? '' : 'disabled'}>
                     ${src ? `<img src="${escapeHtml(src)}" alt="">` : '<span class="lm-thumb-empty"><i class="fas fa-store"></i></span>'}
                     <span class="fw-semibold">${escapeHtml(c.channel)}</span>
                     ${badge}
@@ -4291,9 +4524,70 @@
             }).join('') || '<div class="text-muted small">No marketplaces enabled. Use Add Marketplaces first.</div>');
             $('#lm-prod-push-channels').off('change', '.lm-channel-cb').on('change', '.lm-channel-cb', function () {
                 $(this).closest('.lm-channel-row').toggleClass('is-checked', this.checked);
-                const boxes = $('#lm-prod-push-channels .lm-channel-cb');
+                const boxes = $('#lm-prod-push-channels .lm-channel-cb:not(:disabled)');
                 $('#lm-push-select-all').prop('checked', boxes.length > 0 && boxes.filter(':checked').length === boxes.length);
             });
+        }
+
+        function selectedPushParts() {
+            const parts = [];
+            if ($('#lm-push-part-title').is(':checked')) parts.push('title');
+            if ($('#lm-push-part-bullets').is(':checked')) parts.push('bullets');
+            if ($('#lm-push-part-description').is(':checked')) parts.push('description');
+            if ($('#lm-push-part-price').is(':checked')) parts.push('price');
+            if ($('#lm-push-part-images').is(':checked')) parts.push('images');
+            return parts;
+        }
+
+        // What the modal currently shows (edit form when editing, otherwise the loaded product),
+        // plus bullets from the Bullet tab and the gallery from the Images tab.
+        function collectPushFields() {
+            const p = currentProduct || { sku: currentProductSku };
+            const base = productEditMode ? collectProductEditFields() : {
+                sku: currentProductSku,
+                title: p.title || '',
+                upc: p.upc || '',
+                vendor: p.vendor || '',
+                manufacturer: p.manufacturer || '',
+                product_type: p.product_type || '',
+                tags: p.tags || '',
+                price: p.price != null ? p.price : '',
+                sale_price: p.sale_price != null ? p.sale_price : '',
+                condition: p.condition || '',
+                short_description: p.short_description || '',
+                meta_title: p.meta_title || '',
+                seo_description: p.seo_description || '',
+                description: p.description || '',
+            };
+            const pack = (p.master_content && typeof p.master_content === 'object') ? p.master_content : {};
+            const bullets = (Array.isArray(pack.bullets) ? pack.bullets : [])
+                .map(b => stripLeadingBulletNum(String(b || '')).trim()).filter(Boolean).slice(0, 5);
+            const desc = String(base.description || '').trim() || String(pack.description || '').trim();
+            return Object.assign({}, base, {
+                description: desc,
+                bullets: bullets,
+                images: currentImages.slice(),
+            });
+        }
+
+        function renderPushPreview(fields, parts) {
+            const cells = [];
+            const add = (key, label, text) => {
+                if (!parts.includes(key)) return;
+                const v = String(text == null ? '' : text).trim();
+                cells.push(`<div class="cell ${v ? '' : 'is-empty'}"><div class="k">${label}</div><div class="v" title="${escapeHtml(v)}">${v ? escapeHtml(v) : 'Nothing to send — will be skipped'}</div></div>`);
+            };
+            add('title', 'Title', fields.title);
+            add('bullets', 'Bullet points', fields.bullets.length ? (fields.bullets.length + ' bullet(s): ' + fields.bullets[0]) : '');
+            add('description', 'Description', fields.description ? (String(fields.description).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)) : '');
+            add('price', 'Price', fields.price !== '' && fields.price != null && Number(fields.price) > 0 ? money(fields.price) : '');
+            add('images', 'Images', fields.images.length ? (fields.images.length + ' image(s), main: ' + fields.images[0]) : '');
+            $('#lm-push-preview').html(cells.join('') || '<div class="text-muted small">Tick at least one field above.</div>');
+        }
+
+        function refreshPushPreview() {
+            if (!currentProductSku) return;
+            renderPushPreview(collectPushFields(), selectedPushParts());
         }
 
         function renderPushPending(channelIds) {
@@ -4322,7 +4616,11 @@
                 cls = 'ok';
                 badge = mode === 'draft'
                     ? '<span class="lm-push-badge draft">Draft only</span>'
-                    : '<span class="lm-push-badge listed">Live</span>';
+                    : '<span class="lm-push-badge listed">Live updated</span>';
+            } else if (state === 'skipped') {
+                ico = '<i class="fas fa-minus-circle"></i>';
+                cls = 'text-muted';
+                badge = '<span class="lm-push-badge skipped">Skipped</span>';
             } else if (state === 'fail') {
                 ico = '<i class="fas fa-times-circle"></i>';
                 cls = 'fail';
@@ -4356,34 +4654,38 @@
             }).join(''));
         }
 
-        function openProductPushPanel() {
+        let pushInFlight = false;
+
+        function openProductPushModal() {
             if (!currentProductSku) { toast('Open a product first.', 'error'); return; }
+            if (pushInFlight) return;
             const $openBtn = $('#lm-prod-push-btn');
             if ($openBtn.data('loading')) return;
             const openIdle = $openBtn.html();
             $openBtn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Loading…');
-            setProductPane('info');
             $('#lm-push-results').addClass('d-none').empty();
+            $('#lm-push-modal-sub').text((currentProduct && currentProduct.title ? currentProduct.title + ' · ' : '') + currentProductSku);
             $('#lm-push-part-title, #lm-push-part-description, #lm-push-part-price').prop('checked', true);
-            $('#lm-prod-push-panel').removeClass('d-none');
+            $('#lm-push-part-bullets, #lm-push-part-images').prop('checked', false);
+            $('#lm-push-now-btn').prop('disabled', false).html('<i class="fas fa-cloud-upload-alt me-1"></i>Push Updates');
+            refreshPushPreview();
             $('#lm-prod-push-channels').html('<div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Loading marketplaces…</div>');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('lmProductPushModal')).show();
             const flags = productChannelFlags(currentProduct);
             loadChannels().then(function () {
                 const enabled = allChannels.filter(c => c.enabled);
-                const extra = allChannels.filter(c => {
-                    const name = String(c.channel || '').toLowerCase();
-                    return !c.enabled && (flags.listed.has(name) || flags.listedIds.has(Number(c.id)));
+                const extra = allChannels.filter(c => !c.enabled && channelIsListed(c, flags));
+                const list = extra.concat(enabled).sort((a, b) => {
+                    const la = channelIsListed(a, flags) ? 0 : 1;
+                    const lb = channelIsListed(b, flags) ? 0 : 1;
+                    return la - lb || String(a.channel || '').localeCompare(String(b.channel || ''));
                 });
-                const list = enabled.concat(extra);
-                const pre = list.filter(c => {
-                    const name = String(c.channel || '').toLowerCase();
-                    return flags.listed.has(name) || flags.drafted.has(name)
-                        || flags.listedIds.has(Number(c.id)) || flags.draftedIds.has(Number(c.id));
-                }).map(c => c.id);
+                const pre = list.filter(c => channelIsListed(c, flags)).map(c => c.id);
                 renderPushChannelRows(list, pre, flags);
-                $('#lm-push-select-all').prop('checked', pre.length > 0 && pre.length === list.length);
-                const panel = document.getElementById('lm-prod-push-panel');
-                if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                $('#lm-push-select-all').prop('checked', pre.length > 0);
+                if (!pre.length) {
+                    $('#lm-prod-push-channels').prepend('<div class="text-muted small mb-2">This SKU is not listed on any connected marketplace yet, so there is nothing to update.</div>');
+                }
             }).fail(function () {
                 toast('Could not load marketplaces.', 'error');
             }).always(function () {
@@ -4392,87 +4694,118 @@
         }
 
         $('#lm-prod-push-btn').on('click', function () {
-            openProductPushPanel();
+            openProductPushModal();
         });
-        $('#lm-prod-push-hide-btn').on('click', function () {
-            $('#lm-prod-push-panel').addClass('d-none');
-        });
+        $('#lm-push-parts').on('change', 'input', refreshPushPreview);
         $('#lm-push-select-all').on('change', function () {
             const on = this.checked;
-            $('#lm-prod-push-channels .lm-channel-cb').prop('checked', on).each(function () {
+            $('#lm-prod-push-channels .lm-channel-cb:not(:disabled)').prop('checked', on).each(function () {
                 $(this).closest('.lm-channel-row').toggleClass('is-checked', on);
             });
         });
-        $('#lm-push-now-btn').on('click', async function () {
-            const channelIds = $('#lm-prod-push-channels .lm-channel-cb:checked').map(function () {
-                return parseInt(this.value, 10);
-            }).get().filter(n => n > 0);
-            if (!channelIds.length) { toast('Select at least one marketplace.', 'error'); return; }
-            const parts = [];
-            if ($('#lm-push-part-title').is(':checked')) parts.push('title');
-            if ($('#lm-push-part-description').is(':checked')) parts.push('description');
-            if ($('#lm-push-part-price').is(':checked')) parts.push('price');
-            if (!parts.length) { toast('Choose Title, Description, and/or Price to push.', 'error'); return; }
-            const $btn = $(this);
-            if ($btn.data('loading')) return;
-            const idleHtml = $btn.html();
-            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Updating…');
-            $('#lm-prod-push-btn').prop('disabled', true);
-            $('#lm-prod-push-overlay').addClass('d-none');
-            renderPushPending(channelIds);
-            const fields = collectProductEditFields();
-            let ok = 0;
-            let fail = 0;
-            try {
-                await $.ajax({
-                    url: "{{ url('/listing-manager/product/save') }}",
-                    method: 'POST',
-                    data: fields,
-                    timeout: 30000,
-                });
-            } catch (xhr) {
-                const msg = (xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Could not save product before pushing.';
-                toast(msg, 'error');
-                $btn.data('loading', false).prop('disabled', false).html(idleHtml);
-                $('#lm-prod-push-btn').prop('disabled', false);
-                return;
-            }
+        document.getElementById('lmProductPushModal').addEventListener('hide.bs.modal', function (e) {
+            if (pushInFlight) e.preventDefault();
+        });
+
+        // Runs the update-only push for one or more channels and reports per-channel results.
+        async function runMarketplaceUpdate(channelIds, fields, parts, opts) {
+            const o = opts || {};
+            let ok = 0, fail = 0, skipped = 0;
+            const results = [];
             for (let i = 0; i < channelIds.length; i++) {
                 const id = channelIds[i];
                 const ch = allChannels.find(c => Number(c.id) === Number(id));
                 const name = ch ? ch.channel : ('Channel ' + id);
-                $btn.html('<i class="fas fa-spinner fa-spin me-1"></i>' + (i + 1) + '/' + channelIds.length);
-                setPushRowStatus(id, 'updating', 'Updating ' + name + '…');
+                if (o.onProgress) o.onProgress(i, channelIds.length, name);
+                if (o.rows) setPushRowStatus(id, 'updating', 'Updating ' + name + '…');
                 try {
                     const res = await $.ajax({
                         url: "{{ url('/listing-manager/product/push') }}",
                         method: 'POST',
-                        data: Object.assign({}, fields, { channel_ids: [id], parts, skip_save: 1 }),
-                        timeout: 120000,
+                        data: Object.assign({}, fields, { channel_ids: [id], parts, skip_save: 1, update_only: 1 }),
+                        timeout: 180000,
                     });
                     const row = (res.results && res.results[0]) ? res.results[0] : null;
-                    if (row && row.success) {
+                    const mode = row ? String(row.mode || '') : '';
+                    if (row && mode === 'skipped') {
+                        skipped++;
+                        if (o.rows) setPushRowStatus(id, 'skipped', row.message || 'Not listed here — skipped.', mode);
+                    } else if (row && row.success) {
                         ok++;
-                        setPushRowStatus(id, 'ok', row.message || 'Updated.', row.mode);
+                        if (o.rows) setPushRowStatus(id, 'ok', row.message || 'Updated.', mode);
                     } else {
                         fail++;
-                        setPushRowStatus(id, 'fail', (row && row.message) || res.message || 'Update failed.', row && row.mode);
+                        if (o.rows) setPushRowStatus(id, 'fail', (row && row.message) || res.message || 'Update failed.', mode);
                     }
+                    results.push({ id, name, row, res });
                 } catch (xhr) {
                     fail++;
                     const msg = (xhr && xhr.responseJSON && xhr.responseJSON.message)
                         || (xhr && xhr.statusText)
                         || 'Could not update this marketplace.';
-                    setPushRowStatus(id, 'fail', msg);
+                    if (o.rows) setPushRowStatus(id, 'fail', msg);
+                    results.push({ id, name, row: null, error: msg });
                 }
             }
-            toast('Updated ' + ok + ' marketplace(s)' + (fail ? (', ' + fail + ' failed.') : '.'), fail === 0 ? 'success' : 'error');
+            return { ok, fail, skipped, results };
+        }
+
+        $('#lm-push-now-btn').on('click', async function () {
+            const channelIds = $('#lm-prod-push-channels .lm-channel-cb:checked:not(:disabled)').map(function () {
+                return parseInt(this.value, 10);
+            }).get().filter(n => n > 0);
+            if (!channelIds.length) { toast('Select at least one listed marketplace.', 'error'); return; }
+            const parts = selectedPushParts();
+            if (!parts.length) { toast('Tick at least one field to update.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading') || pushInFlight) return;
+            const idleHtml = $btn.html();
+            pushInFlight = true;
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
+            $('#lm-prod-push-btn').prop('disabled', true);
+            renderPushPending(channelIds);
+            const fields = collectPushFields();
+            // Persist to Product Master first so the marketplaces and our masters stay in step.
+            // Bullets / images are only written when that part is being pushed.
+            const saveData = Object.assign({}, fields);
+            if (!parts.includes('bullets')) delete saveData.bullets;
+            if (!parts.includes('images')) delete saveData.images;
+            if (saveData.images && !saveData.images.length) delete saveData.images;
+            if (saveData.bullets && !saveData.bullets.length) delete saveData.bullets;
+            try {
+                await $.ajax({
+                    url: "{{ url('/listing-manager/product/save') }}",
+                    method: 'POST',
+                    data: saveData,
+                    timeout: 30000,
+                });
+            } catch (xhr) {
+                const msg = (xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Could not save product before pushing.';
+                toast(msg, 'error');
+                pushInFlight = false;
+                $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                $('#lm-prod-push-btn').prop('disabled', false);
+                return;
+            }
+            const pushFields = Object.assign({}, fields);
+            if (!pushFields.bullets.length) delete pushFields.bullets;
+            if (!pushFields.images.length) delete pushFields.images;
+            const out = await runMarketplaceUpdate(channelIds, pushFields, parts, {
+                rows: true,
+                onProgress: (i, n) => $btn.html('<i class="fas fa-spinner fa-spin me-1"></i>' + (i + 1) + '/' + n),
+            });
+            const summary = 'Updated ' + out.ok + ' marketplace(s)'
+                + (out.fail ? (', ' + out.fail + ' failed') : '')
+                + (out.skipped ? (', ' + out.skipped + ' skipped') : '') + '.';
+            toast(summary, out.fail === 0 ? 'success' : 'error');
             if (currentProduct) {
-                currentProduct = Object.assign({}, currentProduct, fields);
+                currentProduct = Object.assign({}, currentProduct, fields, { images: currentImages.slice() });
                 $('#lm-prod-title').text(currentProduct.title || currentProduct.sku || 'Product');
+                if (!productEditMode) renderProductInfo(currentProduct);
             }
             loadTable();
-            $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+            pushInFlight = false;
+            $btn.data('loading', false).prop('disabled', false).html('<i class="fas fa-redo me-1"></i>Push Again');
             $('#lm-prod-push-btn').prop('disabled', false);
         });
         $('#lm-prod-content').on('click', '.lm-create-listing-btn', function () {
@@ -4499,6 +4832,142 @@
             if (!id) return;
             bootstrap.Modal.getOrCreateInstance(document.getElementById('lmProductModal')).hide();
             openEditor(id);
+        });
+
+        // ---- Images tab: edit gallery ----
+        $('#lm-img-edit-btn').on('click', function () {
+            if (!currentProduct) { toast('Load a product first.', 'error'); return; }
+            setImagesEditMode(true);
+        });
+        $('#lm-img-cancel-btn').on('click', function () {
+            currentImages = imagesBeforeEdit.slice();
+            setImagesEditMode(false);
+        });
+        $('#lm-img-save-btn').on('click', saveProductImages);
+        function addImageUrlFromInput() {
+            const url = String($('#lm-img-add-url').val() || '').trim();
+            if (!url) return;
+            if (!/^https?:\/\//i.test(url) && !url.startsWith('/')) { toast('Enter a full image URL starting with https://', 'error'); return; }
+            if (currentImages.includes(url)) { toast('That image is already in the gallery.', 'error'); return; }
+            if (currentImages.length >= 20) { toast('Maximum 20 images.', 'error'); return; }
+            currentImages = currentImages.concat([url]);
+            $('#lm-img-add-url').val('');
+            drawProductImages();
+        }
+        $('#lm-img-add-btn').on('click', addImageUrlFromInput);
+        $('#lm-img-add-url').on('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); addImageUrlFromInput(); }
+        });
+
+        // ---- Generic inline cell editor for the Variations / MetaFields / Listings tables ----
+        function inlineEditCell($cell, fields, onSave) {
+            if ($cell.data('editing')) return;
+            $cell.data('editing', true).data('orig', $cell.html()).addClass('lm-cell-editing');
+            const inputs = fields.map(f => {
+                const val = escapeHtml(f.value == null ? '' : String(f.value));
+                const attrs = `class="form-control form-control-sm lm-inline-input" data-key="${f.key}" placeholder="${escapeHtml(f.label || '')}"`;
+                return f.type === 'textarea'
+                    ? `<textarea ${attrs} rows="${f.rows || 2}">${val}</textarea>`
+                    : `<input type="${f.type || 'text'}" ${attrs} value="${val}" ${f.step ? 'step="' + f.step + '"' : ''} ${f.min != null ? 'min="' + f.min + '"' : ''}>`;
+            }).join('<div class="mt-1"></div>');
+            $cell.html(`${inputs}
+                <div class="lm-inline-actions">
+                    <button type="button" class="btn-lc btn-lc-primary btn-sm lm-inline-save">Save</button>
+                    <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-inline-cancel">Cancel</button>
+                </div>`);
+            $cell.find('.lm-inline-input').first().trigger('focus');
+            const restore = () => { $cell.html($cell.data('orig')).removeClass('lm-cell-editing').data('editing', false); };
+            $cell.on('click', '.lm-inline-cancel', function (e) { e.stopPropagation(); restore(); $cell.off('click keydown'); });
+            $cell.on('keydown', '.lm-inline-input', function (e) { if (e.key === 'Escape') { restore(); $cell.off('click keydown'); } });
+            $cell.on('click', '.lm-inline-save', function (e) {
+                e.stopPropagation();
+                const values = {};
+                $cell.find('.lm-inline-input').each(function () { values[$(this).data('key')] = $(this).val(); });
+                const $save = $(this).prop('disabled', true).text('Saving…');
+                Promise.resolve(onSave(values)).then(function () {
+                    $cell.off('click keydown').removeClass('lm-cell-editing').data('editing', false);
+                }).catch(function (msg) {
+                    toast(msg || 'Save failed.', 'error');
+                    $save.prop('disabled', false).text('Save');
+                });
+            });
+        }
+
+        // Variations: sibling title -> that SKU's Product Master
+        $('#lm-prod-variations').on('click', '.lm-var-edit-btn', function () {
+            const $row = $(this).closest('tr');
+            const idx = parseInt($row.data('idx'), 10);
+            const v = currentProduct && currentProduct.variations ? currentProduct.variations[idx] : null;
+            if (!v) return;
+            inlineEditCell($row.find('.lm-var-title'), [{ key: 'title', label: 'Title', value: v.title, type: 'textarea', rows: 2 }], function (vals) {
+                const title = String(vals.title || '').trim();
+                if (!title) return Promise.reject('Title cannot be empty.');
+                return $.ajax({ url: "{{ url('/listing-manager/product/save') }}", method: 'POST', data: { sku: v.sku, title } })
+                    .then(function () {
+                        v.title = title;
+                        $row.find('.lm-var-title').text(title);
+                        if (v.is_current && currentProduct) {
+                            currentProduct.title = title;
+                            $('#lm-prod-title').text(title);
+                            if (productEditMode) fillProductEditForm(currentProduct); else renderProductInfo(currentProduct);
+                        }
+                        toast('Saved title for ' + v.sku + '.', 'success');
+                    }, function (xhr) { return Promise.reject(xhr.responseJSON?.message || 'Could not save title.'); });
+            });
+        });
+
+        // Main Store MetaFields: Product Master-backed attributes
+        $('#lm-prod-metafields').on('click', '.lm-meta-edit-btn', function () {
+            const $row = $(this).closest('tr');
+            const idx = parseInt($row.data('idx'), 10);
+            const m = currentProduct && currentProduct.metafields ? currentProduct.metafields[idx] : null;
+            if (!m) return;
+            const long = String(m.value || '').length > 80;
+            inlineEditCell($row.find('.lm-meta-value'), [{ key: 'value', label: m.name, value: m.value, type: long ? 'textarea' : 'text', rows: 3 }], function (vals) {
+                const value = String(vals.value == null ? '' : vals.value);
+                return $.ajax({ url: "{{ url('/listing-manager/product/metafield') }}", method: 'POST', data: { sku: currentProductSku, name: m.name, value } })
+                    .then(function (res) {
+                        m.value = res && res.value != null ? res.value : value;
+                        $row.find('.lm-meta-value').html('<code style="white-space:pre-wrap;font-size:.78rem">' + escapeHtml(m.value) + '</code>');
+                        toast((res && res.message) || 'Saved.', 'success');
+                    }, function (xhr) { return Promise.reject(xhr.responseJSON?.message || 'Could not save attribute.'); });
+            });
+        });
+
+        // Listings: change name / price on one marketplace only (update in place, nothing created)
+        $('#lm-prod-listed').on('click', '.lm-listed-edit-btn', function () {
+            const $row = $(this).closest('tr');
+            const idx = parseInt($row.data('idx'), 10);
+            const r = currentProduct && currentProduct.listed_on ? currentProduct.listed_on[idx] : null;
+            const channelId = parseInt($row.data('channel-id'), 10);
+            if (!r || !channelId) return;
+            inlineEditCell($row.find('.lm-listed-name'), [
+                { key: 'title', label: 'Product name on ' + (r.channel || 'marketplace'), value: r.product_name || (currentProduct && currentProduct.title) || '', type: 'textarea', rows: 2 },
+                { key: 'price', label: 'Price', value: r.price != null ? r.price : '', type: 'number', step: '0.01', min: 0 },
+            ], async function (vals) {
+                const title = String(vals.title || '').trim();
+                const priceRaw = String(vals.price == null ? '' : vals.price).trim();
+                const price = priceRaw !== '' ? Number(priceRaw) : null;
+                const parts = [];
+                if (title && title !== String(r.product_name || '')) parts.push('title');
+                if (price != null && price > 0 && Number(price) !== Number(r.price)) parts.push('price');
+                if (!parts.length) return Promise.reject('Nothing changed.');
+                await loadChannels();
+                const fields = { sku: currentProductSku, title, price: price != null ? price : '' };
+                const out = await runMarketplaceUpdate([channelId], fields, parts, { rows: false });
+                const item = out.results[0] || {};
+                const row = item.row;
+                if (item.error) return Promise.reject(item.error);
+                if (row && row.mode === 'skipped') return Promise.reject(row.message || 'Not listed on this marketplace.');
+                if (!row || !row.success) return Promise.reject((row && row.message) || 'Marketplace update failed.');
+                if (parts.includes('title')) r.product_name = title;
+                if (parts.includes('price')) r.price = price;
+                $row.find('.lm-listed-name').html(r.draft_id
+                    ? `<a href="#" class="lm-open-listed-draft" data-id="${r.draft_id}">${escapeHtml(r.product_name || '')}</a>`
+                    : escapeHtml(r.product_name || ''));
+                $row.find('.lm-listed-price').text(money(r.price));
+                toast((r.channel || 'Marketplace') + ': ' + (row.message || 'Updated.'), 'success');
+            });
         });
 
         $('#lm-multi-edit-btn').on('click', function () {
