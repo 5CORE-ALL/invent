@@ -22,36 +22,79 @@ class ShopifyOhioLocationResolver
             return (string) $configured;
         }
 
-        return Cache::remember('shopify_ohio_preferred_location_id', 3600, function () {
-            try {
-                $domain = config('services.shopify.store_url');
-                $token = config('services.shopify.access_token') ?: config('services.shopify.password');
-                if (! $domain || ! $token) {
-                    return null;
-                }
+        $cached = Cache::get('shopify_ohio_preferred_location_id');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
 
+        $locationId = self::fetchOhioLocationId();
+        if (is_string($locationId) && $locationId !== '') {
+            Cache::put('shopify_ohio_preferred_location_id', $locationId, 3600);
+        }
+
+        return $locationId;
+    }
+
+    /**
+     * locations.json is shared by every Accept. A 429 must be retried; a miss must not be cached.
+     */
+    private static function fetchOhioLocationId(): ?string
+    {
+        $domain = config('services.shopify.store_url');
+        $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+        if (! $domain || ! $token) {
+            return null;
+        }
+
+        $maxAttempts = 3;
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            try {
                 $response = Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
                 ])->timeout(30)->get("https://{$domain}/admin/api/2025-01/locations.json");
-
-                if (! $response->successful()) {
-                    return null;
-                }
-
-                foreach ($response->json('locations') ?? [] as $loc) {
-                    if (stripos($loc['name'] ?? '', 'Ohio') !== false) {
-                        return (string) $loc['id'];
-                    }
-                }
             } catch (\Throwable $e) {
                 Log::warning('ShopifyOhioLocationResolver: could not resolve Ohio location', [
                     'error' => $e->getMessage(),
                 ]);
+
+                return null;
+            }
+
+            if ($response->status() === 429 && $attempt < $maxAttempts - 1) {
+                $retryAfter = $response->header('Retry-After');
+                $wait = (is_numeric($retryAfter) && (int) $retryAfter >= 0)
+                    ? min(8, (int) $retryAfter)
+                    : min(1 << $attempt, 4);
+                Log::info('ShopifyOhioLocationResolver: locations.json rate limited, retrying', [
+                    'attempt' => $attempt + 1,
+                    'wait_seconds' => $wait,
+                ]);
+                if ($wait > 0) {
+                    sleep($wait);
+                }
+
+                continue;
+            }
+
+            if (! $response->successful()) {
+                Log::warning('ShopifyOhioLocationResolver: locations.json failed', [
+                    'status' => $response->status(),
+                ]);
+
+                return null;
+            }
+
+            foreach ($response->json('locations') ?? [] as $loc) {
+                if (stripos($loc['name'] ?? '', 'Ohio') !== false) {
+                    return (string) $loc['id'];
+                }
             }
 
             return null;
-        });
+        }
+
+        return null;
     }
 
     /**

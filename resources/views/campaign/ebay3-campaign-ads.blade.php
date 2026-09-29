@@ -826,9 +826,14 @@ function sbidSlabInRange(val, min, max) {
     return true;
 }
 
+function sbidSlabIsPaused(rule) {
+    return !!(rule && (rule.paused === true || rule.paused === 1 || rule.paused === '1' || rule.paused === 'true'));
+}
+
 function maxSbidFromSlabs(slabs) {
     let max = 0;
     (slabs || []).forEach(function(r) {
+        if (sbidSlabIsPaused(r)) return;
         const bid = parseFloat(r.sbid);
         if (isFinite(bid) && bid > max) max = bid;
     });
@@ -846,6 +851,9 @@ function getCombinedSbid(row) {
     for (let i = 0; i < currentSbidSlabs.length; i++) {
         const r = currentSbidSlabs[i];
         if (sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
+            if (sbidSlabIsPaused(r)) {
+                return { bid: 0, color: '#842029', skip: false, off: true, title: 'Paused slab — promoted listing is off' };
+            }
             const bid = parseFloat(r.sbid);
             if (isFinite(bid) && bid > 0) return { bid: bid, color: '#0d6efd', skip: false };
             return { bid: 0, color: '#6c757d', skip: true };
@@ -1079,7 +1087,7 @@ function saveSbidRules(thenPush) {
         contentType: 'application/json',
         data: JSON.stringify({
             rules: (currentSbidSlabs || []).map(function(r) {
-                return { label: r.label || '', l7_views_min: r.l7_views_min, l7_views_max: r.l7_views_max, sbid: r.sbid };
+                return { label: r.label || '', l7_views_min: r.l7_views_min, l7_views_max: r.l7_views_max, sbid: r.sbid, paused: sbidSlabIsPaused(r) };
             }),
             _token: csrf
         }),

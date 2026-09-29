@@ -24,6 +24,7 @@ class AllMarketplaceMasterBadgeAggregator
         $totalPSales = 0.0;
         $totalPGross = 0.0;
         $totalPNet = 0.0;
+        $totalPCogs = 0.0;
         $totalL30Orders = 0.0;
         $totalQty = 0.0;
         $totalClicks = 0.0;
@@ -76,6 +77,7 @@ class AllMarketplaceMasterBadgeAggregator
             $totalPGross += ($gprofitPercent / 100) * $pSales;
             if (self::rowNumber($row, 'L7 Sales') > 0) {
                 $totalPNet += ($pSales * $gprofitPercent / 100) - $adSpend;
+                $totalPCogs += self::yCogsFromParts($pSales, $l30Sales, $gprofitPercent, $cogs);
             }
             $totalL30Orders += $l30Orders;
             $totalQty += $qty;
@@ -116,6 +118,7 @@ class AllMarketplaceMasterBadgeAggregator
         $avgYNroi = $totalYCogs > 0 ? ($totalYNet / $totalYCogs) * 100 : 0.0;
         $netProfit = $totalPft - $totalAdSpend;
         $avgNroi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0.0;
+        $avgPNroi = $totalPCogs > 0 ? ($totalPNet / $totalPCogs) * 100 : 0.0;
         $cvrUnits = 0.0;
         $cvrViews = 0.0;
         foreach ($rows as $row) {
@@ -165,6 +168,7 @@ class AllMarketplaceMasterBadgeAggregator
             'net_profit' => round($netProfit, 2),
             'npft_pct' => round($avgNpft, 2),
             'p_npft_pct' => round($avgPNpft, 2),
+            'p_nroi_pct' => round($avgPNroi, 2),
             'n_roi' => round($avgNroi, 2),
             'clicks' => (int) round($totalClicks),
             'map' => (int) round($totalMap),

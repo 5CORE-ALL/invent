@@ -159,7 +159,7 @@
                                 <th colspan="2" class="text-center">For L7 Views</th>
                                 <th colspan="2" class="text-center">CVR %</th>
                                 <th rowspan="2" style="width:100px;" class="align-middle text-center">S Bid (%)</th>
-                                <th rowspan="2" style="width:44px;" class="align-middle"></th>
+                                <th rowspan="2" style="width:72px;" class="align-middle"></th>
                             </tr>
                             <tr>
                                 <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
@@ -180,7 +180,9 @@
                     <i class="fas fa-info-circle me-1"></i>
                     Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled ranges
                     match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
-                    If <strong>E L30 (el30) = 0</strong>, the <strong>maximum S Bid %</strong> is always applied.
+                    If <strong>E L30 (el30) = 0</strong>, the <strong>maximum S Bid %</strong> from slabs that are not paused is always applied.
+                    <strong>Pause</strong> a row to turn matching promoted listings off, the same way Dil vs SBid Auto Off does.
+                    Click pause again to resume and apply that row's S Bid.
                     Shared with <code>/ebay-tabulator-view</code>. Autopush runs when a slab or 0-sold value changes.
                 </div>
                 <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
@@ -943,9 +945,14 @@ function sbidSlabInRange(val, min, max) {
     return true;
 }
 
+function sbidSlabIsPaused(rule) {
+    return !!(rule && (rule.paused === true || rule.paused === 1 || rule.paused === '1' || rule.paused === 'true'));
+}
+
 function maxSbidFromSlabs(slabs) {
     let max = 0;
     (slabs || []).forEach(function(r) {
+        if (sbidSlabIsPaused(r)) return;
         const bid = parseFloat(r.sbid);
         if (isFinite(bid) && bid > max) max = bid;
     });
@@ -971,6 +978,9 @@ function getCombinedSbid(row) {
         const r = currentSbidSlabs[i];
         if (sbidSlabInRange(cvr, r.cvr_min, r.cvr_max)
             && sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
+            if (sbidSlabIsPaused(r)) {
+                return { bid: 0, color: '#842029', skip: false, off: true, title: 'Paused slab — promoted listing is off' };
+            }
             const bid = parseFloat(r.sbid);
             if (isFinite(bid) && bid > 0) return { bid: bid, color: '#0d6efd', skip: false };
             return { bid: 0, color: '#6c757d', skip: true };
@@ -1037,18 +1047,28 @@ function renderSbidSlabRules(rules) {
     }
     autofillSbidSlabMins(rules);
     rules.forEach(function(rule, i) {
+        const paused = sbidSlabIsPaused(rule);
         const tr = document.createElement('tr');
         tr.setAttribute('data-idx', i);
+        if (paused) tr.style.background = '#fff4e5';
         tr.innerHTML = `
             <td class="text-center text-muted small">${i + 1}</td>
             <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
                        data-field="label" onchange="sbidSlabUpdate(this)" placeholder="Rule ${i + 1}"></td>
             ${sbidSlabRangeInputs(rule, 'l7_views', i)}
             ${sbidSlabRangeInputs(rule, 'cvr', i)}
-            <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
+            <td>${paused
+                ? '<span class="badge" style="background:#f8d7da;color:#842029;" title="Matching promoted listings are paused">Pause</span>'
+                : `<input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
                        value="${sbidSlabNumAttr(rule.sbid)}" data-field="sbid"
-                       onchange="sbidSlabUpdate(this)"></td>
-            <td class="text-center">
+                       onchange="sbidSlabUpdate(this)">`
+            }</td>
+            <td class="text-center text-nowrap">
+                <button type="button" class="btn btn-sm ${paused ? 'btn-warning' : 'btn-outline-secondary'} py-0 px-1"
+                        onclick="sbidSlabTogglePause(${i})"
+                        title="${paused ? 'Resume this slab and apply its S Bid' : 'Pause matching promoted listings'}">
+                    <i class="fas fa-pause"></i>
+                </button>
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
                         onclick="sbidSlabRemove(${i})" title="Remove rule">&times;</button>
             </td>`;
@@ -1089,6 +1109,14 @@ function sbidSlabUpdate(el) {
     scheduleEbay1SbidAutopush();
 }
 
+function sbidSlabTogglePause(idx) {
+    if (!currentSbidSlabs[idx]) return;
+    currentSbidSlabs[idx].paused = !sbidSlabIsPaused(currentSbidSlabs[idx]);
+    renderSbidSlabRules(currentSbidSlabs);
+    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+    scheduleEbay1SbidAutopush();
+}
+
 function sbidSlabRemove(idx) {
     currentSbidSlabs.splice(idx, 1);
     renderSbidSlabRules(currentSbidSlabs);
@@ -1125,9 +1153,20 @@ function collectEbay1AutopushSkus() {
         const sku = rd.resolved_sku;
         if (!sku) return;
         const res = getCombinedSbid(rd);
+        if (res && res.off) { skus.push(sku); return; }
         if (res && !res.skip && res.bid > 0) skus.push(sku);
     });
     return skus;
+}
+
+function paintEbay1AdStatus(skus, status) {
+    if (!skus || !skus.length || typeof table === 'undefined' || !table) return;
+    const set = {};
+    skus.forEach(function(s) { set[String(s)] = true; });
+    table.getRows().forEach(function(row) {
+        const d = row.getData() || {};
+        if (set[String(d.resolved_sku || '')]) row.update({ campaign_status: status });
+    });
 }
 
 function autoPushEbay1Sbid() {
@@ -1153,8 +1192,10 @@ function autoPushEbay1Sbid() {
         success: function(resp) {
             ebay1SbidAutopushBusy = false;
             setEbay1AutopushLabel('<i class="fas fa-bolt me-1"></i>Autopush');
-            const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
-            if (statusEl) statusEl.textContent = 'Autopush: ' + s + ' pushed · ' + f + ' failed · ' + sk + ' skipped';
+            const s = resp.success || 0, p = resp.paused || 0, f = resp.failed || 0, sk = resp.skipped || 0;
+            paintEbay1AdStatus(resp.paused_skus, 'PAUSED');
+            paintEbay1AdStatus(resp.resumed_skus, 'RUNNING');
+            if (statusEl) statusEl.textContent = 'Autopush: ' + s + ' pushed · ' + p + ' paused · ' + f + ' failed · ' + sk + ' skipped';
         },
         error: function(xhr) {
             ebay1SbidAutopushBusy = false;

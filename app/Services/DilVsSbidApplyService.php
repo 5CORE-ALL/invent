@@ -79,8 +79,20 @@ class DilVsSbidApplyService
             if (! $useDil) {
                 $esold = (float) ($metric?->ebay_l30 ?? 0);
                 $l7Views = (float) ($metric?->l7_views ?? 0);
-                $bid = SbidSlabRule::resolve($esold, $l7Views, $viewSlabs);
-                if ($bid <= 0) {
+                $decision = SbidSlabRule::match($esold, $l7Views, $viewSlabs);
+                if ($decision['pause']) {
+                    if (empty($ad->ad_id)) {
+                        $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Paused slab but no ad id'];
+                        $skipped++;
+                        continue;
+                    }
+                    $offsByCampaign[(string) $ad->campaign_id][] = [
+                        'listingId' => $lid,
+                        'adId' => (string) $ad->ad_id,
+                    ];
+                    continue;
+                }
+                if ($decision['bid'] <= 0) {
                     $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Dil vs SBid is off and no View VS SBID slab matched'];
                     $skipped++;
                     continue;
@@ -88,7 +100,7 @@ class DilVsSbidApplyService
                 $bidsByCampaign[(string) $ad->campaign_id][] = [
                     'listingId' => $lid,
                     'adId' => $ad->ad_id ? (string) $ad->ad_id : null,
-                    'bidPercentage' => (string) round($bid, 2),
+                    'bidPercentage' => (string) round($decision['bid'], 2),
                 ];
                 continue;
             }

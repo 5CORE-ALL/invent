@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\ShopifyInventoryLog;
 use App\Jobs\UpdateShopifyInventoryJob;
 use App\Models\LostGainAqHistory;
+use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -32,6 +33,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class VerificationAdjustmentController extends Controller
 {
+    use ShopifyAdminRateLimitRetry;
 
     protected $shopifyDomain;
     protected $shopifyApiKey;
@@ -970,12 +972,14 @@ GQL;
 
     protected function postInventoryAdjustment(string $inventoryItemId, string $locationId, int $adjustment): int
     {
-        $response = $this->shopifyHttp()->timeout(8)
-            ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
-                'inventory_item_id' => $inventoryItemId,
-                'location_id' => $locationId,
-                'available_adjustment' => $adjustment,
-            ]);
+        $response = $this->retryOnRateLimit(function () use ($inventoryItemId, $locationId, $adjustment) {
+            return $this->shopifyHttp()->timeout(8)
+                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+                    'inventory_item_id' => $inventoryItemId,
+                    'location_id' => $locationId,
+                    'available_adjustment' => $adjustment,
+                ]);
+        }, 4, 0.5);
 
         if (! $response->successful()) {
             $errorMessage = "HTTP {$response->status()}";
@@ -1156,18 +1160,31 @@ GQL;
 
     protected function getLocationIdFast(string $inventoryItemId): ?string
     {
-        $response = $this->shopifyHttp()->timeout(8)
-            ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
-                'inventory_item_ids' => $inventoryItemId
-            ]);
+        $cacheKey = 'va:shopify_loc:'.$inventoryItemId;
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        // Shopify often answers 429 while other syncs are running. Retry before failing Accept.
+        $response = $this->retryOnRateLimit(function () use ($inventoryItemId) {
+            return $this->shopifyHttp()->timeout(8)
+                ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
+                    'inventory_item_ids' => $inventoryItemId,
+                ]);
+        }, 4, 0.5);
 
         if (!$response->successful()) {
             throw new \Exception("HTTP {$response->status()}");
         }
 
         $levels = $response->json('inventory_levels') ?? [];
+        $locationId = $this->resolveLocationIdFromLevels($levels);
+        if (is_string($locationId) && $locationId !== '') {
+            Cache::put($cacheKey, $locationId, 86400);
+        }
 
-        return $this->resolveLocationIdFromLevels($levels);
+        return $locationId;
     }
 
     protected function adjustInventoryFast(string $inventoryItemId, string $locationId, int $adjustment): void

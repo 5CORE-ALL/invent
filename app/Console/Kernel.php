@@ -830,7 +830,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-      
+        
         $ist($schedule->command('newegg:orders --days=60 --save')
             ->twiceDaily(9, 18)
             ->name('fetch-newegg-orders')
@@ -1503,11 +1503,22 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('amazon:ads-live-bid-bgt-sync --limit=200')
+        $schedule->command('amazon:ads-live-bid-bgt-sync --limit=200 --retry-failed')
             ->dailyAt('21:50')
             ->timezone('Asia/Kolkata')
             ->name('amazon-ads-live-bid-bgt-sync')
             ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Grid loads after 21:50 save a new rule SBID/SBGT. This run pushes those
+        // the same day. Recent failures stay on the 21:50 retry.
+        $schedule->command('amazon:ads-live-bid-bgt-sync --limit=100')
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->between('09:00', '23:30')
+            ->name('amazon-ads-live-bid-bgt-sync-followup')
+            ->withoutOverlapping(25)
             ->runInBackground()
             ->appendOutputTo($log);
 

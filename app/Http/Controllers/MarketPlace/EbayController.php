@@ -465,6 +465,7 @@ class EbayController extends Controller
                 'l7_views_min' => $this->numOrNull($r['l7_views_min'] ?? null),
                 'l7_views_max' => $this->numOrNull($r['l7_views_max'] ?? null),
                 'sbid'       => $this->numOrNull($r['sbid'] ?? null) ?? 0,
+                'paused'     => filter_var($r['paused'] ?? false, FILTER_VALIDATE_BOOLEAN),
             ];
         }
 

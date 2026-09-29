@@ -805,6 +805,9 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = blended GPFT% on P-Sales minus Ads% on P-Sales. P-Sales is last-7-day pace × 30; spend is current L30 ad spend.">
                             <span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>P-Npft%: <span id="avg-p-npft">0.0%</span>
                         </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_nroi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-NROI% uses the same projected COGS as P GROI%. P-Sales = (L7 ÷ 7) × 30. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-NROI% = Σ (P-Sales × GPFT% − ad spend) ÷ Σ projected COGS.">
+                            <span class="summary-trend-dot none" data-metric="p_nroi_pct" title="Rolling history"></span>P-NROI%: <span id="avg-p-nroi">0.0%</span>
+                        </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft_amt" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is last-7-day pace × 30; spend is current L30 ad spend. % is P NPFT $ vs NPFT $.">
                             <span class="summary-trend-dot none" data-metric="p_npft_amt" title="Rolling history"></span>P NPFT: <span id="total-p-npft">$0</span><span id="total-p-npft-vs-npft"></span>
                         </span>
@@ -1492,7 +1495,7 @@
             var green = '#28a745';
             var red = '#dc3545';
             var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
-                || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
+                || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'p_nroi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
                 || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
             return values.map(function(v, i) {
                 if (i === 0) return gray;
@@ -1652,7 +1655,7 @@
             return parseNumber(row['N PFT'] || 0);
         }
         var METRIC_DIFF_PCT = {
-            gprofit: 1, groi: 1, npft: 1, p_npft: 1, p_groi_pct: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
+            gprofit: 1, groi: 1, npft: 1, p_npft: 1, p_groi_pct: 1, p_nroi_pct: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
         };
 
         function formatMetricDiffText(metric, diff) {
@@ -1726,7 +1729,8 @@
         function ammMetricKind(metric) {
             switch (metric) {
                 case 'nroi':
-                case 'y_nroi_pct': return 'nroi';
+                case 'y_nroi_pct':
+                case 'p_nroi_pct': return 'nroi';
                 case 'groi':
                 case 'y_groi_pct':
                 case 'p_groi_pct': return 'groi';
@@ -2024,7 +2028,7 @@
             var lastDotPairByKey = {};
             var invertedDotMetrics = ['acos', 'ads_pct'];
             var ySalesAllChartPrefetch = null;
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','p_nroi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
 
             function getMetricDotColor(channelName, metricKey) {
@@ -2053,7 +2057,7 @@
             function colorFromDotPair(v1, v2, metric) {
                 if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
                 var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
-                    || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
+                    || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'p_nroi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
                     || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                 if (Math.abs(v2 - v1) <= eps) return DEFAULT_DOT_GRAY;
                 var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
@@ -5059,14 +5063,14 @@
                     reviews: 1, l60_sales: 1, l60_orders: 1
                 };
                 var weightBy = {
-                    gprofit: 'l30_sales', npft: 'l30_sales', p_npft: 'p_sales', p_groi_pct: 'p_sales', y_npft_pct: 'y_sales', y_groi_pct: 'y_sales', y_nroi_pct: 'y_sales', ads_pct: 'l30_sales',
+                    gprofit: 'l30_sales', npft: 'l30_sales', p_npft: 'p_sales', p_groi_pct: 'p_sales', p_nroi_pct: 'p_sales', y_npft_pct: 'y_sales', y_groi_pct: 'y_sales', y_nroi_pct: 'y_sales', ads_pct: 'l30_sales',
                     groi: 'l30_sales', nroi: 'l30_sales',
                     cvr: 'total_views', ads_cvr: 'clicks', acos: 'ad_sales'
                 };
                 function pairClass(v1, v2, metric) {
                     if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return 'none';
                     var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
-                        || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
+                        || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'p_nroi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
                         || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                     if (Math.abs(v2 - v1) <= eps) return 'flat';
                     var isInv = inverted.indexOf(metric) >= 0;
@@ -5436,6 +5440,22 @@
                     $el.text(val.toFixed(1) + '%');
                     $el.closest('.badge').attr('title',
                         'Projected NPFT% = (Σ P-Sales × GPFT% − ad spend) ÷ Σ P-Sales. P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    let pNet = 0;
+                    let pCogs = 0;
+                    data.forEach(function(row) {
+                        if (!pSalesFromRow(row)) return;
+                        pNet += pGrossPftFromRow(row) - rowAdSpendFromRow(row);
+                        pCogs += pCogsFromRow(row);
+                    });
+                    const avgPNroi = pCogs > 0 ? (pNet / pCogs) * 100 : 0;
+                    const val = pct1(avgPNroi);
+                    const $el = $('#avg-p-nroi');
+                    $el.text(val.toFixed(1) + '%');
+                    $el.closest('.badge').attr('title',
+                        'P-NROI% = Σ (P-Sales × GPFT% − ad spend) ÷ Σ projected COGS. Same projected COGS as P GROI%: L30 COGS × (P-Sales ÷ L30 Sales). P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {
@@ -6317,6 +6337,7 @@
                 'npft': 'N PFT%',
                 'p_npft': 'PNPFT%',
                 'p_groi_pct': 'P GROI%',
+                'p_nroi_pct': 'P-NROI%',
                 'y_npft_pct': 'YNPFT%',
                 'y_groi_pct': 'Y GROI%',
                 'y_nroi_pct': 'Y NROI%',
@@ -6759,7 +6780,7 @@
                     if (m === 'cvr' || m === 'ads_cvr') {
                         return v.toFixed(2) + '%';
                     }
-                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'y_nroi_pct' || m === 'nroi') {
+                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'p_nroi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'y_nroi_pct' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
                     if (m === 'tat') return v.toFixed(2);

@@ -2502,9 +2502,14 @@
             return true;
         }
 
+        function sbidSlabIsPaused(rule) {
+            return !!(rule && (rule.paused === true || rule.paused === 1 || rule.paused === '1' || rule.paused === 'true'));
+        }
+
         function maxSbidFromSlabs(slabs) {
             let max = 0;
             (slabs || []).forEach(function(r) {
+                if (sbidSlabIsPaused(r)) return;
                 const bid = parseFloat(r.sbid);
                 if (isFinite(bid) && bid > max) max = bid;
             });
@@ -2523,6 +2528,9 @@
             for (let i = 0; i < rules.length; i++) {
                 const r = rules[i];
                 if (sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
+                    if (sbidSlabIsPaused(r)) {
+                        return { bid: 0, color: '#842029', skip: false, off: true, title: 'Paused slab — promoted listing is off' };
+                    }
                     const bid = parseFloat(r.sbid);
                     if (isFinite(bid) && bid > 0) {
                         return { bid: bid, color: '#0d6efd', skip: false };
@@ -5256,6 +5264,9 @@
                         },
                         formatter: function(cell) {
                             const res = getCombinedSbid(cell.getRow().getData());
+                            if (res && res.off) {
+                                return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
+                            }
                             if (res.skip) {
                                 return `<span class="text-muted" title="No matching View VS SBID slab" style="font-size:11px;">—</span>`;
                             }
@@ -8251,6 +8262,7 @@
                     if (rd.is_parent_summary || rd.is_parent_row) return;
                     if (rd.Parent && String(rd.Parent).toUpperCase().startsWith('PARENT')) return;
                     const res = getCombinedSbid(rd);
+                    if (res && res.off) { skus.push(sku); return; }
                     if (res && !res.skip && res.bid > 0) skus.push(sku);
                 });
                 return skus;
@@ -8339,7 +8351,8 @@
                                 label: r.label || '',
                                 l7_views_min: r.l7_views_min,
                                 l7_views_max: r.l7_views_max,
-                                sbid: r.sbid
+                                sbid: r.sbid,
+                                paused: !!(r.paused === true || r.paused === 1 || r.paused === '1' || r.paused === 'true')
                             };
                         }),
                         _token: csrf

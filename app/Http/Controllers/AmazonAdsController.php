@@ -19,6 +19,7 @@ use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbidRule;
+use App\Support\AmazonAdsLiveSyncFollowUp;
 use App\Support\AmazonAdsLiveSyncStatus;
 use App\Support\AmazonAdsSbgt;
 use App\Support\AmazonAdsTargetCounts;
@@ -5292,6 +5293,7 @@ class AmazonAdsController extends Controller
 
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
             $data = self::attachLiveSyncStatusesToRows($data, $table);
+            AmazonAdsLiveSyncFollowUp::requestFromGrid($data, $table);
         }
         if (in_array('targets', $columns, true) || in_array('nTargets', $columns, true)) {
             $data = self::attachTargetCountsToRows(

@@ -690,8 +690,9 @@
                     <div class="amz-dg-rules-title">Rules — when each condition applies</div>
                     <ul class="small text-muted amz-dg-rules">
                         <li>
-                            <strong>When</strong> Dil = 0 (INV &gt; 0):
+                            <strong>When</strong> Dil = 0 (Shopify INV &gt; 0 and OV L30 = 0):
                             use the <strong>0–0</strong> slab’s Target NROI.
+                            This is not Amazon 0 Sold. A L30 = 0 still uses the Dil from OV L30.
                         </li>
                         <li>
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
@@ -937,13 +938,22 @@
         function amzPefIsChildRow(d) {
             return !!(d && !d.is_parent_summary && amzPefSku(d) && String(amzPefSku(d)).indexOf('PARENT') === -1);
         }
+        function amzPefOvL30(d) {
+            if (!d) return 0;
+            // Shopify sold units only. A_L30 is Amazon sold and must not become Dil 0.
+            const candidates = [d.ov_l30, d.L30, d._dil_ov_l30];
+            for (let i = 0; i < candidates.length; i++) {
+                const raw = candidates[i];
+                if (raw == null || raw === '') continue;
+                const n = Number(raw);
+                if (isFinite(n) && n > 0) return n;
+            }
+            return 0;
+        }
         function amzPefDil(d) {
-            const invRaw = d && (d._dil_inv != null ? d._dil_inv : d.INV);
-            const inv = Number(invRaw);
-            if (!isFinite(inv) || !(inv > 0)) return 0;
-            const ovRaw = d && (d._dil_ov_l30 != null ? d._dil_ov_l30 : d.L30);
-            const ov = Number(ovRaw);
-            return ((isFinite(ov) && ov > 0) ? ov : 0) / inv * 100;
+            const inv = amzPefInv(d);
+            if (!(inv > 0)) return 0;
+            return amzPefOvL30(d) / inv * 100;
         }
         function amzPefCvr(d) {
             const stored = d && d.CVR_L30;

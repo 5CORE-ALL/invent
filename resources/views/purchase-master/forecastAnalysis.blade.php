@@ -2223,6 +2223,15 @@
             return Math.round(inv / avgPerDay);
         }
 
+        /** MOQ days = (MOQ / (MSL / 4)) × 30. Dash when MSL is 0. */
+        function forecastMoqDays(row) {
+            if (!row) return null;
+            const moq = displayMoqForRow(row);
+            const msl = parseFloat(row.msl);
+            if (!Number.isFinite(moq) || !Number.isFinite(msl) || msl <= 0) return null;
+            return Math.round((moq / (msl / 4)) * 30);
+        }
+
         function faMetricChartDot(metric, row, current) {
             const sku = String(row.SKU || row.sku || '').replace(/"/g, '&quot;');
             const parentName = String(row.Parent || row.parent || '').replace(/"/g, '&quot;');
@@ -3471,6 +3480,34 @@
                         return `<span class="forecast-moq-cell" style="display:block;outline:none;min-width:40px;text-align:center;font-weight:bold;color:${moqColor};"
                             title="${Number.isFinite(parseFloat(rowData.msl)) && parseFloat(rowData.msl) > 0 ? 'Green: MOQ &lt; MSL · Red: MOQ &gt; MSL' : 'MOQ'}">${esc(disp)}</span>`;
                     },
+                },
+                {
+                    title: "MOQ days",
+                    field: "moq_days",
+                    headerSort: true,
+                    hozAlign: "center",
+                    width: 64,
+                    minWidth: 52,
+                    maxWidth: 80,
+                    headerTooltip: "MOQ days = (MOQ ÷ (MSL ÷ 4)) × 30",
+                    accessor: function(row) {
+                        return forecastMoqDays(row);
+                    },
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = forecastMoqDays(aRow.getData());
+                        const bv = forecastMoqDays(bRow.getData());
+                        if (av == null && bv == null) return 0;
+                        if (av == null) return 1;
+                        if (bv == null) return -1;
+                        return av - bv;
+                    },
+                    formatter: function(cell) {
+                        const days = forecastMoqDays(cell.getRow().getData() || {});
+                        if (days == null) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        return '<span style="display:block;text-align:center;font-weight:700;" title="(MOQ ÷ (MSL ÷ 4)) × 30">' + days + '</span>';
+                    }
                 },
                 {
                     title: "NRP",
@@ -6101,7 +6138,7 @@
             const FA_COL_GROUP_LABELS = { basic: 'basic', grp1: 'GRP1', grp2: 'GRP2', others: 'Others' };
             const FA_COL_GROUPS = {
                 basic: ['Image', 'Parent', 'SKU', 'mfrg_supplier', 'Category', 'stage', 'exec'],
-                grp1: ['INV', 'L30', 'ov_dil', 'days_cover', 'msl', 'to_order', 'two_order_qty', 'order_given', 'readyToShipQty', 'transit', 'MOQ', 'nr', 'date_apprvl', 'TAT'],
+                grp1: ['INV', 'L30', 'ov_dil', 'days_cover', 'msl', 'to_order', 'two_order_qty', 'order_given', 'readyToShipQty', 'transit', 'MOQ', 'moq_days', 'nr', 'date_apprvl', 'TAT'],
                 grp2: ['CP', 'LP', 'cbm', 'total_cbm', 'avg_nroi_pct', 'avg_npft_pct', 'mfrg_order_date', 'r2s_amount', 'r2s_new_photo'],
                 others: [],
             };

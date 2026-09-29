@@ -49,6 +49,35 @@ class AllMarketplaceMasterPNpftAmtTest extends TestCase
         $this->assertSame(310.0, $out['p_npft_amt']);
     }
 
+    public function test_p_nroi_pct_is_projected_net_profit_over_projected_cogs(): void
+    {
+        $out = AllMarketplaceMasterBadgeAggregator::aggregate([
+            [
+                'Channel ' => 'Amazon',
+                'L30 Sales' => 1000,
+                'L7 Sales' => 280,
+                'Gprofit%' => 50,
+                'N PFT' => 40,
+                'Total Ad Spend' => 100,
+                'cogs' => 500,
+            ],
+            [
+                'Channel ' => 'Ebay',
+                'L30 Sales' => 400,
+                'L7 Sales' => 0,
+                'Gprofit%' => 20,
+                'N PFT' => 10,
+                'Total Ad Spend' => 80,
+                'cogs' => 200,
+            ],
+        ]);
+
+        // P-Sales = (280 / 7) * 30 = 1200. Ebay L7 is 0, so it is excluded.
+        // P net = 1200 * 0.50 - 100 = 500. Projected COGS = 500 * (1200 / 1000) = 600.
+        // P-NROI% = 500 / 600 * 100 = 83.33. Same COGS basis as P GROI%.
+        $this->assertSame(83.33, $out['p_nroi_pct']);
+    }
+
     public function test_y_nroi_pct_is_yesterday_net_profit_over_yesterday_cogs(): void
     {
         $out = AllMarketplaceMasterBadgeAggregator::aggregate([

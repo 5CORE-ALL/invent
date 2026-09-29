@@ -418,7 +418,9 @@ class OverallAmazonController extends Controller
             // If it doesn't exist, mark as missing
             $row['is_missing_amazon'] = $amazonSheet ? false : true;
             
-            $row['L30'] = $shopify->quantity ?? 0;
+            // OV L30 is Shopify sold units. A_L30 (Amazon sold / 0 Sold) must not feed Dil.
+            $row['ov_l30'] = (int) ($shopify->quantity ?? 0);
+            $row['L30'] = $row['ov_l30'];
             $row['fba'] = $pm->fba;
 
 
@@ -748,6 +750,7 @@ class OverallAmazonController extends Controller
                 }),
                 'is_missing_amazon' => false, // Parent rows are never missing
                 'L30' => $rows->sum('L30'),
+                'ov_l30' => $rows->sum('ov_l30'),
                 'price' => '',
                 'price_lmpa' => '',
                 'A_L30' => $rows->sum('A_L30'),

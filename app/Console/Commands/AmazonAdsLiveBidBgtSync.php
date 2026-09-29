@@ -3,8 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Services\AmazonAdsLiveBidBgtSyncService;
+use App\Support\AmazonAdsLiveSyncFollowUp;
 use App\Support\AmazonAdsSbgt;
 use Illuminate\Console\Command;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -14,6 +17,7 @@ class AmazonAdsLiveBidBgtSync extends Command
         {--channel=all : sp, sb, or all}
         {--campaign-id= : Only this campaign ID}
         {--failed-only : Retry rows that are not verified}
+        {--retry-failed : Also retry campaigns whose sync failed in the last 12 hours}
         {--limit=200 : Max report campaigns to verify in this run}';
 
     protected $description = 'Pull live Amazon BGT/BID, compare Lbgt to SBGT and Lbid to SBID, push mismatches, verify before marking synced';
@@ -26,23 +30,42 @@ class AmazonAdsLiveBidBgtSync extends Command
             return self::FAILURE;
         }
 
-        $channelOpt = strtolower((string) $this->option('channel'));
-        $onlyCid = trim((string) $this->option('campaign-id'));
-        $limit = max(1, min(500, (int) $this->option('limit')));
-
-        $rows = $this->rowsFromReports($channelOpt, $limit, $onlyCid);
-
-        if ($rows === []) {
-            $this->info('No Enabled calendar-day campaigns have Lbgt different from SBGT or Lbid different from SBID.');
+        if (! Cache::add(AmazonAdsLiveSyncFollowUp::RUN_KEY, 1, 1200)) {
+            Cache::put(AmazonAdsLiveSyncFollowUp::DIRTY_KEY, 1, now()->addHours(6));
+            $this->info('Another live bid/budget sync is already running.');
 
             return self::SUCCESS;
         }
 
-        $this->info('Enabled calendar-day mismatches: '.count($rows).'. Pull live budget and bid, then push only rows that still differ.');
-        $out = $sync->syncRows($rows, 'cron-live-sync');
-        $this->info('Synced '.$out['synced'].' | Failed '.$out['failed'].' | Skipped '.$out['skipped'].' | In progress '.$out['in_progress']);
+        $channelOpt = strtolower((string) $this->option('channel'));
+        $onlyCid = trim((string) $this->option('campaign-id'));
+        $limit = max(1, min(500, (int) $this->option('limit')));
+        $retryFailed = (bool) $this->option('retry-failed');
+        $failed = 0;
 
-        return $out['failed'] > 0 ? self::FAILURE : self::SUCCESS;
+        try {
+            for ($pass = 0; $pass < 2; $pass++) {
+                Cache::forget(AmazonAdsLiveSyncFollowUp::DIRTY_KEY);
+                $rows = $this->rowsFromReports($channelOpt, $limit, $onlyCid, $retryFailed);
+                if ($rows === []) {
+                    $this->info('No Enabled calendar-day campaigns have Lbgt different from SBGT or Lbid different from SBID.');
+                } else {
+                    $this->info('Enabled calendar-day mismatches: '.count($rows).'. Pull live budget and bid, then push only rows that still differ.');
+                    $out = $sync->syncRows($rows, 'cron-live-sync');
+                    $failed += (int) $out['failed'];
+                    $this->info('Synced '.$out['synced'].' | Failed '.$out['failed'].' | Skipped '.$out['skipped'].' | In progress '.$out['in_progress']);
+                }
+                if (! Cache::has(AmazonAdsLiveSyncFollowUp::DIRTY_KEY)) {
+                    break;
+                }
+                $this->info('Grid saved a newer SBID or SBGT during this run. Checking those rows.');
+            }
+        } finally {
+            Cache::forget(AmazonAdsLiveSyncFollowUp::RUN_KEY);
+            Cache::forget(AmazonAdsLiveSyncFollowUp::SPAWN_KEY);
+        }
+
+        return $failed > 0 ? self::FAILURE : self::SUCCESS;
     }
 
     /**
@@ -52,15 +75,15 @@ class AmazonAdsLiveBidBgtSync extends Command
      *
      * @return list<array<string, mixed>>
      */
-    private function rowsFromReports(string $channelOpt, int $limit, string $onlyCid = ''): array
+    private function rowsFromReports(string $channelOpt, int $limit, string $onlyCid = '', bool $retryFailed = false): array
     {
         $channels = $channelOpt === 'sp' || $channelOpt === 'sb' ? [$channelOpt] : ['sp', 'sb'];
         $merged = [];
         foreach ($channels as $channel) {
-            foreach ($this->bidMismatchRows($channel, $limit, $onlyCid) as $row) {
+            foreach ($this->bidMismatchRows($channel, $limit, $onlyCid, $retryFailed) as $row) {
                 $this->mergeSyncRow($merged, $row);
             }
-            foreach ($this->budgetMismatchRows($channel, $limit, $onlyCid) as $row) {
+            foreach ($this->budgetMismatchRows($channel, $limit, $onlyCid, $retryFailed) as $row) {
                 $this->mergeSyncRow($merged, $row);
             }
         }
@@ -71,7 +94,7 @@ class AmazonAdsLiveBidBgtSync extends Command
     /**
      * @return list<array<string, mixed>>
      */
-    private function bidMismatchRows(string $channel, int $limit, string $onlyCid): array
+    private function bidMismatchRows(string $channel, int $limit, string $onlyCid, bool $retryFailed = false): array
     {
         $table = $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports';
         if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'last_sbid') || ! Schema::hasColumn($table, 'sbid') || ! Schema::hasColumn($table, 'campaignStatus')) {
@@ -100,6 +123,7 @@ class AmazonAdsLiveBidBgtSync extends Command
         if ($onlyCid !== '') {
             $q->where('r.campaign_id', $onlyCid);
         }
+        $this->skipRecentFailures($q, $channel, 'bid', $retryFailed);
         $found = $q->orderBy('r.id')
             ->limit($limit)
             ->get(['r.campaign_id', 'r.campaignName', 'r.sbid']);
@@ -132,7 +156,7 @@ class AmazonAdsLiveBidBgtSync extends Command
      *
      * @return list<array<string, mixed>>
      */
-    private function budgetMismatchRows(string $channel, int $limit, string $onlyCid): array
+    private function budgetMismatchRows(string $channel, int $limit, string $onlyCid, bool $retryFailed = false): array
     {
         $table = $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports';
         if (! Schema::hasTable($table)
@@ -155,6 +179,7 @@ class AmazonAdsLiveBidBgtSync extends Command
         if ($onlyCid !== '') {
             $q->where('r.campaign_id', $onlyCid);
         }
+        $this->skipRecentFailures($q, $channel, 'bgt', $retryFailed);
         $found = $q->orderBy('r.id')
             ->limit($limit)
             ->get(['r.campaign_id', 'r.campaignName', 'r.sbgt']);
@@ -185,6 +210,27 @@ class AmazonAdsLiveBidBgtSync extends Command
         }
 
         return $out;
+    }
+
+    /**
+     * A follow-up run should push a newly saved SBID/SBGT. It should not
+     * hammer Amazon again for a failure from the last 12 hours. The 21:50
+     * run passes --retry-failed and includes those.
+     */
+    private function skipRecentFailures(Builder $query, string $channel, string $field, bool $retryFailed): void
+    {
+        if ($retryFailed || ! Schema::hasTable('amazon_ads_live_sync_states')) {
+            return;
+        }
+        $query->leftJoin('amazon_ads_live_sync_states as s', function ($join) use ($channel, $field) {
+            $join->on('s.campaign_id', '=', 'r.campaign_id')
+                ->where('s.channel', '=', $channel)
+                ->where('s.field', '=', $field);
+        })->where(function ($w) {
+            $w->whereNull('s.id')
+                ->orWhere('s.status', '!=', 'failed')
+                ->orWhere('s.updated_at', '<', now()->subHours(12));
+        });
     }
 
     /**

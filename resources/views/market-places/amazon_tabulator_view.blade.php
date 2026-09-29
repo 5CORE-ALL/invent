@@ -3847,9 +3847,13 @@
                     if (Array.isArray(payload)) {
                         payload.forEach(function(row) {
                             if (!row || typeof row !== 'object') return;
-                            const ov = Number(row.L30);
+                            const fromOv = Number(row.ov_l30);
+                            const fromL30 = Number(row.L30);
+                            const ov = (isFinite(fromOv) && fromOv > 0) ? fromOv : ((isFinite(fromL30) && fromL30 > 0) ? fromL30 : 0);
                             const inv = Number(row.INV);
-                            row._dil_ov_l30 = isFinite(ov) && ov > 0 ? ov : 0;
+                            row.ov_l30 = ov;
+                            row.L30 = ov;
+                            row._dil_ov_l30 = ov;
                             row._dil_inv = isFinite(inv) && inv > 0 ? inv : 0;
                             amazonApplyL1FromEntries(row);
                         });
