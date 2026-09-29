@@ -638,13 +638,22 @@ class ChatWorkspace
             return;
         }
 
-        ChatChannelMember::query()
+        $member = ChatChannelMember::query()
             ->where('channel_id', $channel->id)
             ->where('user_id', $user->id)
-            ->update([
-                'last_read_message_id' => $maxId,
-                'last_read_at' => now(),
-            ]);
+            ->first();
+        if (! $member) {
+            return;
+        }
+
+        $previous = (int) $member->last_read_message_id;
+        if ($maxId < $previous || ($maxId === $previous && $member->last_read_at)) {
+            return;
+        }
+
+        $member->last_read_message_id = $maxId;
+        $member->last_read_at = now();
+        $member->save();
 
         self::forgetUnreadCache((int) $user->id);
     }
@@ -725,6 +734,28 @@ class ChatWorkspace
         return nl2br($text);
     }
 
+    public static function seenTimeLabel(mixed $at): string
+    {
+        if (! $at) {
+            return '';
+        }
+
+        $tz = TaskBusinessTime::tz();
+        $local = $at instanceof \Carbon\CarbonInterface
+            ? $at->copy()->timezone($tz)
+            : \Carbon\Carbon::parse($at)->timezone($tz);
+        $now = now($tz);
+
+        if ($local->isSameDay($now)) {
+            return $local->format('g:i A');
+        }
+        if ($local->isSameYear($now)) {
+            return $local->format('M j, g:i A');
+        }
+
+        return $local->format('M j, Y g:i A');
+    }
+
     public static function isImageName(?string $name): bool
     {
         $ext = strtolower((string) pathinfo((string) $name, PATHINFO_EXTENSION));
@@ -746,7 +777,7 @@ class ChatWorkspace
         $members = ChatChannelMember::query()
             ->where('channel_id', $channel->id)
             ->where('user_id', '!=', $viewerId)
-            ->get(['user_id', 'last_read_message_id']);
+            ->get(['user_id', 'last_read_message_id', 'last_read_at']);
 
         $users = User::query()
             ->whereIn('id', $members->pluck('user_id'))
@@ -760,18 +791,26 @@ class ChatWorkspace
                 if ((int) $member->last_read_message_id >= $mid) {
                     $person = $users->get($member->user_id);
                     if ($person) {
+                        $seenAtLabel = self::seenTimeLabel($member->last_read_at);
                         $seenBy[] = [
                             'id' => (int) $person->id,
                             'name' => (string) $person->name,
+                            'seen_at_label' => $seenAtLabel,
                         ];
                     }
                 }
             }
             $label = 'Sent';
             if ($seenBy !== []) {
-                $label = $channel->isDm() || $channel->isBotInbox()
-                    ? 'Seen'
-                    : 'Seen by '.collect($seenBy)->pluck('name')->take(3)->implode(', ');
+                $shown = collect($seenBy)->take(3);
+                if ($channel->isDm() || $channel->isBotInbox()) {
+                    $when = (string) ($shown->first()['seen_at_label'] ?? '');
+                    $label = trim('Seen '.$when);
+                } else {
+                    $label = 'Seen by '.$shown->map(function (array $person) {
+                        return trim($person['name'].' '.($person['seen_at_label'] ?? ''));
+                    })->implode(', ');
+                }
             }
             $out[$mid] = [
                 'seen' => $seenBy !== [],
@@ -860,7 +899,7 @@ class ChatWorkspace
 
     public static function canPin(?User $user): bool
     {
-        return self::canManageChannels($user);
+        return (bool) $user;
     }
 
     public static function canAnnounce(?User $user): bool
@@ -948,13 +987,21 @@ class ChatWorkspace
             ->groupBy('channel_id')
             ->pluck('max_id', 'channel_id');
         foreach ($maxByChannel as $channelId => $maxId) {
-            ChatChannelMember::query()
+            $member = ChatChannelMember::query()
                 ->where('user_id', $user->id)
                 ->where('channel_id', $channelId)
-                ->update([
-                    'last_read_message_id' => (int) $maxId,
-                    'last_read_at' => now(),
-                ]);
+                ->first();
+            if (! $member) {
+                continue;
+            }
+            $next = (int) $maxId;
+            $previous = (int) $member->last_read_message_id;
+            if ($next < $previous || ($next === $previous && $member->last_read_at)) {
+                continue;
+            }
+            $member->last_read_message_id = $next;
+            $member->last_read_at = now();
+            $member->save();
         }
         self::forgetUnreadCache((int) $user->id);
     }

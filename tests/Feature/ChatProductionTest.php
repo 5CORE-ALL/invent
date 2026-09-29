@@ -233,7 +233,9 @@ class ChatProductionTest extends TestCase
             'type' => 'public',
         ])->assertStatus(403);
 
-        $this->actingAs($a)->postJson('/chat/messages/'.$msg->json('messages.0.id').'/pin')->assertStatus(403);
+        $this->actingAs($a)->postJson('/chat/messages/'.$msg->json('messages.0.id').'/pin')
+            ->assertOk()
+            ->assertJsonPath('pinned', true);
     }
 
     public function test_attachments_are_member_gated(): void

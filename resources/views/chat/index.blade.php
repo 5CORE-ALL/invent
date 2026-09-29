@@ -246,9 +246,16 @@
             text-align: center;
             line-height: 1.4;
         }
-        .slack-pinbar { display: none; padding: 6px 18px; border-bottom: 1px solid #eee; background: #fff8e1; font-size: 13px; }
+        .slack-pinbar {
+            display: none; padding: 8px 18px; border-bottom: 1px solid #8e0000;
+            background: #d32f2f; color: #fff; font-size: 13px; font-weight: 700;
+        }
         .slack-pinbar.is-on { display: block; }
-        .slack-pinbar button { border: 0; background: transparent; color: #1d1c1d; }
+        .slack-pinbar strong { color: #fff; margin-right: 6px; }
+        .slack-pinbar button {
+            border: 0; background: transparent; color: #fff; font-weight: 700;
+            text-decoration: underline; padding: 0;
+        }
         .slack-reply { display: none; font-size: 12px; color: #616061; padding: 0 4px 6px; }
         .slack-reply.is-on { display: block; }
         .slack-typing { min-height: 18px; font-size: 12px; color: #616061; padding: 0 20px 4px; }
@@ -590,7 +597,6 @@
     document.body.classList.add('invent-chat-page');
     const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const meId = {{ (int) $meId }};
-    const canPin = {{ !empty($canPin) ? 'true' : 'false' }};
     const canAnnounce = {{ !empty($canAnnounce) ? 'true' : 'false' }};
     const startChannel = Number(new URLSearchParams(location.search).get('channel') || 0);
     const startMessage = Number(new URLSearchParams(location.search).get('message') || 0);
@@ -837,7 +843,7 @@
             '<button type="button" data-reactbtn="' + m.id + '">React</button>' +
             (own ? '<button type="button" data-edit="' + m.id + '">Edit</button>' : '') +
             (own ? '<button type="button" data-del="' + m.id + '">Delete</button>' : '') +
-            (canPin ? '<button type="button" data-pin="' + m.id + '">' + (m.pinned ? 'Unpin' : 'Pin') + '</button>' : '') +
+            '<button type="button" data-pin="' + m.id + '">' + (m.pinned ? 'Unpin' : 'Pin') + '</button>' +
             '<button type="button" data-save="' + m.id + '">' + (m.bookmarked ? 'Saved' : 'Save') + '</button>' +
             '<button type="button" data-task="' + m.id + '">Create Task</button>' +
             '</div>'
