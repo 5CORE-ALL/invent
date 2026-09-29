@@ -902,12 +902,14 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $row['tracking'] = '';
             $row['tracking_source'] = '';
             $row['tracking_checked'] = false;
+            $row['tracking_checked_at'] = null;
         }
         unset($row);
 
         if ($rows === [] || ! Schema::hasTable('order_fulfillment_trackings')) {
             return $rows;
         }
+        $missCooldown = now()->subMinutes(self::TRACKING_MISS_COOLDOWN_MINUTES);
 
         $keys = [];
         foreach ($rows as $row) {
@@ -933,15 +935,31 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 continue;
             }
             $number = trim((string) ($record->tracking_number ?? ''));
+            $checkedAt = $record->checked_at ?? null;
             $row['tracking'] = $number;
             $row['tracking_source'] = (string) ($record->source ?? '');
-            // A saved number is final. An empty miss is looked up again on the next load.
-            $row['tracking_checked'] = $number !== '';
+            $row['tracking_checked_at'] = $checkedAt ? \Carbon\Carbon::parse($checkedAt)->toDateTimeString() : null;
+            // A saved number is final. A recent miss waits for the scheduled retry
+            // instead of being re-searched on every page load; older misses are retried.
+            $row['tracking_checked'] = $number !== ''
+                || ($checkedAt !== null && \Carbon\Carbon::parse($checkedAt)->gt($missCooldown));
         }
         unset($row);
 
         return $rows;
     }
+
+    /** Rows the page may send in one lookup request. */
+    public const TRACKING_ROWS_PER_REQUEST = 4;
+
+    /** Seconds one lookup request may spend before returning what it has. */
+    private const TRACKING_REQUEST_BUDGET = 25.0;
+
+    /** Do not start another order unless at least this much of the budget is left. */
+    private const TRACKING_MIN_GROUP_SECONDS = 7.0;
+
+    /** A miss this recent is not looked up again by the page; the scheduler retries it. */
+    public const TRACKING_MISS_COOLDOWN_MINUTES = 60;
 
     public function lookupTracking(Request $request): JsonResponse
     {
@@ -949,7 +967,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $this->ensureTrackingTable();
 
         $validated = $request->validate([
-            'rows' => 'required|array|max:1',
+            'rows' => 'required|array|max:'.self::TRACKING_ROWS_PER_REQUEST,
             'rows.*.id' => 'required|string|max:191',
             'rows.*.mm_slug' => 'required|string|max:64',
             'rows.*.order_id' => 'nullable|string|max:128',
@@ -957,8 +975,113 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'rows.*.source_id' => 'nullable|integer',
         ]);
 
+        $groups = $this->trackingGroupsFromRows($validated['rows']);
+        $updates = [];
+        $deadline = microtime(true) + self::TRACKING_REQUEST_BUDGET;
+        $lookup = $this->labelTrackingLookup();
+
+        foreach (array_values($groups) as $i => $group) {
+            // Always finish the first order; later ones wait for the next request
+            // when the budget is nearly spent (the page re-sends anything not returned).
+            if ($i > 0 && microtime(true) + self::TRACKING_MIN_GROUP_SECONDS >= $deadline) {
+                break;
+            }
+            array_push($updates, ...$this->resolveTrackingGroup($group, $deadline, $lookup));
+        }
+
+        return response()->json([
+            'success' => true,
+            'updates' => $this->withCarrierOnUpdates($updates),
+        ]);
+    }
+
+    /**
+     * Scheduler entry point: resolve orders in the default range that still have
+     * no tracking number, so the page shows numbers without waiting on the browser.
+     *
+     * @return array{groups: int, found: int, missed: int, pending: int, seconds: float}
+     */
+    public function backfillTracking(int $maxGroups = 60, int $budgetSeconds = 540): array
+    {
+        $startedAt = microtime(true);
+        $deadline = $startedAt + max(30, $budgetSeconds);
+        $this->ensureTrackingTable();
+
+        $rows = $this->attachSavedTracking($this->collectFulfillmentRows());
+        $cooldown = now()->subMinutes(self::TRACKING_MISS_COOLDOWN_MINUTES);
         $groups = [];
-        foreach ($validated['rows'] as $row) {
+        foreach ($rows as $row) {
+            if (trim((string) ($row['tracking'] ?? '')) !== '') {
+                continue;
+            }
+            $checkedAt = $row['tracking_checked_at'] ?? null;
+            if ($checkedAt !== null && \Carbon\Carbon::parse($checkedAt)->gt($cooldown)) {
+                continue;
+            }
+            $slug = (string) ($row['mm_slug'] ?? '');
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            if ($slug === '' || $orderId === '') {
+                continue;
+            }
+            $key = $slug.'|'.$orderId;
+            $groups[$key] ??= [
+                'mm_slug' => $slug,
+                'order_id' => $orderId,
+                'sku' => (string) ($row['sku'] ?? ''),
+                'source_id' => (int) ($row['source_id'] ?? 0),
+                'rows' => [],
+                'checked_at' => $checkedAt,
+            ];
+            $groups[$key]['rows'][] = ['id' => (string) $row['id'], 'sku' => (string) ($row['sku'] ?? '')];
+            if ($checkedAt === null) {
+                $groups[$key]['checked_at'] = null;
+            }
+        }
+
+        // Never-checked orders first, then the ones checked longest ago.
+        uasort($groups, static function (array $a, array $b): int {
+            if ($a['checked_at'] === null || $b['checked_at'] === null) {
+                return ($a['checked_at'] === null ? 0 : 1) <=> ($b['checked_at'] === null ? 0 : 1);
+            }
+
+            return strcmp((string) $a['checked_at'], (string) $b['checked_at']);
+        });
+
+        $lookup = $this->labelTrackingLookup();
+        $done = 0;
+        $found = 0;
+        foreach ($groups as $group) {
+            if ($done >= $maxGroups || microtime(true) + self::TRACKING_MIN_GROUP_SECONDS >= $deadline) {
+                break;
+            }
+            unset($group['checked_at']);
+            $updates = $this->resolveTrackingGroup($group, min($deadline, microtime(true) + self::TRACKING_REQUEST_BUDGET), $lookup);
+            $done++;
+            foreach ($updates as $update) {
+                if (trim((string) ($update['tracking'] ?? '')) !== '') {
+                    $found++;
+                    break;
+                }
+            }
+        }
+
+        return [
+            'groups' => $done,
+            'found' => $found,
+            'missed' => $done - $found,
+            'pending' => max(0, count($groups) - $done),
+            'seconds' => round(microtime(true) - $startedAt, 1),
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, array{mm_slug: string, order_id: string, sku: string, source_id: int, rows: list<array{id: string, sku: string}>}>
+     */
+    protected function trackingGroupsFromRows(array $rows): array
+    {
+        $groups = [];
+        foreach ($rows as $row) {
             $slug = strtolower(trim((string) $row['mm_slug']));
             $rowKey = trim((string) $row['id']);
             if ($slug === '' || $rowKey === '' || ! str_starts_with($rowKey, $slug.'-')) {
@@ -979,32 +1102,48 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             ];
         }
 
-        $updates = [];
-        $deadline = microtime(true) + 32.0;
-        $lookup = $this->labelTrackingLookup();
+        return $groups;
+    }
 
-        foreach ($groups as $group) {
-            if (microtime(true) >= $deadline) {
-                break;
+    /**
+     * One order: saved number → synced marketplace row → Veeqo → marketplace API → 4Seller.
+     * Shopify fulfillment tracking is never used.
+     *
+     * @param  array{mm_slug: string, order_id: string, sku: string, source_id: int, rows: list<array{id: string, sku: string}>}  $group
+     * @return list<array{id: string, tracking: string, tracking_source: string, tracking_checked: bool}>
+     */
+    protected function resolveTrackingGroup(array $group, float $deadline, ?VeeqoShopifyFulfillmentService $lookup): array
+    {
+        $copied = $this->copyKnownLabelTracking($group);
+        if ($copied !== null) {
+            return $copied;
+        }
+
+        $hit = null;
+        $orderId = (string) $group['order_id'];
+        if ($orderId !== '' && $lookup !== null) {
+            $slug = (string) $group['mm_slug'];
+            $plain = ltrim($orderId, '#');
+            $veeqoRef = $this->veeqoOrderRef($slug, $plain);
+            $veeqoQueries = [$veeqoRef];
+            if ($plain !== '' && $plain !== $veeqoRef) {
+                $veeqoQueries[] = $plain;
             }
 
-            $copied = $this->copyKnownLabelTracking($group);
-            if ($copied !== null) {
-                array_push($updates, ...$copied);
-
-                continue;
-            }
-
-            $hit = null;
-            $orderId = (string) $group['order_id'];
-            if ($orderId !== '' && $lookup !== null) {
-                $slug = (string) $group['mm_slug'];
-                $plain = ltrim($orderId, '#');
-                $veeqoRef = $this->veeqoOrderRef($slug, $plain);
-                $veeqoQueries = [$veeqoRef];
-                if ($plain !== '' && $plain !== $veeqoRef) {
-                    $veeqoQueries[] = $plain;
+            try {
+                $local = $lookup->localMarketplaceTracking($slug, array_values(array_unique([$plain, $orderId])));
+                if (is_array($local) && trim((string) ($local['tracking'] ?? '')) !== '') {
+                    $hit = [
+                        'tracking' => (string) $local['tracking'],
+                        'carrier' => (string) ($local['carrier'] ?? ''),
+                        'source' => 'channel',
+                    ];
                 }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            if ($hit === null) {
                 try {
                     $veeqo = $lookup->findVeeqoShipment($veeqoQueries, true, '', [], count($veeqoQueries));
                     if (is_array($veeqo) && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
@@ -1017,71 +1156,69 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 } catch (\Throwable $e) {
                     report($e);
                 }
-                if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) < $deadline) {
-                    try {
-                        $channel = $lookup->lookupLiveChannelTracking($slug, [$plain, $veeqoRef]);
-                    } catch (\Throwable $e) {
-                        report($e);
-                        $channel = null;
-                    }
-                    if (is_array($channel) && empty($channel['retry']) && trim((string) ($channel['tracking'] ?? '')) !== '') {
+            }
+            if ($hit === null && microtime(true) < $deadline) {
+                try {
+                    $channel = $lookup->lookupLiveChannelTracking($slug, [$plain, $veeqoRef]);
+                } catch (\Throwable $e) {
+                    report($e);
+                    $channel = null;
+                }
+                if (is_array($channel) && empty($channel['retry']) && trim((string) ($channel['tracking'] ?? '')) !== '') {
+                    $hit = [
+                        'tracking' => (string) $channel['tracking'],
+                        'carrier' => (string) ($channel['carrier'] ?? ''),
+                        'source' => 'channel',
+                    ];
+                }
+            }
+            if ($hit === null && microtime(true) + 6 < $deadline) {
+                try {
+                    $fourSeller = app(FourSellerApiService::class);
+                    $fourSeller->setTimeout(4);
+                    $fs = $fourSeller->findShipment([$plain], 1);
+                    if (is_array($fs) && trim((string) ($fs['tracking'] ?? '')) !== '') {
                         $hit = [
-                            'tracking' => (string) $channel['tracking'],
-                            'carrier' => (string) ($channel['carrier'] ?? ''),
-                            'source' => 'channel',
+                            'tracking' => (string) $fs['tracking'],
+                            'carrier' => (string) ($fs['carrier'] ?? 'GOFO'),
+                            'source' => '4seller',
                         ];
                     }
+                } catch (\Throwable $e) {
+                    report($e);
                 }
-                if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) + 6 < $deadline) {
-                    try {
-                        $fourSeller = app(FourSellerApiService::class);
-                        $fourSeller->setTimeout(4);
-                        $fs = $fourSeller->findShipment([$plain], 1);
-                        if (is_array($fs) && trim((string) ($fs['tracking'] ?? '')) !== '') {
-                            $hit = [
-                                'tracking' => (string) $fs['tracking'],
-                                'carrier' => (string) ($fs['carrier'] ?? 'GOFO'),
-                                'source' => '4seller',
-                            ];
-                        }
-                    } catch (\Throwable $e) {
-                        report($e);
-                    }
-                }
-            }
-
-            $source = strtolower(trim((string) ($hit['source'] ?? '')));
-            $number = trim((string) ($hit['tracking'] ?? ''));
-            $allowed = in_array($source, ['gofo', '4seller', 'veeqo', 'channel'], true) && $number !== '';
-            if (! $allowed) {
-                $source = null;
-                $number = '';
-            }
-
-            foreach ($group['rows'] as $line) {
-                $this->rememberTracking(
-                    (string) $line['id'],
-                    (string) $group['mm_slug'],
-                    $orderId !== '' ? $orderId : null,
-                    (string) ($line['sku'] ?? ''),
-                    $number !== '' ? $number : null,
-                    $allowed ? trim((string) ($hit['carrier'] ?? '')) : null,
-                    $source,
-                    false
-                );
-                $updates[] = [
-                    'id' => (string) $line['id'],
-                    'tracking' => $number,
-                    'tracking_source' => (string) ($source ?? ''),
-                    'tracking_checked' => true,
-                ];
             }
         }
 
-        return response()->json([
-            'success' => true,
-            'updates' => $this->withCarrierOnUpdates($updates),
-        ]);
+        $source = strtolower(trim((string) ($hit['source'] ?? '')));
+        $number = trim((string) ($hit['tracking'] ?? ''));
+        $allowed = in_array($source, ['gofo', '4seller', 'veeqo', 'channel'], true) && $number !== '';
+        if (! $allowed) {
+            $source = null;
+            $number = '';
+        }
+
+        $updates = [];
+        foreach ($group['rows'] as $line) {
+            $this->rememberTracking(
+                (string) $line['id'],
+                (string) $group['mm_slug'],
+                $orderId !== '' ? $orderId : null,
+                (string) ($line['sku'] ?? ''),
+                $number !== '' ? $number : null,
+                $allowed ? trim((string) ($hit['carrier'] ?? '')) : null,
+                $source,
+                false
+            );
+            $updates[] = [
+                'id' => (string) $line['id'],
+                'tracking' => $number,
+                'tracking_source' => (string) ($source ?? ''),
+                'tracking_checked' => true,
+            ];
+        }
+
+        return $updates;
     }
 
     public function saveTracking(Request $request): JsonResponse

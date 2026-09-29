@@ -880,6 +880,40 @@ class VeeqoShopifyFulfillmentService
      * @param  list<string>  $ids
      * @return array{tracking: string, carrier: string, source?: string}|null
      */
+    /**
+     * Tracking already stored on the synced marketplace order row. No API calls.
+     *
+     * @param  list<string>  $ids
+     * @return array{tracking: string, carrier: string, source: string}|null
+     */
+    public function localMarketplaceTracking(string $marketplace, array $ids): ?array
+    {
+        $marketplace = strtolower(trim($marketplace));
+        try {
+            $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
+            if ($model === null) {
+                return null;
+            }
+            $hit = $this->trackingFromLoadedMarketplaceModel($marketplace, $model);
+        } catch (\Throwable $e) {
+            Log::info('VeeqoShopifyFulfillmentService: local marketplace tracking lookup failed', [
+                'marketplace' => $marketplace,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+        if (! is_array($hit) || strlen(trim((string) ($hit['tracking'] ?? ''))) < 8) {
+            return null;
+        }
+
+        return [
+            'tracking' => trim((string) $hit['tracking']),
+            'carrier' => trim((string) ($hit['carrier'] ?? '')),
+            'source' => 'channel',
+        ];
+    }
+
     public function lookupLiveChannelTracking(string $marketplace, array $ids): ?array
     {
         $hit = $this->pullLiveMarketplaceTracking(strtolower(trim($marketplace)), $ids);
@@ -3550,11 +3584,22 @@ class VeeqoShopifyFulfillmentService
                 return;
             }
             foreach ($node as $k => $v) {
+                $key = strtolower((string) $k);
                 if (is_array($v)) {
+                    // Marketplace orders reach Veeqo through Shopify, which carries the
+                    // marketplace order id as an order tag ({id, name, colour} objects).
+                    if ($key === 'tags') {
+                        foreach ($v as $tag) {
+                            $name = is_array($tag) ? trim((string) ($tag['name'] ?? '')) : trim((string) $tag);
+                            if ($name !== '') {
+                                $out[] = $name;
+                            }
+                        }
+                        continue;
+                    }
                     $walk($v);
                     continue;
                 }
-                $key = strtolower((string) $k);
                 $s = trim((string) $v);
                 if ($s === '') {
                     continue;
@@ -3566,6 +3611,18 @@ class VeeqoShopifyFulfillmentService
                     || str_ends_with($key, '_order_no')
                 ) {
                     $out[] = $s;
+                    continue;
+                }
+                // Mirakl channels (Best Buy, Macy's): "Mirakl order line ID: BBY03-…-A-1".
+                if ($key === 'additional_options' && preg_match_all('/order line id:\s*([^\s]+)/i', $s, $m)) {
+                    foreach ($m[1] as $lineId) {
+                        $lineId = trim($lineId);
+                        $out[] = $lineId;
+                        $orderRef = preg_replace('/-\d+$/', '', $lineId);
+                        if (is_string($orderRef) && $orderRef !== '' && $orderRef !== $lineId) {
+                            $out[] = $orderRef;
+                        }
+                    }
                 }
             }
         };

@@ -2741,6 +2741,16 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(10)
             ->appendOutputTo($log);
 
+        // Order Fulfillment tracking column: resolve orders with no number yet
+        // (Veeqo → marketplace API → 4Seller) so the page does not rely on the browser.
+        $schedule->command('order-fulfillment:backfill-tracking')
+            ->everyTenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('order-fulfillment-backfill-tracking')
+            ->withoutOverlapping(15)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Backup: queue Shopify imports for unpushed MM orders even if fetch jobs are stuck.
         // Must run inline — runInBackground() sits on the default queue and never dispatches mm-* imports.
         $schedule->command('mm:dispatch-unpushed-shopify')
