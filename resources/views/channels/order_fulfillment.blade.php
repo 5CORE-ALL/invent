@@ -757,18 +757,41 @@
         });
     }
 
+    const TRACKING_ROWS_PER_REQUEST = {{ (int) \App\Http\Controllers\Channels\OrderFulfillmentController::TRACKING_ROWS_PER_REQUEST }};
+
+    function needsTracking(row) {
+        return row && row.id && !row.tracking_checked && !String(row.tracking || '').trim();
+    }
+
+    // Rows the user can see come first, then the rest in the current sort order.
+    function pendingTrackingRows() {
+        const seen = {};
+        const out = [];
+        const push = function (row) {
+            if (!needsTracking(row) || seen[row.id]) return;
+            seen[row.id] = true;
+            out.push(row);
+        };
+        try { table.getRows('visible').forEach(function (r) { push(r.getData()); }); } catch (e) { /* older tabulator */ }
+        if (out.length < TRACKING_ROWS_PER_REQUEST) {
+            try { table.getRows('active').forEach(function (r) { push(r.getData()); }); } catch (e) { /* fall through */ }
+        }
+        if (out.length < TRACKING_ROWS_PER_REQUEST) {
+            table.getData().forEach(push);
+        }
+        return out.slice(0, TRACKING_ROWS_PER_REQUEST);
+    }
+
     function fillTracking(attempt) {
-        if (trackingLookupRunning || attempt > 120) return;
-        const pending = table.getData().filter(function (row) {
-            return row && row.id && !row.tracking_checked && !String(row.tracking || '').trim();
-        }).slice(0, 1);
+        if (trackingLookupRunning || attempt > 400) return;
+        const pending = pendingTrackingRows();
         if (!pending.length) return;
         trackingLookupRunning = true;
         $.ajax({
             url: lookupUrl,
             type: 'POST',
             dataType: 'json',
-            timeout: 38000,
+            timeout: 30000,
             headers: { 'X-CSRF-TOKEN': csrfToken() },
             data: {
                 rows: pending.map(function (row) {
@@ -807,6 +830,14 @@
             fillTracking(attempt + 1);
         });
     }
+
+    // Paging, sorting, or filtering changes which rows are visible; restart the
+    // lookup so those rows are checked next (no-op while a request is in flight).
+    ['pageLoaded', 'dataSorted', 'dataFiltered'].forEach(function (event) {
+        table.on(event, function () {
+            setTimeout(function () { fillTracking(0); }, 250);
+        });
+    });
 
     let statusLookupRunning = false;
 
