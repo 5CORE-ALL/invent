@@ -19,6 +19,7 @@ use App\Services\ShopifyPLSApiService;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\MarketplaceCharacterLimits;
 use App\Services\Support\ProductMasterMarketplaceMaps;
+use App\Services\Support\ShopifyAplusContentSync;
 use App\Services\Support\ShopifyDescriptionPullJobStore;
 use App\Services\TemuApiService;
 use App\Services\WayfairApiService;
@@ -51,14 +52,24 @@ class DescriptionMasterController extends Controller
             @ini_set('memory_limit', '512M');
 
             // Load ALL non-parent rows (no pagination) — the page filters/searches client-side, like Bullet Points.
+            $aplusReady = ShopifyAplusContentSync::isSchemaReady();
+            $select = [
+                'id', 'parent', 'sku', 'title150',
+                'product_description', 'description_1500', 'description_1000', 'description_800', 'description_600',
+            ];
+            if ($aplusReady) {
+                // Only the status of the A+ snapshot is needed per row; the HTML body is loaded on demand.
+                $select[] = DB::raw('CHAR_LENGTH(COALESCE(shopify_aplus_content, \'\')) AS shopify_aplus_chars');
+                $select[] = 'shopify_aplus_fetched_at';
+                if (Schema::hasColumn('product_master', 'shopify_aplus_fetch_error')) {
+                    $select[] = 'shopify_aplus_fetch_error';
+                }
+            }
             $products = ProductMaster::query()
                 ->orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 0 ELSE 1 END")
                 ->orderBy('sku', 'asc')
-                ->select([
-                    'id', 'parent', 'sku', 'title150',
-                    'product_description', 'description_1500', 'description_1000', 'description_800', 'description_600',
-                ])
+                ->select($select)
                 ->get();
 
             $rawSkus = [];
@@ -94,6 +105,12 @@ class DescriptionMasterController extends Controller
                     'description_600' => $product->description_600,
                     'descriptions' => $desc,
                     'description_push_statuses' => $pushStatusesBySku[$sku] ?? [],
+                    'shopify_aplus' => $aplusReady ? [
+                        'has_content' => (int) ($product->shopify_aplus_chars ?? 0) > 0,
+                        'chars' => (int) ($product->shopify_aplus_chars ?? 0),
+                        'fetched_at' => $product->shopify_aplus_fetched_at ? (string) $product->shopify_aplus_fetched_at : null,
+                        'error' => trim((string) ($product->shopify_aplus_fetch_error ?? '')) ?: null,
+                    ] : null,
                 ];
             }
 
@@ -674,6 +691,110 @@ class DescriptionMasterController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('DescriptionMaster: pullShopifyDescriptionToMaster failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * GET /product-description/shopify-aplus — stored Shopify A+ snapshot for one SKU (no Shopify call).
+     */
+    public function showShopifyAplusContent(Request $request)
+    {
+        try {
+            $validated = $request->validate(['sku' => 'required|string']);
+            $sku = $this->normalizeSku($validated['sku']);
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+            if (! ShopifyAplusContentSync::isSchemaReady()) {
+                return response()->json(['success' => false, 'message' => 'A+ columns are missing on product_master. Run migrations first.'], 500);
+            }
+
+            $product = ProductMaster::query()->where('sku', $sku)->first();
+            if (! $product) {
+                return response()->json(['success' => false, 'message' => 'SKU not found in Product Master'], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'status' => ShopifyAplusContentSync::hasContent($product) ? 'stored' : 'missing',
+                'data' => ShopifyAplusContentSync::contentPayload($product),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: showShopifyAplusContent failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /product-description/shopify-aplus/fetch — fetch the live Shopify description once and store it
+     * as A+ content. Returns the stored copy when it already exists unless force=true (manual re-fetch).
+     */
+    public function fetchShopifyAplusContent(Request $request, ShopifyAplusContentSync $sync)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'force' => 'nullable|boolean',
+            ]);
+            $sku = $this->normalizeSku($validated['sku']);
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+
+            $product = ProductMaster::query()->where('sku', $sku)->first();
+            if (! $product) {
+                return response()->json(['success' => false, 'message' => 'SKU not found in Product Master'], 404);
+            }
+
+            $result = $sync->fetchAndStore($product, $request->boolean('force'));
+            $payload = ShopifyAplusContentSync::contentPayload($result['product']);
+
+            return response()->json([
+                'success' => (bool) $result['success'],
+                'status' => (string) $result['status'],
+                'message' => (string) $result['message'],
+                'data' => $payload,
+            ], $result['success'] ? 200 : 422);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: fetchShopifyAplusContent failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /product-description/shopify-aplus/save — store manually edited A+ HTML for one SKU.
+     */
+    public function saveShopifyAplusContent(Request $request, ShopifyAplusContentSync $sync)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'html' => 'nullable|string',
+            ]);
+            $sku = $this->normalizeSku($validated['sku']);
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+
+            $product = ProductMaster::query()->where('sku', $sku)->first();
+            if (! $product) {
+                return response()->json(['success' => false, 'message' => 'SKU not found in Product Master'], 404);
+            }
+
+            $result = $sync->saveEdited($product, (string) ($validated['html'] ?? ''));
+
+            return response()->json([
+                'success' => (bool) $result['success'],
+                'status' => (string) $result['status'],
+                'message' => (string) $result['message'],
+                'data' => ShopifyAplusContentSync::contentPayload($result['product']),
+            ], $result['success'] ? 200 : 422);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: saveShopifyAplusContent failed', ['error' => $e->getMessage()]);
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }

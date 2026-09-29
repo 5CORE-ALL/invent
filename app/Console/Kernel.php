@@ -1813,6 +1813,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Description Master A+: one-time Shopify description snapshot per SKU (only SKUs not yet fetched).
+        $ist($schedule->command('description:shopify-aplus-backfill --limit=150')
+            ->hourlyAt(37)
+            ->name('description-shopify-aplus-backfill')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('lqs:sync-shopify-seo')
             ->dailyAt('04:40')
             ->timezone('Asia/Kolkata')

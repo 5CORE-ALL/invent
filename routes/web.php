@@ -4579,6 +4579,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product-description/with-images', [DescriptionMasterController::class, 'getDescriptionWithImages'])->name('product.description.with.images');
     Route::post('/product-description/pull-shopify', [DescriptionMasterController::class, 'pullShopifyDescription'])->name('product.description.pull.shopify');
     Route::post('/product-description/shopify-pull-one', [DescriptionMasterController::class, 'pullShopifyDescriptionToMaster'])->name('product.description.shopify.pull.one');
+    Route::get('/product-description/shopify-aplus', [DescriptionMasterController::class, 'showShopifyAplusContent'])->name('product.description.shopify.aplus.show');
+    Route::post('/product-description/shopify-aplus/fetch', [DescriptionMasterController::class, 'fetchShopifyAplusContent'])->name('product.description.shopify.aplus.fetch');
+    Route::post('/product-description/shopify-aplus/save', [DescriptionMasterController::class, 'saveShopifyAplusContent'])->name('product.description.shopify.aplus.save');
     Route::post('/product-description/shopify-pull/start', [DescriptionMasterController::class, 'startShopifyPullJob'])->name('product.description.shopify.pull.start');
     Route::get('/product-description/shopify-pull/status', [DescriptionMasterController::class, 'shopifyPullJobStatus'])->name('product.description.shopify.pull.status');
     Route::post('/product-description/shopify-pull/pause', [DescriptionMasterController::class, 'pauseShopifyPullJob'])->name('product.description.shopify.pull.pause');

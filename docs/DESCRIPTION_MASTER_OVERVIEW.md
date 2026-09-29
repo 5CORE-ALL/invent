@@ -213,6 +213,25 @@ See `docs/MARKETPLACE_API_INTEGRATION.md` and `docs/MARKETPLACE_MASTER_DRY_RUN_R
 - Saves to `product_master.amazon_aplus_content` and `amazon_aplus_images` when columns exist.
 - Used in PM tier modal to populate/regenerate Amazon-oriented content.
 
+## Shopify A+ Content (row `A+` button)
+
+- One-time snapshot of the live Shopify `body_html` + product images, stored on `product_master`
+  (`shopify_aplus_content`, `shopify_aplus_images`, `shopify_aplus_fetched_at`, `shopify_aplus_fetch_error`;
+  migration `2026_09_30_010000_add_shopify_aplus_content_to_product_master.php`).
+- Service: `App\Services\Support\ShopifyAplusContentSync::fetchAndStore($product, $force)` — returns the stored
+  copy when it exists unless `$force` is true, so Shopify is only hit once per SKU.
+- Automatic: `php artisan description:shopify-aplus-backfill` (scheduled hourly, 150 SKUs/run, skips SKUs already
+  stored or already failed; `--retry-failed`, `--force`, `--sku=` available).
+- Endpoints: `GET /product-description/shopify-aplus?sku=` (stored copy),
+  `POST /product-description/shopify-aplus/fetch { sku, force }` (fetch once / manual re-fetch) and
+  `POST /product-description/shopify-aplus/save { sku, html }` (store manually edited A+ HTML; DB only).
+- UI: `A+` button in the Action column — grey = not fetched, green = stored (eye icon opens the rendered preview),
+  red = automatic fetch failed. Opening a row with nothing stored fetches once automatically; the modal's
+  **Fetch from Shopify** button forces a manual re-fetch, **Edit / Save A+** edits the stored copy in TinyMCE.
+  Row list only carries A+ status; HTML loads on demand.
+- Edit-descriptions modal: **Fetch A+** loads the stored A+ content into the active marketplace tab's editor
+  (truncated to that marketplace's plain-text limit); it does not save until the user clicks Save.
+
 ## Description Master 2.0 (DM2)
 
 Separate workflow for rich HTML product pages.

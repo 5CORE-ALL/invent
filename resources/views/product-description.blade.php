@@ -38,6 +38,21 @@
         .view-btn { background:#17a2b8; color:#fff; }
         .pull-btn { background:#f59e0b; color:#fff; padding:5px 8px; }
         .pm-tier-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
+        .aplus-btn { background:#0f172a; color:#fff; padding:4px 8px; font-weight:700; letter-spacing:.2px; position:relative; }
+        .aplus-btn.has-content { background:linear-gradient(135deg,#059669 0%,#047857 100%); }
+        .aplus-btn.has-error { background:linear-gradient(135deg,#dc2626 0%,#b91c1c 100%); }
+        .aplus-btn .aplus-dot { width:7px; height:7px; border-radius:50%; background:#94a3b8; display:inline-block; }
+        .aplus-btn.has-content .aplus-dot { background:#bbf7d0; }
+        .aplus-btn.has-error .aplus-dot { background:#fecaca; }
+        .aplus-btn:disabled { opacity:.6; cursor:progress; }
+        #shopifyAplusModal .dm-aplus-preview { max-height:min(60vh,560px); font-size:13px; line-height:1.5; color:#1e293b; }
+        #shopifyAplusModal .dm-aplus-preview table { max-width:100%; border-collapse:collapse; }
+        #shopifyAplusModal .dm-aplus-preview td, #shopifyAplusModal .dm-aplus-preview th { border:1px solid #e2e8f0; padding:4px 6px; }
+        #shopifyAplusModal .dm-aplus-preview iframe { max-width:100%; }
+        #shopifyAplusModal .aplus-gallery { display:flex; flex-wrap:wrap; gap:6px; }
+        #shopifyAplusModal .aplus-gallery img { width:72px; height:72px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; background:#fff; }
+        #shopifyAplusModal .aplus-meta { font-size:11px; color:#64748b; }
+        #shopifyAplusModal .aplus-source { max-height:200px; overflow:auto; font-size:11px; white-space:pre-wrap; word-break:break-all; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:.6rem; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         .shopify-hint { font-size:10px; color:#64748b; }
         #loadErrorBanner { display:none; }
@@ -172,6 +187,7 @@
                         <div class="fw-semibold small" id="modalActiveMpLabel">—</div>
                         <div class="d-flex flex-wrap gap-2">
                             <button type="button" class="btn btn-outline-success btn-sm" id="modalFetchLiveBtn"><i class="fas fa-cloud-download-alt"></i> Fetch live</button>
+                            <button type="button" class="btn btn-outline-dark btn-sm" id="modalFetchAplusBtn" title="Load the stored Shopify A+ content for this SKU into the editor (fetches once from Shopify if not stored yet)"><i class="fas fa-star"></i> Fetch A+</button>
                             <button type="button" class="btn btn-outline-primary btn-sm" id="modalAiGenBtn"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
                         </div>
                     </div>
@@ -205,6 +221,78 @@
                 <div class="modal-footer border-top bg-light">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="viewDescCopyBtn"><i class="fas fa-copy me-1"></i> Copy to clipboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="shopifyAplusModal" tabindex="-1" aria-labelledby="shopifyAplusTitle" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#fff;">
+                    <h5 class="modal-title" id="shopifyAplusTitle"><i class="fas fa-star me-2"></i>A+ Content (Shopify)</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="aplusSku">
+                    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+                        <div>
+                            <div><strong>SKU:</strong> <span id="aplusSkuLabel"></span></div>
+                            <div class="small text-muted" id="aplusProductLabel"></div>
+                        </div>
+                        <div class="text-end">
+                            <div id="aplusStatusBadge" class="badge bg-secondary">Not fetched</div>
+                            <div class="aplus-meta mt-1" id="aplusMeta"></div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info small py-2 mb-2">
+                        <i class="fas fa-info-circle me-1"></i>
+                        The Shopify description is fetched <strong>once</strong> and stored in our database. It is fetched automatically in the background;
+                        if it is missing or outdated, use <strong>Fetch from Shopify</strong> to pull it manually.
+                    </div>
+                    <div id="aplusError" class="alert alert-danger small py-2 mb-2" style="display:none;"></div>
+                    <div id="aplusLoading" class="text-center text-muted py-4" style="display:none;">
+                        <i class="fas fa-spinner fa-spin me-1"></i> <span id="aplusLoadingText">Loading...</span>
+                    </div>
+                    <div id="aplusEmpty" class="text-center text-muted py-4" style="display:none;">
+                        <i class="fas fa-box-open fa-2x mb-2 d-block"></i>
+                        No A+ content stored for this SKU yet. Click <strong>Fetch from Shopify</strong> to pull it now, or <strong>Edit</strong> to write it manually.
+                    </div>
+                    <div id="aplusEditorWrap" style="display:none;">
+                        <div class="dm-modal-section mb-0">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <div class="dm-modal-section-title mb-0"><i class="fas fa-pen me-1"></i>Edit A+ content</div>
+                                <div class="small text-muted" id="aplusEditorCount">0 chars</div>
+                            </div>
+                            <textarea id="aplusEditorHtml"></textarea>
+                            <div class="small text-muted mt-1">Changes are saved to our database only (not pushed to Shopify).</div>
+                        </div>
+                    </div>
+                    <div id="aplusContentWrap" style="display:none;">
+                        <div class="dm-modal-section">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <div class="dm-modal-section-title mb-0"><i class="fas fa-eye me-1"></i>Preview</div>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-secondary active" id="aplusViewRenderedBtn">Rendered</button>
+                                    <button type="button" class="btn btn-outline-secondary" id="aplusViewSourceBtn">HTML</button>
+                                </div>
+                            </div>
+                            <div class="dm-aplus-preview" id="aplusPreview"></div>
+                            <pre class="aplus-source mb-0" id="aplusSource" style="display:none;"></pre>
+                        </div>
+                        <div class="dm-modal-section mb-0" id="aplusGalleryWrap" style="display:none;">
+                            <div class="dm-modal-section-title"><i class="fas fa-images me-1"></i>Shopify product images (<span id="aplusImageCount">0</span>)</div>
+                            <div class="aplus-gallery" id="aplusGallery"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top bg-light">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-outline-primary" id="aplusCopyBtn"><i class="fas fa-copy me-1"></i> Copy HTML</button>
+                    <button type="button" class="btn btn-outline-dark" id="aplusEditBtn"><i class="fas fa-pen me-1"></i> Edit</button>
+                    <button type="button" class="btn btn-outline-secondary" id="aplusCancelEditBtn" style="display:none;"><i class="fas fa-times me-1"></i> Cancel edit</button>
+                    <button type="button" class="btn btn-success" id="aplusSaveBtn" style="display:none;"><i class="fas fa-save me-1"></i> Save A+</button>
+                    <button type="button" class="btn btn-warning" id="aplusFetchBtn"><i class="fas fa-cloud-download-alt me-1"></i> Fetch from Shopify</button>
                 </div>
             </div>
         </div>
@@ -552,6 +640,24 @@ document.addEventListener('DOMContentLoaded', () => {
             </td>`;
     }
 
+    /** Row "A+" tile: shows whether the one-time Shopify snapshot is stored, failed, or not fetched yet. */
+    function aplusButtonHtml(sku, row) {
+        const st = (row && row.shopify_aplus) || null;
+        const has = !!(st && st.has_content);
+        const err = !!(st && st.error && !has);
+        let cls = 'action-btn aplus-btn';
+        let title = 'A+ content: not fetched yet. Click to fetch the Shopify description once and view it.';
+        if (has) {
+            cls += ' has-content';
+            title = 'A+ content stored from Shopify' + (st.fetched_at ? ' on ' + st.fetched_at : '') + '. Click to view.';
+        } else if (err) {
+            cls += ' has-error';
+            title = 'Automatic A+ fetch failed: ' + st.error + '. Click to retry.';
+        }
+        const icon = has ? 'fa-eye' : (err ? 'fa-triangle-exclamation' : 'fa-cloud-download-alt');
+        return `<button type="button" class="${cls}" data-aplus-sku="${esc(sku)}" title="${esc(title)}"><span class="aplus-dot"></span>A+ <i class="fas ${icon}"></i></button>`;
+    }
+
     function buildRowHtml(r) {
         const sku = String(r.SKU || '');
         const pm = String(r.description_1500 || r.product_description || '').trim();
@@ -568,6 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button type="button" class="action-btn view-btn" data-view-row="${esc(sku)}" title="View descriptions (read-only)"><i class="fas fa-eye"></i></button>
                         <button type="button" class="action-btn pull-btn shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify description for this SKU"><i class="fas fa-download"></i></button>
                         <button type="button" class="action-btn pm-tier-btn" data-edit-pm="${esc(sku)}" title="Edit descriptions &amp; push"><i class="fas fa-edit"></i></button>
+                        ${aplusButtonHtml(sku, r)}
                     </div>
                 </td>
                 ${groupCell('g1500', sku, r)}
@@ -643,6 +750,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 startSingleShopifyPull(pullBtn.getAttribute('data-shopify-pull-sku'), pullBtn);
                 return;
             }
+            const aplusBtn = e.target.closest('[data-aplus-sku]');
+            if (aplusBtn) {
+                e.preventDefault();
+                openShopifyAplusModal(aplusBtn.getAttribute('data-aplus-sku'));
+                return;
+            }
             const editPmBtn = e.target.closest('[data-edit-pm]');
             if (editPmBtn) {
                 openEditModal(editPmBtn.getAttribute('data-edit-pm'));
@@ -690,6 +803,315 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!t.trim()) { toast('Nothing to copy', false); return; }
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(t).then(() => toast('Copied')).catch(() => toast('Copy failed', false));
+        } else {
+            toast('Clipboard not available', false);
+        }
+    });
+
+    // ── A+ content (one-time Shopify description snapshot) ───────────────
+    let shopifyAplusModal = null;
+    let aplusCurrentHtml = '';
+    let aplusRequestSeq = 0;
+
+    function sanitizeAplusHtml(html) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = String(html || '');
+        tmp.querySelectorAll('script, style, link, meta, object, embed').forEach((n) => n.remove());
+        tmp.querySelectorAll('*').forEach((el) => {
+            Array.from(el.attributes).forEach((attr) => {
+                const name = attr.name.toLowerCase();
+                if (name.startsWith('on') || (name === 'href' && /^\s*javascript:/i.test(attr.value))) el.removeAttribute(attr.name);
+            });
+            if (el.tagName === 'A') { el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener'); }
+            if (el.tagName === 'IMG') el.setAttribute('loading', 'lazy');
+        });
+        return tmp.innerHTML;
+    }
+
+    function setAplusView(mode) {
+        const rendered = mode !== 'source';
+        document.getElementById('aplusPreview').style.display = rendered ? '' : 'none';
+        document.getElementById('aplusSource').style.display = rendered ? 'none' : '';
+        document.getElementById('aplusViewRenderedBtn')?.classList.toggle('active', rendered);
+        document.getElementById('aplusViewSourceBtn')?.classList.toggle('active', !rendered);
+    }
+
+    function setAplusLoading(on, text) {
+        const l = document.getElementById('aplusLoading');
+        if (l) l.style.display = on ? '' : 'none';
+        const t = document.getElementById('aplusLoadingText');
+        if (t && text) t.textContent = text;
+        if (on) {
+            document.getElementById('aplusEmpty').style.display = 'none';
+            document.getElementById('aplusContentWrap').style.display = 'none';
+            document.getElementById('aplusEditorWrap').style.display = 'none';
+        }
+        setButtonLoading('aplusFetchBtn', on, 'Fetching...');
+        const editBtn = document.getElementById('aplusEditBtn');
+        if (editBtn) editBtn.disabled = on;
+    }
+
+    function syncAplusRowState(sku, data) {
+        const row = bySku.get(String(sku));
+        if (!row) return;
+        row.shopify_aplus = {
+            has_content: !!(data && data.has_content),
+            chars: (data && data.chars) || 0,
+            fetched_at: (data && data.fetched_at) || null,
+            error: (data && data.error) || null,
+        };
+        const tr = document.querySelector(`#table-body tr[data-sku="${CSS.escape(String(sku))}"]`);
+        const old = tr ? tr.querySelector('[data-aplus-sku]') : null;
+        if (old) old.outerHTML = aplusButtonHtml(sku, row);
+    }
+
+    function renderAplusData(data, status) {
+        data = data || {};
+        const html = String(data.html || '');
+        const images = Array.isArray(data.images) ? data.images : [];
+        aplusCurrentHtml = html;
+        const errEl = document.getElementById('aplusError');
+        const badge = document.getElementById('aplusStatusBadge');
+        const meta = document.getElementById('aplusMeta');
+        const has = !!data.has_content || html.trim() !== '';
+
+        if (data.error && !has) {
+            errEl.textContent = 'Last fetch failed: ' + data.error;
+            errEl.style.display = '';
+        } else {
+            errEl.style.display = 'none';
+        }
+
+        if (has) {
+            badge.className = 'badge bg-success';
+            badge.textContent = status === 'fetched' || status === 'refetched' ? 'Fetched & stored' : 'Stored';
+        } else if (data.error) {
+            badge.className = 'badge bg-danger';
+            badge.textContent = 'Fetch failed';
+        } else {
+            badge.className = 'badge bg-secondary';
+            badge.textContent = 'Not fetched';
+        }
+        const metaParts = [];
+        if (data.fetched_at) metaParts.push('Fetched: ' + data.fetched_at);
+        if (has) metaParts.push((data.chars || html.length) + ' chars');
+        if (images.length) metaParts.push(images.length + ' image(s)');
+        meta.textContent = metaParts.join(' · ');
+
+        document.getElementById('aplusLoading').style.display = 'none';
+        document.getElementById('aplusEmpty').style.display = has ? 'none' : '';
+        document.getElementById('aplusContentWrap').style.display = has ? '' : 'none';
+        if (has) {
+            document.getElementById('aplusPreview').innerHTML = sanitizeAplusHtml(html) || '<em class="text-muted">Description body is empty; see images below.</em>';
+            document.getElementById('aplusSource').textContent = html;
+            const galleryWrap = document.getElementById('aplusGalleryWrap');
+            const gallery = document.getElementById('aplusGallery');
+            galleryWrap.style.display = images.length ? '' : 'none';
+            document.getElementById('aplusImageCount').textContent = String(images.length);
+            gallery.innerHTML = images.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener" title="${esc(u)}"><img src="${esc(u)}" alt="" loading="lazy"></a>`).join('');
+            setAplusView('rendered');
+        }
+    }
+
+    async function requestAplus(sku, { force = false, autoFetch = false } = {}) {
+        const seq = ++aplusRequestSeq;
+        const headers = { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken };
+        let res;
+        if (force || autoFetch) {
+            res = await fetch('/product-description/shopify-aplus/fetch', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sku, force }),
+            });
+        } else {
+            res = await fetch('/product-description/shopify-aplus?sku=' + encodeURIComponent(sku), { credentials: 'same-origin', headers });
+        }
+        const payload = await res.json().catch(() => ({}));
+        if (seq !== aplusRequestSeq) return null;
+        return { ok: res.ok && !!payload.success, payload };
+    }
+
+    async function openShopifyAplusModal(sku) {
+        sku = String(sku || '').trim();
+        const row = bySku.get(sku);
+        if (!sku || !row) return;
+        document.getElementById('aplusSku').value = sku;
+        document.getElementById('aplusSkuLabel').textContent = sku;
+        document.getElementById('aplusProductLabel').textContent = row.Parent || row.title150 || '';
+        document.getElementById('aplusError').style.display = 'none';
+        document.getElementById('aplusMeta').textContent = '';
+        const badge = document.getElementById('aplusStatusBadge');
+        badge.className = 'badge bg-secondary';
+        badge.textContent = 'Loading';
+        if (!shopifyAplusModal && window.bootstrap) shopifyAplusModal = new bootstrap.Modal(document.getElementById('shopifyAplusModal'));
+        aplusCurrentHtml = '';
+        if (aplusEditing) setAplusEditMode(false);
+        if (shopifyAplusModal) shopifyAplusModal.show();
+
+        const has = !!(row.shopify_aplus && row.shopify_aplus.has_content);
+        // First open with nothing stored: fetch once automatically. Otherwise just show the stored copy.
+        setAplusLoading(true, has ? 'Loading stored A+ content…' : 'Fetching Shopify description (one time)…');
+        try {
+            const out = await requestAplus(sku, { autoFetch: !has });
+            if (!out) return;
+            const data = (out.payload && out.payload.data) || {};
+            renderAplusData(data, out.payload.status);
+            syncAplusRowState(sku, data);
+            if (!out.ok) {
+                const msg = out.payload.message || 'Could not load A+ content.';
+                const errEl = document.getElementById('aplusError');
+                errEl.textContent = msg;
+                errEl.style.display = '';
+                if (!has) toast('A+ fetch failed: ' + msg, false);
+            } else if (!has && data.has_content) {
+                toast('Fetched Shopify description and stored as A+ content for ' + sku + '.');
+            }
+        } catch (e) {
+            renderAplusData({ error: e.message }, 'failed');
+            toast('A+ load failed: ' + e.message, false);
+        } finally {
+            setAplusLoading(false);
+        }
+    }
+
+    document.getElementById('aplusFetchBtn')?.addEventListener('click', async () => {
+        const sku = document.getElementById('aplusSku').value;
+        if (!sku) return;
+        setAplusLoading(true, 'Fetching latest description from Shopify…');
+        try {
+            const out = await requestAplus(sku, { force: true });
+            if (!out) return;
+            const data = (out.payload && out.payload.data) || {};
+            renderAplusData(data, out.payload.status);
+            syncAplusRowState(sku, data);
+            if (out.ok) toast(out.payload.message || 'Fetched from Shopify.');
+            else {
+                const msg = out.payload.message || 'Fetch failed';
+                const errEl = document.getElementById('aplusError');
+                errEl.textContent = msg;
+                errEl.style.display = '';
+                toast('A+ fetch failed: ' + msg, false);
+            }
+        } catch (e) {
+            toast('A+ fetch failed: ' + e.message, false);
+        } finally {
+            setAplusLoading(false);
+        }
+    });
+
+    // ── A+ edit mode (second TinyMCE instance; saves to our DB only) ─────
+    let aplusEditor = null;
+    let aplusEditorPromise = null;
+    let aplusEditing = false;
+
+    function ensureAplusEditor() {
+        if (aplusEditor) return Promise.resolve(aplusEditor);
+        if (typeof tinymce === 'undefined') return Promise.resolve(null);
+        if (aplusEditorPromise) return aplusEditorPromise;
+        aplusEditorPromise = tinymce.init({
+            selector: '#aplusEditorHtml',
+            license_key: 'gpl',
+            height: 440,
+            menubar: false,
+            plugins: 'lists link image table code',
+            toolbar: 'undo redo | blocks | bold italic | bullist numlist | table | link image | removeformat code',
+            branding: false,
+            promotion: false,
+            convert_urls: false,
+            content_style: 'img{max-width:100%;height:auto;} table{max-width:100%;border-collapse:collapse;} body{font-size:14px;}',
+            setup: (editor) => {
+                const count = () => {
+                    const el = document.getElementById('aplusEditorCount');
+                    if (el) el.textContent = stripHtmlToPlain(editor.getContent()).length + ' chars';
+                };
+                editor.on('init input change keyup SetContent Undo Redo', count);
+            },
+        }).then((eds) => {
+            aplusEditor = (eds && eds[0]) || (tinymce.get ? tinymce.get('aplusEditorHtml') : null);
+            return aplusEditor;
+        }).catch(() => null);
+        return aplusEditorPromise;
+    }
+
+    function getAplusEditorContent() {
+        if (aplusEditor) return aplusEditor.getContent();
+        const el = document.getElementById('aplusEditorHtml');
+        return el ? el.value : '';
+    }
+
+    function setAplusEditMode(on) {
+        aplusEditing = on;
+        const show = (id, visible) => { const el = document.getElementById(id); if (el) el.style.display = visible ? '' : 'none'; };
+        show('aplusEditorWrap', on);
+        show('aplusSaveBtn', on);
+        show('aplusCancelEditBtn', on);
+        show('aplusEditBtn', !on);
+        show('aplusFetchBtn', !on);
+        show('aplusCopyBtn', !on);
+        if (on) {
+            show('aplusContentWrap', false);
+            show('aplusEmpty', false);
+            document.getElementById('aplusError').style.display = 'none';
+        } else {
+            const has = aplusCurrentHtml.trim() !== '';
+            show('aplusContentWrap', has);
+            show('aplusEmpty', !has);
+        }
+    }
+
+    document.getElementById('aplusEditBtn')?.addEventListener('click', () => {
+        setAplusEditMode(true);
+        ensureAplusEditor().then((ed) => {
+            if (ed) ed.setContent(aplusCurrentHtml || '');
+            else { const el = document.getElementById('aplusEditorHtml'); if (el) el.value = aplusCurrentHtml || ''; }
+            const c = document.getElementById('aplusEditorCount');
+            if (c) c.textContent = stripHtmlToPlain(aplusCurrentHtml).length + ' chars';
+        });
+    });
+
+    document.getElementById('aplusCancelEditBtn')?.addEventListener('click', () => setAplusEditMode(false));
+
+    document.getElementById('aplusSaveBtn')?.addEventListener('click', async () => {
+        const sku = document.getElementById('aplusSku').value;
+        if (!sku) return;
+        const html = getAplusEditorContent();
+        if (!stripHtmlToPlain(html) && !/<img\b/i.test(html)) {
+            if (!window.confirm('The A+ content is empty. Save and clear the stored A+ content for ' + sku + '?')) return;
+        }
+        setButtonLoading('aplusSaveBtn', true, 'Saving...');
+        try {
+            const res = await fetch('/product-description/shopify-aplus/save', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify({ sku, html }),
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok || !payload.success) throw new Error(payload.message || 'Save failed');
+            const data = payload.data || {};
+            aplusRequestSeq++; // invalidate any in-flight load so it can't overwrite the saved copy
+            renderAplusData(data, 'saved');
+            syncAplusRowState(sku, data);
+            setAplusEditMode(false);
+            toast(payload.message || 'A+ content saved.');
+        } catch (e) {
+            toast('A+ save failed: ' + e.message, false);
+        } finally {
+            setButtonLoading('aplusSaveBtn', false);
+        }
+    });
+
+    document.getElementById('shopifyAplusModal')?.addEventListener('hidden.bs.modal', () => {
+        if (aplusEditing) setAplusEditMode(false);
+    });
+
+    document.getElementById('aplusViewRenderedBtn')?.addEventListener('click', () => setAplusView('rendered'));
+    document.getElementById('aplusViewSourceBtn')?.addEventListener('click', () => setAplusView('source'));
+    document.getElementById('aplusCopyBtn')?.addEventListener('click', () => {
+        if (!aplusCurrentHtml.trim()) { toast('Nothing to copy', false); return; }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(aplusCurrentHtml).then(() => toast('A+ HTML copied')).catch(() => toast('Copy failed', false));
         } else {
             toast('Clipboard not available', false);
         }
@@ -1076,7 +1498,44 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('modalFetchLiveBtn')?.addEventListener('click', runFetchLive);
+    document.getElementById('modalFetchAplusBtn')?.addEventListener('click', runFetchAplusIntoEditor);
     document.getElementById('modalAiGenBtn')?.addEventListener('click', runAiGen);
+
+    // Load the stored Shopify A+ content (fetching once if missing) into the ACTIVE marketplace's editor.
+    async function runFetchAplusIntoEditor() {
+        const sku = document.getElementById('modalSku')?.value || '';
+        const mp = activeMp;
+        if (!sku || !mp) return;
+        const wrap = document.getElementById('modalAiLoadingWrap');
+        const tierEl = document.getElementById('modalAiLoadingTier');
+        if (wrap) wrap.classList.remove('d-none');
+        if (tierEl) tierEl.textContent = 'Loading A+ content for ' + sku + '…';
+        setButtonLoading('modalFetchAplusBtn', true, 'Fetching...');
+        try {
+            const row = bySku.get(String(sku));
+            const has = !!(row && row.shopify_aplus && row.shopify_aplus.has_content);
+            const out = await requestAplus(sku, { autoFetch: !has });
+            if (!out) return;
+            const data = (out.payload && out.payload.data) || {};
+            syncAplusRowState(sku, data);
+            const html = String(data.html || '');
+            if (!out.ok || !html.trim()) {
+                toast(out.payload.message || 'No A+ content available for this SKU.', false);
+                return;
+            }
+            const limited = enforceMpContentLimit(mp, html);
+            mpContent[mp] = limited;
+            descEditorLastValid[mp] = limited;
+            if (activeMp === mp) setDescEditorContent(limited);
+            const truncated = stripHtmlToPlain(limited).length < stripHtmlToPlain(html).length;
+            toast('A+ content loaded into ' + (LABELS[mp] || mp) + (truncated ? ' (truncated to ' + getCharLimitForMp(mp) + ' chars)' : '') + '. Review, then Save.');
+        } catch (e) {
+            toast('A+ fetch failed: ' + e.message, false);
+        } finally {
+            if (wrap) wrap.classList.add('d-none');
+            setButtonLoading('modalFetchAplusBtn', false);
+        }
+    }
 
     function setButtonLoading(btnId, loading, textWhenLoading = 'Loading...') {
         const btn = document.getElementById(btnId);
