@@ -2639,6 +2639,7 @@
             let ebay2BoundViewMode = null; // last dataset slice: all | parent | sku
             let ebay2SkipNextDataLoadedFilter = false;
             let ebay2FiltersBusy = false;
+            let ebay2FiltersPending = false;
 
             function ebay2EscHtmlAttr(val) {
                 if (val == null || val === '') return '';
@@ -2899,7 +2900,7 @@
                         headerFilterFunc: function(headerValue, rowValue, rowData) {
                             if (headerValue == null || String(headerValue).trim() === '') return true;
                             const viewMode = $('#view-mode-filter').val() || 'sku';
-                            if (viewMode !== 'parent' && isEbay2TabulatorParentRow(rowData)) return false;
+                            if (viewMode === 'sku' && isEbay2TabulatorParentRow(rowData)) return false;
                             return String(rowValue || '').toUpperCase().includes(String(headerValue).trim().toUpperCase());
                         },
                         cssClass: "text-primary fw-bold",
@@ -4091,7 +4092,7 @@
                 if (skuSearch) {
                     const skuQ = skuSearch.toUpperCase();
                     table.addFilter(function(data) {
-                        if (viewModeFilter !== 'parent' && isEbay2TabulatorParentRow(data)) return false;
+                        if (viewModeFilter === 'sku' && isEbay2TabulatorParentRow(data)) return false;
                         const sku = String(data['(Child) sku'] || data.sku || '').toUpperCase();
                         return sku.includes(skuQ);
                     });
@@ -4103,6 +4104,19 @@
                         const key = ebay2NormalizeParentKey(data.Parent || data['(Child) sku'] || '').toUpperCase();
                         return p.includes(parentQ) || key.includes(parentQ);
                     });
+                }
+
+                // ALL and Parents keep parent rows. INV / E L30 / CVR filters were
+                // dropping every parent, so ALL looked the same as SKU.
+                const keepParentRows = (viewModeFilter === 'all' || viewModeFilter === 'parent');
+                const addRowFilter = table.addFilter.bind(table);
+                if (keepParentRows) {
+                    table.addFilter = function(fn) {
+                        return addRowFilter(function(data) {
+                            if (isEbay2TabulatorParentRow(data)) return true;
+                            return fn(data);
+                        });
+                    };
                 }
 
                 // INV filter — same as /ebay-tabulator-view (Shopify INV, not eBay Stock)
@@ -4314,6 +4328,8 @@
                     });
                 }
 
+                if (keepParentRows) table.addFilter = addRowFilter;
+
                 updateCalcValues();
                 updateSummary();
                 // Update select-all + pagination counter after filter is applied (same as eBay 1)
@@ -4333,7 +4349,10 @@
                     || table.getDataCount() !== viewRows.length
                 );
                 if (needReplace) {
-                    if (ebay2FiltersBusy) return;
+                    if (ebay2FiltersBusy) {
+                        ebay2FiltersPending = true;
+                        return;
+                    }
                     ebay2FiltersBusy = true;
                     ebay2SkipNextDataLoadedFilter = true;
                     table.setData(viewRows).then(function() {
@@ -4345,6 +4364,10 @@
                         runEbay2Filters();
                     }).finally(function() {
                         ebay2FiltersBusy = false;
+                        if (ebay2FiltersPending) {
+                            ebay2FiltersPending = false;
+                            applyFilters();
+                        }
                     });
                 } else {
                     ebay2BoundViewMode = viewModeFilter;

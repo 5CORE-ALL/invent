@@ -411,6 +411,24 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Dil vs SBid autopush. Morning follows the 09:00 Shopify quantity sync (Dil).
+        // Evening follows eBay metrics (CVR) and the 18:00 quantity sync. Only ads
+        // whose rule bid changed are pushed. eBay 3 stays manual.
+        foreach ([
+            ['09:50', 'ebay:dil-sbid-auto-push ebay1', 'ebay1-dil-sbid-morning'],
+            ['09:55', 'ebay:dil-sbid-auto-push ebay2', 'ebay2-dil-sbid-morning'],
+            ['19:50', 'ebay:dil-sbid-auto-push ebay1', 'ebay1-dil-sbid-evening'],
+            ['19:55', 'ebay:dil-sbid-auto-push ebay2', 'ebay2-dil-sbid-evening'],
+        ] as [$at, $cmd, $name]) {
+            $ist($schedule->command($cmd)
+                ->dailyAt($at)
+                ->timezone('Asia/Kolkata')
+                ->name($name)
+                ->withoutOverlapping(90)
+                ->runInBackground()
+                ->appendOutputTo($log));
+        }
+
         // eBay 3 per-SKU Price / Dil snapshots for /ebay3-tabulator-view Sprc Dil history
         $ist($schedule->command('ebay3:collect-metrics')
             ->dailyAt('19:21')

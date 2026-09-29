@@ -39,6 +39,7 @@
                     <li>Every other slab uses the <strong>S Bid %</strong> you type on that row.</li>
                     <li><strong>CVR overlay</strong> then adjusts that S Bid, same as Sprc Dil. Down = CVR is below the threshold and the arrow is down (CVR L30 under CVR L60). Up = CVR is above the threshold and the arrow is up. Flat arrows are left alone.</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay, eBay 2, and eBay 3 each keep their own slabs.</li>
+                    <li>eBay 1 and eBay 2 push the new S Bid on their own when Dil or CVR changes the bid. The switch must be On. eBay 3 stays manual.</li>
                 </ul>
                 <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="dil-sbid-table">

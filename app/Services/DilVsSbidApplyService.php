@@ -19,9 +19,9 @@ class DilVsSbidApplyService
      * @param  class-string  $metricClass
      * @param  class-string  $apiServiceClass
      * @param  array<int, mixed>  $listingIds
-     * @return array{success:int,failed:int,skipped:int,results:array<int,array<string,mixed>>}
+     * @return array{success:int,failed:int,skipped:int,unchanged?:int,results:array<int,array<string,mixed>>,error?:string}
      */
-    public function apply(string $ruleKey, string $adsTable, string $metricClass, string $apiServiceClass, array $listingIds): array
+    public function apply(string $ruleKey, string $adsTable, string $metricClass, string $apiServiceClass, array $listingIds, bool $onlyChanged = false): array
     {
         $listingIds = array_values(array_unique(array_map('strval', $listingIds)));
         if ($listingIds === []) {
@@ -62,6 +62,7 @@ class DilVsSbidApplyService
         $success = 0;
         $failed = 0;
         $skipped = 0;
+        $unchanged = 0;
         $bidsByCampaign = [];
         $offsByCampaign = [];
 
@@ -124,15 +125,23 @@ class DilVsSbidApplyService
                 continue;
             }
 
+            $nextBid = round((float) $decision['bid'], 2);
+            if ($onlyChanged && abs(round((float) ($ad->bid_percentage ?? 0), 2) - $nextBid) < 0.009) {
+                $unchanged++;
+                continue;
+            }
+
             $bidsByCampaign[(string) $ad->campaign_id][] = [
                 'listingId' => $lid,
                 'adId' => $ad->ad_id ? (string) $ad->ad_id : null,
-                'bidPercentage' => (string) round($decision['bid'], 2),
+                'bidPercentage' => (string) $nextBid,
             ];
         }
 
         foreach ($bidsByCampaign as $campaignId => $requests) {
-            $this->resumeAds($token, $adsTable, $campaignId, $requests);
+            if (! $onlyChanged) {
+                $this->resumeAds($token, $adsTable, $campaignId, $requests);
+            }
             foreach (array_chunk($requests, 200) as $chunk) {
                 $this->pushBids($token, $adsTable, $campaignId, $chunk, $results, $success, $failed);
             }
@@ -148,8 +157,35 @@ class DilVsSbidApplyService
             'success' => $success,
             'failed' => $failed,
             'skipped' => $skipped,
+            'unchanged' => $unchanged,
             'results' => $results,
         ];
+    }
+
+    /**
+     * Push RUNNING ads whose Dil vs SBid (plus CVR overlay) no longer matches
+     * the live bid. Unchanged ads are left alone.
+     *
+     * @param  class-string  $metricClass
+     * @param  class-string  $apiServiceClass
+     * @return array{success:int,failed:int,skipped:int,unchanged?:int,results:array<int,array<string,mixed>>,error?:string}
+     */
+    public function applyChanged(string $ruleKey, string $adsTable, string $metricClass, string $apiServiceClass): array
+    {
+        $stored = DilVsSbidRule::load($ruleKey);
+        if (empty($stored['enabled'])) {
+            return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => [], 'error' => 'Dil vs SBid is off'];
+        }
+
+        $listingIds = DB::table($adsTable)
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->where('funding_strategy', 'COST_PER_SALE')
+            ->whereRaw("UPPER(TRIM(COALESCE(campaign_status, ''))) = 'RUNNING'")
+            ->pluck('listing_id')
+            ->all();
+
+        return $this->apply($ruleKey, $adsTable, $metricClass, $apiServiceClass, $listingIds, true);
     }
 
     private function pushBids(string $token, string $adsTable, string $campaignId, array $requests, array &$results, int &$success, int &$failed): void
