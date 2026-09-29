@@ -657,6 +657,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/sales-order-fulfillment/refresh-shipment-status', [SalesOrderFulfillmentController::class, 'refreshShipmentStatus'])->name('sales.order.fulfillment.refresh.shipment.status');
     Route::post('/sales-order-fulfillment/refresh-shipment-status-row', [SalesOrderFulfillmentController::class, 'refreshShipmentStatusRow'])->name('sales.order.fulfillment.refresh.shipment.status.row');
     Route::post('/sales-order-fulfillment/pull-tracking-numbers', [SalesOrderFulfillmentController::class, 'pullTrackingNumbers'])->name('sales.order.fulfillment.pull.tracking.numbers');
+    Route::get('/sales-order-fulfillment/pull-tracking-status', [SalesOrderFulfillmentController::class, 'pullTrackingStatus'])->name('sales.order.fulfillment.pull.tracking.status');
     Route::post('/sales-order-fulfillment/bulk-update-shipment', [SalesOrderFulfillmentController::class, 'bulkUpdateShipment'])->name('sales.order.fulfillment.bulk.update.shipment');
     Route::post('/sales-order-fulfillment/save-carrier-status', [SalesOrderFulfillmentController::class, 'saveRowCarrierStatus'])->name('sales.order.fulfillment.save.carrier.status');
     Route::post('/sales-order-fulfillment/save-tracking-number', [SalesOrderFulfillmentController::class, 'saveRowTrackingNumber'])->name('sales.order.fulfillment.save.tracking.number');

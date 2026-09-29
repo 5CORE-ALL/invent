@@ -7114,7 +7114,7 @@
         return out;
     }
 
-    function sofPullTrackingRequest(targets) {
+    function sofPullTrackingRequest(targets, background) {
         const channelFilter = sofChannelFilterValue();
         return fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
             method: 'POST',
@@ -7125,10 +7125,11 @@
                 'X-Requested-With': 'XMLHttpRequest',
             },
             body: JSON.stringify({
-                limit: Math.min(SOF_PULL_CHUNK, targets.length),
+                limit: background ? targets.length : Math.min(SOF_PULL_CHUNK, targets.length),
                 channel: channelFilter || '',
                 selected: targets,
                 selected_only: true,
+                background: !!background,
             }),
         }).then(function (r) {
             return r.text().then(function (text) {
@@ -7137,6 +7138,64 @@
                 return { ok: r.ok, status: r.status, json: j };
             });
         });
+    }
+
+    let sofPullWatchTimer = null;
+    let sofPullWasRunning = false;
+
+    function sofApplyBackgroundPullStatus(st) {
+        const running = !!(st && st.state === 'running');
+        const pullBtn = document.getElementById('sof-pull-tracking-btn');
+        const fetchBtn = document.getElementById('sof-fetch-tracking-btn');
+        [pullBtn, fetchBtn].forEach(function (btn) {
+            if (!btn) return;
+            btn.disabled = running;
+        });
+        const pullLabel = pullBtn ? pullBtn.querySelector('span') : null;
+        const fetchLabel = fetchBtn ? fetchBtn.querySelector('span') : null;
+        if (running) {
+            const checked = Number(st.checked || 0);
+            const total = Number(st.total || 0);
+            const text = total ? ('Pulling ' + checked + '/' + total + '…') : 'Pulling…';
+            if (pullLabel) pullLabel.textContent = text;
+            if (fetchLabel) fetchLabel.textContent = text;
+        } else {
+            if (pullLabel) pullLabel.textContent = 'Pull Tracking';
+            if (fetchLabel) fetchLabel.textContent = 'Fetch Tracking';
+        }
+        return running;
+    }
+
+    function sofWatchBackgroundPull() {
+        if (sofPullWatchTimer) return;
+        const tick = function () {
+            fetch('{{ route("sales.order.fulfillment.pull.tracking.status") }}', {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (st) {
+                    const running = sofApplyBackgroundPullStatus(st || {});
+                    if (sofPullWasRunning && !running) {
+                        try { reloadSofTrackingTables(); } catch (e) {}
+                        if (typeof noTrackingTable !== 'undefined' && noTrackingTable && typeof noTrackingTable.replaceData === 'function') {
+                            try { noTrackingTable.replaceData(); } catch (e2) {}
+                        }
+                        const saved = Number((st && st.updated) || 0);
+                        const msg = (st && st.message) || ('Background pull finished. Saved tracking on ' + saved + '.');
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({ icon: 'success', title: 'Pull finished', text: msg, timer: 4000, showConfirmButton: false });
+                        }
+                    }
+                    sofPullWasRunning = running;
+                    if (!running && sofPullWatchTimer) {
+                        clearInterval(sofPullWatchTimer);
+                        sofPullWatchTimer = null;
+                    }
+                })
+                .catch(function () {});
+        };
+        tick();
+        sofPullWatchTimer = setInterval(tick, 4000);
     }
 
     /**
@@ -7164,71 +7223,30 @@
         }, 12000);
     }
 
-    function sofAutoFillMissingLabelTracking(rows, round) {
-        round = round || 0;
-        if (round >= 80 || window.__sofAutoFillTrackingBusy) return;
+    const sofAutoPullQueued = {};
+    function sofAutoFillMissingLabelTracking(rows) {
         const missing = [];
-        const seen = {};
         (Array.isArray(rows) ? rows : []).forEach(function (r) {
             if (String(r.tracking_number || '').trim()) return;
             const mapped = sofMapPullTarget(r);
             if (!mapped) return;
             const key = sofPullTargetKey(mapped);
-            if (!key || seen[key]) return;
-            seen[key] = true;
+            if (!key || sofAutoPullQueued[key]) return;
+            sofAutoPullQueued[key] = true;
             missing.push(mapped);
         });
         if (!missing.length) return;
-
-        window.__sofAutoFillTrackingBusy = true;
-        const chunk = missing.slice(0, SOF_PULL_CHUNK);
-        sofPullTrackingRequest(chunk)
-            .then(function (res) {
-                const j = res.json || {};
-                const pulled = Array.isArray(j.data) ? j.data : [];
-                if (res.ok && j.success !== false) {
-                    sofApplyPulledTrackingToTables(pulled);
-                }
-                window.__sofAutoFillTrackingBusy = false;
-                sofStripLabeledPendingRows();
-                sofPromoteTrackedNoTrackingRows();
-                const processed = {};
-                (j.processed_keys || []).forEach(function (k) {
-                    if (k) processed[String(k)] = true;
-                });
-                chunk.forEach(function (t) {
-                    if (processed[sofPullTargetKey(t)]) return;
-                    if (res.status === 504 || res.status === 502 || j.truncated) return;
-                    processed[sofPullTargetKey(t)] = true;
-                });
-                const next = []
-                    .concat(noTrackingRows || [])
-                    .concat(fulfilledRows || [])
-                    .concat(pendingRows || [])
-                    .filter(function (r) {
-                        if (String(r.tracking_number || '').trim()) return false;
-                        const mapped = sofMapPullTarget(r);
-                        if (!mapped) return false;
-                        return !processed[sofPullTargetKey(mapped)];
-                    });
-                if (next.length && round + 1 < 80) {
-                    const waitMs = Number(j.retry_after_ms || 0) > 0 ? Number(j.retry_after_ms) : 250;
-                    setTimeout(function () {
-                        sofAutoFillMissingLabelTracking(next, round + 1);
-                    }, waitMs);
-                }
-            })
-            .catch(function () {
-                window.__sofAutoFillTrackingBusy = false;
-            });
+        sofPullTrackingRequest(missing, true)
+            .then(function () { sofWatchBackgroundPull(); })
+            .catch(function () {});
     }
 
     // Keep Label Created / Pending tracking in sync while the page is open.
     setInterval(function () {
-        window.__sofAutoFillTrackingBusy = false;
         const rows = [].concat(pendingRows || [], noTrackingRows || [], fulfilledRows || []);
-        sofAutoFillMissingLabelTracking(rows, 0);
+        sofAutoFillMissingLabelTracking(rows);
     }, 15 * 60 * 1000);
+    sofWatchBackgroundPull();
 
     function sofSelectedPullTargets() {
         const seen = {};
@@ -7275,7 +7293,6 @@
         const $btn = buttonEl ? $(buttonEl) : $('#sof-pull-tracking-btn');
         if ($('#sof-pull-tracking-btn').prop('disabled') || $('#sof-fetch-tracking-btn').prop('disabled')) return;
         const $label = $btn.find('span').first();
-        const progressWord = $btn.is('#sof-fetch-tracking-btn') ? 'Fetching ' : 'Pulling ';
         const prev = $label.text();
         let targets = Array.isArray(selected) ? selected.slice() : [];
         if (!targets.length) {
@@ -7291,148 +7308,34 @@
             return;
         }
 
+        $label.text('Queuing…');
         $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', true);
-
-        const totalStarted = targets.length;
-        const totals = { checked: 0, with_tracking: 0, updated: 0, empty: 0 };
-        const allRows = [];
-        const attempts = {};
-        let lastMsg = '';
-        let hardFail = false;
-        let gatewayFail = false;
-        let doneCount = 0;
-
-        function showPullResult(ok, msg) {
-            const summaryLine = 'Orders: ' + totalStarted
-                + ' · Checked: ' + totals.checked
-                + ' · With tracking: ' + totals.with_tracking
-                + ' · Saved: ' + totals.updated
-                + ' · Empty: ' + totals.empty;
-            if (typeof Swal !== 'undefined') {
-                Swal.fire({
-                    icon: ok ? 'success' : (gatewayFail && totals.updated > 0 ? 'warning' : (ok ? 'success' : 'error')),
-                    title: ok
-                        ? ('Updated tracking for ' + totals.updated + ' of ' + totalStarted)
-                        : (gatewayFail ? 'Pull timed out' : 'Pull failed'),
-                    width: Math.min(920, window.innerWidth - 40),
-                    html: '<div style="text-align:left;font-size:0.9rem;">'
-                        + '<p class="mb-1">' + escapeHtml(msg) + '</p>'
-                        + '<p class="text-muted mb-2" style="font-size:0.8rem;">' + escapeHtml(summaryLine) + '</p>'
-                        + buildPulledTrackingTableHtml(allRows)
-                        + '</div>',
-                    showConfirmButton: true,
-                    confirmButtonText: 'Close',
+        sofPullTrackingRequest(targets, true)
+            .then(function (res) {
+                const j = res.json || {};
+                if (!res.ok || j.success === false) {
+                    $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', false);
+                    $label.text(prev);
+                    const msg = j.message || 'Could not start the background pull.';
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'error', title: 'Pull failed', text: msg });
+                    } else {
+                        alert(msg);
+                    }
+                    return;
+                }
+                sofPullWasRunning = true;
+                sofApplyBackgroundPullStatus({
+                    state: 'running',
+                    checked: j.checked || 0,
+                    total: j.total || targets.length,
                 });
-            } else {
-                alert(msg + '\n' + summaryLine);
-            }
-            if (allRows.length) {
-                sofApplyPulledTrackingToTables(allRows);
-            }
-        }
-
-        function pullQueue(queue) {
-            if (!queue.length) {
-                const ok = !hardFail && (totals.checked > 0 || totals.updated > 0 || !gatewayFail);
-                const msg = lastMsg || (totals.updated
-                    ? ('Saved tracking on ' + totals.updated + ' labeled order' + (totals.updated === 1 ? '' : 's') + '.')
-                    : 'Checked all selected orders. No new tracking numbers were found.');
-                showPullResult(ok && !hardFail, msg);
+                sofWatchBackgroundPull();
+            })
+            .catch(function () {
                 $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', false);
                 $label.text(prev);
-                return;
-            }
-
-            const chunk = queue.slice(0, SOF_PULL_CHUNK);
-            const rest = queue.slice(SOF_PULL_CHUNK);
-            $label.text(progressWord + Math.min(doneCount + chunk.length, totalStarted) + '/' + totalStarted + '…');
-
-            sofPullTrackingRequest(chunk)
-                .then(function (res) {
-                    const j = res.json || {};
-                    const rows = Array.isArray(j.data) ? j.data : [];
-                    rows.forEach(function (row) { allRows.push(row); });
-                    const summary = j.summary || {};
-                    totals.checked += Number(summary.checked || 0);
-                    totals.with_tracking += Number(summary.with_tracking || 0);
-                    totals.updated += Number(summary.updated || 0);
-                    totals.empty += Number(summary.empty || 0);
-                    if (j.message) lastMsg = j.message;
-                    if (res.ok && j.success !== false) {
-                        sofApplyPulledTrackingToTables(rows);
-                    }
-
-                    const processed = {};
-                    (j.processed_keys || []).forEach(function (k) {
-                        if (k) processed[String(k)] = true;
-                    });
-                    rows.forEach(function (row) {
-                        const k = sofPullTargetKey(row);
-                        if (k) processed[k] = true;
-                    });
-
-                    const leftover = [];
-                    const timedOut = !!(j.truncated || res.status === 504 || res.status === 502 || res.status === 524);
-                    if (timedOut) gatewayFail = true;
-
-                    chunk.forEach(function (t) {
-                        const key = sofPullTargetKey(t);
-                        if (processed[key]) {
-                            doneCount += 1;
-                            return;
-                        }
-                        attempts[key] = (attempts[key] || 0) + 1;
-                        if (timedOut && attempts[key] < 3) {
-                            leftover.push(t);
-                            return;
-                        }
-                        if (!timedOut) {
-                            doneCount += 1;
-                            return;
-                        }
-                        leftover.push(t);
-                        if (attempts[key] >= 3) {
-                            doneCount += 1;
-                            leftover.pop();
-                        }
-                    });
-
-                    if (res.status >= 400 && res.status !== 504 && res.status !== 502 && res.status !== 524 && j.success === false) {
-                        hardFail = true;
-                        lastMsg = j.message || ('Pull failed (HTTP ' + res.status + ').');
-                    }
-
-                    const waitMs = Number(j.retry_after_ms || 0);
-                    const continueQueue = function () {
-                    pullQueue(leftover.concat(rest));
-                    };
-                    if (waitMs > 0) {
-                        setTimeout(continueQueue, waitMs);
-                    } else {
-                        continueQueue();
-                    }
-                })
-                .catch(function (err) {
-                    const leftover = [];
-                    chunk.forEach(function (t) {
-                        const key = sofPullTargetKey(t);
-                        attempts[key] = (attempts[key] || 0) + 1;
-                        if (attempts[key] < 3) leftover.push(t);
-                        else doneCount += 1;
-                    });
-                    gatewayFail = true;
-                    lastMsg = err && err.message ? err.message : 'Network error';
-                    if (!leftover.length && !rest.length) {
-                        showPullResult(false, lastMsg);
-                        $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', false);
-                        $label.text(prev);
-                        return;
-                    }
-                    pullQueue(leftover.concat(rest));
-                });
-        }
-
-        pullQueue(targets);
+            });
     }
 
     $('#sof-fetch-tracking-btn').on('click', function () {

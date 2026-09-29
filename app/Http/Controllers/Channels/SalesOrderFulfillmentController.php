@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Channels;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\PullSofTrackingBackgroundJob;
 use App\Models\AlibabaOrderMetric;
 use App\Models\AliexpressOrderMetric;
 use App\Models\AmazonOrder;
@@ -2147,22 +2148,29 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Tracking that lives inside the JSON blob, without loading the blob.
+     * Tracking saved on the order JSON (manual entry and label pulls), without loading the blob.
      */
     protected function addLightweightTrackingColumns(Builder $query, string $slug): void
     {
-        if ($slug !== 'wayfair') {
-            return;
-        }
         $table = $query->getModel()->getTable();
-        if (! Schema::hasColumn($table, 'raw_payload')) {
+        $jsonCol = null;
+        foreach (['raw_payload', 'raw_json', 'raw_data', 'order_json'] as $candidate) {
+            if (Schema::hasColumn($table, $candidate)) {
+                $jsonCol = $candidate;
+                break;
+            }
+        }
+        if ($jsonCol === null) {
             return;
         }
         $query->addSelect(DB::raw(
-            "JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.tracking_number')) as list_tracking_number"
+            "JSON_UNQUOTE(JSON_EXTRACT({$table}.{$jsonCol}, '$.tracking_number')) as list_tracking_number"
         ));
         $query->addSelect(DB::raw(
-            "JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.tracking_company')) as list_tracking_company"
+            "COALESCE(
+                NULLIF(JSON_UNQUOTE(JSON_EXTRACT({$table}.{$jsonCol}, '$.tracking_company')), ''),
+                NULLIF(JSON_UNQUOTE(JSON_EXTRACT({$table}.{$jsonCol}, '$.carrier')), '')
+            ) as list_tracking_company"
         ));
     }
 
@@ -4800,12 +4808,16 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Pull tracking numbers into SOF (no Shopify).
-     * 1) Temu / Temu 2 → Temu OpenAPI.
-     * 2) Other channels → that channel's own API (Newegg, Reverb, AE, Alibaba, Faire, PP, Doba).
-     * When `selected` rows are posted, only those orders are pulled.
-     * HTTP requests are capped and time-boxed so nginx/proxy (often 60s) does not 504.
+     * Progress for a Pull Tracking run that continues after the page is refreshed.
      */
+    public function pullTrackingStatus(): JsonResponse
+    {
+        return response()->json(array_merge(
+            ['success' => true],
+            PullSofTrackingBackgroundJob::status()
+        ));
+    }
+
     public function pullTrackingNumbers(
         Request $request,
         TemuOrderTrackingPullService $temuPull,
@@ -4813,7 +4825,9 @@ class SalesOrderFulfillmentController extends Controller
         ChannelTrackingApiFallbackService $channelApiFallback,
         VeeqoShopifyFulfillmentService $labelTracking,
     ): JsonResponse {
-        @set_time_limit(45);
+        if (! app()->runningInConsole()) {
+            @set_time_limit(45);
+        }
         $deadline = microtime(true) + self::HTTP_PULL_DEADLINE_SECONDS;
         try {
             app(VeeqoApiService::class)->setTimeout(6);
@@ -4887,10 +4901,26 @@ class SalesOrderFulfillmentController extends Controller
                 'summary' => ['checked' => 0, 'with_tracking' => 0, 'updated' => 0, 'empty' => 0, 'selected' => 0],
             ], 422);
         }
+        if (filter_var($request->input('background', false), FILTER_VALIDATE_BOOL)) {
+            $status = PullSofTrackingBackgroundJob::enqueue($selected);
+
+            return response()->json([
+                'success' => true,
+                'background' => true,
+                'message' => 'Pulling tracking in the background. Refreshing this page will not stop it.',
+                'state' => $status['state'] ?? 'running',
+                'total' => (int) ($status['total'] ?? count($selected)),
+                'checked' => (int) ($status['checked'] ?? 0),
+                'updated' => (int) ($status['updated'] ?? 0),
+                'queued' => (int) ($status['queued'] ?? 0),
+                'added' => (int) ($status['added'] ?? 0),
+                'data' => [],
+                'summary' => ['checked' => 0, 'with_tracking' => 0, 'updated' => 0, 'empty' => 0, 'selected' => count($selected)],
+            ]);
+        }
         $limit = max(1, min(self::HTTP_PULL_MAX, count($selected)));
         $selected = array_slice($selected, 0, $limit);
 
-        $selectedSlugs = [];
         $temuParents = [];
         $temu2Parents = [];
         foreach ($selected as $row) {
@@ -4898,9 +4928,6 @@ class SalesOrderFulfillmentController extends Controller
             // When Channels filter is Temu/Temu2, accept selected rows even if mm_slug was blank.
             if ($slug === '' && in_array($channel, ['temu', 'temu2'], true)) {
                 $slug = $channel;
-            }
-            if ($slug !== '') {
-                $selectedSlugs[$slug] = true;
             }
             $parent = $row['order_id_api'] !== '' ? $row['order_id_api']
                 : ($row['order_id'] !== '' ? $row['order_id'] : $row['order_number']);
@@ -4925,9 +4952,6 @@ class SalesOrderFulfillmentController extends Controller
         $pullTemu2 = $hasSelection
             ? ($temu2Parents !== [])
             : ($channel === '' || $channel === 'temu2');
-        $pullChannelApi = $hasSelection
-            ? (array_diff(array_keys($selectedSlugs), ['temu', 'temu2']) !== [])
-            : ($channel === '' || ! in_array($channel, ['temu', 'temu2'], true));
 
         try {
             $checked = 0;
@@ -4944,7 +4968,7 @@ class SalesOrderFulfillmentController extends Controller
             $labelCandidates = [];
             foreach ($selected as $row) {
                 $slug = strtolower((string) ($row['mm_slug'] ?? ''));
-                if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
+                if ($slug === '') {
                     continue;
                 }
                 $labelCandidates[] = [
@@ -4980,6 +5004,25 @@ class SalesOrderFulfillmentController extends Controller
                     $timedOut = true;
                 }
                 $retryAfterMs = max($retryAfterMs, (int) ($labelPull['retry_after_ms'] ?? 0));
+                $handled = array_fill_keys(array_map('strval', (array) ($labelPull['processed_keys'] ?? [])), true);
+                foreach ($labelCandidates as $cand) {
+                    $candSlug = strtolower((string) ($cand['mm_slug'] ?? ''));
+                    if (! in_array($candSlug, ['temu', 'temu2'], true)) {
+                        continue;
+                    }
+                    if (! isset($handled[$this->sofPullRowKey($cand)])) {
+                        continue;
+                    }
+                    $parent = trim((string) (
+                        ($cand['order_id_api'] ?? '') !== ''
+                            ? $cand['order_id_api']
+                            : (($cand['order_id'] ?? '') !== '' ? $cand['order_id'] : ($cand['order_number'] ?? ''))
+                    ));
+                    if ($parent === '') {
+                        continue;
+                    }
+                    unset($temuParents[$parent], $temu2Parents[$parent]);
+                }
             } elseif ($labelCandidates !== []) {
                 $timedOut = true;
             }
@@ -5221,7 +5264,7 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
-            if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
+            if ($slug === '') {
                 continue;
             }
             $showId = (int) ($row['show_id'] ?? $row['row_id'] ?? 0);
@@ -5250,44 +5293,7 @@ class SalesOrderFulfillmentController extends Controller
                     continue;
                 }
                 if ($amazonOrder) {
-                    $filled = app(AmazonTrackingSyncService::class)->fillTrackingForOrder($amazonOrder, true);
-                    $tn = trim((string) ($filled['tracking'] ?? ''));
-                    if ($tn === '') {
-                        if (! empty($filled['retry'])) {
-                            $truncated = true;
-                            $retryAfterMs = 8000;
-                            break;
-                        }
-                        // Package API had no number. The label is often in GOFO/4Seller/Veeqo.
-                        $showId = (int) $amazonOrder->id;
-                    } else {
-                        $carrier = TrackingCarrierGuesser::fill(
-                            (string) ($filled['carrier'] ?? ''),
-                            $tn
-                        ) ?? '';
-                        $showId = (int) $amazonOrder->id;
-                        $checked++;
-                        $processedKeys[] = $this->sofPullRowKey($row);
-                        $this->persistPulledChannelTracking($slug, $showId, $row, $tn, $carrier);
-                        $this->fulfillShopifyAfterPulledTracking($labels, $slug, $showId);
-                        $withTracking++;
-                        $updated++;
-                        $outRows[] = [
-                            'id' => (string) ($row['id'] ?? ''),
-                            'mm_slug' => $slug,
-                            'show_id' => $showId,
-                            'order_number' => (string) ($row['order_number'] ?? $row['order_id'] ?? ''),
-                            'shopify_order_id' => $row['shopify_order_id'] ?? null,
-                            'order_id' => (string) ($row['order_id'] ?? ''),
-                            'order_id_api' => (string) ($row['order_id_api'] ?? ''),
-                            'tracking_number' => $tn,
-                            'tracking_company' => $carrier,
-                            'fulfillment_status' => 'AMAZON',
-                            'shipment_status' => '',
-                            'note' => 'Pulled from Shopify/Veeqo/GOFO/Amazon',
-                        ];
-                        continue;
-                    }
+                    $showId = (int) $amazonOrder->id;
                 }
             }
 
@@ -5317,30 +5323,23 @@ class SalesOrderFulfillmentController extends Controller
                 }
             }
 
-            $preferLive = $this->sofPrefersLiveChannelTracking($slug);
             $found = null;
             $secondsLeft = $deadline === null ? 30.0 : ($deadline - microtime(true));
-            // One short channel call, then the warehouse label. Doing the channel
-            // call first with a 20s timeout left every Tracking cell blank.
-            if ($preferLive && $secondsLeft > 10.0) {
-                $found = $labels->lookupLiveChannelTracking($slug, $refs);
-                $secondsLeft = $deadline === null ? 30.0 : ($deadline - microtime(true));
-            }
-            $dobaOrderLookup = $fast && $slug === 'doba';
-            if (
-                ! $dobaOrderLookup
-                && ($found === null || trim((string) ($found['tracking'] ?? '')) === '')
-                && $secondsLeft > 2.0
-            ) {
-            $found = $labels->lookupLabelTracking($refs, $local, $fast);
+            // Veeqo / GOFO / 4Seller first. Marketplace is only used when those have no number.
+            if ($secondsLeft > 2.0) {
+                $found = $labels->lookupLabelTracking($refs, $local, $fast);
                 $secondsLeft = $deadline === null ? 30.0 : ($deadline - microtime(true));
             }
             if (
                 ($found === null || trim((string) ($found['tracking'] ?? '')) === '')
-                && ! $preferLive
-                && $secondsLeft > 8.0
+                && $secondsLeft > 1.5
             ) {
                 $found = $labels->lookupLiveChannelTracking($slug, $refs);
+                if (is_array($found) && ! empty($found['retry'])) {
+                    $truncated = true;
+                    $retryAfterMs = 8000;
+                    break;
+                }
             }
             if ($found === null || trim((string) ($found['tracking'] ?? '')) === '') {
                 continue;
@@ -5385,7 +5384,7 @@ class SalesOrderFulfillmentController extends Controller
         $this->forgetSofOrderRowCaches();
 
         $message = $checked > 0
-            ? 'Veeqo/GOFO: checked '.$checked.', found tracking on '.$withTracking.'.'
+            ? 'Veeqo/GOFO, then marketplace: checked '.$checked.', found tracking on '.$withTracking.'.'
             : '';
 
         return [
@@ -5688,8 +5687,8 @@ class SalesOrderFulfillmentController extends Controller
                     $model->shipping_company = $carrier !== '' ? $carrier : ($model->shipping_company ?? null);
                 }
             }
-            foreach (['raw_payload', 'raw_json', 'raw_data'] as $field) {
-                if (! isset($model->{$field})) {
+            foreach (['raw_payload', 'raw_json', 'raw_data', 'order_json'] as $field) {
+                if (! Schema::hasColumn($model->getTable(), $field)) {
                     continue;
                 }
                 $raw = $model->{$field};
@@ -7929,18 +7928,28 @@ class SalesOrderFulfillmentController extends Controller
             ],
             default => (function () use ($order) {
                 $tn = null;
-                foreach (['tracking_number', 'trackingNumber'] as $field) {
-                    if (isset($order->{$field}) && trim((string) $order->{$field}) !== '') {
-                        $tn = trim((string) $order->{$field});
-                        break;
+                foreach (['tracking_number', 'trackingNumber', 'list_tracking_number'] as $field) {
+                    if (! isset($order->{$field})) {
+                        continue;
                     }
+                    $candidate = trim((string) $order->{$field});
+                    if ($candidate === '' || strtolower($candidate) === 'null') {
+                        continue;
+                    }
+                    $tn = $candidate;
+                    break;
                 }
                 $carrier = null;
-                foreach (['tracking_company', 'carrier', 'carrier_name', 'shipping_company'] as $field) {
-                    if (isset($order->{$field}) && trim((string) $order->{$field}) !== '') {
-                        $carrier = trim((string) $order->{$field});
-                        break;
+                foreach (['tracking_company', 'carrier', 'carrier_name', 'shipping_company', 'list_tracking_company'] as $field) {
+                    if (! isset($order->{$field})) {
+                        continue;
                     }
+                    $candidate = trim((string) $order->{$field});
+                    if ($candidate === '' || strtolower($candidate) === 'null') {
+                        continue;
+                    }
+                    $carrier = $candidate;
+                    break;
                 }
 
                 return [

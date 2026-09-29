@@ -883,7 +883,13 @@ class VeeqoShopifyFulfillmentService
     public function lookupLiveChannelTracking(string $marketplace, array $ids): ?array
     {
         $hit = $this->pullLiveMarketplaceTracking(strtolower(trim($marketplace)), $ids);
-        if ($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') {
+        if ($hit === null) {
+            return null;
+        }
+        if (! empty($hit['retry'])) {
+            return $hit;
+        }
+        if (trim((string) ($hit['tracking'] ?? '')) === '') {
             return null;
         }
         $hit['source'] = $hit['source'] ?? 'channel';
@@ -2599,6 +2605,48 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
+        if ($marketplace === 'amazon') {
+            $client = app(AmazonSpOrdersClient::class);
+            foreach ($ids as $id) {
+                if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $id) !== 1) {
+                    continue;
+                }
+                try {
+                    $fromPackages = $client->getMerchantPackageTracking($id);
+                } catch (\Throwable $e) {
+                    $fromPackages = null;
+                }
+                if (is_array($fromPackages) && ! empty($fromPackages['retry'])) {
+                    return ['tracking' => '', 'carrier' => '', 'retry' => true];
+                }
+                $tn = is_array($fromPackages)
+                    ? strtoupper(preg_replace('/\s+/', '', (string) ($fromPackages['tracking'] ?? '')) ?? '')
+                    : '';
+                if (strlen($tn) >= 8) {
+                    return [
+                        'tracking' => $tn,
+                        'carrier' => trim((string) ($fromPackages['carrier'] ?? '')) ?: 'Other',
+                        'source' => 'channel',
+                    ];
+                }
+                try {
+                    $fromAmazon = $client->lookupTrackingForOrder($id);
+                } catch (\Throwable $e) {
+                    $fromAmazon = null;
+                }
+                $tn = is_array($fromAmazon)
+                    ? strtoupper(preg_replace('/\s+/', '', (string) ($fromAmazon['tracking'] ?? '')) ?? '')
+                    : '';
+                if (strlen($tn) >= 8) {
+                    return [
+                        'tracking' => $tn,
+                        'carrier' => trim((string) ($fromAmazon['carrier'] ?? '')) ?: 'Other',
+                        'source' => 'channel',
+                    ];
+                }
+            }
+        }
+
         if (in_array($marketplace, ['temu', 'temu2'], true)) {
             if (Cache::get('mm.temu.ip_blocked')) {
                 $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
@@ -2708,7 +2756,7 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        if (in_array($marketplace, ['newegg', 'reverb', 'aliexpress', 'alibaba', 'faire', 'shein', 'bestbuy', 'macy', 'topdawg', 'wayfair'], true)) {
+        if (in_array($marketplace, ['newegg', 'reverb', 'aliexpress', 'alibaba', 'faire', 'shein', 'bestbuy', 'macy', 'topdawg', 'wayfair', 'purchasingpower'], true)) {
             $fallback = app(ChannelTrackingApiFallbackService::class);
             foreach ($ids as $id) {
                 if (strlen($id) < 5 || $this->isShopifyInternalIdRef($id)) {
