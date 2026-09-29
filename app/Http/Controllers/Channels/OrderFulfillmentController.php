@@ -53,6 +53,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'ofPageTitle' => 'Order Fulfillment',
             'ofDeliveredOnly' => false,
             'ofTransitOnly' => false,
+            'ofScanPendingOnly' => false,
         ]);
     }
 
@@ -62,6 +63,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'ofPageTitle' => 'Delivered',
             'ofDeliveredOnly' => true,
             'ofTransitOnly' => false,
+            'ofScanPendingOnly' => false,
         ]);
     }
 
@@ -71,6 +73,17 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'ofPageTitle' => 'Transit',
             'ofDeliveredOnly' => false,
             'ofTransitOnly' => true,
+            'ofScanPendingOnly' => false,
+        ]);
+    }
+
+    public function scanPending(GofoExpressService $gofo, VeeqoApiService $veeqo): View
+    {
+        return $this->index($gofo, $veeqo)->with([
+            'ofPageTitle' => 'Scan Pending',
+            'ofDeliveredOnly' => false,
+            'ofTransitOnly' => false,
+            'ofScanPendingOnly' => true,
         ]);
     }
 
@@ -92,6 +105,11 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 $rows = array_values(array_filter(
                     $rows,
                     fn (array $row) => $this->fulfillmentRowIsInTransit($row)
+                ));
+            } elseif ($request->boolean('scan_pending')) {
+                $rows = array_values(array_filter(
+                    $rows,
+                    fn (array $row) => $this->fulfillmentRowIsScanPending($row)
                 ));
             }
 
@@ -188,6 +206,26 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'outfordelivery',
             'ontheway',
         ], true);
+    }
+
+    /**
+     * A tracking number exists and the carrier has not scanned the package yet.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function fulfillmentRowIsScanPending(array $row): bool
+    {
+        if ($this->fulfillmentRowIsDelivered($row) || $this->fulfillmentRowIsInTransit($row)) {
+            return false;
+        }
+        if (trim((string) ($row['tracking'] ?? '')) === '') {
+            return false;
+        }
+
+        $tracking = strtolower(trim((string) ($row['tracking_status'] ?? '')));
+
+        return $tracking === ''
+            || in_array($tracking, ['label created / no scan', 'pending scan'], true);
     }
 
     /**
