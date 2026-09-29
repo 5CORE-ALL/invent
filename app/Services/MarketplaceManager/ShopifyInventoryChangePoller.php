@@ -4,8 +4,10 @@ namespace App\Services\MarketplaceManager;
 
 use App\Jobs\PushLinkedSkuInventoryFromShopify;
 use App\Models\MmWebhookEvent;
+use App\Services\ShopifyOhioLocationResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -63,7 +65,7 @@ class ShopifyInventoryChangePoller
 
         $locationIds = $this->locationIds($host, $token);
         if ($locationIds === []) {
-            $out['message'] = 'No Shopify location found.';
+            $out['message'] = 'No Shopify location found. Set SHOPIFY_INVENTORY_LOCATION_ID in .env or grant the token read_locations. '.$this->locationError;
 
             return $out;
         }
@@ -199,11 +201,23 @@ class ShopifyInventoryChangePoller
         return [$host, $token];
     }
 
+    /** Why the last location lookup returned nothing (shown in the command output). */
+    protected string $locationError = '';
+
     /**
+     * The location the rest of the app pushes from (SHOPIFY_INVENTORY_LOCATION_ID /
+     * "Ohio") comes first; listing every location needs the read_locations scope,
+     * which the token may not have.
+     *
      * @return list<int>
      */
     protected function locationIds(string $host, string $token): array
     {
+        $preferred = (int) (ShopifyOhioLocationResolver::preferredLocationId() ?? 0);
+        if ($preferred > 0) {
+            return [$preferred];
+        }
+
         $cached = Cache::get(self::LOCATION_CACHE_KEY);
         if (is_array($cached) && $cached !== []) {
             return array_values(array_map('intval', $cached));
@@ -212,12 +226,19 @@ class ShopifyInventoryChangePoller
         try {
             $res = $this->http($token)->get("https://{$host}/admin/api/".self::API_VERSION.'/locations.json');
         } catch (\Throwable $e) {
+            $this->locationError = 'locations.json: '.$e->getMessage();
             Log::warning('ShopifyInventoryChangePoller: locations request failed', ['error' => $e->getMessage()]);
 
-            return [];
+            return $this->locationIdsFromLedger();
         }
         if (! $res->successful()) {
-            return [];
+            $this->locationError = 'locations.json HTTP '.$res->status().': '.mb_substr((string) $res->body(), 0, 200);
+            Log::warning('ShopifyInventoryChangePoller: locations request rejected', [
+                'status' => $res->status(),
+                'body' => mb_substr((string) $res->body(), 0, 500),
+            ]);
+
+            return $this->locationIdsFromLedger();
         }
 
         $ids = [];
@@ -232,6 +253,44 @@ class ShopifyInventoryChangePoller
         }
         $ids = array_slice(array_values(array_unique($ids)), 0, 50);
         if ($ids !== []) {
+            Cache::put(self::LOCATION_CACHE_KEY, $ids, now()->addHours(12));
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Last resort: the inventory webhooks already record which location(s)
+     * 5Core Shopify reports from, so reuse those ids.
+     *
+     * @return list<int>
+     */
+    protected function locationIdsFromLedger(): array
+    {
+        try {
+            if (! Schema::hasTable('mm_inventory_ledgers') || ! Schema::hasColumn('mm_inventory_ledgers', 'location_id')) {
+                return [];
+            }
+            $ids = DB::table('mm_inventory_ledgers')
+                ->whereNotNull('location_id')
+                ->where('location_id', '!=', '')
+                ->selectRaw('location_id, COUNT(*) AS c')
+                ->groupBy('location_id')
+                ->orderByDesc('c')
+                ->limit(50)
+                ->pluck('location_id')
+                ->map(fn ($v) => (int) $v)
+                ->filter(fn (int $v) => $v > 0)
+                ->values()
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyInventoryChangePoller: ledger location lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        if ($ids !== []) {
+            $this->locationError .= ' (using location ids seen in inventory webhooks: '.implode(',', $ids).')';
             Cache::put(self::LOCATION_CACHE_KEY, $ids, now()->addHours(12));
         }
 
