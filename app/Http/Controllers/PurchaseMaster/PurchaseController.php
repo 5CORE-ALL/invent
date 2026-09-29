@@ -18,12 +18,13 @@ class PurchaseController extends Controller
     public function index(){
         $voNumber = $this->generateVoucherNumber();
         $suppliers = Supplier::where('type', 'Supplier')->get();
-        $warehouses = Warehouse::select('id','name')->get();
+        $warehouses = Warehouse::inventoryOptions();
         return view('purchase-master.purchase.index', compact('suppliers', 'voNumber', 'warehouses'));
     }
 
     public function store(Request $request)
     {
+        Warehouse::forceOnRequest($request, 'warehouse');
         // Build items array
         $items = [];
         $count = count($request->sku ?? []);

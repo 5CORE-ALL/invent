@@ -184,9 +184,9 @@
                                             <div class="mb-3 col-md-6">
                                                 <label for="warehouse_id" class="form-label fw-bold">From Warehouse</label>
                                                 <select class="form-select" id="warehouse_id" name="warehouse_id" required>
-                                                    <option selected disabled>Select Warehouse</option>
+                                                    <option value="" disabled @selected($warehouses->count() !== 1)>Select Warehouse</option>
                                                     @foreach($warehouses as $warehouse)
-                                                        <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                                        <option value="{{ $warehouse->id }}" @selected($warehouses->count() === 1)>{{ $warehouse->name }}</option>
                                                     @endforeach
                                                 </select>
                                             </div>
@@ -196,7 +196,7 @@
                                                 <label for="to_warehouse" class="form-label fw-bold">To Warehouse</label>
                                                 <select class="form-select" id="to_warehouse" name="to_warehouse" required>
                                                     <option selected disabled>Select Warehouse</option>
-                                                    @foreach($warehouses as $warehouse)
+                                                    @foreach($toWarehouses as $warehouse)
                                                         <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
                                                     @endforeach
                                                 </select>

@@ -141,7 +141,7 @@ class StockAdjustmentController extends Controller
      */
     public function index()
     {
-        $warehouses = Warehouse::select('id', 'name')->get();
+        $warehouses = Warehouse::inventoryOptions();
         $skus = ProductMaster::select('id','parent','sku')->get();
 
         return view('inventory-management.stock-adjustment-view', compact('warehouses', 'skus'));
@@ -162,7 +162,8 @@ class StockAdjustmentController extends Controller
     {
         // Set longer execution time for this operation, but less than PHP's default 30 seconds
         set_time_limit(25);
-        
+
+        Warehouse::forceOnRequest($request);
         $request->validate([
             'sku' => 'required|string',
             'parent' => 'required|string',
@@ -586,6 +587,12 @@ class StockAdjustmentController extends Controller
                         }
                         
                         $warehouseId = $warehouse ? $warehouse->id : null;
+                    }
+
+                    $mainId = Warehouse::mainId();
+                    if ($mainId) {
+                        $warehouseId = $mainId;
+                        $warehouseName = Warehouse::main()?->name ?? 'Main Warehouse';
                     }
 
                     $csvData[] = [

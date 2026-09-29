@@ -122,9 +122,9 @@
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Warehouse <span class="text-danger">*</span></label>
                             <select class="form-select" name="warehouse" required>
-                                <option value="" disabled selected>Select Warehouse</option>
+                                <option value="" disabled @selected($warehouses->count() !== 1)>Select Warehouse</option>
                                 @foreach($warehouses as $warehouse)
-                                    <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                    <option value="{{ $warehouse->id }}" @selected($warehouses->count() === 1)>{{ $warehouse->name }}</option>
                                 @endforeach
                             </select>
                         </div>

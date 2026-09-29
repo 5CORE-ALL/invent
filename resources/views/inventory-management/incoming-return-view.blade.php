@@ -615,7 +615,7 @@
                             <div class="incoming-wh-dd-wrap position-relative">
                                 <select id="filterWarehouseMain" class="d-none incoming-wh-dd-native" aria-hidden="true" tabindex="-1">
                                     <option value="">All warehouses</option>
-                                    @foreach($warehouses as $warehouse)
+                                    @foreach($filterWarehouses ?? $warehouses as $warehouse)
                                         <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
                                     @endforeach
                                 </select>
@@ -700,9 +700,9 @@
                                                         <label for="warehouse_id_btn" class="form-label fw-bold">Warehouse</label>
                                                         <div class="incoming-wh-dd-wrap position-relative">
                                                             <select class="d-none incoming-wh-dd-native" id="warehouse_id" name="warehouse_id" aria-hidden="true" tabindex="-1">
-                                                                <option selected disabled value="">Select Warehouse</option>
+                                                                <option value="" disabled @selected($warehouses->count() !== 1)>Select Warehouse</option>
                                                                 @foreach($warehouses as $warehouse)
-                                                                    <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                                                    <option value="{{ $warehouse->id }}" @selected($warehouses->count() === 1)>{{ $warehouse->name }}</option>
                                                                 @endforeach
                                                             </select>
                                                             <button type="button" id="warehouse_id_btn" class="form-select incoming-wh-dd-trigger w-100 text-start d-flex align-items-center btn-touch" aria-haspopup="listbox" aria-expanded="false">

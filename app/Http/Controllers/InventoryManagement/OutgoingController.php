@@ -45,7 +45,7 @@ class OutgoingController extends Controller
      */
     public function index()
     {
-        $warehouses = Warehouse::select('id', 'name')->get();
+        $warehouses = Warehouse::inventoryOptions();
         $skus = ProductMaster::select('product_master.id', 'product_master.parent', 'product_master.sku', 'shopify_skus.inv as available_quantity')
         ->leftJoin('shopify_skus', 'product_master.sku', '=', 'shopify_skus.sku')
         ->get();
@@ -101,6 +101,7 @@ class OutgoingController extends Controller
     public function store(Request $request)
     {
         $requireChannel = ChannelMaster::where('status', 'Active')->exists();
+        Warehouse::forceOnRequest($request);
         $request->validate([
             'sku' => 'required|array',
             'sku.*' => 'required|string',
