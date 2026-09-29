@@ -781,6 +781,10 @@
                     {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / CVR Up/Dn / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons'])
+                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
+                        title="Set S Bid from Dil. eBay 1 keeps its own slabs.">
+                        Dil vs SBid
+                    </button>
                     <button type="button" id="ebay1-zero-sold-coupon-btn" class="btn btn-outline-secondary btn-sm pricing-filter-item"
                         title="Public eBay coupon on 0 sold only. Turns off as soon as E L30 is 1.">
                         <i class="fas fa-ticket-alt"></i> 0 Sold CPN Off
@@ -1255,6 +1259,10 @@
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay1'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals'])
+    @include('campaign.partials.ebay-dil-sbid-rule', [
+        'part' => 'modal',
+        'account' => 'eBay 1',
+    ])
     @include('partials.lmp-missing-badge-script')
     @include('partials.price-gt-lmp-badge-script')
     @include('partials.price-lt80-lmp-badge-script')
@@ -1296,6 +1304,13 @@
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay1'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script'])
+        @include('campaign.partials.ebay-dil-sbid-rule', [
+            'part' => 'script',
+            'account' => 'eBay 1',
+            'getUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
+            'saveUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
+            'applyUrl' => url('/ebay/campaign-ads/push-selected'),
+        ])
 
         /**
          * Net ROI — same shape as Amazon NROI / SNROI badge:
@@ -6522,6 +6537,9 @@
             });
 
             table.on('dataLoaded', function() {
+                if (typeof renderDilSbidTable === 'function' && document.getElementById('dilSbidRuleModal')?.classList.contains('show')) {
+                    renderDilSbidTable();
+                }
                 if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
                 ebay1LoadZeroSoldCoupon();
                 // Build the unique parent list for Play/Next/Previous navigation.

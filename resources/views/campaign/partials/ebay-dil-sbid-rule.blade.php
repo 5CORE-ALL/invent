@@ -153,25 +153,49 @@ function dilSbidContains(dil, slab, prevMax) {
     const loOk = sharesEdge ? dil > min : dil >= min;
     return loOk && dil <= max;
 }
+function dilSbidRows() {
+    try {
+        if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) return allTableData;
+        if (typeof table !== 'undefined' && table && typeof table.getData === 'function') return table.getData() || [];
+    } catch (e) {}
+    return [];
+}
 function dilSbidSkuKey(row) {
-    if (!row || !(row.sku_matched == 1 || row.sku_matched === true || row.sku_matched === '1')) return '';
-    const sku = String(row.resolved_sku || row.sku || '').trim();
-    if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return '';
-    return sku.toUpperCase();
+    if (!row) return '';
+    if (row.sku_matched != null && row.sku_matched !== '') {
+        if (!(row.sku_matched == 1 || row.sku_matched === true || row.sku_matched === '1')) return '';
+        const sku = String(row.resolved_sku || row.sku || '').trim();
+        if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return '';
+        return sku.toUpperCase();
+    }
+    if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(row)) return '';
+    const child = String((typeof chPromoSku === 'function' ? chPromoSku(row) : (row['(Child) sku'] || row.sku || '')) || '').trim();
+    if (!child || child.toUpperCase().indexOf('PARENT') !== -1) return '';
+    return child.toUpperCase();
 }
 function dilSbidMetric(row) {
-    const dil = (typeof dilValue === 'function') ? dilValue(row) : null;
-    if (dil === null || !isFinite(dil)) return null;
-    const raw = row && row.shopify_qty;
-    if (raw === null || raw === undefined || raw === '') return dil;
-    const ovl = Number(raw);
-    if (!isFinite(ovl)) return dil;
-    if (ovl === 0) return 0;
-    if (dil === 0) {
-        const inv = Number(row.shopify_inv);
-        return inv > 0 ? (ovl / inv) * 100 : null;
+    if (row && row.sku_matched != null && row.sku_matched !== '') {
+        const dil = (typeof dilValue === 'function') ? dilValue(row) : null;
+        if (dil === null || !isFinite(dil)) return null;
+        const raw = row.shopify_qty;
+        if (raw === null || raw === undefined || raw === '') return dil;
+        const ovl = Number(raw);
+        if (!isFinite(ovl)) return dil;
+        if (ovl === 0) return 0;
+        if (dil === 0) {
+            const inv = Number(row.shopify_inv);
+            return inv > 0 ? (ovl / inv) * 100 : null;
+        }
+        return dil;
     }
-    return dil;
+    if (typeof chPromoShopifyInv === 'function' && typeof chPromoOvL30 === 'function') {
+        const inv = chPromoShopifyInv(row);
+        if (!(inv > 0)) return null;
+        const ovl = chPromoOvL30(row);
+        if (!(ovl > 0)) return 0;
+        return (ovl / inv) * 100;
+    }
+    return null;
 }
 function dilSbidCvrNow() {
     const num = function(id, fallback) {
@@ -201,6 +225,11 @@ function dilSbidPaintCvr() {
 function dilSbidCvrParts(row) {
     const views = parseFloat(row && row.views) || 0;
     if (!(views > 0)) return null;
+    if (row && row['eBay L30'] != null) {
+        const cvr = (row.SCVR != null && row.SCVR !== '') ? parseFloat(row.SCVR) : ((parseFloat(row['eBay L30']) || 0) / views) * 100;
+        const cvr60 = (row.CVR_60 != null && row.CVR_60 !== '') ? parseFloat(row.CVR_60) : ((parseFloat(row['eBay L60']) || 0) / views) * 100;
+        return { cvr: isFinite(cvr) ? cvr : 0, cvr60: isFinite(cvr60) ? cvr60 : 0 };
+    }
     const l30 = parseFloat(row && row.ebay_l30) || 0;
     const l60 = parseFloat(row && row.ebay_l60) || 0;
     return { cvr: (l30 / views) * 100, cvr60: (l60 / views) * 100 };
@@ -270,10 +299,7 @@ function dilSbidOfRow(row) {
 }
 function dilSbidCounts() {
     const counts = currentDilSbidSlabs.map(function() { return 0; });
-    let rows = [];
-    try {
-        if (typeof table !== 'undefined' && table && typeof table.getData === 'function') rows = table.getData() || [];
-    } catch (e) { rows = []; }
+    const rows = dilSbidRows();
     const seen = {};
     rows.forEach(function(d) {
         const sku = dilSbidSkuKey(d);
@@ -295,10 +321,7 @@ function dilSbidCounts() {
 function dilSbidCvrCounts() {
     const counts = { down: 0, up: 0 };
     const cfg = currentDilSbidCvr || DIL_SBID_CVR_DEFAULTS;
-    let rows = [];
-    try {
-        if (typeof table !== 'undefined' && table && typeof table.getData === 'function') rows = table.getData() || [];
-    } catch (e) { rows = []; }
+    const rows = dilSbidRows();
     const seen = {};
     rows.forEach(function(d) {
         const sku = dilSbidSkuKey(d);
@@ -428,13 +451,13 @@ function dilSbidApply() {
     const statusEl = document.getElementById('dil-sbid-status');
     const btn = document.getElementById('dil-sbid-apply-btn');
     const ids = [];
-    try {
-        if (typeof table !== 'undefined' && table) {
-            (table.getData() || []).forEach(function(d) {
-                if (d && d.listing_id) ids.push(String(d.listing_id));
-            });
-        }
-    } catch (e) {}
+    const seenIds = {};
+    dilSbidRows().forEach(function(d) {
+        const id = d && (d.listing_id || d.eBay_item_id || d.ebay_item_id);
+        if (!id || seenIds[id]) return;
+        seenIds[id] = true;
+        ids.push(String(id));
+    });
     if (!ids.length) {
         if (statusEl) statusEl.textContent = 'No listings loaded';
         return;
