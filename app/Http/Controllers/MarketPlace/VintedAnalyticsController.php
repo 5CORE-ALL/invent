@@ -11,7 +11,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Vinted Analytics — Depop-style Tabulator grid (no ship) + CSV template upsert.
+ * Vinted Analytics — same profit formula as /vinted pricing and other marketplaces.
+ * unit profit = (price × margin) − LP − ship. Ship is product_master Values.ship.
  * Overlay: vinted_pricing. L30/sales from /vinted/sheet (vinted_sales_data).
  */
 class VintedAnalyticsController extends DepopStyleAnalyticsController
@@ -46,6 +47,11 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
     protected static function channelLogName(): string
     {
         return 'Vinted analytics';
+    }
+
+    protected static function shipCostForProfit($pm): float
+    {
+        return static::extractShip($pm);
     }
 
     public function pricingView()
@@ -138,21 +144,23 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
     }
 
     /**
-     * Offer Sprice profit, no ship. Same shape as Mercari OP metrics.
+     * Offer Sprice profit, same shape as other marketplace OP metrics.
+     * SGPFT = ((price × margin − ship − LP) / price) × 100.
      *
      * @return array{sgpft: float, sgroi: float, spft: float, snroi: float}
      */
-    public static function opProfitMetrics(?float $opSprice, float $lp, float $margin, float $adsPct = 0.0): array
+    public static function opProfitMetrics(?float $opSprice, float $lp, float $margin, float $adsPct = 0.0, float $ship = 0.0): array
     {
         if ($opSprice === null || $opSprice <= 0) {
             return ['sgpft' => 0.0, 'sgroi' => 0.0, 'spft' => 0.0, 'snroi' => 0.0];
         }
 
-        $sgpft = (($opSprice * $margin - $lp) / $opSprice) * 100;
-        $sgroi = $lp > 0 ? (($opSprice * $margin - $lp) / $lp) * 100 : 0.0;
+        $ship = max(0.0, $ship);
+        $sgpft = (($opSprice * $margin - $lp - $ship) / $opSprice) * 100;
+        $sgroi = $lp > 0 ? (($opSprice * $margin - $lp - $ship) / $lp) * 100 : 0.0;
         $spft = $sgpft - $adsPct;
         $snroi = $lp > 0
-            ? (($opSprice * $margin - $lp - $opSprice * ($adsPct / 100)) / $lp) * 100
+            ? (($opSprice * $margin - $lp - $ship - $opSprice * ($adsPct / 100)) / $lp) * 100
             : 0.0;
 
         return [
@@ -193,8 +201,9 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
             $key = strtoupper(trim((string) ($row['sku'] ?? '')));
             $opSprice = $fromStatus[$key] ?? $fromView[$key] ?? null;
             $lp = (float) ($row['lp'] ?? 0);
+            $ship = (float) ($row['ship'] ?? $row['Ship_productmaster'] ?? 0);
             $margin = (float) ($row['_margin'] ?? static::marginFactor());
-            $metrics = static::opProfitMetrics($opSprice, $lp, $margin, 0.0);
+            $metrics = static::opProfitMetrics($opSprice, $lp, $margin, 0.0, $ship);
             $row['op_sprice'] = $opSprice;
             $row['OP_SPRICE'] = $opSprice;
             $row['OP_SGPFT'] = $metrics['sgpft'];

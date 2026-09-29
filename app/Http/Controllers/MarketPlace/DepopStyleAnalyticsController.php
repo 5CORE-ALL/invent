@@ -13,10 +13,11 @@ use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Shared Depop-style analytics (no ship): Tabulator grid + CSV template upsert.
+ * Shared Depop-style analytics: Tabulator grid + CSV template upsert.
  *
  * Profit / GPFT / GROI / SGPFT / SGROI:
- *   unit profit = (price × marketplace take-home) − LP
+ *   unit profit = (price × marketplace take-home) − LP − ship
+ * Ship stays 0 unless the channel overrides shipCostForProfit() (Vinted does).
  */
 abstract class DepopStyleAnalyticsController extends Controller
 {
@@ -90,13 +91,14 @@ abstract class DepopStyleAnalyticsController extends Controller
                 $al30 = (int) ($sold['qty'] ?? 0);
                 $sales = (float) ($sold['sales'] ?? 0.0);
                 $lp = static::extractLp($pm);
+                $ship = static::shipCostForProfit($pm);
 
                 $sellPrice = static::effectiveSellPrice($price, $sales, $al30);
-                $profit = static::unitProfit($sellPrice, $lp, $margin);
-                $gpft = static::gpftPercent($sellPrice, $lp, $margin);
-                $groi = static::groiPercent($sellPrice, $lp, $margin);
-                $sgpft = $sprice > 0 ? static::gpftPercent($sprice, $lp, $margin) : 0;
-                $sroi = $sprice > 0 ? static::groiPercent($sprice, $lp, $margin) : 0;
+                $profit = static::unitProfit($sellPrice, $lp, $margin, $ship);
+                $gpft = static::gpftPercent($sellPrice, $lp, $margin, $ship);
+                $groi = static::groiPercent($sellPrice, $lp, $margin, $ship);
+                $sgpft = $sprice > 0 ? static::gpftPercent($sprice, $lp, $margin, $ship) : 0;
+                $sroi = $sprice > 0 ? static::groiPercent($sprice, $lp, $margin, $ship) : 0;
                 $dil = $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0.0;
                 $cvr = $ovL30 > 0 ? round(($al30 / $ovL30) * 100, 2) : 0.0;
                 $missing = ($inv > 0 && $price <= 0) ? 'M' : '';
@@ -142,8 +144,8 @@ abstract class DepopStyleAnalyticsController extends Controller
                     'Sales L30' => round($sales, 2),
                     'lp' => round($lp, 2),
                     'LP_productmaster' => round($lp, 2),
-                    'ship' => 0,
-                    'Ship_productmaster' => 0,
+                    'ship' => round($ship, 2),
+                    'Ship_productmaster' => round($ship, 2),
                     'sgpft' => $sgpft,
                     'SGPFT' => $sgpft,
                     'sroi' => $sroi,
@@ -408,9 +410,11 @@ abstract class DepopStyleAnalyticsController extends Controller
                 );
                 $saved++;
 
-                $lp = static::extractLp(ProductMaster::where('sku', $sku)->first());
-                $lastSgpft = $sprice ? static::gpftPercent($sprice, $lp, $margin) : 0;
-                $lastSroi = $sprice ? static::groiPercent($sprice, $lp, $margin) : 0;
+                $pm = ProductMaster::where('sku', $sku)->first();
+                $lp = static::extractLp($pm);
+                $ship = static::shipCostForProfit($pm);
+                $lastSgpft = $sprice ? static::gpftPercent($sprice, $lp, $margin, $ship) : 0;
+                $lastSroi = $sprice ? static::groiPercent($sprice, $lp, $margin, $ship) : 0;
             }
             DB::commit();
 
@@ -478,31 +482,39 @@ abstract class DepopStyleAnalyticsController extends Controller
         return 0.0;
     }
 
-    public static function unitProfit(float $price, float $lp, float $margin): float
+    /**
+     * Product-master ship used in profit. Depop / Instagram stay at 0.
+     */
+    protected static function shipCostForProfit($pm): float
+    {
+        return 0.0;
+    }
+
+    public static function unitProfit(float $price, float $lp, float $margin, float $ship = 0.0): float
     {
         if ($price <= 0) {
             return 0.0;
         }
 
-        return ($price * $margin) - $lp;
+        return ($price * $margin) - $lp - max(0.0, $ship);
     }
 
-    public static function gpftPercent(float $price, float $lp, float $margin): int
+    public static function gpftPercent(float $price, float $lp, float $margin, float $ship = 0.0): int
     {
         if ($price <= 0) {
             return 0;
         }
 
-        return (int) round((static::unitProfit($price, $lp, $margin) / $price) * 100);
+        return (int) round((static::unitProfit($price, $lp, $margin, $ship) / $price) * 100);
     }
 
-    public static function groiPercent(float $price, float $lp, float $margin): int
+    public static function groiPercent(float $price, float $lp, float $margin, float $ship = 0.0): int
     {
         if ($price <= 0 || $lp <= 0) {
             return 0;
         }
 
-        return (int) round((static::unitProfit($price, $lp, $margin) / $lp) * 100);
+        return (int) round((static::unitProfit($price, $lp, $margin, $ship) / $lp) * 100);
     }
 
     public static function extractLp($pm): float
@@ -529,6 +541,32 @@ abstract class DepopStyleAnalyticsController extends Controller
         }
 
         return $lp;
+    }
+
+    public static function extractShip($pm): float
+    {
+        if (! $pm) {
+            return 0.0;
+        }
+
+        $values = is_array($pm->Values)
+            ? $pm->Values
+            : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+        $ship = 0.0;
+        if (is_array($values)) {
+            foreach ($values as $k => $v) {
+                if (strtolower((string) $k) === 'ship') {
+                    $ship = (float) $v;
+                    break;
+                }
+            }
+        }
+        if ($ship === 0.0 && isset($pm->ship)) {
+            $ship = (float) $pm->ship;
+        }
+
+        return $ship;
     }
 
     /**

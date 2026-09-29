@@ -110,12 +110,12 @@
                             <span class="badge bg-primary fs-6 p-2" id="dp-total-sales-badge"
                                 title="Σ Vinted sheet Sale AMT (item price × qty) in last 30 sale days">Sales: $0</span>
                             <span class="badge bg-info fs-6 p-2" id="dp-avg-gpft-badge"
-                                title="L30 GPFT % = PFT ÷ Sales. PFT = (sheet sales × margin) − (LP × V L30). Price $0 is skipped (not −LP). No ship.">GPFT: 0%</span>
+                                title="L30 GPFT % = PFT ÷ Sales. PFT = (sheet sales × margin) − ((LP + ship) × V L30). Price $0 is skipped (not −LP − ship).">GPFT: 0%</span>
                             <span class="badge bg-success fs-6 p-2" id="dp-total-profit-badge"
-                                title="PFT = Σ ((Vinted sheet sales × marketplace margin) − LP × V L30). Unpriced SKUs do not subtract LP. No ship.">PFT: $0</span>
+                                title="PFT = Σ ((Vinted sheet sales × marketplace margin) − (LP + ship) × V L30). Unpriced SKUs do not subtract LP or ship.">PFT: $0</span>
                             <span class="badge fs-6 p-2" id="dp-avg-roi-badge"
                                 style="background-color:#6f42c1;color:#fff;"
-                                title="L30 GROI % = PFT ÷ COGS. COGS = Σ (LP × V L30) only on SKUs with sheet sales. No ship.">GROI: 0%</span>
+                                title="L30 GROI % = PFT ÷ COGS. PFT subtracts ship. COGS = Σ (LP × V L30) only on SKUs with sheet sales.">GROI: 0%</span>
                             @include('partials.analytics-dil-badge', ['dilChannel' => 'vinted'])
                             <span class="badge bg-success fs-6 p-2 dp-filter-badge" id="dp-sold-pct-badge"
                                 data-filter="more_sold" style="cursor:pointer;"
@@ -219,7 +219,7 @@
                         </div>
 
                         <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
-                            title="Target SGROI% — S PRC = (LP × (1 + Target%/100)) / margin. No ship.">
+                            title="Target SGROI% — S PRC = (LP × (1 + Target%/100) + ship) / margin.">
                             <label for="dp-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                                 <span aria-hidden="true">🎯</span> SGROI:
                             </label>
@@ -230,7 +230,7 @@
                             </button>
                         </div>
                         <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
-                            title="Target GPFT% — S PRC = LP / (margin − Target GPFT%/100). No ship.">
+                            title="Target GPFT% — S PRC = (LP + ship) / (margin − Target GPFT%/100).">
                             <label for="dp-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                                 <span aria-hidden="true">🎯</span> GPFT%:
                             </label>
@@ -334,19 +334,19 @@
                                 </td>
                             </tr>
                             <tr>
-                                <th title="SGPFT% = ((price × margin − LP) / price) × 100. No ship.">SGPFT%</th>
+                                <th title="SGPFT% = ((price × margin − ship − LP) / price) × 100.">SGPFT%</th>
                                 <td class="vn-op-metric-cell" id="vnOpSgpft">-</td>
                             </tr>
                             <tr>
-                                <th title="SGROI% = ((price × margin − LP) / LP) × 100. No ship.">SGROI%</th>
+                                <th title="SGROI% = ((price × margin − LP − ship) / LP) × 100.">SGROI%</th>
                                 <td class="vn-op-metric-cell" id="vnOpSgroi">-</td>
                             </tr>
                             <tr>
-                                <th title="SPFT% = SGPFT% − Ads%. No ship.">SPFT%</th>
+                                <th title="SPFT% = SGPFT% − Ads%. SGPFT subtracts ship.">SPFT%</th>
                                 <td class="vn-op-metric-cell" id="vnOpSpft">-</td>
                             </tr>
                             <tr>
-                                <th title="SNROI% = ((price × margin − LP − price × Ads%) / LP) × 100. No ship.">SNROI%</th>
+                                <th title="SNROI% = ((price × margin − LP − ship − price × Ads%) / LP) × 100.">SNROI%</th>
                                 <td class="vn-op-metric-cell" id="vnOpSnroi">-</td>
                             </tr>
                         </tbody>
@@ -533,6 +533,19 @@
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
     window.dpHasBlueTriangle = dpHasBlueTriangle;
+    function dpShip(data) {
+        if (typeof chPromoShipCost === 'function') {
+            const n = Number(chPromoShipCost(data));
+            if (isFinite(n) && n >= 0) return n;
+        }
+        const raw = data && (
+            data.Ship_productmaster != null && data.Ship_productmaster !== ''
+                ? data.Ship_productmaster
+                : data.ship
+        );
+        const n = parseFloat(raw);
+        return (isFinite(n) && n > 0) ? n : 0;
+    }
     function dpSpriceMetrics(data, spriceOpt) {
         const sprice = spriceOpt != null ? Number(spriceOpt) : dpRowSprice(data);
         if (!(sprice > 0)) return { sgpft: 0, sroi: 0 };
@@ -540,9 +553,10 @@
             ? chPromoTakehomeMargin(data)
             : (parseFloat(data && data._margin) || DP_MARGIN);
         const lp = parseFloat(data && (data.lp != null ? data.lp : data.LP_productmaster)) || 0;
+        const ship = dpShip(data);
         return {
-            sgpft: Math.round(((sprice * margin - lp) / sprice) * 100),
-            sroi: lp > 0 ? Math.round(((sprice * margin - lp) / lp) * 100) : 0
+            sgpft: Math.round(((sprice * margin - ship - lp) / sprice) * 100),
+            sroi: lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 100) : 0
         };
     }
     function syncDpTriangleBadgeState() {
@@ -699,12 +713,13 @@
             const al30 = dpSoldQty(row);
             const sales = parseFloat(row.sales) || 0;
             const lp = parseFloat(row.lp) || 0;
+            const ship = dpShip(row);
             const margin = parseFloat(row._margin) || DP_MARGIN;
-            // L30 PFT from the Vinted sheet: (sales × margin) − (LP × qty).
-            // Never do (Price $0 × margin) − LP — that made GROI −100%.
+            // L30 PFT from the Vinted sheet: (sales × margin) − ((LP + ship) × qty).
+            // Never do (Price $0 × margin) − LP − ship — that made GROI −100%.
             if (sales > 0 && al30 > 0) {
                 totalSales += sales;
-                totalProfit += (sales * margin) - (lp * al30);
+                totalProfit += (sales * margin) - ((lp + ship) * al30);
                 totalCogs += lp * al30;
             }
             if (dpInv(row) <= 0) return;
@@ -877,7 +892,7 @@
                     sorter: "number",
                     hozAlign: "center",
                     width: 88,
-                    headerTooltip: "S PRC. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP. No ship in SGROI/SGPFT.",
+                    headerTooltip: "S PRC. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP. SGROI/SGPFT subtract ship.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -915,7 +930,7 @@
                     width: 50,
                     headerSort: true,
                     sorter: "number",
-                    headerTooltip: "Offer Sprice calculator — stored separately from S Price. Click to view Offer Sprice and SGPFT / SGROI / SPFT / SNROI. No ship.",
+                    headerTooltip: "Offer Sprice calculator — stored separately from S Price. Click to view Offer Sprice and SGPFT / SGROI / SPFT / SNROI. Ship is subtracted.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '';
@@ -933,7 +948,7 @@
                     field: "groi",
                     sorter: "number",
                     hozAlign: "right",
-                    headerTooltip: "GROI = ((Price × margin) − LP) ÷ LP. No ship. Margin from marketplace Vinted.",
+                    headerTooltip: "GROI = ((Price × margin) − LP − ship) ÷ LP. Margin from marketplace Vinted.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -945,7 +960,7 @@
                     field: "gpft",
                     sorter: "number",
                     hozAlign: "right",
-                    headerTooltip: "GPFT = ((Price × margin) − LP) ÷ Price. No ship.",
+                    headerTooltip: "GPFT = ((Price × margin) − LP − ship) ÷ Price.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const v = parseFloat(cell.getValue());
@@ -958,7 +973,7 @@
                     field: "profit",
                     sorter: "number",
                     hozAlign: "right",
-                    headerTooltip: "Unit profit = (Price × margin) − LP. No ship.",
+                    headerTooltip: "Unit profit = (Price × margin) − LP − ship.",
                     formatter: function(cell) {
                         const v = parseFloat(cell.getValue()) || 0;
                         const color = v >= 0 ? '#28a745' : '#dc3545';
@@ -981,13 +996,23 @@
                     visible: false,
                     formatter: function(cell) { return money(cell.getValue()); }
                 },
+                {
+                    title: "Ship",
+                    field: "Ship_productmaster",
+                    sorter: "number",
+                    hozAlign: "right",
+                    visible: false,
+                    width: 70,
+                    headerTooltip: "Product master ship. Subtracted in GPFT, GROI, PFT, S PRC, and Offer Sprice.",
+                    formatter: function(cell) { return money(cell.getValue()); }
+                },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "Sprc Dil",
                     field: "SPRC_DIL",
                     hozAlign: "center",
                     headerSort: true,
-                    headerTooltip: "S PRC from Dil → Target NROI. V L30 = 0 uses min Target NROI. Formula: (LP × (1 + NROI%/100)) / margin. No ship.",
+                    headerTooltip: "S PRC from Dil → Target NROI. V L30 = 0 uses min Target NROI. Formula: (LP × (1 + NROI%/100) + ship) / margin.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (dpIsParentRow(rowData) || typeof ebayDilGroiMetaForRow !== 'function') return '';
@@ -1002,7 +1027,7 @@
                     field: "sroi",
                     sorter: "number",
                     hozAlign: "right",
-                    headerTooltip: "SGROI = ((S PRC × margin) − LP) ÷ LP. No ship.",
+                    headerTooltip: "SGROI = ((S PRC × margin) − LP − ship) ÷ LP.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -1014,7 +1039,7 @@
                     field: "sgpft",
                     sorter: "number",
                     hozAlign: "right",
-                    headerTooltip: "SGPFT = ((S PRC × margin) − LP) ÷ S PRC. No ship.",
+                    headerTooltip: "SGPFT = ((S PRC × margin) − ship − LP) ÷ S PRC.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -1176,7 +1201,7 @@
                 if (dpIsParentRow(d)) return;
                 const lp = parseFloat(d.lp) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
-                const newSprice = +((lp * (1 + targetRoiPct / 100)) / DP_MARGIN).toFixed(2);
+                const newSprice = +((lp * (1 + targetRoiPct / 100) + dpShip(d)) / DP_MARGIN).toFixed(2);
                 if (!(newSprice > 0)) return;
                 const m = dpSpriceMetrics(d, newSprice);
                 row.update({ sprice: newSprice, SPRICE: newSprice, sgpft: m.sgpft, SGPFT: m.sgpft, sroi: m.sroi, SROI: m.sroi });
@@ -1215,7 +1240,7 @@
                 if (dpIsParentRow(d)) return;
                 const lp = parseFloat(d.lp) || 0;
                 if (lp <= 0) return;
-                const newSprice = +(lp / denom).toFixed(2);
+                const newSprice = +((lp + dpShip(d)) / denom).toFixed(2);
                 if (!(newSprice > 0)) return;
                 const m = dpSpriceMetrics(d, newSprice);
                 row.update({ sprice: newSprice, SPRICE: newSprice, sgpft: m.sgpft, SGPFT: m.sgpft, sroi: m.sroi, SROI: m.sroi });
@@ -1402,7 +1427,7 @@
     }
 
     let vnOpModalRow = null;
-    let vnOpModalCalc = { lp: 0, margin: DP_MARGIN, ads: 0 };
+    let vnOpModalCalc = { lp: 0, margin: DP_MARGIN, ads: 0, ship: 0 };
     let vnOpDirty = false;
     let vnOpSaveTimer = null;
 
@@ -1435,19 +1460,20 @@
             + bg + ';color:' + fg + ';">' + label + '</span>';
     }
 
-    function vnOpSpriceMetrics(opSprice, lp, margin, adsPct) {
+    function vnOpSpriceMetrics(opSprice, lp, margin, adsPct, ship) {
         opSprice = parseFloat(opSprice) || 0;
         lp = parseFloat(lp) || 0;
         margin = parseFloat(margin) || 0;
         adsPct = parseFloat(adsPct) || 0;
+        ship = parseFloat(ship) || 0;
         if (opSprice <= 0) {
             return { sgpft: null, sgroi: null, spft: null, snroi: null };
         }
-        const sgpft = ((opSprice * margin - lp) / opSprice) * 100;
-        const sgroi = lp > 0 ? ((opSprice * margin - lp) / lp) * 100 : 0;
+        const sgpft = ((opSprice * margin - ship - lp) / opSprice) * 100;
+        const sgroi = lp > 0 ? ((opSprice * margin - lp - ship) / lp) * 100 : 0;
         const spft = sgpft - adsPct;
         const snroi = lp > 0
-            ? ((opSprice * margin - lp - opSprice * (adsPct / 100)) / lp) * 100
+            ? ((opSprice * margin - lp - ship - opSprice * (adsPct / 100)) / lp) * 100
             : 0;
         return { sgpft: sgpft, sgroi: sgroi, spft: spft, snroi: snroi };
     }
@@ -1460,7 +1486,8 @@
             parseFloat((document.getElementById('vnOpSpriceInput') || {}).value) || 0,
             c.lp != null ? c.lp : modal.getAttribute('data-lp'),
             c.margin != null ? c.margin : modal.getAttribute('data-margin'),
-            c.ads != null ? c.ads : modal.getAttribute('data-ads')
+            c.ads != null ? c.ads : modal.getAttribute('data-ads'),
+            c.ship != null ? c.ship : modal.getAttribute('data-ship')
         );
         vnPaintOpMetric('#vnOpSgpft', metrics.sgpft, 'SGPFT');
         vnPaintOpMetric('#vnOpSgroi', metrics.sgroi, 'SGROI');
@@ -1525,7 +1552,8 @@
         const ads = parseFloat(d.ads_pct)
             || (typeof chPromoAdsFrac === 'function' ? ((chPromoAdsFrac() || 0) * 100) : 0)
             || 0;
-        vnOpModalCalc = { lp: lp, margin: margin, ads: ads };
+        const ship = dpShip(d);
+        vnOpModalCalc = { lp: lp, margin: margin, ads: ads, ship: ship };
         const stored = parseFloat(d.op_sprice != null ? d.op_sprice : d.OP_SPRICE);
         const sVal = (isFinite(stored) && stored > 0) ? stored : dpRowSprice(d);
         const modalEl = document.getElementById('vnOpSpriceModal');
@@ -1549,6 +1577,7 @@
         modalEl.setAttribute('data-lp', String(lp));
         modalEl.setAttribute('data-margin', String(margin));
         modalEl.setAttribute('data-ads', String(ads));
+        modalEl.setAttribute('data-ship', String(ship));
         vnOpDirty = false;
         input.value = (isFinite(sVal) && sVal > 0) ? Number(sVal).toFixed(2) : '';
         vnRefreshOpModalMetrics();

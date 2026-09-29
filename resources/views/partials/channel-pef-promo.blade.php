@@ -4994,7 +4994,6 @@
         }
         function chPromoShipCost(d) {
             if (CHANNEL_PROMO_CHANNEL === 'depop'
-                || CHANNEL_PROMO_CHANNEL === 'vinted'
                 || CHANNEL_PROMO_CHANNEL === 'instagram') return 0;
             if (chPromoIsTemuPromoChannel()) {
                 const temuShip = Number(d && (d.temu_ship != null ? d.temu_ship : d.temuShip));
@@ -5322,7 +5321,6 @@
                 || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
                 || CHANNEL_PROMO_CHANNEL === 'mercari_woship'
                 || CHANNEL_PROMO_CHANNEL === 'depop'
-                || CHANNEL_PROMO_CHANNEL === 'vinted'
                 || CHANNEL_PROMO_CHANNEL === 'instagram')
                 ? 0
                 : chPromoShipCost(d);
