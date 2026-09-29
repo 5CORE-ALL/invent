@@ -680,21 +680,8 @@ class DilRuleSpriceApplyService
                 'amz_price' => (float) ($amzBySku[$sku]['price'] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
                 'pushed_sprice' => $pushedBySku[$sku] ?? 0.0,
+                'dil' => $inv > 0 ? round((((float) ($shopify->quantity ?? 0)) / $inv) * 100, 2) : 0.0,
             ];
-        }
-
-        $dilByKey = $this->listingDilByKey($draft);
-        foreach ($draft as $i => $row) {
-            if ($this->channel === 'aliexpress' || $this->channel === 'shein' || $this->channel === 'faire' || $this->channel === 'doba') {
-                $draft[$i]['dil'] = $row['inv'] > 0
-                    ? round(($row['ov_l30'] / $row['inv']) * 100, 2)
-                    : 0.0;
-                continue;
-            }
-            $key = $this->listingKey($row);
-            $draft[$i]['dil'] = $dilByKey[$key] ?? (
-                $row['inv'] > 0 ? round(($row['ov_l30'] / $row['inv']) * 100, 2) : 0.0
-            );
         }
 
         return $draft;

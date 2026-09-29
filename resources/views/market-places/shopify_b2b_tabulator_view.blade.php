@@ -1611,11 +1611,11 @@
                     field: "DIL%",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by Parent). Same Dil Sprc Dil uses on /ebay-tabulator-view. Red <25% · Green 25–50% · Pink 50%+.",
+                    headerTooltip: "Dil = OV L30 ÷ Shopify INV, per SKU. Red <25% · Green 25–50% · Pink 50%+. Same Dil the 0–0 count uses.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const dil = (typeof chPromoListingDil === 'function')
-                            ? chPromoListingDil(rowData)
+                        const dil = (typeof chPromoDil === 'function')
+                            ? chPromoDil(rowData)
                             : (function() {
                                 const INV = parseFloat(rowData.INV) || 0;
                                 const OVL30 = parseFloat(rowData['L30']) || 0;
@@ -1629,7 +1629,7 @@
                         else if (dil >= 25 && dil < 50) color = '#28a745';
                         else color = '#e83e8c';
 
-                        return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Sprc Dil">${Math.round(dil)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;" title="OV L30 ÷ Shopify INV">${Math.round(dil)}%</span>`;
                     },
                     width: 64,
                     minWidth: 64

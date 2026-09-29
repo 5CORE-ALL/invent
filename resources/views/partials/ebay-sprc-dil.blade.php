@@ -3,7 +3,7 @@
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   A slab edit on this page writes only this channel's store.
   Master page /master-dil-rules is the only save that writes every site.
-  Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
+  Dil = OV L30 ÷ Shopify INV, per SKU, same as the Dil column.
   Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Temu 3 also has a 0–0 slab on top for Dil = 0.
   AliExpress / Shein / Faire / TikTok / Mercari / PLS / Best Buy / Newegg / Reverb / Wayfair / Depop: 0–0 slab on top for Dil = 0. Channel L30 = 0 uses min Target NROI (same as other 0 Sold pages). Sold rows use the Dil-matching slab.
   AliExpress only: Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
@@ -875,22 +875,24 @@
             return true;
         }
         function ebayDgInv(d) {
-            // Doba's INV column is channel stock. Dil and the slab count use Shop INV,
-            // the same Shopify inventory Amazon calls INV.
+            if (typeof chPromoShopifyInv === 'function') return chPromoShopifyInv(d);
             if (ebayDgIsDoba() || ebayDgIsDobaWithoutship()) {
-                return Number(d && d.shopify_inv) || 0;
+                const n = Number(d && d.shopify_inv);
+                return isFinite(n) && n > 0 ? n : 0;
             }
-            if (typeof chPromoInv === 'function') return chPromoInv(d);
-            return Number(d && d.INV) || 0;
+            const raw = d && (d.INV != null && d.INV !== '' ? d.INV : (d.inv != null && d.inv !== '' ? d.inv : d.inventory));
+            const n = Number(raw);
+            return isFinite(n) && n > 0 ? n : 0;
         }
         function ebayDgDil(d) {
-            if (ebayDgUsesSkuDil() && typeof chPromoDil === 'function') return chPromoDil(d);
-            if (typeof chPromoListingDil === 'function') return chPromoListingDil(d);
+            if (typeof chPromoSkuDil === 'function') return chPromoSkuDil(d);
             if (typeof chPromoDil === 'function') return chPromoDil(d);
             const inv = ebayDgInv(d);
             if (!(inv > 0)) return 0;
-            const ov = Number(d && (d.L30 != null ? d.L30 : d['eBay L30'])) || 0;
-            return (ov / inv) * 100;
+            const raw = d && (d.ov_l30 != null && d.ov_l30 !== '' ? d.ov_l30
+                : (d.L30 != null && d.L30 !== '' ? d.L30 : d.ovl30));
+            const ov = Number(raw);
+            return (isFinite(ov) && ov > 0 ? ov : 0) / inv * 100;
         }
         function ebayDgCvr30(d) {
             if (EBAY_DIL_GROI_CHANNEL === 'reverb') {
@@ -1456,17 +1458,12 @@
                 }
                 fn(data);
             };
-            if (ebayDgIsMacys() && typeof table !== 'undefined' && table && typeof table.getData === 'function') {
-                (table.getData('all') || []).forEach(function(d) { walk(null, d); });
-                return;
+            // Full catalog, not the current page. Pagination was cutting the 0–0 count.
+            let rows = (typeof ebaySprcDilCatalogRows === 'function') ? ebaySprcDilCatalogRows() : [];
+            if (!rows.length && typeof table !== 'undefined' && table && typeof table.getData === 'function') {
+                rows = table.getData('all') || [];
             }
-            // AliExpress paginates locally. table.getRows() is the current page, so the
-            // 0–0 count was short of the full catalog. Count every loaded SKU.
-            if (ebayDgIsAliexpress()) {
-                let rows = (typeof ebaySprcDilCatalogRows === 'function') ? ebaySprcDilCatalogRows() : [];
-                if (!rows.length && typeof table !== 'undefined' && table && typeof table.getData === 'function') {
-                    rows = table.getData('all') || [];
-                }
+            if (rows.length) {
                 rows.forEach(function(d) { walk(null, d); });
                 return;
             }
