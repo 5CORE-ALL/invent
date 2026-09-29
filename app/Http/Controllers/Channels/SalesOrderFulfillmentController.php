@@ -1616,71 +1616,9 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function attachDobaShopifyOrderIds(array &$byOrder): void
     {
-        $alreadyFilled = [];
         foreach ($byOrder as $orderNo => $row) {
             $sid = $this->normalizeShopifyOrderIdDisplay((string) ($row['shopify_order_id'] ?? ''));
             $byOrder[$orderNo]['shopify_order_id'] = ($sid !== '' && $sid !== $orderNo) ? $sid : '';
-            if ($byOrder[$orderNo]['shopify_order_id'] !== '') {
-                $alreadyFilled[$orderNo] = true;
-            }
-        }
-
-        $lookup = $this->lookupShopifyIdsForDobaOrderNos(array_keys($byOrder));
-        foreach ($this->lookupShopifyIdsFromDobaRawOrders($byOrder) as $orderNo => $info) {
-            if (! isset($lookup[$orderNo]['id']) || ($lookup[$orderNo]['id'] ?? '') === '') {
-                $lookup[$orderNo] = $info;
-            } elseif (($lookup[$orderNo]['number'] ?? '') === '' && ($info['number'] ?? '') !== '') {
-                $lookup[$orderNo]['number'] = $info['number'];
-            }
-        }
-        foreach ($lookup as $orderNo => $info) {
-            if (! isset($byOrder[$orderNo])) {
-                continue;
-            }
-            $id = $this->normalizeShopifyOrderIdDisplay((string) ($info['id'] ?? ''));
-            if ($id !== '' && $id !== $orderNo && ($byOrder[$orderNo]['shopify_order_id'] ?? '') === '') {
-                $byOrder[$orderNo]['shopify_order_id'] = $id;
-            }
-            $number = ltrim(trim((string) ($info['number'] ?? '')), '#');
-            if ($number !== '' && $number !== $orderNo) {
-                $byOrder[$orderNo]['shopify_order_number'] = $number;
-            }
-        }
-
-        $newlyFilled = [];
-        foreach ($byOrder as $orderNo => $row) {
-            $id = trim((string) ($row['shopify_order_id'] ?? ''));
-            if ($id !== '' && ! isset($alreadyFilled[$orderNo])) {
-                $newlyFilled[$orderNo] = $id;
-            }
-        }
-        $this->persistDobaShopifyOrderIds($newlyFilled);
-
-        $needNumbers = [];
-        foreach ($byOrder as $row) {
-            $id = trim((string) ($row['shopify_order_id'] ?? ''));
-            if ($id !== '' && trim((string) ($row['shopify_order_number'] ?? '')) === '') {
-                $needNumbers[$id] = true;
-            }
-        }
-        if ($needNumbers !== [] && Schema::hasTable('shopify_raw_orders')) {
-            $rows = DB::table('shopify_raw_orders')
-                ->whereIn('order_id', array_keys($needNumbers))
-                ->get(['order_id', 'order_number']);
-            $byShopifyId = [];
-            foreach ($rows as $row) {
-                $id = $this->normalizeShopifyOrderIdDisplay((string) ($row->order_id ?? ''));
-                $number = ltrim(trim((string) ($row->order_number ?? '')), '#');
-                if ($id !== '' && $number !== '') {
-                    $byShopifyId[$id] = $number;
-                }
-            }
-            foreach ($byOrder as $orderNo => $row) {
-                $id = trim((string) ($row['shopify_order_id'] ?? ''));
-                if ($id !== '' && trim((string) ($row['shopify_order_number'] ?? '')) === '' && isset($byShopifyId[$id])) {
-                    $byOrder[$orderNo]['shopify_order_number'] = $byShopifyId[$id];
-                }
-            }
         }
     }
 
@@ -2429,10 +2367,9 @@ class SalesOrderFulfillmentController extends Controller
         try {
         $rows = $this->attachInvToOrderRows($rows);
         $rows = $this->attachShippingMasterLabelToOrderRows($rows);
-        // Tracking comes from channel APIs / order tables only — never Shopify fulfillments.
-        // Temu OpenAPI tracking on temu*_orders is already on the row; Sites sheets only fill gaps.
+        // Tracking and status come from the marketplace order and the carrier table.
+        // Do not load shopify_raw_orders / shopify_orders for this page.
         $rows = $this->attachTemuSitesTrackingToOrderRows($rows);
-        $rows = $this->attachShopifyTrackingToOrderRows($rows);
         $rows = $this->attachShipmentStatusToOrderRows($rows);
         $rows = $this->attachSofShipmentOverridesToOrderRows($rows);
         $rows = $this->fillCarrierFromTrackingNumbers($rows);
@@ -3459,36 +3396,6 @@ class SalesOrderFulfillmentController extends Controller
                             'shipment_status' => $status,
                             'shipment_status_detail' => $srow->shipment_status_detail ?? null,
                             'tracking_company' => $srow->carrier ?? null,
-                        ];
-                    }
-                }
-            }
-
-            // Legacy fallback for statuses already on shopify_raw_orders (no Shopify API).
-            if (Schema::hasTable('shopify_raw_orders')) {
-                $missing = array_values(array_filter($keys, fn ($k) => ! isset($byTracking[$k])));
-                foreach (array_chunk($missing, 500) as $chunk) {
-                    if ($chunk === []) {
-                        break;
-                    }
-                    $query = DB::table('shopify_raw_orders')
-                        ->select(['tracking_number', 'shipment_status', 'shipment_status_detail', 'tracking_company'])
-                        ->whereNotNull('shipment_status')
-                        ->where('shipment_status', '!=', '')
-                        ->whereIn('tracking_number', $chunk);
-                    foreach ($query->get() as $srow) {
-                        $status = trim((string) ($srow->shipment_status ?? ''));
-                        if ($status === '') {
-                            continue;
-                        }
-                        $tn = strtoupper(preg_replace('/\s+/', '', (string) ($srow->tracking_number ?? '')) ?? '');
-                        if ($tn === '' || isset($byTracking[$tn])) {
-                            continue;
-                        }
-                        $byTracking[$tn] = [
-                            'shipment_status' => $status,
-                            'shipment_status_detail' => $srow->shipment_status_detail ?? null,
-                            'tracking_company' => $srow->tracking_company ?? null,
                         ];
                     }
                 }
@@ -6870,7 +6777,6 @@ class SalesOrderFulfillmentController extends Controller
             ['table' => 'mirakl_daily_data', 'order_col' => 'channel_order_id', 'slug' => 'bestbuy', 'sof' => true],
             ['table' => 'amazon_orders', 'order_col' => 'amazon_order_id', 'slug' => 'amazon', 'sof' => true],
             ['table' => 'walmart_daily_data', 'order_col' => 'customer_order_id', 'slug' => 'walmart'],
-            ['table' => 'shopify_raw_orders', 'order_col' => 'order_number', 'slug' => 'shopify', 'skip_id_fallback' => true],
         ];
     }
 
