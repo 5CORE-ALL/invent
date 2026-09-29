@@ -4789,8 +4789,9 @@
                 }
                 if (res.message) return String(res.message);
             }
-            if (xhr && xhr.status === 0) return 'Network error — the request did not reach the server.';
-            if (xhr && xhr.statusText === 'timeout') return 'Timed out waiting for the server.';
+            if (xhr && xhr.statusText === 'timeout') return 'Timed out waiting for the server (it did not answer in time).';
+            if (xhr && xhr.statusText === 'abort') return 'Request was cancelled.';
+            if (xhr && xhr.status === 0) return 'Network error — no response from the server (connection dropped or blocked).';
             if (xhr && xhr.status) return 'Request failed (' + xhr.status + (xhr.statusText ? ' ' + xhr.statusText : '') + ').';
             return fallback || 'Request failed.';
         }
@@ -5007,7 +5008,7 @@
                             url: "{{ url('/listing-manager/product/save') }}",
                             method: 'POST',
                             data: saveData,
-                            timeout: 30000,
+                            timeout: 90000,
                         });
                     } catch (xhr) {
                         const msg = ajaxErrorMessage(xhr, 'Could not save product before pushing.');
