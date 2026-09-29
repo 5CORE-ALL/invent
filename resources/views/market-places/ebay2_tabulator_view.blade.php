@@ -523,6 +523,10 @@
                     {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay2'])
+                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
+                        title="Set S Bid from Dil. eBay 2 keeps its own slabs.">
+                        Dil vs SBid
+                    </button>
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay2'])
 
                     {{-- Price (eBay Price) min–max range filter --}}
@@ -1001,6 +1005,10 @@
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay2'])
+    @include('campaign.partials.ebay-dil-sbid-rule', [
+        'part' => 'modal',
+        'account' => 'eBay 2',
+    ])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay2'])
 
 @endsection
@@ -1020,6 +1028,13 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
         @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
+        @include('campaign.partials.ebay-dil-sbid-rule', [
+            'part' => 'script',
+            'account' => 'eBay 2',
+            'getUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
+            'saveUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
+            'applyUrl' => url('/ebay2/campaign-ads/push-selected'),
+        ])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         /** L30 units / sales from ebay2_order_metrics — same getData as /ebay2/daily-sales. */
         const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
@@ -4708,6 +4723,9 @@
             });
 
             table.on('dataLoaded', function() {
+                if (typeof renderDilSbidTable === 'function' && document.getElementById('dilSbidRuleModal')?.classList.contains('show')) {
+                    renderDilSbidTable();
+                }
                 if (ebay2SkipNextDataLoadedFilter) {
                     ebay2SkipNextDataLoadedFilter = false;
                 } else if (allTableData.length) {
