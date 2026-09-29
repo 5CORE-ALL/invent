@@ -65,7 +65,8 @@ final class MarketplaceMismatchBatch
             $tried[strtoupper($sku)] = true;
         }
         try {
-            Cache::put($key, $tried, now()->addHours(6));
+            // 1 hour, not 6: a SKU whose push failed must come back on the next few runs.
+            Cache::put($key, $tried, now()->addHour());
         } catch (\Throwable $e) {
             // ignore
         }

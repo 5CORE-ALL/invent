@@ -98,6 +98,47 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
+     * SKUs from $skus whose marketplace qty is still outside tolerance of Shopify.
+     * Used right after a push to decide which SKUs need another attempt.
+     *
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    public function stillMismatched(string $mmChannel, array $skus): array
+    {
+        $mmChannel = strtolower(trim($mmChannel));
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $skus
+        ), static fn (string $s) => $s !== '')));
+        if ($skus === []) {
+            return [];
+        }
+
+        try {
+            Cache::forget(self::CACHE_PREFIX.$mmChannel);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        $mp = $this->localStockMap($mmChannel, $skus);
+        $out = [];
+        foreach ($skus as $sku) {
+            $shopifyQty = MarketplaceListingStockResolver::qtyFromMap($shopify, $sku);
+            if ($shopifyQty === null) {
+                continue;
+            }
+            $mpQty = MarketplaceListingStockResolver::qtyFromMap($mp, $sku);
+            if (! MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyQty, $mpQty, $mmChannel)) {
+                $out[] = $sku;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Inactive SKU tab = seller-portal inactive listings (not qty-matched Shopify SKUs).
      *
      * @return list<string>

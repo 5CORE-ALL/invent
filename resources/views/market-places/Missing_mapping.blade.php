@@ -85,6 +85,7 @@
                     <span class="badge bg-danger badge-mm-stat" id="stat-missing-mapping" title="Sum of Missing Mapping Titas (Active SKU Mismatch from listings)" style="background-color:#a71d2a !important;">
                         Missing Mapping: <span id="total-missing-mapping">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedTotalOrZero()) }}</span>
                     </span>
+                    <span class="badge bg-warning text-dark badge-mm-stat d-none" id="stat-webhook-stale"></span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -134,6 +135,13 @@
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, response && response.total_titas);
+                const wh = response && response.webhook_health;
+                const badge = $('#stat-webhook-stale');
+                if (wh && wh.stale) {
+                    badge.text(wh.message || 'Shopify inventory webhook has stopped').removeClass('d-none');
+                } else {
+                    badge.addClass('d-none');
+                }
                 return data;
             },
             layout: "fitDataStretch",
