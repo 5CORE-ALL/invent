@@ -35,8 +35,7 @@
                 <ul class="small text-muted mb-3 ps-3">
                     <li>Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100). Inventory 0 and missing data are not counted. First matching slab wins.</li>
                     <li><strong>0–0</strong> applies that listing’s <strong>ES Bid</strong>.</li>
-                    <li><strong>0.1–10%</strong> uses the <strong>S Bid %</strong> you type on that row.</li>
-                    <li><strong>10–20 … &gt;100%</strong> is <strong>Auto Off</strong> (the promoted listing is paused). The last slab (To 9999) catches Dil above 100.</li>
+                    <li>Every other slab uses the <strong>S Bid %</strong> you type on that row.</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay, eBay 2, and eBay 3 each keep their own slabs.</li>
                 </ul>
                 <div class="table-responsive">
@@ -102,9 +101,7 @@ function dilSbidPaintMode() {
 }
 
 function dilSbidMode(i) {
-    if (i <= 0) return 'es_bid';
-    if (i === 1) return 'dynamic';
-    return 'auto_off';
+    return i <= 0 ? 'es_bid' : 'dynamic';
 }
 function dilSbidRound(n) {
     return Math.round((Number(n) || 0) * 100) / 100;
@@ -129,9 +126,6 @@ function dilSbidOfRow(row) {
         const slab = currentDilSbidSlabs[i];
         if (dilSbidContains(dil, slab, prevMax)) {
             const mode = dilSbidMode(i);
-            if (mode === 'auto_off') {
-                return { bid: -1, color: '#842029', skip: false, off: true, title: 'Dil ' + dilSbidRound(dil) + '% → Auto Off' };
-            }
             if (mode === 'es_bid') {
                 if (esBid > 0) return { bid: esBid, color: '#0dcaf0', skip: false, off: false, title: 'Dil 0 → ES Bid' };
                 return { bid: 0, color: '#6c757d', skip: true, off: false, title: 'Dil 0 but ES Bid is empty' };
@@ -193,8 +187,6 @@ function renderDilSbidTable() {
         let bidCell = '';
         if (mode === 'es_bid') {
             bidCell = '<span class="dil-sbid-badge dil-sbid-es" title="This slab uses each listing’s ES Bid">ES BID</span>';
-        } else if (mode === 'auto_off') {
-            bidCell = '<span class="dil-sbid-badge dil-sbid-off" title="Promoted listing is paused">Auto Off</span>';
         } else {
             const bid = (slab.bid === null || slab.bid === undefined || slab.bid === '') ? '' : slab.bid;
             bidCell = '<input type="number" min="0" step="0.1" class="form-control form-control-sm text-end fw-semibold dil-sbid-bid" value="' + bid + '" title="S Bid % for Dil in this slab">';
@@ -320,7 +312,9 @@ function dilSbidApply() {
 }
 
 $.get(DIL_SBID_GET_URL, function(data) {
-    if (data && Array.isArray(data.slabs) && data.slabs.length) currentDilSbidSlabs = data.slabs;
+    if (data && Array.isArray(data.slabs) && data.slabs.length) {
+        currentDilSbidSlabs = data.slabs.filter(function(s) { return s && s.mode !== 'auto_off'; });
+    }
     dilSbidEnabled = !!(data && data.enabled);
     dilSbidPaintMode();
     renderDilSbidTable();
@@ -360,7 +354,7 @@ document.getElementById('dil-sbid-add-btn').addEventListener('click', function()
         if (isFinite(max) && max > next && max < 9999) next = max;
     });
     const max = next >= 100 ? 9999 : dilSbidRound(next + 10);
-    currentDilSbidSlabs.push({ min: next, max: max, mode: 'auto_off', bid: null });
+    currentDilSbidSlabs.push({ min: next, max: max, mode: 'dynamic', bid: '' });
     renderDilSbidTable();
     dilSbidScheduleSave();
 });

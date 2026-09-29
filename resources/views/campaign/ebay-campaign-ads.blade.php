@@ -181,7 +181,7 @@
                     Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled ranges
                     match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
                     If <strong>E L30 (el30) = 0</strong>, the <strong>maximum S Bid %</strong> from slabs that are not paused is always applied.
-                    <strong>Pause</strong> a row to turn matching promoted listings off, the same way Dil vs SBid Auto Off does.
+                    <strong>Pause</strong> a row to turn matching promoted listings off.
                     Click pause again to resume and apply that row's S Bid.
                     Shared with <code>/ebay-tabulator-view</code>. Autopush runs when a slab or 0-sold value changes.
                 </div>

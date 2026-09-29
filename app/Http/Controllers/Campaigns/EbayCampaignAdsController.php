@@ -304,7 +304,7 @@ class EbayCampaignAdsController extends Controller
         ]);
     }
 
-    /** Turn ads back on before writing a bid, same as Dil vs SBid leaving Auto Off. */
+    /** Turn ads back on before writing a bid. */
     private function resumeEbayAds(string $token, string $campaignId, array $requests): void
     {
         $payload = [];

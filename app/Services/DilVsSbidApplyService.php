@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Push Dil vs SBid for one eBay account: ES Bid or the dynamic % as the
- * promoted-listing bid, and pause listings that land on an Auto Off slab.
+ * promoted-listing bid. Paused View VS SBID slabs pause the listing.
  */
 class DilVsSbidApplyService
 {
@@ -118,7 +118,7 @@ class DilVsSbidApplyService
 
             if ($decision['off']) {
                 if (empty($ad->ad_id)) {
-                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Auto Off but no ad id'];
+                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Pause but no ad id'];
                     $skipped++;
                     continue;
                 }
@@ -241,13 +241,13 @@ class DilVsSbidApplyService
             }
 
             $reason = $this->ebayReason($response->status(), $response->json());
-            Log::warning('Dil vs SBid auto-off pause failed', [
+            Log::warning('Dil vs SBid pause failed', [
                 'campaign_id' => $campaignId,
                 'http' => $response->status(),
                 'reason' => $reason,
             ]);
             foreach ($requests as $r) {
-                $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => 'Auto Off: '.$reason];
+                $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => 'Pause: '.$reason];
                 $failed++;
             }
         } catch (\Exception $e) {

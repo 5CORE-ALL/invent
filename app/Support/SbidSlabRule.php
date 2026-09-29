@@ -5,7 +5,7 @@ namespace App\Support;
 /**
  * View VS SBID slabs (ebay1_sbid_slabs): first matching For L7 Views range wins.
  * When E L30 sold (el30) is 0, always apply the maximum S Bid % among slabs that are not paused.
- * A paused slab pauses the promoted listing, the same way Dil vs SBid Auto Off does.
+ * A paused slab pauses the promoted listing.
  */
 final class SbidSlabRule
 {

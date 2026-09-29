@@ -9,10 +9,9 @@ use Illuminate\Support\Facades\DB;
  * Each account has its own key in ebay_sbid_rules (not shared).
  *
  * Row 1 (0–0): use that listing's ES Bid.
- * Row 2 (0.1–10): the editable S Bid %.
- * Later rows (10–20 … >100): Auto Off (pause the promoted listing).
+ * Later rows: the editable S Bid % on that slab.
  * First matching slab wins. A slab that starts where the previous one ended
- * is exclusive on From, so Dil 10 stays on 0.1–10 and Dil 10.01 is Auto Off.
+ * is exclusive on From, so Dil 10 stays on 0.1–10.
  */
 final class DilVsSbidRule
 {
@@ -24,21 +23,10 @@ final class DilVsSbidRule
 
     public static function defaultSlabs(): array
     {
-        $slabs = [
+        return [
             ['min' => 0, 'max' => 0, 'mode' => 'es_bid', 'bid' => null],
             ['min' => 0.1, 'max' => 10, 'mode' => 'dynamic', 'bid' => 8],
         ];
-        for ($from = 10; $from < 100; $from += 10) {
-            $slabs[] = [
-                'min' => $from,
-                'max' => $from + 10,
-                'mode' => 'auto_off',
-                'bid' => null,
-            ];
-        }
-        $slabs[] = ['min' => 100, 'max' => 9999, 'mode' => 'auto_off', 'bid' => null];
-
-        return $slabs;
     }
 
     public static function load(string $key): array
@@ -88,8 +76,8 @@ final class DilVsSbidRule
     public static function normalize(array $slabs): array
     {
         $clean = [];
-        foreach (array_values($slabs) as $i => $slab) {
-            if (! is_array($slab)) {
+        foreach (array_values($slabs) as $slab) {
+            if (! is_array($slab) || ($slab['mode'] ?? '') === 'auto_off') {
                 continue;
             }
             $min = self::num($slab['min'] ?? null);
@@ -97,7 +85,7 @@ final class DilVsSbidRule
             if ($min === null || $max === null || $max < $min) {
                 continue;
             }
-            $mode = self::modeForIndex($i);
+            $mode = self::modeForIndex(count($clean));
             $bid = null;
             if ($mode === 'dynamic') {
                 $bid = self::num($slab['bid'] ?? null);
@@ -113,39 +101,7 @@ final class DilVsSbidRule
             ];
         }
 
-        return self::extendAutoOff($clean);
-    }
-
-    /**
-     * Auto Off runs from the first pause slab through Dil above 100.
-     * A saved rule that stops at 10–20 still pauses every higher Dil.
-     *
-     * @param  array<int, array<string, mixed>>  $slabs
-     * @return array<int, array<string, mixed>>
-     */
-    private static function extendAutoOff(array $slabs): array
-    {
-        if ($slabs === []) {
-            return $slabs;
-        }
-        $last = $slabs[count($slabs) - 1];
-        if (($last['mode'] ?? '') !== 'auto_off') {
-            return $slabs;
-        }
-        $from = (float) $last['max'];
-        if ($from >= 9999) {
-            return $slabs;
-        }
-        while ($from < 100) {
-            $to = $from + 10;
-            $slabs[] = ['min' => $from, 'max' => $to, 'mode' => 'auto_off', 'bid' => null];
-            $from = $to;
-        }
-        if ($from < 9999) {
-            $slabs[] = ['min' => $from, 'max' => 9999, 'mode' => 'auto_off', 'bid' => null];
-        }
-
-        return $slabs;
+        return $clean;
     }
 
     /**
@@ -170,11 +126,8 @@ final class DilVsSbidRule
         if ($index <= 0) {
             return 'es_bid';
         }
-        if ($index === 1) {
-            return 'dynamic';
-        }
 
-        return 'auto_off';
+        return 'dynamic';
     }
 
     private static function contains(float $dil, array $slab, ?float $prevMax): bool
@@ -196,9 +149,6 @@ final class DilVsSbidRule
     private static function decision(array $slab, float $esBid): array
     {
         $mode = (string) $slab['mode'];
-        if ($mode === 'auto_off') {
-            return ['mode' => 'auto_off', 'bid' => 0.0, 'off' => true, 'label' => 'Auto Off'];
-        }
         if ($mode === 'es_bid') {
             if ($esBid > 0) {
                 return ['mode' => 'es_bid', 'bid' => $esBid, 'off' => false, 'label' => 'ES Bid'];
