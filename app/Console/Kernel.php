@@ -199,6 +199,16 @@ class Kernel extends ConsoleKernel
         $log = $this->schedulerLog;
         $ist = fn ($event) => $this->istBusinessWindow($event);
 
+        // Forecast month table: 1st of the month, 00:20 Pacific (not IST —
+        // 00:20 PT is outside the 09:00–20:00 IST window on part of the year).
+        $schedule->command('forecast:advance-month')
+            ->monthlyOn(1, '00:20')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->name('forecast-advance-month')
+            ->appendOutputTo($log);
+
        
         $retryFiveTimesUntil = function (string $command, string $baseName, string $finalTime) use ($schedule, $log) {
             [$h, $m] = array_map('intval', explode(':', $finalTime));

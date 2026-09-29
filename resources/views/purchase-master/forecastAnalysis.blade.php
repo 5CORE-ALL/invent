@@ -8,6 +8,22 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <style>
+        #faMetricChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #faMetricChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #faMetricChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
         .tabulator .tabulator-footer {
             background: #f4f7fa;
             border-top: 1px solid #262626;
@@ -1037,6 +1053,55 @@
 
                     <div id="forecast-table-wrap" class="flex-grow-1" style="min-height: 0;">
                         <div id="forecast-table"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade p-0" id="faMetricChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="faMetricChartTitle">Avg NROI (12 months)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="faMetricChartRange" class="form-select form-select-sm bg-white" style="width: 120px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="30">30 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="180">6 Months</option>
+                            <option value="365" selected>12 Months</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="faMetricChartContainer" style="height: 20vh; display: none; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="faMetricChart"></canvas>
+                        </div>
+                        <div style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545;">Highest</div>
+                                <div id="faMetricChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d;">Median</div>
+                                <div id="faMetricChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754;">Lowest</div>
+                                <div id="faMetricChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="faMetricChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="faMetricChartNoData" class="text-center py-3" style="display: none;">
+                        <p class="text-muted small mb-0">No daily Avg NROI / Avg NPFT history for this SKU in the selected range.</p>
                     </div>
                 </div>
             </div>
@@ -2141,7 +2206,7 @@
 
         /**
          * Days of stock from MSL pace: INV ÷ (monthly avg ÷ 30).
-         * Monthly avg = m_avg (combined Shopify+FBA), else MSL ÷ 4.
+         * Monthly avg = m_avg (Shopify 12 months + L30), else MSL ÷ 4.
          */
         function forecastDaysOfStock(row) {
             if (!row || row.is_parent || row.isParent) return null;
@@ -2158,12 +2223,23 @@
             return Math.round(inv / avgPerDay);
         }
 
+        function faMetricChartDot(metric, row, current) {
+            const sku = String(row.SKU || row.sku || '').replace(/"/g, '&quot;');
+            const parentName = String(row.Parent || row.parent || '').replace(/"/g, '&quot;');
+            const isParent = !!(row.is_parent || row.isParent || sku.toUpperCase().indexOf('PARENT') !== -1);
+            const color = metric === 'avg_nroi' ? '#6f42c1' : '#0d6efd';
+            const parentAttr = isParent ? ` data-parent="${parentName}"` : '';
+            const currentAttr = current === '' || current === null || current === undefined ? '' : ` data-current="${current}"`;
+            return `<i class="fas fa-circle fa-metric-chart-link" data-metric="${metric}" data-sku="${sku}"${parentAttr}${currentAttr} style="cursor:pointer;color:${color};font-size:8px;line-height:1;" title="Last 12 months"></i>`;
+        }
+
         const getPftColor = (value) => (window.MetricPctColors ? MetricPctColors.legacyPftClass(value) : 'red');
 
         const getRoiColor = (value) => (window.MetricPctColors ? MetricPctColors.legacyRoiClass(value) : 'red');
 
         //global variables for play btn
         let groupedSkuData = {};
+        let forecastMonthWindow = null;
         let currentMipPositiveCount = 0;
         let currentR2sPositiveCount = 0;
         let currentTransitPositiveCount = 0;
@@ -3200,16 +3276,13 @@
                                 "NOV": row["Nov"] ?? 0,
                                 "DEC": row["Dec"] ?? 0
                             };
-                            const fbaMonths = row["fba_months"] || null;
                             const mslInfo = {
                                 total:       row.msl_basis_qty ?? 0,
                                 activeMonths: row.msl_basis_months ?? 0,
                                 msl:         row["msl"]          ?? 0,
-                                mslShopify:  row["msl_shopify"]  ?? 0,
                                 mAvg:        row["m_avg"]        ?? 0,
-                                combinedQty: row.msl_combined_qty ?? 0,
                             };
-                            openMonthModal(monthData, sku, fbaMonths, mslInfo, row["L30"] ?? 0);
+                            openMonthModal(monthData, sku, mslInfo, row["L30"] ?? 0);
                         }
                     }
                 },
@@ -3857,8 +3930,8 @@
                 {
                     title: "Avg NROI",
                     field: "avg_nroi_pct",
-                    minWidth: 52,
-                    width: 56,
+                    minWidth: 68,
+                    width: 74,
                     headerSort: true,
                     hozAlign: "center",
                     sorter: "number",
@@ -3874,24 +3947,27 @@
                         return Number.isFinite(v) ? v : null;
                     },
                     formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
                         const v = cell.getValue();
-                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const n = Math.round(parseFloat(v));
-                        // Same slabs as /pricing-master-cvr Avg NROI% / GROI%; 50–99 is dark mustard
+                        const empty = v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v));
+                        const n = empty ? '' : Math.round(parseFloat(v));
                         let col = '#e83e8c';
-                        if (n < 50) col = '#a00211';
-                        else if (n < 100) col = '#B8860B';
-                        else if (n <= 150) col = '#28a745';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Avg NROI% (pricing-master-cvr)">${n}%</span>`;
+                        if (!empty) {
+                            if (n < 50) col = '#a00211';
+                            else if (n < 100) col = '#B8860B';
+                            else if (n <= 150) col = '#28a745';
+                        }
+                        const valueHtml = empty
+                            ? '<span style="color:#6c757d">—</span>'
+                            : `<span style="font-weight:700;color:${col};" title="Avg NROI% (pricing-master-cvr)">${n}%</span>`;
+                        return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;width:100%;">${valueHtml}${faMetricChartDot('avg_nroi', row, empty ? '' : n)}</span>`;
                     }
                 },
                 {
                     title: "Avg NPFT",
                     field: "avg_npft_pct",
-                    minWidth: 52,
-                    width: 56,
+                    minWidth: 68,
+                    width: 74,
                     headerSort: true,
                     hozAlign: "center",
                     sorter: "number",
@@ -3907,17 +3983,20 @@
                         return Number.isFinite(v) ? v : null;
                     },
                     formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
                         const v = cell.getValue();
-                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const n = Math.round(parseFloat(v));
-                        // Same slabs as /pricing-master-cvr Avg NPFT%
+                        const empty = v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v));
+                        const n = empty ? '' : Math.round(parseFloat(v));
                         let col = '#4e0dab';
-                        if (n < 30) col = '#dc3545';
-                        else if (n < 40) col = '#ff9c00';
-                        else if (n <= 50) col = '#28a745';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Avg NPFT% (pricing-master-cvr)">${n}%</span>`;
+                        if (!empty) {
+                            if (n < 30) col = '#dc3545';
+                            else if (n < 40) col = '#ff9c00';
+                            else if (n <= 50) col = '#28a745';
+                        }
+                        const valueHtml = empty
+                            ? '<span style="color:#6c757d">—</span>'
+                            : `<span style="font-weight:700;color:${col};" title="Avg NPFT% (pricing-master-cvr)">${n}%</span>`;
+                        return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;width:100%;">${valueHtml}${faMetricChartDot('avg_npft', row, empty ? '' : n)}</span>`;
                     }
                 },
                 {
@@ -4137,6 +4216,9 @@
                 // All badge totals + SKU count derived from one walk of response.data.
                 // Previously this block ran ~10 separate .filter/.reduce/.reduce sweeps,
                 // each one stalling the main thread before the table could render.
+                if (Array.isArray(response.month_window) && response.month_window.length) {
+                    forecastMonthWindow = response.month_window;
+                }
                 const dataArr = response.data || [];
                 let skuCount = 0;
                 let totalInvValue = 0;
@@ -4238,7 +4320,7 @@
                     const orderGiven = parseFloat(item["order_given"] ?? item["Order Given"]) || 0;
                     const r2s = parseFloat(item["readyToShipQty"] ?? item["readyToShipQty"]) || 0;
 
-                    // Use PHP-computed combined MSL (Shopify + FBA) directly — no need to recalculate
+                    // Use PHP-computed MSL (Shopify 12 months + L30) directly
                     const mslRaw = parseFloat(item.msl);
                     const msl = Number.isFinite(mslRaw) ? mslRaw : (totalMonth > 0 ? (total / totalMonth) * 4 : 0);
                     const effectiveMslForToOrder = msl;
@@ -5841,7 +5923,7 @@
         }
 
         //modals
-        function openMonthModal(monthData, sku, fbaMonths, mslInfo, l30) {
+        function openMonthModal(monthData, sku, mslInfo, l30) {
             const wrapper = document.getElementById("monthCardWrapper");
             if (!wrapper) return;
 
@@ -5851,15 +5933,21 @@
             wrapper.style.setProperty('grid-template-columns', 'repeat(13, minmax(0, 1fr))', 'important');
 
             const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-            const now = new Date();
-            // Trailing 12 calendar months, oldest first (includes the current month)
+            // Server window (Pacific) so the 1st rolls the same months as the stored totals.
             const monthSlots = [];
-            for (let i = 11; i >= 0; i--) {
-                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                monthSlots.push({
-                    key: monthNames[d.getMonth()],
-                    label: monthNames[d.getMonth()] + ' ' + d.getFullYear(),
+            if (Array.isArray(forecastMonthWindow) && forecastMonthWindow.length) {
+                forecastMonthWindow.forEach(slot => {
+                    monthSlots.push({ key: slot.key, label: slot.label });
                 });
+            } else {
+                const now = new Date();
+                for (let i = 11; i >= 0; i--) {
+                    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    monthSlots.push({
+                        key: monthNames[d.getMonth()],
+                        label: monthNames[d.getMonth()] + ' ' + d.getFullYear(),
+                    });
+                }
             }
 
             function appendQtyCard(parent, label, value, cardStyle) {
@@ -5895,13 +5983,8 @@
             if (mslInfo) {
                 const shopifyTotal        = parseFloat(mslInfo.total)        || 0;
                 const shopifyActiveMonths = parseFloat(mslInfo.activeMonths) || 0;
-                const shopifyMsl          = parseFloat(mslInfo.mslShopify || mslInfo.msl) || 0;
+                const shopifyMsl          = parseFloat(mslInfo.msl) || 0;
                 const mAvg                = parseFloat(mslInfo.mAvg)         || 0;
-                const combinedQty         = parseFloat(mslInfo.combinedQty)  || shopifyTotal;
-                const hasFba = fbaMonths && typeof fbaMonths === 'object' && Math.round(combinedQty) !== Math.round(shopifyTotal);
-                const combinedMsl         = parseFloat(mslInfo.msl) || 0;
-
-                const combinedMslStr = String(Math.round(combinedMsl));
                 const shopifyMslStr  = String(Math.round(shopifyMsl));
 
                 const formulaEl = document.createElement("div");
@@ -5927,69 +6010,12 @@
                         <span style="background:#dbeafe; color:#1d4ed8; font-size:0.7rem; font-weight:600; padding:1px 7px; border-radius:20px;">Shopify</span>
                         <span style="color:#374151;"><strong>${shopifyTotal}</strong> ÷ <strong>${shopifyActiveMonths}</strong> mo × 4</span>
                         <span style="color:#6b7280;">=</span>
-                        <span style="background:#eff6ff; color:#1d4ed8; font-weight:700; padding:2px 10px; border-radius:20px;">${shopifyMslStr}</span>
+                        <span style="background:#065f46; color:#fff; font-weight:700; padding:3px 12px; border-radius:20px; font-size:0.9rem;">MSL: ${shopifyMslStr}</span>
                     </span>
-
-                    ${hasFba ? `
-                    <span style="color:#6b7280; font-weight:500; font-size:1rem; margin:0 2px;">→</span>
-                    <span style="display:inline-flex; align-items:center; gap:6px;" title="Shopify 12 months + FBA 12 months + L30, same inventory-available divisor.">
-                        <span style="background:#d1fae5; color:#065f46; font-size:0.7rem; font-weight:600; padding:1px 7px; border-radius:20px;">Combined</span>
-                        <span style="color:#374151;"><strong>${combinedQty}</strong> ÷ <strong>${shopifyActiveMonths}</strong> mo × 4</span>
-                        <span style="color:#6b7280;">=</span>
-                        <span style="background:#065f46; color:#fff; font-weight:700; padding:3px 12px; border-radius:20px; font-size:0.9rem;">MSL: ${combinedMslStr}</span>
-                    </span>
-                    ` : `
-                    <span style="color:#6b7280; font-size:0.75rem; font-style:italic;">(no FBA data)</span>
-                    <span style="color:#6b7280; font-size:1rem; margin:0 2px;">→</span>
-                    <span style="background:#d1fae5; color:#065f46; font-weight:700; padding:2px 10px; border-radius:20px; font-size:0.9rem;">MSL: ${shopifyMslStr}</span>
-                    `}
 
                     <span style="color:#9ca3af; font-size:0.73rem;">(M.Avg: ${mAvg > 0 ? mAvg.toFixed(2) : '0'})</span>
                 `;
                 wrapper.appendChild(formulaEl);
-            }
-
-            // FBA section: spans all 12 columns below the main row
-            if (fbaMonths && typeof fbaMonths === 'object') {
-                const fbaSku = fbaMonths.seller_sku || '';
-
-                // Full-width container spanning all 12 grid columns
-                const fbaContainer = document.createElement("div");
-                fbaContainer.style.gridColumn = "1 / -1";
-
-                // Divider with FBA label
-                const dividerRow = document.createElement("div");
-                dividerRow.style.cssText = "display:flex; align-items:center; gap:10px; margin:10px 0 6px;";
-                dividerRow.innerHTML = `
-                    <hr style="flex:1; border:none; border-top:2px dashed #20c997; margin:0;">
-                    <span style="font-size:0.75rem; font-weight:700; color:#20c997; letter-spacing:2px; white-space:nowrap;">FBA</span>
-                    <hr style="flex:1; border:none; border-top:2px dashed #20c997; margin:0;">
-                `;
-                fbaContainer.appendChild(dividerRow);
-
-                if (fbaSku) {
-                    const skuLabel = document.createElement("div");
-                    skuLabel.style.cssText = "font-size:0.71rem; color:#6c757d; margin-bottom:6px; font-style:italic;";
-                    skuLabel.innerText = `SKU: ${fbaSku}`;
-                    fbaContainer.appendChild(skuLabel);
-                }
-
-                // Same trailing-12 order as the Shopify row, plus a blank L30 so columns line up
-                const fbaGrid = document.createElement("div");
-                fbaGrid.style.cssText = "display:grid; grid-template-columns:repeat(13,minmax(0,1fr)); gap:12px;";
-
-                monthSlots.forEach(slot => {
-                    const card = appendQtyCard(fbaGrid, slot.label, fbaMonths[slot.key] ?? 0, "border-top:2px solid #20c997;");
-                    const valueEl = card.querySelector(".month-value");
-                    if (valueEl) valueEl.style.color = "#20c997";
-                });
-                const fbaL30 = appendQtyCard(fbaGrid, "L30", "—", "border-top:2px solid #20c997;");
-                fbaL30.title = "Last 30 days is not stored for FBA";
-                const fbaL30Value = fbaL30.querySelector(".month-value");
-                if (fbaL30Value) fbaL30Value.style.color = "#20c997";
-
-                fbaContainer.appendChild(fbaGrid);
-                wrapper.appendChild(fbaContainer);
             }
 
             document.getElementById("month-view-sku").innerText = `( ${sku} )`;
@@ -6996,6 +7022,158 @@
             // ── Available % history graph (same Chart.js format as /all-marketplace-master) ──
             let faAvailablePctChartInstance = null;
             let faAvailablePctChartDays = 30;
+            let faMetricChartInstance = null;
+            let faMetricChartState = { metric: 'avg_nroi', sku: '', parent: '', current: '', days: 365 };
+            const faMetricChartLabels = { avg_nroi: 'Avg NROI', avg_npft: 'Avg NPFT' };
+
+            function faMetricChartRangeLabel(days) {
+                if (days >= 365) return '12 months';
+                if (days >= 180) return '6 months';
+                return days + ' days';
+            }
+
+            function faMetricChartTitle() {
+                const label = faMetricChartLabels[faMetricChartState.metric] || faMetricChartState.metric;
+                const who = faMetricChartState.parent
+                    ? (faMetricChartState.parent + ' (Parent)')
+                    : (faMetricChartState.sku || '');
+                return label + (who ? ' — ' + who : '') + ' (last ' + faMetricChartRangeLabel(faMetricChartState.days) + ')';
+            }
+
+            function loadFaMetricChart() {
+                const loading = document.getElementById('faMetricChartLoading');
+                const container = document.getElementById('faMetricChartContainer');
+                const empty = document.getElementById('faMetricChartNoData');
+                if (loading) loading.style.display = '';
+                if (container) container.style.display = 'none';
+                if (empty) empty.style.display = 'none';
+                const params = new URLSearchParams({
+                    metric: faMetricChartState.metric,
+                    days: String(faMetricChartState.days),
+                });
+                if (faMetricChartState.parent) params.set('parent', faMetricChartState.parent);
+                else params.set('sku', faMetricChartState.sku);
+                if (faMetricChartState.current !== '' && faMetricChartState.current !== null) {
+                    params.set('current_value', String(faMetricChartState.current));
+                }
+                fetch('/cvr-master-chart-data?' + params.toString(), { headers: { 'Accept': 'application/json' } })
+                    .then(r => r.json())
+                    .then(response => {
+                        if (loading) loading.style.display = 'none';
+                        const points = (response && response.success && Array.isArray(response.data)) ? response.data : [];
+                        const numeric = points.filter(d => d && d.value !== null && d.value !== '' && Number.isFinite(Number(d.value)));
+                        if (!numeric.length) {
+                            if (empty) empty.style.display = '';
+                            return;
+                        }
+                        if (container) container.style.display = 'flex';
+                        renderFaMetricChart(points);
+                    })
+                    .catch(() => {
+                        if (loading) loading.style.display = 'none';
+                        if (empty) empty.style.display = '';
+                    });
+            }
+
+            function renderFaMetricChart(data) {
+                const canvas = document.getElementById('faMetricChart');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (faMetricChartInstance) {
+                    faMetricChartInstance.destroy();
+                    faMetricChartInstance = null;
+                }
+                const labels = data.map(d => d.date);
+                const values = data.map(d => (d.value === null || d.value === '' || !Number.isFinite(Number(d.value))) ? null : Number(d.value));
+                const numeric = values.filter(v => v !== null);
+                const dataMin = Math.min.apply(null, numeric);
+                const dataMax = Math.max.apply(null, numeric);
+                const sorted = numeric.slice().sort((a, b) => a - b);
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                const range = (dataMax - dataMin) || 1;
+                const fmtVal = (v) => Math.round(Number(v)) + '%';
+                const hi = document.getElementById('faMetricChartHighest');
+                const md = document.getElementById('faMetricChartMedian');
+                const lo = document.getElementById('faMetricChartLowest');
+                if (hi) hi.textContent = fmtVal(dataMax);
+                if (md) md.textContent = fmtVal(median);
+                if (lo) lo.textContent = fmtVal(dataMin);
+                const dotColors = values.map((v, i) => {
+                    if (v === null) return '#6c757d';
+                    const prev = i > 0 ? values[i - 1] : null;
+                    if (prev === null) return '#6c757d';
+                    return v > prev ? '#28a745' : v < prev ? '#dc3545' : '#6c757d';
+                });
+                faMetricChartInstance = new Chart(canvas, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: faMetricChartLabels[faMetricChartState.metric] || '',
+                            data: values,
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderColor: '#adb5bd',
+                            borderWidth: 1.5,
+                            fill: true,
+                            tension: 0.3,
+                            spanGaps: false,
+                            pointRadius: values.map(v => v === null ? 0 : 3),
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointBorderWidth: 1.5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: {
+                                min: dataMin - range * 0.1,
+                                max: dataMax + range * 0.1,
+                                ticks: { font: { size: 9 }, callback: (value) => fmtVal(value) }
+                            },
+                            x: {
+                                ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 16 }
+                            }
+                        }
+                    }
+                });
+            }
+
+            $(document).off('click.faMetricChart', '.fa-metric-chart-link').on('click.faMetricChart', '.fa-metric-chart-link', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const el = e.currentTarget;
+                faMetricChartState.metric = el.getAttribute('data-metric') || 'avg_nroi';
+                faMetricChartState.sku = (el.getAttribute('data-sku') || '').trim();
+                faMetricChartState.parent = (el.getAttribute('data-parent') || '').trim();
+                if (!faMetricChartState.parent && /parent/i.test(faMetricChartState.sku)) {
+                    faMetricChartState.parent = faMetricChartState.sku.replace(/^PARENT\s+/i, '').trim();
+                }
+                faMetricChartState.current = el.getAttribute('data-current');
+                if (faMetricChartState.current === null) faMetricChartState.current = '';
+                faMetricChartState.days = 365;
+                const rangeEl = document.getElementById('faMetricChartRange');
+                if (rangeEl) rangeEl.value = '365';
+                const titleEl = document.getElementById('faMetricChartTitle');
+                if (titleEl) titleEl.textContent = faMetricChartTitle();
+                const modalEl = document.getElementById('faMetricChartModal');
+                if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                loadFaMetricChart();
+            });
+
+            $(document).off('change.faMetricChart', '#faMetricChartRange').on('change.faMetricChart', '#faMetricChartRange', function() {
+                const days = parseInt(this.value, 10);
+                if (!days || days === faMetricChartState.days) return;
+                faMetricChartState.days = days;
+                const titleEl = document.getElementById('faMetricChartTitle');
+                if (titleEl) titleEl.textContent = faMetricChartTitle();
+                loadFaMetricChart();
+            });
+
             let faAvailablePctChartAjax = null;
 
             function faAvailablePctRangeLabel(days) {

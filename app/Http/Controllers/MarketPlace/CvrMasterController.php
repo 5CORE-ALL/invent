@@ -6911,13 +6911,20 @@ class CvrMasterController extends Controller
         $skuRaw = $request->input('sku', '');
         $parentRaw = preg_replace('/\s+/', ' ', trim($request->input('parent', '')));
         $aggregate = filter_var($request->input('aggregate', false), FILTER_VALIDATE_BOOLEAN);
-        $allowed = ['inv', 'ov_l30', 'price', 'cvr', 'dil', 'dil_red', 'dil_green', 'dil_pink', 'amz_price', 'rating', 'total_views'];
+        $allowed = ['inv', 'ov_l30', 'price', 'cvr', 'dil', 'dil_red', 'dil_green', 'dil_pink', 'amz_price', 'rating', 'total_views', 'avg_nroi', 'avg_npft'];
         if (!in_array($metric, $allowed)) {
             return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
         }
 
         $isParent = $parentRaw !== '';
         $isAggregate = $aggregate && $parentRaw === '' && trim($skuRaw) === '';
+
+        if (in_array($metric, ['avg_nroi', 'avg_npft'], true)) {
+            $pctCol = $metric === 'avg_nroi' ? 'avg_nroi' : 'avg_pft';
+            if (! Schema::hasColumn('pricing_master_daily_snapshots_sku', $pctCol)) {
+                return response()->json(['success' => true, 'data' => []]);
+            }
+        }
 
         if ($isAggregate && in_array($metric, ['dil_red', 'dil_green', 'dil_pink'], true)) {
             return $this->dilColorShareChart($request, $metric, $days);
@@ -6984,7 +6991,8 @@ class CvrMasterController extends Controller
         }
         $rows = $query->get();
 
-        if (($isParent || $isAggregate) && $rows->isEmpty()) {
+        if (($isParent || $isAggregate) && $rows->isEmpty()
+            && ! (in_array($metric, ['avg_nroi', 'avg_npft'], true) && is_numeric($request->input('current_value')))) {
             return response()->json(['success' => true, 'data' => []]);
         }
 
@@ -6995,6 +7003,15 @@ class CvrMasterController extends Controller
                 return Carbon::parse($row->snapshot_date)->format('Y-m-d');
             });
             foreach ($byDate as $dateStr => $dateRows) {
+                if ($metric === 'avg_nroi' || $metric === 'avg_npft') {
+                    $col = $metric === 'avg_nroi' ? 'avg_nroi' : 'avg_pft';
+                    $vals = $dateRows->pluck($col)->filter(fn ($v) => $v !== null && $v !== '' && is_numeric($v));
+                    if ($vals->isEmpty()) {
+                        continue;
+                    }
+                    $byDateKey[$dateStr] = round((float) $vals->avg(), 2);
+                    continue;
+                }
                 $invSum = $dateRows->sum('inventory');
                 $l30Sum = $dateRows->sum('overall_l30');
                 $viewsSum = $dateRows->sum('total_views');
@@ -7020,6 +7037,8 @@ class CvrMasterController extends Controller
                 'amz_price' => 'amazon_price',
                 'rating' => 'rating',
                 'total_views' => 'total_views',
+                'avg_nroi' => 'avg_nroi',
+                'avg_npft' => 'avg_pft',
                 default => 'inventory',
             };
             foreach ($rows as $row) {
@@ -7059,6 +7078,10 @@ class CvrMasterController extends Controller
                     }
                 }
             }
+        }
+
+        if (in_array($metric, ['avg_nroi', 'avg_npft'], true) && is_numeric($request->input('current_value'))) {
+            $byDateKey[now('America/Los_Angeles')->toDateString()] = round((float) $request->input('current_value'), 2);
         }
 
         if (empty($byDateKey)) {

@@ -36,6 +36,30 @@ class ForecastAnalysisController extends Controller
 
     private const AVAILABLE_PCT_TZ = 'America/Los_Angeles';
 
+    /**
+     * Last 12 calendar months through the current Pacific month, oldest first.
+     * Advances by one month on the 1st (Pacific).
+     *
+     * @return list<array{y: int, m: int, name: string, key: string, label: string}>
+     */
+    private function forecastTrailingMonthWindow(): array
+    {
+        $now = Carbon::now('America/Los_Angeles')->startOfMonth();
+        $window = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $d = $now->copy()->subMonths($i);
+            $window[] = [
+                'y' => (int) $d->year,
+                'm' => (int) $d->month,
+                'name' => $d->format('M'),
+                'key' => strtoupper($d->format('M')),
+                'label' => strtoupper($d->format('M')).' '.$d->year,
+            ];
+        }
+
+        return $window;
+    }
+
     /** Cache::remember with silent fallback — if cache storage fails, run the query directly. */
     private function cachedOrRun(string $key, int $ttl, callable $cb)
     {
@@ -277,7 +301,7 @@ class ForecastAnalysisController extends Controller
 
         // Months in the last 12 where Shopify inventory was actually on hand
         // (opening, closing, or a sale). Used as the MSL divisor.
-        $invMonthRows = $this->cachedOrRun('fa_inv_available_months', 1800, function () {
+        $invMonthRows = $this->cachedOrRun('fa_inv_available_months:'.Carbon::now('America/Los_Angeles')->format('Y-m'), 1800, function () {
             if (! Schema::hasTable('shopifysku_inventory_history')) {
                 return collect();
             }
@@ -310,18 +334,13 @@ class ForecastAnalysisController extends Controller
                 $invMonthsByCanonical[$invCanon][$slot] = true;
             }
         }
-        $mslNow = Carbon::now('America/Los_Angeles')->startOfMonth();
-        $mslWindow = [];
-        for ($i = 11; $i >= 0; $i--) {
-            $d = $mslNow->copy()->subMonths($i);
-            $mslWindow[] = [
-                'y' => (int) $d->year,
-                'm' => (int) $d->month,
-                'name' => $d->format('M'),
-            ];
-        }
-        $mslCurrentY = (int) $mslNow->year;
-        $mslCurrentM = (int) $mslNow->month;
+        // Trailing 12 months ending this Pacific month. On the 1st the window
+        // drops the oldest month and adds the new one (forecast:advance-month).
+        $mslWindow = $this->forecastTrailingMonthWindow();
+        $mslCurrent = $mslWindow[count($mslWindow) - 1];
+        $mslCurrentY = $mslCurrent['y'];
+        $mslCurrentM = $mslCurrent['m'];
+        $monthCacheKey = sprintf('%04d-%02d', $mslCurrentY, $mslCurrentM);
 
         // Trailing 12 Shopify months by real year+month.
         // shopify_raw_orders only retains recent months; movement_analysis stores a
@@ -329,7 +348,7 @@ class ForecastAnalysisController extends Controller
         // (same orders as L30) for months still in the table, and sku_monthly_orders
         // for months that have already aged out of the raw table.
         $shopifyWindowStart = Carbon::create($mslWindow[0]['y'], $mslWindow[0]['m'], 1)->toDateString();
-        $rawMinMonth = $this->cachedOrRun('fa_shopify_raw_min_month', 1800, function () {
+        $rawMinMonth = $this->cachedOrRun('fa_shopify_raw_min_month:'.$monthCacheKey, 1800, function () {
             if (! Schema::hasTable('shopify_raw_orders')) {
                 return null;
             }
@@ -337,7 +356,7 @@ class ForecastAnalysisController extends Controller
 
             return $min ? Carbon::parse($min)->startOfMonth()->toDateString() : null;
         });
-        $rawMonthRows = $this->cachedOrRun('fa_shopify_raw_months', 1800, function () use ($shopifyWindowStart) {
+        $rawMonthRows = $this->cachedOrRun('fa_shopify_raw_months:'.$monthCacheKey, 1800, function () use ($shopifyWindowStart) {
             if (! Schema::hasTable('shopify_raw_orders')) {
                 return collect();
             }
@@ -350,7 +369,7 @@ class ForecastAnalysisController extends Controller
                 ->groupByRaw('sku, YEAR(order_date), MONTH(order_date)')
                 ->get();
         });
-        $histMonthRows = $this->cachedOrRun('fa_sku_monthly_orders', 1800, function () use ($shopifyWindowStart) {
+        $histMonthRows = $this->cachedOrRun('fa_sku_monthly_orders:'.$monthCacheKey, 1800, function () use ($shopifyWindowStart) {
             if (! Schema::hasTable('sku_monthly_orders')) {
                 return collect();
             }
@@ -662,78 +681,8 @@ class ForecastAnalysisController extends Controller
 
 
 
-        // Load FBA monthly sales and build a map keyed by normalized base SKU
-        // FBA seller_sku has suffix like " fba", " FBA", " Fba" appended to the base SKU
-        $currentYear = (int) date('Y');
-        $fbaRows = $this->cachedOrRun('fa_fba_monthly', 1800, function () use ($currentYear) {
-            return DB::table('fba_monthly_sales')
-                ->whereIn('year', [$currentYear, $currentYear - 1])
-                ->orderByDesc('year')
-                ->get(['seller_sku', 'year', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']);
-        });
-
-        // Group rows by normalized base SKU, keyed by year
-        // For each month: prefer current year value if non-zero, otherwise fall back to previous year value
-        $fbaBySkuYear = []; // [normalizedBase][year] => monthly array
-        $fbaSkuRaw    = []; // [normalizedBase] => raw seller_sku string
-        foreach ($fbaRows as $fbaRow) {
-            $rawSku = trim($fbaRow->seller_sku ?? '');
-            $baseSku = preg_replace('/[\s\-_]+(?:fba)$/i', '', $rawSku);
-            $normalizedBase = $normalizeSku($baseSku);
-            if ($normalizedBase === '') continue;
-
-            $year = (int) $fbaRow->year;
-            $fbaBySkuYear[$normalizedBase][$year] = [
-                'JAN' => (int) ($fbaRow->jan ?? 0),
-                'FEB' => (int) ($fbaRow->feb ?? 0),
-                'MAR' => (int) ($fbaRow->mar ?? 0),
-                'APR' => (int) ($fbaRow->apr ?? 0),
-                'MAY' => (int) ($fbaRow->may ?? 0),
-                'JUN' => (int) ($fbaRow->jun ?? 0),
-                'JUL' => (int) ($fbaRow->jul ?? 0),
-                'AUG' => (int) ($fbaRow->aug ?? 0),
-                'SEP' => (int) ($fbaRow->sep ?? 0),
-                'OCT' => (int) ($fbaRow->oct ?? 0),
-                'NOV' => (int) ($fbaRow->nov ?? 0),
-                'DEC' => (int) ($fbaRow->dec ?? 0),
-            ];
-            if (!isset($fbaSkuRaw[$normalizedBase])) {
-                $fbaSkuRaw[$normalizedBase] = $rawSku; // store raw FBA SKU for display
-            }
-        }
-
-        // Build final map: month-aware merge matching the main row's rolling logic
-        // Months up to current month → always use current year (even if 0, those months have passed)
-        // Months after current month → use previous year data (those months haven't happened yet in current year)
-        $currentMonth = (int) date('n'); // 1=Jan ... 12=Dec
-        $monthKeyIndex = ['JAN'=>1,'FEB'=>2,'MAR'=>3,'APR'=>4,'MAY'=>5,'JUN'=>6,
-                          'JUL'=>7,'AUG'=>8,'SEP'=>9,'OCT'=>10,'NOV'=>11,'DEC'=>12];
-        $fbaMonthlyMap = [];
-        foreach ($fbaBySkuYear as $normalizedBase => $yearData) {
-            $curData  = $yearData[$currentYear]     ?? null;
-            $prevData = $yearData[$currentYear - 1] ?? null;
-            if (!$curData && !$prevData) continue;
-
-            $merged = ['seller_sku' => $fbaSkuRaw[$normalizedBase] ?? ''];
-            foreach ($monthKeyIndex as $m => $mNum) {
-                $curVal  = $curData  ? ($curData[$m]  ?? 0) : 0;
-                $prevVal = $prevData ? ($prevData[$m] ?? 0) : 0;
-                // Months already passed in current year → use current year value (0 is valid)
-                // Future months in current year → fall back to previous year
-                $merged[$m] = ($mNum <= $currentMonth) ? $curVal : $prevVal;
-            }
-            $fbaMonthlyMap[$normalizedBase] = $merged;
-        }
-
         $processedData = [];
         $stagePendingUpdates = []; // [normalizedSku => derivedStage] — flushed after loop
-
-        // Month name map used in the combined MSL calculation (defined once, reused per SKU)
-        $fbaMonthKeyMap = [
-            'Jan' => 'JAN', 'Feb' => 'FEB', 'Mar' => 'MAR', 'Apr' => 'APR',
-            'May' => 'MAY', 'Jun' => 'JUN', 'Jul' => 'JUL', 'Aug' => 'AUG',
-            'Sep' => 'SEP', 'Oct' => 'OCT', 'Nov' => 'NOV', 'Dec' => 'DEC',
-        ];
 
         $categoryBySku = SupplierCategorySync::resolveCategoryMapForSkus(
             collect($productListData)->map(fn ($p) => $normalizeSku($p->sku ?? ''))->filter()->unique()->values()->all()
@@ -1061,9 +1010,6 @@ class ForecastAnalysisController extends Controller
                 : null;
             $item->lmp_entries_total = $lmpEntries ? $lmpEntries->count() : 0;
 
-            // Resolve FBA data for this SKU upfront (used in MSL calculation below)
-            $fbaData = $fbaMonthlyMap[$sheetSku] ?? null;
-
             $months = [];
             foreach ($mslWindow as $wm) {
                 $slot = $wm['y'].'-'.$wm['m'];
@@ -1102,18 +1048,14 @@ class ForecastAnalysisController extends Controller
                 $l30Qty = (int) ($item->L30 ?? 0);
                 $invNow = (int) ($item->INV ?? 0);
                 $shopifyMonthSum = 0;
-                $fbaMonthSum = 0;
                 $invAvailableMonths = 0;
                 foreach ($mslWindow as $wm) {
                     $month = $wm['name'];
                     $shopifyVal = isset($months[$month]) && is_numeric($months[$month]) ? (int) $months[$month] : 0;
-                    $fbaKey = $fbaMonthKeyMap[$month] ?? strtoupper($month);
-                    $fbaVal = $fbaData ? (int) ($fbaData[$fbaKey] ?? 0) : 0;
                     $shopifyMonthSum += $shopifyVal;
-                    $fbaMonthSum += $fbaVal;
 
                     $slot = $wm['y'].'-'.$wm['m'];
-                    $hadInv = isset($invSlots[$slot]) || $shopifyVal > 0 || $fbaVal > 0;
+                    $hadInv = isset($invSlots[$slot]) || $shopifyVal > 0;
                     if (! $hadInv && $wm['y'] === $mslCurrentY && $wm['m'] === $mslCurrentM && $invNow > 0) {
                         $hadInv = true;
                     }
@@ -1126,32 +1068,21 @@ class ForecastAnalysisController extends Controller
                 }
 
                 $shopifyBasisQty = $shopifyMonthSum + $l30Qty;
-                $combinedBasisQty = $shopifyMonthSum + $fbaMonthSum + $l30Qty;
                 $msl = $invAvailableMonths > 0 ? ($shopifyBasisQty / $invAvailableMonths) * 4 : 0;
                 $item->msl_shopify = (int) round($msl);
                 $item->msl_basis_qty = $shopifyBasisQty;
                 $item->msl_basis_months = $invAvailableMonths;
-                $item->msl_combined_qty = $combinedBasisQty;
-
-                $combinedMsl = $invAvailableMonths > 0 ? ($combinedBasisQty / $invAvailableMonths) * 4 : 0;
-                $combinedActiveMonths = $invAvailableMonths;
-                $combinedTotal = $combinedBasisQty;
-
-                // Use combined MSL as the primary MSL shown in the table
-                $effectiveMsl = $combinedMsl;
+                $item->msl = (int) round($msl);
 
                 $lp = is_numeric($item->{'LP'}) ? (float)$item->{'LP'} : 0;
-                $item->{'MSL_C'} = round($combinedMsl * $lp / 4, 2);
-                $item->{'MSL_SP'} = floor($shopifyb2c_price * $effectiveMsl / 4);
+                $item->{'MSL_C'} = round($msl * $lp / 4, 2);
+                $item->{'MSL_SP'} = floor($shopifyb2c_price * $msl / 4);
 
                 $amzPrc = $resolveAmazonPrice($sheetSku);
                 $item->amz_prc = $amzPrc;
-                $item->{'MSL_SP_AMZ'} = round($combinedMsl * $amzPrc / 4, 2);
+                $item->{'MSL_SP_AMZ'} = round($msl * $amzPrc / 4, 2);
 
-                $item->msl = (int) round($combinedMsl);
-
-                // M AVG based on combined data
-                $mAvg = $combinedActiveMonths > 0 ? ($combinedTotal / $combinedActiveMonths) : 0.0;
+                $mAvg = $invAvailableMonths > 0 ? ($shopifyBasisQty / $invAvailableMonths) : 0.0;
                 $item->m_avg = round($mAvg, 6);
                 $moqVal = is_numeric($item->{'MOQ'} ?? null) ? (float) $item->{'MOQ'} : (float) preg_replace('/[^0-9.\-]/', '', (string) ($item->{'MOQ'} ?? ''));
                 $item->TAT = $mAvg > 0 ? (int) round($moqVal / $mAvg) : null;
@@ -1161,7 +1092,6 @@ class ForecastAnalysisController extends Controller
                 $basisMonths = ($invNow > 0 || $l30Qty > 0) ? 1 : 0;
                 $item->msl_basis_qty = $l30Qty;
                 $item->msl_basis_months = $basisMonths;
-                $item->msl_combined_qty = $l30Qty;
                 $item->msl_shopify = $basisMonths > 0 ? (int) round(($l30Qty / $basisMonths) * 4) : 0;
                 $item->msl = $item->msl_shopify;
                 $item->amz_prc = $resolveAmazonPrice($sheetSku);
@@ -1310,9 +1240,6 @@ class ForecastAnalysisController extends Controller
             }
 
             $item->product_master_moq = $productMasterMoq;
-
-            // Attach FBA monthly sales data for this SKU (must come before MSL calc)
-            $item->fba_months = $fbaData;
 
             $processedData[] = $item;
         }
@@ -1478,6 +1405,7 @@ class ForecastAnalysisController extends Controller
                 'available_pct'       => $availableStats['pct'],
                 'available_count'     => $availableStats['available'],
                 'available_total'     => $availableStats['total'],
+                'month_window'        => $this->forecastTrailingMonthWindow(),
                 'status'              => 200,
             ];
 
