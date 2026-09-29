@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ShopifySku;
+use App\Support\CpMasterDil;
 use App\Support\DilVsSbidRule;
 use App\Support\SbidSlabRule;
 use Illuminate\Support\Facades\DB;
@@ -49,7 +50,7 @@ class DilVsSbidApplyService
                 $skus[] = $sku;
             }
         }
-        $shopifyMap = $this->shopifyByNormSku($skus);
+        $shopifyMap = $this->shopifyBySku($skus);
 
         try {
             $service = new $apiServiceClass();
@@ -105,12 +106,15 @@ class DilVsSbidApplyService
                 continue;
             }
 
-            $shopify = $shopifyMap[$this->normSku($sku)] ?? null;
-            $inv = (float) ($shopify->inv ?? 0);
-            $qty = (float) ($shopify->quantity ?? 0);
-            $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
+            $shopify = $shopifyMap[trim($sku)] ?? null;
+            $dil = CpMasterDil::percent($shopify->quantity ?? null, $shopify->inv ?? null);
+            if ($dil === null) {
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No CP Master Dil'];
+                $skipped++;
+                continue;
+            }
             $esBid = (float) ($ad->suggested_bid ?? 0);
-            $decision = DilVsSbidRule::resolve($dil, $esBid, $slabs);
+            $decision = DilVsSbidRule::resolve((float) $dil, $esBid, $slabs);
 
             if ($decision['off']) {
                 if (empty($ad->ad_id)) {
@@ -147,7 +151,7 @@ class DilVsSbidApplyService
 
         foreach ($offsByCampaign as $campaignId => $requests) {
             foreach (array_chunk($requests, 200) as $chunk) {
-                $this->pauseAds($token, $campaignId, $chunk, $results, $success, $failed);
+                $this->pauseAds($token, $adsTable, $campaignId, $chunk, $results, $success, $failed);
             }
         }
 
@@ -181,6 +185,7 @@ class DilVsSbidApplyService
                         ->where('campaign_id', $campaignId)
                         ->update([
                             'bid_percentage' => round((float) $r['bidPercentage'], 2),
+                            'campaign_status' => 'RUNNING',
                             'updated_at' => now(),
                         ]);
                     $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => $r['bidPercentage'].'%'];
@@ -204,12 +209,11 @@ class DilVsSbidApplyService
         }
     }
 
-    private function pauseAds(string $token, string $campaignId, array $requests, array &$results, int &$success, int &$failed): void
+    private function pauseAds(string $token, string $adsTable, string $campaignId, array $requests, array &$results, int &$success, int &$failed): void
     {
         $payload = array_map(fn ($r) => [
             'adId' => $r['adId'],
-            'listingId' => $r['listingId'],
-            'status' => 'PAUSED',
+            'adStatus' => 'PAUSED',
         ], $requests);
 
         try {
@@ -220,8 +224,15 @@ class DilVsSbidApplyService
                     'requests' => $payload,
                 ]);
 
-            if ($response->successful()) {
+            if ($response->successful() && $this->pauseChunkOk($response->json())) {
                 foreach ($requests as $r) {
+                    DB::table($adsTable)
+                        ->where('listing_id', (string) $r['listingId'])
+                        ->where('campaign_id', $campaignId)
+                        ->update([
+                            'campaign_status' => 'PAUSED',
+                            'updated_at' => now(),
+                        ]);
                     $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => 'OFF'];
                     $success++;
                 }
@@ -257,8 +268,7 @@ class DilVsSbidApplyService
             }
             $payload[] = [
                 'adId' => $r['adId'],
-                'listingId' => $r['listingId'],
-                'status' => 'ACTIVE',
+                'adStatus' => 'ACTIVE',
             ];
         }
         if ($payload === []) {
@@ -278,6 +288,26 @@ class DilVsSbidApplyService
         } catch (\Exception $e) {
             Log::warning('Dil vs SBid resume failed', ['campaign_id' => $campaignId, 'error' => $e->getMessage()]);
         }
+    }
+
+    /** eBay can return HTTP 200 while a listing in the chunk failed. */
+    private function pauseChunkOk($body): bool
+    {
+        if (! is_array($body)) {
+            return true;
+        }
+        $responses = $body['responses'] ?? null;
+        if (! is_array($responses) || $responses === []) {
+            return empty($body['errors']);
+        }
+        foreach ($responses as $row) {
+            $code = (int) ($row['statusCode'] ?? 200);
+            if ($code >= 400) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function ebayReason(int $status, $body): string
@@ -311,28 +341,24 @@ class DilVsSbidApplyService
         return $rules;
     }
 
-    private function shopifyByNormSku(array $skus): array
+    private function shopifyBySku(array $skus): array
     {
-        $map = [];
-        $skus = array_values(array_unique(array_filter($skus, fn ($s) => $s !== '')));
+        $skus = array_values(array_unique(array_filter(array_map(
+            fn ($s) => trim((string) $s),
+            $skus
+        ), fn ($s) => $s !== '' && ! str_starts_with(strtoupper($s), 'PARENT'))));
         if ($skus === []) {
-            return $map;
+            return [];
         }
-        foreach (ShopifySku::whereIn('sku', $skus)->get(['sku', 'inv', 'quantity']) as $row) {
-            $key = $this->normSku($row->sku);
-            if ($key !== '' && ! isset($map[$key])) {
-                $map[$key] = $row;
+
+        $mapped = ShopifySku::mapByProductSkus($skus);
+        $out = [];
+        foreach ($skus as $sku) {
+            if (isset($mapped[$sku])) {
+                $out[$sku] = $mapped[$sku];
             }
         }
 
-        return $map;
-    }
-
-    private function normSku(?string $s): string
-    {
-        $s = (string) $s;
-        $s = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xE2\x80\x87", "\xE2\x80\x8B"], ' ', $s);
-
-        return strtoupper(preg_replace('/\s+/u', ' ', trim($s)));
+        return $out;
     }
 }

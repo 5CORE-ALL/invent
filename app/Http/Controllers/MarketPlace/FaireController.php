@@ -929,11 +929,18 @@ class FaireController extends Controller
                     ->keyBy(fn ($row) => $normalizeSku($row->sku))
                 : collect();
 
-            // Dil universe: Product Master first, then Shopify (INV / OV L30). Faire tables join onto that SKU.
-            $allNormalizedSkus = collect($productMastersBySku->keys()->all())->values();
+            $allNormalizedSkus = collect(array_merge(
+                $salesBySku->keys()->all(),
+                $productMastersBySku->keys()->all(),
+                $metricBySku->keys()->all(),
+                $listingStatusBySku->keys()->all(),
+                $viewMetaBySku->keys()->all()
+            ))->unique()->values();
+
             $shopifyByProductSku = ShopifySku::mapByProductSkus(
                 $productMastersBySku->map(fn ($pm) => (string) ($pm->sku ?? ''))->filter()->unique()->values()->all()
             );
+            $shopifyBySku = ShopifySku::all()->keyBy(fn ($row) => $normalizeSku($row->sku));
 
             // Same source as Forecast Analysis: forecast_analysis.nr (NRP), keyed by normalized SKU.
             // Load full table; SQL UPPER(TRIM(sku)) won't fold NBSP/multi-space the way PHP does.
@@ -1015,7 +1022,7 @@ class FaireController extends Controller
 
                 $shopifyRow = ($productMaster && isset($shopifyByProductSku[$productMaster->sku]))
                     ? $shopifyByProductSku[$productMaster->sku]
-                    : null;
+                    : $shopifyBySku->get($normalizedSku);
                 $inv = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
                 $ovL30 = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
                 $imageSrc = $shopifyRow ? ($shopifyRow->image_src ?? null) : null;

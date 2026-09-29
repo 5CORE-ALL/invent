@@ -67,6 +67,25 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertTrue(DilVsSbidRule::isEnabled(['enabled' => true]));
     }
 
+    public function test_auto_off_continues_past_a_rule_that_stops_at_20(): void
+    {
+        $slabs = [
+            ['min' => 0, 'max' => 0, 'mode' => 'es_bid', 'bid' => null],
+            ['min' => 0.1, 'max' => 10, 'mode' => 'dynamic', 'bid' => 8],
+            ['min' => 10, 'max' => 20, 'mode' => 'auto_off', 'bid' => null],
+        ];
+
+        $this->assertFalse(DilVsSbidRule::resolve(10, 0, $slabs)['off']);
+        $this->assertTrue(DilVsSbidRule::resolve(11, 0, $slabs)['off']);
+        $this->assertTrue(DilVsSbidRule::resolve(55, 0, $slabs)['off']);
+        $this->assertSame('auto_off', DilVsSbidRule::resolve(140, 0, $slabs)['mode']);
+
+        $normalized = DilVsSbidRule::normalize($slabs);
+        $last = $normalized[count($normalized) - 1];
+        $this->assertSame('auto_off', $last['mode']);
+        $this->assertEquals(9999, $last['max']);
+    }
+
     public function test_missing_es_bid_does_not_invent_a_percent(): void
     {
         $zero = DilVsSbidRule::resolve(0, 0, DilVsSbidRule::defaultSlabs());

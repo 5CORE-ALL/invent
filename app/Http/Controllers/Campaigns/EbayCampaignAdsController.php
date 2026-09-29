@@ -8,6 +8,7 @@ use App\Models\EbayMetric;
 use App\Services\EbayChannelMetricsService;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\Marketplace\EbayListingEnded;
+use App\Support\CpMasterDil;
 use App\Support\SbidSlabRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -313,8 +314,7 @@ class EbayCampaignAdsController extends Controller
             }
             $payload[] = [
                 'adId' => $r['adId'],
-                'listingId' => $r['listingId'],
-                'status' => 'ACTIVE',
+                'adStatus' => 'ACTIVE',
             ];
         }
         if ($payload === []) {
@@ -337,8 +337,7 @@ class EbayCampaignAdsController extends Controller
     {
         $payload = array_map(fn ($r) => [
             'adId' => $r['adId'],
-            'listingId' => $r['listingId'],
-            'status' => 'PAUSED',
+            'adStatus' => 'PAUSED',
         ], $requests);
 
         try {
@@ -949,6 +948,7 @@ class EbayCampaignAdsController extends Controller
 
         $total = (clone $query)->count();
         $data  = $query->orderBy('ca.id', 'desc')->get();
+        CpMasterDil::hydrate($data);
 
         return response()->json([
             'total' => $total,

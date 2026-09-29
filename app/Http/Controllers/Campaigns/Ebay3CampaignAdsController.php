@@ -8,6 +8,7 @@ use App\Models\Ebay3Metric;
 use App\Services\CronMonitor\ManualActionService;
 use App\Services\EbayChannelMetricsService;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
+use App\Support\CpMasterDil;
 use App\Support\SbidSlabRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -694,6 +695,7 @@ class Ebay3CampaignAdsController extends Controller
 
         $total = (clone $query)->count();
         $data  = $query->orderBy('ca.id', 'desc')->get();
+        CpMasterDil::hydrate($data);
 
         return response()->json([
             'total' => $total,

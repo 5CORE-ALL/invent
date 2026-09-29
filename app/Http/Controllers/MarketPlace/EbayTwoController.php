@@ -1108,10 +1108,196 @@ class EbayTwoController extends Controller
             $result[] = (object) $row;
         }
 
-        // Channel price/stock stay on the Product Master row above.
-        // Do not add ebay_2_metrics SKUs that are not in product_masters (Open Box orphans).
-        // Dil count is Product Master → Shopify INV / OV L30 → this channel table.
+        // Add Open Box and other items from ebay2_metrics that don't exist in product_masters.
+        // $ebayMetrics is keyed by uppercase-normalized SKU — never expose that key as (Child) sku.
+        // Compare case-insensitively so "… WoB OPEN BOX" already in $result is not re-added as "… WOB OPEN BOX".
+        $processedSkusNorm = [];
+        foreach ($result as $existingRow) {
+            $existingSku = is_object($existingRow)
+                ? ($existingRow->{'(Child) sku'} ?? '')
+                : ($existingRow['(Child) sku'] ?? '');
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $existingSku);
+            if ($norm !== '') {
+                $processedSkusNorm[$norm] = true;
+            }
+        }
+        foreach ($ebayMetrics as $metricNormKey => $metric) {
+            $originalSku = trim((string) ($metric->sku ?? ''));
+            $displaySku = $originalSku !== '' ? $originalSku : (string) $metricNormKey;
+            $normKey = ShopifySku::normalizeSkuForShopifyLookup($displaySku);
+            if ($normKey === '' || isset($processedSkusNorm[$normKey])) {
+                continue;
+            }
+            $processedSkusNorm[$normKey] = true;
 
+                // This SKU exists in ebay2_metrics but not in product_masters (e.g., Open Box items)
+                $row = [];
+                $row["Parent"] = "";
+                $row["(Child) sku"] = $displaySku;
+                $row['base_sku'] = '';
+                $row['base_inv'] = 0;
+                if (stripos($displaySku, 'OPEN BOX') !== false) {
+                    $baseCandidate = trim(str_ireplace('OPEN BOX', '', $displaySku));
+                    if ($baseCandidate !== '') {
+                        $pmKey = $resolveProductMasterKey($baseCandidate);
+                        if ($pmKey !== null) {
+                            $row['base_sku'] = (string) $productMasters[$pmKey]->sku;
+                            $baseShopify = $shopifyData->get($pmKey) ?? ShopifySku::firstForProductSku($pmKey);
+                            $row['base_inv'] = $baseShopify ? (float) ($baseShopify->inv ?? 0) : 0;
+                        }
+                    }
+                }
+                $row['fba'] = "";
+                $row["INV"] = 0;
+                $row["L30"] = 0;
+                $row['inv_yesterday'] = $invYesterdayBySku[$normKey] ?? null;
+                $row['l30_yesterday'] = $l30YesterdayBySku[$normKey] ?? null;
+                $row['nr_req'] = 'REQ';
+                $row['B Link'] = '';
+                $row['S Link'] = '';
+                
+                // eBay2 Metrics from ebay_2_metrics
+                $row["eBay L30"] = $metric->ebay_l30 ?? 0;
+                $row["eBay L60"] = $metric->ebay_l60 ?? 0;
+                $row["eBay Price"] = $metric->ebay_price ?? 0;
+                $row = array_merge($row, EbayListingEnded::fields($metric));
+                $row['price_yesterday'] = $priceYesterdayBySku[$normKey] ?? null;
+                $row['views'] = $metric->views ?? 0;
+                $row['l7_views'] = $metric->l7_views ?? 0;
+                $row['eBay_item_id'] = $metric->item_id ?? null;
+                $row['E Stock'] = $metric->ebay_stock ?? 0;
+
+                EbaySkuCompetitor::applyLinkedGroupToRow(
+                    $row,
+                    $displaySku,
+                    $lmpDetailsLookup,
+                    $resolveLinkedLmpSkus($displaySku),
+                    $row['base_sku'] ?: null
+                );
+
+                $ebayL30ForDilM = floatval($row["eBay L30"] ?? 0);
+                $viewsForDilM = floatval($row['views'] ?? 0);
+                $row["E Dil%"] = $viewsForDilM > 0
+                    ? round(($ebayL30ForDilM / $viewsForDilM) * 100, 2)
+                    : 0;
+                
+                // Initialize ad metrics
+                foreach (['L60', 'L30', 'L7'] as $range) {
+                    foreach (['Imp', 'Clk', 'Ctr', 'Sls', 'GENERAL_SPENT'] as $suffix) {
+                        $key = "Pmt{$suffix}{$range}";
+                        $row[$key] = 0;
+                    }
+                }
+                
+                $row["AD_Spend_L30"] = 0;
+                $row["spend_l30"] = 0;
+                $row["pmt_spend_L30"] = 0;
+                $row["kw_spend_L30"] = 0;
+                $row["AD_Sales_L30"] = 0;
+                $row["AD_Units_L30"] = 0;
+
+                // KW campaign defaults
+                $row['kw_campaign_id'] = '';
+                $row['kw_campaignBudgetAmount'] = 0;
+                $row['kw_campaignStatus'] = '';
+                $row['kw_clicks'] = 0;
+                $row['kw_ad_sold'] = 0;
+                $row['kw_acos'] = 0;
+                $row['kw_cvr'] = 0;
+                $row['kw_l7_spend'] = 0;
+                $row['kw_l7_cpc'] = 0;
+                $row['kw_l1_spend'] = 0;
+                $row['kw_l1_cpc'] = 0;
+                $row['kw_last_sbid'] = '';
+                $row['kw_sbid_m'] = '';
+                $row['kw_apprSbid'] = '';
+                $row['NRL'] = '';
+
+                // PMT detail defaults
+                $row['bid_percentage'] = null;
+                $row['suggested_bid'] = null;
+                $row['pmt_clicks_l30'] = 0;
+                $row['pmt_clicks_l7'] = 0;
+
+                // Campaign-Ads — same listing_id = item_id lookup as product-master SKUs.
+                $row = array_merge($row, $this->ebay2CampaignAdsFields(
+                    $this->lookupEbay2CampaignAd($ebay2CampaignAdsByListing, $metric->item_id ?? null)
+                ));
+                
+                $price = floatval($row["eBay Price"] ?? 0);
+                $units_ordered_l30 = floatval($row["eBay L30"] ?? 0);
+                $row["AD%"] = 0;
+                $row["Total_pft"] = 0;
+                $row["Profit"] = 0;
+                $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);
+                $row["Sales L30"] = $row["T_Sale_l30"];
+                $row["TacosL30"] = 0;
+                $row["GPFT%"] = 0;
+                $row["PFT %"] = 0;
+                $row["ROI%"] = 0;
+                $row['SCVR'] = 0;
+                $row['CVR_45'] = 0;
+                $row['CVR_60'] = 0;
+                $row["eBay L45"] = 0;
+                $row["percentage"] = $percentage;
+                $row["pmt_ads"] = 0;
+                $row["LP_productmaster"] = 0;
+                $row["Ship_productmaster"] = 0;
+                $row["ebay2_ship"] = 0;
+                $row["pmt_pft_val"] = 0;
+                $row["pmt_roi_val"] = 0;
+                $row["pmt_tpft_val"] = 0;
+                $row["pmt_troi_val"] = 0;
+                $row["pmt_ad_percentage"] = $pmtAdPercentage;
+                $row['NR'] = "";
+                $row['SPRICE'] = null;
+                $row['SGPFT'] = null;
+                $row['SPFT'] = null;
+                $row['SROI'] = null;
+                $row['SGROI'] = null;
+                $row['Listed'] = null;
+                $row['Live'] = null;
+                $row['APlus'] = null;
+                $row["image_path"] = null;
+
+                $faRecNrpOb = $forecastNrpBySku[$normalizeSkuFa($displaySku)] ?? null;
+                $nrpOutOb = '';
+                if ($faRecNrpOb && $faRecNrpOb->nr !== null && trim((string) $faRecNrpOb->nr) !== '') {
+                    $nrpOutOb = strtoupper(trim((string) $faRecNrpOb->nr));
+                    if (! in_array($nrpOutOb, ['REQ', 'NR', 'LATER'], true)) {
+                        $nrpOutOb = 'REQ';
+                    }
+                }
+                $row['nrp'] = $nrpOutOb;
+
+                $dvKeyOrphan = $normKey;
+                if ($nrValues->has($dvKeyOrphan)) {
+                    $rawOb = $nrValues->get($dvKeyOrphan);
+                    if (! is_array($rawOb)) {
+                        $rawOb = json_decode($rawOb, true);
+                    }
+                    if (is_array($rawOb)) {
+                        $row['NR'] = $rawOb['NR'] ?? $row['NR'];
+                        $row['SPRICE'] = $rawOb['SPRICE'] ?? null;
+                        $row['SGPFT'] = $rawOb['SGPFT'] ?? null;
+                        $row['SPFT'] = $rawOb['SPFT'] ?? null;
+                        $row['SROI'] = $rawOb['SROI'] ?? null;
+                        $row['SGROI'] = $rawOb['SGROI'] ?? null;
+                        $row['Listed'] = isset($rawOb['Listed']) ? filter_var($rawOb['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
+                        $row['Live'] = isset($rawOb['Live']) ? filter_var($rawOb['Live'], FILTER_VALIDATE_BOOLEAN) : null;
+                        $row['APlus'] = isset($rawOb['APlus']) ? filter_var($rawOb['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
+                        if (! empty($rawOb['NRL'] ?? '')) {
+                            $row['NRL'] = $rawOb['NRL'];
+                        }
+                    }
+                }
+                // Missing L / nr_req — same source as /listing-ebaytwo
+                $row['nr_req'] = \App\Support\Marketplace\EbayTwoListingCounts::nrReqFromDataView(
+                    $nrValues->has($dvKeyOrphan) ? $nrValues->get($dvKeyOrphan) : null
+                );
+
+                $result[] = (object) $row;
+        }
 
         // PARENT rows: aggregate child INV/L30/views/price (same idea as /ebay3-tabulator-view)
         // so Parents view is not empty under default INV > 0. Also create missing PARENT * rows.

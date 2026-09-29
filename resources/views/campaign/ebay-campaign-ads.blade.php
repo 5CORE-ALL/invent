@@ -491,19 +491,16 @@ $(document).ready(function () {
             },
             {
                 title: 'Dil', field: 'shopify_qty', width: 80, hozAlign: 'center', frozen: true,
-                headerTooltip: 'Dilution = (L30 sold / Inventory) × 100. Colors from the Dil Rule.',
+                headerTooltip: 'CP Master Dil = round(OV L30 sold / Inventory × 100). Inv 0 and missing data are blank.',
                 sorter: function(a, b, aRow, bRow) {
-                    return dilValue(aRow.getData()) - dilValue(bRow.getData());
+                    return dilSortValue(aRow.getData()) - dilSortValue(bRow.getData());
                 },
                 formatter: function(cell) {
-                    const row = cell.getRow().getData();
-                    const inv = parseFloat(row.shopify_inv) || 0;
-                    const l30 = parseFloat(row.shopify_qty)  || 0;
-                    if (inv === 0) {
-                        return `<span style="color:${getDilColor(0)}; font-weight:600;">0%</span>`;
+                    const dil = dilValue(cell.getRow().getData());
+                    if (dil === null) {
+                        return '<span class="text-muted" title="No CP Master Dil (OV L30 or Inv missing, or Inv is 0)">—</span>';
                     }
-                    const dil = (l30 / inv) * 100;
-                    return `<span style="color:${getDilColor(dil)}; font-weight:600;">${Math.round(dil)}%</span>`;
+                    return `<span style="color:${getDilColor(dil)}; font-weight:600;">${dil}%</span>`;
                 }
             },
             {
@@ -880,11 +877,27 @@ const dilGetUrl  = '/ebay/campaign-ads/dil-rule';
 const dilSaveUrl = '/ebay/campaign-ads/dil-rule';
 let currentDilRule = @json($dilRule ?? ['bands' => []]);
 
-// DIL value for a row (0 when inventory is 0 — treated as the lowest/worst band)
+// CP Master Dil = round(OV L30 sold / Inventory × 100). Inv 0 or missing is not Dil 0.
 function dilValue(row) {
-    const inv = parseFloat(row && row.shopify_inv) || 0;
-    const l30 = parseFloat(row && row.shopify_qty)  || 0;
-    return inv > 0 ? (l30 / inv) * 100 : 0;
+    if (!row) return null;
+    if (Object.prototype.hasOwnProperty.call(row, 'cp_dil')) {
+        if (row.cp_dil === null || row.cp_dil === '') return null;
+        const n = Number(row.cp_dil);
+        return isFinite(n) ? n : null;
+    }
+    const invRaw = row.shopify_inv;
+    const qtyRaw = row.shopify_qty;
+    if (invRaw === null || invRaw === undefined || invRaw === '' || qtyRaw === null || qtyRaw === undefined || qtyRaw === '') {
+        return null;
+    }
+    const inv = Number(invRaw);
+    const l30 = Number(qtyRaw);
+    if (!isFinite(inv) || inv <= 0 || !isFinite(l30)) return null;
+    return Math.round((l30 / inv) * 100);
+}
+function dilSortValue(row) {
+    const d = dilValue(row);
+    return d === null ? -1 : d;
 }
 
 // Color for a DIL% from the dynamic dilution rule

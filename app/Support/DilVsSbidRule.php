@@ -113,7 +113,39 @@ final class DilVsSbidRule
             ];
         }
 
-        return $clean;
+        return self::extendAutoOff($clean);
+    }
+
+    /**
+     * Auto Off runs from the first pause slab through Dil above 100.
+     * A saved rule that stops at 10–20 still pauses every higher Dil.
+     *
+     * @param  array<int, array<string, mixed>>  $slabs
+     * @return array<int, array<string, mixed>>
+     */
+    private static function extendAutoOff(array $slabs): array
+    {
+        if ($slabs === []) {
+            return $slabs;
+        }
+        $last = $slabs[count($slabs) - 1];
+        if (($last['mode'] ?? '') !== 'auto_off') {
+            return $slabs;
+        }
+        $from = (float) $last['max'];
+        if ($from >= 9999) {
+            return $slabs;
+        }
+        while ($from < 100) {
+            $to = $from + 10;
+            $slabs[] = ['min' => $from, 'max' => $to, 'mode' => 'auto_off', 'bid' => null];
+            $from = $to;
+        }
+        if ($from < 9999) {
+            $slabs[] = ['min' => $from, 'max' => 9999, 'mode' => 'auto_off', 'bid' => null];
+        }
+
+        return $slabs;
     }
 
     /**

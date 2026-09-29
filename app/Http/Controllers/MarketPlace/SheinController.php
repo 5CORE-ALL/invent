@@ -540,10 +540,13 @@ class SheinController extends Controller
                 'total_commission' => round($spCommission, 2),
             ];
 
-            // ── 4. Shopify → INV / OV L30 via Product Master SKU (same map as Amazon).
+            // ── 4. Shopify → INV / OV L30. Product Master map first, then Shopify SKU.
             $shopifyByProductSku = ShopifySku::mapByProductSkus(
                 $productMasterBySku->map(fn ($pm) => (string) ($pm->sku ?? ''))->filter()->unique()->values()->all()
             );
+            $shopifyBySku = SupportCollection::make(
+                ShopifySku::query()->get(['sku', 'inv', 'quantity', 'image_src'])->all()
+            )->keyBy(fn ($r) => $normalizeSku($r->sku));
 
             $viewMetaBySku = SupportCollection::make(
                 SheinDataView::query()->get(['sku', 'value'])->all()
@@ -581,8 +584,21 @@ class SheinController extends Controller
                 )->keyBy(fn ($r) => $normalizeSku($r->sku));
             }
 
-            // Dil universe: Product Master first. Shein price/sales join onto that SKU.
-            $allNormalizedSkus = collect($productMasterBySku->keys()->all())->values();
+            // Listed Shein SKUs stay on the page. In-stock Product Master SKUs stay too.
+            $skuSet = [];
+            foreach ($pricingBySku->keys() as $k) {
+                $skuSet[(string) $k] = true;
+            }
+            foreach ($productMasterBySku->keys() as $k) {
+                $pm = $productMasterBySku->get($k);
+                $shopifyRow = ($pm && isset($shopifyByProductSku[$pm->sku]))
+                    ? $shopifyByProductSku[$pm->sku]
+                    : $shopifyBySku->get($k);
+                if ($shopifyRow && (int) ($shopifyRow->inv ?? 0) > 0) {
+                    $skuSet[(string) $k] = true;
+                }
+            }
+            $allNormalizedSkus = collect(array_keys($skuSet));
 
             if (! $pmHasLpCol || ! $pmHasShipCol) {
                 $neededPmIds = [];
@@ -681,7 +697,7 @@ class SheinController extends Controller
 
                 $shopifyRow = ($productMaster && isset($shopifyByProductSku[$productMaster->sku]))
                     ? $shopifyByProductSku[$productMaster->sku]
-                    : null;
+                    : $shopifyBySku->get($normalizedSku);
                 $inv        = $shopifyRow ? (int) ($shopifyRow->inv      ?? 0) : 0;
                 $ovL30      = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
                 $imageSrc   = $shopifyRow ? ($shopifyRow->image_src      ?? null) : null;

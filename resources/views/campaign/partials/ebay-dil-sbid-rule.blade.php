@@ -33,7 +33,7 @@
             <div class="modal-body">
                 <p class="small mb-2" id="dil-sbid-mode-note">Off. S Bid uses View VS SBID (For L7 Views).</p>
                 <ul class="small text-muted mb-3 ps-3">
-                    <li>Dil = (L30 sold ÷ Inventory) × 100. Inventory 0 counts as Dil 0. First matching slab wins.</li>
+                    <li>Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100). Inventory 0 and missing data are not counted. First matching slab wins.</li>
                     <li><strong>0–0</strong> applies that listing’s <strong>ES Bid</strong>.</li>
                     <li><strong>0.1–10%</strong> uses the <strong>S Bid %</strong> you type on that row.</li>
                     <li><strong>10–20 … &gt;100%</strong> is <strong>Auto Off</strong> (the promoted listing is paused). The last slab (To 9999) catches Dil above 100.</li>
@@ -45,7 +45,7 @@
                             <tr>
                                 <th class="text-center" style="width:110px;">From</th>
                                 <th class="text-center" style="width:110px;">To</th>
-                                <th class="text-center" style="width:90px;" title="Listings on this page whose Dil is in this slab">Count</th>
+                                <th class="text-center" style="width:90px;" title="Listings on this page whose CP Master Dil (OV L30 sold ÷ Inv) is in this slab. Inv 0 is not counted.">Count</th>
                                 <th class="text-end" style="width:140px;">S Bid</th>
                                 <th style="width:36px;"></th>
                             </tr>
@@ -119,7 +119,10 @@ function dilSbidContains(dil, slab, prevMax) {
     return loOk && dil <= max;
 }
 function dilSbidOfRow(row) {
-    const dil = (typeof dilValue === 'function') ? dilValue(row) : 0;
+    const dil = (typeof dilValue === 'function') ? dilValue(row) : null;
+    if (dil === null || !isFinite(dil)) {
+        return { bid: 0, color: '#6c757d', skip: true, off: false, title: 'No CP Master Dil' };
+    }
     const esBid = parseFloat(row && row.suggested_bid) || 0;
     let prevMax = null;
     for (let i = 0; i < currentDilSbidSlabs.length; i++) {
@@ -150,7 +153,8 @@ function dilSbidCounts() {
         if (typeof table !== 'undefined' && table && typeof table.getData === 'function') rows = table.getData() || [];
     } catch (e) { rows = []; }
     rows.forEach(function(d) {
-        const dil = (typeof dilValue === 'function') ? dilValue(d) : 0;
+        const dil = (typeof dilValue === 'function') ? dilValue(d) : null;
+        if (dil === null || !isFinite(dil)) return;
         let prevMax = null;
         for (let i = 0; i < currentDilSbidSlabs.length; i++) {
             if (dilSbidContains(dil, currentDilSbidSlabs[i], prevMax)) {
@@ -237,7 +241,9 @@ function dilSbidSave(thenApply) {
         contentType: 'application/json',
         data: JSON.stringify({ slabs: currentDilSbidSlabs, enabled: !!dilSbidEnabled }),
         success: function(resp) {
+            const before = currentDilSbidSlabs.length;
             if (resp && Array.isArray(resp.slabs) && resp.slabs.length) currentDilSbidSlabs = resp.slabs;
+            if (currentDilSbidSlabs.length !== before) renderDilSbidTable();
             if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
             dilSbidPaintCounts();
             if (thenApply) dilSbidApply();
@@ -249,6 +255,22 @@ function dilSbidSave(thenApply) {
                 errEl.classList.remove('d-none');
             }
         }
+    });
+}
+function dilSbidPaintStatus(resp) {
+    if (typeof table === 'undefined' || !table || !resp || !Array.isArray(resp.results)) return;
+    const paused = {};
+    const running = {};
+    resp.results.forEach(function(r) {
+        if (!r || r.listing_id == null || r.status !== 'pushed') return;
+        const id = String(r.listing_id);
+        if (r.bid === 'OFF') paused[id] = true;
+        else running[id] = true;
+    });
+    table.getRows().forEach(function(row) {
+        const id = String((row.getData() || {}).listing_id || '');
+        if (paused[id]) row.update({ campaign_status: 'PAUSED' });
+        else if (running[id]) row.update({ campaign_status: 'RUNNING' });
     });
 }
 function dilSbidApply() {
@@ -284,6 +306,7 @@ function dilSbidApply() {
                 return;
             }
             const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
+            dilSbidPaintStatus(resp);
             if (statusEl) statusEl.textContent = 'Applied: ' + s + ' pushed · ' + f + ' failed · ' + sk + ' skipped';
         },
         error: function(xhr) {
