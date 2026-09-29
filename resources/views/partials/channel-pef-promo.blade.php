@@ -3965,14 +3965,33 @@
                 chPromoScheduleDilSgroiAutoApply();
             }
         }
+        function chPromoOvL30(d) {
+            if (!d) return 0;
+            const raw = d.ov_l30 != null && d.ov_l30 !== '' ? d.ov_l30
+                : (d.L30 != null && d.L30 !== '' ? d.L30
+                    : (d['L30'] != null && d['L30'] !== '' ? d['L30'] : d.ovl30));
+            const n = Number(raw);
+            return isFinite(n) && n > 0 ? n : 0;
+        }
+        function chPromoShopifyInv(d) {
+            if (!d) return 0;
+            let raw;
+            if (CHANNEL_PROMO_CHANNEL === 'doba' || CHANNEL_PROMO_CHANNEL === 'doba_withoutship') {
+                raw = d.shopify_inv;
+            } else if (d.INV != null && d.INV !== '') {
+                raw = d.INV;
+            } else if (d.inv != null && d.inv !== '') {
+                raw = d.inv;
+            } else {
+                raw = d.inventory;
+            }
+            const n = Number(raw);
+            return isFinite(n) && n > 0 ? n : 0;
+        }
         function chPromoSkuDil(d) {
-            const inv = chPromoInv(d);
-            if (inv <= 0) return 0;
-            const ovl30 = Number(d && (d.L30 != null ? d.L30 : d['L30']))
-                || Number(d && d.ov_l30)
-                || Number(d && d.ovl30)
-                || 0;
-            return (ovl30 / inv) * 100;
+            const inv = chPromoShopifyInv(d);
+            if (!(inv > 0)) return 0;
+            return (chPromoOvL30(d) / inv) * 100;
         }
         function chPromoListingDilMap() {
             const src = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
@@ -3998,112 +4017,8 @@
             return chPromoSkuDil(d);
         }
         function chPromoDil(d) {
-            const inv = chPromoInv(d);
-            // eBay 2 Dil is per SKU (OV L30 ÷ Shopify INV), same as Amazon.
-            // Other eBay pages still use listing Dil (Σ OV L30 ÷ Σ INV).
-            if (String(CHANNEL_PROMO_CHANNEL).indexOf('ebay') === 0) {
-                if (CHANNEL_PROMO_CHANNEL === 'ebay2') return chPromoSkuDil(d);
-                return chPromoListingDil(d);
-            }
-            // Temu Dil column = listing Dil (Σ OV L30 ÷ Σ INV), same as Sprc Dil
-            if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3') {
-                if (typeof chPromoUsesSprcDilInsteadOfPrmt === 'function' && chPromoUsesSprcDilInsteadOfPrmt()) {
-                    return chPromoListingDil(d);
-                }
-                let dil = Number(d.dil_percent);
-                if (isFinite(dil)) return dil;
-                if (inv <= 0) return 0;
-                const ovl30 = Number(d.ovl30 != null ? d.ovl30 : d.L30) || 0;
-                return (ovl30 / inv) * 100;
-            }
-            // AliExpress Dil = OV L30 ÷ Shopify INV, same as the Dil column and Amazon.
-            // Shein / Newegg / Faire / PLS store Dil already as 0–100. Do NOT ×100.
-            if (CHANNEL_PROMO_CHANNEL === 'aliexpress') {
-                const shopInv = Number(d && (d.inv != null ? d.inv : d.INV)) || 0;
-                if (!(shopInv > 0)) return 0;
-                const ovl30 = Number(d.ov_l30 != null ? d.ov_l30 : (d.ovl30 != null ? d.ovl30 : d.L30)) || 0;
-                return (ovl30 / shopInv) * 100;
-            }
-            if (CHANNEL_PROMO_CHANNEL === 'shein'
-                || CHANNEL_PROMO_CHANNEL === 'newegg'
-                || CHANNEL_PROMO_CHANNEL === 'faire' || CHANNEL_PROMO_CHANNEL === 'pls'
-                || CHANNEL_PROMO_CHANNEL === 'depop'
-                || CHANNEL_PROMO_CHANNEL === 'vinted'
-                || CHANNEL_PROMO_CHANNEL === 'instagram') {
-                let dil = Number(d.dil_percent != null ? d.dil_percent : d[chPromoCfg.dilField]);
-                if (isFinite(dil)) return dil;
-                if (inv <= 0) return 0;
-                const ovl30 = Number(d.ov_l30 != null ? d.ov_l30 : (d.ovl30 != null ? d.ovl30 : d.L30)) || 0;
-                return (ovl30 / inv) * 100;
-            }
-            // TikTok Dil = (OV L30 / INV) × 100 — same as Amazon / the Dil column.
-            if (CHANNEL_PROMO_CHANNEL === 'tiktok' || CHANNEL_PROMO_CHANNEL === 'tiktok2'
-                || CHANNEL_PROMO_CHANNEL === 'fb_marketplace') {
-                return chPromoSkuDil(d);
-            }
-            // Shopify B2B Dil = listing Dil (Σ OV L30 ÷ Σ INV by Parent), same as /ebay-tabulator-view.
-            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
-                return chPromoListingDil(d);
-            }
-            // Shopify B2C Dil column = (OV L30 / INV) × 100 — already stored as DIL%
-            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
-                let dil = Number(d['DIL%'] != null ? d['DIL%'] : d[chPromoCfg.dilField]);
-                if (isFinite(dil)) return dil;
-                if (inv <= 0) return 0;
-                const ovl30 = Number(d.L30 != null ? d.L30 : d['L30']) || 0;
-                return (ovl30 / inv) * 100;
-            }
-            // Reverb Dil column = (OV L30 / INV) × 100
-            if (CHANNEL_PROMO_CHANNEL === 'reverb') {
-                if (inv <= 0) return 0;
-                const ovl30 = Number(d['L30'] != null ? d['L30'] : d.L30) || 0;
-                return (ovl30 / inv) * 100;
-            }
-            // Macys Dil = (OV L30 / Shopify INV) × 100. 0 Sold is still MC L30 = 0.
-            if (CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy') {
-                if (inv <= 0) return 0;
-                const ovl30 = Number(d.L30 != null ? d.L30 : d['L30']) || 0;
-                return (ovl30 / inv) * 100;
-            }
-            // Best Buy / Purchasing Power Dil column = (OV L30 / INV) × 100
-            if (CHANNEL_PROMO_CHANNEL === 'bestbuy'
-                || CHANNEL_PROMO_CHANNEL === 'purchasing_power') {
-                if (inv <= 0) return 0;
-                const ovl30 = Number(d['L30'] != null ? d['L30'] : d.L30) || 0;
-                return (ovl30 / inv) * 100;
-            }
-            // Wayfair Dil column = (ov_l30 / inv) × 100
-            if (CHANNEL_PROMO_CHANNEL === 'wayfair') {
-                if (inv <= 0) return 0;
-                const ovl30 = Number(d.ov_l30 != null ? d.ov_l30 : d.L30) || 0;
-                return (ovl30 / inv) * 100;
-            }
-            // Doba Dil = (OV L30 / Shop INV) × 100 — same denominator as Amazon INV.
-            // Row field INV is Doba stock (D INV) and must not move the slab count.
-            if (CHANNEL_PROMO_CHANNEL === 'doba' || CHANNEL_PROMO_CHANNEL === 'doba_withoutship') {
-                const shopInv = Number(d && d.shopify_inv) || 0;
-                if (shopInv <= 0) return 0;
-                const ovl30 = Number(d.L30 != null ? d.L30 : d['L30']) || 0;
-                return (ovl30 / shopInv) * 100;
-            }
-            // TopDawg Dil column = (OV L30 / INV) × 100
-            if (CHANNEL_PROMO_CHANNEL === 'topdawg') {
-                if (inv <= 0) return 0;
-                const stored = Number(d.Dil != null ? d.Dil : d['Dil%']);
-                if (isFinite(stored) && stored > 0) return stored;
-                const ovl30 = Number(d.L30 != null ? d.L30 : d['L30']) || 0;
-                return (ovl30 / inv) * 100;
-            }
-            let dil = Number(d[chPromoCfg.dilField]);
-            if (isFinite(dil)) {
-                // Stored Dil columns are already 0–100. Only convert a unit-interval
-                // ratio from the L30/INV fallback below.
-                return dil;
-            }
-            const l30 = Number(d['eBay L30'] || d.L30 || d['MC L30'] || d['W_L30'] || d['B2B L30'] || 0) || 0;
-            dil = inv > 0 ? (l30 / inv) : 0;
-            if (dil > 0 && dil <= 2) dil = dil * 100;
-            return dil;
+            // Every page: Dil = OV L30 ÷ Shopify INV, per SKU. Exact 0 stays in the 0–0 slab.
+            return chPromoSkuDil(d);
         }
         function chPromoIsEbayChannel() {
             return String(CHANNEL_PROMO_CHANNEL).indexOf('ebay') === 0;

@@ -3845,7 +3845,14 @@
                 ajaxResponse: function(url, params, response) {
                     var payload = response.data || response;
                     if (Array.isArray(payload)) {
-                        payload.forEach(function(row) { amazonApplyL1FromEntries(row); });
+                        payload.forEach(function(row) {
+                            if (!row || typeof row !== 'object') return;
+                            const ov = Number(row.L30);
+                            const inv = Number(row.INV);
+                            row._dil_ov_l30 = isFinite(ov) && ov > 0 ? ov : 0;
+                            row._dil_inv = isFinite(inv) && inv > 0 ? inv : 0;
+                            amazonApplyL1FromEntries(row);
+                        });
                         allTableData = payload;
                         if (window.ParentExpand) ParentExpand.captureDataset(payload);
                     }
@@ -4173,20 +4180,15 @@
                         headerTooltip: "OV L30 ÷ INV. Red <25% · Green 25–50% · Pink 50%+.",
                         sorter: function(a, b, aRow, bRow) {
                             const dilOf = function(row) {
-                                const inv = parseFloat(row.INV) || 0;
-                                const ovl30 = parseFloat(row['L30']) || 0;
-                                return inv === 0 ? 0 : (ovl30 / inv) * 100;
+                                return (typeof amzPefDil === 'function') ? amzPefDil(row) : 0;
                             };
                             return dilOf(aRow.getData()) - dilOf(bRow.getData());
                         },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const INV = parseFloat(rowData.INV) || 0;
-                            const OVL30 = parseFloat(rowData['L30']) || 0;
+                            const dil = (typeof amzPefDil === 'function') ? amzPefDil(rowData) : 0;
 
-                            if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
-
-                            const dil = (OVL30 / INV) * 100;
+                            if (!(dil > 0)) return '<span style="color: #6c757d;">0%</span>';
                             let color = '#a00211';
                             if (dil < 25) color = '#a00211';
                             else if (dil < 50) color = '#28a745';

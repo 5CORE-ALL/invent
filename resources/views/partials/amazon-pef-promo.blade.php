@@ -938,10 +938,12 @@
             return !!(d && !d.is_parent_summary && amzPefSku(d) && String(amzPefSku(d)).indexOf('PARENT') === -1);
         }
         function amzPefDil(d) {
-            const inv = Number(d.INV) || 0;
-            if (inv === 0) return 0;
-            const ovl30 = Number(d['L30']) || 0;
-            return (ovl30 / inv) * 100;
+            const invRaw = d && (d._dil_inv != null ? d._dil_inv : d.INV);
+            const inv = Number(invRaw);
+            if (!isFinite(inv) || !(inv > 0)) return 0;
+            const ovRaw = d && (d._dil_ov_l30 != null ? d._dil_ov_l30 : d.L30);
+            const ov = Number(ovRaw);
+            return ((isFinite(ov) && ov > 0) ? ov : 0) / inv * 100;
         }
         function amzPefCvr(d) {
             const stored = d && d.CVR_L30;
@@ -976,7 +978,9 @@
             return 'flat';
         }
         function amzPefInv(d) {
-            return Number(d.INV) || 0;
+            const raw = d && (d._dil_inv != null ? d._dil_inv : d.INV);
+            const n = Number(raw);
+            return isFinite(n) && n > 0 ? n : 0;
         }
         function parseAmzPefPercentAmount(raw) {
             const s = String(raw == null ? '' : raw).trim();
@@ -1363,10 +1367,23 @@
         }
         window.amzDilSlabColorInfo = amzDilSlabColorInfo;
         function amzDgEachInvChild(fn) {
-            if (typeof table === 'undefined' || !table) return;
-            const rows = (typeof table.getData === 'function') ? (table.getData('all') || []) : [];
+            let rows = [];
+            try {
+                if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
+                    rows = allTableData;
+                }
+            } catch (e) { /* TDZ */ }
+            if (!rows.length && typeof table !== 'undefined' && table && typeof table.getData === 'function') {
+                rows = table.getData('all') || [];
+            }
+            const seen = {};
             rows.forEach(function(d) {
                 if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return;
+                const sku = String(amzPefSku(d) || '').trim().toUpperCase();
+                if (sku) {
+                    if (seen[sku]) return;
+                    seen[sku] = true;
+                }
                 fn(d);
             });
         }

@@ -478,26 +478,6 @@ class Shopifyb2bController extends Controller
             ];
         }
 
-        $listingDilByParent = [];
-        foreach ($groupedByParent as $parent => $rows) {
-            $parentKey = trim((string) $parent);
-            if ($parentKey === '') {
-                continue;
-            }
-            $listingInv = (float) $rows->sum(fn ($r) => floatval($r['INV'] ?? 0));
-            $listingOv = (float) $rows->sum(fn ($r) => floatval($r['L30'] ?? 0));
-            $listingDilByParent[$parentKey] = $listingInv > 0 ? ($listingOv / $listingInv) * 100 : 0;
-        }
-        foreach ($finalItems as &$item) {
-            if (! empty($item['is_parent_summary'])) {
-                continue;
-            }
-            $parentKey = trim((string) ($item['Parent'] ?? ''));
-            if ($parentKey !== '' && isset($listingDilByParent[$parentKey])) {
-                $item['DIL%'] = $listingDilByParent[$parentKey];
-            }
-        }
-        unset($item);
 
         return $finalItems;
     }
