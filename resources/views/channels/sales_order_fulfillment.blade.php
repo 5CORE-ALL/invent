@@ -1619,16 +1619,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-no-tracking-pane" role="tabpanel" aria-labelledby="sof-no-tracking-tab">
-                            <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-                                <p class="small text-muted mb-0 sof-date-scope-hint">Label created but no tracking number yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
-                                <button type="button"
-                                        id="sof-fetch-tracking-btn"
-                                        class="btn btn-sm btn-outline-primary flex-shrink-0"
-                                        title="Fetch tracking numbers for every order on Label Created / No Tracking">
-                                    <i class="mdi mdi-barcode-scan me-1"></i>
-                                    <span class="sof-fetch-tracking-label">Fetch Tracking</span>
-                                </button>
-                            </div>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Label created but no tracking number yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
                             <div id="sof-no-tracking-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -5396,7 +5387,6 @@
                 sofUpdateTrackingFilterCounts(pendingRows);
                 applyPendingFilters();
                 sofPinOrderOver24h(pendingTable);
-                sofAutoFillMissingLabelTracking(pendingRows, 0);
             },
             dataSorted: function () {
                 sofPinOrderOver24h(pendingTable);
@@ -5530,7 +5520,6 @@
                     if (noTrackingTable) {
                         try { noTrackingTable.redraw(true); } catch (e) {}
                     }
-                    sofAutoFillMissingLabelTracking(noTrackingRows, 0);
                     sofRefreshAmazonTrackingAfterFill(noTrackingRows);
                 }, 50);
             },
@@ -7083,7 +7072,6 @@
                     pendingRows = sofNormalizeOrderRows((j && j.success && Array.isArray(j.data)) ? j.data : []);
                     sofUpdatePendingBadge(pendingRows.length);
                 }
-                sofAutoFillMissingLabelTracking(pendingRows, 0);
             })
             .catch(function () {
                 window.__sofReconcilePendingStarted = false;
@@ -7130,6 +7118,7 @@
                 selected: targets,
                 selected_only: true,
                 background: !!background,
+                replace: true,
             }),
         }).then(function (r) {
             return r.text().then(function (text) {
@@ -7147,10 +7136,6 @@
         const running = !!(st && st.state === 'running');
         const pullBtn = document.getElementById('sof-pull-tracking-btn');
         const fetchBtn = document.getElementById('sof-fetch-tracking-btn');
-        [pullBtn, fetchBtn].forEach(function (btn) {
-            if (!btn) return;
-            btn.disabled = running;
-        });
         const pullLabel = pullBtn ? pullBtn.querySelector('span') : null;
         const fetchLabel = fetchBtn ? fetchBtn.querySelector('span') : null;
         if (running) {
@@ -7169,7 +7154,10 @@
     function sofWatchBackgroundPull() {
         if (sofPullWatchTimer) return;
         const tick = function () {
-            fetch('{{ route("sales.order.fulfillment.pull.tracking.status") }}', {
+            const resume = (function () {
+                try { return sessionStorage.getItem('sofPullUserRun') === '1'; } catch (e) { return false; }
+            })();
+            fetch('{{ route("sales.order.fulfillment.pull.tracking.status") }}' + (resume ? '?resume=1' : ''), {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             })
                 .then(function (r) { return r.json(); })
@@ -7187,9 +7175,12 @@
                         }
                     }
                     sofPullWasRunning = running;
-                    if (!running && sofPullWatchTimer) {
-                        clearInterval(sofPullWatchTimer);
-                        sofPullWatchTimer = null;
+                    if (!running) {
+                        try { sessionStorage.removeItem('sofPullUserRun'); } catch (e3) {}
+                        if (sofPullWatchTimer) {
+                            clearInterval(sofPullWatchTimer);
+                            sofPullWatchTimer = null;
+                        }
                     }
                 })
                 .catch(function () {});
@@ -7223,29 +7214,6 @@
         }, 12000);
     }
 
-    const sofAutoPullQueued = {};
-    function sofAutoFillMissingLabelTracking(rows) {
-        const missing = [];
-        (Array.isArray(rows) ? rows : []).forEach(function (r) {
-            if (String(r.tracking_number || '').trim()) return;
-            const mapped = sofMapPullTarget(r);
-            if (!mapped) return;
-            const key = sofPullTargetKey(mapped);
-            if (!key || sofAutoPullQueued[key]) return;
-            sofAutoPullQueued[key] = true;
-            missing.push(mapped);
-        });
-        if (!missing.length) return;
-        sofPullTrackingRequest(missing, true)
-            .then(function () { sofWatchBackgroundPull(); })
-            .catch(function () {});
-    }
-
-    // Keep Label Created / Pending tracking in sync while the page is open.
-    setInterval(function () {
-        const rows = [].concat(pendingRows || [], noTrackingRows || [], fulfilledRows || []);
-        sofAutoFillMissingLabelTracking(rows);
-    }, 15 * 60 * 1000);
     sofWatchBackgroundPull();
 
     function sofSelectedPullTargets() {
@@ -7291,13 +7259,9 @@
 
     function sofRunPullTracking(selected, buttonEl) {
         const $btn = buttonEl ? $(buttonEl) : $('#sof-pull-tracking-btn');
-        if ($('#sof-pull-tracking-btn').prop('disabled') || $('#sof-fetch-tracking-btn').prop('disabled')) return;
         const $label = $btn.find('span').first();
         const prev = $label.text();
-        let targets = Array.isArray(selected) ? selected.slice() : [];
-        if (!targets.length) {
-            targets = sofMissingPullTargetsFromCache();
-        }
+        const targets = Array.isArray(selected) ? selected.slice() : [];
         if (!targets.length) {
             const emptyMsg = 'No orders missing tracking on this page yet. Wait for the tables to load, or check rows and try again.';
             if (typeof Swal !== 'undefined') {
@@ -7308,13 +7272,13 @@
             return;
         }
 
-        $label.text('Queuing…');
-        $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', true);
+        $label.text('Queuing ' + targets.length + '…');
+        try { sessionStorage.setItem('sofPullUserRun', '1'); } catch (e) {}
         sofPullTrackingRequest(targets, true)
             .then(function (res) {
                 const j = res.json || {};
                 if (!res.ok || j.success === false) {
-                    $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', false);
+                    try { sessionStorage.removeItem('sofPullUserRun'); } catch (e1) {}
                     $label.text(prev);
                     const msg = j.message || 'Could not start the background pull.';
                     if (typeof Swal !== 'undefined') {
@@ -7333,7 +7297,7 @@
                 sofWatchBackgroundPull();
             })
             .catch(function () {
-                $('#sof-pull-tracking-btn, #sof-fetch-tracking-btn').prop('disabled', false);
+                try { sessionStorage.removeItem('sofPullUserRun'); } catch (e2) {}
                 $label.text(prev);
             });
     }

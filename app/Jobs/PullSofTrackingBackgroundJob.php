@@ -42,11 +42,11 @@ class PullSofTrackingBackgroundJob implements ShouldQueue
     /**
      * @param  list<array<string, mixed>>  $rows
      */
-    public static function enqueue(array $rows): array
+    public static function enqueue(array $rows, bool $replace = false): array
     {
         $added = 0;
-        Cache::lock('sof.pull.bg.mutate', 15)->block(8, function () use ($rows, &$added): void {
-            $queue = Cache::get(self::QUEUE_KEY, []);
+        Cache::lock('sof.pull.bg.mutate', 15)->block(8, function () use ($rows, $replace, &$added): void {
+            $queue = $replace ? [] : Cache::get(self::QUEUE_KEY, []);
             if (! is_array($queue)) {
                 $queue = [];
             }
@@ -71,11 +71,15 @@ class PullSofTrackingBackgroundJob implements ShouldQueue
             Cache::put(self::QUEUE_KEY, $queue, now()->addHours(6));
         });
 
+        if ($replace) {
+            Cache::forget(self::LOCK_KEY);
+        }
+
         $status = Cache::get(self::STATUS_KEY, []);
         if (! is_array($status)) {
             $status = [];
         }
-        $running = ($status['state'] ?? '') === 'running';
+        $running = ! $replace && ($status['state'] ?? '') === 'running';
         if (! $running) {
             $status = [
                 'state' => 'running',
@@ -113,7 +117,12 @@ class PullSofTrackingBackgroundJob implements ShouldQueue
         if (! Cache::add(self::LOCK_KEY, 1, now()->addMinutes(20))) {
             return;
         }
-        self::dispatch();
+        if (app()->runningInConsole()) {
+            self::dispatch();
+
+            return;
+        }
+        self::dispatchAfterResponse();
     }
 
     public static function pendingCount(): int
@@ -126,17 +135,33 @@ class PullSofTrackingBackgroundJob implements ShouldQueue
     /**
      * @return array<string, mixed>
      */
-    public static function status(): array
+    public static function status(bool $resume = false): array
     {
-        if (self::pendingCount() > 0) {
-            self::ensureRunning();
-        }
         $status = Cache::get(self::STATUS_KEY, []);
         if (! is_array($status)) {
             $status = [];
         }
         $queued = self::pendingCount();
         $state = (string) ($status['state'] ?? 'idle');
+        $updatedAt = strtotime((string) ($status['updated_at'] ?? '')) ?: 0;
+        $stale = $updatedAt > 0 && (time() - $updatedAt) > 90;
+        if ($state === 'running' && $queued > 0 && $stale && (int) ($status['checked'] ?? 0) === 0 && ! $resume) {
+            Cache::forget(self::QUEUE_KEY);
+            Cache::forget(self::LOCK_KEY);
+            $status['state'] = 'idle';
+            $status['total'] = 0;
+            $status['message'] = '';
+            $status['updated_at'] = now()->toDateTimeString();
+            Cache::put(self::STATUS_KEY, $status, now()->addMinutes(10));
+            $queued = 0;
+            $state = 'idle';
+        }
+        if ($resume && $queued > 0) {
+            if ($stale) {
+                Cache::forget(self::LOCK_KEY);
+            }
+            self::ensureRunning();
+        }
         if ($state === 'running' && $queued === 0 && ! Cache::has(self::LOCK_KEY)) {
             $state = ((int) ($status['checked'] ?? 0) > 0) ? 'done' : 'idle';
             $status['state'] = $state;

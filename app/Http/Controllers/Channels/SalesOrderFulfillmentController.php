@@ -4810,11 +4810,11 @@ class SalesOrderFulfillmentController extends Controller
     /**
      * Progress for a Pull Tracking run that continues after the page is refreshed.
      */
-    public function pullTrackingStatus(): JsonResponse
+    public function pullTrackingStatus(Request $request): JsonResponse
     {
         return response()->json(array_merge(
             ['success' => true],
-            PullSofTrackingBackgroundJob::status()
+            PullSofTrackingBackgroundJob::status($request->boolean('resume'))
         ));
     }
 
@@ -4902,7 +4902,8 @@ class SalesOrderFulfillmentController extends Controller
             ], 422);
         }
         if (filter_var($request->input('background', false), FILTER_VALIDATE_BOOL)) {
-            $status = PullSofTrackingBackgroundJob::enqueue($selected);
+            $replace = filter_var($request->input('replace', false), FILTER_VALIDATE_BOOL);
+            $status = PullSofTrackingBackgroundJob::enqueue($selected, $replace);
 
             return response()->json([
                 'success' => true,
