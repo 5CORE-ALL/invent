@@ -213,7 +213,7 @@
             </li>
 
             @php
-                $ofNavOpen = request()->routeIs('order.fulfillment') || request()->routeIs('order.fulfillment.delivered');
+                $ofNavOpen = request()->routeIs('order.fulfillment') || request()->routeIs('order.fulfillment.delivered') || request()->routeIs('order.fulfillment.transit');
             @endphp
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#orderFulfillmentNav" aria-expanded="{{ $ofNavOpen ? 'true' : 'false' }}"
@@ -226,6 +226,9 @@
                     <ul class="side-nav-second-level">
                         <li>
                             <a href="{{ route('order.fulfillment') }}" class="{{ request()->routeIs('order.fulfillment') ? 'active' : '' }}">Orders</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('order.fulfillment.transit') }}" class="{{ request()->routeIs('order.fulfillment.transit') ? 'active' : '' }}">Transit</a>
                         </li>
                         <li>
                             <a href="{{ route('order.fulfillment.delivered') }}" class="{{ request()->routeIs('order.fulfillment.delivered') ? 'active' : '' }}">Delivered</a>

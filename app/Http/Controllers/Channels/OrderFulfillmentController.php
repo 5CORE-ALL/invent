@@ -52,6 +52,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'ofDateEarliest' => self::EARLIEST_ORDER_DATE,
             'ofPageTitle' => 'Order Fulfillment',
             'ofDeliveredOnly' => false,
+            'ofTransitOnly' => false,
         ]);
     }
 
@@ -60,6 +61,16 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         return $this->index($gofo, $veeqo)->with([
             'ofPageTitle' => 'Delivered',
             'ofDeliveredOnly' => true,
+            'ofTransitOnly' => false,
+        ]);
+    }
+
+    public function transit(GofoExpressService $gofo, VeeqoApiService $veeqo): View
+    {
+        return $this->index($gofo, $veeqo)->with([
+            'ofPageTitle' => 'Transit',
+            'ofDeliveredOnly' => false,
+            'ofTransitOnly' => true,
         ]);
     }
 
@@ -76,6 +87,11 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 $rows = array_values(array_filter(
                     $rows,
                     fn (array $row) => $this->fulfillmentRowIsDelivered($row)
+                ));
+            } elseif ($request->boolean('transit')) {
+                $rows = array_values(array_filter(
+                    $rows,
+                    fn (array $row) => $this->fulfillmentRowIsInTransit($row)
                 ));
             }
 
@@ -143,6 +159,34 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'buyeracceptgoods',
             'tradefinished',
             'partiallydelivered',
+        ], true);
+    }
+
+    /**
+     * In transit by carrier tracking, or by a shipped marketplace status.
+     * Delivered rows stay on the Delivered page.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function fulfillmentRowIsInTransit(array $row): bool
+    {
+        if ($this->fulfillmentRowIsDelivered($row)) {
+            return false;
+        }
+
+        $tracking = strtolower(trim((string) ($row['tracking_status'] ?? '')));
+        if (in_array($tracking, ['in transit', 'out for delivery'], true)) {
+            return true;
+        }
+
+        $status = strtolower(str_replace([' ', '-', '_'], '', trim((string) ($row['status'] ?? ''))));
+
+        return in_array($status, [
+            'intransit',
+            'shipped',
+            'partiallyshipped',
+            'outfordelivery',
+            'ontheway',
         ], true);
     }
 
