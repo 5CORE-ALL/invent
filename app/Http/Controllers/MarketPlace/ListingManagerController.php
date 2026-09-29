@@ -7,6 +7,7 @@ use App\Models\AmazonListingRaw;
 use App\Models\ChannelMaster;
 use App\Models\ListingManagerChannelDraft;
 use App\Models\ListingManagerEnabledChannel;
+use App\Models\ListingManagerProductSnapshot;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\AliExpressApiService;
@@ -39,6 +40,7 @@ use App\Support\Marketplace\ListingManagerEditorProfile;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\ListingManagerMasterLoader;
 use App\Support\Marketplace\ListingManagerProductPublisher;
+use App\Support\Marketplace\ListingManagerProductSnapshots;
 use App\Support\Marketplace\ListingManagerPublishStatus;
 use App\Support\Marketplace\WayfairClassQuestionForm;
 use App\Support\Marketplace\WayfairPartnerClassCatalog;
@@ -229,6 +231,126 @@ class ListingManagerController extends Controller
             return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
         }
 
+        $forceRefresh = $request->boolean('refresh');
+        $snapshot = ListingManagerProductSnapshot::forSku($sku);
+
+        // Serve the stored copy instantly; only "Update from Store" (refresh=1) or a missing
+        // snapshot waits on Amazon / Main Store / marketplace APIs.
+        if (! $forceRefresh && $snapshot && $snapshot->hasPayload()) {
+            $stale = $snapshot->isStale(ListingManagerProductSnapshots::STALE_HOURS);
+            if ($stale) {
+                ListingManagerProductSnapshots::refreshAfterResponse($sku);
+            }
+            $product = $this->overlayFreshLocalData($snapshot->payload, $sku);
+            $product['snapshot'] = ListingManagerProductSnapshots::meta($snapshot, true, $stale);
+
+            return response()->json(['success' => true, 'product' => $product]);
+        }
+
+        @set_time_limit(120);
+        $started = microtime(true);
+        $product = $this->buildProductPayload($sku);
+        ListingManagerProductSnapshots::store($sku, $product, (int) round((microtime(true) - $started) * 1000));
+        $product['sync_prefs'] = $this->loadSyncFamilyPrefs();
+        $product['snapshot'] = ListingManagerProductSnapshots::meta(
+            ListingManagerProductSnapshot::forSku($sku),
+            false
+        );
+
+        return response()->json(['success' => true, 'product' => $product]);
+    }
+
+    /**
+     * Parts of the product payload that come from our own database and are cheap to read fresh
+     * on every open (Product Master edits, drafts, per-user sync prefs), layered over the snapshot.
+     */
+    private function overlayFreshLocalData(array $product, string $sku): array
+    {
+        try {
+            $pm = Schema::hasTable('product_master')
+                ? (array) (DB::table('product_master')->where('sku', $sku)->first() ?: [])
+                : [];
+
+            $title = self::firstFilled([$pm['title80'] ?? null, $pm['title100'] ?? null, $pm['title150'] ?? null]);
+            if ($title !== null && $title !== '') {
+                $product['title'] = $title;
+            }
+            $description = self::firstFilled([
+                $pm['description_1500'] ?? null,
+                $pm['description_html'] ?? null,
+                $pm['product_description'] ?? null,
+            ]);
+            if ($description !== null && $description !== '') {
+                $product['description'] = $description;
+            }
+            foreach ([
+                'tags' => ['tags', 'generic_keyword'],
+                'seo_description' => ['seo_description', 'meta_description'],
+                'meta_title' => ['meta_title'],
+                'short_description' => ['short_description'],
+                'product_type' => ['product_type'],
+                'vendor' => ['brand'],
+                'manufacturer' => ['manufacturer'],
+                'upc' => ['upc', 'barcode'],
+            ] as $key => $cols) {
+                foreach ($cols as $col) {
+                    $value = trim((string) ($pm[$col] ?? ''));
+                    if ($value !== '') {
+                        $product[$key] = $value;
+                        break;
+                    }
+                }
+            }
+
+            $gallery = $this->productMasterGallery($pm);
+            if ($gallery !== []) {
+                $product['images'] = $gallery;
+                $product['hero_image'] = $gallery[0];
+            }
+
+            if (is_array($product['metafields'] ?? null)) {
+                foreach ($product['metafields'] as $i => $m) {
+                    $name = (string) ($m['name'] ?? '');
+                    if (($m['source'] ?? '') === 'product_master' && array_key_exists($name, $pm)) {
+                        $product['metafields'][$i]['value'] = (string) ($pm[$name] ?? '');
+                    }
+                }
+            }
+
+            $qty = ListingManagerAmazonHydrator::shopifyQuantity($sku, false);
+            if ($qty !== null) {
+                $product['quantity'] = $qty;
+                $product['in_stock'] = $qty > 0 ? 'Yes' : 'No';
+            }
+
+            if (Schema::hasTable('listing_manager_channel_drafts')) {
+                $product['drafts'] = ListingManagerChannelDraft::query()
+                    ->with('channel:id,channel,logo')
+                    ->where('seller_sku', $sku)
+                    ->orderByDesc('updated_at')
+                    ->get()
+                    ->map(fn (ListingManagerChannelDraft $d) => $this->serializeDraft($d))
+                    ->values()
+                    ->all();
+            }
+
+            $product['master_content'] = ListingManagerMasterLoader::contentPack($sku);
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager snapshot overlay failed: '.$e->getMessage());
+        }
+
+        $product['sync_prefs'] = $this->loadSyncFamilyPrefs();
+
+        return $product;
+    }
+
+    /**
+     * Build the full product-modal payload from live sources (Amazon, Main Store, marketplaces).
+     * Slow; the result is stored in listing_manager_product_snapshots.
+     */
+    public function buildProductPayload(string $sku): array
+    {
+        $sku = trim($sku);
         $hydrated = ListingManagerAmazonHydrator::hydrate($sku, false);
         $listing = AmazonListingRaw::query()->where('seller_sku', $sku)->first();
         $raw = is_array($listing?->raw_data) ? $listing->raw_data : [];
@@ -277,6 +399,12 @@ class ListingManagerController extends Controller
         }
         if ($heroImage === null && $images !== []) {
             $heroImage = $images[0];
+        }
+        // Photos saved from the modal / Image Master (image1..image20) are the seller's chosen gallery.
+        $editedImages = $this->productMasterGallery($pm);
+        if ($editedImages !== []) {
+            $images = $editedImages;
+            $heroImage = $editedImages[0];
         }
         $description = self::firstFilled([
             $hydrated['description'] ?? null,
@@ -332,9 +460,11 @@ class ListingManagerController extends Controller
         $listedOn = [];
         if ($amazonLive['listed'] || trim((string) ($hydrated['asin'] ?? $listing?->asin1 ?? '')) !== '') {
             $asin = (string) ($hydrated['asin'] ?? $listing?->asin1 ?? '');
+            $amazonChannel = $this->amazonChannel();
             $listedOn[] = [
                 'channel' => 'Amazon',
-                'logo' => null,
+                'channel_id' => $amazonChannel?->id,
+                'logo' => $amazonChannel?->logo,
                 'product_name' => $title,
                 'qty' => $qty,
                 'price' => $price,
@@ -375,7 +505,7 @@ class ListingManagerController extends Controller
 
         $enabledChannels = [];
         try {
-            $chRes = $this->channels($request)->getData(true);
+            $chRes = $this->channels(new Request())->getData(true);
             foreach (($chRes['channels'] ?? []) as $ch) {
                 if (! ($ch['enabled'] ?? false)) {
                     continue;
@@ -434,18 +564,24 @@ class ListingManagerController extends Controller
             if ($v === null || $v === '') {
                 continue;
             }
-            $metafields[] = ['name' => $k, 'value' => is_scalar($v) ? (string) $v : json_encode($v)];
+            $metafields[] = ['name' => $k, 'value' => is_scalar($v) ? (string) $v : json_encode($v), 'editable' => false, 'source' => 'listing'];
         }
         // Extra product_master keys that look like metafields
+        $seenMeta = array_fill_keys(array_column($metafields, 'name'), true);
         foreach ($pm as $k => $v) {
             if ($v === null || $v === '' || in_array($k, ['id', 'sku', 'created_at', 'updated_at'], true)) {
                 continue;
             }
-            if (preg_match('/^(title|description|image|main_image)/i', (string) $k)) {
+            if (preg_match('/^(title|description|image|main_image|bullet)/i', (string) $k) || isset($seenMeta[(string) $k])) {
                 continue;
             }
             if (is_scalar($v) || (is_string($v) && strlen($v) < 2000)) {
-                $metafields[] = ['name' => (string) $k, 'value' => is_scalar($v) ? (string) $v : (string) $v];
+                $metafields[] = [
+                    'name' => (string) $k,
+                    'value' => is_scalar($v) ? (string) $v : (string) $v,
+                    'editable' => $this->metafieldIsEditable((string) $k),
+                    'source' => 'product_master',
+                ];
             }
         }
 
@@ -472,9 +608,7 @@ class ListingManagerController extends Controller
             ];
         }
 
-        return response()->json([
-            'success' => true,
-            'product' => [
+        return [
                 'sku' => $sku,
                 'asin' => $hydrated['asin'] ?? $listing?->asin1,
                 'title' => $title,
@@ -525,15 +659,14 @@ class ListingManagerController extends Controller
                 'drafts' => $drafts,
                 'changelog' => $changelog,
                 'master_content' => ListingManagerMasterLoader::contentPack($sku),
-                'sync_prefs' => $this->loadSyncFamilyPrefs(),
+                'sync_prefs' => ['siblings' => false, 'parent' => false],
                 'shopify_ok' => (bool) ($shopify['success'] ?? false),
                 'amazon_media_ok' => $images !== [],
                 'updated_at' => $listing?->updated_at?->toDateTimeString(),
                 'imported_at' => $listing?->report_imported_at
                     ? Carbon::parse($listing->report_imported_at)->toDateTimeString()
                     : null,
-            ],
-        ]);
+        ];
     }
 
     /**
@@ -556,6 +689,10 @@ class ListingManagerController extends Controller
             'meta_title' => 'nullable|string|max:255',
             'seo_description' => 'nullable|string',
             'condition' => 'nullable|string|max:64',
+            'bullets' => 'nullable|array|max:5',
+            'bullets.*' => 'nullable|string|max:2000',
+            'images' => 'nullable|array|max:'.ListingManagerProductPublisher::MAX_IMAGES,
+            'images.*' => 'nullable|string|max:2048',
         ]);
 
         $publisher = new ListingManagerProductPublisher();
@@ -563,10 +700,71 @@ class ListingManagerController extends Controller
         if (! $saved['saved']) {
             return response()->json(['success' => false, 'message' => $saved['message']], 422);
         }
+        ListingManagerProductSnapshots::refreshAfterResponse((string) $validated['sku']);
 
         return response()->json([
             'success' => true,
             'message' => $saved['message'],
+        ]);
+    }
+
+    /** product_master columns the Main Store MetaFields tab must never write. */
+    private const METAFIELD_LOCKED = ['id', 'sku', 'parent', 'created_at', 'updated_at', 'Values', 'values'];
+
+    private function metafieldIsEditable(string $name): bool
+    {
+        if ($name === '' || in_array($name, self::METAFIELD_LOCKED, true)) {
+            return false;
+        }
+        if (! preg_match('/^[A-Za-z0-9_]{1,64}$/', $name)) {
+            return false;
+        }
+        if (preg_match('/^(title|description|image|main_image|bullet)/i', $name)) {
+            return false;
+        }
+
+        return Schema::hasTable('product_master') && Schema::hasColumn('product_master', $name);
+    }
+
+    /**
+     * Inline edit of a Product Master-backed attribute from the Main Store MetaFields tab.
+     */
+    public function saveMetafield(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'name' => 'required|string|max:64',
+            'value' => 'nullable|string|max:5000',
+        ]);
+        $sku = trim($validated['sku']);
+        $name = trim($validated['name']);
+        $value = trim((string) ($validated['value'] ?? ''));
+
+        if (! $this->metafieldIsEditable($name)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This attribute is read-only here (it comes from Amazon / Main Store, not Product Master).',
+            ], 422);
+        }
+
+        $payload = [$name => $value === '' ? null : $value];
+        if (Schema::hasColumn('product_master', 'updated_at')) {
+            $payload['updated_at'] = now();
+        }
+        $updated = DB::table('product_master')->where('sku', $sku)->update($payload);
+        if ($updated === 0) {
+            $updated = DB::table('product_master')->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])->update($payload);
+        }
+        if ($updated === 0) {
+            return response()->json(['success' => false, 'message' => 'SKU not found in Product Master.'], 404);
+        }
+        ListingManagerProductSnapshots::refreshAfterResponse($sku);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Saved '.$name.'.',
+            'name' => $name,
+            'value' => $value,
         ]);
     }
 
@@ -588,8 +786,9 @@ class ListingManagerController extends Controller
             'channel_ids' => 'required|array|min:1',
             'channel_ids.*' => 'integer|exists:channel_master,id',
             'parts' => 'nullable|array',
-            'parts.*' => 'string|in:title,description,price',
+            'parts.*' => 'string|in:'.implode(',', ListingManagerProductPublisher::PARTS),
             'skip_save' => 'nullable|boolean',
+            'update_only' => 'nullable|boolean',
             'title' => 'nullable|string|max:500',
             'description' => 'nullable|string',
             'price' => 'nullable|numeric|min:0',
@@ -603,6 +802,10 @@ class ListingManagerController extends Controller
             'meta_title' => 'nullable|string|max:255',
             'seo_description' => 'nullable|string',
             'condition' => 'nullable|string|max:64',
+            'bullets' => 'nullable|array|max:5',
+            'bullets.*' => 'nullable|string|max:2000',
+            'images' => 'nullable|array|max:'.ListingManagerProductPublisher::MAX_IMAGES,
+            'images.*' => 'nullable|string|max:2048',
         ]);
 
         @set_time_limit(120);
@@ -611,6 +814,7 @@ class ListingManagerController extends Controller
         try {
             $sku = (string) $validated['sku'];
             $parts = array_values($validated['parts'] ?? ['title', 'description', 'price']);
+            $updateOnly = $request->boolean('update_only');
             $publisher = new ListingManagerProductPublisher();
             $saved = ['saved' => true, 'message' => 'Product Master already saved.'];
             if (! $request->boolean('skip_save')) {
@@ -621,11 +825,16 @@ class ListingManagerController extends Controller
                 ->whereIn('id', $validated['channel_ids'])
                 ->get(['id', 'channel']);
 
-            $rows = $publisher->pushSelectedChannels($sku, $channels, $validated, $parts);
+            $rows = $publisher->pushSelectedChannels($sku, $channels, $validated, $parts, $updateOnly);
             $ok = 0;
             $fail = 0;
             $draftCount = 0;
+            $skipped = 0;
             foreach ($rows as $row) {
+                if (($row['mode'] ?? '') === 'skipped') {
+                    $skipped++;
+                    continue;
+                }
                 if (! empty($row['success'])) {
                     $ok++;
                 } else {
@@ -635,17 +844,20 @@ class ListingManagerController extends Controller
                     $draftCount++;
                 }
             }
+            ListingManagerProductSnapshots::refreshAfterResponse($sku);
 
             return response()->json([
                 'success' => $fail === 0,
                 'message' => $saved['message']
                     .' Live updates: '.$ok.'.'
                     .($fail > 0 ? ' '.$fail.' failed.' : '')
-                    .($draftCount > 0 ? ' '.$draftCount.' new-to-marketplace channel(s) saved as draft only.' : ''),
+                    .($draftCount > 0 ? ' '.$draftCount.' new-to-marketplace channel(s) saved as draft only.' : '')
+                    .($skipped > 0 ? ' '.$skipped.' not-listed channel(s) skipped.' : ''),
                 'saved' => $saved['saved'],
                 'drafts_updated' => $draftCount,
                 'total_success' => $ok,
                 'total_failed' => $fail,
+                'total_skipped' => $skipped,
                 'results' => $rows,
             ]);
         } catch (\Throwable $e) {
@@ -671,6 +883,13 @@ class ListingManagerController extends Controller
     {
         $sku = trim((string) $request->input('sku', ''));
         $source = trim((string) $request->input('source', ''));
+        if (in_array(strtolower($source), ['description_aplus', 'aplus', 'aplus_description'], true)) {
+            @set_time_limit(90);
+            // master_content is re-read on every modal open, so no snapshot rebuild is needed here.
+            $payload = ListingManagerMasterLoader::descriptionAplus($sku, $request->boolean('force'));
+
+            return response()->json($payload, ($payload['success'] ?? false) ? 200 : 422);
+        }
         $payload = ListingManagerMasterLoader::load($sku, $source);
         $siblings = $request->boolean('sync_siblings');
         $parent = $request->boolean('sync_parent');
@@ -2566,6 +2785,7 @@ class ListingManagerController extends Controller
             $row->notes = trim((string) $row->notes."\nPublished to {$channelName} via Listing Manager.");
             $row->save();
         }
+        ListingManagerProductSnapshots::refreshAfterResponse((string) $draft->seller_sku);
 
         return response()->json([
             'success' => true,
@@ -2768,7 +2988,9 @@ class ListingManagerController extends Controller
     public function deleteDraft(int $id)
     {
         $draft = ListingManagerChannelDraft::query()->findOrFail($id);
+        $sku = (string) $draft->seller_sku;
         $draft->delete();
+        ListingManagerProductSnapshots::refreshAfterResponse($sku);
 
         return response()->json(['success' => true, 'message' => 'Draft removed.']);
     }
@@ -3437,6 +3659,46 @@ class ListingManagerController extends Controller
      *
      * @return list<string>
      */
+    /**
+     * Ordered gallery the seller saved on Product Master (image1..image20), empty when never set.
+     *
+     * @param  array<string, mixed>  $pm
+     * @return list<string>
+     */
+    private function productMasterGallery(array $pm): array
+    {
+        $urls = [];
+        for ($i = 1; $i <= ListingManagerProductPublisher::MAX_IMAGES; $i++) {
+            $url = $this->normalizePublicImageUrl($pm['image'.$i] ?? null);
+            if ($url && ! in_array($url, $urls, true)) {
+                $urls[] = $url;
+            }
+        }
+
+        return $urls;
+    }
+
+    private function amazonChannel(): ?ChannelMaster
+    {
+        static $cached = false;
+        if ($cached !== false) {
+            return $cached;
+        }
+        $cached = null;
+        try {
+            foreach (ChannelMaster::query()->whereNotNull('channel')->get(['id', 'channel', 'logo']) as $c) {
+                if (in_array(ListingChannelCounts::normalize((string) $c->channel), ['amazon', 'amz'], true)) {
+                    $cached = $c;
+                    break;
+                }
+            }
+        } catch (\Throwable) {
+            $cached = null;
+        }
+
+        return $cached;
+    }
+
     private function productMasterImageUrls(ProductMaster $pm): array
     {
         $urls = [];

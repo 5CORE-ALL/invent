@@ -16,7 +16,14 @@ use Illuminate\Support\Facades\Schema;
  */
 class ListingManagerProductPublisher
 {
+    public const PARTS = ['title', 'bullets', 'description', 'price', 'images'];
+
+    public const MAX_IMAGES = 20;
+
     /**
+     * Only the keys present in $fields are written, so callers can save a single slice
+     * (e.g. just images, or just a sibling's title) without blanking the rest.
+     *
      * @param  array<string, mixed>  $fields
      * @return array{saved: bool, message: string}
      */
@@ -28,25 +35,46 @@ class ListingManagerProductPublisher
         }
 
         $update = [];
-        $title = trim((string) ($fields['title'] ?? ''));
-        $description = (string) ($fields['description'] ?? '');
-        $map = [
-            'title80' => $title,
-            'title100' => $title,
-            'title150' => $title,
-            'description_html' => $description,
-            'description_1500' => $description,
-            'product_description' => $description,
-            'short_description' => trim((string) ($fields['short_description'] ?? '')),
-            'meta_title' => trim((string) ($fields['meta_title'] ?? '')),
-            'seo_description' => trim((string) ($fields['seo_description'] ?? '')),
-            'tags' => trim((string) ($fields['tags'] ?? '')),
-            'product_type' => trim((string) ($fields['product_type'] ?? '')),
-            'brand' => trim((string) ($fields['vendor'] ?? '')),
-            'manufacturer' => trim((string) ($fields['manufacturer'] ?? '')),
-            'upc' => trim((string) ($fields['upc'] ?? '')),
-            'barcode' => trim((string) ($fields['upc'] ?? '')),
-        ];
+        $map = [];
+        if (array_key_exists('title', $fields)) {
+            $title = trim((string) $fields['title']);
+            $map += ['title80' => $title, 'title100' => $title, 'title150' => $title];
+        }
+        if (array_key_exists('description', $fields)) {
+            $description = (string) $fields['description'];
+            $map += ['description_html' => $description, 'description_1500' => $description, 'product_description' => $description];
+        }
+        foreach ([
+            'short_description' => 'short_description',
+            'meta_title' => 'meta_title',
+            'seo_description' => 'seo_description',
+            'tags' => 'tags',
+            'product_type' => 'product_type',
+            'vendor' => 'brand',
+            'manufacturer' => 'manufacturer',
+        ] as $key => $col) {
+            if (array_key_exists($key, $fields)) {
+                $map[$col] = trim((string) $fields[$key]);
+            }
+        }
+        if (array_key_exists('upc', $fields)) {
+            $upc = trim((string) $fields['upc']);
+            $map += ['upc' => $upc, 'barcode' => $upc];
+        }
+        if (array_key_exists('bullets', $fields) && is_array($fields['bullets'])) {
+            $bullets = self::cleanBullets($fields['bullets']);
+            for ($i = 1; $i <= 5; $i++) {
+                $map['bullet'.$i] = $bullets[$i - 1] ?? null;
+            }
+        }
+        if (array_key_exists('images', $fields) && is_array($fields['images'])) {
+            $images = self::cleanImages($fields['images']);
+            for ($i = 1; $i <= self::MAX_IMAGES; $i++) {
+                $map['image'.$i] = $images[$i - 1] ?? null;
+            }
+            $map['main_image'] = $images[0] ?? null;
+        }
+
         foreach ($map as $col => $value) {
             if (Schema::hasColumn('product_master', $col)) {
                 $update[$col] = $value;
@@ -76,30 +104,89 @@ class ListingManagerProductPublisher
     }
 
     /**
+     * @param  list<mixed>  $bullets
+     * @return list<string>
+     */
+    public static function cleanBullets(array $bullets): array
+    {
+        $out = [];
+        foreach ($bullets as $line) {
+            $line = trim(preg_replace('/\s+/u', ' ', (string) $line) ?? (string) $line);
+            $line = preg_replace('/^\s*(?:\d+[.)]|[-•*▪●])\s*/u', '', $line) ?? $line;
+            if ($line !== '') {
+                $out[] = $line;
+            }
+            if (count($out) >= 5) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<mixed>  $images
+     * @return list<string>
+     */
+    public static function cleanImages(array $images): array
+    {
+        $out = [];
+        foreach ($images as $url) {
+            $url = trim((string) $url);
+            if ($url === '' || $url === '-') {
+                continue;
+            }
+            if (str_starts_with($url, '//')) {
+                $url = 'https:'.$url;
+            }
+            if (! preg_match('#^https?://#i', $url) && ! str_starts_with($url, '/')) {
+                continue;
+            }
+            if (! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+            if (count($out) >= self::MAX_IMAGES) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<mixed>  $parts
+     * @return list<string>
+     */
+    public static function normalizeParts(array $parts): array
+    {
+        $parts = array_values(array_intersect(array_map('strval', $parts), self::PARTS));
+
+        return $parts === [] ? ['title', 'description', 'price'] : $parts;
+    }
+
+    /**
      * Update live marketplace listings in place. Only create/update a Listing Manager
-     * draft when the SKU is not already live on that channel.
+     * draft when the SKU is not already live on that channel; with $updateOnly such
+     * channels are skipped entirely so nothing new is created anywhere.
      *
      * @param  Collection<int, object>  $channels
      * @param  list<string>  $parts
      * @return list<array{channel_id: int, channel: string, marketplace: string, success: bool, message: string, mode: string}>
      */
-    public function pushSelectedChannels(string $sku, Collection $channels, array $fields, array $parts): array
+    public function pushSelectedChannels(string $sku, Collection $channels, array $fields, array $parts, bool $updateOnly = false): array
     {
         @set_time_limit(180);
         @ini_set('max_execution_time', '180');
 
         $sku = trim($sku);
-        $parts = array_values(array_intersect($parts, ['title', 'description', 'price']));
-        if ($parts === []) {
-            $parts = ['title', 'description', 'price'];
-        }
+        $parts = self::normalizeParts($parts);
 
         $rows = [];
         foreach ($channels as $ch) {
             $channelId = (int) ($ch->id ?? 0);
             $name = (string) ($ch->channel ?? '');
             try {
-                $rows[] = $this->pushOneChannel($sku, $channelId, $name, $fields, $parts);
+                $rows[] = $this->pushOneChannel($sku, $channelId, $name, $fields, $parts, $updateOnly);
             } catch (\Throwable $e) {
                 Log::warning('ListingManager channel push failed', [
                     'sku' => $sku,
@@ -124,7 +211,7 @@ class ListingManagerProductPublisher
      * @param  list<string>  $parts
      * @return array{channel_id: int, channel: string, marketplace: string, success: bool, message: string, mode: string}
      */
-    private function pushOneChannel(string $sku, int $channelId, string $channelName, array $fields, array $parts): array
+    private function pushOneChannel(string $sku, int $channelId, string $channelName, array $fields, array $parts, bool $updateOnly = false): array
     {
         $key = self::marketplaceKeyFromChannel($channelName) ?? '';
         $live = ListingManagerPublishStatus::check($channelName, $sku);
@@ -171,6 +258,17 @@ class ListingManagerProductPublisher
                 'success' => $ok,
                 'message' => $ok ? ('Live listing updated. '.$detail) : $detail,
                 'mode' => 'live',
+            ];
+        }
+
+        if ($updateOnly) {
+            return [
+                'channel_id' => $channelId,
+                'channel' => $channelName,
+                'marketplace' => $key,
+                'success' => true,
+                'message' => 'Skipped: this SKU is not listed on '.$channelName.' yet, so there is no product to update. Nothing was created.',
+                'mode' => 'skipped',
             ];
         }
 
@@ -283,17 +381,20 @@ class ListingManagerProductPublisher
 
     /**
      * @param  list<string>  $marketplaceKeys
-     * @param  list<string>  $parts  title|description|price
+     * @param  list<string>  $parts  title|bullets|description|price|images
      * @return array<string, array{success: bool, message: string, parts: array<string, string>}>
      */
     public function pushToMarketplaces(string $sku, array $marketplaceKeys, array $fields, array $parts): array
     {
         $results = [];
         $sku = trim($sku);
-        $parts = array_values(array_intersect($parts, ['title', 'description', 'price']));
-        if ($parts === []) {
-            $parts = ['title', 'description', 'price'];
-        }
+        $parts = self::normalizeParts($parts);
+        $bullets = in_array('bullets', $parts, true) && is_array($fields['bullets'] ?? null)
+            ? self::cleanBullets($fields['bullets'])
+            : [];
+        $images = in_array('images', $parts, true) && is_array($fields['images'] ?? null)
+            ? $this->publicImageUrls(self::cleanImages($fields['images']))
+            : [];
 
         foreach ($marketplaceKeys as $key) {
             $key = strtolower(trim($key));
@@ -310,6 +411,12 @@ class ListingManagerProductPublisher
                 $ok = $ok && $res['success'];
                 $messages[] = 'Title: '.$res['message'];
             }
+            if ($bullets !== []) {
+                $res = $this->pushBullets($key, $sku, $bullets);
+                $partResults['bullets'] = $res['message'];
+                $ok = $ok && $res['success'];
+                $messages[] = 'Bullets: '.$res['message'];
+            }
             if (in_array('description', $parts, true) && trim((string) ($fields['description'] ?? '')) !== '') {
                 $res = $this->pushDescription($key, $sku, (string) $fields['description']);
                 $partResults['description'] = $res['message'];
@@ -321,6 +428,12 @@ class ListingManagerProductPublisher
                 $partResults['price'] = $res['message'];
                 $ok = $ok && $res['success'];
                 $messages[] = 'Price: '.$res['message'];
+            }
+            if ($images !== []) {
+                $res = $this->pushImages($key, $sku, $images);
+                $partResults['images'] = $res['message'];
+                $ok = $ok && $res['success'];
+                $messages[] = 'Images: '.$res['message'];
             }
 
             if ($messages === []) {
@@ -469,6 +582,87 @@ class ListingManagerProductPublisher
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * @param  list<string>  $bullets
+     * @return array{success: bool, message: string}
+     */
+    private function pushBullets(string $marketplace, string $sku, array $bullets): array
+    {
+        $class = ProductMasterMarketplaceMaps::bulletServiceMap()[$marketplace] ?? null;
+        if ($class === null || ! class_exists($class)) {
+            return ['success' => false, 'message' => 'Bullet point push is not configured for this marketplace.'];
+        }
+
+        try {
+            $service = app($class);
+            if (! method_exists($service, 'updateBulletPoints')) {
+                return ['success' => false, 'message' => 'Bullet point update is not supported on this marketplace.'];
+            }
+            $result = $service->updateBulletPoints($sku, implode("\n", $bullets));
+
+            return $this->normalizeResult($result, 'Bullet points updated.');
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager bullets push failed', ['mp' => $marketplace, 'sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  list<string>  $images  public https URLs
+     * @return array{success: bool, message: string}
+     */
+    private function pushImages(string $marketplace, string $sku, array $images): array
+    {
+        $entry = ProductMasterMarketplaceMaps::imagePushMap()[$marketplace] ?? null;
+        if ($entry === null) {
+            return ['success' => false, 'message' => 'Image push is not configured for this marketplace.'];
+        }
+        [$class, $method] = $entry;
+
+        try {
+            $service = app($class);
+            if (! method_exists($service, $method)) {
+                return ['success' => false, 'message' => 'Image update is not supported on this marketplace.'];
+            }
+            // Some services take a third "mode" argument (replace|append); always replace so the
+            // marketplace gallery mirrors what the seller sees in the modal.
+            $arity = (new \ReflectionMethod($service, $method))->getNumberOfParameters();
+            $result = $arity >= 3
+                ? $service->{$method}($sku, $images, 'replace')
+                : $service->{$method}($sku, $images);
+
+            return $this->normalizeResult($result, 'Images updated.');
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager images push failed', ['mp' => $marketplace, 'sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Marketplaces must be able to download the photos: prefer CDN originals over app-served copies
+     * and turn relative /storage paths into absolute URLs.
+     *
+     * @param  list<string>  $images
+     * @return list<string>
+     */
+    private function publicImageUrls(array $images): array
+    {
+        $out = [];
+        foreach (ListingManagerImageStore::publishUrls($images, $images) as $url) {
+            $url = trim((string) $url);
+            if (str_starts_with($url, '//')) {
+                $url = 'https:'.$url;
+            }
+            if (preg_match('#^https?://#i', $url) && ! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+        }
+
+        return $out;
     }
 
     /**

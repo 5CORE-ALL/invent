@@ -4194,6 +4194,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing-manager/product/push', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'pushProductToMarketplaces'])->name('listing.manager.product.push');
     Route::get('/listing-manager/product/from-master', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadProductFromMaster'])->name('listing.manager.product.from-master');
     Route::post('/listing-manager/product/master-field', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveMasterField'])->name('listing.manager.product.master-field');
+    Route::post('/listing-manager/product/metafield', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveMetafield'])->name('listing.manager.product.metafield');
     Route::get('/listing-manager/product/sync-prefs', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'syncFamilyPrefs'])->name('listing.manager.product.sync-prefs');
     Route::post('/listing-manager/product/sync-prefs', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveSyncFamilyPrefs'])->name('listing.manager.product.sync-prefs.save');
     Route::post('/listing-manager/import-amazon', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'importFromAmazon'])->name('listing.manager.import');

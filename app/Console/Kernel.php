@@ -1842,6 +1842,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Listing Manager: keep the stored product-modal payload (Amazon / Main Store / drafts) warm
+        // so /listing-manager opens from the database. Missing SKUs first, then snapshots older than 24h.
+        $ist($schedule->command('listing-manager:snapshot-refresh --limit=120')
+            ->hourlyAt(52)
+            ->name('listing-manager-snapshot-refresh')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('lqs:sync-shopify-seo')
             ->dailyAt('04:40')
             ->timezone('Asia/Kolkata')
