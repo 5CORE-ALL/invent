@@ -478,6 +478,7 @@ class SalesOrderFulfillmentController extends Controller
     public function allOrderData(): JsonResponse
     {
         try {
+            @set_time_limit(180);
             $rows = $this->collectOrderRows(
                 fn (string $slug) => $this->scopedToLast30Days($this->allOrdersQuery($slug), $slug),
                 true,
@@ -2177,6 +2178,73 @@ class SalesOrderFulfillmentController extends Controller
      * @param  callable(string): (?Builder)  $queryForSlug
      * @return list<array<string, mixed>>
      */
+    /**
+     * List views do not need the stored marketplace JSON. Those blobs are large
+     * enough to kill the All Order request, which leaves the grid empty.
+     */
+    protected function omitHeavyOrderPayloadColumns(Builder $query): void
+    {
+        $model = $query->getModel();
+        $table = $model->getTable();
+        try {
+            $columns = Schema::getColumnListing($table);
+        } catch (\Throwable) {
+            return;
+        }
+        $drop = array_values(array_intersect($columns, [
+            'raw_json',
+            'raw_payload',
+            'raw_data',
+            'order_json',
+            'amount_raw_json',
+        ]));
+        if ($drop === []) {
+            return;
+        }
+        $keep = array_values(array_diff($columns, $drop));
+        if ($keep === []) {
+            return;
+        }
+        $query->select(array_map(static fn ($column) => $table.'.'.$column, $keep));
+    }
+
+    /**
+     * Tracking that lives inside the JSON blob, without loading the blob.
+     */
+    protected function addLightweightTrackingColumns(Builder $query, string $slug): void
+    {
+        if ($slug !== 'wayfair') {
+            return;
+        }
+        $table = $query->getModel()->getTable();
+        if (! Schema::hasColumn($table, 'raw_payload')) {
+            return;
+        }
+        $query->addSelect(DB::raw(
+            "JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.tracking_number')) as list_tracking_number"
+        ));
+        $query->addSelect(DB::raw(
+            "JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.tracking_company')) as list_tracking_company"
+        ));
+    }
+
+    protected function omitHeavyAmazonItemPayload(Builder $query): void
+    {
+        $query->with(['items' => function ($items): void {
+            $table = $items->getModel()->getTable();
+            try {
+                $columns = Schema::getColumnListing($table);
+            } catch (\Throwable) {
+                return;
+            }
+            $keep = array_values(array_diff($columns, ['raw_data', 'raw_json', 'raw_payload']));
+            if ($keep === []) {
+                return;
+            }
+            $items->select(array_map(static fn ($column) => $table.'.'.$column, $keep));
+        }]);
+    }
+
     protected function collectOrderRows(callable $queryForSlug, bool $sortByUpdatedAt, bool $useOriginalStatus = false): array
     {
         $rows = [];
@@ -2204,6 +2272,11 @@ class SalesOrderFulfillmentController extends Controller
                 $dateCol = $this->orderDateColumn($slug);
                 $updCol = $this->orderUpdatedColumn($slug);
                 $ordered = clone $query;
+                $this->omitHeavyOrderPayloadColumns($ordered);
+                $this->addLightweightTrackingColumns($ordered, $slug);
+                if ($slug === 'amazon') {
+                    $this->omitHeavyAmazonItemPayload($ordered);
+                }
                 if ($sortByUpdatedAt && $updCol !== null) {
                     $ordered->orderByDesc($updCol);
                 }
@@ -2214,12 +2287,15 @@ class SalesOrderFulfillmentController extends Controller
                 $orders = $ordered->get();
             } catch (\Throwable) {
                 try {
-                    $orders = $query->orderByDesc('id')->get();
+                    $fallback = clone $query;
+                    $this->omitHeavyOrderPayloadColumns($fallback);
+                    $orders = $fallback->orderByDesc('id')->get();
                 } catch (\Throwable) {
                     continue;
                 }
             }
 
+            try {
             foreach ($orders as $order) {
                 $n = $this->normalizeOrderFields($slug, $order);
                 $statusRaw = trim((string) ($n['status'] ?? ''));
@@ -2333,6 +2409,9 @@ class SalesOrderFulfillmentController extends Controller
                     ]),
                 ];
             }
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         usort($rows, static function (array $a, array $b) use ($sortByUpdatedAt): int {
@@ -2346,7 +2425,9 @@ class SalesOrderFulfillmentController extends Controller
             return strcmp($bk, $ak);
         });
 
-        $rows = $this->attachInvToOrderRows(array_values($rows));
+        $rows = array_values($rows);
+        try {
+        $rows = $this->attachInvToOrderRows($rows);
         $rows = $this->attachShippingMasterLabelToOrderRows($rows);
         // Tracking comes from channel APIs / order tables only — never Shopify fulfillments.
         // Temu OpenAPI tracking on temu*_orders is already on the row; Sites sheets only fill gaps.
@@ -2363,7 +2444,18 @@ class SalesOrderFulfillmentController extends Controller
             // Keep orders even if product-master cost lookup fails.
         }
 
-        return $this->attachSkuSiteProfitPctToRows($rows);
+        try {
+            return $this->attachSkuSiteProfitPctToRows($rows);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $rows;
+        }
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $rows;
+        }
     }
 
     /**
@@ -7906,10 +7998,10 @@ class SalesOrderFulfillmentController extends Controller
                 'raw_payload' => $order->raw_payload ?? null,
                 'tracking_number' => is_array($order->raw_payload ?? null)
                     ? (trim((string) ($order->raw_payload['tracking_number'] ?? '')) ?: null)
-                    : null,
+                    : (trim((string) ($order->list_tracking_number ?? '')) ?: null),
                 'tracking_company' => is_array($order->raw_payload ?? null)
                     ? (trim((string) ($order->raw_payload['tracking_company'] ?? '')) ?: null)
-                    : null,
+                    : (trim((string) ($order->list_tracking_company ?? '')) ?: null),
                 'show_id' => (int) $order->id,
             ],
             'doba' => [
