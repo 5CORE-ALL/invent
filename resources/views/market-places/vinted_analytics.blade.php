@@ -1012,7 +1012,7 @@
                     field: "SPRC_DIL",
                     hozAlign: "center",
                     headerSort: true,
-                    headerTooltip: "S PRC from Dil → Target NROI. V L30 = 0 uses min Target NROI. Formula: (LP × (1 + NROI%/100) + ship) / margin.",
+                    headerTooltip: "S PRC from OV Dil % → Target SNROI. Dil = OV L30 ÷ INV, including when V L30 = 0. Dil = 0 uses the 0–0 slab. Formula: (LP × (1 + SNROI%/100) + ship) / margin.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (dpIsParentRow(rowData) || typeof ebayDilGroiMetaForRow !== 'function') return '';
