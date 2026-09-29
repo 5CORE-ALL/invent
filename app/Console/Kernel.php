@@ -2710,6 +2710,21 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
+        // PLS had no scheduled push, so every 5Core sale left PLS qty higher than Shopify.
+        $schedule->job(new \App\Jobs\RunMarketplaceInventorySyncJob('pls'))
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('pls-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('pls'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('pls-sync-mismatch-inventory')
+            ->withoutOverlapping(45)
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncB5cB2bTrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
