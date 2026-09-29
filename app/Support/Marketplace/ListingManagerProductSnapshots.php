@@ -8,6 +8,7 @@ use App\Models\ListingManagerProductSnapshot;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\Process\PhpExecutableFinder;
 
 /**
  * Builds and stores the Listing Manager product-modal payload so the modal opens from the
@@ -39,11 +40,13 @@ class ListingManagerProductSnapshots
         } catch (\Throwable $e) {
             Log::warning('ListingManager snapshot build failed', ['sku' => $sku, 'error' => $e->getMessage()]);
             self::recordFailure($sku, $e->getMessage());
+            self::releaseLock(self::lockKey($sku));
 
             return null;
         }
 
         self::store($sku, $payload, (int) round((microtime(true) - $started) * 1000));
+        self::releaseLock(self::lockKey($sku));
 
         return $payload;
     }
@@ -91,7 +94,7 @@ class ListingManagerProductSnapshots
             return;
         }
 
-        $lockKey = self::REFRESH_LOCK_PREFIX.md5($sku);
+        $lockKey = self::lockKey($sku);
         try {
             if (! Cache::add($lockKey, 1, now()->addSeconds(90))) {
                 return;
@@ -100,18 +103,118 @@ class ListingManagerProductSnapshots
             // cache unavailable: still refresh
         }
 
+        // Preferred: a detached CLI process. Behind Apache/nginx the "after response" hook still
+        // keeps the HTTP connection open until the rebuild (30-60s of marketplace calls) finishes,
+        // which made saves / pushes time out in the browser.
+        if (self::spawnDetachedRefresh($sku)) {
+            return;
+        }
+
         dispatch(function () use ($sku, $lockKey) {
             @set_time_limit(120);
             try {
                 self::refresh($sku);
             } finally {
-                try {
-                    Cache::forget($lockKey);
-                } catch (\Throwable) {
-                    // ignore
-                }
+                self::releaseLock($lockKey);
             }
         })->afterResponse();
+    }
+
+    private static function lockKey(string $sku): string
+    {
+        return self::REFRESH_LOCK_PREFIX.md5(trim($sku));
+    }
+
+    private static function releaseLock(string $lockKey): void
+    {
+        try {
+            Cache::forget($lockKey);
+        } catch (\Throwable) {
+            // ignore
+        }
+    }
+
+    /**
+     * Start `artisan listing-manager:snapshot-refresh --sku=…` in the background and return at once.
+     */
+    private static function spawnDetachedRefresh(string $sku): bool
+    {
+        if (PHP_OS_FAMILY === 'Windows' || ! function_exists('exec')) {
+            return false;
+        }
+        $disabled = array_map('trim', explode(',', (string) ini_get('disable_functions')));
+        if (in_array('exec', $disabled, true)) {
+            return false;
+        }
+        $php = self::phpCliBinary();
+        if ($php === null) {
+            return false;
+        }
+
+        $command = sprintf(
+            'nohup %s %s listing-manager:snapshot-refresh --sku=%s --sleep-ms=0 >/dev/null 2>&1 &',
+            escapeshellarg($php),
+            escapeshellarg(base_path('artisan')),
+            escapeshellarg($sku)
+        );
+
+        try {
+            $exitCode = 1;
+            exec($command, $output, $exitCode);
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager snapshot: could not spawn background refresh', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+
+        return $exitCode === 0;
+    }
+
+    /**
+     * CLI php matching the running version (PHP_BINARY is php-fpm / apache in web requests).
+     */
+    private static function phpCliBinary(): ?string
+    {
+        static $resolved = false;
+        static $binary = null;
+        if ($resolved) {
+            return $binary;
+        }
+        $resolved = true;
+
+        $candidates = [];
+        if (PHP_SAPI === 'cli' && PHP_BINARY !== '') {
+            $candidates[] = PHP_BINARY;
+        }
+        $bindir = rtrim((string) PHP_BINDIR, '/');
+        $version = PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;
+        foreach ([$bindir, '/usr/bin', '/usr/local/bin'] as $dir) {
+            if ($dir !== '') {
+                $candidates[] = $dir.'/php'.$version;
+                $candidates[] = $dir.'/php';
+            }
+        }
+        try {
+            $found = (new PhpExecutableFinder())->find(false);
+            if (is_string($found) && $found !== '') {
+                $candidates[] = $found;
+            }
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        foreach (array_unique($candidates) as $candidate) {
+            $base = basename($candidate);
+            if (str_contains($base, 'fpm') || str_contains($base, 'cgi') || str_contains($base, 'apache') || str_contains($base, 'httpd')) {
+                continue;
+            }
+            if (@is_file($candidate) && @is_executable($candidate)) {
+                $binary = $candidate;
+                break;
+            }
+        }
+
+        return $binary;
     }
 
     /**
