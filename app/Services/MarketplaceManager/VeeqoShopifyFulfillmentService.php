@@ -3576,6 +3576,14 @@ class VeeqoShopifyFulfillmentService
         if ($aDash === $bDash && (str_contains($a, '-') || str_contains($b, '-'))) {
             return true;
         }
+        foreach (['tt2-', 'tt-', 'tiktok2-', 'tiktok-', 'temu2-', 'temu-', 'po-', 'amz'] as $prefix) {
+            if (str_starts_with($a, $prefix) && substr($a, strlen($prefix)) === $b) {
+                return true;
+            }
+            if (str_starts_with($b, $prefix) && substr($b, strlen($prefix)) === $a) {
+                return true;
+            }
+        }
 
         // #334042 must not match Amazon 113-3340426-4270650
         $shorter = strlen($aDash) <= strlen($bDash) ? $aDash : $bDash;

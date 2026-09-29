@@ -998,9 +998,10 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $hit = null;
             $orderId = (string) $group['order_id'];
             if ($orderId !== '' && $lookup !== null) {
-                $primary = $this->primaryTrackingRef((string) $group['mm_slug'], $orderId);
+                $slug = (string) $group['mm_slug'];
+                $veeqoRef = $this->veeqoOrderRef($slug, $orderId);
                 try {
-                    $veeqo = $lookup->findVeeqoShipment([$primary], false, '', [], 2);
+                    $veeqo = $lookup->findVeeqoShipment([$veeqoRef], false, '', [], 2);
                     if (is_array($veeqo) && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
                         $hit = [
                             'tracking' => (string) $veeqo['tracking'],
@@ -1015,7 +1016,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                     try {
                         $fourSeller = app(FourSellerApiService::class);
                         $fourSeller->setTimeout(5);
-                        $fs = $fourSeller->findShipment([$primary], 1);
+                        $fs = $fourSeller->findShipment([ltrim($orderId, '#')], 1);
                         if (is_array($fs) && trim((string) ($fs['tracking'] ?? '')) !== '') {
                             $hit = [
                                 'tracking' => (string) $fs['tracking'],
@@ -1030,7 +1031,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) < $deadline) {
                     try {
                         $channel = $lookup->lookupLiveChannelTracking(
-                            (string) $group['mm_slug'],
+                            $slug,
                             $this->trackingSearchRefs($lookup, $group)
                         );
                     } catch (\Throwable $e) {
@@ -1260,17 +1261,21 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
-     * The single order id Veeqo and 4Seller should be searched with.
+     * Order number Veeqo stores. TikTok copies are #TT-{id} / #TT2-{id}, not the raw id.
      */
-    protected function primaryTrackingRef(string $slug, string $orderId): string
+    protected function veeqoOrderRef(string $slug, string $orderId): string
     {
-        $orderId = trim($orderId);
-        $plain = ltrim($orderId, '#');
-        if ($slug === 'amazon' || preg_match('/^\d{3}-\d{7}-\d{7}$/', $plain) === 1) {
-            return 'Amz'.$plain;
+        $plain = ltrim(trim($orderId), '#');
+        if ($plain === '') {
+            return $orderId;
         }
 
-        return $orderId;
+        return match ($slug) {
+            'tiktok' => 'TT-'.$plain,
+            'tiktok2' => 'TT2-'.$plain,
+            'amazon' => str_starts_with(strtolower($plain), 'amz') ? $plain : 'Amz'.$plain,
+            default => $plain,
+        };
     }
 
     /**
