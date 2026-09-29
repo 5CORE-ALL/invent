@@ -640,6 +640,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cancelled-orders', [SalesCancelledOrderController::class, 'index'])->name('sales.cancelled.order');
     Route::get('/cancelled-orders/data', [SalesCancelledOrderController::class, 'data'])->name('sales.cancelled.order.data');
     Route::get('/order-fulfillment', [OrderFulfillmentController::class, 'index'])->name('order.fulfillment');
+    Route::get('/order-fulfillment/delivered', [OrderFulfillmentController::class, 'delivered'])->name('order.fulfillment.delivered');
     Route::get('/order-fulfillment/data', [OrderFulfillmentController::class, 'data'])->name('order.fulfillment.data');
     Route::post('/order-fulfillment/tracking/lookup', [OrderFulfillmentController::class, 'lookupTracking'])->name('order.fulfillment.tracking.lookup');
     Route::post('/order-fulfillment/tracking', [OrderFulfillmentController::class, 'saveTracking'])->name('order.fulfillment.tracking.save');

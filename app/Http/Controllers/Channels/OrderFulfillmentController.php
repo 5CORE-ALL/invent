@@ -50,10 +50,20 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'ofDateFrom' => $from->toDateString(),
             'ofDateTo' => $to->toDateString(),
             'ofDateEarliest' => self::EARLIEST_ORDER_DATE,
+            'ofPageTitle' => 'Order Fulfillment',
+            'ofDeliveredOnly' => false,
         ]);
     }
 
-    public function data(): JsonResponse
+    public function delivered(GofoExpressService $gofo, VeeqoApiService $veeqo): View
+    {
+        return $this->index($gofo, $veeqo)->with([
+            'ofPageTitle' => 'Delivered',
+            'ofDeliveredOnly' => true,
+        ]);
+    }
+
+    public function data(Request $request): JsonResponse
     {
         try {
             @set_time_limit(120);
@@ -62,6 +72,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $rows = $this->attachCpMasterInventory($rows);
             $rows = $this->attachSavedTracking($rows);
             $rows = $this->attachCarrierAndTrackingStatus($rows);
+            if ($request->boolean('delivered')) {
+                $rows = array_values(array_filter(
+                    $rows,
+                    fn (array $row) => $this->fulfillmentRowIsDelivered($row)
+                ));
+            }
 
             $channels = [];
             $paid = 0;
@@ -103,6 +119,31 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'unpaid_count' => 0,
             ], 500);
         }
+    }
+
+    /**
+     * Delivered by carrier tracking status, or by the marketplace order status.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function fulfillmentRowIsDelivered(array $row): bool
+    {
+        $tracking = strtolower(trim((string) ($row['tracking_status'] ?? '')));
+        if ($tracking === 'delivered') {
+            return true;
+        }
+
+        $status = strtolower(str_replace([' ', '-', '_'], '', trim((string) ($row['status'] ?? ''))));
+
+        return in_array($status, [
+            'delivered',
+            'completed',
+            'received',
+            'finish',
+            'buyeracceptgoods',
+            'tradefinished',
+            'partiallydelivered',
+        ], true);
     }
 
     /**

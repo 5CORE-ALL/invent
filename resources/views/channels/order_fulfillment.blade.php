@@ -97,7 +97,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Order Fulfillment',
+        'page_title' => $ofPageTitle ?? 'Order Fulfillment',
         'sub_title'  => 'Sales',
     ])
 
@@ -129,7 +129,7 @@
                         </select>
                         <input type="text" id="of-search" class="form-control form-control-sm" style="min-width:180px; flex:1;" placeholder="Search order id…" autocomplete="off" title="Filter by order id">
                     </div>
-                    <p class="small text-muted mb-2">Orders from 15 Sep 2026. The date filter defaults to the last 30 days. Search matches the order id. Carrier and tracking status come from the tracking number (USPS, GOFO, FedEx, UPS).</p>
+                    <p class="small text-muted mb-2">@if(!empty($ofDeliveredOnly))Orders from 15 Sep 2026 whose marketplace status or carrier tracking status is Delivered. The date filter defaults to the last 30 days.@else Orders from 15 Sep 2026. The date filter defaults to the last 30 days. Search matches the order id. Carrier and tracking status come from the tracking number (USPS, GOFO, FedEx, UPS).@endif</p>
                     <div id="order-fulfillment-table" style="height: calc(100vh - 280px);"></div>
                 </div>
             </div>
@@ -195,6 +195,7 @@
     const defaultFrom = @json($ofDateFrom ?? '');
     const defaultTo = @json($ofDateTo ?? '');
     const earliestDate = @json($ofDateEarliest ?? '2026-09-15');
+    const deliveredOnly = @json((bool) ($ofDeliveredOnly ?? false));
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     function escapeHtml(value) {
@@ -214,10 +215,12 @@
     function dateParams() {
         clampDateInput('of-date-from');
         clampDateInput('of-date-to');
-        return {
+        const params = {
             date_from: document.getElementById('of-date-from')?.value || defaultFrom,
             date_to: document.getElementById('of-date-to')?.value || defaultTo,
         };
+        if (deliveredOnly) params.delivered = 1;
+        return params;
     }
 
     function formatDateTime(raw) {

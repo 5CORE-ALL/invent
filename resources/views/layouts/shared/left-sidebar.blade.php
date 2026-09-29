@@ -212,11 +212,26 @@
                 </a>
             </li>
 
+            @php
+                $ofNavOpen = request()->routeIs('order.fulfillment') || request()->routeIs('order.fulfillment.delivered');
+            @endphp
             <li class="side-nav-item">
-                <a href="{{ route('order.fulfillment') }}" class="side-nav-link {{ request()->routeIs('order.fulfillment') || request()->routeIs('order.fulfillment.*') ? 'active' : '' }}">
+                <a data-bs-toggle="collapse" href="#orderFulfillmentNav" aria-expanded="{{ $ofNavOpen ? 'true' : 'false' }}"
+                    aria-controls="orderFulfillmentNav" class="side-nav-link">
                     <i class="ri-truck-line"></i>
                     <span>Order Fulfillment</span>
+                    <span class="menu-arrow"></span>
                 </a>
+                <div class="collapse {{ $ofNavOpen ? 'show' : '' }}" id="orderFulfillmentNav">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('order.fulfillment') }}" class="{{ request()->routeIs('order.fulfillment') ? 'active' : '' }}">Orders</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('order.fulfillment.delivered') }}" class="{{ request()->routeIs('order.fulfillment.delivered') ? 'active' : '' }}">Delivered</a>
+                        </li>
+                    </ul>
+                </div>
             </li>
 
             <li class="side-nav-item">

@@ -44,6 +44,7 @@ return [
     ['value' => 'api_vs_sheet', 'text' => 'API Vs Sheet', 'group' => 'Channel'],
     ['value' => 'cancelled_orders', 'text' => 'Cancelled Orders', 'group' => 'Channel'],
     ['value' => 'order_fulfillment', 'text' => 'Order Fulfillment', 'group' => 'Channel'],
+    ['value' => 'order_fulfillment_delivered', 'text' => 'Order Fulfillment — Delivered', 'group' => 'Channel'],
     ['value' => 'variations_verify_masters', 'text' => 'Variations Verify Masters', 'group' => 'Channel'],
     ['value' => 'channel_promotion_master', 'text' => 'Promotion Master', 'group' => 'Channel'],
     ['value' => 'return_analysis_channel', 'text' => 'Return Analysis (Channel)', 'group' => 'Channel'],
