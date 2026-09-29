@@ -183,7 +183,7 @@ class ShopifyAplusContentSync
             return [
                 'success' => true,
                 'status' => 'cached',
-                'message' => 'Using stored Shopify A+ content.',
+                'message' => 'Using stored A+ content.',
                 'product' => $product,
             ];
         }
@@ -196,7 +196,9 @@ class ShopifyAplusContentSync
         }
 
         if (! ($res['success'] ?? false)) {
-            $message = trim((string) ($res['message'] ?? 'Shopify fetch failed.')) ?: 'Shopify fetch failed.';
+            $message = trim((string) ($res['message'] ?? '')) ?: 'A+ fetch failed.';
+            // The page presents this as "A+ content"; keep the source name out of user-facing text.
+            $message = preg_replace('/\bShopify\b/i', 'store', $message) ?? $message;
             $this->recordFailure($product, $message);
             Log::warning('ShopifyAplusContentSync: fetch failed', ['sku' => $sku, 'error' => $message]);
 
@@ -210,7 +212,7 @@ class ShopifyAplusContentSync
         )));
 
         if ($html === '' && $images === []) {
-            $message = 'Shopify returned an empty description for this SKU.';
+            $message = 'No A+ content found for this SKU on the store.';
             $this->recordFailure($product, $message);
 
             return ['success' => false, 'status' => 'empty', 'message' => $message, 'product' => $product];
@@ -241,7 +243,7 @@ class ShopifyAplusContentSync
         return [
             'success' => true,
             'status' => $force ? 'refetched' : 'fetched',
-            'message' => 'Fetched Shopify description and stored as A+ content.',
+            'message' => 'Fetched and stored A+ content.',
             'product' => $product,
         ];
     }
