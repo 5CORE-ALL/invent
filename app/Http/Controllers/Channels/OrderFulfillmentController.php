@@ -119,6 +119,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $rows = $this->attachCpMasterInventory($rows);
             $rows = $this->attachSavedTracking($rows);
             $rows = $this->attachCarrierAndTrackingStatus($rows);
+            [$navCounts, $navStatusCounts] = $this->fulfillmentNavCounts($rows);
             if (request()->boolean('delivered')) {
                 $rows = array_values(array_filter(
                     $rows,
@@ -172,6 +173,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'unpaid_count' => $unpaid,
                 'date_from' => $from->toDateString(),
                 'date_to' => $to->toDateString(),
+                'nav_counts' => $navCounts,
+                'nav_status_counts' => $navStatusCounts,
             ]);
         } catch (\Throwable $e) {
             report($e);
@@ -184,8 +187,77 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'channel_count' => 0,
                 'paid_count' => 0,
                 'unpaid_count' => 0,
+                'nav_counts' => $this->emptyFulfillmentNavCounts(),
+                'nav_status_counts' => [],
             ], 500);
         }
+    }
+
+    /**
+     * Row totals for the Order Fulfillment sidebar, before the current page filter.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{0: array{orders: int, pending: int, unpaid: int, scan_pending: int, transit: int, delivered: int}, 1: array<string, array<string, int>>}
+     */
+    protected function fulfillmentNavCounts(array $rows): array
+    {
+        $counts = $this->emptyFulfillmentNavCounts();
+        $counts['orders'] = count($rows);
+        $byStatus = [
+            'orders' => [],
+            'pending' => [],
+            'unpaid' => [],
+            'scan_pending' => [],
+            'transit' => [],
+            'delivered' => [],
+        ];
+        foreach ($rows as $row) {
+            $status = trim((string) ($row['status'] ?? ''));
+            if ($status === '') {
+                $status = '—';
+            }
+            $buckets = ['orders'];
+            if (empty($row['paid'])) {
+                $counts['unpaid']++;
+                $buckets[] = 'unpaid';
+            }
+            if ($this->fulfillmentRowIsDelivered($row)) {
+                $counts['delivered']++;
+                $buckets[] = 'delivered';
+            }
+            if ($this->fulfillmentRowIsInTransit($row)) {
+                $counts['transit']++;
+                $buckets[] = 'transit';
+            }
+            if ($this->fulfillmentRowIsScanPending($row)) {
+                $counts['scan_pending']++;
+                $buckets[] = 'scan_pending';
+            }
+            if ($this->fulfillmentRowIsPending($row)) {
+                $counts['pending']++;
+                $buckets[] = 'pending';
+            }
+            foreach ($buckets as $bucket) {
+                $byStatus[$bucket][$status] = ($byStatus[$bucket][$status] ?? 0) + 1;
+            }
+        }
+
+        return [$counts, $byStatus];
+    }
+
+    /**
+     * @return array{orders: int, pending: int, unpaid: int, scan_pending: int, transit: int, delivered: int}
+     */
+    protected function emptyFulfillmentNavCounts(): array
+    {
+        return [
+            'orders' => 0,
+            'pending' => 0,
+            'unpaid' => 0,
+            'scan_pending' => 0,
+            'transit' => 0,
+            'delivered' => 0,
+        ];
     }
 
     /**

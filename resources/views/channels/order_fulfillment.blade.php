@@ -54,6 +54,39 @@
             border: 0;
         }
         #of-channels-badge:hover { filter: brightness(1.12); }
+        .of-status-filter { position: relative; }
+        .of-status-menu {
+            position: absolute;
+            z-index: 30;
+            top: calc(100% + 4px);
+            left: 0;
+            min-width: 220px;
+            max-height: 280px;
+            overflow: auto;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.12);
+            padding: 0.35rem 0.5rem;
+        }
+        .of-status-menu label {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin: 0;
+            padding: 0.15rem 0;
+            font-size: 0.78rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        #orderFulfillmentNav .of-nav-count {
+            margin-left: 0.35rem;
+            font-size: 0.65rem;
+            background: #e9ecef;
+            color: #212529;
+            font-weight: 600;
+        }
+        #orderFulfillmentNav .of-nav-count:empty { display: none; }
         #of-toolbar .form-control-sm,
         #of-toolbar .form-select-sm {
             min-height: 28px;
@@ -122,6 +155,13 @@
                                 @endif
                             @endforeach
                         </datalist>
+                        <div class="of-status-filter">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="of-status-btn">Status</button>
+                            <div class="of-status-menu" id="of-status-menu" hidden>
+                                <label><input type="checkbox" id="of-status-all" checked> All</label>
+                                <div id="of-status-options"></div>
+                            </div>
+                        </div>
                         <select id="of-paid-filter" class="form-select form-select-sm" style="width:130px;" title="Paid or unpaid">
                             <option value="">Paid / Unpaid</option>
                             <option value="Paid">Paid</option>
@@ -200,6 +240,12 @@
     const scanPendingOnly = @json((bool) ($ofScanPendingOnly ?? false));
     const unpaidOnly = @json((bool) ($ofUnpaidOnly ?? false));
     const pendingOnly = @json((bool) ($ofPendingOnly ?? false));
+    const pageKey = deliveredOnly ? 'delivered'
+        : (transitOnly ? 'transit'
+        : (scanPendingOnly ? 'scan_pending'
+        : (unpaidOnly ? 'unpaid'
+        : (pendingOnly ? 'pending' : 'orders'))));
+    const statusStorageKey = 'of-status-filter:' + pageKey;
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     function escapeHtml(value) {
@@ -262,18 +308,114 @@
         setCount('of-channel-count', Object.keys(channels).length);
         setCount('of-paid-count', paid);
         setCount('of-unpaid-count', unpaid);
+        setNavCount(pageKey, rows.length);
+    }
+
+    function setNavCount(key, value) {
+        document.querySelectorAll('[data-of-count="' + key + '"]').forEach(function (el) {
+            el.textContent = Number(value || 0).toLocaleString();
+        });
+    }
+
+    function setNavCounts(counts) {
+        if (!counts) return;
+        Object.keys(counts).forEach(function (key) {
+            setNavCount(key, counts[key]);
+        });
+        refreshSavedNavCounts();
+    }
+
+    let navStatusCounts = null;
+
+    function savedStatusesFor(key) {
+        try {
+            const parsed = JSON.parse(localStorage.getItem('of-status-filter:' + key) || '');
+            if (!parsed || parsed.all) return null;
+            return Array.isArray(parsed.statuses) ? parsed.statuses : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function readSavedStatuses() {
+        return savedStatusesFor(pageKey);
+    }
+
+    function refreshSavedNavCounts() {
+        ['orders', 'pending', 'unpaid', 'scan_pending', 'transit', 'delivered'].forEach(function (key) {
+            if (key === pageKey || !navStatusCounts || !navStatusCounts[key]) return;
+            const map = navStatusCounts[key];
+            const saved = savedStatusesFor(key);
+            const total = Object.keys(map).reduce(function (sum, status) {
+                if (saved !== null && saved.indexOf(status) === -1) return sum;
+                return sum + Number(map[status] || 0);
+            }, 0);
+            setNavCount(key, total);
+        });
+    }
+
+    function writeSavedStatuses(all, statuses) {
+        localStorage.setItem(statusStorageKey, JSON.stringify({
+            all: !!all,
+            statuses: statuses || [],
+        }));
+    }
+
+    function statusLabel(row) {
+        const value = String((row && row.status) || '').trim();
+        return value && value !== '—' ? value : '—';
+    }
+
+    function selectedStatuses() {
+        const boxes = document.querySelectorAll('#of-status-options input[type="checkbox"]');
+        const all = document.getElementById('of-status-all');
+        if (!boxes.length || (all && all.checked)) return null;
+        const picked = [];
+        boxes.forEach(function (box) {
+            if (box.checked) picked.push(box.value);
+        });
+        return picked;
+    }
+
+    function refreshStatusButton() {
+        const btn = document.getElementById('of-status-btn');
+        const picked = selectedStatuses();
+        if (!btn) return;
+        btn.textContent = picked === null ? 'Status' : ('Status (' + picked.length + ')');
+    }
+
+    function renderStatusOptions(rows) {
+        const host = document.getElementById('of-status-options');
+        const all = document.getElementById('of-status-all');
+        if (!host) return;
+        const seen = {};
+        (rows || []).forEach(function (row) {
+            seen[statusLabel(row)] = true;
+        });
+        const labels = Object.keys(seen).sort(function (a, b) {
+            return a.localeCompare(b);
+        });
+        const saved = readSavedStatuses();
+        host.innerHTML = labels.map(function (label) {
+            const checked = saved === null || saved.indexOf(label) !== -1;
+            return '<label><input type="checkbox" value="' + escapeHtml(label) + '"' + (checked ? ' checked' : '') + '> ' + escapeHtml(label) + '</label>';
+        }).join('');
+        if (all) all.checked = saved === null || labels.every(function (label) { return saved.indexOf(label) !== -1; });
+        refreshStatusButton();
     }
 
     function applyFilters(table) {
         const q = String(document.getElementById('of-search')?.value || '').trim().toLowerCase();
         const channel = String(document.getElementById('of-channel-filter')?.value || '').trim().toLowerCase();
         const paid = String(document.getElementById('of-paid-filter')?.value || '').trim();
-        if (!q && !channel && !paid) {
+        const statuses = selectedStatuses();
+        if (!q && !channel && !paid && statuses === null) {
             table.clearFilter(true);
             countsFromRows(table.getData());
             return;
         }
         table.setFilter(function (data) {
+            if (statuses && statuses.indexOf(statusLabel(data)) === -1) return false;
             if (paid && String(data.paid_label || '') !== paid) return false;
             if (channel && !String(data.channel || '').toLowerCase().includes(channel)) return false;
             if (!q) return true;
@@ -329,6 +471,8 @@
             setCount('of-channel-count', response && response.channel_count);
             setCount('of-paid-count', response && response.paid_count);
             setCount('of-unpaid-count', response && response.unpaid_count);
+            navStatusCounts = (response && response.nav_status_counts) || null;
+            setNavCounts(response && response.nav_counts);
             if (response && response.success === false) {
                 this.options.placeholder = response.message || 'Failed to load orders.';
             }
@@ -336,6 +480,7 @@
         },
         dataLoaded: function () {
             table.setSort([{ column: 'order_date', dir: 'asc' }]);
+            renderStatusOptions(table.getData());
             applyFilters(table);
             setTimeout(function () {
                 fillTracking(0);
@@ -481,6 +626,36 @@
                 },
             },
         ],
+    });
+
+    document.getElementById('of-status-btn')?.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const menu = document.getElementById('of-status-menu');
+        if (!menu) return;
+        menu.hidden = !menu.hidden;
+    });
+    document.getElementById('of-status-menu')?.addEventListener('change', function (ev) {
+        const target = ev.target;
+        if (!target || target.type !== 'checkbox') return;
+        const boxes = document.querySelectorAll('#of-status-options input[type="checkbox"]');
+        const all = document.getElementById('of-status-all');
+        if (target.id === 'of-status-all') {
+            boxes.forEach(function (box) { box.checked = target.checked; });
+        } else if (all) {
+            all.checked = Array.from(boxes).every(function (box) { return box.checked; });
+        }
+        const picked = [];
+        boxes.forEach(function (box) { if (box.checked) picked.push(box.value); });
+        writeSavedStatuses(!!(all && all.checked), picked);
+        refreshStatusButton();
+        applyFilters(table);
+    });
+    document.addEventListener('click', function (ev) {
+        const menu = document.getElementById('of-status-menu');
+        const wrap = document.querySelector('.of-status-filter');
+        if (!menu || menu.hidden || !wrap || wrap.contains(ev.target)) return;
+        menu.hidden = true;
     });
 
     ['of-search', 'of-channel-filter', 'of-paid-filter'].forEach(function (id) {

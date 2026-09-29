@@ -225,22 +225,22 @@
                 <div class="collapse {{ $ofNavOpen ? 'show' : '' }}" id="orderFulfillmentNav">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ route('order.fulfillment') }}" class="{{ request()->routeIs('order.fulfillment') ? 'active' : '' }}">Orders</a>
+                            <a href="{{ route('order.fulfillment') }}" class="{{ request()->routeIs('order.fulfillment') ? 'active' : '' }}">Orders <span class="badge rounded-pill of-nav-count" data-of-count="orders"></span></a>
                         </li>
                         <li>
-                            <a href="{{ route('order.fulfillment.pending') }}" class="{{ request()->routeIs('order.fulfillment.pending') ? 'active' : '' }}">Pending</a>
+                            <a href="{{ route('order.fulfillment.pending') }}" class="{{ request()->routeIs('order.fulfillment.pending') ? 'active' : '' }}">Pending <span class="badge rounded-pill of-nav-count" data-of-count="pending"></span></a>
                         </li>
                         <li>
-                            <a href="{{ route('order.fulfillment.unpaid') }}" class="{{ request()->routeIs('order.fulfillment.unpaid') ? 'active' : '' }}">Unpaid</a>
+                            <a href="{{ route('order.fulfillment.unpaid') }}" class="{{ request()->routeIs('order.fulfillment.unpaid') ? 'active' : '' }}">Unpaid <span class="badge rounded-pill of-nav-count" data-of-count="unpaid"></span></a>
                         </li>
                         <li>
-                            <a href="{{ route('order.fulfillment.scan-pending') }}" class="{{ request()->routeIs('order.fulfillment.scan-pending') ? 'active' : '' }}">Scan Pending</a>
+                            <a href="{{ route('order.fulfillment.scan-pending') }}" class="{{ request()->routeIs('order.fulfillment.scan-pending') ? 'active' : '' }}">Scan Pending <span class="badge rounded-pill of-nav-count" data-of-count="scan_pending"></span></a>
                         </li>
                         <li>
-                            <a href="{{ route('order.fulfillment.transit') }}" class="{{ request()->routeIs('order.fulfillment.transit') ? 'active' : '' }}">Transit</a>
+                            <a href="{{ route('order.fulfillment.transit') }}" class="{{ request()->routeIs('order.fulfillment.transit') ? 'active' : '' }}">Transit <span class="badge rounded-pill of-nav-count" data-of-count="transit"></span></a>
                         </li>
                         <li>
-                            <a href="{{ route('order.fulfillment.delivered') }}" class="{{ request()->routeIs('order.fulfillment.delivered') ? 'active' : '' }}">Delivered</a>
+                            <a href="{{ route('order.fulfillment.delivered') }}" class="{{ request()->routeIs('order.fulfillment.delivered') ? 'active' : '' }}">Delivered <span class="badge rounded-pill of-nav-count" data-of-count="delivered"></span></a>
                         </li>
                     </ul>
                 </div>
