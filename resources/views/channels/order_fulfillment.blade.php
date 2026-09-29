@@ -49,6 +49,11 @@
             font-weight: 600 !important;
             white-space: nowrap;
         }
+        #of-channels-badge {
+            cursor: pointer;
+            border: 0;
+        }
+        #of-channels-badge:hover { filter: brightness(1.12); }
         #of-toolbar .form-control-sm,
         #of-toolbar .form-select-sm {
             min-height: 28px;
@@ -102,7 +107,7 @@
                 <div class="card-body py-2">
                     <div id="of-toolbar" class="mb-2">
                         <span class="badge bg-dark of-summary-badge" id="of-rows-badge" title="Number of rows currently shown after filters">Rows: <span id="of-order-count">0</span></span>
-                        <span class="badge bg-secondary of-summary-badge">Channels: <span id="of-channel-count">0</span></span>
+                        <button type="button" class="badge bg-secondary of-summary-badge" id="of-channels-badge" title="Show connected marketplaces">Channels: <span id="of-channel-count">0</span></button>
                         <span class="badge of-summary-badge" style="background:#d1e7dd; color:#0f5132;">Paid: <span id="of-paid-count">0</span></span>
                         <span class="badge of-summary-badge" style="background:#fff3cd; color:#856404;">Unpaid: <span id="of-unpaid-count">0</span></span>
                         <input type="date" id="of-date-from" class="form-control form-control-sm" style="width:140px;" value="{{ $ofDateFrom ?? '' }}" min="{{ $ofDateEarliest ?? '2026-09-15' }}" title="From date">
@@ -126,6 +131,20 @@
                     </div>
                     <p class="small text-muted mb-2">Orders from 15 Sep 2026. The date filter defaults to the last 30 days. Search matches the order id. Carrier and tracking status come from the tracking number (USPS, GOFO, FedEx, UPS).</p>
                     <div id="order-fulfillment-table" style="height: calc(100vh - 280px);"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="of-channels-modal" tabindex="-1" aria-labelledby="of-channels-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="of-channels-modal-label">Connected marketplaces</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <ul class="list-group list-group-flush" id="of-channel-list"></ul>
                 </div>
             </div>
         </div>
@@ -467,6 +486,45 @@
     document.getElementById('of-date-to')?.addEventListener('change', function () {
         table.setData();
     });
+    function rowsForCounts() {
+        const q = String(document.getElementById('of-search')?.value || '').trim();
+        const channel = String(document.getElementById('of-channel-filter')?.value || '').trim();
+        const paid = String(document.getElementById('of-paid-filter')?.value || '').trim();
+        if (!q && !channel && !paid) return table.getData();
+        return table.getData('active');
+    }
+
+    function openChannelsModal() {
+        const grouped = {};
+        rowsForCounts().forEach(function (row) {
+            const slug = String(row.mm_slug || row.channel || '').trim();
+            if (!slug) return;
+            if (!grouped[slug]) {
+                grouped[slug] = { label: String(row.channel || slug), count: 0 };
+            }
+            grouped[slug].count += 1;
+        });
+        const list = Object.keys(grouped).map(function (slug) { return grouped[slug]; })
+            .sort(function (a, b) { return a.label.localeCompare(b.label); });
+        const ul = document.getElementById('of-channel-list');
+        if (ul) {
+            ul.innerHTML = list.length
+                ? list.map(function (ch) {
+                    return '<li class="list-group-item d-flex justify-content-between align-items-center">'
+                        + '<span>' + escapeHtml(ch.label) + '</span>'
+                        + '<span class="badge bg-light text-dark border">' + Number(ch.count).toLocaleString() + '</span>'
+                        + '</li>';
+                }).join('')
+                : '<li class="list-group-item text-muted">No marketplaces in this view.</li>';
+        }
+        const el = document.getElementById('of-channels-modal');
+        if (window.bootstrap && bootstrap.Modal && el) {
+            bootstrap.Modal.getOrCreateInstance(el).show();
+        }
+    }
+
+    document.getElementById('of-channels-badge')?.addEventListener('click', openChannelsModal);
+
     document.getElementById('of-clear-dates')?.addEventListener('click', function () {
         const from = document.getElementById('of-date-from');
         const to = document.getElementById('of-date-to');
