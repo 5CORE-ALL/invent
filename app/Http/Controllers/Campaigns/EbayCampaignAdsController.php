@@ -9,7 +9,6 @@ use App\Services\EbayChannelMetricsService;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\CpMasterDil;
-use App\Support\SbidSlabRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -132,7 +131,8 @@ class EbayCampaignAdsController extends Controller
         $saved = \App\Support\DilVsSbidRule::save(
             \App\Support\DilVsSbidRule::KEY_EBAY1,
             $request->input('slabs', []),
-            $request->exists('enabled') ? $request->boolean('enabled') : null
+            $request->exists('enabled') ? $request->boolean('enabled') : null,
+            $request->exists('cvr') ? $request->input('cvr') : null
         );
 
         return response()->json($saved, ($saved['success'] ?? false) ? 200 : 422);
@@ -157,237 +157,6 @@ class EbayCampaignAdsController extends Controller
         }
 
         return response()->json($result);
-    }
-
-    /**
-     * Apply the Sbid Rule slabs (ebay1_sbid_slabs) to a set of SKUs and push each
-     * computed S Bid to its eBay campaign. Used by the "Apply to Visible Rows"
-     * button in the /ebay-tabulator-view Sbid Rule modal.
-     */
-    public function pushSbidSlabsBySku(Request $request)
-    {
-        $skus = $request->input('skus', []);
-        if (empty($skus) || !is_array($skus)) {
-            return response()->json(['error' => 'No SKUs provided'], 422);
-        }
-
-        // Load Sbid Rule slabs (same source as /ebay-tabulator-view S BID column).
-        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
-        $slabs   = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
-
-        // Metrics keyed by normalized SKU.
-        $metrics = \App\Models\EbayMetric::whereIn('sku', $skus)->get()
-            ->keyBy(fn($m) => $this->normSku($m->sku));
-
-        // Campaign ads keyed by listing_id (item_id).
-        $itemIds = $metrics->pluck('item_id')->filter()->unique()->values()->all();
-        $ads = DB::table('ebay_campaign_ads')
-            ->whereIn('listing_id', $itemIds)
-            ->whereNotNull('campaign_id')
-            ->where('funding_strategy', 'COST_PER_SALE')
-            ->get()
-            ->keyBy('listing_id');
-
-        try {
-            $service = new \App\Services\EbayApiService();
-            $token   = $service->generateBearerToken();
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Token error: ' . $e->getMessage()], 500);
-        }
-
-        $results = [];
-        $success = 0; $failed = 0; $skipped = 0; $paused = 0;
-        $byCampaign = [];
-        $pauseByCampaign = [];
-        $pausedSkus = [];
-        $resumedSkus = [];
-
-        foreach ($skus as $sku) {
-            $norm   = $this->normSku($sku);
-            $metric = $metrics->get($norm);
-            if (!$metric || !$metric->item_id) {
-                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No eBay listing'];
-                $skipped++;
-                continue;
-            }
-            $lid = (string) $metric->item_id;
-            $ad  = $ads->get($lid);
-            if (!$ad || !$ad->campaign_id) {
-                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'Not in a COST_PER_SALE campaign'];
-                $skipped++;
-                continue;
-            }
-
-            // S Bid from Sbid Rule slabs. A paused slab turns the promoted listing off.
-            $soldL30 = (float) ($metric->ebay_l30 ?? 0);
-            $l7Views = (float) ($metric->l7_views ?? 0);
-            $decision = SbidSlabRule::match($soldL30, $l7Views, $slabs);
-            if ($decision['pause']) {
-                if (empty($ad->ad_id)) {
-                    $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'Paused slab but no ad id'];
-                    $skipped++;
-                    continue;
-                }
-                $pauseByCampaign[(string) $ad->campaign_id][] = [
-                    'listingId' => $lid,
-                    'adId' => (string) $ad->ad_id,
-                    'sku' => $sku,
-                ];
-                continue;
-            }
-            $bid = $decision['bid'];
-            if ($bid <= 0) {
-                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab'];
-                $skipped++;
-                continue;
-            }
-            $byCampaign[(string) $ad->campaign_id][] = [
-                'listingId' => $lid,
-                'adId' => $ad->ad_id ? (string) $ad->ad_id : null,
-                'bidPercentage' => (string) $bid,
-                'sku' => $sku,
-            ];
-        }
-
-        foreach ($byCampaign as $campaignId => $requests) {
-            $this->resumeEbayAds($token, (string) $campaignId, $requests);
-            $payload = array_map(fn($r) => ['listingId' => $r['listingId'], 'bidPercentage' => $r['bidPercentage']], $requests);
-            try {
-                $response = Http::withToken($token)
-                    ->withHeaders(['Content-Type' => 'application/json'])
-                    ->timeout(60)
-                    ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
-                        ['requests' => $payload]);
-
-                if ($response->successful()) {
-                    foreach ($requests as $r) {
-                        DB::table('ebay_campaign_ads')
-                            ->where('listing_id', (string) $r['listingId'])
-                            ->where('campaign_id', (string) $campaignId)
-                            ->update([
-                                'bid_percentage' => round((float) $r['bidPercentage'], 2),
-                                'campaign_status' => 'RUNNING',
-                                'updated_at' => now(),
-                            ]);
-                        $results[] = ['sku' => $r['sku'], 'status' => 'pushed', 'bid' => $r['bidPercentage'] . '%'];
-                        $resumedSkus[] = $r['sku'];
-                        $success++;
-                    }
-                } else {
-                    foreach ($requests as $r) {
-                        $results[] = ['sku' => $r['sku'], 'status' => 'failed', 'reason' => 'HTTP ' . $response->status()];
-                        $failed++;
-                    }
-                }
-            } catch (\Exception $e) {
-                foreach ($requests as $r) {
-                    $results[] = ['sku' => $r['sku'], 'status' => 'failed', 'reason' => $e->getMessage()];
-                    $failed++;
-                }
-            }
-        }
-
-        foreach ($pauseByCampaign as $campaignId => $requests) {
-            foreach (array_chunk($requests, 200) as $chunk) {
-                $this->pauseEbayAds($token, (string) $campaignId, $chunk, $results, $paused, $failed, $pausedSkus);
-            }
-        }
-
-        return response()->json([
-            'success' => $success,
-            'paused' => $paused,
-            'failed'  => $failed,
-            'skipped' => $skipped,
-            'paused_skus' => array_values(array_unique($pausedSkus)),
-            'resumed_skus' => array_values(array_unique($resumedSkus)),
-            'results' => $results,
-        ]);
-    }
-
-    /** Turn ads back on before writing a bid. */
-    private function resumeEbayAds(string $token, string $campaignId, array $requests): void
-    {
-        $payload = [];
-        foreach ($requests as $r) {
-            if (empty($r['adId'])) {
-                continue;
-            }
-            $payload[] = [
-                'adId' => $r['adId'],
-                'adStatus' => 'ACTIVE',
-            ];
-        }
-        if ($payload === []) {
-            return;
-        }
-
-        try {
-            Http::withToken($token)
-                ->withHeaders(['Content-Type' => 'application/json'])
-                ->timeout(60)
-                ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_status", [
-                    'requests' => $payload,
-                ]);
-        } catch (\Exception $e) {
-            // Bid push still runs. A resume failure is reported by the bid call if eBay rejects it.
-        }
-    }
-
-    private function pauseEbayAds(string $token, string $campaignId, array $requests, array &$results, int &$paused, int &$failed, array &$pausedSkus): void
-    {
-        $payload = array_map(fn ($r) => [
-            'adId' => $r['adId'],
-            'adStatus' => 'PAUSED',
-        ], $requests);
-
-        try {
-            $response = Http::withToken($token)
-                ->withHeaders(['Content-Type' => 'application/json'])
-                ->timeout(60)
-                ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_status", [
-                    'requests' => $payload,
-                ]);
-
-            if ($response->successful()) {
-                foreach ($requests as $r) {
-                    DB::table('ebay_campaign_ads')
-                        ->where('listing_id', (string) $r['listingId'])
-                        ->where('campaign_id', $campaignId)
-                        ->update([
-                            'campaign_status' => 'PAUSED',
-                            'updated_at' => now(),
-                        ]);
-                    $results[] = ['sku' => $r['sku'], 'status' => 'paused', 'bid' => 'OFF'];
-                    $pausedSkus[] = $r['sku'];
-                    $paused++;
-                }
-
-                return;
-            }
-
-            foreach ($requests as $r) {
-                $results[] = ['sku' => $r['sku'], 'status' => 'failed', 'reason' => 'Pause HTTP ' . $response->status()];
-                $failed++;
-            }
-        } catch (\Exception $e) {
-            foreach ($requests as $r) {
-                $results[] = ['sku' => $r['sku'], 'status' => 'failed', 'reason' => $e->getMessage()];
-                $failed++;
-            }
-        }
-    }
-
-    /** Resolve S Bid from View VS SBID slabs (el30 = 0 → max S Bid %; else first matching L7 Views range). */
-    private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
-    {
-        return SbidSlabRule::resolve($esold, $l7Views, $slabs);
-    }
-
-    private function slabInRange(float $val, $min, $max): bool
-    {
-        if ($min !== null && $min !== '' && $val < (float) $min) return false;
-        if ($max !== null && $max !== '' && $val > (float) $max) return false;
-        return true;
     }
 
     /**
@@ -877,6 +646,7 @@ class EbayCampaignAdsController extends Controller
                 'em.views',
                 'em.l7_views',
                 'em.ebay_l30',
+                'em.ebay_l60',
                 'em.listing_status',
                 // Dilution inputs (from shopify_skus, matched by sku). Correlated subqueries
                 // avoid row multiplication and keep every ad row visible even when unmatched.

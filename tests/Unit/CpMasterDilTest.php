@@ -22,4 +22,11 @@ class CpMasterDilTest extends TestCase
         $this->assertNull(CpMasterDil::percent(null, 10));
         $this->assertNull(CpMasterDil::percent('', 10));
     }
+
+    public function test_zero_sold_is_the_zero_slab_and_a_rounded_zero_is_not(): void
+    {
+        $this->assertSame(0.0, CpMasterDil::slabPercent(0, 20));
+        $this->assertGreaterThan(0, CpMasterDil::slabPercent(1, 10000));
+        $this->assertSame(0, CpMasterDil::percent(1, 10000));
+    }
 }

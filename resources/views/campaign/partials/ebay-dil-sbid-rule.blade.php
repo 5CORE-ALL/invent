@@ -4,7 +4,8 @@
 @if(($part ?? 'modal') === 'modal')
 <div class="modal fade is-off" id="dilSbidRuleModal" tabindex="-1" aria-labelledby="dilSbidRuleModalLabel" aria-hidden="true">
     <style>
-        #dilSbidRuleModal .modal-dialog { max-width: 720px; }
+        #dilSbidRuleModal .modal-dialog { max-width: 760px; }
+        #dil-sbid-cvr-table .dil-sbid-cvr-input { width: 88px; display: inline-block; }
         #dil-sbid-table thead th { background: #e7f1fb; color: #1e3a5f; font-weight: 600; }
         #dilSbidRuleModal input[type=number]::-webkit-inner-spin-button,
         #dilSbidRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -31,11 +32,12 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="small mb-2" id="dil-sbid-mode-note">Off. S Bid uses View VS SBID (For L7 Views).</p>
+                <p class="small mb-2" id="dil-sbid-mode-note">Off. S Bid is not changed.</p>
                 <ul class="small text-muted mb-3 ps-3">
-                    <li>Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100). Inventory 0 and missing data are not counted. First matching slab wins.</li>
-                    <li><strong>0–0</strong> applies that listing’s <strong>ES Bid</strong>.</li>
+                    <li>Count is unique SKUs. Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100). Inventory 0 and missing data are not counted. First matching slab wins.</li>
+                    <li><strong>0–0</strong> is SKUs with <strong>OV L30 sold = 0</strong>. Every ad for that SKU uses its <strong>ES Bid</strong>.</li>
                     <li>Every other slab uses the <strong>S Bid %</strong> you type on that row.</li>
+                    <li><strong>CVR overlay</strong> then adjusts that S Bid, same as Sprc Dil. Down = CVR is below the threshold and the arrow is down (CVR L30 under CVR L60). Up = CVR is above the threshold and the arrow is up. Flat arrows are left alone.</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay, eBay 2, and eBay 3 each keep their own slabs.</li>
                 </ul>
                 <div class="table-responsive">
@@ -44,7 +46,7 @@
                             <tr>
                                 <th class="text-center" style="width:110px;">From</th>
                                 <th class="text-center" style="width:110px;">To</th>
-                                <th class="text-center" style="width:90px;" title="Listings on this page whose CP Master Dil (OV L30 sold ÷ Inv) is in this slab. Inv 0 is not counted.">Count</th>
+                                <th class="text-center" style="width:90px;" title="Unique SKUs. 0–0 is OV L30 sold = 0 with Inventory. Each ad for that SKU uses the same slab.">Count</th>
                                 <th class="text-end" style="width:140px;">S Bid</th>
                                 <th style="width:36px;"></th>
                             </tr>
@@ -55,6 +57,43 @@
                 <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="dil-sbid-add-btn">
                     <i class="fas fa-plus me-1"></i>Add slab
                 </button>
+                <div class="fw-semibold small mt-3 mb-1">CVR overlay — S Bid</div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0" id="dil-sbid-cvr-table">
+                        <thead>
+                            <tr>
+                                <th>When</th>
+                                <th class="text-center">CVR%</th>
+                                <th class="text-end">Adj S Bid</th>
+                                <th class="text-center" style="width:80px;" title="Unique SKUs. Down: CVR below the threshold and a down arrow. Up: CVR above the threshold and an up arrow.">Count</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Down</td>
+                                <td class="text-center">
+                                    &lt;
+                                    <input type="number" min="0" step="0.1" class="form-control form-control-sm text-end dil-sbid-cvr-input" id="dil-sbid-cvr-down-lt" value="7">
+                                </td>
+                                <td class="text-end">
+                                    <input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-cvr-input" id="dil-sbid-cvr-down-adj" value="-10">
+                                </td>
+                                <td class="text-center fw-semibold"><span id="dil-sbid-cvr-down-count">0</span></td>
+                            </tr>
+                            <tr>
+                                <td>Up</td>
+                                <td class="text-center">
+                                    &gt;
+                                    <input type="number" min="0" step="0.1" class="form-control form-control-sm text-end dil-sbid-cvr-input" id="dil-sbid-cvr-up-gt" value="10">
+                                </td>
+                                <td class="text-end">
+                                    <input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-cvr-input" id="dil-sbid-cvr-up-adj" value="10">
+                                </td>
+                                <td class="text-center fw-semibold"><span id="dil-sbid-cvr-up-count">0</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
                 <p class="small text-danger mb-0 mt-2 d-none" id="dil-sbid-err"></p>
             </div>
             <div class="modal-footer py-2 d-flex justify-content-between">
@@ -71,17 +110,16 @@ const DIL_SBID_GET_URL = @json($getUrl);
 const DIL_SBID_SAVE_URL = @json($saveUrl);
 const DIL_SBID_APPLY_URL = @json($applyUrl);
 const DIL_SBID_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultSlabs());
+const DIL_SBID_CVR_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultCvr());
 const DIL_SBID_COLORS = ['#6f42c1','#3b82f6','#14b8a6','#22c55e','#84cc16','#eab308','#f59e0b','#ea580c','#dc3545','#e83e8c','#7c3aed','#0ea5e9'];
 let currentDilSbidSlabs = DIL_SBID_DEFAULTS.map(function(s) { return Object.assign({}, s); });
+let currentDilSbidCvr = Object.assign({}, DIL_SBID_CVR_DEFAULTS);
 var dilSbidEnabled = false;
 let dilSbidSaveTimer = null;
 
 function campaignSbid(row) {
     if (dilSbidEnabled) return dilSbidOfRow(row);
-    const res = (typeof getCombinedSbid === 'function') ? getCombinedSbid(row) : { bid: 0, color: '#6c757d', skip: true };
-    if (res && res.zeroSoldMax) res.title = 'E L30 = 0 → maximum S Bid %';
-    else if (res && !res.skip) res.title = 'View VS SBID';
-    return res;
+    return { bid: 0, color: '#6c757d', skip: true, title: 'Dil vs SBid is off' };
 }
 function dilSbidPaintMode() {
     const on = !!dilSbidEnabled;
@@ -93,8 +131,8 @@ function dilSbidPaintMode() {
     if (label) label.textContent = on ? 'On' : 'Off';
     if (note) {
         note.textContent = on
-            ? 'On. S Bid uses these Dil slabs.'
-            : 'Off. S Bid uses View VS SBID (For L7 Views).';
+            ? 'On. S Bid uses these Dil slabs, then the CVR overlay.'
+            : 'Off. S Bid is not changed.';
         note.className = on ? 'small mb-2 text-success' : 'small mb-2 text-muted';
     }
     if (modal) modal.classList.toggle('is-off', !on);
@@ -115,8 +153,84 @@ function dilSbidContains(dil, slab, prevMax) {
     const loOk = sharesEdge ? dil > min : dil >= min;
     return loOk && dil <= max;
 }
-function dilSbidOfRow(row) {
+function dilSbidSkuKey(row) {
+    if (!row || !(row.sku_matched == 1 || row.sku_matched === true || row.sku_matched === '1')) return '';
+    const sku = String(row.resolved_sku || row.sku || '').trim();
+    if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return '';
+    return sku.toUpperCase();
+}
+function dilSbidMetric(row) {
     const dil = (typeof dilValue === 'function') ? dilValue(row) : null;
+    if (dil === null || !isFinite(dil)) return null;
+    const raw = row && row.shopify_qty;
+    if (raw === null || raw === undefined || raw === '') return dil;
+    const ovl = Number(raw);
+    if (!isFinite(ovl)) return dil;
+    if (ovl === 0) return 0;
+    if (dil === 0) {
+        const inv = Number(row.shopify_inv);
+        return inv > 0 ? (ovl / inv) * 100 : null;
+    }
+    return dil;
+}
+function dilSbidCvrNow() {
+    const num = function(id, fallback) {
+        const el = document.getElementById(id);
+        const n = el ? parseFloat(el.value) : NaN;
+        return isFinite(n) ? n : fallback;
+    };
+    currentDilSbidCvr = {
+        down_lt: Math.max(0, num('dil-sbid-cvr-down-lt', DIL_SBID_CVR_DEFAULTS.down_lt)),
+        down_adj: num('dil-sbid-cvr-down-adj', DIL_SBID_CVR_DEFAULTS.down_adj),
+        up_gt: Math.max(0, num('dil-sbid-cvr-up-gt', DIL_SBID_CVR_DEFAULTS.up_gt)),
+        up_adj: num('dil-sbid-cvr-up-adj', DIL_SBID_CVR_DEFAULTS.up_adj)
+    };
+    return currentDilSbidCvr;
+}
+function dilSbidPaintCvr() {
+    const cfg = currentDilSbidCvr || DIL_SBID_CVR_DEFAULTS;
+    const set = function(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    };
+    set('dil-sbid-cvr-down-lt', cfg.down_lt);
+    set('dil-sbid-cvr-down-adj', cfg.down_adj);
+    set('dil-sbid-cvr-up-gt', cfg.up_gt);
+    set('dil-sbid-cvr-up-adj', cfg.up_adj);
+}
+function dilSbidCvrParts(row) {
+    const views = parseFloat(row && row.views) || 0;
+    if (!(views > 0)) return null;
+    const l30 = parseFloat(row && row.ebay_l30) || 0;
+    const l60 = parseFloat(row && row.ebay_l60) || 0;
+    return { cvr: (l30 / views) * 100, cvr60: (l60 / views) * 100 };
+}
+function dilSbidCvrTrend(parts) {
+    if (!parts) return 'flat';
+    const tol = 0.1;
+    if (parts.cvr === 0 || parts.cvr < parts.cvr60 - tol) return 'down';
+    if (parts.cvr > parts.cvr60 + tol) return 'up';
+    return 'flat';
+}
+function dilSbidApplyCvr(bid, row) {
+    const cfg = currentDilSbidCvr || DIL_SBID_CVR_DEFAULTS;
+    const parts = dilSbidCvrParts(row);
+    const trend = dilSbidCvrTrend(parts);
+    let adj = 0;
+    let why = '';
+    if (parts && trend === 'down' && parts.cvr < cfg.down_lt) {
+        adj = cfg.down_adj;
+        why = 'CVR Down < ' + cfg.down_lt + '% and down arrow';
+    } else if (parts && trend === 'up' && parts.cvr > cfg.up_gt) {
+        adj = cfg.up_adj;
+        why = 'CVR Up > ' + cfg.up_gt + '% and up arrow';
+    }
+    let next = dilSbidRound(bid + adj);
+    if (next < 0) next = 0;
+    return { bid: next, adj: adj, why: why };
+}
+function dilSbidOfRow(row) {
+    const dil = dilSbidMetric(row);
     if (dil === null || !isFinite(dil)) {
         return { bid: 0, color: '#6c757d', skip: true, off: false, title: 'No CP Master Dil' };
     }
@@ -126,15 +240,29 @@ function dilSbidOfRow(row) {
         const slab = currentDilSbidSlabs[i];
         if (dilSbidContains(dil, slab, prevMax)) {
             const mode = dilSbidMode(i);
+            let base = null;
+            let title = '';
+            let color = '#0d6efd';
             if (mode === 'es_bid') {
-                if (esBid > 0) return { bid: esBid, color: '#0dcaf0', skip: false, off: false, title: 'Dil 0 → ES Bid' };
-                return { bid: 0, color: '#6c757d', skip: true, off: false, title: 'Dil 0 but ES Bid is empty' };
+                if (!(esBid > 0)) return { bid: 0, color: '#6c757d', skip: true, off: false, title: 'Dil 0 but ES Bid is empty' };
+                base = esBid;
+                title = 'Dil 0 → ES Bid';
+                color = '#0dcaf0';
+            } else {
+                const typed = parseFloat(slab.bid);
+                if (!(isFinite(typed) && typed > 0)) {
+                    return { bid: 0, color: '#6c757d', skip: true, off: false, title: 'Type an S Bid % on this slab' };
+                }
+                base = typed;
+                title = 'Dil ' + dilSbidRound(dil) + '% → S Bid ' + typed + '%';
             }
-            const bid = parseFloat(slab.bid);
-            if (isFinite(bid) && bid > 0) {
-                return { bid: bid, color: '#0d6efd', skip: false, off: false, title: 'Dil ' + dilSbidRound(dil) + '% → S Bid ' + bid + '%' };
+            const adj = dilSbidApplyCvr(base, row);
+            if (adj.why) {
+                const sign = adj.adj > 0 ? '+' : '';
+                title += ' ' + sign + adj.adj + ' (' + adj.why + ') → ' + adj.bid + '%';
             }
-            return { bid: 0, color: '#6c757d', skip: true, off: false, title: 'Type an S Bid % on the 0.1–10 slab' };
+            if (!(adj.bid > 0)) return { bid: 0, color: '#6c757d', skip: true, off: false, title: title };
+            return { bid: adj.bid, color: color, skip: false, off: false, title: title };
         }
         prevMax = parseFloat(slab.max);
     }
@@ -146,9 +274,13 @@ function dilSbidCounts() {
     try {
         if (typeof table !== 'undefined' && table && typeof table.getData === 'function') rows = table.getData() || [];
     } catch (e) { rows = []; }
+    const seen = {};
     rows.forEach(function(d) {
-        const dil = (typeof dilValue === 'function') ? dilValue(d) : null;
+        const sku = dilSbidSkuKey(d);
+        if (!sku || seen[sku]) return;
+        const dil = dilSbidMetric(d);
         if (dil === null || !isFinite(dil)) return;
+        seen[sku] = true;
         let prevMax = null;
         for (let i = 0; i < currentDilSbidSlabs.length; i++) {
             if (dilSbidContains(dil, currentDilSbidSlabs[i], prevMax)) {
@@ -157,6 +289,26 @@ function dilSbidCounts() {
             }
             prevMax = parseFloat(currentDilSbidSlabs[i].max);
         }
+    });
+    return counts;
+}
+function dilSbidCvrCounts() {
+    const counts = { down: 0, up: 0 };
+    const cfg = currentDilSbidCvr || DIL_SBID_CVR_DEFAULTS;
+    let rows = [];
+    try {
+        if (typeof table !== 'undefined' && table && typeof table.getData === 'function') rows = table.getData() || [];
+    } catch (e) { rows = []; }
+    const seen = {};
+    rows.forEach(function(d) {
+        const sku = dilSbidSkuKey(d);
+        if (!sku || seen[sku]) return;
+        const parts = dilSbidCvrParts(d);
+        if (!parts) return;
+        seen[sku] = true;
+        const trend = dilSbidCvrTrend(parts);
+        if (trend === 'down' && parts.cvr < cfg.down_lt) counts.down++;
+        else if (trend === 'up' && parts.cvr > cfg.up_gt) counts.up++;
     });
     return counts;
 }
@@ -200,6 +352,7 @@ function renderDilSbidTable() {
             + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 dil-sbid-del" data-idx="' + i + '" title="Remove slab">&times;</button></td>';
         tbody.appendChild(tr);
     });
+    dilSbidPaintCounts();
 }
 function dilSbidScheduleSave() {
     clearTimeout(dilSbidSaveTimer);
@@ -211,6 +364,11 @@ function dilSbidPaintCounts() {
         const el = tr.querySelector('.dil-sbid-count');
         if (el) el.textContent = String(counts[i] || 0);
     });
+    const cvrCounts = dilSbidCvrCounts();
+    const down = document.getElementById('dil-sbid-cvr-down-count');
+    const up = document.getElementById('dil-sbid-cvr-up-count');
+    if (down) down.textContent = String(cvrCounts.down || 0);
+    if (up) up.textContent = String(cvrCounts.up || 0);
 }
 function dilSbidSave(thenApply) {
     const errEl = document.getElementById('dil-sbid-err');
@@ -231,7 +389,7 @@ function dilSbidSave(thenApply) {
         method: 'POST',
         headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
         contentType: 'application/json',
-        data: JSON.stringify({ slabs: currentDilSbidSlabs, enabled: !!dilSbidEnabled }),
+        data: JSON.stringify({ slabs: currentDilSbidSlabs, enabled: !!dilSbidEnabled, cvr: dilSbidCvrNow() }),
         success: function(resp) {
             const before = currentDilSbidSlabs.length;
             if (resp && Array.isArray(resp.slabs) && resp.slabs.length) currentDilSbidSlabs = resp.slabs;
@@ -316,6 +474,8 @@ $.get(DIL_SBID_GET_URL, function(data) {
         currentDilSbidSlabs = data.slabs.filter(function(s) { return s && s.mode !== 'auto_off'; });
     }
     dilSbidEnabled = !!(data && data.enabled);
+    if (data && data.cvr) currentDilSbidCvr = Object.assign({}, DIL_SBID_CVR_DEFAULTS, data.cvr);
+    dilSbidPaintCvr();
     dilSbidPaintMode();
     renderDilSbidTable();
     if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
@@ -361,5 +521,11 @@ document.getElementById('dil-sbid-add-btn').addEventListener('click', function()
 document.getElementById('dil-sbid-apply-btn').addEventListener('click', function() {
     clearTimeout(dilSbidSaveTimer);
     dilSbidSave(true);
+});
+document.getElementById('dil-sbid-cvr-table').addEventListener('input', function() {
+    dilSbidCvrNow();
+    dilSbidPaintCounts();
+    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+    dilSbidScheduleSave();
 });
 @endif

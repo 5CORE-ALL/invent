@@ -15,8 +15,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Each band has a direction (inc | dec | none) and a step (%/day). The settings
  * are stored (shared across users) in ebay_sbid_rules under key ebay1_sbid_views
- * (eBay 1), ebay2_sbid_views (eBay 2), or ebay3_sbid_views (eBay 3) so both the
- * UI and the ebay*:update-suggestedbid cron use the same rule.
+ * (eBay 1), ebay2_sbid_views (eBay 2), or ebay3_sbid_views (eBay 3).
  *
  * Extra guard: when E L30 sold ≤ no_dec_max_el30 (default 0), never decrease
  * the bid — even if the L7 colour band says "dec".

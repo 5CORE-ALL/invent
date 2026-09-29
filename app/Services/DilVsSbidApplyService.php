@@ -5,14 +5,13 @@ namespace App\Services;
 use App\Models\ShopifySku;
 use App\Support\CpMasterDil;
 use App\Support\DilVsSbidRule;
-use App\Support\SbidSlabRule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Push Dil vs SBid for one eBay account: ES Bid or the dynamic % as the
- * promoted-listing bid. Paused View VS SBID slabs pause the listing.
+ * promoted-listing bid. When the switch is off, nothing is pushed.
  */
 class DilVsSbidApplyService
 {
@@ -32,7 +31,7 @@ class DilVsSbidApplyService
         $stored = DilVsSbidRule::load($ruleKey);
         $useDil = ! empty($stored['enabled']);
         $slabs = $stored['slabs'];
-        $viewSlabs = $useDil ? [] : $this->viewVsSbidSlabs();
+        $cvr = $stored['cvr'];
         $metrics = $metricClass::whereIn('item_id', $listingIds)->get()->keyBy(fn ($m) => (string) $m->item_id);
         $ads = DB::table($adsTable)
             ->whereIn('listing_id', $listingIds)
@@ -78,36 +77,13 @@ class DilVsSbidApplyService
             $sku = (string) ($metric?->sku ?? $ad->sku ?? '');
 
             if (! $useDil) {
-                $esold = (float) ($metric?->ebay_l30 ?? 0);
-                $l7Views = (float) ($metric?->l7_views ?? 0);
-                $decision = SbidSlabRule::match($esold, $l7Views, $viewSlabs);
-                if ($decision['pause']) {
-                    if (empty($ad->ad_id)) {
-                        $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Paused slab but no ad id'];
-                        $skipped++;
-                        continue;
-                    }
-                    $offsByCampaign[(string) $ad->campaign_id][] = [
-                        'listingId' => $lid,
-                        'adId' => (string) $ad->ad_id,
-                    ];
-                    continue;
-                }
-                if ($decision['bid'] <= 0) {
-                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Dil vs SBid is off and no View VS SBID slab matched'];
-                    $skipped++;
-                    continue;
-                }
-                $bidsByCampaign[(string) $ad->campaign_id][] = [
-                    'listingId' => $lid,
-                    'adId' => $ad->ad_id ? (string) $ad->ad_id : null,
-                    'bidPercentage' => (string) round($decision['bid'], 2),
-                ];
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Dil vs SBid is off'];
+                $skipped++;
                 continue;
             }
 
             $shopify = $shopifyMap[trim($sku)] ?? null;
-            $dil = CpMasterDil::percent($shopify->quantity ?? null, $shopify->inv ?? null);
+            $dil = CpMasterDil::slabPercent($shopify->quantity ?? null, $shopify->inv ?? null);
             if ($dil === null) {
                 $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No CP Master Dil'];
                 $skipped++;
@@ -115,6 +91,19 @@ class DilVsSbidApplyService
             }
             $esBid = (float) ($ad->suggested_bid ?? 0);
             $decision = DilVsSbidRule::resolve((float) $dil, $esBid, $slabs);
+            if ($decision['bid'] > 0) {
+                $adjusted = DilVsSbidRule::applyCvr(
+                    (float) $decision['bid'],
+                    (float) ($metric?->views ?? 0),
+                    (float) ($metric?->ebay_l30 ?? 0),
+                    (float) ($metric?->ebay_l60 ?? 0),
+                    $cvr
+                );
+                $decision['bid'] = $adjusted['bid'];
+                if ($adjusted['why'] !== '') {
+                    $decision['label'] = trim($decision['label'].' '.$adjusted['why']);
+                }
+            }
 
             if ($decision['off']) {
                 if (empty($ad->ad_id)) {
@@ -330,15 +319,6 @@ class DilVsSbidApplyService
                 ->where('campaign_id', $campaignId)
                 ->update(['campaign_status' => 'SYSTEM_PAUSED', 'updated_at' => now()]);
         }
-    }
-
-    private function viewVsSbidSlabs(): array
-    {
-        $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
-        $decoded = $row ? json_decode((string) $row->rule, true) : null;
-        $rules = is_array($decoded['rules'] ?? null) ? $decoded['rules'] : [];
-
-        return $rules;
     }
 
     private function shopifyBySku(array $skus): array

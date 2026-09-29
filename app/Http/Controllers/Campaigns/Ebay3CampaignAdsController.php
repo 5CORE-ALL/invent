@@ -5,29 +5,25 @@ namespace App\Http\Controllers\Campaigns;
 use App\Http\Controllers\Campaigns\Concerns\ProvidesEbayCampaignAdsBadgeSummary;
 use App\Http\Controllers\Controller;
 use App\Models\Ebay3Metric;
-use App\Services\CronMonitor\ManualActionService;
 use App\Services\EbayChannelMetricsService;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\CpMasterDil;
-use App\Support\SbidSlabRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
- * eBay 3 mirror of {@see EbayCampaignAdsController} / {@see Ebay2CampaignAdsController}
- * — same Sbid Rule slabs as eBay 1 (`ebay1_sbid_slabs`) + DIL, driven off eBay-3 data:
+ * eBay 3 mirror of {@see EbayCampaignAdsController} / {@see Ebay2CampaignAdsController},
+ * driven off eBay-3 data:
  *   - Campaign data: `ebay3_campaign_ads`
  *   - Metrics:       `ebay_3_metrics` (App\Models\Ebay3Metric)
- *   - Rule keys:     `ebay1_sbid_slabs` (shared For L7 Views / CVR → S Bid) and
- *                    `ebay3_dil` (DIL colour bands) in `ebay_sbid_rules`
- *                    (`ebay3` SCVR bands kept only for /ebay3-tabulator-view;
- *                     `ebay3_sbid_views` kept for /ebay3-tabulator-view)
- *   - Token / push:  EbayThreeApiService + `ebay3:update-suggestedbid`
+ *   - Rule keys:     `ebay3_dil` (DIL colour bands) and `ebay3_dil_sbid`
+ *                    in `ebay_sbid_rules` (`ebay3` SCVR bands and
+ *                    `ebay3_sbid_views` kept for /ebay3-tabulator-view)
+ *   - Token / push:  EbayThreeApiService
  */
 class Ebay3CampaignAdsController extends Controller
 {
@@ -35,7 +31,6 @@ class Ebay3CampaignAdsController extends Controller
 
     /**
      * Sbid (Views) settings — kept for /ebay3-tabulator-view.
-     * Campaign-ads S Bid now uses the shared Ebay 1 slab rule instead.
      */
     public function getSbidViewsRule()
     {
@@ -155,7 +150,8 @@ class Ebay3CampaignAdsController extends Controller
         $saved = \App\Support\DilVsSbidRule::save(
             \App\Support\DilVsSbidRule::KEY_EBAY3,
             $request->input('slabs', []),
-            $request->exists('enabled') ? $request->boolean('enabled') : null
+            $request->exists('enabled') ? $request->boolean('enabled') : null,
+            $request->exists('cvr') ? $request->input('cvr') : null
         );
 
         return response()->json($saved, ($saved['success'] ?? false) ? 200 : 422);
@@ -180,135 +176,6 @@ class Ebay3CampaignAdsController extends Controller
         }
 
         return response()->json($result);
-    }
-
-    /**
-     * Apply the shared Ebay 1 Sbid Rule slabs to SKUs and push each computed S Bid
-     * to its eBay 3 campaign. Used by the "Push to Ebay" button in the Sbid Rule modal.
-     */
-    public function pushSbidSlabsBySku(Request $request)
-    {
-        $skus = $request->input('skus', []);
-        if (empty($skus) || !is_array($skus)) {
-            return response()->json(['error' => 'No SKUs provided'], 422);
-        }
-
-        $slabs = $this->sbidSlabs();
-
-        $metrics = \App\Models\Ebay3Metric::whereIn('sku', $skus)->get()
-            ->keyBy(fn($m) => $this->normSku($m->sku));
-
-        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
-
-        $itemIds = $metrics->pluck('item_id')->filter()->unique()->values()->all();
-        $ads = DB::table('ebay3_campaign_ads')
-            ->whereIn('listing_id', $itemIds)
-            ->whereNotNull('campaign_id')
-            ->where('funding_strategy', 'COST_PER_SALE')
-            ->get()
-            ->keyBy('listing_id');
-
-        try {
-            $service = new \App\Services\EbayThreeApiService();
-            $token   = $service->generateBearerToken();
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Token error: ' . $e->getMessage()], 500);
-        }
-
-        $results = [];
-        $success = 0; $failed = 0; $skipped = 0;
-        $byCampaign = [];
-
-        foreach ($skus as $sku) {
-            $norm   = $this->normSku($sku);
-            $metric = $metrics->get($norm);
-            if (!$metric || !$metric->item_id) {
-                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No eBay listing'];
-                $skipped++;
-                continue;
-            }
-            $lid = (string) $metric->item_id;
-            $ad  = $ads->get($lid);
-            if (!$ad || !$ad->campaign_id) {
-                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'Not in a COST_PER_SALE campaign'];
-                $skipped++;
-                continue;
-            }
-
-            $soldL30 = (float) ($metric->ebay_l30 ?? 0);
-            $views   = (float) ($metric->views ?? 0);
-            $l7Views = (float) ($metric->l7_views ?? 0);
-            $scvr    = $views > 0 ? ($soldL30 / $views) * 100 : 0;
-            $shopify = $shopifyMap[$norm] ?? null;
-            $inv     = (float) ($shopify->inv ?? 0);
-            $qty     = (float) ($shopify->quantity ?? 0);
-            $dil     = $inv > 0 ? ($qty / $inv) * 100 : 0;
-            $bid     = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $slabs);
-            if ($bid <= 0) {
-                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab'];
-                $skipped++;
-                continue;
-            }
-            $byCampaign[$ad->campaign_id][] = ['listingId' => $lid, 'bidPercentage' => (string) $bid, 'sku' => $sku];
-        }
-
-        foreach ($byCampaign as $campaignId => $requests) {
-            $payload = array_map(fn($r) => ['listingId' => $r['listingId'], 'bidPercentage' => $r['bidPercentage']], $requests);
-            try {
-                $response = \Illuminate\Support\Facades\Http::withToken($token)
-                    ->withHeaders(['Content-Type' => 'application/json'])
-                    ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
-                        ['requests' => $payload]);
-
-                if ($response->successful()) {
-                    foreach ($requests as $r) {
-                        DB::table('ebay3_campaign_ads')
-                            ->where('listing_id', (string) $r['listingId'])
-                            ->where('campaign_id', (string) $campaignId)
-                            ->update([
-                                'bid_percentage' => round((float) $r['bidPercentage'], 2),
-                                'updated_at' => now(),
-                            ]);
-                        $results[] = ['sku' => $r['sku'], 'status' => 'pushed', 'bid' => $r['bidPercentage'] . '%'];
-                        $success++;
-                    }
-                } else {
-                    $body = $response->json();
-                    $ebayMsg = $body['errors'][0]['message']
-                        ?? $body['errors'][0]['longMessage']
-                        ?? $body['message']
-                        ?? null;
-                    $reason = $ebayMsg
-                        ? ('HTTP ' . $response->status() . ': ' . $ebayMsg)
-                        : ('HTTP ' . $response->status());
-
-                    if ($response->status() === 409 && is_string($ebayMsg)
-                        && (str_contains(strtolower($ebayMsg), 'seller level')
-                            || str_contains(strtolower($ebayMsg), 'promoted listings'))) {
-                        DB::table('ebay3_campaign_ads')
-                            ->where('campaign_id', (string) $campaignId)
-                            ->update(['campaign_status' => 'SYSTEM_PAUSED', 'updated_at' => now()]);
-                    }
-
-                    foreach ($requests as $r) {
-                        $results[] = ['sku' => $r['sku'], 'status' => 'failed', 'reason' => $reason];
-                        $failed++;
-                    }
-                }
-            } catch (\Exception $e) {
-                foreach ($requests as $r) {
-                    $results[] = ['sku' => $r['sku'], 'status' => 'failed', 'reason' => $e->getMessage()];
-                    $failed++;
-                }
-            }
-        }
-
-        return response()->json([
-            'success' => $success,
-            'failed'  => $failed,
-            'skipped' => $skipped,
-            'results' => $results,
-        ]);
     }
 
     public function getCampaignList()
@@ -389,9 +256,6 @@ class Ebay3CampaignAdsController extends Controller
             return response()->json(['error' => 'listing_ids and campaign_id required'], 422);
         }
 
-        // Starting bid from the shared Ebay 1 Sbid Rule slabs (same as S Bid column).
-        $slabs = $this->sbidSlabs();
-
         $ads = DB::table('ebay3_campaign_ads')
             ->whereIn('listing_id', $listingIds)
             ->get()
@@ -436,22 +300,10 @@ class Ebay3CampaignAdsController extends Controller
                 continue;
             }
 
-            $soldL30 = (float) ($metric?->ebay_l30 ?? 0);
-            $views   = (float) ($metric?->views ?? 0);
-            $l7Views = (float) ($metric?->l7_views ?? 0);
-            $scvr    = $views > 0 ? ($soldL30 / $views) * 100 : 0;
-            $shopify = $shopifyMap[$this->normSku($metric?->sku ?? $sku)] ?? null;
-            $inv     = (float) ($shopify->inv ?? 0);
-            $qty     = (float) ($shopify->quantity ?? 0);
-            $dil     = $inv > 0 ? ($qty / $inv) * 100 : 0;
-            $bid     = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $slabs);
+            $bid = (float) ($adRow?->suggested_bid ?? 0);
 
             if ($bid <= 0) {
-                $bid = (float) ($adRow?->suggested_bid ?? 0);
-            }
-
-            if ($bid <= 0) {
-                $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab and no ES Bid'];
+                $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'skipped', 'reason' => 'No ES Bid'];
                 $skipped++;
                 continue;
             }
@@ -526,79 +378,6 @@ class Ebay3CampaignAdsController extends Controller
         ]);
     }
 
-    public function pushSbid(ManualActionService $manual)
-    {
-        try {
-            // Clear stuck lock + running cron markers so the UI button can always start a push.
-            $manual->unlock('ebay3:update-suggestedbid');
-
-            $exitCode = Artisan::call('ebay3:update-suggestedbid');
-            $output = Artisan::output();
-
-            if ($exitCode !== 0) {
-                return response()->json([
-                    'success' => false,
-                    'error' => trim($output) ?: 'Push failed.',
-                    'output' => $output,
-                ], 500);
-            }
-
-            return response()->json(['success' => true, 'output' => $output]);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
-        }
-    }
-
-    /** Shared Ebay 1 View VS SBID slabs (For L7 Views → S Bid). */
-    private function sbidSlabs(): array
-    {
-        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
-        $slabs   = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
-        if (!is_array($slabs) || $slabs === []) {
-            return $this->defaultSbidSlabRules();
-        }
-        return $slabs;
-    }
-
-    /** Default View VS SBID slabs: 0–100, 101–200, … 901–1000, then >1000. */
-    private function defaultSbidSlabRules(): array
-    {
-        $rules = [];
-        $bid = 15;
-        for ($i = 0; $i < 10; $i++) {
-            $min = $i === 0 ? 0 : ($i * 100) + 1;
-            $max = ($i + 1) * 100;
-            $rules[] = [
-                'label' => $min.'–'.$max,
-                'l7_views_min' => $min,
-                'l7_views_max' => $max,
-                'sbid' => $bid,
-            ];
-            $bid--;
-        }
-        $rules[] = [
-            'label' => '>1000',
-            'l7_views_min' => 1001,
-            'l7_views_max' => null,
-            'sbid' => $bid,
-        ];
-
-        return $rules;
-    }
-
-    /** Resolve S Bid from View VS SBID slabs (el30 = 0 → max S Bid %; else first matching L7 Views range). */
-    private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
-    {
-        return SbidSlabRule::resolve($esold, $l7Views, $slabs);
-    }
-
-    private function slabInRange(float $val, $min, $max): bool
-    {
-        if ($min !== null && $min !== '' && $val < (float) $min) return false;
-        if ($max !== null && $max !== '' && $val > (float) $max) return false;
-        return true;
-    }
-
     private function normSku(?string $s): string
     {
         $s = (string)$s;
@@ -660,6 +439,7 @@ class Ebay3CampaignAdsController extends Controller
                 'em.views',
                 'em.l7_views',
                 'em.ebay_l30',
+                'em.ebay_l60',
                 // Dilution inputs (from shopify_skus, matched by sku). Correlated subqueries
                 // avoid row multiplication and keep every ad row visible even when unmatched.
                 // DIL = (quantity / inv) * 100  — quantity = L30 sold, inv = stock on hand.

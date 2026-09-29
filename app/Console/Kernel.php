@@ -1676,14 +1676,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('ebay3:update-suggestedbid')
-            ->dailyAt('21:26')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay3-suggestedbid')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('ebay1:update-budget')
             ->dailyAt('21:29')
             ->timezone('Asia/Kolkata')

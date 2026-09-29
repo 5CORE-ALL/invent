@@ -73,6 +73,31 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertTrue(DilVsSbidRule::isEnabled(['enabled' => true]));
     }
 
+    public function test_cvr_overlay_adjusts_like_sprc_dil(): void
+    {
+        $cvr = DilVsSbidRule::defaultCvr();
+        $this->assertSame(7.0, $cvr['down_lt']);
+        $this->assertSame(-10.0, $cvr['down_adj']);
+        $this->assertSame(10.0, $cvr['up_gt']);
+        $this->assertSame(10.0, $cvr['up_adj']);
+
+        $down = DilVsSbidRule::applyCvr(8, 100, 4, 12, $cvr);
+        $this->assertSame(0.0, $down['bid']);
+        $this->assertSame(-10.0, $down['adj']);
+
+        $up = DilVsSbidRule::applyCvr(8, 100, 20, 5, $cvr);
+        $this->assertSame(18.0, $up['bid']);
+        $this->assertSame(10.0, $up['adj']);
+
+        $flat = DilVsSbidRule::applyCvr(8, 100, 8, 8, $cvr);
+        $this->assertSame(8.0, $flat['bid']);
+        $this->assertSame(0.0, $flat['adj']);
+
+        $noViews = DilVsSbidRule::applyCvr(8, 0, 4, 12, $cvr);
+        $this->assertSame(8.0, $noViews['bid']);
+        $this->assertSame(0.0, $noViews['adj']);
+    }
+
     public function test_missing_es_bid_does_not_invent_a_percent(): void
     {
         $zero = DilVsSbidRule::resolve(0, 0, DilVsSbidRule::defaultSlabs());

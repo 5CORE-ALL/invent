@@ -27,6 +27,23 @@ class CpMasterDil
     }
 
     /**
+     * Slab match. 0–0 is OV L30 sold = 0. A sale that rounds to 0% stays above 0
+     * so it is not counted as 0 sold.
+     */
+    public static function slabPercent($ovl30, $inv): ?float
+    {
+        $rounded = self::percent($ovl30, $inv);
+        if ($rounded === null) {
+            return null;
+        }
+        if ($rounded === 0 && is_numeric($ovl30) && (float) $ovl30 !== 0.0) {
+            return ((float) $ovl30 / (float) $inv) * 100;
+        }
+
+        return (float) $rounded;
+    }
+
+    /**
      * Overlay shopify OV L30 / Inv the same way CP Master matches SKUs,
      * then set cp_dil. Exact SQL joins miss hyphen / space variants and
      * those rows were counted as Dil 0.

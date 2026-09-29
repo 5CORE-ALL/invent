@@ -181,7 +181,6 @@ $others = [
     'ebay:auto-update-under-bids',
     'ebay2:auto-update-utilized-bids',
     'ebay3:auto-update-utilized-bids',
-    'ebay3:update-suggestedbid',
     'ebay1:update-budget',
     'ebay2:update-budget',
     'ebay3:update-budget',

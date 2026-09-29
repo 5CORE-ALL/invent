@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\DB;
  * Later rows: the editable S Bid % on that slab.
  * First matching slab wins. A slab that starts where the previous one ended
  * is exclusive on From, so Dil 10 stays on 0.1–10.
+ * CVR overlay then adjusts that bid the same way Sprc Dil adjusts Target NROI:
+ * down arrow and CVR below the threshold, or up arrow and CVR above it.
  */
 final class DilVsSbidRule
 {
@@ -38,6 +40,7 @@ final class DilVsSbidRule
         return [
             'enabled' => self::isEnabled(is_array($decoded) ? $decoded : null),
             'slabs' => self::normalize($raw),
+            'cvr' => self::normalizeCvr(is_array($decoded) ? ($decoded['cvr'] ?? null) : null),
         ];
     }
 
@@ -48,9 +51,79 @@ final class DilVsSbidRule
     }
 
     /**
-     * @return array{success:bool, enabled?:bool, slabs?:array, error?:string}
+     * Down: CVR below the threshold and a down arrow (CVR L30 under CVR L60).
+     * Up: CVR above the threshold and an up arrow. Adj is added to the slab S Bid.
+     *
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}
      */
-    public static function save(string $key, $slabs, $enabled = null): array
+    public static function defaultCvr(): array
+    {
+        return ['down_lt' => 7.0, 'down_adj' => -10.0, 'up_gt' => 10.0, 'up_adj' => 10.0];
+    }
+
+    /**
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}
+     */
+    public static function normalizeCvr($raw): array
+    {
+        $out = self::defaultCvr();
+        if (! is_array($raw)) {
+            return $out;
+        }
+        $downLt = self::num($raw['down_lt'] ?? null);
+        $downAdj = self::num($raw['down_adj'] ?? null);
+        $upGt = self::num($raw['up_gt'] ?? null);
+        $upAdj = self::num($raw['up_adj'] ?? null);
+        if ($downLt !== null && $downLt >= 0) {
+            $out['down_lt'] = $downLt;
+        }
+        if ($downAdj !== null) {
+            $out['down_adj'] = $downAdj;
+        }
+        if ($upGt !== null && $upGt >= 0) {
+            $out['up_gt'] = $upGt;
+        }
+        if ($upAdj !== null) {
+            $out['up_adj'] = $upAdj;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{down_lt?:float,down_adj?:float,up_gt?:float,up_adj?:float}  $cvr
+     * @return array{bid:float,adj:float,why:string}
+     */
+    public static function applyCvr(float $bid, float $views, float $l30, float $l60, array $cvr): array
+    {
+        $cvr = self::normalizeCvr($cvr);
+        if ($bid <= 0 || $views <= 0) {
+            return ['bid' => $bid, 'adj' => 0.0, 'why' => ''];
+        }
+
+        $cvr30 = ($l30 / $views) * 100;
+        $cvr60 = ($l60 / $views) * 100;
+        $tol = 0.1;
+        $trend = ($cvr30 == 0.0 || $cvr30 < $cvr60 - $tol) ? 'down' : (($cvr30 > $cvr60 + $tol) ? 'up' : 'flat');
+        $adj = 0.0;
+        $why = '';
+        if ($trend === 'down' && $cvr30 < (float) $cvr['down_lt']) {
+            $adj = (float) $cvr['down_adj'];
+            $why = 'CVR Down < '.$cvr['down_lt'].'% and down arrow';
+        } elseif ($trend === 'up' && $cvr30 > (float) $cvr['up_gt']) {
+            $adj = (float) $cvr['up_adj'];
+            $why = 'CVR Up > '.$cvr['up_gt'].'% and up arrow';
+        }
+
+        $next = round($bid + $adj, 2);
+
+        return ['bid' => $next < 0 ? 0.0 : $next, 'adj' => $adj, 'why' => $why];
+    }
+
+    /**
+     * @return array{success:bool, enabled?:bool, slabs?:array, cvr?:array, error?:string}
+     */
+    public static function save(string $key, $slabs, $enabled = null, $cvr = null): array
     {
         if (! is_array($slabs) || $slabs === []) {
             return ['success' => false, 'error' => 'Add at least one Dil slab'];
@@ -61,16 +134,16 @@ final class DilVsSbidRule
             return ['success' => false, 'error' => 'Invalid Dil slabs'];
         }
 
-        $on = $enabled === null
-            ? self::load($key)['enabled']
-            : (bool) $enabled;
+        $stored = self::load($key);
+        $on = $enabled === null ? $stored['enabled'] : (bool) $enabled;
+        $cvrClean = $cvr === null ? $stored['cvr'] : self::normalizeCvr($cvr);
 
         DB::table('ebay_sbid_rules')->updateOrInsert(
             ['key' => $key],
-            ['rule' => json_encode(['enabled' => $on, 'slabs' => $clean]), 'updated_at' => now()]
+            ['rule' => json_encode(['enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean]), 'updated_at' => now()]
         );
 
-        return ['success' => true, 'enabled' => $on, 'slabs' => $clean];
+        return ['success' => true, 'enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean];
     }
 
     public static function normalize(array $slabs): array
