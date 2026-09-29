@@ -413,10 +413,21 @@
             display: flex; align-items: center; justify-content: space-between; gap: .5rem;
         }
         .lm-masters-body { padding: .75rem .85rem; }
-        .lm-masters-title-row { display: grid; grid-template-columns: 110px 1fr auto auto; gap: .5rem .7rem; padding: .45rem 0; border-bottom: 1px solid #f3f4f6; align-items: start; }
+        .lm-masters-title-row { display: grid; grid-template-columns: 26px 110px 1fr auto auto; gap: .5rem .7rem; padding: .45rem .4rem; margin: 0 -.4rem; border-bottom: 1px solid #f3f4f6; align-items: start; border-radius: 8px; cursor: pointer; transition: background .12s; }
         .lm-masters-title-row:last-child { border-bottom: 0; }
+        .lm-masters-title-row:hover { background: #f9fafb; }
+        .lm-masters-title-row.is-selected { background: #eef4ff; box-shadow: inset 3px 0 0 #2563eb; }
+        .lm-masters-title-row.is-empty { cursor: default; }
+        .lm-masters-title-row.is-empty:hover { background: transparent; }
+        .lm-masters-title-row .pick { display: flex; align-items: center; justify-content: center; padding-top: .1rem; }
+        .lm-masters-title-row .pick input { width: 16px; height: 16px; margin: 0; cursor: pointer; }
+        .lm-masters-title-row .pick input:disabled { cursor: not-allowed; opacity: .35; }
         .lm-masters-title-row .k { color: #6b7280; font-weight: 700; font-size: .8rem; }
+        .lm-masters-title-row.is-selected .k { color: #1d4ed8; }
         .lm-masters-title-row .v { color: #111827; font-size: .86rem; word-break: break-word; }
+        .lm-title-pick-note { font-size: .76rem; font-weight: 600; color: #1d4ed8; background: #eef4ff; border: 1px solid #c7d7fe; border-radius: 999px; padding: .2rem .65rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lm-title-pick-note:empty { display: none; }
+        .lm-title-pick-note.is-none { color: #6b7280; background: #f3f4f6; border-color: #e5e7eb; }
         .lm-bullet-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .lm-bullet-table th, .lm-bullet-table td {
             padding: .5rem .65rem; vertical-align: top; border-bottom: 1px solid #eef2f7; font-size: .86rem;
@@ -1494,11 +1505,15 @@
                     </div>
                     <div class="lm-prod-pane" data-pane="title">
                         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-title-fetch-btn">
+                                <i class="fas fa-sync-alt me-1"></i>Fetch from Title Master
+                            </button>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="title">
-                                <i class="fas fa-file-import me-1"></i>Apply to Product Info
+                                <i class="fas fa-file-import me-1"></i>Apply Selected to Product Info
                             </button>
                             <a class="btn-lc btn-lc-ghost btn-sm" href="{{ route('title.master') }}" target="_blank" rel="noopener">Open Title Master</a>
                             <span class="text-muted small lm-master-status" data-for="title"></span>
+                            <span class="lm-title-pick-note ms-auto" id="lm-title-pick-note"></span>
                         </div>
                         <div class="lm-family-sync-checks mb-3">
                             <label class="form-check">
@@ -1511,12 +1526,15 @@
                             </label>
                         </div>
                         <section class="lm-masters-block">
-                            <div class="lm-masters-head">Title Master</div>
+                            <div class="lm-masters-head">Title Master <span class="lm-desc-kind-tag">pick the title to send</span></div>
                             <div class="lm-masters-body" id="lm-masters-titles"></div>
                         </section>
                     </div>
                     <div class="lm-prod-pane" data-pane="bullets">
                         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-bullets-fetch-btn">
+                                <i class="fas fa-sync-alt me-1"></i>Fetch from Bullet Points
+                            </button>
                             <a class="btn-lc btn-lc-ghost btn-sm" href="{{ route('bullet.points') }}" target="_blank" rel="noopener">Open Bullet Points</a>
                             <span class="text-muted small lm-master-status" data-for="bullets"></span>
                         </div>
@@ -1585,6 +1603,9 @@
                     </div>
                     <div class="lm-prod-pane" data-pane="images">
                         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-img-fetch-btn">
+                                <i class="fas fa-sync-alt me-1"></i>Fetch from Image Master
+                            </button>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-img-edit-btn">
                                 <i class="fas fa-pen me-1"></i>Edit Images
                             </button>
@@ -1986,6 +2007,65 @@
         $el.attr('class', 'lm-char-count ' + charCountClass(count)).text(String(count));
     }
 
+    // Which Title Master row (title150/title100/…) is sent to marketplaces. Remembered per SKU.
+    let selectedTitleKey = null;
+
+    function titlePickStorageKey(sku) { return 'lm.titlePick.' + String(sku || ''); }
+
+    function masterTitleRows() {
+        const pack = (currentProduct && currentProduct.master_content) || {};
+        return (Array.isArray(pack.titles) ? pack.titles : []).map(function (t) {
+            return { key: String(t.key || ''), label: String(t.label || t.key || ''), value: String(t.value || '').trim() };
+        });
+    }
+
+    function resolveSelectedTitleKey(rows) {
+        const list = Array.isArray(rows) ? rows : masterTitleRows();
+        const has = key => list.some(r => r.key === key && r.value);
+        if (selectedTitleKey && has(selectedTitleKey)) return selectedTitleKey;
+        let remembered = null;
+        try { remembered = localStorage.getItem(titlePickStorageKey(currentProductSku)); } catch (e) { remembered = null; }
+        if (remembered && has(remembered)) return remembered;
+        const live = String((currentProduct && currentProduct.title) || '').trim();
+        const match = live ? list.find(r => r.value && r.value === live) : null;
+        if (match) return match.key;
+        const first = list.find(r => r.value);
+        return first ? first.key : null;
+    }
+
+    function selectedMasterTitle() {
+        const rows = masterTitleRows();
+        const key = resolveSelectedTitleKey(rows);
+        if (!key) return null;
+        return rows.find(r => r.key === key) || null;
+    }
+
+    function setSelectedTitleKey(key, opts) {
+        selectedTitleKey = key || null;
+        if (currentProductSku) {
+            try {
+                if (selectedTitleKey) localStorage.setItem(titlePickStorageKey(currentProductSku), selectedTitleKey);
+                else localStorage.removeItem(titlePickStorageKey(currentProductSku));
+            } catch (e) { /* storage unavailable */ }
+        }
+        $('.lm-masters-title-row').each(function () {
+            const on = $(this).attr('data-field') === selectedTitleKey;
+            $(this).toggleClass('is-selected', on).find('.pick input').prop('checked', on);
+        });
+        renderTitlePickNote();
+        if (!(opts && opts.silent) && typeof refreshPushPreview === 'function') refreshPushPreview();
+    }
+
+    function renderTitlePickNote() {
+        const pick = selectedMasterTitle();
+        const $note = $('#lm-title-pick-note');
+        if (!pick) {
+            $note.addClass('is-none').text(masterTitleRows().some(r => r.value) ? 'No title selected' : 'No titles on Title Master');
+            return;
+        }
+        $note.removeClass('is-none').text('Sending: ' + pick.label + ' · ' + pick.value.length + ' chars');
+    }
+
     function renderMasterContent(pack) {
         const data = pack && typeof pack === 'object' ? pack : {};
         const titles = Array.isArray(data.titles) ? data.titles : [];
@@ -2002,16 +2082,24 @@
             { key: 'title75', label: 'Title 75', value: '', chars: 0 },
             { key: 'title60', label: 'Title 60', value: '', chars: 0 }
         ];
+        const pickedKey = resolveSelectedTitleKey(titleRows.map(function (t) {
+            return { key: String(t.key || ''), value: String(t.value || '').trim() };
+        }));
+        selectedTitleKey = pickedKey;
         $('#lm-masters-titles').html(titleRows.map(function (t) {
             const value = String(t.value || '').trim();
             const chars = value ? (t.chars || value.length) : 0;
-            return `<div class="lm-masters-title-row" data-field="${escapeHtml(t.key || '')}">
-                <div class="k">${escapeHtml(t.label || t.key || '')}</div>
+            const key = String(t.key || '');
+            const on = !!value && key === pickedKey;
+            return `<div class="lm-masters-title-row ${on ? 'is-selected' : ''} ${value ? '' : 'is-empty'}" data-field="${escapeHtml(key)}">
+                <div class="pick"><input type="radio" name="lm-title-pick" class="lm-title-pick" value="${escapeHtml(key)}" ${on ? 'checked' : ''} ${value ? '' : 'disabled'} title="${value ? 'Send this title to marketplaces' : 'Empty — add a title first'}"></div>
+                <div class="k">${escapeHtml(t.label || key)}</div>
                 <div class="v">${value ? escapeHtml(value) : '<span class="text-muted">—</span>'}</div>
-                ${masterRowEditBtn(t.key || '')}
+                ${masterRowEditBtn(key)}
                 ${charCountHtml(chars)}
             </div>`;
         }).join(''));
+        renderTitlePickNote();
         const paddedBullets = [0, 1, 2, 3, 4].map(function (i) {
             return String(bullets[i] || '').trim();
         });
@@ -2443,6 +2531,7 @@
         const refresh = !!(opts && opts.refresh);
         currentProductSku = sku;
         currentProduct = null;
+        selectedTitleKey = null;
         $('#lm-prod-loading').removeClass('d-none').text(refresh ? 'Fetching latest data from Amz / Main Store…' : 'Loading product…');
         $('#lm-prod-content').addClass('d-none');
         $('#lm-prod-snapshot-note').addClass('d-none').text('');
@@ -4381,13 +4470,14 @@
             const pack = currentProduct.master_content || {};
             const which = String($(this).attr('data-apply') || '');
             if (which === 'title') {
-                const title = String(pack.title || '').trim();
-                if (!title) { toast('No Title Master value to apply. Sync first.', 'error'); return; }
+                const pick = selectedMasterTitle();
+                const title = pick ? pick.value : String(pack.title || '').trim();
+                if (!title) { toast('No Title Master title to apply. Click Fetch from Title Master or add one.', 'error'); return; }
                 currentProduct.title = title;
                 if (productEditMode) fillProductEditForm(currentProduct);
                 else renderProductInfo(currentProduct);
                 $('#lm-prod-title').text(title);
-                toast('Applied Title Master to Product Info.', 'success');
+                toast('Applied ' + (pick ? pick.label : 'Title Master') + ' to Product Info.', 'success');
                 return;
             }
             if (which === 'description' || which === 'description_text' || which === 'description_aplus') {
@@ -4404,6 +4494,63 @@
                 else renderProductInfo(currentProduct);
                 toast('Applied ' + (isAplus ? 'A+ content' : 'text description') + ' to Product Info. Push to Marketplaces sends this description.', 'success');
             }
+        });
+
+        // Title tab: pick which Title Master row goes to marketplaces
+        $(document).on('change', '.lm-title-pick', function () {
+            const key = String($(this).val() || '');
+            setSelectedTitleKey(key);
+            const pick = selectedMasterTitle();
+            if (pick) toast(pick.label + ' selected — Push to Marketplaces will send this title.', 'success');
+        });
+        $(document).on('click', '.lm-masters-title-row', function (e) {
+            if ($(e.target).closest('button, textarea, input, a, .lm-row-edit-actions').length) return;
+            const $radio = $(this).find('.lm-title-pick');
+            if (!$radio.length || $radio.prop('disabled') || $radio.prop('checked')) return;
+            $radio.prop('checked', true).trigger('change');
+        });
+        $(document).on('click', '#lm-title-fetch-btn', function () {
+            const sku = currentProductSku;
+            if (!sku) { toast('Open a product first.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Fetching…');
+            $.getJSON("{{ url('/listing-manager/product/from-master') }}", { sku, source: 'content' })
+                .done(function (res) {
+                    mergeMasterContent({ titles: Array.isArray(res.titles) ? res.titles : [], title: res.title || '', has_title: !!res.has_title });
+                    const filled = (Array.isArray(res.titles) ? res.titles : []).filter(t => String(t.value || '').trim()).length;
+                    toast(filled ? ('Fetched ' + filled + ' title(s) from Title Master. Pick the one to send.') : 'No titles on Title Master for this SKU yet.', filled ? 'success' : 'error');
+                })
+                .fail(xhr => toast(xhr.responseJSON?.message || 'Could not fetch from Title Master.', 'error'))
+                .always(function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                });
+        });
+
+        // Bullet tab: reload bullet1..5 from Bullet Points master
+        $(document).on('click', '#lm-bullets-fetch-btn', function () {
+            const sku = currentProductSku;
+            if (!sku) { toast('Open a product first.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Fetching…');
+            $.getJSON("{{ url('/listing-manager/product/from-master') }}", { sku, source: 'bullets' })
+                .done(function (res) {
+                    const bullets = Array.isArray(res.bullets) ? res.bullets : [];
+                    mergeMasterContent({ bullets, has_bullets: bullets.length > 0 });
+                    $('.lm-master-status[data-for="bullets"]').text(bullets.length ? '' : (res.message || ''));
+                    toast(bullets.length ? ('Fetched ' + bullets.length + ' bullet(s) from Bullet Points.') : (res.message || 'No bullet points for this SKU yet.'), bullets.length ? 'success' : 'error');
+                })
+                .fail(function (xhr) {
+                    const res = xhr.responseJSON || {};
+                    if (Array.isArray(res.bullets)) mergeMasterContent({ bullets: res.bullets, has_bullets: res.bullets.length > 0 });
+                    toast(res.message || 'Could not fetch from Bullet Points.', 'error');
+                })
+                .always(function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                });
         });
 
         // Description tab: Fetch Text (Description Master) / Fetch A+ (Main Store, stored once)
@@ -4563,7 +4710,10 @@
             const bullets = (Array.isArray(pack.bullets) ? pack.bullets : [])
                 .map(b => stripLeadingBulletNum(String(b || '')).trim()).filter(Boolean).slice(0, 5);
             const desc = String(base.description || '').trim() || String(pack.description || '').trim();
+            const pickedTitle = selectedMasterTitle();
             return Object.assign({}, base, {
+                title: pickedTitle && pickedTitle.value ? pickedTitle.value : String(base.title || ''),
+                title_source: pickedTitle && pickedTitle.value ? pickedTitle.label : (String(base.title || '').trim() ? 'Product Info' : ''),
                 description: desc,
                 bullets: bullets,
                 images: currentImages.slice(),
@@ -4577,7 +4727,7 @@
                 const v = String(text == null ? '' : text).trim();
                 cells.push(`<div class="cell ${v ? '' : 'is-empty'}"><div class="k">${label}</div><div class="v" title="${escapeHtml(v)}">${v ? escapeHtml(v) : 'Nothing to send — will be skipped'}</div></div>`);
             };
-            add('title', 'Title', fields.title);
+            add('title', fields.title_source ? ('Title (' + fields.title_source + ')') : 'Title', fields.title);
             add('bullets', 'Bullet points', fields.bullets.length ? (fields.bullets.length + ' bullet(s): ' + fields.bullets[0]) : '');
             add('description', 'Description', fields.description ? (String(fields.description).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)) : '');
             add('price', 'Price', fields.price !== '' && fields.price != null && Number(fields.price) > 0 ? money(fields.price) : '');
@@ -4768,6 +4918,7 @@
             // Persist to Product Master first so the marketplaces and our masters stay in step.
             // Bullets / images are only written when that part is being pushed.
             const saveData = Object.assign({}, fields);
+            delete saveData.title_source;
             if (!parts.includes('bullets')) delete saveData.bullets;
             if (!parts.includes('images')) delete saveData.images;
             if (saveData.images && !saveData.images.length) delete saveData.images;
@@ -4788,6 +4939,7 @@
                 return;
             }
             const pushFields = Object.assign({}, fields);
+            delete pushFields.title_source;
             if (!pushFields.bullets.length) delete pushFields.bullets;
             if (!pushFields.images.length) delete pushFields.images;
             const out = await runMarketplaceUpdate(channelIds, pushFields, parts, {
@@ -4799,7 +4951,7 @@
                 + (out.skipped ? (', ' + out.skipped + ' skipped') : '') + '.';
             toast(summary, out.fail === 0 ? 'success' : 'error');
             if (currentProduct) {
-                currentProduct = Object.assign({}, currentProduct, fields, { images: currentImages.slice() });
+                currentProduct = Object.assign({}, currentProduct, pushFields, { images: currentImages.slice() });
                 $('#lm-prod-title').text(currentProduct.title || currentProduct.sku || 'Product');
                 if (!productEditMode) renderProductInfo(currentProduct);
             }
@@ -4838,6 +4990,28 @@
         $('#lm-img-edit-btn').on('click', function () {
             if (!currentProduct) { toast('Load a product first.', 'error'); return; }
             setImagesEditMode(true);
+        });
+        // Fetch from Image Master: loads the master gallery into the editor; nothing is written until Save Images.
+        $('#lm-img-fetch-btn').on('click', function () {
+            const sku = currentProductSku;
+            if (!sku || !currentProduct) { toast('Open a product first.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Fetching…');
+            $.getJSON("{{ url('/listing-manager/product/from-master') }}", { sku, source: 'images' })
+                .done(function (res) {
+                    const images = (Array.isArray(res.images) ? res.images : []).map(u => String(u || '').trim()).filter(Boolean).slice(0, 20);
+                    if (!images.length) { toast(res.message || 'No images on Image Master for this SKU.', 'error'); return; }
+                    if (!imagesEditMode) setImagesEditMode(true);
+                    currentImages = images;
+                    drawProductImages();
+                    toast('Fetched ' + images.length + ' image(s) from Image Master. Review, then click Save Images to store (Cancel keeps the previous gallery).', 'success');
+                })
+                .fail(xhr => toast(xhr.responseJSON?.message || 'Could not fetch from Image Master.', 'error'))
+                .always(function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                });
         });
         $('#lm-img-cancel-btn').on('click', function () {
             currentImages = imagesBeforeEdit.slice();
