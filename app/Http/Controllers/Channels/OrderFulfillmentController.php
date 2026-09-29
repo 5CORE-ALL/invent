@@ -87,7 +87,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         ]);
     }
 
-    public function data(Request $request): JsonResponse
+    public function data(): JsonResponse
     {
         try {
             @set_time_limit(120);
@@ -96,17 +96,17 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $rows = $this->attachCpMasterInventory($rows);
             $rows = $this->attachSavedTracking($rows);
             $rows = $this->attachCarrierAndTrackingStatus($rows);
-            if ($request->boolean('delivered')) {
+            if (request()->boolean('delivered')) {
                 $rows = array_values(array_filter(
                     $rows,
                     fn (array $row) => $this->fulfillmentRowIsDelivered($row)
                 ));
-            } elseif ($request->boolean('transit')) {
+            } elseif (request()->boolean('transit')) {
                 $rows = array_values(array_filter(
                     $rows,
                     fn (array $row) => $this->fulfillmentRowIsInTransit($row)
                 ));
-            } elseif ($request->boolean('scan_pending')) {
+            } elseif (request()->boolean('scan_pending')) {
                 $rows = array_values(array_filter(
                     $rows,
                     fn (array $row) => $this->fulfillmentRowIsScanPending($row)
