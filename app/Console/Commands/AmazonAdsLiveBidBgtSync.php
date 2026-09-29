@@ -3,12 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Services\AmazonAdsLiveBidBgtSyncService;
-use App\Support\AmazonAdsDesiredSbgtResolver;
 use App\Support\AmazonAdsSbgt;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Throwable;
 
 class AmazonAdsLiveBidBgtSync extends Command
 {
@@ -16,7 +14,7 @@ class AmazonAdsLiveBidBgtSync extends Command
         {--channel=all : sp, sb, or all}
         {--campaign-id= : Only this campaign ID}
         {--failed-only : Retry rows that are not verified}
-        {--limit=2000 : Max report campaigns to verify in this run}';
+        {--limit=200 : Max report campaigns to verify in this run}';
 
     protected $description = 'Pull live Amazon BGT/BID, compare Lbgt to SBGT and Lbid to SBID, push mismatches, verify before marking synced';
 
@@ -30,7 +28,7 @@ class AmazonAdsLiveBidBgtSync extends Command
 
         $channelOpt = strtolower((string) $this->option('channel'));
         $onlyCid = trim((string) $this->option('campaign-id'));
-        $limit = max(1, min(2000, (int) $this->option('limit')));
+        $limit = max(1, min(500, (int) $this->option('limit')));
 
         $rows = $this->rowsFromReports($channelOpt, $limit, $onlyCid);
 
@@ -102,7 +100,6 @@ class AmazonAdsLiveBidBgtSync extends Command
         if ($onlyCid !== '') {
             $q->where('r.campaign_id', $onlyCid);
         }
-        $this->deprioritizeRecentFailures($q, $channel, 'bid');
         $found = $q->orderBy('r.id')
             ->limit($limit)
             ->get(['r.campaign_id', 'r.campaignName', 'r.sbid']);
@@ -130,8 +127,8 @@ class AmazonAdsLiveBidBgtSync extends Command
     }
 
     /**
-     * Grid SBGT (six-part sum) vs Lbgt. A missing Lbgt is a mismatch.
-     * SBGT 0 is included so an enabled campaign is paused instead of left on the old budget.
+     * Saved SBGT vs Lbgt (campaignBudgetAmount), same comparison as SBID vs Lbid.
+     * SBGT 0 is included so the campaign is paused instead of left on the old budget.
      *
      * @return list<array<string, mixed>>
      */
@@ -150,14 +147,17 @@ class AmazonAdsLiveBidBgtSync extends Command
         }
         $q = DB::table($table.' as r')
             ->where('r.report_date_range', $day)
-            ->whereRaw("UPPER(TRIM(r.campaignStatus)) = 'ENABLED'");
+            ->whereRaw("UPPER(TRIM(r.campaignStatus)) = 'ENABLED'")
+            ->whereNotNull('r.sbgt')
+            ->where('r.sbgt', '!=', '')
+            ->whereNotNull('r.campaignBudgetAmount')
+            ->whereRaw('ABS((r.sbgt + 0) - (r.campaignBudgetAmount + 0)) > ?', [0.015]);
         if ($onlyCid !== '') {
             $q->where('r.campaign_id', $onlyCid);
         }
         $found = $q->orderBy('r.id')
-            ->limit(2000)
-            ->get(['r.campaign_id', 'r.campaignName', 'r.sbgt', 'r.campaignBudgetAmount', 'r.campaignStatus']);
-        $resolved = $this->resolvedSbgtByCampaign($channel, $found);
+            ->limit($limit)
+            ->get(['r.campaign_id', 'r.campaignName', 'r.sbgt']);
         $out = [];
         $seen = [];
         foreach ($found as $row) {
@@ -165,23 +165,16 @@ class AmazonAdsLiveBidBgtSync extends Command
             if ($cid === '' || isset($seen[$cid])) {
                 continue;
             }
-            $sbgt = $this->desiredBudget($resolved[$cid] ?? null, $row->sbgt ?? null);
-            if ($sbgt === null) {
-                continue;
-            }
             $seen[$cid] = true;
-            $status = strtoupper(trim((string) ($row->campaignStatus ?? '')));
-            $live = is_numeric($row->campaignBudgetAmount) ? (float) $row->campaignBudgetAmount : null;
-            $name = (string) ($row->campaignName ?? '');
-            if ($live !== null
-                && AmazonAdsSbgt::nameBlocksBudgetIncrease($name)
-                && $sbgt > $live + AmazonAdsLiveBidBgtSyncService::BGT_TOLERANCE) {
-                continue;
-            }
-            $zeroPause = $sbgt === 0.0 && $status === 'ENABLED';
-            $differs = $live === null || abs($sbgt - $live) > AmazonAdsLiveBidBgtSyncService::BGT_TOLERANCE;
-            if (! $zeroPause && ! $differs) {
-                continue;
+            $raw = $row->sbgt ?? null;
+            if (AmazonAdsSbgt::isExplicitZero($raw)) {
+                $sbgt = 0.0;
+            } else {
+                $parsed = AmazonAdsSbgt::parsePushableBudget($raw);
+                if ($parsed === null) {
+                    continue;
+                }
+                $sbgt = (float) $parsed;
             }
             $out[] = [
                 'campaign_id' => $cid,
@@ -189,56 +182,9 @@ class AmazonAdsLiveBidBgtSync extends Command
                 'campaign_name' => (string) ($row->campaignName ?? ''),
                 'sbgt' => $sbgt,
             ];
-            if (count($out) >= $limit) {
-                break;
-            }
         }
 
         return $out;
-    }
-
-    /**
-     * Grid SBGT (six-part sum). Stored sbgt is only the fallback when that sum is missing.
-     *
-     * @param  iterable<int, object>  $rows
-     * @return array<string, int|null>
-     */
-    private function resolvedSbgtByCampaign(string $channel, iterable $rows): array
-    {
-        try {
-            return AmazonAdsDesiredSbgtResolver::sbgtForCampaigns($rows, $channel);
-        } catch (Throwable) {
-            return [];
-        }
-    }
-
-    private function desiredBudget(mixed $resolved, mixed $stored): ?float
-    {
-        if ($resolved !== null && is_numeric($resolved)) {
-            $n = (float) $resolved;
-
-            return $n >= 0 ? $n : null;
-        }
-        if (AmazonAdsSbgt::isExplicitZero($stored)) {
-            return 0.0;
-        }
-        $parsed = AmazonAdsSbgt::parsePushableBudget($stored);
-
-        return $parsed === null ? null : (float) $parsed;
-    }
-
-    private function deprioritizeRecentFailures($query, string $channel, string $field): void
-    {
-        if (! Schema::hasTable('amazon_ads_live_sync_states')) {
-            $query->orderBy('r.id');
-
-            return;
-        }
-        $query->leftJoin('amazon_ads_live_sync_states as s', function ($join) use ($channel, $field) {
-            $join->on('s.campaign_id', '=', 'r.campaign_id')
-                ->where('s.channel', '=', $channel)
-                ->where('s.field', '=', $field);
-        })->orderByRaw("CASE WHEN s.status = 'failed' THEN 1 ELSE 0 END");
     }
 
     /**

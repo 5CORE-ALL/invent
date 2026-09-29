@@ -1243,13 +1243,6 @@ class Kernel extends ConsoleKernel
      */
     protected function scheduleOtherCommands(Schedule $schedule, string $log, \Closure $ist, \Closure $retryFiveTimesUntil): void
     {
-        $schedule->command('social-media:sync')
-            ->dailyAt((string) config('social_media.schedule_time', '06:20'))
-            ->timezone('Asia/Kolkata')
-            ->name('social-media-sync')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log);
 
         /*
         |--------------------------------------------------------------------------
@@ -1502,12 +1495,11 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('amazon:ads-live-bid-bgt-sync --limit=2000')
-            ->hourly()
+        $schedule->command('amazon:ads-live-bid-bgt-sync --limit=200')
+            ->dailyAt('21:50')
             ->timezone('Asia/Kolkata')
-            ->between('10:00', '22:59')
             ->name('amazon-ads-live-bid-bgt-sync')
-            ->withoutOverlapping(90)
+            ->withoutOverlapping(120)
             ->runInBackground()
             ->appendOutputTo($log);
 

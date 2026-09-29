@@ -1265,7 +1265,6 @@
             ebay2: {
                 label: 'eBay2',
                 saveSpriceUrl: '/save-ebay2-sprice',
-                saveSpriceBatchUrl: '/save-ebay2-sprice',
                 pushPriceUrl: '/push-ebay2-price',
                 priceField: 'eBay Price',
                 cvrField: 'SCVR',
@@ -1277,7 +1276,6 @@
             ebay2op: {
                 label: 'eBay2 OP',
                 saveSpriceUrl: '/save-ebay2-sprice',
-                saveSpriceBatchUrl: '/save-ebay2-sprice',
                 pushPriceUrl: '/push-ebay2-price',
                 priceField: 'eBay Price',
                 cvrField: 'SCVR',
@@ -9942,15 +9940,6 @@
             if (!chPromoPageReloadPushAllowed()) return false;
             if (window._chPromoServerBluePushStarted) return true;
             window._chPromoServerBluePushStarted = true;
-            if (typeof setChannelPushSpriceProgress === 'function') {
-                setChannelPushSpriceProgress({
-                    active: true,
-                    done: 0,
-                    total: 0,
-                    pct: 0,
-                    msg: 'Collecting S PRC…',
-                });
-            }
             $.ajax({
                 url: CH_PROMO_RULES_BASE + '/push-blue',
                 method: 'POST',
@@ -9958,33 +9947,21 @@
                 data: { _token: chPromoCsrf() },
             }).done(function(res) {
                 const n = Number(res && res.queued) || 0;
-                const active = !!(res && (res.active || res.collecting || n > 0));
-                const msg = (res && res.message) || (active ? 'Collecting S PRC…' : 'No S PRC to push');
+                const msg = (res && res.message) || (n > 0 ? ('Background push ' + n) : 'No S PRC to push');
                 if (typeof setChannelPushSpriceProgress === 'function') {
                     setChannelPushSpriceProgress({
-                        active: active,
+                        active: n > 0,
                         done: 0,
                         total: n,
-                        pct: 0,
+                        pct: n > 0 ? 0 : 0,
                         msg: msg,
                     });
                 }
-                if (active && typeof startChannelPushSpricePoll === 'function') {
+                if (n > 0 && typeof startChannelPushSpricePoll === 'function') {
                     startChannelPushSpricePoll();
-                } else {
-                    window._chPromoServerBluePushStarted = false;
                 }
             }).fail(function() {
                 window._chPromoServerBluePushStarted = false;
-                if (typeof setChannelPushSpriceProgress === 'function') {
-                    setChannelPushSpriceProgress({
-                        active: false,
-                        done: 0,
-                        total: 0,
-                        pct: 0,
-                        msg: 'Could not start price push',
-                    });
-                }
             });
             return true;
         }
@@ -9998,26 +9975,16 @@
                 window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
                 return;
             }
-            // Do not wait for the S PRC database save. That loop posts one SKU
-            // at a time and left the bar on Ready while 500+ blue badges sat there.
-            window._chPromoServerBluePushStarted = true;
-            if (typeof setChannelPushSpriceProgress === 'function') {
-                setChannelPushSpriceProgress({
-                    active: true,
-                    done: 0,
-                    total: 0,
-                    pct: 0,
-                    msg: 'Scanning blue badges…',
-                });
-            }
-            const scan = (typeof scanAndQueueChannelPushSprice === 'function')
-                ? scanAndQueueChannelPushSprice
-                : (window.scanAndQueueChannelPushSprice || null);
-            if (typeof scan !== 'function') {
-                window._chPromoServerBluePushStarted = false;
+            let saveBusy = false;
+            try {
+                saveBusy = typeof window.ebayDgSpriceSaveBusy === 'function' && window.ebayDgSpriceSaveBusy();
+            } catch (e) { saveBusy = false; }
+            if (saveBusy) {
+                clearTimeout(window._chPromoEbayBluePushTimer);
+                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 600);
                 return;
             }
-            scan(chPromoSafeTable(), { catalog: true, once: false, silent: false });
+            chPromoStartServerBluePush();
         }
         window.chPromoStartServerBluePush = chPromoStartServerBluePush;
         window.chPromoTryEbayBluePush = chPromoTryEbayBluePush;

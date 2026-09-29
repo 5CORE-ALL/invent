@@ -88,8 +88,7 @@
                             Official flow from
                             <a href="https://openapi.alibaba.com/doc/api.htm#/api?cid=4&amp;path=/auth/token/create&amp;methodType=GET/POST" target="_blank" rel="noopener">/auth/token/create</a>:
                             authorize → we receive <code>code</code> at the callback → we POST
-                            <code>https://openapi-api.alibaba.com/rest/auth/token/create</code>
-                            with only <code>code</code> (uuid is not sent) and save <code>ALIBABA_ACCESS_TOKEN</code>.
+                            <code>/auth/token/create</code> (signed IOP) and save <code>ALIBABA_ACCESS_TOKEN</code>.
                             On localhost the callback page prints the full token JSON.
                             Do not use <code>auth.alibaba.com</code> or <code>auth.1688.com</code>.
                         </p>
@@ -141,7 +140,7 @@
                                 </tr>
                                 <tr>
                                     <th>API gateway</th>
-                                    <td><code>{{ $gateway ?? 'rest' }}</code> → <code>{{ ($gateway ?? 'rest') === 'rest' ? ($restBase ?? 'https://openapi-api.alibaba.com/rest') : ($apiBase ?? 'https://openapi.alibaba.com/sync') }}</code></td>
+                                    <td><code>{{ $gateway ?? 'rest' }}</code> → <code>{{ ($gateway ?? 'rest') === 'rest' ? ($restBase ?? 'https://api-sg.alibaba.com/rest') : ($apiBase ?? 'https://openapi.alibaba.com/sync') }}</code></td>
                                 </tr>
                             </tbody>
                         </table>

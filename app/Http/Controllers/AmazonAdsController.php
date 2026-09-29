@@ -3422,15 +3422,19 @@ class AmazonAdsController extends Controller
         $synced = "s.status = 'synced'";
         if ($field === 'bid') {
             $match = self::storedBidMatchesSql($alias);
+            $differ = self::storedBidDiffersSql($alias);
 
-            return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' ELSE 'yellow' END";
+            return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
         }
         if ($field === 'bgt') {
             $match = $storedSbgtColumn
                 ? self::storedBudgetMatchesSql($alias)
                 : self::storedBudgetDesiredMatchesSql($alias);
+            $differ = $storedSbgtColumn
+                ? self::storedBudgetDiffersSql($alias)
+                : self::storedBudgetDesiredDiffersSql($alias);
 
-            return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' ELSE 'yellow' END";
+            return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
         }
 
         return "CASE WHEN {$failed} THEN 'red' WHEN {$synced} THEN 'green' ELSE 'yellow' END";
@@ -5201,17 +5205,13 @@ class AmazonAdsController extends Controller
                     : AmazonAcosSbgtRule::sbgtFromAcosL30($ltForBgt);
             }
             if (in_array('sbgt', $columns, true)) {
-                $arr['sbgt'] = AmazonAdsSbgt::sbgtWithoutIncrease(
-                    (string) ($rowArr['campaignName'] ?? ''),
-                    self::summedSbgtFromParts(
-                        $arr['bgtViews'] ?? null,
-                        $arr['bgtCvr'] ?? null,
-                        $arr['bgtAcos'] ?? null,
-                        $arr['bgtPrc'] ?? null,
-                        $arr['bgtReviews'] ?? null,
-                        $arr['bgtDil'] ?? null
-                    ),
-                    $arr['bgt'] ?? ($rowArr['campaignBudgetAmount'] ?? null)
+                $arr['sbgt'] = self::summedSbgtFromParts(
+                    $arr['bgtViews'] ?? null,
+                    $arr['bgtCvr'] ?? null,
+                    $arr['bgtAcos'] ?? null,
+                    $arr['bgtPrc'] ?? null,
+                    $arr['bgtReviews'] ?? null,
+                    $arr['bgtDil'] ?? null
                 );
                 if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
                     $wantSbgt = AmazonAdsSbgt::storageValue($arr['sbgt'] ?? null);
@@ -6227,113 +6227,6 @@ class AmazonAdsController extends Controller
         }
 
         return $payload;
-    }
-
-    /**
-     * Every campaign the Lbgt / Lbid badges count as yellow or red, for the same day and Stat as the grid.
-     */
-    public function mismatchSyncRows(Request $request): JsonResponse
-    {
-        $source = (string) $request->input('source', 'all_reports');
-        $tables = match ($source) {
-            'sp_reports' => ['amazon_sp_campaign_reports'],
-            'sb_reports' => ['amazon_sb_campaign_reports'],
-            default => ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'],
-        };
-        $rows = [];
-        $seen = [];
-        foreach ($tables as $table) {
-            if (! Schema::hasTable($table) || ! self::tableSupportsLiveSyncStatus($table, Schema::getColumnListing($table))) {
-                continue;
-            }
-            foreach ($this->mismatchSyncRowsForTable($request, $table) as $row) {
-                $key = $row['channel']."\0".$row['campaign_id'];
-                if (isset($seen[$key])) {
-                    continue;
-                }
-                $seen[$key] = true;
-                $rows[] = $row;
-            }
-        }
-
-        return response()->json([
-            'ok' => true,
-            'count' => count($rows),
-            'rows' => $rows,
-        ]);
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function mismatchSyncRowsForTable(Request $request, string $table): array
-    {
-        $query = DB::table($table);
-        self::applyDateFilters($query, $table, $request);
-        self::applyCampaignStatusFilter($query, $table, $request);
-        $search = trim((string) $request->input('search', ''));
-        if ($search !== '' && Schema::hasColumn($table, 'campaignName')) {
-            $escaped = addcslashes($search, '%_\\');
-            $query->where('campaignName', 'LIKE', '%'.$escaped.'%');
-        }
-        $bidMismatch = self::liveSyncMismatchPredicate($table, 'bid');
-        $bgtMismatch = self::liveSyncMismatchPredicate($table, 'bgt');
-        $query->where(function ($w) use ($bidMismatch, $bgtMismatch) {
-            $w->whereRaw($bidMismatch)->orWhereRaw($bgtMismatch);
-        });
-        $select = ['campaign_id', 'campaignName', 'campaignStatus'];
-        foreach (['sbid', 'sbgt', 'last_sbid', 'campaignBudgetAmount', 'ad_type'] as $col) {
-            if (Schema::hasColumn($table, $col)) {
-                $select[] = $col;
-            }
-        }
-        $found = $query->orderBy('id')->limit(2000)->get($select);
-        $channel = self::liveSyncChannelForTable($table);
-        $out = [];
-        foreach ($found as $row) {
-            $cid = trim((string) ($row->campaign_id ?? ''));
-            if ($cid === '') {
-                continue;
-            }
-            $payload = [
-                'campaign_id' => $cid,
-                'channel' => $channel,
-                'campaignName' => (string) ($row->campaignName ?? ''),
-                'ad_type' => (string) ($row->ad_type ?? ''),
-            ];
-            $bid = AmazonAdsLiveBidBgtSyncService::positiveNumber($row->sbid ?? null);
-            if ($bid !== null) {
-                $payload['sbid'] = $bid;
-            }
-            $rawSbgt = $row->sbgt ?? null;
-            if (AmazonAdsSbgt::isExplicitZero($rawSbgt)) {
-                $payload['sbgt'] = 0;
-            } else {
-                $sbgt = AmazonAdsSbgt::parsePushableBudget($rawSbgt);
-                if ($sbgt !== null) {
-                    $payload['sbgt'] = (float) $sbgt;
-                }
-            }
-            if (! isset($payload['sbid']) && ! isset($payload['sbgt'])) {
-                continue;
-            }
-            $out[] = $payload;
-        }
-
-        return $out;
-    }
-
-    private static function liveSyncMismatchPredicate(string $table, string $field): string
-    {
-        $field = $field === 'bid' ? 'bid' : 'bgt';
-        $channel = self::liveSyncChannelForTable($table);
-        $t = str_replace('`', '', $table);
-        $colorSql = self::liveSyncColorSql($t, $field, Schema::hasColumn($table, 'sbgt'));
-
-        return '(SELECT '.$colorSql.' FROM (SELECT 1) AS amz_sync_one'
-            .' LEFT JOIN amazon_ads_live_sync_states AS s'
-            ." ON s.campaign_id = `{$t}`.`campaign_id` AND s.channel = '".$channel."' AND s.field = '".$field."'"
-            ." LIMIT 1) IN ('yellow','red')";
     }
 
     /**

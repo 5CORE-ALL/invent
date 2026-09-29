@@ -291,7 +291,7 @@ class Ebay1PromotionService
      */
     public function isSalePriceLockError(array $result): bool
     {
-        $blob = strtolower(\App\Support\EbayApiText::string($result['message'] ?? ''));
+        $blob = strtolower((string) ($result['message'] ?? ''));
         $errors = $result['errors'] ?? [];
         if ($errors === [] && is_array($result['data']['Errors'] ?? null)) {
             $errors = $result['data']['Errors'];
@@ -304,19 +304,19 @@ class Ebay1PromotionService
 
         foreach ($errors as $error) {
             if (! is_array($error)) {
-                $blob .= ' '.strtolower(\App\Support\EbayApiText::string($error));
+                $blob .= ' '.strtolower((string) $error);
 
                 continue;
             }
-            $blob .= ' '.strtolower(\App\Support\EbayApiText::string($error['message'] ?? ''));
-            $blob .= ' '.strtolower(\App\Support\EbayApiText::string($error['LongMessage'] ?? ''));
-            $blob .= ' '.strtolower(\App\Support\EbayApiText::string($error['ShortMessage'] ?? ''));
-            $blob .= ' '.\App\Support\EbayApiText::string($error['ErrorCode'] ?? $error['code'] ?? '');
+            $blob .= ' '.strtolower((string) ($error['message'] ?? ''));
+            $blob .= ' '.strtolower((string) ($error['LongMessage'] ?? ''));
+            $blob .= ' '.strtolower((string) ($error['ShortMessage'] ?? ''));
+            $blob .= ' '.(string) ($error['ErrorCode'] ?? $error['code'] ?? '');
             $params = $error['ErrorParameters'] ?? [];
             if (is_array($params)) {
                 foreach ($params as $param) {
                     if (is_array($param) && isset($param['Value'])) {
-                        $blob .= ' '.strtolower(\App\Support\EbayApiText::string($param['Value']));
+                        $blob .= ' '.strtolower((string) $param['Value']);
                     }
                 }
             }

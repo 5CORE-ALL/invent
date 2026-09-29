@@ -172,44 +172,6 @@ class TaskBusinessTime
     }
 
     /**
-     * Same overdue rule as the /tasks list: Done and Archived are never overdue.
-     * Weekly/monthly automated tasks are overdue on created date + 6 days.
-     * Every other task is overdue once the business date is after TID + 1 day.
-     */
-    public static function isTaskOverdue(
-        mixed $status,
-        mixed $startDate,
-        mixed $createdAt = null,
-        mixed $scheduleType = null,
-        bool $isAutomateTask = false
-    ): bool {
-        $status = (string) $status;
-        if ($status === 'Done' || $status === 'Archived') {
-            return false;
-        }
-
-        $today = static::today()->toDateString();
-        if ($isAutomateTask && static::isWeeklyOrMonthly((string) $scheduleType)) {
-            $overdueOn = static::weeklyMonthlyOverdueOnDate($createdAt, $startDate);
-
-            return $overdueOn !== null && $today >= $overdueOn;
-        }
-
-        $tid = static::businessDateFromStart($startDate);
-        if ($tid === null) {
-            return false;
-        }
-
-        try {
-            $dayAfterGrace = static::parse($tid)->addDay()->toDateString();
-        } catch (\Throwable) {
-            return false;
-        }
-
-        return $today > $dayAfterGrace;
-    }
-
-    /**
      * Y-m-d when a weekly/monthly auto task becomes overdue (created date + 6 days).
      */
     public static function weeklyMonthlyOverdueOnDate(mixed $createdAt, mixed $startDate = null): ?string

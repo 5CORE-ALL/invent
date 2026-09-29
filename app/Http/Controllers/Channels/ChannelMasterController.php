@@ -17146,25 +17146,6 @@ class ChannelMasterController extends Controller
 
             $metricKey = $metricMap[$metric] ?? $metric;
 
-            // AliExpress snapshots froze $0 on days that already had API orders
-            // (sheet upload stopped, so the saved y_sales never caught up).
-            if (! $isAll && $metric === 'y_sales' && $channel === 'aliexpress') {
-                $chartData = $this->buildAliexpressLiveDailyYSalesChart($days);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    false
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData])->withHeaders([
-                    'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
-                    'Pragma' => 'no-cache',
-                    'Expires' => '0',
-                ]);
-            }
-
             // Yesterday-page charts: one point per Pacific day from saved snapshots.
             // never L30 rolling snapshots (those mixed ~43k L30 with a 1.5k last day).
             $dailyChartMetrics = ['y_sales', 'l30_orders', 'qty', 'total_views', 'cvr', 'gprofit', 'groi', 'ad_spend', 'ads_pct', 'npft', 'nroi'];
@@ -19204,19 +19185,6 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
-            if ($channel === 'aliexpress') {
-                $day = Carbon::parse($ymd, 'America/Los_Angeles');
-                self::$pacificDayYSalesCache[$key] = round(
-                    app(AliexpressController::class)->sumApiOrderSalesBetween(
-                        $day->copy()->startOfDay(),
-                        $day->copy()->endOfDay()
-                    ),
-                    2
-                );
-
-                return self::$pacificDayYSalesCache[$key];
-            }
-
             if ($channel === 'shein') {
                 $day = Carbon::parse($ymd, 'America/Los_Angeles');
                 self::$pacificDayYSalesCache[$key] = $this->sumSheinDailyDataRevenue(
@@ -19469,7 +19437,7 @@ class ChannelMasterController extends Controller
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
         $tz = 'America/Los_Angeles';
-        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein', 'newegg', 'wayfair', 'reverb', 'ebaythree', 'purchasingpower', 'tiktokshop2', 'aliexpress'], true) ? 14 : 1;
+        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein', 'newegg', 'wayfair', 'reverb', 'ebaythree', 'purchasingpower', 'tiktokshop2'], true) ? 14 : 1;
         $lookupKeys = $this->allMarketplaceSnapshotLookupKeys($channel);
 
         for ($offset = 0; $offset <= $lookback; $offset++) {
@@ -20292,10 +20260,6 @@ class ChannelMasterController extends Controller
         $startDate = now($tz)->subDays($span + 1)->toDateString();
         $want = $isAll ? null : $this->allMarketplaceSnapshotKey($channel);
 
-        if (! $isAll && $want === 'aliexpress') {
-            return $this->buildAliexpressLiveDailyYSalesChart($span);
-        }
-
         if (! $isAll && in_array($want, ['macys', 'macysinc', 'bestbuyusa', 'bestbuy'], true)) {
             $channelName = $want === 'bestbuyusa' || $want === 'bestbuy'
                 ? 'Best Buy USA'
@@ -20583,37 +20547,6 @@ class ChannelMasterController extends Controller
             $out[] = [
                 'date' => $cursor->format('M d'),
                 'value' => round((float) ($cell['sales'] ?? 0), 2),
-            ];
-            $cursor->addDay();
-        }
-
-        return $out;
-    }
-
-    /**
-     * AliExpress Y Sales chart from aliexpress_order_metrics (same line totals as
-     * the Y Sales cell). Daily snapshots stored $0 after the sheet upload stopped.
-     *
-     * @return list<array{date: string, value: float}>
-     */
-    private function buildAliexpressLiveDailyYSalesChart(int $days): array
-    {
-        $tz = 'America/Los_Angeles';
-        $end = now($tz)->subDay()->startOfDay();
-        $span = $days > 0 ? $days : 30;
-        $start = $end->copy()->subDays($span - 1);
-        $byDate = app(AliexpressController::class)->apiOrderSalesByPacificDate(
-            $start->copy()->startOfDay(),
-            $end->copy()->endOfDay()
-        );
-
-        $out = [];
-        $cursor = $start->copy();
-        while ($cursor->lte($end)) {
-            $ymd = $cursor->toDateString();
-            $out[] = [
-                'date' => $cursor->format('M d'),
-                'value' => round((float) ($byDate[$ymd] ?? 0), 2),
             ];
             $cursor->addDay();
         }

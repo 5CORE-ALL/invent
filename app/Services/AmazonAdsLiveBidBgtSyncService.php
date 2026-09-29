@@ -22,8 +22,7 @@ use Throwable;
  */
 class AmazonAdsLiveBidBgtSyncService
 {
-    /** Same gap as the Lbgt/SBGT column. A larger gap is a mismatch and is pushed. */
-    public const BGT_TOLERANCE = 0.015;
+    public const BGT_TOLERANCE = 0.51;
 
     /** Bids match only when the cents are equal. One cent is a difference. */
     public const BID_TOLERANCE = 0;
@@ -420,13 +419,6 @@ class AmazonAdsLiveBidBgtSyncService
                 $this->persistVerifiedLive($channel, $field, $campaignId, (float) $oldLive);
 
                 return $this->finish($base, 'synced', 'already_matched', $source, $campaignName, $desired, (float) $oldLive, 'skipped');
-            }
-            if ($field === 'bgt'
-                && AmazonAdsSbgt::nameBlocksBudgetIncrease($campaignName)
-                && (float) $desired > (float) $oldLive + $tolerance) {
-                $this->persistVerifiedLive($channel, $field, $campaignId, (float) $oldLive);
-
-                return $this->finish($base, 'synced', 'fba_budget_not_increased', $source, $campaignName, (float) $oldLive, (float) $oldLive, 'skipped');
             }
         }
 

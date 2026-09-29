@@ -62,11 +62,6 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('tasks.scoreHistory') }}" class="{{ request()->routeIs('tasks.scoreHistory') ? 'active' : '' }}">
-                                <i class="ri-history-line me-2"></i>Score History
-                            </a>
-                        </li>
-                        <li>
                             <a href="{{ route('incentives.index') }}" class="{{ request()->routeIs('incentives.*') ? 'active' : '' }}">
                                 <i class="ri-hand-coin-line me-2"></i>Incentives
                             </a>
@@ -104,33 +99,6 @@
                     </ul>
                 </div>
             </li>
-
-            @can('social_media.view')
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#socialMediaGroup" aria-expanded="{{ request()->routeIs('social-media.*') ? 'true' : 'false' }}"
-                    aria-controls="socialMediaGroup" class="side-nav-link">
-                    <i class="ri-share-line"></i>
-                    <span>Social Media</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse {{ request()->routeIs('social-media.*') ? 'show' : '' }}" id="socialMediaGroup">
-                    <ul class="side-nav-second-level">
-                        <li><a href="{{ route('social-media.dashboard') }}" class="{{ request()->routeIs('social-media.dashboard') ? 'active' : '' }}">Dashboard</a></li>
-                        <li><a href="{{ route('social-media.accounts') }}" class="{{ request()->routeIs('social-media.accounts') ? 'active' : '' }}">Accounts</a></li>
-                        <li><a href="{{ route('social-media.content') }}" class="{{ request()->routeIs('social-media.content*') ? 'active' : '' }}">Content</a></li>
-                        <li><a href="{{ route('social-media.analytics') }}" class="{{ request()->routeIs('social-media.analytics') ? 'active' : '' }}">Analytics</a></li>
-                        <li><a href="{{ route('social-media.executive') }}" class="{{ request()->routeIs('social-media.executive') ? 'active' : '' }}">Executive KPI</a></li>
-                        @can('social_media.targets')
-                        <li><a href="{{ route('social-media.targets') }}" class="{{ request()->routeIs('social-media.targets') ? 'active' : '' }}">Targets</a></li>
-                        @endcan
-                        @can('social_media.reports')
-                        <li><a href="{{ route('social-media.reports') }}" class="{{ request()->routeIs('social-media.reports') ? 'active' : '' }}">Reports</a></li>
-                        @endcan
-                        <li><a href="{{ route('social-media.health') }}" class="{{ request()->routeIs('social-media.health') ? 'active' : '' }}">Sync / API Health</a></li>
-                    </ul>
-                </div>
-            </li>
-            @endcan
 
             {{-- Dashboard --}}
             <li class="side-nav-item">

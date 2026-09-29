@@ -58,27 +58,6 @@
         font-weight: 600;
         padding: 1.25rem 0.5rem;
     }
-    .ts-kpi-index-empty .btn {
-        background: linear-gradient(135deg, #0f766e, #14b8a6);
-        border: none;
-    }
-    #ts-kpi-index-ai-loading {
-        text-align: center;
-        color: #0f766e;
-        font-weight: 600;
-        padding: 1.25rem 0.5rem;
-    }
-    #ts-kpi-index-suggest {
-        display: flex;
-        gap: 0.4rem;
-        margin-top: 1rem;
-    }
-    #ts-kpi-index-suggest .btn {
-        background: #0f766e;
-        border-color: #0f766e;
-        color: #fff;
-        white-space: nowrap;
-    }
     .kpi-search-icon-btn.task-summary-kpi-index-btn {
         border: none;
         background: transparent;
@@ -113,29 +92,10 @@
                     <p class="text-muted small mt-2 mb-0">Loading KPI badges…</p>
                 </div>
                 <div id="ts-kpi-index-error" class="alert alert-danger d-none" role="alert"></div>
-                <div id="ts-kpi-index-ai-loading" class="d-none">
-                    <div class="spinner-border text-success" role="status"><span class="visually-hidden">Working…</span></div>
-                    <p class="small mt-2 mb-0">Asking AI to choose KPIs for this designation…</p>
-                </div>
-                <div id="ts-kpi-index-empty" class="ts-kpi-index-empty d-none">
-                    <div class="fw-semibold mb-1">No KPI badges assigned yet</div>
-                    <p class="small mb-3" id="ts-kpi-index-empty-help">Let AI pick KPIs from this person's designation, the same way R&amp;R is drafted.</p>
-                    <button type="button" class="btn btn-primary" id="ts-kpi-index-generate-btn">
-                        <i class="ri-magic-line me-1"></i> Generate with AI
-                    </button>
-                </div>
+                <div id="ts-kpi-index-empty" class="ts-kpi-index-empty d-none">No KPI badges assigned yet. Use + to add them.</div>
                 <div class="ts-kpi-index-badges" id="ts-kpi-index-badges"></div>
-                <div id="ts-kpi-index-suggest" class="d-none">
-                    <input type="text" id="ts-kpi-index-hint" class="form-control form-control-sm" maxlength="500" placeholder="Optional hint, or leave blank for one more KPI">
-                    <button type="button" class="btn btn-sm" id="ts-kpi-index-suggest-btn">
-                        <i class="ri-sparkling-line"></i> Ask AI
-                    </button>
-                </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="ts-kpi-index-regen-btn" style="border-color:#0f766e;color:#0f766e;">
-                    <i class="ri-refresh-line me-1"></i> Re-generate with AI
-                </button>
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
@@ -145,10 +105,6 @@
 <script>
 (function () {
     var endpoint = @json(route('tasks.userKpis.get'));
-    var generateUrl = @json(route('tasks.userKpis.generate'));
-    var suggestUrl = @json(route('tasks.userKpis.suggest'));
-    var csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    var state = { userId: 0, canManage: false, count: 0 };
 
     function el(id) { return document.getElementById(id); }
     function escapeHtml(s) {
@@ -176,86 +132,17 @@
         if (n) { n.classList.add('d-none'); n.textContent = ''; }
     }
 
-    function setAiLoading(on) {
-        var node = el('ts-kpi-index-ai-loading');
-        if (node) node.classList.toggle('d-none', !on);
-        if (on) {
-            var empty = el('ts-kpi-index-empty');
-            var suggest = el('ts-kpi-index-suggest');
-            if (empty) empty.classList.add('d-none');
-            if (suggest) suggest.classList.add('d-none');
-        }
-    }
-
-    function syncRowCount(count) {
-        document.querySelectorAll('.task-summary-kpi-badges-btn').forEach(function (btn) {
-            if (String(btn.getAttribute('data-user-id')) !== String(state.userId)) return;
-            btn.setAttribute('data-badge-count', String(count));
-            var badge = btn.querySelector('.kpi-badges-count');
-            if (count > 0) {
-                if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'kpi-badges-count';
-                    btn.appendChild(badge);
-                }
-                badge.textContent = String(count);
-            } else if (badge) {
-                badge.remove();
-            }
-        });
-    }
-
-    function paintAiControls(count) {
-        state.count = count;
-        var empty = el('ts-kpi-index-empty');
-        var suggest = el('ts-kpi-index-suggest');
-        var regen = el('ts-kpi-index-regen-btn');
-        var generate = el('ts-kpi-index-generate-btn');
-        var has = count > 0;
-        if (empty) empty.classList.toggle('d-none', has);
-        if (generate) generate.classList.toggle('d-none', !state.canManage);
-        var help = el('ts-kpi-index-empty-help');
-        if (help) help.classList.toggle('d-none', !state.canManage);
-        if (suggest) suggest.classList.toggle('d-none', !state.canManage || !has || count >= 5);
-        if (regen) regen.classList.toggle('d-none', !state.canManage || !has);
-    }
-
-    function postJson(url, body) {
-        return fetch(url, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrf,
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify(body)
-        }).then(function (r) {
-            return r.json().then(function (data) {
-                if (!r.ok || data.success === false) {
-                    throw new Error((data && data.message) ? data.message : 'AI request failed.');
-                }
-                return data;
-            });
-        });
-    }
-
-    function renderBadges(assigned, opts) {
-        opts = opts || {};
+    function renderBadges(assigned) {
         var wrap = el('ts-kpi-index-badges');
         var empty = el('ts-kpi-index-empty');
         if (!wrap) return;
         wrap.innerHTML = '';
-        var list = assigned || [];
-        paintAiControls(list.length);
-        if (!opts.skipSync) syncRowCount(list.length);
-        if (!list.length) {
+        if (!assigned || !assigned.length) {
             if (empty) empty.classList.remove('d-none');
             return;
         }
         if (empty) empty.classList.add('d-none');
-        list.forEach(function (item) {
+        assigned.forEach(function (item) {
             var badge = document.createElement('span');
             badge.className = 'badge';
             badge.setAttribute('data-kpi-key', item.key || '');
@@ -284,12 +171,8 @@
         var nameEl = el('ts-kpi-index-user');
         if (nameEl) nameEl.textContent = userName || 'User';
 
-        state.userId = userId;
-        state.canManage = false;
-        state.count = 0;
         clearError();
-        setAiLoading(false);
-        renderBadges([], { skipSync: true });
+        renderBadges([]);
         var empty = el('ts-kpi-index-empty');
         if (empty) empty.classList.add('d-none');
         setLoading(true);
@@ -307,7 +190,6 @@
             });
         }).then(function (data) {
             setLoading(false);
-            state.canManage = !!data.can_manage;
             renderBadges(data.assigned || []);
         }).catch(function (err) {
             setLoading(false);
@@ -322,34 +204,6 @@
         e.stopPropagation();
         if (btn.disabled) return;
         openFromButton(btn);
-    });
-
-    document.addEventListener('click', function (e) {
-        var generate = e.target && e.target.closest && e.target.closest('#ts-kpi-index-generate-btn');
-        var regen = e.target && e.target.closest && e.target.closest('#ts-kpi-index-regen-btn');
-        var suggest = e.target && e.target.closest && e.target.closest('#ts-kpi-index-suggest-btn');
-        if (!generate && !regen && !suggest) return;
-        e.preventDefault();
-        if (!state.userId || !state.canManage) return;
-        if (regen && !window.confirm('Replace the current KPI badges with a new AI list for this designation?')) return;
-        clearError();
-        setAiLoading(true);
-        var request = suggest
-            ? postJson(suggestUrl, {
-                user_id: state.userId,
-                hint: (el('ts-kpi-index-hint') && el('ts-kpi-index-hint').value || '').trim()
-            })
-            : postJson(generateUrl, { user_id: state.userId, force: !!regen });
-        request.then(function (data) {
-            setAiLoading(false);
-            var hint = el('ts-kpi-index-hint');
-            if (hint) hint.value = '';
-            renderBadges(data.assigned || []);
-        }).catch(function (err) {
-            setAiLoading(false);
-            paintAiControls(state.count);
-            showError(err.message || 'AI could not update KPIs.');
-        });
     });
 })();
 </script>

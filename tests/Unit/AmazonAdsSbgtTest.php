@@ -35,25 +35,6 @@ class AmazonAdsSbgtTest extends TestCase
         $this->assertSame(0, AmazonAdsSbgt::sumFromParts(0, null, null));
     }
 
-    public function test_fba_campaigns_do_not_take_a_higher_budget(): void
-    {
-        $names = [
-            'SPKN BGO 6PK FBA',
-            'MC-03 4PCS fba KW',
-            'GS EL FBA New KW',
-            'ET 10FT BLU FBA KW',
-            'ET 10FT BLU FBA PT',
-            'ND-57X FBA',
-        ];
-        foreach ($names as $name) {
-            $this->assertTrue(AmazonAdsSbgt::nameBlocksBudgetIncrease($name), $name);
-            $this->assertSame(12.0, AmazonAdsSbgt::sbgtWithoutIncrease($name, 40, 12));
-        }
-        $this->assertSame(8, AmazonAdsSbgt::sbgtWithoutIncrease('ND-57X FBA', 8, 12));
-        $this->assertSame(40, AmazonAdsSbgt::sbgtWithoutIncrease('PARENT CAPO GLD KW', 40, 12));
-        $this->assertFalse(AmazonAdsSbgt::nameBlocksBudgetIncrease('PARENT CAPO GLD KW'));
-    }
-
     public function test_is_explicit_zero(): void
     {
         $this->assertTrue(AmazonAdsSbgt::isExplicitZero(0));
