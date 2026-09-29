@@ -94,6 +94,75 @@ class ShopifyAplusContentSync
     }
 
     /**
+     * A+ content must not repeat the top "5 bullet points" block (Bullet Points Master owns those).
+     * Removes the Bullet Points Master block / "About Item" section, then any leading bold-label bullet
+     * paragraphs, <br>-separated bullet lines, bullet lists or symbol bullets Shopify puts before the body.
+     */
+    public static function cleanFetchedHtml(string $html): string
+    {
+        $html = trim(str_replace("\xc2\xa0", ' ', $html));
+        if ($html === '') {
+            return '';
+        }
+        $raw = $html;
+
+        // Bullet Points Master marker block, "About Item" sections and 【】 bracket bullets.
+        $html = trim(ShopifyBulletPointsFormatter::removeAboutItemBlock($html));
+
+        // Leading block-level wrappers that only open (div/section/span) — look past them but keep them.
+        $open = '(?:<(?:div|section|span|font|center)\b[^>]*>\s*)*';
+        $sep = '(?:-|:|–|—|\|)';
+        $boldOpen = '<(?:strong|b)\b[^>]*>\s*(?:<[^>]+>\s*)*';
+        $boldClose = '(?:<\/[^>]+>\s*)*<\/(?:strong|b)>';
+        // A bullet = bold label + (separator inside/outside the bold tag OR a real sentence right after it).
+        // A bold-only line such as <p><strong>BUILT TO LAST</strong></p> is a heading and is kept.
+        $label = '(?:'
+            .$boldOpen.'[^<]{2,120}?\s*'.$sep.'\s*'.$boldClose
+            .'|'.$boldOpen.'[^<]{2,120}?\s*'.$boldClose.'\s*(?:<(?!\/?(?:p|div|li|h[1-6])\b)[^>]+>\s*)*'.$sep
+            .'|'.$boldOpen.'[^<]{2,120}?\s*'.$boldClose.'\s*(?:<(?!\/?(?:p|div|li|h[1-6])\b)[^>]+>\s*)*[^<]{20,}'
+            .')';
+        $headingLabel = '(?:Highlighted\s+Features|About\s+(?:this\s+)?Item|Key\s+Features|Product\s+Highlights|Main\s+Features|Bullet\s+Points|Top\s+Features|Features)';
+
+        $patterns = [
+            // "Highlighted Features" / "Key Features" style label heading at the top (bullets follow).
+            '/^'.$open.'<(?:p|h[1-6]|div)\b[^>]*>\s*(?:<[^>]+>\s*)*'.$headingLabel.'\s*:?\s*(?:<\/[^>]+>\s*)*<\/(?:p|h[1-6]|div)>\s*(?='.$open.'<(?:p|h[1-6]|div|li|ul|ol)\b[^>]*>\s*(?:<[^>]+>\s*)*(?:<(?:strong|b)\b|•|✔|✓|★|【|<li))/iu',
+            // <p>/<h*>/<div>/<li> whose content starts with a bold label bullet.
+            '/^'.$open.'<(?:p|h[1-6]|div|li)\b[^>]*>\s*(?:<(?:span|font|em|i|u)\b[^>]*>\s*)*'.$label.'[\s\S]*?<\/(?:p|h[1-6]|div|li)>\s*/iu',
+            // Bullets as <br>-separated bold-label lines inside one paragraph (2+ lines).
+            '/^'.$open.'<p\b[^>]*>\s*(?:'.$label.'[^<]*(?:<(?!br)[^>]+>[^<]*)*<br\s*\/?>\s*){2,}'.$label.'[\s\S]*?<\/p>\s*/iu',
+            // Bullet list right at the top.
+            '/^'.$open.'<(?:ul|ol)\b[^>]*>[\s\S]*?<\/(?:ul|ol)>\s*/iu',
+            // "•", "✔", "✓", "★" symbol bullets in leading paragraphs.
+            '/^'.$open.'<(?:p|div)\b[^>]*>\s*(?:<[^>]+>\s*)*(?:•|✔|✓|★|☑|►|▶|【)[\s\S]*?<\/(?:p|div)>\s*/iu',
+            // Empty paragraphs left behind.
+            '/^'.$open.'<p\b[^>]*>\s*(?:<br\s*\/?>|&nbsp;|\s|<[^>]+>\s*<\/[^>]+>)*<\/p>\s*/iu',
+        ];
+
+        // At most 5 bullet paragraphs (+ leftovers) are removed; stop as soon as nothing matches so the
+        // real description paragraphs are never eaten.
+        for ($removed = 0; $removed < 8; $removed++) {
+            $before = $html;
+            foreach ($patterns as $pattern) {
+                $updated = preg_replace($pattern, '', $html, 1, $count);
+                if ($count > 0 && is_string($updated)) {
+                    $html = trim($updated);
+                    break;
+                }
+            }
+            if ($html === $before) {
+                break;
+            }
+        }
+
+        // Safety against over-stripping: if nothing meaningful is left, keep the original body.
+        if (trim(strip_tags($html)) === '' && ! preg_match('/<img\b/i', $html)) {
+            return $raw;
+        }
+
+        return trim($html);
+    }
+
+    /**
      * Fetch from Shopify and store. When $force is false and a snapshot already exists, the stored
      * copy is returned untouched (this is what makes the fetch "one time").
      *
@@ -134,7 +203,7 @@ class ShopifyAplusContentSync
             return ['success' => false, 'status' => 'failed', 'message' => $message, 'product' => $product];
         }
 
-        $html = trim((string) ($res['html'] ?? ''));
+        $html = self::cleanFetchedHtml((string) ($res['html'] ?? ''));
         $images = array_values(array_filter(array_map(
             fn ($u) => is_string($u) ? trim($u) : '',
             (array) ($res['images'] ?? [])
@@ -175,6 +244,37 @@ class ShopifyAplusContentSync
             'message' => 'Fetched Shopify description and stored as A+ content.',
             'product' => $product,
         ];
+    }
+
+    /**
+     * Re-run the bullet cleaner on an already stored snapshot (no Shopify call). Used to rectify SKUs
+     * that were stored with the full body including the top bullet block.
+     *
+     * @return array{changed: bool, before: int, after: int}
+     */
+    public function recleanStored(ProductMaster $product): array
+    {
+        $before = (string) ($product->shopify_aplus_content ?? '');
+        if (trim($before) === '') {
+            return ['changed' => false, 'before' => 0, 'after' => 0];
+        }
+
+        $after = self::cleanFetchedHtml($before);
+        if ($after === trim($before)) {
+            return ['changed' => false, 'before' => mb_strlen($before), 'after' => mb_strlen($after)];
+        }
+
+        $update = ['shopify_aplus_content' => $after];
+        ProductMaster::query()->whereKey($product->getKey())->update($update);
+        $product->forceFill($update)->syncOriginal();
+
+        Log::info('ShopifyAplusContentSync: re-cleaned stored A+ content', [
+            'sku' => (string) $product->sku,
+            'before_chars' => mb_strlen($before),
+            'after_chars' => mb_strlen($after),
+        ]);
+
+        return ['changed' => true, 'before' => mb_strlen($before), 'after' => mb_strlen($after)];
     }
 
     /**
