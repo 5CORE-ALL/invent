@@ -31,7 +31,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     /** Orders and tracking updates begin on this Eastern calendar date. */
     public const EARLIEST_ORDER_DATE = '2026-09-15';
 
-    public function index(): View
+    public function index(GofoExpressService $gofo, VeeqoApiService $veeqo): View
     {
         $channels = collect(MarketplaceManagerRegistry::channels())
             ->filter(fn ($c) => ($c['enabled'] ?? false) === true)
