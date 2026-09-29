@@ -390,6 +390,19 @@
         }
         .lm-push-status-row:last-child { border-bottom: 0; }
         .lm-push-status-row .ico { width: 1.1rem; text-align: center; margin-top: .1rem; }
+        .lm-push-status-row.ok .ico { color: #15803d; }
+        .lm-push-status-row.fail .ico { color: #b91c1c; }
+        .lm-push-status-row.fail > div > div { color: #b91c1c; }
+        .lm-push-summary {
+            display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem;
+            padding: .5rem .65rem; margin-bottom: .35rem; border-radius: 8px;
+            background: #f8fafc; border: 1px solid #e5e7eb; font-size: .8rem; font-weight: 600;
+        }
+        .lm-push-summary .ok { color: #15803d; }
+        .lm-push-summary .fail { color: #b91c1c; }
+        .lm-push-summary .skipped { color: #6b7280; }
+        .lm-push-summary.is-running { background: #eef4ff; border-color: #c7d7fe; color: #1d4ed8; }
+        .lm-push-summary.is-error { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
         .lm-push-overlay {
             position: absolute; inset: 0; background: rgba(255,255,255,.72);
             display: flex; align-items: center; justify-content: center; z-index: 8;
@@ -4749,7 +4762,46 @@
                     <div><strong>${escapeHtml(name)}</strong><div class="text-muted">Waiting…</div></div>
                 </div>`;
             });
-            $('#lm-push-results').removeClass('d-none').html(rows.join(''));
+            $('#lm-push-results').removeClass('d-none').html('<div class="lm-push-summary is-running" id="lm-push-summary"><i class="fas fa-spinner fa-spin"></i> Saving to Product Master…</div>' + rows.join(''));
+            const box = document.getElementById('lm-push-results');
+            if (box) box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+
+        function setPushSummary(html, cls) {
+            let $s = $('#lm-push-summary');
+            if (!$s.length) {
+                $('#lm-push-results').removeClass('d-none').prepend('<div class="lm-push-summary" id="lm-push-summary"></div>');
+                $s = $('#lm-push-summary');
+            }
+            $s.attr('class', 'lm-push-summary ' + (cls || '')).html(html);
+        }
+
+        function ajaxErrorMessage(xhr, fallback) {
+            const res = (xhr && xhr.responseJSON) || null;
+            if (res) {
+                if (res.errors && typeof res.errors === 'object') {
+                    const parts = [];
+                    Object.keys(res.errors).forEach(function (k) {
+                        const v = res.errors[k];
+                        parts.push(Array.isArray(v) ? v[0] : String(v));
+                    });
+                    if (parts.length) return parts.join(' ');
+                }
+                if (res.message) return String(res.message);
+            }
+            if (xhr && xhr.status === 0) return 'Network error — the request did not reach the server.';
+            if (xhr && xhr.statusText === 'timeout') return 'Timed out waiting for the server.';
+            if (xhr && xhr.status) return 'Request failed (' + xhr.status + (xhr.statusText ? ' ' + xhr.statusText : '') + ').';
+            return fallback || 'Request failed.';
+        }
+
+        function failRemainingPushRows(message) {
+            $('#lm-push-results .lm-push-status-row').each(function () {
+                const $row = $(this);
+                const cls = String($row.attr('class') || '');
+                if (/\b(ok|fail|text-muted)\b/.test(cls)) return;
+                setPushRowStatus(parseInt($row.attr('data-channel-id'), 10), 'fail', message);
+            });
         }
 
         function setPushRowStatus(id, state, message, mode) {
@@ -4890,14 +4942,26 @@
                     results.push({ id, name, row, res });
                 } catch (xhr) {
                     fail++;
-                    const msg = (xhr && xhr.responseJSON && xhr.responseJSON.message)
-                        || (xhr && xhr.statusText)
-                        || 'Could not update this marketplace.';
+                    const msg = (xhr && xhr.message && !xhr.status)
+                        ? ('Script error: ' + xhr.message)
+                        : ajaxErrorMessage(xhr, 'Could not update this marketplace.');
                     if (o.rows) setPushRowStatus(id, 'fail', msg);
                     results.push({ id, name, row: null, error: msg });
                 }
+                if (o.onDone) o.onDone(ok, fail, skipped, channelIds.length);
             }
             return { ok, fail, skipped, results };
+        }
+
+        function pushSummaryHtml(out, total, done) {
+            const bits = [];
+            bits.push('<span class="ok"><i class="fas fa-check-circle me-1"></i>' + out.ok + ' updated</span>');
+            bits.push('<span class="fail"><i class="fas fa-times-circle me-1"></i>' + out.fail + ' failed</span>');
+            bits.push('<span class="skipped"><i class="fas fa-minus-circle me-1"></i>' + out.skipped + ' skipped</span>');
+            const head = done
+                ? '<span>Done — ' + total + ' marketplace(s):</span>'
+                : '<span><i class="fas fa-spinner fa-spin me-1"></i>Updating ' + Math.min(out.ok + out.fail + out.skipped + 1, total) + ' of ' + total + '…</span>';
+            return head + bits.join('');
         }
 
         $('#lm-push-now-btn').on('click', async function () {
@@ -4914,51 +4978,79 @@
             $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
             $('#lm-prod-push-btn').prop('disabled', true);
             renderPushPending(channelIds);
-            const fields = collectPushFields();
-            // Persist to Product Master first so the marketplaces and our masters stay in step.
-            // Bullets / images are only written when that part is being pushed.
-            const saveData = Object.assign({}, fields);
-            delete saveData.title_source;
-            if (!parts.includes('bullets')) delete saveData.bullets;
-            if (!parts.includes('images')) delete saveData.images;
-            if (saveData.images && !saveData.images.length) delete saveData.images;
-            if (saveData.bullets && !saveData.bullets.length) delete saveData.bullets;
+            let finalLabel = idleHtml;
             try {
-                await $.ajax({
-                    url: "{{ url('/listing-manager/product/save') }}",
-                    method: 'POST',
-                    data: saveData,
-                    timeout: 30000,
+                const fields = collectPushFields();
+                // Only the ticked parts travel: keeps validation surface small and never overwrites
+                // unrelated Product Master columns during a push.
+                const pushFields = { sku: fields.sku || currentProductSku };
+                if (parts.includes('title')) pushFields.title = String(fields.title || '');
+                if (parts.includes('description')) pushFields.description = String(fields.description || '');
+                if (parts.includes('price')) {
+                    if (fields.price !== '' && fields.price != null) pushFields.price = fields.price;
+                    if (fields.sale_price !== '' && fields.sale_price != null) pushFields.sale_price = fields.sale_price;
+                }
+                if (parts.includes('bullets') && fields.bullets.length) pushFields.bullets = fields.bullets;
+                if (parts.includes('images') && fields.images.length) pushFields.images = fields.images;
+
+                // Persist to Product Master first so the marketplaces and our masters stay in step.
+                // A title picked from Title Master is already stored there, so it is not written back
+                // (that would overwrite the other Title 170/100/80 columns with the same text).
+                const saveData = Object.assign({}, pushFields);
+                delete saveData.price;
+                delete saveData.sale_price;
+                const titleFromMaster = !!(fields.title_source && fields.title_source !== 'Product Info');
+                if (titleFromMaster) delete saveData.title;
+                if (Object.keys(saveData).length > 1) {
+                    try {
+                        await $.ajax({
+                            url: "{{ url('/listing-manager/product/save') }}",
+                            method: 'POST',
+                            data: saveData,
+                            timeout: 30000,
+                        });
+                    } catch (xhr) {
+                        const msg = ajaxErrorMessage(xhr, 'Could not save product before pushing.');
+                        setPushSummary('<i class="fas fa-times-circle me-1"></i>Nothing was pushed — saving to Product Master failed: ' + escapeHtml(msg), 'is-error');
+                        failRemainingPushRows('Not pushed — Product Master save failed.');
+                        toast('Push stopped: ' + msg, 'error');
+                        return;
+                    }
+                }
+
+                const total = channelIds.length;
+                setPushSummary(pushSummaryHtml({ ok: 0, fail: 0, skipped: 0 }, total, false), 'is-running');
+                const out = await runMarketplaceUpdate(channelIds, pushFields, parts, {
+                    rows: true,
+                    onProgress: (i, n) => $btn.html('<i class="fas fa-spinner fa-spin me-1"></i>' + (i + 1) + '/' + n),
+                    onDone: (ok, fail, skipped, n) => setPushSummary(pushSummaryHtml({ ok, fail, skipped }, n, ok + fail + skipped >= n), ok + fail + skipped >= n ? (fail ? 'is-error' : '') : 'is-running'),
                 });
-            } catch (xhr) {
-                const msg = (xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Could not save product before pushing.';
-                toast(msg, 'error');
+                setPushSummary(pushSummaryHtml(out, total, true), out.fail ? 'is-error' : '');
+                const summary = 'Updated ' + out.ok + ' marketplace(s)'
+                    + (out.fail ? (', ' + out.fail + ' failed') : '')
+                    + (out.skipped ? (', ' + out.skipped + ' skipped') : '') + '.';
+                toast(summary, out.fail === 0 ? 'success' : 'error');
+                if (currentProduct) {
+                    const patch = Object.assign({}, pushFields);
+                    delete patch.bullets;
+                    delete patch.images;
+                    currentProduct = Object.assign({}, currentProduct, patch, { images: currentImages.slice() });
+                    $('#lm-prod-title').text(currentProduct.title || currentProduct.sku || 'Product');
+                    if (!productEditMode) renderProductInfo(currentProduct);
+                }
+                loadTable();
+                finalLabel = '<i class="fas fa-redo me-1"></i>Push Again';
+            } catch (err) {
+                const msg = (err && err.message) ? err.message : String(err || 'Unexpected error');
+                setPushSummary('<i class="fas fa-times-circle me-1"></i>Push stopped: ' + escapeHtml(msg), 'is-error');
+                failRemainingPushRows('Not pushed — ' + msg);
+                toast('Push stopped: ' + msg, 'error');
+                if (window.console) console.error('Listing Manager push failed', err);
+            } finally {
                 pushInFlight = false;
-                $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                $btn.data('loading', false).prop('disabled', false).html(finalLabel);
                 $('#lm-prod-push-btn').prop('disabled', false);
-                return;
             }
-            const pushFields = Object.assign({}, fields);
-            delete pushFields.title_source;
-            if (!pushFields.bullets.length) delete pushFields.bullets;
-            if (!pushFields.images.length) delete pushFields.images;
-            const out = await runMarketplaceUpdate(channelIds, pushFields, parts, {
-                rows: true,
-                onProgress: (i, n) => $btn.html('<i class="fas fa-spinner fa-spin me-1"></i>' + (i + 1) + '/' + n),
-            });
-            const summary = 'Updated ' + out.ok + ' marketplace(s)'
-                + (out.fail ? (', ' + out.fail + ' failed') : '')
-                + (out.skipped ? (', ' + out.skipped + ' skipped') : '') + '.';
-            toast(summary, out.fail === 0 ? 'success' : 'error');
-            if (currentProduct) {
-                currentProduct = Object.assign({}, currentProduct, pushFields, { images: currentImages.slice() });
-                $('#lm-prod-title').text(currentProduct.title || currentProduct.sku || 'Product');
-                if (!productEditMode) renderProductInfo(currentProduct);
-            }
-            loadTable();
-            pushInFlight = false;
-            $btn.data('loading', false).prop('disabled', false).html('<i class="fas fa-redo me-1"></i>Push Again');
-            $('#lm-prod-push-btn').prop('disabled', false);
         });
         $('#lm-prod-content').on('click', '.lm-create-listing-btn', function () {
             const sku = String($(this).data('sku') || currentProductSku || '').trim();
