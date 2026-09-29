@@ -174,6 +174,7 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
             'macy' => app(\App\Services\MarketplaceManager\MacyInventorySyncService::class),
             'doba' => app(\App\Services\MarketplaceManager\DobaInventorySyncService::class),
             'amazon' => app(\App\Services\MarketplaceManager\AmazonInventorySyncService::class),
+            'pls' => app(\App\Services\MarketplaceManager\PlsInventorySyncService::class),
             default => null,
         };
 

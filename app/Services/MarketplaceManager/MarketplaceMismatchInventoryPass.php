@@ -84,7 +84,8 @@ final class MarketplaceMismatchInventoryPass
         }
 
         $remaining = 0;
-        if (in_array($channel, ['ebay2', 'tiktok', 'tiktok2', 'shein', 'topdawg'], true)) {
+        // PLS is a Shopify store (2 req/s, ~7 Admin calls per SKU), so rotate batches too.
+        if (in_array($channel, ['ebay2', 'tiktok', 'tiktok2', 'shein', 'topdawg', 'pls'], true)) {
             $sliced = MarketplaceMismatchBatch::take($channel, $mismatch, $limit);
             $remaining = (int) ($sliced['remaining'] ?? 0);
             $mismatch = $sliced['batch'] ?? [];
