@@ -328,6 +328,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'status' => $status !== '' ? $status : '—',
             'sku' => '',
             'inv' => null,
+            'source_id' => (int) ($order->id ?? 0),
         ];
 
         if ($slug === 'amazon' && $order instanceof AmazonOrder) {
@@ -668,15 +669,16 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
     public function lookupTracking(Request $request): JsonResponse
     {
-        @set_time_limit(40);
+        @set_time_limit(50);
         $this->ensureTrackingTable();
 
         $validated = $request->validate([
-            'rows' => 'required|array|max:3',
+            'rows' => 'required|array|max:1',
             'rows.*.id' => 'required|string|max:191',
             'rows.*.mm_slug' => 'required|string|max:64',
             'rows.*.order_id' => 'nullable|string|max:128',
             'rows.*.sku' => 'nullable|string|max:191',
+            'rows.*.source_id' => 'nullable|integer',
         ]);
 
         $groups = [];
@@ -692,6 +694,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'mm_slug' => $slug,
                 'order_id' => $orderId,
                 'sku' => trim((string) ($row['sku'] ?? '')),
+                'source_id' => (int) ($row['source_id'] ?? 0),
                 'rows' => [],
             ];
             $groups[$groupKey]['rows'][] = [
@@ -701,7 +704,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         $updates = [];
-        $deadline = microtime(true) + 28.0;
+        $deadline = microtime(true) + 42.0;
         $lookup = $this->labelTrackingLookup();
 
         foreach ($groups as $group) {
@@ -719,16 +722,26 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $hit = null;
             $orderId = (string) $group['order_id'];
             if ($orderId !== '' && $lookup !== null) {
+                $refs = $this->trackingSearchRefs($lookup, $group);
                 try {
-                    $hit = $lookup->lookupLabelTracking(
-                        $this->labelLookupRefs((string) $group['mm_slug'], $orderId),
-                        null,
-                        true,
-                        (string) $group['sku']
-                    );
+                    $veeqo = $lookup->findVeeqoShipment($refs, false, '', []);
+                    if (is_array($veeqo) && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
+                        $hit = [
+                            'tracking' => (string) $veeqo['tracking'],
+                            'carrier' => (string) ($veeqo['carrier'] ?? 'Veeqo'),
+                            'source' => 'veeqo',
+                        ];
+                    }
                 } catch (\Throwable $e) {
                     report($e);
-                    $hit = null;
+                }
+                if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) < $deadline) {
+                    try {
+                        $hit = $lookup->lookupLabelTracking($refs, null, true, '');
+                    } catch (\Throwable $e) {
+                        report($e);
+                        $hit = null;
+                    }
                 }
             }
 
@@ -945,22 +958,47 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
-     * Marketplace order ids 4Seller, GOFO, and Veeqo actually store on the label.
+     * Marketplace order ids 4Seller, GOFO, and Veeqo store on the label.
+     * Shopify fulfillment tracking is not used.
      *
+     * @param  array{mm_slug: string, order_id: string, sku: string, source_id?: int, rows: list<array{id: string, sku: string}>}  $group
      * @return list<string>
      */
-    protected function labelLookupRefs(string $slug, string $orderId): array
+    protected function trackingSearchRefs(VeeqoShopifyFulfillmentService $lookup, array $group): array
     {
-        $orderId = trim($orderId);
-        if ($orderId === '') {
-            return [];
+        $slug = (string) $group['mm_slug'];
+        $orderId = trim((string) $group['order_id']);
+        $refs = [];
+        $push = static function (string $ref) use (&$refs): void {
+            $ref = trim($ref);
+            if ($ref === '' || strlen($ref) < 6 || in_array($ref, $refs, true)) {
+                return;
+            }
+            $refs[] = $ref;
+        };
+
+        $sourceId = (int) ($group['source_id'] ?? 0);
+        if ($sourceId > 0) {
+            try {
+                $ctx = $lookup->contextForMarketplaceOrder($slug, $sourceId);
+            } catch (\Throwable $e) {
+                report($e);
+                $ctx = null;
+            }
+            foreach ((array) ($ctx['refs'] ?? []) as $ref) {
+                $push((string) $ref);
+            }
         }
 
         if ($slug === 'amazon' || preg_match('/^\d{3}-\d{7}-\d{7}$/', ltrim($orderId, '#')) === 1) {
-            return AmazonOrder::warehouseOrderRefs($orderId);
+            foreach (AmazonOrder::warehouseOrderRefs($orderId) as $ref) {
+                $push($ref);
+            }
+        } else {
+            $push($orderId);
         }
 
-        return [$orderId];
+        return array_slice($refs, 0, 3);
     }
 
     protected function ensureTrackingTable(): void
@@ -997,7 +1035,11 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
         try {
             $ref = new \ReflectionClass($lookup);
-            foreach (['gofo' => GofoExpressService::class, 'fourSeller' => FourSellerApiService::class, 'veeqo' => VeeqoApiService::class] as $property => $class) {
+            foreach ([
+                'gofo' => [GofoExpressService::class, 6],
+                'fourSeller' => [FourSellerApiService::class, 6],
+                'veeqo' => [VeeqoApiService::class, 12],
+            ] as $property => [$class, $seconds]) {
                 if (! $ref->hasProperty($property)) {
                     continue;
                 }
@@ -1005,7 +1047,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 $prop->setAccessible(true);
                 $client = $prop->getValue($lookup);
                 if ($client instanceof $class && method_exists($client, 'setTimeout')) {
-                    $client->setTimeout(12);
+                    $client->setTimeout($seconds);
                 }
             }
         } catch (\Throwable) {

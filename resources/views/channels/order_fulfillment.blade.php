@@ -575,14 +575,14 @@
         if (trackingLookupRunning || attempt > 120) return;
         const pending = table.getData().filter(function (row) {
             return row && row.id && !row.tracking_checked && !String(row.tracking || '').trim();
-        }).slice(0, 2);
+        }).slice(0, 1);
         if (!pending.length) return;
         trackingLookupRunning = true;
         $.ajax({
             url: lookupUrl,
             type: 'POST',
             dataType: 'json',
-            timeout: 35000,
+            timeout: 48000,
             headers: { 'X-CSRF-TOKEN': csrfToken() },
             data: {
                 rows: pending.map(function (row) {
@@ -591,6 +591,7 @@
                         mm_slug: row.mm_slug || '',
                         order_id: row.order_id || '',
                         sku: row.sku || '',
+                        source_id: row.source_id || 0,
                     };
                 }),
             },
