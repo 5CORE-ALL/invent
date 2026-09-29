@@ -3202,11 +3202,12 @@
                             };
                             const fbaMonths = row["fba_months"] || null;
                             const mslInfo = {
-                                total:       row["Total"]        ?? 0,
-                                activeMonths: row["Total month"] ?? 0,
+                                total:       row.msl_basis_qty ?? 0,
+                                activeMonths: row.msl_basis_months ?? 0,
                                 msl:         row["msl"]          ?? 0,
                                 mslShopify:  row["msl_shopify"]  ?? 0,
                                 mAvg:        row["m_avg"]        ?? 0,
+                                combinedQty: row.msl_combined_qty ?? 0,
                             };
                             openMonthModal(monthData, sku, fbaMonths, mslInfo, row["L30"] ?? 0);
                         }
@@ -4238,7 +4239,8 @@
                     const r2s = parseFloat(item["readyToShipQty"] ?? item["readyToShipQty"]) || 0;
 
                     // Use PHP-computed combined MSL (Shopify + FBA) directly — no need to recalculate
-                    const msl = parseFloat(item.msl) || (totalMonth > 0 ? (total / totalMonth) * 4 : 0);
+                    const mslRaw = parseFloat(item.msl);
+                    const msl = Number.isFinite(mslRaw) ? mslRaw : (totalMonth > 0 ? (total / totalMonth) * 4 : 0);
                     const effectiveMslForToOrder = msl;
                     const m_avg = parseFloat(item.m_avg) || (totalMonth > 0 ? total / totalMonth : 0);
 
@@ -5888,42 +5890,19 @@
             l30Card.title = "Last 30 days";
             l30Card.querySelector(".month-title").title = "Last 30 days";
 
-            // MSL formula bar — spans all 12 columns, includes FBA if available
+            // MSL = (last 12 months + L30) ÷ months inventory was available × 4.
+            // Divisor is 13 when stock was on hand in every month and in the L30 window.
             if (mslInfo) {
-                const monthOrder12 = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-
-                // Shopify numbers (from server)
                 const shopifyTotal        = parseFloat(mslInfo.total)        || 0;
                 const shopifyActiveMonths = parseFloat(mslInfo.activeMonths) || 0;
                 const shopifyMsl          = parseFloat(mslInfo.mslShopify || mslInfo.msl) || 0;
                 const mAvg                = parseFloat(mslInfo.mAvg)         || 0;
+                const combinedQty         = parseFloat(mslInfo.combinedQty)  || shopifyTotal;
+                const hasFba = fbaMonths && typeof fbaMonths === 'object' && Math.round(combinedQty) !== Math.round(shopifyTotal);
+                const combinedMsl         = parseFloat(mslInfo.msl) || 0;
 
-                // FBA totals — recalculated from fbaMonths data
-                let fbaTotal        = 0;
-                let fbaActiveMonths = 0;
-                const hasFba = fbaMonths && typeof fbaMonths === 'object';
-                if (hasFba) {
-                    monthOrder12.forEach(m => {
-                        const v = parseFloat(fbaMonths[m] ?? 0) || 0;
-                        fbaTotal += v;
-                        if (v > 0) fbaActiveMonths++;
-                    });
-                }
-
-                // Combined per-month sum → combined total and active months
-                let combinedTotal        = 0;
-                let combinedActiveMonths = 0;
-                monthOrder12.forEach(m => {
-                    const shopV = parseFloat(monthData[m] ?? 0) || 0;
-                    const fbaV  = hasFba ? (parseFloat(fbaMonths[m] ?? 0) || 0) : 0;
-                    const combined = shopV + fbaV;
-                    combinedTotal += combined;
-                    if (combined > 0) combinedActiveMonths++;
-                });
-
-                const combinedMsl    = combinedActiveMonths > 0 ? (combinedTotal / combinedActiveMonths) * 4 : 0;
-                const combinedMslStr = combinedActiveMonths > 0 ? combinedMsl.toFixed(2) : '0';
-                const shopifyMslStr  = shopifyActiveMonths  > 0 ? shopifyMsl.toFixed(2)  : '0';
+                const combinedMslStr = String(Math.round(combinedMsl));
+                const shopifyMslStr  = String(Math.round(shopifyMsl));
 
                 const formulaEl = document.createElement("div");
                 formulaEl.style.cssText = `
@@ -5944,7 +5923,7 @@
                 formulaEl.innerHTML = `
                     <span style="font-weight:700; color:#047857; font-size:0.88rem; margin-right:4px;">MSL Formula</span>
 
-                    <span style="display:inline-flex; align-items:center; gap:6px;">
+                    <span style="display:inline-flex; align-items:center; gap:6px;" title="Last 12 months + L30, divided by months inventory was available. 13 when stock was on hand the whole window.">
                         <span style="background:#dbeafe; color:#1d4ed8; font-size:0.7rem; font-weight:600; padding:1px 7px; border-radius:20px;">Shopify</span>
                         <span style="color:#374151;"><strong>${shopifyTotal}</strong> ÷ <strong>${shopifyActiveMonths}</strong> mo × 4</span>
                         <span style="color:#6b7280;">=</span>
@@ -5952,15 +5931,10 @@
                     </span>
 
                     ${hasFba ? `
-                    <span style="color:#d1d5db; font-size:1rem;">+</span>
-                    <span style="display:inline-flex; align-items:center; gap:6px;">
-                        <span style="background:#d1fae5; color:#065f46; font-size:0.7rem; font-weight:600; padding:1px 7px; border-radius:20px;">FBA</span>
-                        <span style="color:#374151;"><strong>${fbaTotal}</strong> ÷ <strong>${fbaActiveMonths}</strong> mo × 4</span>
-                    </span>
                     <span style="color:#6b7280; font-weight:500; font-size:1rem; margin:0 2px;">→</span>
-                    <span style="display:inline-flex; align-items:center; gap:6px;">
+                    <span style="display:inline-flex; align-items:center; gap:6px;" title="Shopify 12 months + FBA 12 months + L30, same inventory-available divisor.">
                         <span style="background:#d1fae5; color:#065f46; font-size:0.7rem; font-weight:600; padding:1px 7px; border-radius:20px;">Combined</span>
-                        <span style="color:#374151;"><strong>${combinedTotal}</strong> ÷ <strong>${combinedActiveMonths}</strong> mo × 4</span>
+                        <span style="color:#374151;"><strong>${combinedQty}</strong> ÷ <strong>${shopifyActiveMonths}</strong> mo × 4</span>
                         <span style="color:#6b7280;">=</span>
                         <span style="background:#065f46; color:#fff; font-weight:700; padding:3px 12px; border-radius:20px; font-size:0.9rem;">MSL: ${combinedMslStr}</span>
                     </span>
