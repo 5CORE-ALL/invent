@@ -945,7 +945,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
     public function lookupTracking(Request $request): JsonResponse
     {
-        @set_time_limit(35);
+        @set_time_limit(40);
         $this->ensureTrackingTable();
 
         $validated = $request->validate([
@@ -980,7 +980,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         $updates = [];
-        $deadline = microtime(true) + 28.0;
+        $deadline = microtime(true) + 32.0;
         $lookup = $this->labelTrackingLookup();
 
         foreach ($groups as $group) {
@@ -999,9 +999,14 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $orderId = (string) $group['order_id'];
             if ($orderId !== '' && $lookup !== null) {
                 $slug = (string) $group['mm_slug'];
-                $veeqoRef = $this->veeqoOrderRef($slug, $orderId);
+                $plain = ltrim($orderId, '#');
+                $veeqoRef = $this->veeqoOrderRef($slug, $plain);
+                $veeqoQueries = [$veeqoRef];
+                if ($plain !== '' && $plain !== $veeqoRef) {
+                    $veeqoQueries[] = $plain;
+                }
                 try {
-                    $veeqo = $lookup->findVeeqoShipment([$veeqoRef], false, '', [], 2);
+                    $veeqo = $lookup->findVeeqoShipment($veeqoQueries, true, '', [], count($veeqoQueries));
                     if (is_array($veeqo) && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
                         $hit = [
                             'tracking' => (string) $veeqo['tracking'],
@@ -1014,26 +1019,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 }
                 if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) < $deadline) {
                     try {
-                        $fourSeller = app(FourSellerApiService::class);
-                        $fourSeller->setTimeout(5);
-                        $fs = $fourSeller->findShipment([ltrim($orderId, '#')], 1);
-                        if (is_array($fs) && trim((string) ($fs['tracking'] ?? '')) !== '') {
-                            $hit = [
-                                'tracking' => (string) $fs['tracking'],
-                                'carrier' => (string) ($fs['carrier'] ?? 'GOFO'),
-                                'source' => '4seller',
-                            ];
-                        }
-                    } catch (\Throwable $e) {
-                        report($e);
-                    }
-                }
-                if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) < $deadline) {
-                    try {
-                        $channel = $lookup->lookupLiveChannelTracking(
-                            $slug,
-                            $this->trackingSearchRefs($lookup, $group)
-                        );
+                        $channel = $lookup->lookupLiveChannelTracking($slug, [$plain, $veeqoRef]);
                     } catch (\Throwable $e) {
                         report($e);
                         $channel = null;
@@ -1044,6 +1030,22 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                             'carrier' => (string) ($channel['carrier'] ?? ''),
                             'source' => 'channel',
                         ];
+                    }
+                }
+                if (($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') && microtime(true) + 6 < $deadline) {
+                    try {
+                        $fourSeller = app(FourSellerApiService::class);
+                        $fourSeller->setTimeout(4);
+                        $fs = $fourSeller->findShipment([$plain], 1);
+                        if (is_array($fs) && trim((string) ($fs['tracking'] ?? '')) !== '') {
+                            $hit = [
+                                'tracking' => (string) $fs['tracking'],
+                                'carrier' => (string) ($fs['carrier'] ?? 'GOFO'),
+                                'source' => '4seller',
+                            ];
+                        }
+                    } catch (\Throwable $e) {
+                        report($e);
                     }
                 }
             }

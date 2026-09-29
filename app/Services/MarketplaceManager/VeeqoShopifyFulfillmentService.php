@@ -3314,7 +3314,16 @@ class VeeqoShopifyFulfillmentService
     public function findVeeqoShipment(array $refs, bool $fast = false, string $sku = '', array $excludeTrackings = [], int $maxLookups = 0): ?array
     {
         $clean = [];
-        foreach ($refs as $ref) {
+        if ($maxLookups > 0) {
+            foreach ($refs as $ref) {
+                $ref = trim((string) $ref);
+                if (strlen($ref) < 6 || in_array($ref, $clean, true)) {
+                    continue;
+                }
+                $clean[] = $ref;
+            }
+        }
+        foreach ($maxLookups > 0 ? [] : $refs as $ref) {
             $ref = trim((string) $ref);
             if (strlen($ref) < 6) {
                 continue;
@@ -3388,8 +3397,12 @@ class VeeqoShopifyFulfillmentService
      */
     protected function searchVeeqoOrders(string $query, array $allRefs, string $sku = '', array $excludeTrackings = []): ?array
     {
+        $search = trim($query);
+        if ($search !== '' && ! str_starts_with($search, '"')) {
+            $search = '"'.$search.'"';
+        }
         $res = $this->veeqo->listOrders([
-            'query' => $query,
+            'query' => $search,
             'page_size' => 25,
             'page' => 1,
         ]);
