@@ -13,6 +13,7 @@ class BackfillShopifyAplusContent extends Command
         {--sku= : Only this SKU}
         {--force : Re-fetch even when A+ content is already stored}
         {--retry-failed : Also retry SKUs whose last automatic fetch failed}
+        {--reclean : Do not call Shopify; strip the top bullet-point block from already stored A+ content}
         {--sleep-ms=700 : Pause between SKUs}';
 
     protected $description = 'Description Master: fetch the Shopify description once per SKU and store it as A+ content';
@@ -23,6 +24,10 @@ class BackfillShopifyAplusContent extends Command
             $this->error('product_master is missing the shopify_aplus_* columns. Run php artisan migrate first.');
 
             return self::FAILURE;
+        }
+
+        if ($this->option('reclean')) {
+            return $this->recleanStored($sync);
         }
 
         $limit = max(1, (int) $this->option('limit'));
@@ -81,5 +86,44 @@ class BackfillShopifyAplusContent extends Command
         $this->info("Done. Fetched: {$ok}, failed: {$fail}, already stored: {$skipped}.");
 
         return $fail > 0 && $ok === 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Rectify SKUs stored with the full Shopify body: strip the top bullet block from every stored snapshot.
+     */
+    private function recleanStored(ShopifyAplusContentSync $sync): int
+    {
+        $onlySku = trim((string) $this->option('sku'));
+        $query = ProductMaster::query()
+            ->select(['id', 'sku', 'shopify_aplus_content'])
+            ->whereNotNull('shopify_aplus_content')
+            ->where('shopify_aplus_content', '<>', '')
+            ->orderBy('id');
+        if ($onlySku !== '') {
+            $query->where('sku', $onlySku);
+        }
+
+        $total = (clone $query)->count();
+        if ($total === 0) {
+            $this->info('No stored A+ content to re-clean.');
+
+            return self::SUCCESS;
+        }
+
+        $this->info("Re-cleaning stored A+ content for {$total} SKU(s) (no Shopify calls)...");
+        $changed = 0;
+        $query->chunkById(200, function ($products) use ($sync, &$changed) {
+            foreach ($products as $product) {
+                $r = $sync->recleanStored($product);
+                if ($r['changed']) {
+                    $changed++;
+                    $this->line(sprintf('  %s: %d -> %d chars', $product->sku, $r['before'], $r['after']));
+                }
+            }
+        });
+
+        $this->info("Done. {$changed} of {$total} SKU(s) had the top bullet block removed.");
+
+        return self::SUCCESS;
     }
 }

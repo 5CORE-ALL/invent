@@ -220,8 +220,13 @@ See `docs/MARKETPLACE_API_INTEGRATION.md` and `docs/MARKETPLACE_MASTER_DRY_RUN_R
   migration `2026_09_30_010000_add_shopify_aplus_content_to_product_master.php`).
 - Service: `App\Services\Support\ShopifyAplusContentSync::fetchAndStore($product, $force)` — returns the stored
   copy when it exists unless `$force` is true, so Shopify is only hit once per SKU.
+- The top "5 bullet points" block is stripped on every fetch (`ShopifyAplusContentSync::cleanFetchedHtml()`:
+  Bullet Points Master marker block, About Item / Highlighted Features sections, bold-label bullets, lists,
+  symbol and 【】 bullets). Bold-only headings and normal paragraphs are kept.
 - Automatic: `php artisan description:shopify-aplus-backfill` (scheduled hourly, 150 SKUs/run, skips SKUs already
   stored or already failed; `--retry-failed`, `--force`, `--sku=` available).
+  `--reclean` re-runs the bullet cleaner on already stored snapshots without calling Shopify (use once to rectify
+  SKUs that were stored with the full body).
 - Endpoints: `GET /product-description/shopify-aplus?sku=` (stored copy),
   `POST /product-description/shopify-aplus/fetch { sku, force }` (fetch once / manual re-fetch) and
   `POST /product-description/shopify-aplus/save { sku, html }` (store manually edited A+ HTML; DB only).

@@ -36,7 +36,6 @@
         .action-buttons-group { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; }
         .action-btn { padding:5px 10px; border:none; border-radius:6px; font-size:11px; font-weight:500; display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
         .view-btn { background:#17a2b8; color:#fff; }
-        .pull-btn { background:#f59e0b; color:#fff; padding:5px 8px; }
         .pm-tier-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
         .aplus-btn { background:#0f172a; color:#fff; padding:4px 8px; font-weight:700; letter-spacing:.2px; position:relative; }
         .aplus-btn.has-content { background:linear-gradient(135deg,#059669 0%,#047857 100%); }
@@ -187,7 +186,7 @@
                         <div class="fw-semibold small" id="modalActiveMpLabel">—</div>
                         <div class="d-flex flex-wrap gap-2">
                             <button type="button" class="btn btn-outline-success btn-sm" id="modalFetchLiveBtn"><i class="fas fa-cloud-download-alt"></i> Fetch live</button>
-                            <button type="button" class="btn btn-outline-dark btn-sm" id="modalFetchAplusBtn" title="Load the stored Shopify A+ content for this SKU into the editor (fetches once from Shopify if not stored yet)"><i class="fas fa-star"></i> Fetch A+</button>
+                            <button type="button" class="btn btn-outline-dark btn-sm" id="modalFetchAplusBtn" title="Load the stored A+ content for this SKU into the editor (fetched once automatically if not stored yet)"><i class="fas fa-star"></i> Fetch A+</button>
                             <button type="button" class="btn btn-outline-primary btn-sm" id="modalAiGenBtn"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
                         </div>
                     </div>
@@ -230,7 +229,7 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header" style="background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#fff;">
-                    <h5 class="modal-title" id="shopifyAplusTitle"><i class="fas fa-star me-2"></i>A+ Content (Shopify)</h5>
+                    <h5 class="modal-title" id="shopifyAplusTitle"><i class="fas fa-star me-2"></i>A+ Content</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -247,8 +246,8 @@
                     </div>
                     <div class="alert alert-info small py-2 mb-2">
                         <i class="fas fa-info-circle me-1"></i>
-                        The Shopify description is fetched <strong>once</strong> and stored in our database. It is fetched automatically in the background;
-                        if it is missing or outdated, use <strong>Fetch from Shopify</strong> to pull it manually.
+                        A+ content is fetched <strong>once</strong> and stored in our database. It is fetched automatically in the background;
+                        if it is missing or outdated, use <strong>Fetch A+</strong> to pull it manually.
                     </div>
                     <div id="aplusError" class="alert alert-danger small py-2 mb-2" style="display:none;"></div>
                     <div id="aplusLoading" class="text-center text-muted py-4" style="display:none;">
@@ -256,7 +255,7 @@
                     </div>
                     <div id="aplusEmpty" class="text-center text-muted py-4" style="display:none;">
                         <i class="fas fa-box-open fa-2x mb-2 d-block"></i>
-                        No A+ content stored for this SKU yet. Click <strong>Fetch from Shopify</strong> to pull it now, or <strong>Edit</strong> to write it manually.
+                        No A+ content stored for this SKU yet. Click <strong>Fetch A+</strong> to pull it now, or <strong>Edit</strong> to write it manually.
                     </div>
                     <div id="aplusEditorWrap" style="display:none;">
                         <div class="dm-modal-section mb-0">
@@ -265,7 +264,7 @@
                                 <div class="small text-muted" id="aplusEditorCount">0 chars</div>
                             </div>
                             <textarea id="aplusEditorHtml"></textarea>
-                            <div class="small text-muted mt-1">Changes are saved to our database only (not pushed to Shopify).</div>
+                            <div class="small text-muted mt-1">Changes are saved to our database only (not pushed to any marketplace).</div>
                         </div>
                     </div>
                     <div id="aplusContentWrap" style="display:none;">
@@ -281,7 +280,7 @@
                             <pre class="aplus-source mb-0" id="aplusSource" style="display:none;"></pre>
                         </div>
                         <div class="dm-modal-section mb-0" id="aplusGalleryWrap" style="display:none;">
-                            <div class="dm-modal-section-title"><i class="fas fa-images me-1"></i>Shopify product images (<span id="aplusImageCount">0</span>)</div>
+                            <div class="dm-modal-section-title"><i class="fas fa-images me-1"></i>Product images (<span id="aplusImageCount">0</span>)</div>
                             <div class="aplus-gallery" id="aplusGallery"></div>
                         </div>
                     </div>
@@ -292,7 +291,7 @@
                     <button type="button" class="btn btn-outline-dark" id="aplusEditBtn"><i class="fas fa-pen me-1"></i> Edit</button>
                     <button type="button" class="btn btn-outline-secondary" id="aplusCancelEditBtn" style="display:none;"><i class="fas fa-times me-1"></i> Cancel edit</button>
                     <button type="button" class="btn btn-success" id="aplusSaveBtn" style="display:none;"><i class="fas fa-save me-1"></i> Save A+</button>
-                    <button type="button" class="btn btn-warning" id="aplusFetchBtn"><i class="fas fa-cloud-download-alt me-1"></i> Fetch from Shopify</button>
+                    <button type="button" class="btn btn-warning" id="aplusFetchBtn"><i class="fas fa-cloud-download-alt me-1"></i> Fetch A+</button>
                 </div>
             </div>
         </div>
@@ -646,10 +645,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const has = !!(st && st.has_content);
         const err = !!(st && st.error && !has);
         let cls = 'action-btn aplus-btn';
-        let title = 'A+ content: not fetched yet. Click to fetch the Shopify description once and view it.';
+        let title = 'A+ content: not fetched yet. Click to fetch it once and view it.';
         if (has) {
             cls += ' has-content';
-            title = 'A+ content stored from Shopify' + (st.fetched_at ? ' on ' + st.fetched_at : '') + '. Click to view.';
+            title = 'A+ content stored' + (st.fetched_at ? ' on ' + st.fetched_at : '') + '. Click to view.';
         } else if (err) {
             cls += ' has-error';
             title = 'Automatic A+ fetch failed: ' + st.error + '. Click to retry.';
@@ -672,7 +671,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="action-buttons-cell">
                     <div class="action-buttons-group">
                         <button type="button" class="action-btn view-btn" data-view-row="${esc(sku)}" title="View descriptions (read-only)"><i class="fas fa-eye"></i></button>
-                        <button type="button" class="action-btn pull-btn shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify description for this SKU"><i class="fas fa-download"></i></button>
                         <button type="button" class="action-btn pm-tier-btn" data-edit-pm="${esc(sku)}" title="Edit descriptions &amp; push"><i class="fas fa-edit"></i></button>
                         ${aplusButtonHtml(sku, r)}
                     </div>
@@ -742,12 +740,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewRow) {
                 e.preventDefault();
                 openViewModal(viewRow.getAttribute('data-view-row'));
-                return;
-            }
-            const pullBtn = e.target.closest('[data-shopify-pull-sku]');
-            if (pullBtn) {
-                e.preventDefault();
-                startSingleShopifyPull(pullBtn.getAttribute('data-shopify-pull-sku'), pullBtn);
                 return;
             }
             const aplusBtn = e.target.closest('[data-aplus-sku]');
@@ -951,7 +943,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const has = !!(row.shopify_aplus && row.shopify_aplus.has_content);
         // First open with nothing stored: fetch once automatically. Otherwise just show the stored copy.
-        setAplusLoading(true, has ? 'Loading stored A+ content…' : 'Fetching Shopify description (one time)…');
+        setAplusLoading(true, has ? 'Loading stored A+ content…' : 'Fetching A+ content (one time)…');
         try {
             const out = await requestAplus(sku, { autoFetch: !has });
             if (!out) return;
@@ -965,7 +957,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 errEl.style.display = '';
                 if (!has) toast('A+ fetch failed: ' + msg, false);
             } else if (!has && data.has_content) {
-                toast('Fetched Shopify description and stored as A+ content for ' + sku + '.');
+                toast('Fetched and stored A+ content for ' + sku + '.');
             }
         } catch (e) {
             renderAplusData({ error: e.message }, 'failed');
@@ -978,14 +970,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('aplusFetchBtn')?.addEventListener('click', async () => {
         const sku = document.getElementById('aplusSku').value;
         if (!sku) return;
-        setAplusLoading(true, 'Fetching latest description from Shopify…');
+        setAplusLoading(true, 'Fetching latest A+ content…');
         try {
             const out = await requestAplus(sku, { force: true });
             if (!out) return;
             const data = (out.payload && out.payload.data) || {};
             renderAplusData(data, out.payload.status);
             syncAplusRowState(sku, data);
-            if (out.ok) toast(out.payload.message || 'Fetched from Shopify.');
+            if (out.ok) toast(out.payload.message || 'A+ content fetched.');
             else {
                 const msg = out.payload.message || 'Fetch failed';
                 const errEl = document.getElementById('aplusError');
@@ -1894,34 +1886,6 @@ document.addEventListener('DOMContentLoaded', () => {
             toast('Shopify pull start failed: ' + e.message, false);
             if (String(e.message || '').includes('already')) pollShopifyPullStatus();
             return false;
-        }
-    }
-
-    async function startSingleShopifyPull(sku, btn) {
-        sku = String(sku || '').trim();
-        if (!sku) {
-            toast('SKU missing for Shopify pull.', false);
-            return;
-        }
-        const oldHtml = btn ? btn.innerHTML : '';
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-        }
-        const started = await startShopifyPullJobForSkus([sku], {
-            scopeText: 'SKU ' + sku,
-            successMessage: 'Shopify description sync started for ' + sku + '.',
-        });
-        if (!started && btn) {
-            btn.disabled = false;
-            btn.innerHTML = oldHtml || '<i class="fas fa-download"></i>';
-        } else if (btn) {
-            setTimeout(() => {
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = oldHtml || '<i class="fas fa-download"></i>';
-                }
-            }, 2500);
         }
     }
 
