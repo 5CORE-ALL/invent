@@ -11,18 +11,15 @@
         }
         #order-fulfillment-table.tabulator .tabulator-header .tabulator-col {
             background-color: #e6e6e6;
-            height: 80px !important;
+        }
+        #order-fulfillment-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            padding: 8px 6px;
         }
         #order-fulfillment-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            white-space: nowrap;
-            transform: rotate(180deg);
-            height: 80px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
+            white-space: normal;
+            text-align: center;
+            line-height: 1.2;
+            font-size: 12px;
             font-weight: 600;
             color: black !important;
         }
