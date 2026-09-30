@@ -123,8 +123,24 @@
         .of-actions .btn { padding: 0 0.3rem; }
         .of-actions .btn:disabled { opacity: 0.6; }
         .of-order-line { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem; }
-        .of-order-line .of-line-sku { flex: 1; }
+        .of-order-line .of-line-sku-wrap { flex: 1; position: relative; }
+        .of-order-line .of-line-sku { width: 100%; }
         .of-order-line .of-line-qty { width: 90px; }
+        .of-sku-suggest {
+            position: absolute; left: 0; right: 0; top: 100%; z-index: 1080;
+            background: #fff; border: 1px solid #dee2e6; border-radius: 0.375rem;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12); max-height: 240px; overflow-y: auto;
+            margin-top: 2px; display: none;
+        }
+        .of-sku-suggest.show { display: block; }
+        .of-sku-suggest .of-sku-item {
+            display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline;
+            padding: 0.35rem 0.6rem; cursor: pointer; font-size: 0.82rem;
+        }
+        .of-sku-suggest .of-sku-item:hover, .of-sku-suggest .of-sku-item.active { background: #eef4ff; }
+        .of-sku-suggest .of-sku-item code { font-size: 0.8rem; color: #0f172a; }
+        .of-sku-suggest .of-sku-item small { color: #64748b; white-space: nowrap; }
+        .of-sku-suggest .of-sku-empty { padding: 0.4rem 0.6rem; color: #64748b; font-size: 0.8rem; }
         .of-tracking {
             font-size: 0.78rem;
             font-weight: 600;
@@ -1163,17 +1179,120 @@
         const line = document.createElement('div');
         line.className = 'of-order-line';
         line.innerHTML =
-            '<input type="text" class="form-control form-control-sm of-line-sku" placeholder="SKU" maxlength="191" required>' +
+            '<div class="of-line-sku-wrap">' +
+                '<input type="text" class="form-control form-control-sm of-line-sku" placeholder="Type to search CP Master SKUs…" maxlength="191" required autocomplete="off" spellcheck="false">' +
+                '<div class="of-sku-suggest" role="listbox"></div>' +
+            '</div>' +
             '<input type="number" class="form-control form-control-sm of-line-qty" placeholder="Qty" min="1" value="1">' +
             '<button type="button" class="btn btn-sm btn-link text-danger of-line-remove" title="Remove"><i class="fas fa-times" aria-hidden="true"></i></button>';
         line.querySelector('.of-line-sku').value = sku || '';
         line.querySelector('.of-line-qty').value = qty || 1;
+        attachSkuSuggest(line.querySelector('.of-line-sku'), line.querySelector('.of-sku-suggest'), line.querySelector('.of-line-qty'));
         const remove = line.querySelector('.of-line-remove');
         if (removable === false) remove.style.visibility = 'hidden';
         remove.addEventListener('click', function () {
             if (host.querySelectorAll('.of-order-line').length > 1) line.remove();
         });
         host.appendChild(line);
+    }
+
+    const skuSuggestUrl = @json(route('order.fulfillment.sku.suggest'));
+    const skuSuggestCache = {};
+
+    // Live SKU search against CP Master: type → matching SKUs (prefix first) with inventory.
+    function attachSkuSuggest(input, box, qtyInput) {
+        if (!input || !box) return;
+        let items = [];
+        let active = -1;
+        let timer = null;
+        let requestSeq = 0;
+
+        function close() {
+            box.classList.remove('show');
+            box.innerHTML = '';
+            active = -1;
+        }
+
+        function choose(index) {
+            const item = items[index];
+            if (!item) return;
+            input.value = item.sku;
+            close();
+            if (qtyInput) { qtyInput.focus(); qtyInput.select(); }
+        }
+
+        function render() {
+            if (!items.length) {
+                box.innerHTML = '<div class="of-sku-empty">No CP Master SKU matches. You can still keep what you typed.</div>';
+                box.classList.add('show');
+                return;
+            }
+            box.innerHTML = items.map(function (item, i) {
+                const inv = (item.inv === null || item.inv === undefined) ? '' : ('inv ' + Number(item.inv).toLocaleString());
+                const parent = item.parent ? escapeHtml(item.parent) : '';
+                return '<div class="of-sku-item' + (i === active ? ' active' : '') + '" data-index="' + i + '" role="option">' +
+                    '<code>' + escapeHtml(item.sku) + '</code>' +
+                    '<small>' + [parent, inv].filter(Boolean).join(' · ') + '</small>' +
+                    '</div>';
+            }).join('');
+            box.classList.add('show');
+        }
+
+        function search(term) {
+            const key = term.toLowerCase();
+            if (skuSuggestCache[key]) {
+                items = skuSuggestCache[key];
+                active = items.length ? 0 : -1;
+                render();
+                return;
+            }
+            const seq = ++requestSeq;
+            $.getJSON(skuSuggestUrl, { q: term }).done(function (res) {
+                if (seq !== requestSeq) return;
+                items = (res && Array.isArray(res.items)) ? res.items : [];
+                skuSuggestCache[key] = items;
+                active = items.length ? 0 : -1;
+                if (document.activeElement === input) render();
+            }).fail(function () {
+                if (seq === requestSeq) close();
+            });
+        }
+
+        input.addEventListener('input', function () {
+            const term = String(input.value || '').trim();
+            clearTimeout(timer);
+            if (term.length < 1) { close(); return; }
+            timer = setTimeout(function () { search(term); }, 180);
+        });
+        input.addEventListener('focus', function () {
+            const term = String(input.value || '').trim();
+            if (term) search(term);
+        });
+        input.addEventListener('keydown', function (ev) {
+            if (!box.classList.contains('show')) return;
+            if (ev.key === 'ArrowDown') {
+                ev.preventDefault();
+                if (items.length) { active = (active + 1) % items.length; render(); }
+            } else if (ev.key === 'ArrowUp') {
+                ev.preventDefault();
+                if (items.length) { active = (active - 1 + items.length) % items.length; render(); }
+            } else if (ev.key === 'Enter') {
+                if (active >= 0 && items.length) { ev.preventDefault(); choose(active); }
+            } else if (ev.key === 'Tab') {
+                if (active >= 0 && items.length) choose(active);
+            } else if (ev.key === 'Escape') {
+                close();
+            }
+        });
+        box.addEventListener('mousedown', function (ev) {
+            const el = ev.target.closest('.of-sku-item');
+            if (!el) return;
+            ev.preventDefault();
+            choose(parseInt(el.getAttribute('data-index'), 10));
+        });
+        input.addEventListener('blur', function () {
+            setTimeout(close, 150);
+        });
     }
 
     function readOrderLines() {

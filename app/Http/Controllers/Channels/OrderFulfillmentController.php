@@ -872,6 +872,55 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         ]);
     }
 
+    /**
+     * SKU search for the manual order form: CP Master SKUs containing the typed
+     * text, prefix matches first, with their inventory.
+     */
+    public function suggestSkus(Request $request): JsonResponse
+    {
+        $q = trim(str_replace("\u{00a0}", ' ', (string) $request->input('q', '')));
+        $q = preg_replace('/\s+/', ' ', $q) ?? $q;
+        if ($q === '' || ! Schema::hasTable('product_master')) {
+            return response()->json(['success' => true, 'items' => []]);
+        }
+
+        $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $q).'%';
+        $prefix = str_replace(['%', '_'], ['\%', '\_'], $q).'%';
+        $normalized = "REPLACE(REPLACE(sku, CHAR(194,160), ' '), '  ', ' ')";
+
+        try {
+            $products = ProductMaster::query()
+                ->whereRaw("{$normalized} LIKE ?", [$like])
+                ->where('sku', 'NOT LIKE', 'PARENT%')
+                ->orderByRaw("CASE WHEN {$normalized} LIKE ? THEN 0 ELSE 1 END, LENGTH(sku), sku", [$prefix])
+                ->limit(20)
+                ->get(['sku', 'parent']);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['success' => true, 'items' => []]);
+        }
+
+        $skus = $products->map(fn ($p) => $this->inventoryLookupSku((string) $p->sku))->filter()->unique()->values()->all();
+        $inv = $this->cpMasterInventoryByCompactSku($skus);
+
+        $items = [];
+        foreach ($products as $product) {
+            $sku = $this->inventoryLookupSku((string) $product->sku);
+            if ($sku === '') {
+                continue;
+            }
+            $key = ProductMaster::skuCompact($sku);
+            $items[] = [
+                'sku' => $sku,
+                'parent' => trim((string) ($product->parent ?? '')),
+                'inv' => $key !== '' && array_key_exists($key, $inv) ? $inv[$key] : null,
+            ];
+        }
+
+        return response()->json(['success' => true, 'items' => $items]);
+    }
+
     protected function ensureManualOrdersTable(): void
     {
         if (Schema::hasTable('order_fulfillment_manual_orders')) {
