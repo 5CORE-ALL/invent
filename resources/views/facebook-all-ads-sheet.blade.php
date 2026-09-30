@@ -285,12 +285,9 @@
                         <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
                               class="faas-stat-badge faas-stat-badge--acos badge-chart-link"
                               title="Click for 32-day trend">Acos:<span id="faasAcosValue">0%</span></span>
-                        @if (($chFilter ?? null) === 'FB')
-                        {{-- TCOS = same Ads%/TACOS as /all-marketplace-master FB Marketplace:
-                             Facebook Ad Spend / Shopify S Sales × 100 --}}
+                        {{-- TCOS = Facebook Ad Spend / Shopify S Sales × 100 --}}
                         <span id="faasTcosBadge" class="faas-stat-badge faas-stat-badge--tcos"
                               title="TCOS = Facebook Ad Spend / Shopify S Sales × 100 (same as /all-marketplace-master Ads%)">TCOS:<span id="faasTcosValue">0%</span></span>
-                        @endif
                         <span id="faasCtrBadge" data-metric="ctr" data-label="CTR"
                               class="faas-stat-badge faas-stat-badge--ctr badge-chart-link"
                               title="Click for 32-day trend">CTR:<span id="faasCtrValue">0%</span></span>
@@ -2197,7 +2194,7 @@
             // TCOS — same as /all-marketplace-master FB Marketplace Ads%/TACOS %
             // (Facebook Ad Spend / Shopify S Sales × 100).
             const tcosEl = document.getElementById('faasTcosValue');
-            if (tcosEl && CH_FILTER === 'FB') {
+            if (tcosEl) {
                 const tcos = (faasMasterTcosPercent != null && isFinite(faasMasterTcosPercent))
                     ? faasMasterTcosPercent
                     : (faasShopifyNetSales > 0

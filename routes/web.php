@@ -4269,6 +4269,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Shopify B2B Sales Routes
     Route::get('/shopify-b2b/daily-sales-data', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getData'])->name('shopify-b2b.daily.sales.data');
+    Route::post('/shopify-b2b/daily-sales/fetch', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'fetchFromStore'])->name('shopify-b2b.daily.sales.fetch');
     Route::get('/shopify-b2b/daily-sales', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'index'])->name('shopify-b2b.daily.sales');
     Route::get('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getColumnVisibility']);
     Route::post('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'saveColumnVisibility']);
