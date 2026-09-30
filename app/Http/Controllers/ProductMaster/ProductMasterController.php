@@ -273,11 +273,13 @@ class ProductMasterController extends Controller
             ->orderBy('sku', 'asc')
             ->get();
 
-        // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
-            // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
-            return str_replace("\u{00a0}", ' ', $item->sku);
-        });
+        // Same row match as before (NBSP → space, last id wins). Only the columns this table reads.
+        $shopifySkus = ShopifySku::query()
+            ->orderBy('id')
+            ->get(['id', 'sku', 'inv', 'quantity', 'image_src'])
+            ->keyBy(function ($item) {
+                return str_replace("\u{00a0}", ' ', (string) $item->sku);
+            });
 
         $storePricesByNorm = [];
         if (Schema::hasTable('store_listing_prices')) {
@@ -417,6 +419,10 @@ class ProductMasterController extends Controller
             'message' => 'Data loaded from database',
             'data' => $result,
             'status' => 200,
+        ])->withHeaders([
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
         ]);
     }
 

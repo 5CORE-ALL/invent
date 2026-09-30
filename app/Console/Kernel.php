@@ -2083,6 +2083,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // /alibaba-analytics: product detail for SKU, price, and stock. ~769 products.
+        $schedule->command('alibaba:sync-analytics')
+            ->dailyAt('06:30')
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sync-analytics')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('reverb:manager-sync-link-map')
             ->hourly()
             ->timezone('Asia/Kolkata')

@@ -4,20 +4,23 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AlibabaMetric;
+use App\Models\AlibabaOrderMetric;
 use App\Models\AlibabaPricingPrice;
 use App\Models\AlibabaSheetPrice;
+use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\AlibabaApiService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 class AlibabaAnalyticsController extends Controller
 {
-    public const SHEET_HEADERS = ['Product Id', 'SKU', 'Status', 'SKU Price.1', 'SOH', 'Inv Update'];
+    private const SYNC_CACHE = 'alibaba_analytics_api_sync';
 
     public function index(): View
     {
@@ -34,21 +37,30 @@ class AlibabaAnalyticsController extends Controller
         $skus = $sheetRows->pluck('sku')->filter()->unique()->values()->all();
         $shopifyData = $skus === [] ? collect() : ShopifySku::mapByProductSkus($skus);
         $pmByNorm = $this->productMasterByNormalizedSku($skus);
+        $l30 = $this->l30ByCatalogSku($sheetRows);
+        $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
 
         $children = [];
         foreach ($sheetRows as $row) {
             $sku = (string) $row->sku;
-            $pm = $pmByNorm[strtoupper(trim($sku))] ?? null;
+            $skuKey = strtoupper(trim($sku));
+            $pm = $pmByNorm[$skuKey] ?? null;
             $shopify = $shopifyData->get($sku);
             $inv = (int) ($shopify->inv ?? 0);
             $ovL30 = (int) ($shopify->quantity ?? 0);
             $dil = $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0.0;
             $parent = trim((string) ($pm->parent ?? ''));
+            $price = $row->sku_price !== null ? (float) $row->sku_price : 0.0;
+            $lp = $pm ? (float) ($pm->unitLandedPrice() ?? 0) : 0.0;
+            $ship = $this->productShip($pm);
+            $abL30 = (int) ($l30['qty'][$skuKey] ?? 0);
+            $metrics = $this->priceMetrics($price, $lp, $margin);
 
             $children[] = [
                 'Parent' => $parent,
                 'sku' => $sku,
                 '(Child) sku' => $sku,
+                'image_path' => $this->productImage($pm, $shopify),
                 'product_id' => (string) $row->product_id,
                 'status' => $row->status,
                 'sku_price' => $row->sku_price !== null ? (float) $row->sku_price : null,
@@ -58,6 +70,16 @@ class AlibabaAnalyticsController extends Controller
                 'L30' => $ovL30,
                 'ov_l30' => $ovL30,
                 'dil_percent' => $dil,
+                'AB L30' => $abL30,
+                'price' => $price,
+                'GPFT%' => $metrics['gpft'],
+                'PFT %' => $metrics['gpft'],
+                'ROI%' => $metrics['roi'],
+                'NROI' => $metrics['roi'],
+                'Profit' => round($metrics['profit_each'] * $abL30, 2),
+                'Sales L30' => round((float) ($l30['sales'][$skuKey] ?? 0), 2),
+                'LP_productmaster' => round($lp, 2),
+                'Ship_productmaster' => round($ship, 2),
                 'is_parent' => false,
                 'is_parent_summary' => false,
                 'is_parent_row' => false,
@@ -101,63 +123,214 @@ class AlibabaAnalyticsController extends Controller
         ]);
     }
 
-    public function import(Request $request): JsonResponse
+    public function sync(Request $request, AlibabaApiService $api): JsonResponse
     {
-        $request->validate([
-            'excel_file' => 'required|file',
-        ]);
+        @set_time_limit(180);
 
-        $file = $request->file('excel_file');
-        $parsed = $this->parseSheetFile($file->getPathname(), $file->getClientOriginalName());
+        $page = max(1, (int) $request->input('page', 1));
+        $result = $this->syncApiPage($api, $page, $request->boolean('reset') || $page === 1);
+        $status = ! empty($result['success']) ? 200 : 422;
 
-        if (! empty($parsed['error'])) {
-            return response()->json(['success' => false, 'message' => $parsed['error']], 422);
+        return response()->json($result, $status);
+    }
+
+    /**
+     * One page of /alibaba/icbu/product/list plus product detail. Used by the page and the scheduler.
+     *
+     * @return array{success: bool, message: string, page: int, page_size?: int, saved?: int, total_item?: int|null, synced?: int, done: bool}
+     */
+    public function syncApiPage(AlibabaApiService $api, int $page, bool $reset): array
+    {
+        $page = max(1, $page);
+        $pageSize = 8;
+        if ($reset || $page === 1) {
+            Cache::put(self::SYNC_CACHE, ['ids' => []], now()->addHours(6));
         }
 
-        $saved = $this->upsertSheetRows($parsed['rows']);
-
-        return response()->json([
-            'success' => true,
-            'message' => "Imported {$saved} Alibaba sheet price row(s). Product Id and SKU were kept the same as the file.",
-            'imported' => $saved,
-            'skipped' => $parsed['skipped'],
-        ]);
-    }
-
-    public function export()
-    {
-        $rows = AlibabaSheetPrice::query()
-            ->orderBy('sku')
-            ->orderBy('product_id')
-            ->get()
-            ->map(fn (AlibabaSheetPrice $row) => $this->sheetRowArray($row))
-            ->all();
-
-        return $this->downloadXlsx(
-            'Alibaba_Analytics_Export_' . date('Y-m-d') . '.xlsx',
-            $rows
-        );
-    }
-
-    public function downloadSample()
-    {
-        $rows = AlibabaSheetPrice::query()
-            ->orderBy('sku')
-            ->orderBy('product_id')
-            ->limit(10)
-            ->get()
-            ->map(fn (AlibabaSheetPrice $row) => $this->sheetRowArray($row))
-            ->all();
-
-        if ($rows === []) {
-            $rows = [
-                ['10000043347472', 'XLR 20 PAIR', 'Active', '9.17', '44', 'Bulk'],
-                ['10000043326840', 'CAPO RED 4Pk', 'Active', '3.18', '25', 'Bulk'],
-                ['10000044189326', 'PARENT SPEAKON ADP 2PCS', 'Active', '6.49', '1149', 'Manual'],
+        $list = $api->listIcbuProducts($page, $pageSize);
+        if (empty($list['success'])) {
+            return [
+                'success' => false,
+                'message' => $list['message'] ?? 'Alibaba product list failed.',
+                'page' => $page,
+                'done' => true,
             ];
         }
 
-        return $this->downloadXlsx('Alibaba_Analytics_Sample.xlsx', $rows);
+        $state = Cache::get(self::SYNC_CACHE, ['ids' => []]);
+        $ids = is_array($state['ids'] ?? null) ? $state['ids'] : [];
+        $saved = 0;
+
+        foreach ($list['products'] as $brief) {
+            if (! is_array($brief)) {
+                continue;
+            }
+            $productId = trim((string) ($brief['id'] ?? $brief['product_id'] ?? ''));
+            $row = $api->icbuAnalyticsRow($productId);
+            if ($row === null) {
+                continue;
+            }
+
+            AlibabaSheetPrice::updateOrCreate(
+                ['product_id' => $row['product_id']],
+                [
+                    'sku' => $row['sku'],
+                    'status' => $row['status'],
+                    'sku_price' => $row['sku_price'],
+                    'soh' => $row['soh'],
+                    'inv_update' => null,
+                ]
+            );
+
+            if (Schema::hasTable('alibaba_metrics')) {
+                AlibabaMetric::updateOrCreate(
+                    ['sku' => $row['sku']],
+                    array_filter([
+                        'product_id' => $row['product_id'],
+                        'price' => $row['sku_price'],
+                    ], static fn ($value) => $value !== null)
+                );
+            }
+            if (Schema::hasTable('alibaba_pricing_prices') && $row['sku_price'] !== null) {
+                AlibabaPricingPrice::updateOrCreate(
+                    ['sku' => $row['sku']],
+                    array_filter([
+                        'price' => $row['sku_price'],
+                        'ab_stock' => $row['soh'],
+                    ], static fn ($value) => $value !== null)
+                );
+            }
+
+            $ids[] = $row['product_id'];
+            $saved++;
+        }
+
+        $ids = array_values(array_unique($ids));
+        $total = $list['total_item'];
+        $fetched = count($list['products']);
+        $done = $fetched === 0 || $fetched < $pageSize || ($total !== null && ($page * $pageSize) >= $total);
+
+        if ($done && $ids !== []) {
+            AlibabaSheetPrice::query()->whereNotIn('product_id', $ids)->delete();
+        }
+
+        Cache::put(self::SYNC_CACHE, ['ids' => $ids], now()->addHours(6));
+
+        return [
+            'success' => true,
+            'page' => $page,
+            'page_size' => $pageSize,
+            'saved' => $saved,
+            'total_item' => $total,
+            'synced' => count($ids),
+            'done' => $done,
+            'message' => $done
+                ? 'Loaded '.count($ids).' products from the Alibaba API.'
+                : 'API page '.$page.' saved '.$saved.' product(s).',
+        ];
+    }
+
+    /**
+     * Last 30 Pacific days of Alibaba orders, keyed by catalog SKU.
+     *
+     * @param  \Illuminate\Support\Collection<int, AlibabaSheetPrice>  $sheetRows
+     * @return array{qty: array<string, int>, sales: array<string, float>}
+     */
+    protected function l30ByCatalogSku($sheetRows): array
+    {
+        $qty = [];
+        $sales = [];
+        if (! Schema::hasTable('alibaba_order_metrics')) {
+            return ['qty' => $qty, 'sales' => $sales];
+        }
+
+        $skuByProduct = [];
+        foreach ($sheetRows as $row) {
+            $productId = trim((string) $row->product_id);
+            $sku = trim((string) $row->sku);
+            if ($productId !== '' && $sku !== '') {
+                $skuByProduct[$productId] = $sku;
+            }
+        }
+
+        $start = Carbon::now('America/Los_Angeles')->subDays(30);
+        $orders = AlibabaOrderMetric::query()
+            ->where('order_date', '>=', $start)
+            ->get(['sku', 'product_id', 'quantity', 'amount']);
+
+        foreach ($orders as $order) {
+            $productId = trim((string) ($order->product_id ?? ''));
+            $stored = trim((string) ($order->sku ?? ''));
+            $catalog = ($stored !== '' && $stored !== $productId && ! ctype_digit($stored))
+                ? $stored
+                : ($skuByProduct[$productId] ?? '');
+            if ($catalog === '') {
+                continue;
+            }
+            $key = strtoupper($catalog);
+            $units = (int) ($order->quantity ?? 0);
+            $qty[$key] = ($qty[$key] ?? 0) + $units;
+            $sales[$key] = ($sales[$key] ?? 0) + ((float) ($order->amount ?? 0) * $units);
+        }
+
+        return ['qty' => $qty, 'sales' => $sales];
+    }
+
+    /**
+     * Unit profit = (price × Alibaba margin) − LP. Ship is not subtracted.
+     *
+     * @return array{profit_each: float, gpft: float, roi: float}
+     */
+    protected function priceMetrics(float $price, float $lp, float $margin): array
+    {
+        $profitEach = ($price * $margin) - $lp;
+
+        return [
+            'profit_each' => round($profitEach, 2),
+            'gpft' => $price > 0 ? round(($profitEach / $price) * 100, 2) : 0.0,
+            'roi' => $lp > 0 ? round(($profitEach / $lp) * 100, 2) : 0.0,
+        ];
+    }
+
+    protected function productImage(?ProductMaster $pm, mixed $shopify): ?string
+    {
+        $shopifyImage = is_object($shopify) ? ($shopify->image_src ?? null) : null;
+        if (is_string($shopifyImage) && trim($shopifyImage) !== '') {
+            return $shopifyImage;
+        }
+        if (! $pm) {
+            return null;
+        }
+        $values = $this->productValues($pm);
+        $path = $values['image_path'] ?? ($pm->image_path ?? null);
+
+        return is_string($path) && trim($path) !== '' ? $path : null;
+    }
+
+    protected function productShip(?ProductMaster $pm): float
+    {
+        if (! $pm) {
+            return 0.0;
+        }
+        foreach ($this->productValues($pm) as $key => $value) {
+            if (strtolower((string) $key) === 'ship' && is_numeric($value)) {
+                return (float) $value;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function productValues(ProductMaster $pm): array
+    {
+        $values = is_array($pm->Values)
+            ? $pm->Values
+            : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+        return is_array($values) ? $values : [];
     }
 
     /**
@@ -178,7 +351,7 @@ class AlibabaAnalyticsController extends Controller
         $map = [];
         ProductMaster::query()
             ->whereRaw('UPPER(TRIM(sku)) IN ('.$placeholders.')', $upper)
-            ->get(['sku', 'parent'])
+            ->get()
             ->each(function (ProductMaster $pm) use (&$map) {
                 $map[strtoupper(trim((string) $pm->sku))] = $pm;
             });
@@ -248,6 +421,9 @@ class AlibabaAnalyticsController extends Controller
         $sumInv = 0;
         $sumOvL30 = 0;
         $sumSoh = 0;
+        $sumAbL30 = 0;
+        $sumSales = 0.0;
+        $sumProfit = 0.0;
         $seenSku = [];
 
         foreach ($childRows as $row) {
@@ -262,6 +438,9 @@ class AlibabaAnalyticsController extends Controller
             $sumInv += (int) ($row['INV'] ?? 0);
             $sumOvL30 += (int) ($row['L30'] ?? 0);
             $sumSoh += (int) ($row['soh'] ?? 0);
+            $sumAbL30 += (int) ($row['AB L30'] ?? 0);
+            $sumSales += (float) ($row['Sales L30'] ?? 0);
+            $sumProfit += (float) ($row['Profit'] ?? 0);
         }
 
         $dil = $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0.0;
@@ -271,6 +450,7 @@ class AlibabaAnalyticsController extends Controller
             'Parent' => $key,
             'sku' => $key,
             '(Child) sku' => $key,
+            'image_path' => null,
             'product_id' => '',
             'status' => '',
             'sku_price' => null,
@@ -280,6 +460,16 @@ class AlibabaAnalyticsController extends Controller
             'L30' => $sumOvL30,
             'ov_l30' => $sumOvL30,
             'dil_percent' => $dil,
+            'AB L30' => $sumAbL30,
+            'price' => null,
+            'GPFT%' => null,
+            'PFT %' => null,
+            'ROI%' => null,
+            'NROI' => null,
+            'Profit' => round($sumProfit, 2),
+            'Sales L30' => round($sumSales, 2),
+            'LP_productmaster' => null,
+            'Ship_productmaster' => null,
             'is_parent' => true,
             'is_parent_summary' => true,
             'is_parent_row' => true,
@@ -506,47 +696,4 @@ class AlibabaAnalyticsController extends Controller
         return is_numeric($text) ? (int) $text : null;
     }
 
-    /**
-     * @return array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string}
-     */
-    protected function sheetRowArray(AlibabaSheetPrice $row): array
-    {
-        return [
-            (string) $row->product_id,
-            (string) $row->sku,
-            (string) ($row->status ?? ''),
-            $row->sku_price !== null ? (string) $row->sku_price : '-',
-            $row->soh !== null ? (string) $row->soh : '',
-            (string) ($row->inv_update ?? ''),
-        ];
-    }
-
-    /**
-     * @param  array<int, array<int, string>>  $rows
-     */
-    protected function downloadXlsx(string $fileName, array $rows)
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->fromArray(self::SHEET_HEADERS, null, 'A1');
-        if ($rows !== []) {
-            $sheet->fromArray($rows, null, 'A2');
-        }
-
-        $widths = ['A' => 22, 'B' => 36, 'C' => 12, 'D' => 14, 'E' => 10, 'F' => 14];
-        foreach ($widths as $col => $width) {
-            $sheet->getColumnDimension($col)->setWidth($width);
-        }
-
-        if (ob_get_length()) {
-            ob_end_clean();
-        }
-
-        return response()->streamDownload(function () use ($spreadsheet) {
-            $writer = new Xlsx($spreadsheet);
-            $writer->save('php://output');
-        }, $fileName, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
-    }
 }

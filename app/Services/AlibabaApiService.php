@@ -1075,4 +1075,179 @@ class AlibabaApiService extends AliExpressApiService
 
         return $text !== '' ? $text : null;
     }
+
+    /**
+     * Product list on the ICBU gateway that accepts this app key.
+     *
+     * @return array{success: bool, message?: string, products: array<int, array<string, mixed>>, total_item: ?int, page_size: int}
+     */
+    public function listIcbuProducts(int $page = 1, int $pageSize = 10): array
+    {
+        $this->useIcbuRest();
+        $page = max(1, $page);
+        $pageSize = max(1, min(20, $pageSize));
+        $raw = $this->callRestGateway('/alibaba/icbu/product/list', [
+            'current_page' => $page,
+            'page_size' => $pageSize,
+            'language' => 'ENGLISH',
+        ]);
+        if (empty($raw['success'])) {
+            return [
+                'success' => false,
+                'message' => (string) ($raw['message'] ?? 'Alibaba product list failed.'),
+                'products' => [],
+                'total_item' => null,
+                'page_size' => $pageSize,
+            ];
+        }
+
+        $result = $raw['data']['result'] ?? [];
+        $products = is_array($result) ? ($result['products'] ?? []) : [];
+        if (isset($products['product']) && is_array($products['product'])) {
+            $products = $products['product'];
+        }
+        if (is_array($products) && $products !== [] && ! array_is_list($products)) {
+            $products = [$products];
+        }
+
+        $total = is_array($result) ? ($result['total_item'] ?? null) : null;
+
+        return [
+            'success' => true,
+            'products' => is_array($products) ? array_values($products) : [],
+            'total_item' => is_numeric($total) ? (int) $total : null,
+            'page_size' => $pageSize,
+        ];
+    }
+
+    /**
+     * One product from /icbu/product/get, reduced to the analytics columns.
+     *
+     * @return array{product_id: string, sku: string, status: string, sku_price: ?float, soh: ?int}|null
+     */
+    public function icbuAnalyticsRow(string $productId): ?array
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return null;
+        }
+
+        $this->useIcbuRest();
+        $raw = $this->callRestGateway('/icbu/product/get', [
+            'product_get_request' => [
+                'productId' => $productId,
+                'language' => 'ENGLISH',
+            ],
+        ]);
+        if (empty($raw['success'])) {
+            return null;
+        }
+
+        $product = $raw['data']['product'] ?? null;
+        if (! is_array($product)) {
+            return null;
+        }
+
+        $skuBag = $product['productSku']['skus'] ?? $product['product_sku']['skus'] ?? [];
+        if (isset($skuBag['skuDefinition']) && is_array($skuBag['skuDefinition'])) {
+            $skuBag = $skuBag['skuDefinition'];
+        } elseif (isset($skuBag['sku_definition']) && is_array($skuBag['sku_definition'])) {
+            $skuBag = $skuBag['sku_definition'];
+        }
+        if (is_array($skuBag) && $skuBag !== [] && ! array_is_list($skuBag)) {
+            $skuBag = [$skuBag];
+        }
+
+        $sku = '';
+        $price = 0.0;
+        $soh = null;
+        if (is_array($skuBag)) {
+            foreach ($skuBag as $node) {
+                if (! is_array($node)) {
+                    continue;
+                }
+                $code = trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? ''));
+                if ($sku === '' && $code !== '') {
+                    $sku = $code;
+                }
+                $nodePrice = $this->firstBulkPrice($node['bulkDiscountPrices'] ?? $node['bulk_discount_prices'] ?? null);
+                if ($nodePrice <= 0) {
+                    $nodePrice = $this->icbuPrice($node);
+                }
+                if ($price <= 0 && $nodePrice > 0) {
+                    $price = $nodePrice;
+                }
+                $nodeStock = $this->icbuStock($node);
+                if ($nodeStock === null) {
+                    $nodeStock = $this->icbuStock(['inventory_dto_list' => $node['inventoryDTOList'] ?? $node['inventoryDtoList'] ?? null]);
+                }
+                if ($nodeStock !== null) {
+                    $soh = ($soh ?? 0) + $nodeStock;
+                }
+            }
+        }
+
+        if ($price <= 0) {
+            $sourcing = $product['sourcingTrade'] ?? $product['sourcing_trade'] ?? [];
+            $price = is_array($sourcing)
+                ? $this->icbuMoney($sourcing['fobMinPrice'] ?? $sourcing['fob_min_price'] ?? null)
+                : 0.0;
+        }
+        if ($price <= 0) {
+            $price = $this->icbuPrice($product['wholesaleTrade'] ?? $product['wholesale_trade'] ?? []);
+        }
+
+        if ($sku === '') {
+            $mapped = AlibabaMetric::query()->where('product_id', $productId)->value('sku');
+            $sku = trim((string) $mapped);
+        }
+        if ($sku === '' || $sku === $productId) {
+            return null;
+        }
+
+        $display = strtoupper(trim((string) ($product['display'] ?? '')));
+        $status = strtolower(trim((string) ($product['status'] ?? '')));
+        if ($display === 'N') {
+            $statusLabel = 'Offline';
+        } elseif ($status === 'approved' || $display === 'Y') {
+            $statusLabel = 'Active';
+        } else {
+            $statusLabel = $status !== '' ? $status : '';
+        }
+
+        return [
+            'product_id' => $productId,
+            'sku' => $sku,
+            'status' => $statusLabel,
+            'sku_price' => $price > 0 ? round($price, 2) : null,
+            'soh' => $soh,
+        ];
+    }
+
+    protected function firstBulkPrice(mixed $discounts): float
+    {
+        if (! is_array($discounts)) {
+            return 0.0;
+        }
+        if (isset($discounts['price'])) {
+            return $this->icbuMoney($discounts['price']);
+        }
+        foreach ($discounts as $row) {
+            if (is_array($row)) {
+                $amount = $this->icbuMoney($row['price'] ?? null);
+                if ($amount > 0) {
+                    return $amount;
+                }
+            }
+        }
+
+        return 0.0;
+    }
+
+    protected function useIcbuRest(): void
+    {
+        if (! str_contains($this->restBase, 'openapi-api.alibaba.com')) {
+            $this->restBase = 'https://openapi-api.alibaba.com/rest';
+        }
+    }
 }

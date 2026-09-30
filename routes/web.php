@@ -589,7 +589,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/macy-pricing-cvr', [MacyController::class, 'macyPricingCvr']);
     Route::get('/macy-pricing-increase-decrease', [MacyController::class, 'macyPricingIncreaseandDecrease']);
 
-    Route::get('/product-master-data-view', [ProductMasterController::class, 'getViewProductData']);
+    Route::match(['get', 'post'], '/product-master-data-view', [ProductMasterController::class, 'getViewProductData']);
     Route::get('/neweggB2C-data-view', [Neweggb2cController::class, 'getViewNeweggB2CData']);
     Route::get('/pricing-analysis-data-view', [PricingAnalysisController::class, 'getViewPricingAnalysisData']);
     Route::get('/pRoi-analysis-data-view', [PrAnalysisController::class, 'getViewPRoiAnalysisData']);
@@ -5926,9 +5926,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/alibaba-analytics', [AlibabaAnalyticsController::class, 'index'])->name('alibaba.analytics');
     Route::get('/alibaba-analytics/data', [AlibabaAnalyticsController::class, 'data'])->name('alibaba.analytics.data');
-    Route::post('/alibaba-analytics/import', [AlibabaAnalyticsController::class, 'import'])->name('alibaba.analytics.import');
-    Route::get('/alibaba-analytics/export', [AlibabaAnalyticsController::class, 'export'])->name('alibaba.analytics.export');
-    Route::get('/alibaba-analytics/sample', [AlibabaAnalyticsController::class, 'downloadSample'])->name('alibaba.analytics.sample');
+    Route::post('/alibaba-analytics/sync', [AlibabaAnalyticsController::class, 'sync'])->name('alibaba.analytics.sync');
 
     Route::get('/aliexpress-pricing', [AliexpressController::class, 'aliexpressPricingView'])->name('aliexpress.pricing.view');
     Route::get('/aliexpress/pricing-data', [AliexpressController::class, 'getPricingData'])->name('aliexpress.pricing.data');
