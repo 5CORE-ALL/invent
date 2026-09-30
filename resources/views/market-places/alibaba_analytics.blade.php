@@ -91,8 +91,6 @@
                         <span class="ab-stat-badge ab-stat-badge--inv">INV: <span id="ab-inv-total">0</span></span>
                         <span class="ab-stat-badge ab-stat-badge--ovl30">OV L30: <span id="ab-ovl30">0</span></span>
                         <span class="ab-stat-badge ab-stat-badge--active">Active: <span id="ab-active">0</span></span>
-                        <span class="ab-stat-badge ab-stat-badge--bulk">Bulk: <span id="ab-bulk">0</span></span>
-                        <span class="ab-stat-badge ab-stat-badge--manual">Manual: <span id="ab-manual">0</span></span>
                         <span class="ab-stat-badge ab-stat-badge--soh">SOH: <span id="ab-soh">0</span></span>
 
                         <input type="text" id="ab-search-parent" class="form-control form-control-sm" style="width:170px;" placeholder="Search Parent...">
@@ -117,21 +115,11 @@
                         <select id="ab-status-filter" class="form-select form-select-sm" style="width:auto;">
                             <option value="all">Status: All</option>
                             <option value="Active">Active</option>
-                        </select>
-                        <select id="ab-inv-update-filter" class="form-select form-select-sm" style="width:auto;">
-                            <option value="all">Inv Update: All</option>
-                            <option value="Bulk">Bulk</option>
-                            <option value="Manual">Manual</option>
+                            <option value="Offline">Offline</option>
                         </select>
 
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="ab-sample-btn">
-                            <i class="fas fa-download"></i> Download sample
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="ab-export-btn">
-                            <i class="fas fa-file-export"></i> Export
-                        </button>
-                        <button type="button" class="btn btn-sm btn-primary" id="ab-import-btn">
-                            <i class="fas fa-file-import"></i> Import sheet
+                        <button type="button" class="btn btn-sm btn-primary" id="ab-sync-btn">
+                            <i class="fas fa-sync"></i> Sync from API
                         </button>
                     </div>
 
@@ -150,33 +138,6 @@
         </div>
     </div>
 
-    <div class="modal fade" id="abImportModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Import Alibaba sheet price</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small mb-2">
-                        Use the same columns as the Alibaba price sheet. Product Id and SKU are kept exactly as uploaded.
-                    </p>
-                    <a href="{{ route('alibaba.analytics.sample') }}" class="btn btn-outline-secondary btn-sm mb-3">
-                        <i class="fas fa-download"></i> Download sample
-                    </a>
-                    <input type="file" id="ab-import-file" class="form-control" accept=".xlsx,.xls,.csv,.tsv,.txt">
-                    <small class="text-muted d-block mt-2">
-                        Headers: Product Id, SKU, Status, SKU Price.1, SOH, Inv Update
-                    </small>
-                    <div id="ab-import-message" class="small mt-2"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" id="ab-confirm-import">Import</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script')
@@ -214,8 +175,6 @@
         function setStats(stats) {
             document.getElementById('ab-total').textContent = stats.total || 0;
             document.getElementById('ab-active').textContent = stats.active || 0;
-            document.getElementById('ab-bulk').textContent = stats.bulk || 0;
-            document.getElementById('ab-manual').textContent = stats.manual || 0;
             document.getElementById('ab-soh').textContent = stats.soh || 0;
             const invEl = document.getElementById('ab-inv-total');
             const ovEl = document.getElementById('ab-ovl30');
@@ -229,7 +188,6 @@
             const productQ = (document.getElementById('ab-search-product').value || '').trim().toLowerCase();
             const skuQ = (document.getElementById('ab-search-sku').value || '').trim().toLowerCase();
             const status = document.getElementById('ab-status-filter').value;
-            const invUpdate = document.getElementById('ab-inv-update-filter').value;
             const inventory = document.getElementById('ab-inventory-filter').value;
             const dilFilter = document.getElementById('ab-dil-filter').value;
             const rowType = document.getElementById('ab-row-type-filter').value;
@@ -248,7 +206,6 @@
                 if (productQ && !isParent && String(data.product_id || '').toLowerCase().indexOf(productQ) === -1) return false;
                 if (skuQ && String(data.sku || '').toLowerCase().indexOf(skuQ) === -1) return false;
                 if (status !== 'all' && !isParent && String(data.status || '').toLowerCase() !== status.toLowerCase()) return false;
-                if (invUpdate !== 'all' && !isParent && String(data.inv_update || '').toLowerCase() !== invUpdate.toLowerCase()) return false;
                 const inv = parseFloat(data.INV) || 0;
                 if (inventory === 'zero' && inv !== 0) return false;
                 if (inventory === 'more' && !(inv > 0)) return false;
@@ -281,7 +238,7 @@
                     data: initialRows,
                     layout: 'fitColumns',
                     height: '68vh',
-                    placeholder: 'No Alibaba sheet prices yet. Import the price sheet or download the sample.',
+                    placeholder: 'No Alibaba API products yet. Use Sync from API.',
                     pagination: true,
                     paginationSize: 50,
                     paginationSizeSelector: [25, 50, 100, 250],
@@ -332,7 +289,6 @@
                             }
                         },
                         { title: 'SOH', field: 'soh', hozAlign: 'right', headerHozAlign: 'center', width: 80 },
-                        { title: 'Inv Update', field: 'inv_update', hozAlign: 'center', headerHozAlign: 'center', width: 120 },
                     ],
                 });
                 applyFilters();
@@ -344,51 +300,51 @@
         document.getElementById('ab-search-product').addEventListener('input', applyFilters);
         document.getElementById('ab-search-sku').addEventListener('input', applyFilters);
         document.getElementById('ab-status-filter').addEventListener('change', applyFilters);
-        document.getElementById('ab-inv-update-filter').addEventListener('change', applyFilters);
         document.getElementById('ab-inventory-filter').addEventListener('change', applyFilters);
         document.getElementById('ab-dil-filter').addEventListener('change', applyFilters);
         document.getElementById('ab-row-type-filter').addEventListener('change', applyFilters);
-        document.getElementById('ab-sample-btn').addEventListener('click', function () {
-            window.location.href = "{{ route('alibaba.analytics.sample') }}";
-        });
-        document.getElementById('ab-export-btn').addEventListener('click', function () {
-            window.location.href = "{{ route('alibaba.analytics.export') }}";
-        });
-        document.getElementById('ab-import-btn').addEventListener('click', function () {
-            document.getElementById('ab-import-message').textContent = '';
-            new bootstrap.Modal(document.getElementById('abImportModal')).show();
-        });
-        document.getElementById('ab-confirm-import').addEventListener('click', function () {
-            const fileInput = document.getElementById('ab-import-file');
-            const msg = document.getElementById('ab-import-message');
-            if (!fileInput.files.length) {
-                msg.className = 'small mt-2 text-danger';
-                msg.textContent = 'Choose a file first.';
-                return;
-            }
-            const form = new FormData();
-            form.append('excel_file', fileInput.files[0]);
-            form.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
-            msg.className = 'small mt-2 text-muted';
-            msg.textContent = 'Importing...';
-            fetch("{{ route('alibaba.analytics.import') }}", {
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'), 'Accept': 'application/json' },
-                body: form
-            })
-            .then(r => r.json().then(j => ({ ok: r.ok, body: j })))
-            .then(({ ok, body }) => {
-                msg.className = 'small mt-2 ' + (ok ? 'text-success' : 'text-danger');
-                msg.textContent = body.message || (ok ? 'Imported.' : 'Import failed.');
-                if (ok) {
+        document.getElementById('ab-sync-btn').addEventListener('click', function () {
+            const btn = this;
+            const loader = document.getElementById('ab-loader');
+            const label = loader.querySelector('.fw-semibold');
+            btn.disabled = true;
+            loader.style.display = 'flex';
+
+            function syncPage(page, reset) {
+                if (label) label.textContent = 'Syncing Alibaba API, page ' + page + '...';
+                const body = new URLSearchParams();
+                body.set('page', String(page));
+                body.set('reset', reset ? '1' : '0');
+                return fetch("{{ route('alibaba.analytics.sync') }}", {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: body.toString()
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, body: j })))
+                .then(({ ok, body }) => {
+                    if (!ok || !body.success) {
+                        throw new Error(body.message || 'Sync failed.');
+                    }
+                    if (!body.done) {
+                        return syncPage(page + 1, false);
+                    }
+                    if (label) label.textContent = body.message || 'Sync finished.';
                     loadTable();
-                    setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('abImportModal')).hide(), 700);
-                }
-            })
-            .catch(() => {
-                msg.className = 'small mt-2 text-danger';
-                msg.textContent = 'Import failed.';
-            });
+                });
+            }
+
+            syncPage(1, true)
+                .catch(function (err) {
+                    alert(err.message || 'Sync failed.');
+                })
+                .finally(function () {
+                    btn.disabled = false;
+                    loader.style.display = 'none';
+                });
         });
 
         loadTable();

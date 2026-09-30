@@ -1771,6 +1771,7 @@
                 return fetch(url, {
                     method: method,
                     headers: headers,
+                    cache: 'no-store',
                     body: method === 'GET' ? null : JSON.stringify(data)
                 });
             }
@@ -1787,9 +1788,8 @@
                     }
                 });
                 
-                // Add cache-busting parameter to ensure fresh data
-                const cacheParam = '?ts=' + new Date().getTime();
-                makeRequest('/product-master-data-view' + cacheParam, 'GET')
+                // POST so nginx cannot serve a cached GET. Body timestamp keeps each load fresh.
+                makeRequest('/product-master-data-view', 'POST', { _ts: Date.now() })
                     .then(response => {
                         if (!response.ok) {
                             throw new Error(`HTTP error! status: ${response.status}`);

@@ -8,16 +8,16 @@ use App\Models\AlibabaPricingPrice;
 use App\Models\AlibabaSheetPrice;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\AlibabaApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 class AlibabaAnalyticsController extends Controller
 {
-    public const SHEET_HEADERS = ['Product Id', 'SKU', 'Status', 'SKU Price.1', 'SOH', 'Inv Update'];
+    private const SYNC_CACHE = 'alibaba_analytics_api_sync';
 
     public function index(): View
     {
@@ -101,63 +101,111 @@ class AlibabaAnalyticsController extends Controller
         ]);
     }
 
-    public function import(Request $request): JsonResponse
+    public function sync(Request $request, AlibabaApiService $api): JsonResponse
     {
-        $request->validate([
-            'excel_file' => 'required|file',
-        ]);
+        @set_time_limit(180);
 
-        $file = $request->file('excel_file');
-        $parsed = $this->parseSheetFile($file->getPathname(), $file->getClientOriginalName());
+        $page = max(1, (int) $request->input('page', 1));
+        $result = $this->syncApiPage($api, $page, $request->boolean('reset') || $page === 1);
+        $status = ! empty($result['success']) ? 200 : 422;
 
-        if (! empty($parsed['error'])) {
-            return response()->json(['success' => false, 'message' => $parsed['error']], 422);
+        return response()->json($result, $status);
+    }
+
+    /**
+     * One page of /alibaba/icbu/product/list plus product detail. Used by the page and the scheduler.
+     *
+     * @return array{success: bool, message: string, page: int, page_size?: int, saved?: int, total_item?: int|null, synced?: int, done: bool}
+     */
+    public function syncApiPage(AlibabaApiService $api, int $page, bool $reset): array
+    {
+        $page = max(1, $page);
+        $pageSize = 8;
+        if ($reset || $page === 1) {
+            Cache::put(self::SYNC_CACHE, ['ids' => []], now()->addHours(6));
         }
 
-        $saved = $this->upsertSheetRows($parsed['rows']);
-
-        return response()->json([
-            'success' => true,
-            'message' => "Imported {$saved} Alibaba sheet price row(s). Product Id and SKU were kept the same as the file.",
-            'imported' => $saved,
-            'skipped' => $parsed['skipped'],
-        ]);
-    }
-
-    public function export()
-    {
-        $rows = AlibabaSheetPrice::query()
-            ->orderBy('sku')
-            ->orderBy('product_id')
-            ->get()
-            ->map(fn (AlibabaSheetPrice $row) => $this->sheetRowArray($row))
-            ->all();
-
-        return $this->downloadXlsx(
-            'Alibaba_Analytics_Export_' . date('Y-m-d') . '.xlsx',
-            $rows
-        );
-    }
-
-    public function downloadSample()
-    {
-        $rows = AlibabaSheetPrice::query()
-            ->orderBy('sku')
-            ->orderBy('product_id')
-            ->limit(10)
-            ->get()
-            ->map(fn (AlibabaSheetPrice $row) => $this->sheetRowArray($row))
-            ->all();
-
-        if ($rows === []) {
-            $rows = [
-                ['10000043347472', 'XLR 20 PAIR', 'Active', '9.17', '44', 'Bulk'],
-                ['10000043326840', 'CAPO RED 4Pk', 'Active', '3.18', '25', 'Bulk'],
-                ['10000044189326', 'PARENT SPEAKON ADP 2PCS', 'Active', '6.49', '1149', 'Manual'],
+        $list = $api->listIcbuProducts($page, $pageSize);
+        if (empty($list['success'])) {
+            return [
+                'success' => false,
+                'message' => $list['message'] ?? 'Alibaba product list failed.',
+                'page' => $page,
+                'done' => true,
             ];
         }
 
-        return $this->downloadXlsx('Alibaba_Analytics_Sample.xlsx', $rows);
+        $state = Cache::get(self::SYNC_CACHE, ['ids' => []]);
+        $ids = is_array($state['ids'] ?? null) ? $state['ids'] : [];
+        $saved = 0;
+
+        foreach ($list['products'] as $brief) {
+            if (! is_array($brief)) {
+                continue;
+            }
+            $productId = trim((string) ($brief['id'] ?? $brief['product_id'] ?? ''));
+            $row = $api->icbuAnalyticsRow($productId);
+            if ($row === null) {
+                continue;
+            }
+
+            AlibabaSheetPrice::updateOrCreate(
+                ['product_id' => $row['product_id']],
+                [
+                    'sku' => $row['sku'],
+                    'status' => $row['status'],
+                    'sku_price' => $row['sku_price'],
+                    'soh' => $row['soh'],
+                    'inv_update' => null,
+                ]
+            );
+
+            if (Schema::hasTable('alibaba_metrics')) {
+                AlibabaMetric::updateOrCreate(
+                    ['sku' => $row['sku']],
+                    array_filter([
+                        'product_id' => $row['product_id'],
+                        'price' => $row['sku_price'],
+                    ], static fn ($value) => $value !== null)
+                );
+            }
+            if (Schema::hasTable('alibaba_pricing_prices') && $row['sku_price'] !== null) {
+                AlibabaPricingPrice::updateOrCreate(
+                    ['sku' => $row['sku']],
+                    array_filter([
+                        'price' => $row['sku_price'],
+                        'ab_stock' => $row['soh'],
+                    ], static fn ($value) => $value !== null)
+                );
+            }
+
+            $ids[] = $row['product_id'];
+            $saved++;
+        }
+
+        $ids = array_values(array_unique($ids));
+        $total = $list['total_item'];
+        $fetched = count($list['products']);
+        $done = $fetched === 0 || $fetched < $pageSize || ($total !== null && ($page * $pageSize) >= $total);
+
+        if ($done && $ids !== []) {
+            AlibabaSheetPrice::query()->whereNotIn('product_id', $ids)->delete();
+        }
+
+        Cache::put(self::SYNC_CACHE, ['ids' => $ids], now()->addHours(6));
+
+        return [
+            'success' => true,
+            'page' => $page,
+            'page_size' => $pageSize,
+            'saved' => $saved,
+            'total_item' => $total,
+            'synced' => count($ids),
+            'done' => $done,
+            'message' => $done
+                ? 'Loaded '.count($ids).' products from the Alibaba API.'
+                : 'API page '.$page.' saved '.$saved.' product(s).',
+        ];
     }
 
     /**
@@ -506,47 +554,4 @@ class AlibabaAnalyticsController extends Controller
         return is_numeric($text) ? (int) $text : null;
     }
 
-    /**
-     * @return array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string}
-     */
-    protected function sheetRowArray(AlibabaSheetPrice $row): array
-    {
-        return [
-            (string) $row->product_id,
-            (string) $row->sku,
-            (string) ($row->status ?? ''),
-            $row->sku_price !== null ? (string) $row->sku_price : '-',
-            $row->soh !== null ? (string) $row->soh : '',
-            (string) ($row->inv_update ?? ''),
-        ];
-    }
-
-    /**
-     * @param  array<int, array<int, string>>  $rows
-     */
-    protected function downloadXlsx(string $fileName, array $rows)
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->fromArray(self::SHEET_HEADERS, null, 'A1');
-        if ($rows !== []) {
-            $sheet->fromArray($rows, null, 'A2');
-        }
-
-        $widths = ['A' => 22, 'B' => 36, 'C' => 12, 'D' => 14, 'E' => 10, 'F' => 14];
-        foreach ($widths as $col => $width) {
-            $sheet->getColumnDimension($col)->setWidth($width);
-        }
-
-        if (ob_get_length()) {
-            ob_end_clean();
-        }
-
-        return response()->streamDownload(function () use ($spreadsheet) {
-            $writer = new Xlsx($spreadsheet);
-            $writer->save('php://output');
-        }, $fileName, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
-    }
 }
