@@ -77,6 +77,23 @@
         }
         #li-issue-modal .modal-header, #li-issue-modal .modal-footer { flex-shrink: 0; }
         #li-issue-modal .modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+        .l30-badge,
+        .l30-issues-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 0.4rem;
+            user-select: none;
+            border: 1.5px solid;
+            background: #fff;
+            white-space: nowrap;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1;
+        }
+        .l30-badge { border-color: #e05252; color: #c0392b; }
+        .l30-issues-badge { border-color: #4a9e6b; color: #27693e; }
     </style>
 @endsection
 
@@ -115,6 +132,14 @@
                                 <i class="fa-solid fa-table-columns"></i> Columns
                             </button>
                             <div class="dropdown-menu p-2" id="li-columns-menu" style="max-height:60vh;overflow-y:auto;min-width:220px;"></div>
+                        </div>
+                        <div class="l30-badge" title="Total loss for issues created in the last 30 days">
+                            <i class="bi bi-graph-down-arrow"></i>
+                            L30 Loss: <span id="li-l30-loss">…</span>
+                        </div>
+                        <div class="l30-issues-badge" title="Issues created in the last 30 days">
+                            <i class="bi bi-exclamation-circle"></i>
+                            L30 Issues: <span id="li-l30-issues">…</span>
                         </div>
                         <div class="input-group input-group-sm ms-xl-auto" style="max-width:320px;">
                             <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -697,6 +722,32 @@
                 });
                 await table.setData(rows);
                 document.getElementById('li-count').textContent = String(table.getDataCount('active'));
+                updateL30Badges(rows);
+            }
+
+            function rowLoss(row) {
+                const n = row && row.total_loss;
+                return (n != null && n !== '' && !isNaN(parseFloat(n))) ? parseFloat(n) : 0;
+            }
+
+            function updateL30Badges(rows) {
+                const cutoff = new Date();
+                cutoff.setHours(0, 0, 0, 0);
+                cutoff.setDate(cutoff.getDate() - 29);
+                let issues = 0;
+                let loss = 0;
+                (rows || []).forEach(function (r) {
+                    const raw = r.created_at;
+                    if (!raw) return;
+                    const d = new Date(String(raw).replace(' ', 'T'));
+                    if (isNaN(d.getTime()) || d < cutoff) return;
+                    issues++;
+                    loss += rowLoss(r);
+                });
+                const issuesEl = document.getElementById('li-l30-issues');
+                const lossEl = document.getElementById('li-l30-loss');
+                if (issuesEl) issuesEl.textContent = String(issues);
+                if (lossEl) lossEl.textContent = '$' + Math.round(loss);
             }
 
             async function loadHistory() {
@@ -754,6 +805,7 @@
                     if (!res.ok) throw new Error(data.message || 'Save failed');
                     const row = table.getRow(id);
                     if (row) row.update({ total_loss: data.total_loss != null ? data.total_loss : null });
+                    updateL30Badges(table.getData());
                 } catch (e) {
                     alert(e.message || 'Could not save Loss $');
                     input.value = original;

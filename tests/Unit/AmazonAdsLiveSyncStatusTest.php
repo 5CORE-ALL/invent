@@ -199,7 +199,7 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
         $this->assertSame('yellow', $rows[0]['bid_sync_color']);
     }
 
-    public function test_failed_bid_stays_red_even_when_lbid_matches_sbid(): void
+    public function test_matching_lbid_and_sbid_clears_an_old_failed_alert(): void
     {
         $rows = AmazonAdsLiveSyncStatus::attachToRows(
             [['campaign_id' => '111', 'sbid' => 0.75, 'last_sbid' => 0.75]],
@@ -214,7 +214,9 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
             ]
         );
 
-        $this->assertSame('red', $rows[0]['bid_sync_color']);
+        $this->assertSame('green', $rows[0]['bid_sync_color']);
+        $this->assertSame('already_matched', $rows[0]['bid_sync_reason']);
+        $this->assertSame('', $rows[0]['pushAlert']);
     }
 
     public function test_yellow_bid_partial_pending(): void
@@ -375,7 +377,7 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
         $this->assertSame('', $rows[0]['sbgtAlert']);
     }
 
-    public function test_failed_budget_stays_on_sbgt_alert_when_numbers_match(): void
+    public function test_matching_lbgt_and_sbgt_clears_an_old_failed_alert(): void
     {
         $rows = AmazonAdsLiveSyncStatus::attachToRows(
             [['campaign_id' => '498', 'bgt' => 4, 'sbgt' => 4]],
@@ -392,9 +394,10 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
             ]
         );
 
-        $this->assertSame('red', $rows[0]['bgt_sync_color']);
+        $this->assertSame('green', $rows[0]['bgt_sync_color']);
+        $this->assertSame('already_matched', $rows[0]['bgt_sync_reason']);
         $this->assertSame('', $rows[0]['pushAlert']);
-        $this->assertStringContainsString('SBGT:', $rows[0]['sbgtAlert']);
+        $this->assertSame('', $rows[0]['sbgtAlert']);
     }
 
     public function test_red_bid_verify_failed_is_independent_of_bgt(): void

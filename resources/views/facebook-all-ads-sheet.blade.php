@@ -125,6 +125,7 @@
         .faas-stat-badge--tcos  { background: #7c3aed; }   /* violet — matches /advertisement-master */
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
+        .faas-stat-badge--cps   { background: #0d9488; }   /* teal    */
 
         /* ── Badge trend chart modal — full screen width, pinned to top
            (same look & sizing as /all-marketplace-master adBreakdownChartModal).
@@ -208,6 +209,8 @@
                         <span id="faasCvrBadge" data-metric="cvr" data-label="CVR"
                               class="faas-stat-badge faas-stat-badge--cvr badge-chart-link"
                               title="Click for 32-day trend">CVR:<span id="faasCvrValue">0%</span></span>
+                        <span id="faasCpsBadge" class="faas-stat-badge faas-stat-badge--cps"
+                              title="CPS = Spend / Sold (visible rows)">CPS:<span id="faasCpsValue">$0</span></span>
                     </div>
 
                     {{-- Right group: stays on the same row as the badges
@@ -408,6 +411,22 @@
                         <input type="number" id="faasCvrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
                         <span class="text-muted">–</span>
                         <input type="number" id="faasCvrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                    </div>
+
+                    {{-- Spend $ min-max range filter. --}}
+                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by Spend $">
+                        <span class="small fw-semibold text-muted">Spend$</span>
+                        <input type="number" id="faasSpendMin" class="form-control form-control-sm" placeholder="Min" min="0" step="1" inputmode="decimal" style="width:64px;text-align:center;">
+                        <span class="text-muted">–</span>
+                        <input type="number" id="faasSpendMax" class="form-control form-control-sm" placeholder="Max" min="0" step="1" inputmode="decimal" style="width:64px;text-align:center;">
+                    </div>
+
+                    {{-- ACOS % min-max range filter. --}}
+                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by ACOS %">
+                        <span class="small fw-semibold text-muted">ACOS%</span>
+                        <input type="number" id="faasAcosMin" class="form-control form-control-sm" placeholder="Min" min="0" step="1" inputmode="decimal" style="width:64px;text-align:center;">
+                        <span class="text-muted">–</span>
+                        <input type="number" id="faasAcosMax" class="form-control form-control-sm" placeholder="Max" min="0" step="1" inputmode="decimal" style="width:64px;text-align:center;">
                     </div>
 
                     {{-- Sbgt-band multi-select (penultimate). --}}
@@ -2050,6 +2069,13 @@
             acosEl.textContent  = divPct(spendSum, salesSum, 0);
             ctrEl.textContent   = divPct(clkSum,   imprSum,  1);
             cvrEl.textContent   = divPct(soldSum,  clkSum,   1);
+            // CPS mirrors the controller's cpsValue(): Spend / Sold, 0 dp,
+            // "$0" when nothing was spent, "—" when spend has no sales.
+            const cpsEl = document.getElementById('faasCpsValue');
+            if (cpsEl) {
+                cpsEl.textContent = spendSum <= 0 ? '$0'
+                    : (soldSum > 0 ? '$' + Math.round(spendSum / soldSum).toLocaleString() : '—');
+            }
 
             // TCOS — same as /all-marketplace-master FB Marketplace Ads%/TACOS %
             // (Facebook Ad Spend / Shopify S Sales × 100).
@@ -2175,8 +2201,8 @@
             // search box, Sbgt, Type and Status filters always AND
             // together correctly.
             input.oninput = applyAllFilters;
-            // CTR / CVR range boxes re-run the same combined filter.
-            ['faasCtrMin', 'faasCtrMax', 'faasCvrMin', 'faasCvrMax'].forEach(function (id) {
+            // CTR / CVR / Spend / ACOS range boxes re-run the same combined filter.
+            ['faasCtrMin', 'faasCtrMax', 'faasCvrMin', 'faasCvrMax', 'faasSpendMin', 'faasSpendMax', 'faasAcosMin', 'faasAcosMax'].forEach(function (id) {
                 const el = document.getElementById(id);
                 if (el) el.oninput = applyAllFilters;
             });
@@ -2361,7 +2387,12 @@
             const ctrMax = faasRangeVal('faasCtrMax');
             const cvrMin = faasRangeVal('faasCvrMin');
             const cvrMax = faasRangeVal('faasCvrMax');
-            const hasRange = ctrMin !== null || ctrMax !== null || cvrMin !== null || cvrMax !== null;
+            const spendMin = faasRangeVal('faasSpendMin');
+            const spendMax = faasRangeVal('faasSpendMax');
+            const acosMin = faasRangeVal('faasAcosMin');
+            const acosMax = faasRangeVal('faasAcosMax');
+            const hasRange = ctrMin !== null || ctrMax !== null || cvrMin !== null || cvrMax !== null
+                || spendMin !== null || spendMax !== null || acosMin !== null || acosMax !== null;
 
             // Fast path — no filters active → clear so Tabulator skips
             // the per-row predicate cost entirely.
@@ -2384,6 +2415,12 @@
                     if (ctrMax !== null && ctr > ctrMax) return false;
                     if (cvrMin !== null && cvr < cvrMin) return false;
                     if (cvrMax !== null && cvr > cvrMax) return false;
+                    const spend = toNumber(row['SPEND']);
+                    if (spendMin !== null && spend < spendMin) return false;
+                    if (spendMax !== null && spend > spendMax) return false;
+                    const acos = toNumber(row['Acos']);
+                    if (acosMin !== null && acos < acosMin) return false;
+                    if (acosMax !== null && acos > acosMax) return false;
                 }
                 // Type (ad_type) — exact-match by full string.
                 if (typeSel.size > 0) {

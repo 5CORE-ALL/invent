@@ -11,6 +11,28 @@ use RuntimeException;
 
 class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
 {
+    public function test_budget_gap_over_one_cent_is_pushed(): void
+    {
+        $pushed = [];
+        $live = ['111' => 12.0];
+        $svc = $this->service([
+            'pullBudgets' => function () use (&$live) {
+                return $live;
+            },
+            'pushBudget' => function ($ch, $cid, $desired) use (&$pushed, &$live) {
+                $pushed[] = (float) $desired;
+                $live[$cid] = $desired;
+
+                return ['status' => 200, 'failed' => []];
+            },
+        ]);
+
+        $out = $svc->syncField('sp', 'bgt', '111', 'SKU KW', 12.40, 'test');
+
+        $this->assertSame([12.40], $pushed);
+        $this->assertSame('verified_after_push', $out['reason']);
+    }
+
     public function test_already_matched_does_not_push(): void
     {
         $pushed = [];

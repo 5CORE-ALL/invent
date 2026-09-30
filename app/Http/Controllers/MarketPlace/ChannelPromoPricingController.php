@@ -29,6 +29,7 @@ use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\TiktokSkuDailyData;
 use App\Services\ChannelPromoPricingService;
+use App\Services\DilRuleSpriceApplyService;
 use App\Services\Ebay1CouponService;
 use App\Services\Ebay1PromotionService;
 use App\Services\Support\ChannelPushCpnJobStore;
@@ -1464,6 +1465,10 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
+        if ($channel === 'newtemutwo') {
+            DilRuleSpriceApplyService::copyDilGroiStoreIfMissing('newtemutwo', 'temu');
+        }
+
         $row = ChannelTabulatorColumnSetting::query()
             ->where('channel_name', $channel.'_dil_vs_groi')
             ->first();
@@ -2467,7 +2472,7 @@ class ChannelPromoPricingController extends Controller
         if ($this->promo->isSupported($channel)) {
             return $channel;
         }
-        if (in_array($channel, ['amazon', 'pef', 'vinted', 'instagram', 'depop', 'macy'], true)) {
+        if (in_array($channel, ['amazon', 'pef', 'vinted', 'instagram', 'depop', 'macy', 'newtemuone', 'newtemutwo'], true)) {
             return $channel;
         }
 

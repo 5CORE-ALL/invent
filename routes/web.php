@@ -1302,8 +1302,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                     ->orWhere('department', 'like', '%"Orders on Hold"%');
             });
         $rows = $query
+            ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(1000)
             ->get([
                 'id',
                 'sku',
@@ -2522,8 +2522,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             })
+            ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(1000)
             ->get($qcIssueCols);
 
         $skus = $rows->map(fn ($r) => strtoupper(trim((string) ($r->sku ?? ''))))->filter()->unique()->values()->all();

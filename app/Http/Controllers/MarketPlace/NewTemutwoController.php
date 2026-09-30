@@ -274,7 +274,8 @@ class NewTemutwoController extends Controller
                 );
             }
 
-            $dilStore = DilRuleSpriceApplyService::for('temu')->loadDilGroiStore();
+            DilRuleSpriceApplyService::copyDilGroiStoreIfMissing('newtemutwo', 'temu');
+            $dilStore = DilRuleSpriceApplyService::for('newtemutwo')->loadDilGroiStore();
             $dilRules = $dilStore['rules'] ?? [];
             $cvrAdj = $dilStore['cvr_adj'] ?? null;
             $suggestedStore = new NewTemutwoSuggestedPriceStore();

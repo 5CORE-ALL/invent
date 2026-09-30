@@ -1157,6 +1157,40 @@ class DilRuleSpriceApplyService
     }
 
     /**
+     * Copy another channel's Dil store once, only when this channel has no row yet.
+     * Later saves stay on $channel and do not write $source.
+     */
+    public static function copyDilGroiStoreIfMissing(string $channel, string $source): void
+    {
+        $channel = self::normalizeChannel($channel);
+        $source = self::normalizeChannel($source);
+        if ($channel === '' || $source === '' || $channel === $source) {
+            return;
+        }
+
+        $destKey = $channel.'_dil_vs_groi';
+        if (ChannelTabulatorColumnSetting::query()->where('channel_name', $destKey)->exists()) {
+            return;
+        }
+
+        $sourceRow = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $source.'_dil_vs_groi')
+            ->first();
+        $visibility = is_array($sourceRow?->visibility) ? $sourceRow->visibility : null;
+        if ($visibility === null || $visibility === []) {
+            return;
+        }
+
+        ChannelTabulatorColumnSetting::query()->firstOrCreate(
+            ['channel_name' => $destKey],
+            [
+                'visibility' => $visibility,
+                'column_order' => $sourceRow->column_order,
+            ]
+        );
+    }
+
+    /**
      * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}}
      */
     public function loadDilGroiStore(): array

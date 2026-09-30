@@ -1406,6 +1406,20 @@
                     if (tier !== null) row.bgtAcos = tier;
                     var sum = amzSumSbgtFromRow(row);
                     if (sum !== null) row.sbgt = sum;
+                    if (amzShownBudgetMatches(row)) {
+                        row.bgt_sync_color = 'green';
+                        row.bgt_sync_status = 'synced';
+                        row.bgt_sync_reason = 'already_matched';
+                        row.bgt_sync_tip = 'Updated — Lbgt matches SBGT';
+                    } else if (amzShownBudgetDiffers(row) && row.bgt_sync_color !== 'red') {
+                        row.bgt_sync_color = 'yellow';
+                        row.bgt_sync_status = 'pending';
+                        row.bgt_sync_reason = 'sbgt_differs';
+                        row.bgt_sync_tip = 'Pending — saved SBGT $' + Number(row.sbgt).toFixed(2)
+                            + ' does not match live BGT $' + Number(row.bgt).toFixed(2);
+                    }
+                    row.sbgtAlert = amzSbgtAlertText(row);
+                    row.pushAlert = amzPushAlertText(row);
                 });
                 return rows;
             }
