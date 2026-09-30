@@ -31,6 +31,7 @@ use App\Services\ShopifyCatalogSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
+use App\Support\DetachedArtisan;
 use App\Support\Marketplace\EbaySellAccountPolicies;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
@@ -2710,6 +2711,96 @@ class ListingManagerController extends Controller
         $draft->listing_details = $details;
         $draft->save();
 
+        if (ListingManagerPublishDispatcher::publishesInBackground($channelName) && $this->startBackgroundPublish($draft, $channelName)) {
+            return response()->json([
+                'success' => false,
+                'queued' => true,
+                'message' => 'Publishing '.$draft->seller_sku.' to '.$channelName.' in the background (the marketplace import takes 1–5 minutes). The row shows Publishing… until it finishes.',
+                'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
+            ], 202);
+        }
+
+        $outcome = $this->executeDraftPublish($draft, $details, $channelName);
+
+        return response()->json($outcome['body'], $outcome['status']);
+    }
+
+    /**
+     * Entry point for `artisan listing-manager:publish-draft`: runs the marketplace publish for a
+     * draft that publishDraft() already validated and marked queued.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function runQueuedDraftPublish(int $id): array
+    {
+        $draft = ListingManagerChannelDraft::query()->with('channel:id,channel')->find($id);
+        if (! $draft) {
+            return ['status' => 404, 'body' => ['success' => false, 'message' => 'Draft '.$id.' not found.']];
+        }
+        $channelName = (string) ($draft->channel->channel ?? '');
+        $details = $this->ensureIdentifierDefaults(
+            ListingManagerPublishStatus::normalizeDetails(
+                is_array($draft->listing_details) ? $draft->listing_details : []
+            ),
+            (string) $draft->seller_sku
+        );
+
+        try {
+            return $this->executeDraftPublish($draft, $details, $channelName);
+        } catch (\Throwable $e) {
+            Log::error('ListingManager background publish crashed', ['draft_id' => $id, 'error' => $e->getMessage()]);
+            $draft->refresh();
+            $draft->status = 'failed';
+            $draft->notes = trim((string) $draft->notes."\nPublish failed: ".$e->getMessage());
+            $draft->save();
+
+            return ['status' => 500, 'body' => ['success' => false, 'message' => $e->getMessage()]];
+        } finally {
+            Cache::forget(self::backgroundPublishLockKey($id));
+        }
+    }
+
+    private static function backgroundPublishLockKey(int $draftId): string
+    {
+        return 'lm.publish-draft.running.'.$draftId;
+    }
+
+    /**
+     * Mark the draft queued and start the CLI publish. False when no background process could be
+     * started (Windows, exec disabled), in which case the caller publishes inline.
+     */
+    private function startBackgroundPublish(ListingManagerChannelDraft $draft, string $channelName): bool
+    {
+        $lockKey = self::backgroundPublishLockKey((int) $draft->id);
+        if (! Cache::add($lockKey, now()->toDateTimeString(), now()->addMinutes(15))) {
+            // A previous click is still running; report it as queued instead of starting a second import.
+            return true;
+        }
+
+        $previousStatus = (string) $draft->status;
+        $draft->status = 'queued';
+        $draft->notes = trim((string) $draft->notes."\nPublishing to {$channelName} in background (".now()->format('Y-m-d H:i').').');
+        $draft->save();
+
+        if (DetachedArtisan::spawn('listing-manager:publish-draft', [(int) $draft->id])) {
+            return true;
+        }
+
+        Cache::forget($lockKey);
+        $draft->status = $previousStatus;
+        $draft->save();
+
+        return false;
+    }
+
+    /**
+     * Dispatch the publish to the marketplace and record the outcome on the draft.
+     *
+     * @param  array<string, mixed>  $details
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    private function executeDraftPublish(ListingManagerChannelDraft $draft, array $details, string $channelName): array
+    {
         $publishDetails = $details;
         $editorFamily = ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName));
         if (in_array($editorFamily, ['ebay', 'reverb', 'temu'], true)) {
@@ -2763,11 +2854,11 @@ class ListingManagerController extends Controller
                 }
                 $draft->save();
 
-                return response()->json([
+                return ['status' => 422, 'body' => [
                     'success' => false,
                     'message' => $result['message'],
                     'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
-                ], 422);
+                ]];
             }
 
             $draft->status = 'failed';
@@ -2776,11 +2867,11 @@ class ListingManagerController extends Controller
             $draft->notes = trim((string) $draft->notes . "\nPublish failed: " . ($result['message'] ?? 'Unknown error'));
             $draft->save();
 
-            return response()->json([
+            return ['status' => 422, 'body' => [
                 'success' => false,
                 'message' => $result['message'] ?? 'Publish failed.',
                 'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
-            ], 422);
+            ]];
         }
 
         unset($details['newegg_feed_request_id']);
@@ -2809,11 +2900,11 @@ class ListingManagerController extends Controller
         }
         ListingManagerProductSnapshots::refreshAfterResponse((string) $draft->seller_sku);
 
-        return response()->json([
+        return ['status' => 200, 'body' => [
             'success' => true,
             'message' => $result['message'] ?? ('Published to '.$channelName.'.'),
             'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
-        ]);
+        ]];
     }
 
     /**
@@ -3014,6 +3105,8 @@ class ListingManagerController extends Controller
                     $draft->notes = trim((string) $draft->notes."\nMoved back to Drafts: not published from Listing Manager.");
                 } elseif ($draft->status === 'listed') {
                     // keep listed if we had an id before unless explicitly cleared
+                } elseif ($draft->status === 'queued' && Cache::has(self::backgroundPublishLockKey((int) $draft->id))) {
+                    // background publish still running; it will set listed/failed itself
                 } else {
                     $ready = ListingManagerPublishStatus::readiness(
                         $draft->title,

@@ -532,6 +532,8 @@ class ListingManagerPublishStatus
         $uiStatus = 'Missing Info';
         if (in_array($status, ['listed', 'active'], true)) {
             $uiStatus = 'Active';
+        } elseif ($status === 'queued') {
+            $uiStatus = 'Publishing…';
         } elseif ($ready) {
             $uiStatus = 'Ready';
         }

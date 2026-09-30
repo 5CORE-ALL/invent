@@ -163,6 +163,15 @@ class ListingManagerPublishDispatcher
     }
 
     /**
+     * Channels whose publish polls a marketplace import (Mirakl P41/P42 can take minutes) and
+     * therefore runs as a background CLI process instead of inside the HTTP request.
+     */
+    public static function publishesInBackground(string $channelName): bool
+    {
+        return MiraklListingPublishService::isMiraklListingChannel($channelName);
+    }
+
+    /**
      * Normalized channel keys that can create or update a listing via API.
      *
      * @return list<string>
