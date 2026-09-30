@@ -26,14 +26,73 @@ class AlibabaSalesController extends Controller
         ]);
     }
 
+    /**
+     * Same L30 / profit math as /alibaba/daily-sales, for the Active Channel row.
+     *
+     * @return array{
+     *   ok: bool, l30_sales: float, l30_orders: int, qty: int,
+     *   l60_sales: float, l60_orders: int,
+     *   total_pft: float, total_cogs: float,
+     *   gpft_percent: float, roi_percent: float,
+     *   y_sales: float, l7_sales: float
+     * }
+     */
+    public static function channelSnapshot(): array
+    {
+        $self = app(self::class);
+        $now = Carbon::now(self::TZ);
+        $l30Start = $now->copy()->subDays(30);
+        $l30 = $self->summarizeLines($self->buildLineRows($self->ordersBetween($l30Start, null)));
+        $l60 = $self->summarizeLines($self->buildLineRows($self->ordersBetween($now->copy()->subDays(60), $l30Start)));
+        $yesterday = Carbon::yesterday(self::TZ);
+
+        return [
+            'ok' => true,
+            'l30_sales' => $l30['order_sales'],
+            'l30_orders' => $l30['orders'],
+            'qty' => $l30['qty'],
+            'l60_sales' => $l60['order_sales'],
+            'l60_orders' => $l60['orders'],
+            'total_pft' => $l30['pft'],
+            'total_cogs' => $l30['cogs'],
+            'gpft_percent' => $l30['line_sales'] > 0 ? ($l30['pft'] / $l30['line_sales']) * 100 : 0.0,
+            'roi_percent' => $l30['cogs'] > 0 ? ($l30['pft'] / $l30['cogs']) * 100 : 0.0,
+            'y_sales' => $self->salesForDate($yesterday),
+            'l7_sales' => $self->orderSalesBetween(
+                $yesterday->copy()->subDays(6)->startOfDay(),
+                $yesterday->copy()->endOfDay()
+            ),
+        ];
+    }
+
     public function getData(Request $request)
     {
         $start = Carbon::now(self::TZ)->subDays(30);
 
-        $rows = AlibabaOrderMetric::query()
+        return response()->json($this->buildLineRows($this->ordersBetween($start, null)));
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, AlibabaOrderMetric>
+     */
+    private function ordersBetween(Carbon $start, ?Carbon $end)
+    {
+        $query = AlibabaOrderMetric::query()
             ->where('order_date', '>=', $start)
-            ->orderByDesc('order_date')
-            ->get();
+            ->orderByDesc('order_date');
+        if ($end !== null) {
+            $query->where('order_date', '<', $end);
+        }
+
+        return $query->get();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, AlibabaOrderMetric>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function buildLineRows($rows): array
+    {
 
         $productIds = $rows->pluck('product_id')->filter()->unique()->values();
         $metricSkus = AlibabaMetric::query()->whereIn('product_id', $productIds)->pluck('sku', 'product_id');
@@ -100,7 +159,42 @@ class AlibabaSalesController extends Controller
             ];
         }
 
-        return response()->json($data);
+        return $data;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $lines
+     * @return array{order_sales: float, line_sales: float, orders: int, qty: int, pft: float, cogs: float}
+     */
+    private function summarizeLines(array $lines): array
+    {
+        $seen = [];
+        $orderSales = 0.0;
+        $lineSales = 0.0;
+        $qty = 0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        foreach ($lines as $line) {
+            $orderId = (string) ($line['order_id'] ?? '');
+            if ($orderId !== '' && ! isset($seen[$orderId])) {
+                $seen[$orderId] = true;
+                $orderSales += (float) ($line['total_amount'] ?? 0);
+            }
+            $quantity = (int) ($line['quantity'] ?? 0);
+            $qty += $quantity;
+            $lineSales += (float) ($line['price'] ?? 0) * $quantity;
+            $pft += (float) ($line['pft'] ?? 0);
+            $cogs += (float) ($line['cogs'] ?? 0);
+        }
+
+        return [
+            'order_sales' => round($orderSales, 2),
+            'line_sales' => round($lineSales, 2),
+            'orders' => count($seen),
+            'qty' => $qty,
+            'pft' => round($pft, 2),
+            'cogs' => round($cogs, 2),
+        ];
     }
 
     public function getColumnVisibility(Request $request)
@@ -179,6 +273,32 @@ class AlibabaSalesController extends Controller
         }
 
         return $total;
+    }
+
+    private function orderSalesBetween(Carbon $start, Carbon $end): float
+    {
+        $rows = AlibabaOrderMetric::query()
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->get();
+
+        $seen = [];
+        $total = 0.0;
+        foreach ($rows as $row) {
+            $orderId = (string) $row->order_id;
+            if ($orderId === '' || isset($seen[$orderId])) {
+                continue;
+            }
+            $seen[$orderId] = true;
+            $raw = is_array($row->raw_payload) ? $row->raw_payload : [];
+            $orderTotal = $this->orderGrandTotal($raw);
+            if ($orderTotal <= 0) {
+                $orderTotal = (float) $row->amount * max((float) $row->quantity, 0);
+            }
+            $total += $orderTotal;
+        }
+
+        return round($total, 2);
     }
 
     /**

@@ -147,6 +147,98 @@
             width: 100%;
             max-width: 100%;
         }
+
+        /* Keep the sheet inside the viewport. Toolbars wrap; the grid
+           scrolls sideways inside its own box instead of widening the page. */
+        .faas-sheet {
+            min-width: 0;
+            max-width: 100%;
+        }
+        .faas-sheet > .card {
+            max-width: 100%;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .faas-badge-row,
+        .faas-filter-row,
+        .faas-badges,
+        .faas-actions {
+            min-width: 0;
+        }
+        .faas-actions {
+            margin-left: auto;
+        }
+        #faas-search {
+            flex: 1 1 12rem;
+            min-width: 8rem;
+            max-width: 100%;
+        }
+        .faas-range {
+            flex: 0 1 auto;
+        }
+        .faas-range .form-control {
+            width: 64px;
+            text-align: center;
+        }
+        #faas-table-wrapper {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
+            height: calc(100vh - 260px);
+            min-height: 320px;
+            overflow: hidden;
+        }
+        #facebook-all-ads-table {
+            flex: 1 1 auto;
+            height: 100%;
+            min-height: 0;
+            min-width: 0;
+        }
+        #facebook-all-ads-table,
+        #facebook-all-ads-table .tabulator {
+            width: 100% !important;
+            max-width: 100%;
+            min-width: 0;
+        }
+        #facebook-all-ads-table .tabulator-tableholder {
+            overflow-x: auto !important;
+        }
+        #facebook-all-ads-table .tabulator-cell[tabulator-field="Campaign name"] {
+            overflow: hidden;
+        }
+
+        @media (max-width: 991.98px) {
+            #faas-table-wrapper {
+                height: 60vh;
+                min-height: 280px;
+            }
+            .faas-stat-badge {
+                font-size: 11px;
+                padding: 5px 8px;
+            }
+            .faas-actions {
+                margin-left: 0;
+            }
+            #faas-search {
+                flex: 1 1 100%;
+                min-width: 0;
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .faas-range .form-control {
+                width: 52px;
+            }
+            .faas-sheet .card-body {
+                padding-left: 0.65rem;
+                padding-right: 0.65rem;
+            }
+            .faas-sheet > .card > .card-body:last-child {
+                padding: 0;
+            }
+        }
     </style>
 @endsection
 
@@ -159,15 +251,11 @@
     <div class="toast-container"></div>
 
     <div class="row">
+        <div class="col-12 faas-sheet">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <div class="d-flex align-items-center justify-content-between flex-nowrap gap-2">
-                    {{-- Left group: title + sum-badges. flex-grow + overflow-x-auto
-                         lets the strip scroll horizontally on narrow screens
-                         instead of pushing the right-side controls onto a
-                         second line. --}}
-                    <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1"
-                         style="min-width:0;">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 faas-badge-row">
+                    <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1 faas-badges">
                         {{-- Live sums of the IMPR / CLK columns
                              across whatever rows are currently visible
                              (after search / header filters). Updated by
@@ -213,10 +301,7 @@
                               title="CPS = Spend / Sold (visible rows)">CPS:<span id="faasCpsValue">$0</span></span>
                     </div>
 
-                    {{-- Right group: stays on the same row as the badges
-                         (flex-shrink-0 prevents the badge strip from
-                         pushing it down). --}}
-                    <div class="d-flex align-items-center flex-nowrap gap-2 flex-shrink-0">
+                    <div class="d-flex align-items-center flex-wrap gap-2 faas-actions">
                         {{-- Column visibility (saved per-page in
                              channel_tabulator_column_settings, channel
                              "facebook_all_ads_sheet") --}}
@@ -310,7 +395,7 @@
                  one continuous chrome. --}}
             <div class="card-body py-2 border-top">
                 {{-- Order: Type · Search · Sbgt (2nd-last) · Stat (last) --}}
-                <div class="d-flex align-items-center flex-nowrap gap-2">
+                <div class="d-flex align-items-center flex-wrap gap-2 faas-filter-row">
                     {{-- Bulk-set the CH (channel) on the selected rows, or
                          every visible row when none are checked. --}}
                     <button type="button"
@@ -395,38 +480,38 @@
                            id="faas-search"
                            class="form-control form-control-sm"
                            placeholder="Search across all columns…"
-                           style="flex-grow:1; min-width:220px;">
+                           autocomplete="off">
 
                     {{-- CTR % min-max range filter. --}}
-                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by CTR %">
+                    <div class="d-flex align-items-center gap-1 faas-range" title="Filter rows by CTR %">
                         <span class="small fw-semibold text-muted">CTR%</span>
-                        <input type="number" id="faasCtrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasCtrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal">
                         <span class="text-muted">–</span>
-                        <input type="number" id="faasCtrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasCtrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal">
                     </div>
 
                     {{-- CVR % min-max range filter. --}}
-                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by CVR %">
+                    <div class="d-flex align-items-center gap-1 faas-range" title="Filter rows by CVR %">
                         <span class="small fw-semibold text-muted">CVR%</span>
-                        <input type="number" id="faasCvrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasCvrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal">
                         <span class="text-muted">–</span>
-                        <input type="number" id="faasCvrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasCvrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal">
                     </div>
 
                     {{-- Spend $ min-max range filter. --}}
-                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by Spend $">
+                    <div class="d-flex align-items-center gap-1 faas-range" title="Filter rows by Spend $">
                         <span class="small fw-semibold text-muted">Spend$</span>
-                        <input type="number" id="faasSpendMin" class="form-control form-control-sm" placeholder="Min" min="0" step="1" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasSpendMin" class="form-control form-control-sm" placeholder="Min" min="0" step="1" inputmode="decimal">
                         <span class="text-muted">–</span>
-                        <input type="number" id="faasSpendMax" class="form-control form-control-sm" placeholder="Max" min="0" step="1" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasSpendMax" class="form-control form-control-sm" placeholder="Max" min="0" step="1" inputmode="decimal">
                     </div>
 
                     {{-- ACOS % min-max range filter. --}}
-                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by ACOS %">
+                    <div class="d-flex align-items-center gap-1 faas-range" title="Filter rows by ACOS %">
                         <span class="small fw-semibold text-muted">ACOS%</span>
-                        <input type="number" id="faasAcosMin" class="form-control form-control-sm" placeholder="Min" min="0" step="1" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasAcosMin" class="form-control form-control-sm" placeholder="Min" min="0" step="1" inputmode="decimal">
                         <span class="text-muted">–</span>
-                        <input type="number" id="faasAcosMax" class="form-control form-control-sm" placeholder="Max" min="0" step="1" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasAcosMax" class="form-control form-control-sm" placeholder="Max" min="0" step="1" inputmode="decimal">
                     </div>
 
                     {{-- Sbgt-band multi-select (penultimate). --}}
@@ -478,10 +563,11 @@
             </div>
 
             <div class="card-body" style="padding: 0;">
-                <div id="faas-table-wrapper" style="height: calc(100vh - 230px); display: flex; flex-direction: column;">
-                    <div id="facebook-all-ads-table" style="flex: 1;"></div>
+                <div id="faas-table-wrapper">
+                    <div id="facebook-all-ads-table"></div>
                 </div>
             </div>
+        </div>
         </div>
     </div>
 
@@ -1822,11 +1908,12 @@
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
                         ]);
                         const minWidth = NARROW.has(c.field) ? 70
-                                       : (c.field === 'Campaign name' ? 220
+                                       : (c.field === 'Campaign name' ? 160
                                        : (c.field === 'CAMPAIGN ID'  ? 150
                                        : (c.field === 'Link'         ? 60
                                        : (c.field === 'Audit'        ? 80
                                        : (c.field === 'History'      ? 140 : 100)))));
+                        const maxWidth = c.field === 'Campaign name' ? 280 : undefined;
                         const widthGrow = NARROW.has(c.field) ? 0
                                        : (c.field === 'Campaign name' ? 3
                                        : (c.field === 'Link'         ? 0
@@ -1840,7 +1927,7 @@
                         // is meaningless (Audit is a button, History is
                         // a person+date string, Link is an icon).
                         const NO_SORT = new Set(['Audit', 'History', 'Link']);
-                        return {
+                        const col = {
                           
                             title:        title,
                             field:        c.field,
@@ -1852,6 +1939,8 @@
                             formatter:    formatter,
                             sorter:       sorter,
                         };
+                        if (maxWidth) col.maxWidth = maxWidth;
+                        return col;
                     });
                     // Prepend the Ad Type + CH dropdown columns. (Row index
                     // hidden by request — the data is still in the row
@@ -2002,7 +2091,24 @@
                     // (search box, header filters, ad-type filter, …).
                     tabulator.on('dataFiltered', updateMetricBadges);
                     tabulator.on('dataLoaded',   updateMetricBadges);
+                    bindFaasTableResize();
                 });
+        }
+
+        // Redraw when the card width changes (window resize, sidebar
+        // toggle) so columns stay inside the viewport.
+        function bindFaasTableResize() {
+            if (bindFaasTableResize.bound) return;
+            bindFaasTableResize.bound = true;
+            const wrap = document.getElementById('faas-table-wrapper');
+            if (!wrap || typeof ResizeObserver === 'undefined') return;
+            let timer = null;
+            new ResizeObserver(function () {
+                clearTimeout(timer);
+                timer = setTimeout(function () {
+                    if (tabulator) tabulator.redraw(true);
+                }, 150);
+            }).observe(wrap);
         }
 
         // ── Live sum badges (Impressions / Clicks) ────────────────────

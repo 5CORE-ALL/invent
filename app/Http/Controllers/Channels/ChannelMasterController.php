@@ -62,6 +62,7 @@ use App\Models\AmazonDataView;
 use App\Models\AmazonProductReview;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Http\Controllers\Sales\FacebookMarketplaceController;
+use App\Http\Controllers\Sales\AlibabaSalesController;
 use App\Http\Controllers\Sales\TikTokSalesController;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Models\AmazonOrder;
@@ -2217,6 +2218,11 @@ class ChannelMasterController extends Controller
             Log::warning('Fast-path TikTok 2 overlay failed: '.$e->getMessage());
         }
         try {
+            $rows = $this->overlayLiveAlibabaMetricsOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Alibaba overlay failed: '.$e->getMessage());
+        }
+        try {
             $rows = $this->overlayLivePlsMetricsOnChannelRows($rows);
         } catch (\Throwable $e) {
             Log::warning('Fast-path PLS overlay failed: '.$e->getMessage());
@@ -2349,6 +2355,7 @@ class ChannelMasterController extends Controller
             'temu3' => fn () => $this->computeTemu3YSalesLikeAmazon(),
             'temuthree' => fn () => $this->computeTemu3YSalesLikeAmazon(),
             'ebay' => fn () => $this->computeEbayYSalesLikeAmazon(1),
+            'alibaba' => fn () => (float) (AlibabaSalesController::channelSnapshot()['y_sales'] ?? 0),
             'ebaytwo' => fn () => $this->computeEbayYSalesLikeAmazon(2),
             'ebaythree' => fn () => $this->computeEbayYSalesLikeAmazon(3),
             'shopify' => fn () => $this->computeShopifyDirectYSalesLikeAmazon(),
@@ -3867,6 +3874,66 @@ class ChannelMasterController extends Controller
             if ($l60Sales > 0) {
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2) . '%';
             }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay /alibaba/daily-sales L30 / GPFT / ROI onto the Alibaba row.
+     * Margin is marketplace_percentages Alibaba. Ship is not included.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveAlibabaMetricsOnChannelRows(array $rows): array
+    {
+        try {
+            $live = AlibabaSalesController::channelSnapshot();
+        } catch (\Throwable $e) {
+            Log::warning('Alibaba live metrics overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        if (empty($live['ok'])) {
+            return $rows;
+        }
+
+        $l30Sales = (float) ($live['l30_sales'] ?? 0);
+        $l60Sales = (float) ($live['l60_sales'] ?? 0);
+        $totalPft = (float) ($live['total_pft'] ?? 0);
+        $totalCogs = (float) ($live['total_cogs'] ?? 0);
+        $gpftPct = (float) ($live['gpft_percent'] ?? 0);
+        $roiPct = (float) ($live['roi_percent'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0.0;
+        $l7Sales = (float) ($live['l7_sales'] ?? 0);
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($this->allMarketplaceSnapshotKey($name) !== 'alibaba') {
+                continue;
+            }
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L30 Orders'] = (int) ($live['l30_orders'] ?? 0);
+            $row['L60 Orders'] = (int) ($live['l60_orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = round($totalPft, 2);
+            $row['cogs'] = round($totalCogs, 2);
+            $row['Gprofit%'] = round($gpftPct, 1).'%';
+            $row['G Roi'] = round($roiPct, 1);
+            $row['N PFT'] = round($gpftPct, 1).'%';
+            $row['N ROI'] = round($roiPct, 1);
+            $row['Total Ad Spend'] = 0;
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+            $row['L7 Sales'] = round($l7Sales, 2);
+            $row['P-Sales'] = $this->projectedSalesFromL7($l7Sales);
+            $this->applyLiveYSalesAllowZero($row, (float) ($live['y_sales'] ?? 0));
         }
         unset($row);
 
@@ -8423,6 +8490,7 @@ class ChannelMasterController extends Controller
             'vinted'        => 'getVintedChannelData',
             'instagramshop' => 'getInstagramChannelData',
             'aliexpress' => 'getAliexpressChannelData',
+            'alibaba' => 'getAlibabaChannelData',
             'mercariwship' => 'getMercariWShipChannelData',
             'mercariwoship' => 'getMercariWoShipChannelData',
             'fbmarketplace' => 'getFbMarketplaceChannelData',
@@ -8656,6 +8724,7 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveAlibabaMetricsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemu2AdsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemuViewsOnChannelRows($finalData);
 
@@ -9760,6 +9829,7 @@ class ChannelMasterController extends Controller
         'vinted'        => 'getVintedChannelData',
         'instagramshop' => 'getInstagramChannelData',
         'aliexpress' => 'getAliexpressChannelData',
+        'alibaba' => 'getAlibabaChannelData',
         'mercariwship' => 'getMercariWShipChannelData',
         'mercariwoship' => 'getMercariWoShipChannelData',
         'fbmarketplace' => 'getFbMarketplaceChannelData',
@@ -14440,6 +14510,54 @@ class ChannelMasterController extends Controller
             'status' => 200,
             'message' => 'Depop channel data fetched successfully',
             'data' => $result,
+        ]);
+    }
+
+    public function getAlibabaChannelData(Request $request)
+    {
+        $live = AlibabaSalesController::channelSnapshot();
+        $l30Sales = (float) ($live['l30_sales'] ?? 0);
+        $l60Sales = (float) ($live['l60_sales'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
+        $gpft = (float) ($live['gpft_percent'] ?? 0);
+        $roi = (float) ($live['roi_percent'] ?? 0);
+        $channelData = ChannelMaster::where('channel', 'Alibaba')->first();
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Alibaba channel data fetched successfully',
+            'data' => [[
+                'Channel ' => 'Alibaba',
+                'L-60 Sales' => (int) round($l60Sales),
+                'L30 Sales' => (int) round($l30Sales),
+                'Growth' => round($growth, 2).'%',
+                'L60 Orders' => (int) ($live['l60_orders'] ?? 0),
+                'L30 Orders' => (int) ($live['l30_orders'] ?? 0),
+                'Qty' => (int) ($live['qty'] ?? 0),
+                'Gprofit%' => round($gpft, 1).'%',
+                'gprofitL60' => 0,
+                'G Roi' => round($roi, 1),
+                'G RoiL60' => 0,
+                'Total PFT' => round((float) ($live['total_pft'] ?? 0), 2),
+                'N PFT' => round($gpft, 1).'%',
+                'N ROI' => round($roi, 1),
+                'Ads%' => '0%',
+                'KW Spent' => 0,
+                'PT Spent' => 0,
+                'HL Spent' => 0,
+                'PMT Spent' => 0,
+                'Shopping Spent' => 0,
+                'SERP Spent' => 0,
+                'Total Ad Spend' => 0,
+                'type' => optional($channelData)->type ?? 'Wholesale',
+                'W/Ads' => optional($channelData)->w_ads ?? 0,
+                'NR' => optional($channelData)->nr ?? 0,
+                'Update' => optional($channelData)->update ?? 0,
+                'cogs' => round((float) ($live['total_cogs'] ?? 0), 2),
+                'base' => optional($channelData)->base ?? 0,
+                'sheet_link' => optional($channelData)->sheet_link ?? '/alibaba/daily-sales',
+                'ra' => optional($channelData)->ra ?? 0,
+            ]],
         ]);
     }
 
