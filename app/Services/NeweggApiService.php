@@ -2549,15 +2549,14 @@ class NeweggApiService
                 continue;
             }
             $required = ! empty($prop['required']);
+            // Every required property needs its option list (values are cached 6h); a property we
+            // cannot look up used to be filled with the SKU, which Newegg rejects for pick-lists.
             $allowed = [];
-            if ($required && $fetched < 4) {
+            if (($required || self::propertyHasProductData($name)) && $fetched < 24) {
                 $allowed = $this->getSubcategoryPropertyValues($subcategoryId, $name, $platform);
                 $fetched++;
             }
-            $value = $this->subcategoryPropertyValue($name, $fields, $allowed);
-            if ($value === '' && $required) {
-                $value = $allowed[0] ?? trim((string) ($fields['sku'] ?? $fields['mpn'] ?? 'N/A'));
-            }
+            $value = $this->subcategoryPropertyValue($name, $fields, $allowed, $required);
             if ($value !== '') {
                 $values[$name] = $value;
             }
@@ -2565,6 +2564,22 @@ class NeweggApiService
 
         return self::subcategoryPropertyXml((string) ($props[0]['subcategory_name'] ?? 'Item'), $values);
     }
+
+    /** Property names we can answer from product data (brand / model / color). */
+    protected static function propertyHasProductData(string $propertyName): bool
+    {
+        $n = strtolower($propertyName);
+
+        return str_contains($n, 'brand') || str_contains($n, 'manufacturer')
+            || str_contains($n, 'model') || str_contains($n, 'mpn') || str_contains($n, 'part')
+            || str_contains($n, 'color') || str_contains($n, 'colour');
+    }
+
+    /** Option labels that mean "does not apply", preferred over the first option of a pick-list. */
+    private const NEUTRAL_PROPERTY_OPTIONS = [
+        'n/a', 'na', 'not applicable', 'does not apply', 'none', 'not specified', 'unspecified',
+        'other', 'others', 'universal', 'generic', 'unbranded', 'all', 'no', 'multi', 'multicolor', 'multi-color',
+    ];
 
     /**
      * @param  array<string, string>  $properties
@@ -2598,7 +2613,7 @@ class NeweggApiService
     /**
      * @param  list<string>  $allowed
      */
-    protected function subcategoryPropertyValue(string $propertyName, array $fields, array $allowed): string
+    protected function subcategoryPropertyValue(string $propertyName, array $fields, array $allowed, bool $required = false): string
     {
         $n = strtolower($propertyName);
         $brand = $this->neweggManufacturer($fields);
@@ -2608,35 +2623,45 @@ class NeweggApiService
             $color = (string) $m[1];
         }
 
+        // Only brand / model / color can be answered from product data. Anything else (league,
+        // team, gender, size…) is unknown: pick a neutral option, never the SKU.
         $candidate = '';
         if (str_contains($n, 'brand') || str_contains($n, 'manufacturer')) {
             $candidate = $brand;
         } elseif (str_contains($n, 'model') || str_contains($n, 'mpn') || str_contains($n, 'part')) {
             $candidate = $sku;
         } elseif (str_contains($n, 'color') || str_contains($n, 'colour')) {
-            $candidate = $color !== '' ? $color : $brand;
-        } elseif (str_contains($n, 'type') || str_contains($n, 'gender') || str_contains($n, 'age')) {
-            $candidate = $allowed[0] ?? '';
-        } else {
-            $candidate = $allowed[0] ?? ($sku !== '' ? $sku : $brand);
+            $candidate = $color;
         }
 
+        $allowed = array_values(array_filter(array_map(static fn ($o) => trim((string) $o), $allowed), static fn ($o) => $o !== ''));
         if ($allowed !== []) {
-            foreach ($allowed as $opt) {
-                if (strcasecmp($opt, $candidate) === 0) {
-                    return $opt;
+            if ($candidate !== '') {
+                foreach ($allowed as $opt) {
+                    if (strcasecmp($opt, $candidate) === 0) {
+                        return $opt;
+                    }
+                }
+                foreach ($allowed as $opt) {
+                    if (stripos($opt, $candidate) !== false || stripos($candidate, $opt) !== false) {
+                        return $opt;
+                    }
                 }
             }
             foreach ($allowed as $opt) {
-                if ($candidate !== '' && stripos($opt, $candidate) !== false) {
+                if (in_array(strtolower($opt), self::NEUTRAL_PROPERTY_OPTIONS, true)) {
                     return $opt;
                 }
             }
 
-            return $allowed[0];
+            return $required ? $allowed[0] : '';
         }
 
-        return $candidate;
+        if ($candidate !== '') {
+            return $candidate;
+        }
+
+        return $required ? 'N/A' : '';
     }
 
     /**
