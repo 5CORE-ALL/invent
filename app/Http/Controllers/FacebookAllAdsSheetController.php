@@ -2420,13 +2420,13 @@ class FacebookAllAdsSheetController extends Controller
         // acosBudgetRule(). Placed at the end so the row reads as
         // "metrics → recommendation".
         ['title' => 'Sbgt',          'rule'    => 'acos_budget'],
-        // Audit + History — placeholder columns. The cell value comes
-        // from facebook_campaign_audits (latest row per campaign id);
-        // the projection writes `_audit_score`, `_audit_at`,
-        // `_audit_by`, `_audit_comments` onto each row and the JS
-        // formatters render the Audit button + History summary from
-        // those hidden fields.
-        ['title' => 'Audit',         'sources' => []],
+        // Audit Req + History — placeholder columns. The cell value
+        // comes from facebook_campaign_audits (latest row per campaign
+        // id); the projection writes `_audit_score`, `_audit_at`,
+        // `_audit_by`, `_audit_comments` onto each row. Paused rows
+        // with no saved audit flash "AUDIT NOW"; a saved audit turns
+        // the cell green and keeps the notes + timestamp.
+        ['title' => 'Audit Req',     'sources' => []],
         ['title' => 'History',       'sources' => []],
         // Campaign delivery state, sourced verbatim from Meta's Spend
         // export (column header: "Campaign delivery"). Values include

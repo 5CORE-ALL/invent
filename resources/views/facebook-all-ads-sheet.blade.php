@@ -123,6 +123,35 @@
         .faas-stat-badge--sold  { background: #8b5cf6; }   /* purple  */
         .faas-stat-badge--acos  { background: #ea580c; }   /* orange  */
         .faas-stat-badge--tcos  { background: #7c3aed; }   /* violet — matches /advertisement-master */
+        @keyframes faas-audit-flash {
+            0%, 100% { opacity: 1; }
+            50%      { opacity: 0.2; }
+        }
+        .faas-audit-now {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            color: #dc2626;
+            font-weight: 800;
+            font-size: 11px;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            animation: faas-audit-flash 0.9s ease-in-out infinite;
+        }
+        .faas-audit-done {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            color: #16a34a;
+            font-weight: 700;
+            font-size: 11px;
+            line-height: 1.2;
+            cursor: pointer;
+            text-align: center;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .faas-audit-now { animation: none; }
+        }
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
         .faas-stat-badge--cps   { background: #0d9488; }   /* teal    */
@@ -714,7 +743,7 @@
                     <strong>&gt;Spend</strong> minimum. Rows are checked <strong>top to bottom</strong>;
                     the first band that matches both the campaign's ACOS and Spend
                     gets its Sbgt. <strong>Sbgt 0</strong> pauses the campaign on Push
-                    and shows <strong>Danger / Need Audit</strong> in the Audit column.
+                    and flashes <strong>AUDIT NOW</strong> in the Audit Req column.
                     Use <code>9999</code> on ACOS <em>To</em> for a catch-all.
                 </p>
 
@@ -851,7 +880,7 @@
             <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
                 <h5 class="modal-title" id="auditModalLabel">
                     <i class="fas fa-clipboard-check me-2"></i>
-                    Campaign Audit — <span id="auditCampaignName" class="fw-normal opacity-75"></span>
+                    Audit Req — <span id="auditCampaignName" class="fw-normal opacity-75"></span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -900,11 +929,12 @@
                     </button>
                 </div>
 
-                <label class="form-label small text-muted mb-1">Comments</label>
+                <label class="form-label small text-muted mb-1">Audit details</label>
                 <textarea id="auditComments"
                           class="form-control form-control-sm"
-                          rows="3"
-                          placeholder="Notes about what looked off or what to revisit next time…"></textarea>
+                          rows="4"
+                          placeholder="Record whatever you need to note for this audit…"></textarea>
+                <div class="form-text">Date and time are saved automatically with this entry.</div>
 
                 <hr class="my-3">
                 <h6 class="small text-uppercase text-muted mb-2">Audit history</h6>
@@ -1738,39 +1768,26 @@
                              + `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${text}</span>`
                              + `${copy}</span>`;
                     }
-                    // Audit column — small button that opens the audit
-                    // modal. Cell text shows the latest score (0–100%)
-                    // colour-coded green/amber/red. Empty for never-
-                    // audited campaigns ("Audit" prompt only).
-                    function formatAuditCell(cell) {
-                        const row   = cell.getRow().getData();
-                        const cid   = (row['CAMPAIGN ID'] ?? '').toString();
-                        const score = row._audit_score;
+                    function formatAuditReqCell(cell) {
+                        const row = cell.getRow().getData();
+                        const cid = (row['CAMPAIGN ID'] ?? '').toString();
                         if (!cid || !/^\d{6,}$/.test(cid)) return '';
-                        if (row._pause) {
-                            return `<button type="button"
-                                            class="btn btn-sm py-0 px-2"
-                                            style="font-size:11px;background:#dc2626;color:#fff;font-weight:700;line-height:1.25;"
-                                            data-audit-cid="${cid}"
-                                            title="ACOS and spend hit the Sbgt 0 band — campaign should be paused">
-                                        Danger<br><span style="font-weight:600;">Need Audit</span>
-                                    </button>`;
+                        const paused = !!(row._pause) || /paus/i.test(String(row.Status || ''));
+                        if (paused && !row._audit_at) {
+                            return `<button type="button" class="faas-audit-now" data-audit-cid="${cid}"
+                                        title="This campaign is paused. Record the audit — the date and time are saved automatically.">AUDIT NOW</button>`;
                         }
-                        if (score == null) {
-                            return `<button type="button"
-                                            class="btn btn-sm btn-outline-primary py-0 px-2"
-                                            style="font-size:11px;"
-                                            data-audit-cid="${cid}">
-                                        <i class="fas fa-clipboard-check"></i> Audit
-                                    </button>`;
+                        if (row._audit_at) {
+                            const when = faasAuditStamp(row._audit_at);
+                            const esc = (s) => String(s || '')
+                                .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            const note = esc(row._audit_comments);
+                            const tip = note
+                                ? (when + ' — ' + note)
+                                : ('Audited ' + when + (row._audit_by ? ' by ' + esc(row._audit_by) : ''));
+                            return `<button type="button" class="faas-audit-done" data-audit-cid="${cid}" title="${tip}">Done<br><span style="font-weight:600;">${when}</span></button>`;
                         }
-                        const colour = score >= 80 ? '#16a34a'
-                                     : score >= 50 ? '#ca8a04'
-                                     : '#dc2626';
-                        return `<button type="button"
-                                        class="btn btn-sm py-0 px-2"
-                                        style="font-size:11px;background:${colour};color:#fff;font-weight:700;"
-                                        data-audit-cid="${cid}">${score}%</button>`;
+                        return '<span class="text-muted">—</span>';
                     }
                     // History column — last audit "MMM dd · name" with
                     // a tooltip carrying the comments. Empty when
@@ -1882,7 +1899,7 @@
                         else if (c.field === 'CVR')          formatter = formatCvrCell;
                         else if (c.field === 'Campaign name') formatter = formatCampaignNameCell;
                         else if (c.field === 'Link')         formatter = formatLinkCell;
-                        else if (c.field === 'Audit')        formatter = formatAuditCell;
+                        else if (c.field === 'Audit Req')   formatter = formatAuditReqCell;
                         else if (c.field === 'History')      formatter = formatHistoryCell;
 
                         // Numeric columns ship as already-formatted
@@ -1919,13 +1936,13 @@
                                        : (c.field === 'Campaign name' ? 160
                                        : (c.field === 'CAMPAIGN ID'  ? 150
                                        : (c.field === 'Link'         ? 60
-                                       : (c.field === 'Audit'        ? 80
+                                       : (c.field === 'Audit Req'   ? 110
                                        : (c.field === 'History'      ? 140 : 100)))));
                         const maxWidth = c.field === 'Campaign name' ? 280 : undefined;
                         const widthGrow = NARROW.has(c.field) ? 0
                                        : (c.field === 'Campaign name' ? 3
                                        : (c.field === 'Link'         ? 0
-                                       : (c.field === 'Audit'        ? 0
+                                       : (c.field === 'Audit Req'   ? 0
                                        : (c.field === 'History'      ? 0 : 1))));
                         // Link header — show just the icon, no word.
                         const title = c.field === 'Link'
@@ -1934,7 +1951,7 @@
                         // Action columns aren't sortable — sorting them
                         // is meaningless (Audit is a button, History is
                         // a person+date string, Link is an icon).
-                        const NO_SORT = new Set(['Audit', 'History', 'Link']);
+                        const NO_SORT = new Set(['Audit Req', 'History', 'Link']);
                         const col = {
                           
                             title:        title,
@@ -3513,7 +3530,7 @@
         // Initial load — pull saved column visibility first so the very
         // first table render already respects it (no flash of hidden cols).
         // ── Campaign Audit modal ─────────────────────────────────────
-        // Click handler: any "Audit" button (formatAuditCell) opens
+        // Click handler: AUDIT NOW / the green audit stamp opens
         // the modal seeded with the latest audit + history. Save
         // POSTs to /audit and refreshes just the row in-place so the
         // table doesn't have to be reloaded.
@@ -3806,7 +3823,13 @@
                     if (note) notes[cb.dataset.auditKey] = note;
                 }
             });
-            const comments = document.getElementById('auditComments').value || '';
+            const comments = (document.getElementById('auditComments').value || '').trim();
+            if (!comments && customItems.length === 0) {
+                const e = document.getElementById('auditError');
+                e.textContent = 'Enter the audit details before saving.';
+                e.classList.remove('d-none');
+                return Promise.resolve();
+            }
             const btn = opts.button || null;
             const original = btn ? btn.innerHTML : '';
             if (btn) {
@@ -3904,10 +3927,20 @@
                 .filter(c => c.field && ! c.field.startsWith('_'));
         }
 
+        function faasAuditStamp(at) {
+            const d = new Date(String(at || '').replace(' ', 'T'));
+            if (isNaN(d.getTime())) return String(at || '');
+            return d.toLocaleString('en-US', {
+                month: 'short', day: '2-digit',
+                hour: 'numeric', minute: '2-digit',
+            });
+        }
+
         function faasExportCellValue(row, field) {
-            if (field === 'Audit') {
-                if (row._pause) return 'Danger — Need Audit';
-                return row._audit_score != null ? `${row._audit_score}%` : '';
+            if (field === 'Audit Req') {
+                if (row._audit_at) return faasAuditStamp(row._audit_at);
+                if (row._pause || /paus/i.test(String(row.Status || ''))) return 'AUDIT NOW';
+                return '';
             }
             if (field === 'History') {
                 if (! row._audit_at) return '';

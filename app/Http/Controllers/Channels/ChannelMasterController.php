@@ -194,6 +194,8 @@ class ChannelMasterController extends Controller
             'TikTok Shop 2' => '/tiktok-2-pricing',
             'Tiktok Shop 2' => '/tiktok-2-pricing',
             'Depop' => '/depop/pricing',
+            'Shopify B2B' => '/shopify-b2b/daily-sales',
+            'ShopifyB2B' => '/shopify-b2b/daily-sales',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -2221,6 +2223,11 @@ class ChannelMasterController extends Controller
             $rows = $this->overlayLiveAlibabaMetricsOnChannelRows($rows);
         } catch (\Throwable $e) {
             Log::warning('Fast-path Alibaba overlay failed: '.$e->getMessage());
+        }
+        try {
+            $rows = $this->overlayLiveShopifyB2BMetricsOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Shopify B2B overlay failed: '.$e->getMessage());
         }
         try {
             $rows = $this->overlayLivePlsMetricsOnChannelRows($rows);
@@ -4286,7 +4293,8 @@ class ChannelMasterController extends Controller
 
     /**
      * Overlay live Shopify B2B L30 sales / profit from shopify_b2b_daily_data
-     * (same source as /shopify-b2b-pricing badges) onto the Active Channel row.
+     * (business5core.com orders, same source as /shopify-b2b/daily-sales)
+     * onto the Active Channel row.
      */
     private function overlayLiveShopifyB2BMetricsOnChannelRows(array $rows): array
     {
@@ -4307,13 +4315,18 @@ class ChannelMasterController extends Controller
         $totalCogs = (float) ($live['total_cogs'] ?? 0);
         $gpftPct = (float) ($live['gpft_pct'] ?? ($l30Sales > 0 ? ($totalPft / $l30Sales) * 100 : 0));
         $groi = (float) ($live['groi_pct'] ?? ($totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0));
+        $l7Sales = $this->computeShopifyB2xL7SalesLikeAmazon(true);
+        $ySales = $this->computeShopifyB2xYSalesLikeAmazon(true);
 
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if (strcasecmp($name, 'Shopify B2B') !== 0 && strcasecmp($name, 'ShopifyB2B') !== 0) {
+            if ($this->allMarketplaceSnapshotKey($name) !== 'shopifyb2b') {
                 continue;
             }
 
+            if (empty($row['missing_link'])) {
+                $row['missing_link'] = '/shopify-b2b/daily-sales';
+            }
             $row['L30 Sales'] = (int) round($l30Sales);
             $row['L30 Orders'] = (int) ($live['l30_orders'] ?? 0);
             $row['Qty'] = (int) ($live['qty'] ?? 0);
@@ -4326,6 +4339,13 @@ class ChannelMasterController extends Controller
             $row['Total Ad Spend'] = 0;
             $row['Ads%'] = '0%';
             $row['TACOS %'] = '0%';
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = round((float) $l7Sales, 2);
+                $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales']);
+            }
+            if ($ySales !== null) {
+                $this->applyLiveYSalesAllowZero($row, $ySales);
+            }
         }
         unset($row);
 
