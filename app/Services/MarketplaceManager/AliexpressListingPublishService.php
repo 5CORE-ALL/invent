@@ -423,10 +423,81 @@ class AliexpressListingPublishService
     }
 
     /**
+     * Ask AliExpress what a product id currently is.
+     *
+     * checked=false means the API could not answer (network, auth); found=false with checked=true
+     * means AliExpress no longer has the product. status is product_status_type as returned
+     * (onSelling / auditing / offline / editingRequired …), skus the SKU codes on the product.
+     *
+     * @return array{checked: bool, found: bool, status: string, skus: list<string>, message: string}
+     */
+    public function liveProductStatus(string $productId): array
+    {
+        $productId = trim($productId);
+        $none = ['checked' => false, 'found' => false, 'status' => '', 'skus' => [], 'message' => ''];
+        if ($productId === '' || ! ctype_digit($productId)) {
+            return $none + ['message' => 'Not an AliExpress product id.'];
+        }
+        if (! $this->api->isConfigured()) {
+            return ['message' => 'AliExpress API credentials missing.'] + $none;
+        }
+
+        $info = $this->api->getProductInfo($productId);
+        if (empty($info['success'])) {
+            $apiMessage = trim((string) ($info['message'] ?? ''));
+            $gone = (bool) preg_match('/not\s+(exist|found)|no\s+such|deleted|invalid\s+product|does\s+not\s+belong/i', $apiMessage);
+
+            return ['checked' => $gone, 'found' => false, 'status' => '', 'skus' => [], 'message' => $apiMessage];
+        }
+
+        $data = is_array($info['data'] ?? null) ? $info['data'] : [];
+        $status = trim((string) ($data['product_status_type'] ?? $data['productStatusType'] ?? $data['product_status'] ?? ''));
+        $skus = [];
+        foreach ($this->api->extractSkuRowsFromProductInfo($data, $productId) as $row) {
+            $code = trim((string) ($row['sku'] ?? ''));
+            if ($code !== '' && $code !== $productId && ! in_array($code, $skus, true)) {
+                $skus[] = $code;
+            }
+        }
+        $found = $data !== [] && ! in_array(strtolower($status), ['service_delete', 'deleted', 'delete'], true);
+
+        return ['checked' => true, 'found' => $found, 'status' => $status, 'skus' => $skus, 'message' => ''];
+    }
+
+    /**
+     * onSelling (On Sale tab) or auditing (Under Review) count as live; offline (Unavailable),
+     * editingRequired (Failed) and drafts do not.
+     */
+    public static function isSellableStatus(string $status): bool
+    {
+        return in_array(strtolower(trim($status)), ['onselling', 'on_selling', 'auditing', 'under_review'], true);
+    }
+
+    /**
+     * @param  list<string>  $productSkus
+     */
+    private function productSkusContain(array $productSkus, string $sku): bool
+    {
+        $wantNorm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $wantCompact = AliexpressListingCounts::compactSku($sku);
+        foreach ($productSkus as $code) {
+            if ($wantNorm !== '' && ShopifySku::normalizeSkuForShopifyLookup($code) === $wantNorm) {
+                return true;
+            }
+            if ($wantCompact !== '' && AliexpressListingCounts::compactSku($code) === $wantCompact) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Listing Manager publish of a SKU that aliexpress_metric / pricing already maps to a product id.
-     * When AliExpress still has that product, push the draft's title / images / description onto it
-     * and report success so the draft moves to Active. Returns ['stale' => true] when AliExpress no
-     * longer knows the product (caller publishes it as new), null when the SKU is not mapped at all.
+     * When AliExpress still sells that product (or it can be put back on sale), push the draft's
+     * title / images / description onto it and report success so the draft moves to Active.
+     * Returns ['stale' => true] when AliExpress no longer has the product or the product does not
+     * carry this SKU (caller publishes it as new), null when the SKU is not mapped at all.
      *
      * @param  list<string>  $images
      * @return array<string, mixed>|null
@@ -442,27 +513,54 @@ class AliexpressListingPublishService
             return null;
         }
 
-        $info = $this->api->getProductInfo($productId);
-        if (empty($info['success'])) {
-            $apiMessage = trim((string) ($info['message'] ?? ''));
-            if (preg_match('/not\s+(exist|found)|no\s+such|deleted|invalid\s+product|does\s+not\s+belong/i', $apiMessage)) {
-                Log::info('AliExpress publish: mapped product no longer exists, publishing as new', ['sku' => $sku, 'product_id' => $productId, 'message' => $apiMessage]);
-
-                return ['stale' => true];
-            }
-
+        $live = $this->liveProductStatus($productId);
+        if (! $live['checked']) {
             return [
                 'success' => false,
                 'message' => $sku.' is mapped to AliExpress product '.$productId.' but AliExpress could not confirm it'
-                    .($apiMessage !== '' ? ': '.$apiMessage : '.').' Try again, or remove the aliexpress_metric row if the product was deleted.',
+                    .($live['message'] !== '' ? ': '.$live['message'] : '.').' Try again, or remove the aliexpress_metric row if the product was deleted.',
             ];
         }
+        if (! $live['found']) {
+            Log::info('AliExpress publish: mapped product no longer exists, publishing as new', ['sku' => $sku, 'product_id' => $productId, 'message' => $live['message']]);
 
-        $data = is_array($info['data'] ?? null) ? $info['data'] : [];
-        $status = trim((string) ($data['product_status_type'] ?? ''));
-        if ($data === [] || in_array(strtolower($status), ['service_delete', 'deleted', 'delete'], true)) {
             return ['stale' => true];
         }
+        if ($live['skus'] !== [] && ! $this->productSkusContain($live['skus'], $sku)) {
+            Log::info('AliExpress publish: mapped product does not carry this SKU, publishing as new', ['sku' => $sku, 'product_id' => $productId, 'product_skus' => $live['skus']]);
+
+            return ['stale' => true];
+        }
+
+        $status = $live['status'];
+        $broughtOnline = false;
+        if (! self::isSellableStatus($status)) {
+            $lower = strtolower($status);
+            if ($lower === 'offline' || $lower === '') {
+                $online = $this->api->onlineProducts([$productId]);
+                if ((int) ($online['online'] ?? 0) > 0) {
+                    $broughtOnline = true;
+                    $status = 'onSelling';
+                } else {
+                    $errors = array_filter(array_map('strval', is_array($online['errors'] ?? null) ? $online['errors'] : []));
+                    $why = $errors !== [] ? implode('; ', $errors) : trim((string) ($online['message'] ?? 'AliExpress rejected the request'));
+
+                    return [
+                        'success' => false,
+                        'message' => $sku.' is on AliExpress as product #'.$productId.' but it is offline (Unavailable tab) and could not be put back on sale: '.$why
+                            .'. Fix it in Seller Center, or delete that product there and publish again.',
+                    ];
+                }
+            } else {
+                return [
+                    'success' => false,
+                    'message' => $sku.' is on AliExpress as product #'.$productId.' with status "'.$status.'" (not on sale). '
+                        .'Fix it in Seller Center (Failed / Draft tab), or delete that product there and publish again.',
+                ];
+            }
+        }
+
+        $this->rememberLiveStatus($productId, $sku, $status);
 
         $updated = [];
         $warnings = [];
@@ -484,7 +582,9 @@ class AliexpressListingPublishService
         }
         $this->forgetListingCaches();
 
-        $message = $sku.' is already on AliExpress as product #'.$productId.($status !== '' ? ' ('.$status.')' : '').' — draft linked to it.';
+        $message = $broughtOnline
+            ? $sku.' was offline on AliExpress as product #'.$productId.' — put back on sale and draft linked to it.'
+            : $sku.' is already on AliExpress as product #'.$productId.($status !== '' ? ' ('.$status.')' : '').' — draft linked to it.';
         if ($updated !== []) {
             $message .= ' Updated '.implode(', ', $updated).' from the draft.';
         }
@@ -1562,6 +1662,26 @@ class AliexpressListingPublishService
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+    }
+
+    /**
+     * Store the status AliExpress just reported so grid counts stop trusting a stale sync row.
+     */
+    private function rememberLiveStatus(string $productId, string $sku, string $status): void
+    {
+        if ($productId === '' || $status === '' || ! Schema::hasTable('aliexpress_metric') || ! Schema::hasColumn('aliexpress_metric', 'listing_status')) {
+            return;
+        }
+        try {
+            AliexpressMetric::query()
+                ->where('product_id', $productId)
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))]);
+                })
+                ->update(['listing_status' => $status]);
+        } catch (\Throwable $e) {
+            Log::warning('AliExpress live status persist failed', ['sku' => $sku, 'product_id' => $productId, 'error' => $e->getMessage()]);
         }
     }
 

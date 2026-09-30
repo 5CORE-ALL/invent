@@ -20,6 +20,7 @@ use App\Services\NeweggApiService;
 use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\WayfairApiService;
+use App\Services\MarketplaceManager\AliexpressListingPublishService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
 use App\Services\MarketplaceManager\SheinListingPublishService;
 use App\Services\MarketplaceManager\WayfairListingPublishService;
@@ -2930,7 +2931,39 @@ class ListingManagerController extends Controller
             $requiresAppPublish = ListingManagerPublishStatus::requiresAppPublishForActive($channelName);
             $publishedFromApp = ListingManagerPublishStatus::wasPublishedFromListingManager($draft->notes);
 
-            if ($result['listed'] && ! $requiresAppPublish) {
+            // aliexpress_metric can lag Seller Center; for Active AliExpress rows ask the API directly.
+            $aliexpressGone = '';
+            if (ListingChannelCounts::normalize($channelName) === 'aliexpress') {
+                $candidateId = $draft->status === 'listed' ? trim((string) $draft->external_listing_id) : '';
+                if ($candidateId === '') {
+                    $candidateId = trim((string) ($result['listing_id'] ?? ''));
+                }
+                if (ctype_digit($candidateId)) {
+                    $live = app(AliexpressListingPublishService::class)->liveProductStatus($candidateId);
+                    if ($live['checked'] && (! $live['found'] || ! AliexpressListingPublishService::isSellableStatus($live['status']))) {
+                        $aliexpressGone = $live['found']
+                            ? 'AliExpress product #'.$candidateId.' is "'.$live['status'].'" (not on sale).'
+                            : 'AliExpress no longer has product #'.$candidateId.'.';
+                        $result = ['listed' => false, 'listing_id' => null, 'source' => 'aliexpress_api'];
+                    }
+                }
+            }
+
+            if ($aliexpressGone !== '' && $draft->status === 'listed') {
+                $ready = ListingManagerPublishStatus::readiness(
+                    $draft->title,
+                    $draft->price,
+                    $draft->quantity,
+                    is_array($draft->listing_details) ? $draft->listing_details : [],
+                    'draft',
+                    $channelName
+                );
+                $draft->status = $ready['ready'] ? 'ready' : 'draft';
+                $draft->listed_at = null;
+                $draft->external_listing_id = null;
+                $draft->notes = trim((string) $draft->notes."\nMoved back to Drafts: ".$aliexpressGone);
+                $stillMissing++;
+            } elseif ($result['listed'] && ! $requiresAppPublish) {
                 $draft->status = 'listed';
                 $draft->external_listing_id = $result['listing_id'];
                 if ($isAmazon && trim((string) $result['listing_id']) !== '') {
