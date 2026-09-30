@@ -128,6 +128,44 @@ class ListingManagerPublishStatus
     }
 
     /**
+     * Does the marketplace catalog already have this SKU (active OR inactive)?
+     *
+     * "Active" in Listing Manager is deliberately strict for app-only channels, but an update
+     * (images, title, price) must still be possible for a product that exists on the marketplace
+     * — e.g. a Newegg item that is inactive because it has no images yet.
+     *
+     * @return array{exists: bool, listing_id: ?string, state: string, source: string}
+     */
+    public static function existsOnMarketplace(string $channelName, string $sku): array
+    {
+        $key = ListingChannelCounts::normalize($channelName);
+        $live = self::check($channelName, $sku);
+        $exists = (bool) ($live['listed'] ?? false);
+        $listingId = $exists ? (string) ($live['listing_id'] ?? '') : null;
+        $state = $exists ? 'unknown' : 'missing';
+
+        if ($exists && in_array($key, ['newegg', 'neweggb2c', 'neweggb2b'], true)) {
+            try {
+                $details = app(\App\Services\MarketplaceManager\NeweggLiveListingsService::class)
+                    ->liveDetailsByProductIds(array_filter([$listingId, trim($sku)]));
+                $row = $details[$listingId] ?? $details[trim($sku)] ?? null;
+                if (is_array($row) && in_array($row['state'] ?? '', ['active', 'inactive'], true)) {
+                    $state = $row['state'];
+                }
+            } catch (\Throwable) {
+                // state stays unknown
+            }
+        }
+
+        return [
+            'exists' => $exists,
+            'listing_id' => $listingId !== '' ? $listingId : null,
+            'state' => $state,
+            'source' => (string) ($live['source'] ?? 'none'),
+        ];
+    }
+
+    /**
      * Live Seller Central listing check (cached). listed only when Amazon returns an ASIN.
      *
      * @return array{checked: bool, found: bool, seller_sku?: string, asin?: string, status?: string|null, title?: string|null, quantity?: int|null, message?: string}
@@ -534,6 +572,9 @@ class ListingManagerPublishStatus
             $uiStatus = 'Active';
         } elseif ($status === 'queued') {
             $uiStatus = 'Publishing…';
+        } elseif ($status === 'failed') {
+            // A failed publish must not look like "Ready" — the reason lives in the draft notes.
+            $uiStatus = 'Failed';
         } elseif ($ready) {
             $uiStatus = 'Ready';
         }

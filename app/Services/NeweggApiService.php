@@ -1892,12 +1892,16 @@ class NeweggApiService
                 'success' => true,
                 'message' => 'Connected existing Newegg listing.',
                 'item_number' => (string) $existing['item_number'],
+                'existing' => true,
             ];
         }
 
         $platform = strtolower(trim((string) ($fields['platform'] ?? 'b2c'))) === 'b2b' ? 'b2b' : 'b2c';
         $upc = $this->normalizeUpc((string) ($fields['upc'] ?? ''));
         $subcategoryId = trim((string) ($fields['subcategory_id'] ?? config('services.newegg.default_subcategory_id', '')));
+        if ($subcategoryId !== '') {
+            $fields['subcategory_id'] = $subcategoryId;
+        }
 
         $pendingId = trim((string) Cache::get($this->pendingNeweggFeedCacheKey($platform, $sku), ''));
         if ($pendingId === '') {
@@ -1907,17 +1911,12 @@ class NeweggApiService
             Cache::put($this->pendingNeweggFeedCacheKey($platform, $sku), $pendingId, now()->addDays(7));
             $resumed = $this->resolveSubmittedNeweggItem($sku, $pendingId, $platform);
             if (! empty($resumed['success']) || ! empty($resumed['terminal']) || ! empty($resumed['still_processing'])) {
-                if (! empty($resumed['success']) || ! empty($resumed['terminal'])) {
-                    Cache::forget($this->pendingNeweggFeedCacheKey($platform, $sku));
-                }
-
-                return $resumed;
+                return $this->afterNeweggFeedResolved($sku, $fields, $platform, $resumed);
             }
         }
 
         $submitted = null;
         if ($subcategoryId !== '') {
-            $fields['subcategory_id'] = $subcategoryId;
             $submitted = $this->submitItemCreateFeed($sku, $fields, $platform);
         } elseif ($upc !== '') {
             $submitted = $this->submitExistingItemFeed($sku, $fields, $platform);
@@ -1939,11 +1938,142 @@ class NeweggApiService
         }
 
         $resolved = $this->resolveSubmittedNeweggItem($sku, $requestId, $platform);
-        if (! empty($resolved['success']) || ! empty($resolved['terminal'])) {
-            Cache::forget($this->pendingNeweggFeedCacheKey($platform, $sku));
+
+        return $this->afterNeweggFeedResolved($sku, $fields, $platform, $resolved);
+    }
+
+    /**
+     * Clear the pending feed once Newegg has answered, and when the rejection is the
+     * "catalog links this MPN/UPC to a removed product" case, resubmit with a distinct key.
+     *
+     * @param  array<string, mixed>  $fields
+     * @param  array{success: bool, message: string, item_number?: string, request_id?: string, still_processing?: bool, terminal?: bool}  $resolved
+     * @return array{success: bool, message: string, item_number?: string, request_id?: string, still_processing?: bool, terminal?: bool}
+     */
+    protected function afterNeweggFeedResolved(string $sku, array $fields, string $platform, array $resolved): array
+    {
+        if (! empty($resolved['still_processing'])) {
+            return $resolved;
+        }
+        Cache::forget($this->pendingNeweggFeedCacheKey($platform, $sku));
+        if (! empty($resolved['success'])) {
+            Cache::forget($this->neweggCreateAttemptCacheKey($platform, $sku));
+
+            return $resolved;
+        }
+        if (! empty($resolved['terminal'])) {
+            return $this->retryAfterDeadCatalogMatch($sku, $fields, $platform, $resolved);
         }
 
         return $resolved;
+    }
+
+    /**
+     * Newegg matches Manufacturer + Manufacturer Part # and/or UPC against its catalog and lists the
+     * SKU under the matched product. When that product was removed, item creation fails with
+     * "ParentItemNumber: 'xxx' does not exist" no matter how many times the same data is sent.
+     */
+    public static function isDeadCatalogMatchError(string $message): bool
+    {
+        return (bool) preg_match('/parent\s*item\s*(number)?\s*:?\s*\'?[^\'\s]*\'?\s*(does not|doesn\'t|do not) exist/i', $message);
+    }
+
+    /** Newegg internal item number quoted in the rejection, e.g. 0VU-00MH-000M8. */
+    public static function deadCatalogItemNumber(string $message): string
+    {
+        return preg_match('/parent\s*item\s*(?:number)?\s*:?\s*\'([^\']+)\'/i', $message, $m) ? trim($m[1]) : '';
+    }
+
+    public static function alternateManufacturerPartNumber(string $sku, int $attempt): string
+    {
+        $suffix = trim((string) config('services.newegg.alternate_mpn_suffix', '-5C'));
+        if ($suffix === '') {
+            $suffix = '-5C';
+        }
+
+        return trim($sku).$suffix.($attempt > 1 ? $attempt : '');
+    }
+
+    protected function neweggCreateAttemptCacheKey(string $platform, string $sku): string
+    {
+        return 'newegg-item-feed-attempt:'.$platform.':'.strtoupper(preg_replace('/\s+/', ' ', trim($sku)) ?? trim($sku));
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     * @param  array{success: bool, message: string, request_id?: string, terminal?: bool}  $failed
+     * @return array{success: bool, message: string, request_id?: string, still_processing?: bool, terminal?: bool}
+     */
+    protected function retryAfterDeadCatalogMatch(string $sku, array $fields, string $platform, array $failed): array
+    {
+        $message = trim((string) ($failed['message'] ?? ''));
+        $attemptKey = $this->neweggCreateAttemptCacheKey($platform, $sku);
+        if (! self::isDeadCatalogMatchError($message)) {
+            Cache::forget($attemptKey);
+
+            return $failed;
+        }
+
+        $deadItem = self::deadCatalogItemNumber($message);
+        $deadLabel = $deadItem !== '' ? ' ('.$deadItem.')' : '';
+        $subcategoryId = trim((string) ($fields['subcategory_id'] ?? ''));
+        $upc = $this->normalizeUpc((string) ($fields['upc'] ?? ''));
+        $attempt = (int) Cache::get($attemptKey, 0);
+        $maxAttempts = $upc !== '' ? 2 : 1;
+        $guidance = ' Newegg\'s catalog links this manufacturer part number'.($upc !== '' ? '/UPC' : '')
+            .' to a product that was removed'.$deadLabel.', so nothing can be created under it.'
+            .' Ask Newegg (datafeeds@newegg.com) to unlink that item number from '.$sku
+            .', or create the item in Seller Portal > Items > Item Creation (search the UPC, choose Sell This) and publish again to connect it.';
+
+        if ($subcategoryId === '' || $attempt >= $maxAttempts) {
+            Cache::forget($attemptKey);
+
+            return [
+                'success' => false,
+                'terminal' => true,
+                'message' => $message.$guidance,
+                'request_id' => (string) ($failed['request_id'] ?? ''),
+            ];
+        }
+
+        $attempt++;
+        $retry = $fields;
+        $retry['mpn'] = self::alternateManufacturerPartNumber($sku, $attempt);
+        $dropUpc = $attempt >= 2;
+        if ($dropUpc) {
+            $retry['upc'] = '';
+        }
+        $submitted = $this->submitItemCreateFeed($sku, $retry, $platform);
+        if (empty($submitted['success'])) {
+            Cache::forget($attemptKey);
+
+            return [
+                'success' => false,
+                'terminal' => true,
+                'message' => $message.' Retry with manufacturer part number "'.$retry['mpn'].'" could not be submitted: '
+                    .trim((string) ($submitted['message'] ?? 'feed submit failed.')).$guidance,
+                'request_id' => (string) ($failed['request_id'] ?? ''),
+                'blocked_by_cloudflare' => ! empty($submitted['blocked_by_cloudflare']),
+            ];
+        }
+
+        $requestId = trim((string) ($submitted['request_id'] ?? ''));
+        Cache::put($attemptKey, $attempt, now()->addDays(7));
+        if ($requestId !== '') {
+            Cache::put($this->pendingNeweggFeedCacheKey($platform, $sku), $requestId, now()->addDays(7));
+        }
+
+        return [
+            'success' => false,
+            'still_processing' => true,
+            'request_id' => $requestId,
+            'message' => 'Newegg rejected '.$sku.' because its catalog links the '
+                .($dropUpc ? 'UPC and manufacturer part number' : 'manufacturer part number')
+                .' to a removed product'.$deadLabel.'. Resubmitted with manufacturer part number "'.$retry['mpn'].'"'
+                .($dropUpc ? ' and without the UPC' : '')
+                .($requestId !== '' ? ' (RequestId '.$requestId.')' : '')
+                .'. Click Publish again in a minute to check the result.',
+        ];
     }
 
     protected function pendingNeweggFeedCacheKey(string $platform, string $sku): string

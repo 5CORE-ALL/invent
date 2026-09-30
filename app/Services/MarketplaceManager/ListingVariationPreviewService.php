@@ -135,7 +135,7 @@ class ListingVariationPreviewService
                 ?: trim((string) ($categoryName ?? ''))
                 ?: ($categoryId !== null && $categoryId > 0 ? (string) $categoryId : null);
 
-            return $this->mirakl->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $code);
+            return $this->mirakl->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $code, $overrides);
         }
 
         $label = $this->channelLabel($channel);

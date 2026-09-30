@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Channels;
 
 use App\Models\AmazonOrder;
+use App\Models\ChannelMaster;
 use App\Models\Inventory;
 use App\Models\OrderFulfillmentManualOrder;
 use App\Models\OrderFulfillmentTracking;
@@ -571,6 +572,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'status' => (string) ($order->status ?: OrderFulfillmentManualOrder::STATUS_CREATED),
             'sku' => $this->inventoryLookupSku((string) $order->sku),
             'qty' => (int) ($order->qty ?: 1),
+            'unit_price' => $order->unit_price !== null ? (float) $order->unit_price : null,
             'inv' => null,
             'source_id' => (int) $order->id,
             'reference' => trim((string) ($order->reference ?? '')),
@@ -590,28 +592,58 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
-     * Marketplace names typed before, for the create form's suggestion list.
+     * Every marketplace we sell on, for the create form's dropdown: API channels
+     * from the Marketplace Manager registry, active rows of channel_master, and
+     * names already used on manual orders. De-duplicated case-insensitively.
      *
      * @return list<string>
      */
     protected function manualMarketplaceNames(): array
     {
-        if (! Schema::hasTable('order_fulfillment_manual_orders')) {
-            return [];
+        $names = [];
+        $add = function ($value) use (&$names): void {
+            $value = trim((string) $value);
+            if ($value === '') {
+                return;
+            }
+            $key = strtolower(preg_replace('/\s+/', ' ', $value));
+            if (! isset($names[$key])) {
+                $names[$key] = $value;
+            }
+        };
+
+        foreach (MarketplaceManagerRegistry::channels() as $channel) {
+            $add($channel['label'] ?? ($channel['slug'] ?? ''));
         }
+
         try {
-            return OrderFulfillmentManualOrder::query()
-                ->select('marketplace')
-                ->distinct()
-                ->orderBy('marketplace')
-                ->pluck('marketplace')
-                ->map(fn ($v) => trim((string) $v))
-                ->filter()
-                ->values()
-                ->all();
+            if (Schema::hasTable('channel_master')) {
+                ChannelMaster::query()
+                    ->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['active'])
+                    ->orderBy('channel')
+                    ->pluck('channel')
+                    ->each($add);
+            }
         } catch (\Throwable) {
-            return [];
+            // channel_master unavailable: fall back to the other sources
         }
+
+        try {
+            if (Schema::hasTable('order_fulfillment_manual_orders')) {
+                OrderFulfillmentManualOrder::query()
+                    ->select('marketplace')
+                    ->distinct()
+                    ->pluck('marketplace')
+                    ->each($add);
+            }
+        } catch (\Throwable) {
+            // manual table unavailable
+        }
+
+        $list = array_values($names);
+        usort($list, fn (string $a, string $b) => strcasecmp($a, $b));
+
+        return $list;
     }
 
     /**
@@ -676,7 +708,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
-     * @return list<array{sku: string, qty: int}>
+     * @return list<array{sku: string, qty: int, unit_price: float|null}>
      */
     protected function validatedManualOrderLines(Request $request): array
     {
@@ -684,6 +716,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'lines' => 'required|array|min:1|max:50',
             'lines.*.sku' => 'required|string|max:191',
             'lines.*.qty' => 'nullable|integer|min:1|max:100000',
+            'lines.*.price' => 'nullable|numeric|min:0|max:999999999',
         ]);
 
         $lines = [];
@@ -692,13 +725,69 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             if ($sku === '') {
                 continue;
             }
-            $lines[] = ['sku' => $sku, 'qty' => max(1, (int) ($line['qty'] ?? 1))];
+            $lines[] = [
+                'sku' => $sku,
+                'qty' => max(1, (int) ($line['qty'] ?? 1)),
+                'unit_price' => $this->priceOrNull($line['price'] ?? null),
+            ];
         }
         if ($lines === []) {
             throw \Illuminate\Validation\ValidationException::withMessages(['lines' => 'Add at least one SKU.']);
         }
 
         return $lines;
+    }
+
+    protected function priceOrNull(mixed $value): ?float
+    {
+        if ($value === null || trim((string) $value) === '' || ! is_numeric($value)) {
+            return null;
+        }
+
+        return round((float) $value, 2);
+    }
+
+    /**
+     * Order total = sum of unit price × qty over the given lines; null when no
+     * line has a price.
+     *
+     * @param  iterable<array{qty: int, unit_price: float|null}|OrderFulfillmentManualOrder>  $lines
+     */
+    protected function manualOrderTotal(iterable $lines): ?float
+    {
+        $total = 0.0;
+        $priced = false;
+        foreach ($lines as $line) {
+            $price = $line instanceof OrderFulfillmentManualOrder ? $line->unit_price : ($line['unit_price'] ?? null);
+            $qty = $line instanceof OrderFulfillmentManualOrder ? $line->qty : ($line['qty'] ?? 1);
+            if ($price === null) {
+                continue;
+            }
+            $priced = true;
+            $total += (float) $price * max(1, (int) $qty);
+        }
+
+        return $priced ? round($total, 2) : null;
+    }
+
+    /**
+     * Selling price for one unit from CP Master (Values.msrp, else Values.map).
+     */
+    protected function productUnitPrice(?ProductMaster $product): ?float
+    {
+        if ($product === null) {
+            return null;
+        }
+        $values = is_array($product->Values)
+            ? $product->Values
+            : (is_string($product->Values) ? (json_decode($product->Values, true) ?: []) : []);
+        foreach (['msrp', 'map'] as $key) {
+            if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
+                return round((float) $values[$key], 2);
+            }
+        }
+
+        return null;
     }
 
     public function storeManualOrder(Request $request): JsonResponse
@@ -718,12 +807,18 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             ], 422);
         }
 
+        // The order amount is the sum of the item prices unless the user typed one.
+        if ($header['amount'] === null) {
+            $header['amount'] = $this->manualOrderTotal($lines);
+        }
+
         $rows = [];
         DB::transaction(function () use ($header, $lines, &$rows): void {
             foreach ($lines as $line) {
                 $order = OrderFulfillmentManualOrder::query()->create($header + [
                     'sku' => $line['sku'],
                     'qty' => $line['qty'],
+                    'unit_price' => $line['unit_price'],
                     'status' => OrderFulfillmentManualOrder::STATUS_CREATED,
                     'created_by' => auth()->id(),
                 ]);
@@ -752,9 +847,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $request->validate([
             'sku' => 'nullable|string|max:191',
             'qty' => 'nullable|integer|min:1|max:100000',
+            'price' => 'nullable|numeric|min:0|max:999999999',
         ]);
         $sku = trim((string) $request->input('sku', ''));
         $qty = (int) $request->input('qty', 0);
+        $hasPrice = $request->has('price');
+        $price = $this->priceOrNull($request->input('price'));
 
         $siblings = OrderFulfillmentManualOrder::query()
             ->whereRaw('LOWER(marketplace) = ?', [strtolower((string) $order->marketplace)])
@@ -762,9 +860,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             ->get();
 
         $rows = [];
-        DB::transaction(function () use ($siblings, $order, $header, $sku, $qty, &$rows): void {
+        DB::transaction(function () use ($siblings, $order, $header, $sku, $qty, $hasPrice, $price, &$rows): void {
             foreach ($siblings as $sibling) {
-                $sibling->fill($header);
                 if ((int) $sibling->id === (int) $order->id) {
                     if ($sku !== '') {
                         $sibling->sku = $sku;
@@ -772,7 +869,17 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                     if ($qty > 0) {
                         $sibling->qty = $qty;
                     }
+                    if ($hasPrice) {
+                        $sibling->unit_price = $price;
+                    }
                 }
+            }
+            // Blank amount → recompute the order total from every line of this order.
+            if ($header['amount'] === null) {
+                $header['amount'] = $this->manualOrderTotal($siblings);
+            }
+            foreach ($siblings as $sibling) {
+                $sibling->fill($header);
                 $sibling->save();
                 $rows[] = $this->manualRow($sibling);
             }
@@ -902,7 +1009,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 ->where('sku', 'NOT LIKE', 'PARENT%')
                 ->orderByRaw("CASE WHEN {$normalized} LIKE ? THEN 0 ELSE 1 END, LENGTH(sku), sku", [$prefix])
                 ->limit(20)
-                ->get(['sku', 'parent']);
+                ->get(['sku', 'parent', 'Values']);
         } catch (\Throwable $e) {
             report($e);
 
@@ -923,6 +1030,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'sku' => $sku,
                 'parent' => trim((string) ($product->parent ?? '')),
                 'inv' => $key !== '' && array_key_exists($key, $inv) ? $inv[$key] : null,
+                'price' => $this->productUnitPrice($product),
             ];
         }
 
@@ -932,6 +1040,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     protected function ensureManualOrdersTable(): void
     {
         if (Schema::hasTable('order_fulfillment_manual_orders')) {
+            if (! Schema::hasColumn('order_fulfillment_manual_orders', 'unit_price')) {
+                Schema::table('order_fulfillment_manual_orders', function ($table) {
+                    $table->decimal('unit_price', 12, 2)->nullable()->after('qty');
+                });
+            }
+
             return;
         }
 
@@ -942,6 +1056,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $table->dateTime('order_date');
             $table->string('sku', 191);
             $table->unsignedInteger('qty')->default(1);
+            $table->decimal('unit_price', 12, 2)->nullable();
             $table->boolean('paid')->default(true);
             $table->decimal('amount', 12, 2)->nullable();
             $table->string('reference', 128)->nullable();

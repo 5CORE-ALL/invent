@@ -3010,6 +3010,304 @@ trait MiraklMcmBulletImport
     }
 
     /**
+     * OF01 — create or update this shop's offer (price + stock) for a product it imported via P41.
+     *
+     * P41 only fills the operator's product catalog; nothing is sellable until an offer exists,
+     * so a Listing Manager publish must run this after the product pushes. The offer references
+     * the product by SHOP_SKU (the same shopSku sent in P41), which Mirakl links automatically —
+     * status WAITING_SYNCHRONIZATION_PRODUCT means the offer is accepted and waits for the product.
+     *
+     * @param  array{state_code?: string, product_id?: string, product_id_type?: string, upc?: string, leadtime_to_ship?: int|string, extra?: array<string, scalar>}  $options
+     * @return array{success: bool, message: string, import_id?: int, import_status?: string|null, offer_id?: string, offer_pending_product?: bool, response?: mixed}
+     */
+    public function upsertMiraklMcmOffer(string $sku, float $price, int $quantity, array $options = []): array
+    {
+        $label = $this->miraklMcmMarketplaceLabel();
+        $sku = trim($sku);
+        $price = round($price, 2);
+        if ($sku === '' || $price <= 0) {
+            return ['success' => false, 'message' => "{$label} OF01 needs a SKU and a price > 0."];
+        }
+        if ($this->miraklMcmApiKey() === null || $this->miraklMcmBaseUrl() === '') {
+            return [
+                'success' => false,
+                'message' => "{$this->miraklMcmApiKeyEnvName()} / MCM base URL are required for the {$label} offer (OF01).",
+            ];
+        }
+
+        $productIdType = strtoupper(trim((string) ($options['product_id_type']
+            ?? $this->miraklMcmConfig('mcm_offer_product_id_type', 'SHOP_SKU'))));
+        $productId = trim((string) ($options['product_id'] ?? ''));
+        if ($productId === '' && in_array($productIdType, ['UPC', 'EAN', 'GTIN'], true)) {
+            $productId = preg_replace('/\D+/', '', (string) ($options['upc'] ?? '')) ?: '';
+        }
+        if ($productId === '' || $productIdType === 'SHOP_SKU') {
+            $productId = $sku;
+            $productIdType = 'SHOP_SKU';
+        }
+        $stateCode = trim((string) ($options['state_code'] ?? ''));
+        if ($stateCode === '') {
+            $stateCode = $this->resolveMiraklMcmOfferStateCode();
+        }
+
+        $row = [
+            'sku' => $sku,
+            'product-id' => $productId,
+            'product-id-type' => $productIdType,
+            'price' => number_format($price, 2, '.', ''),
+            'quantity' => (string) max(0, $quantity),
+            'state' => $stateCode,
+            'update-delete' => '',
+        ];
+        $leadtime = $options['leadtime_to_ship'] ?? $this->miraklMcmConfig('mcm_offer_leadtime_to_ship');
+        if ($leadtime !== null && $leadtime !== '') {
+            $row['leadtime-to-ship'] = (string) (int) $leadtime;
+        }
+        // Operator-mandatory offer columns (logistic-class, shipping fields, …) come from config.
+        $extra = $this->miraklMcmConfig('mcm_offer_extra_columns', []);
+        $extra = is_array($extra) ? $extra : [];
+        foreach (array_merge($extra, is_array($options['extra'] ?? null) ? $options['extra'] : []) as $column => $value) {
+            $column = trim((string) $column);
+            if ($column !== '' && is_scalar($value)) {
+                $row[$column] = (string) $value;
+            }
+        }
+
+        $handle = fopen('php://temp', 'r+');
+        fputcsv($handle, array_keys($row), ';');
+        fputcsv($handle, array_values($row), ';');
+        rewind($handle);
+        $csv = "\xEF\xBB\xBF".(string) stream_get_contents($handle);
+        fclose($handle);
+
+        Log::info("{$label} MCM OF01 offer import", [
+            'sku' => $sku,
+            'price' => $row['price'],
+            'quantity' => $row['quantity'],
+            'state' => $stateCode,
+            'product_id_type' => $productIdType,
+            'columns' => array_keys($row),
+        ]);
+
+        $url = $this->miraklMcmBaseUrl().'/api/offers/imports';
+        $query = $this->miraklMcmQueryParams();
+        if ($query !== []) {
+            $url .= '?'.http_build_query($query);
+        }
+        try {
+            $response = Http::withoutVerifying()
+                ->withHeaders($this->miraklMcmAuthHeaders())
+                ->timeout(120)
+                ->attach(
+                    'file',
+                    $csv,
+                    'offers-'.preg_replace('/[^A-Za-z0-9]+/', '-', $sku).'.csv',
+                    ['Content-Type' => 'text/csv; charset=UTF-8']
+                )
+                ->post($url, ['import_mode' => 'NORMAL']);
+            $status = $response->status();
+            $body = $response->body();
+        } catch (\Throwable $e) {
+            Log::warning("{$label} MCM OF01 request failed", ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => "{$label} OF01 offer import failed: ".$e->getMessage()];
+        }
+
+        $json = json_decode($body, true);
+        Log::info("{$label} MCM OF01 response", ['sku' => $sku, 'status' => $status, 'response' => is_array($json) ? $json : mb_substr($body, 0, 1000)]);
+        if (! in_array($status, [200, 201], true)) {
+            return ['success' => false, 'message' => "{$label} OF01 offer import failed (HTTP {$status}): ".mb_substr($body, 0, 800)];
+        }
+        $importId = (int) ($json['import_id'] ?? 0);
+        if ($importId <= 0) {
+            return ['success' => false, 'message' => "{$label} OF01 offer import returned no import_id.", 'response' => $json];
+        }
+
+        $poll = $this->waitForMiraklMcmOfferImportOF02($importId);
+        if (! ($poll['success'] ?? false)) {
+            return $poll;
+        }
+
+        $offerId = '';
+        if (empty($poll['offer_pending_product'])) {
+            $offer = $this->fetchMiraklMcmOfferBySku($sku);
+            $offerId = trim((string) ($offer['offer_id'] ?? ''));
+        }
+
+        return [
+            'success' => true,
+            'message' => $poll['message'],
+            'import_id' => $importId,
+            'import_status' => $poll['import_status'] ?? null,
+            'offer_id' => $offerId,
+            'offer_pending_product' => (bool) ($poll['offer_pending_product'] ?? false),
+            'response' => $poll['response'] ?? null,
+        ];
+    }
+
+    /**
+     * OF02 poll. COMPLETE with no line errors → success; WAITING_SYNCHRONIZATION_PRODUCT → the offer
+     * is accepted and will go live when the operator integrates the P41 product (can take hours),
+     * so it is returned as success + offer_pending_product instead of blocking the publish.
+     *
+     * @return array{success: bool, message: string, import_status?: string|null, response?: mixed, offer_pending_product?: bool}
+     */
+    protected function waitForMiraklMcmOfferImportOF02(int $importId): array
+    {
+        $label = $this->miraklMcmMarketplaceLabel();
+        $maxAttempts = max(1, (int) $this->miraklMcmConfig('mcm_offer_import_poll_attempts', 45));
+        $delay = max(1, (int) $this->miraklMcmConfig('mcm_offer_import_poll_delay_seconds', 2));
+        $lastStatus = null;
+        $lastBody = null;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            if ($attempt > 1) {
+                sleep($delay);
+            }
+            try {
+                $response = $this->miraklMcmRequest()->get(
+                    $this->miraklMcmBaseUrl().'/api/offers/imports/'.$importId,
+                    $this->miraklMcmQueryParams()
+                );
+            } catch (\Throwable $e) {
+                Log::warning("{$label} OF02 poll failed", ['import_id' => $importId, 'error' => $e->getMessage()]);
+                continue;
+            }
+            if (! $response->successful()) {
+                continue;
+            }
+            $json = $response->json();
+            $lastBody = $json;
+            $status = strtoupper((string) ($json['status'] ?? ''));
+            $lastStatus = $status;
+
+            if ($status === 'WAITING_SYNCHRONIZATION_PRODUCT') {
+                return [
+                    'success' => true,
+                    'message' => "{$label} offer import #{$importId} accepted; it goes live once {$label} integrates the product (WAITING_SYNCHRONIZATION_PRODUCT).",
+                    'import_status' => $status,
+                    'response' => $json,
+                    'offer_pending_product' => true,
+                ];
+            }
+            if (! in_array($status, ['COMPLETE', 'FAILED'], true)) {
+                continue;
+            }
+
+            $errors = (int) ($json['lines_in_error'] ?? 0);
+            $pending = (int) ($json['lines_in_pending'] ?? 0);
+            if ($status === 'FAILED' || $errors > 0) {
+                $report = $this->fetchMiraklMcmOfferImportErrorReport($importId, $json);
+                $reason = trim((string) ($json['reason_status'] ?? ''));
+
+                return [
+                    'success' => false,
+                    'message' => "{$label} offer import #{$importId} {$status}"
+                        .($errors > 0 ? " with {$errors} line error(s)" : '')
+                        .($reason !== '' ? ": {$reason}" : '.')
+                        .($report !== '' ? ' Error report: '.mb_substr($report, 0, 1200) : ''),
+                    'import_status' => $status,
+                    'response' => $json,
+                ];
+            }
+
+            $inserted = (int) ($json['offer_inserted'] ?? 0);
+            $updated = (int) ($json['offer_updated'] ?? 0);
+            if ($pending > 0 && $inserted === 0 && $updated === 0) {
+                return [
+                    'success' => true,
+                    'message' => "{$label} offer import #{$importId} accepted; the offer is pending product integration.",
+                    'import_status' => $status,
+                    'response' => $json,
+                    'offer_pending_product' => true,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => "{$label} offer ".($inserted > 0 ? 'created' : 'updated')." via OF01 (import #{$importId}).",
+                'import_status' => $status,
+                'response' => $json,
+                'offer_pending_product' => false,
+            ];
+        }
+
+        // Still queued on Mirakl's side; the import keeps running without us.
+        return [
+            'success' => true,
+            'message' => "{$label} offer import #{$importId} submitted (still ".($lastStatus ?: 'WAITING').' after polling); check the Offers import log on the seller portal if it does not go live.',
+            'import_status' => $lastStatus,
+            'response' => $lastBody,
+            'offer_pending_product' => true,
+        ];
+    }
+
+    /**
+     * OF03 — error report CSV for an offer import.
+     *
+     * @param  array<string, mixed>|null  $importStatus
+     */
+    protected function fetchMiraklMcmOfferImportErrorReport(int $importId, ?array $importStatus = null): string
+    {
+        if (is_array($importStatus) && array_key_exists('has_error_report', $importStatus) && ! $importStatus['has_error_report']) {
+            return '';
+        }
+        try {
+            $response = $this->miraklMcmRequest()->get(
+                $this->miraklMcmBaseUrl().'/api/offers/imports/'.$importId.'/error_report',
+                $this->miraklMcmQueryParams()
+            );
+            if ($response->successful()) {
+                return trim($response->body());
+            }
+        } catch (\Throwable $e) {
+            Log::warning($this->miraklMcmMarketplaceLabel().' OF03 error report fetch failed', [
+                'import_id' => $importId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return '';
+    }
+
+    /**
+     * Offer state code for OF01 ("11" = New on stock Mirakl). Config wins, else copy the state the
+     * shop already uses on a live offer so operator-specific codes are respected.
+     */
+    protected function resolveMiraklMcmOfferStateCode(): string
+    {
+        $configured = trim((string) $this->miraklMcmConfig('mcm_offer_state_code', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+        $cacheKey = $this->miraklMcmConfigKey().'_mcm_offer_state_code';
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+        try {
+            $response = $this->miraklMcmRequest()->get(
+                $this->miraklMcmBaseUrl().'/api/offers',
+                array_merge($this->miraklMcmQueryParams(), ['max' => 1])
+            );
+            if ($response->successful()) {
+                foreach ($response->json('offers') ?? [] as $offer) {
+                    $code = trim((string) ($offer['state_code'] ?? ''));
+                    if ($code !== '') {
+                        Cache::put($cacheKey, $code, now()->addDay());
+
+                        return $code;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning($this->miraklMcmMarketplaceLabel().' offer state lookup failed', ['error' => $e->getMessage()]);
+        }
+
+        return '11';
+    }
+
+    /**
      * Mirakl often leaves Connect-sourced P41 imports at SENT after successful transform.
      * Treat that as accepted-but-pending so callers can surface accurate MCM UI expectations.
      *

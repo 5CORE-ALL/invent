@@ -103,6 +103,22 @@ class ListingManagerPublishDispatcher
                     'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
                 ];
             }
+            if (MiraklListingPublishService::isMiraklListingChannel($key)) {
+                $images = is_array($details['images'] ?? null) ? $details['images'] : [];
+                $overrides = [
+                    // Draft values apply to this SKU only; sibling SKUs keep their Product Master data.
+                    'sku' => $sku,
+                    'title' => trim((string) $draft->title),
+                    'description' => trim((string) ($details['description'] ?? '')),
+                    'price' => $draft->price !== null ? (float) $draft->price : null,
+                    'quantity' => $draft->quantity !== null ? (int) $draft->quantity : null,
+                    'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
+                    'upc' => trim((string) ($details['upc'] ?? '')),
+                    'brand' => trim((string) ($details['brand'] ?? '')),
+                    // Save & Publish is an explicit request: re-push even if a local table already says listed.
+                    'relist' => true,
+                ];
+            }
             if ($key === 'wayfair') {
                 $images = is_array($details['images'] ?? null) ? $details['images'] : [];
                 $overrides = [

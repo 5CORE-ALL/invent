@@ -22,6 +22,7 @@ use App\Services\SheinApiService;
 use App\Services\WayfairApiService;
 use App\Services\MarketplaceManager\AliexpressListingPublishService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
+use App\Services\MarketplaceManager\MiraklListingPublishService;
 use App\Services\MarketplaceManager\SheinListingPublishService;
 use App\Services\MarketplaceManager\WayfairListingPublishService;
 use App\Services\MarketplaceManager\Temu2ListingPublishService;
@@ -506,6 +507,9 @@ class ListingManagerController extends Controller
         }
 
         $enabledChannels = [];
+        // Channels where the marketplace already has this SKU (possibly inactive) but Listing Manager
+        // does not count it as Active. Push to Marketplaces may still update these.
+        $updatableOn = [];
         try {
             $chRes = $this->channels(new Request())->getData(true);
             foreach (($chRes['channels'] ?? []) as $ch) {
@@ -517,9 +521,20 @@ class ListingManagerController extends Controller
                 if ($already) {
                     continue;
                 }
-                $live = ListingManagerPublishStatus::requiresAppPublishForActive($name)
-                    ? ['listed' => false]
-                    : ListingManagerPublishStatus::check($name, $sku);
+                $appOnly = ListingManagerPublishStatus::requiresAppPublishForActive($name);
+                $live = $appOnly ? ['listed' => false] : ListingManagerPublishStatus::check($name, $sku);
+                if ($appOnly && $this->channelHasConnectedListingApi($name)) {
+                    $exists = ListingManagerPublishStatus::existsOnMarketplace($name, $sku);
+                    if ($exists['exists']) {
+                        $updatableOn[] = [
+                            'channel' => $name,
+                            'channel_id' => $ch['id'] ?? null,
+                            'logo' => $ch['logo'] ?? null,
+                            'listing_id' => $exists['listing_id'],
+                            'state' => $exists['state'],
+                        ];
+                    }
+                }
                 if ($live['listed'] ?? false) {
                     $listedOn[] = [
                         'channel' => $name,
@@ -657,6 +672,7 @@ class ListingManagerController extends Controller
                 'variations' => $this->variationRowsForSku($sku),
                 'metafields' => $metafields,
                 'listed_on' => $listedOn,
+                'updatable_on' => $updatableOn,
                 'not_listed_on' => $enabledChannels,
                 'drafts' => $drafts,
                 'changelog' => $changelog,
@@ -2745,6 +2761,9 @@ class ListingManagerController extends Controller
             (string) $draft->seller_sku
         );
 
+        // Re-assert the lock: the web request created it, but a deploy's cache:clear may have dropped it.
+        Cache::put(self::backgroundPublishLockKey($id), now()->toDateTimeString(), now()->addMinutes(self::BACKGROUND_PUBLISH_LOCK_MINUTES));
+
         try {
             return $this->executeDraftPublish($draft, $details, $channelName);
         } catch (\Throwable $e) {
@@ -2760,7 +2779,12 @@ class ListingManagerController extends Controller
         }
     }
 
-    private static function backgroundPublishLockKey(int $draftId): string
+    /**
+     * Upper bound for one Mirakl publish: several P41 imports + one OF01, each polled for minutes.
+     */
+    public const BACKGROUND_PUBLISH_LOCK_MINUTES = 45;
+
+    public static function backgroundPublishLockKey(int $draftId): string
     {
         return 'lm.publish-draft.running.'.$draftId;
     }
@@ -2772,7 +2796,7 @@ class ListingManagerController extends Controller
     private function startBackgroundPublish(ListingManagerChannelDraft $draft, string $channelName): bool
     {
         $lockKey = self::backgroundPublishLockKey((int) $draft->id);
-        if (! Cache::add($lockKey, now()->toDateTimeString(), now()->addMinutes(15))) {
+        if (! Cache::add($lockKey, now()->toDateTimeString(), now()->addMinutes(self::BACKGROUND_PUBLISH_LOCK_MINUTES))) {
             // A previous click is still running; report it as queued instead of starting a second import.
             return true;
         }
@@ -3483,6 +3507,55 @@ class ListingManagerController extends Controller
         $d->save();
     }
 
+    /**
+     * A draft stays "Publishing…" only while its background CLI process holds the publish lock.
+     * If the process died (fatal error, OOM, server restart) nothing else clears the status, so
+     * flip it to failed with an explanation instead of showing Publishing… forever.
+     */
+    private function failStaleQueuedDraft(ListingManagerChannelDraft $d): void
+    {
+        if ($d->status !== 'queued') {
+            return;
+        }
+        if (Cache::has(self::backgroundPublishLockKey((int) $d->id))) {
+            return;
+        }
+        // Give a just-queued row a moment: the lock is written right before the status.
+        if ($d->updated_at && $d->updated_at->gt(now()->subMinutes(2))) {
+            return;
+        }
+        $d->status = 'failed';
+        $d->notes = trim((string) $d->notes."\nPublish failed: background publish process ended without reporting a result "
+            .'(see storage/logs/detached-artisan.log and laravel.log). Click Save & Publish to retry.');
+        $d->save();
+    }
+
+    /**
+     * Last publish problem recorded on the draft notes, for the drafts grid / editor.
+     */
+    public static function lastPublishError(?string $notes): string
+    {
+        if (! is_string($notes) || trim($notes) === '') {
+            return '';
+        }
+        $lines = preg_split('/\r?\n/', trim($notes)) ?: [];
+        for ($i = count($lines) - 1; $i >= 0; $i--) {
+            $line = trim($lines[$i]);
+            if ($line === '') {
+                continue;
+            }
+            if (preg_match('/^(Publish failed:|Moved back to Drafts:)/i', $line)) {
+                return mb_substr($line, 0, 600);
+            }
+            // Anything after the last failure line is a newer, non-error event.
+            if (preg_match('/^(Published to|Publishing to|Live on)/i', $line)) {
+                return '';
+            }
+        }
+
+        return '';
+    }
+
     private function demoteUnpublishedLocalMetricDraft(ListingManagerChannelDraft $d): void
     {
         $channelName = (string) ($d->channel->channel ?? '');
@@ -3494,8 +3567,11 @@ class ListingManagerController extends Controller
         }
         $sku = trim((string) $d->seller_sku);
         $ext = trim((string) $d->external_listing_id);
+        // Mirakl (Macy's / Best Buy / Purchasing Power) identifies a listing by the shop SKU, so an
+        // external id equal to the SKU is the real id there, not a placeholder.
+        $skuIsRealId = MiraklListingPublishService::isMiraklListingChannel($channelName);
         $placeholder = $ext === ''
-            || strcasecmp($ext, $sku) === 0
+            || (! $skuIsRealId && strcasecmp($ext, $sku) === 0)
             || str_starts_with(strtolower($ext), 'td-')
             || str_starts_with(strtoupper($ext), 'NE-');
         if (ListingManagerPublishStatus::wasPublishedFromListingManager($d->notes) && ! $placeholder) {
@@ -3682,6 +3758,7 @@ class ListingManagerController extends Controller
     {
         $this->demoteUnverifiedAmazonDraft($d);
         $this->demoteUnpublishedLocalMetricDraft($d);
+        $this->failStaleQueuedDraft($d);
         $channelName = (string) ($d->channel->channel ?? '');
         $details = $this->ensureIdentifierDefaults(
             ListingManagerPublishStatus::normalizeDetails(
@@ -3738,6 +3815,7 @@ class ListingManagerController extends Controller
             'listed_at' => $d->listed_at?->toDateTimeString(),
             'publish_checked_at' => $d->publish_checked_at?->toDateTimeString(),
             'notes' => $d->notes,
+            'last_error' => self::lastPublishError($d->notes),
             'updated_at' => $d->updated_at?->toDateTimeString(),
             'amazon_snapshot' => is_array($d->amazon_snapshot) ? $d->amazon_snapshot : [],
             'can_direct_publish' => ListingManagerPublishDispatcher::canDirectPublish($channelName),
