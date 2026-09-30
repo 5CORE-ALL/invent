@@ -172,6 +172,24 @@
             return (ovL30 / inv) * 100;
         }
 
+        function abPct(value, kind) {
+            const p = parseFloat(value);
+            if (!isFinite(p)) return '<span style="color:#6c757d;">–</span>';
+            let color = '#e83e8c';
+            if (kind === 'roi') {
+                color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
+            } else {
+                color = p < 10 ? '#a00211' : p < 15 ? '#ffc107' : p < 20 ? '#3591dc' : p <= 40 ? '#28a745' : '#e83e8c';
+            }
+            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(p) + '%</span>';
+        }
+
+        function abMoney(value) {
+            const n = parseFloat(value);
+            if (!isFinite(n)) return '–';
+            return '$' + n.toFixed(2);
+        }
+
         function setStats(stats) {
             document.getElementById('ab-total').textContent = stats.total || 0;
             document.getElementById('ab-active').textContent = stats.active || 0;
@@ -226,6 +244,7 @@
             .then(r => r.json())
             .then(json => {
                 abAllRows = json.data || [];
+                if (window.ParentExpand) ParentExpand.captureDataset(abAllRows);
                 setStats(json.stats || {});
                 abLoadedType = document.getElementById('ab-row-type-filter').value || 'skus';
                 const initialRows = abVisibleRows();
@@ -251,19 +270,30 @@
                         }
                     },
                     columns: [
-                        { title: 'Parent', field: 'Parent', hozAlign: 'left', headerHozAlign: 'center', minWidth: 140, frozen: true },
-                        { title: 'SKU', field: 'sku', hozAlign: 'left', headerHozAlign: 'center', minWidth: 200, frozen: true },
-                        { title: 'Product Id', field: 'product_id', hozAlign: 'left', headerHozAlign: 'center', minWidth: 150 },
-                        { title: 'INV', field: 'INV', hozAlign: 'center', headerHozAlign: 'center', width: 70, sorter: 'number' },
-                        { title: 'OV L30', field: 'L30', hozAlign: 'center', headerHozAlign: 'center', width: 80, sorter: 'number' },
+                        { title: 'Parent', field: 'Parent', hozAlign: 'left', headerHozAlign: 'center', width: 150, frozen: true, visible: false },
+                        (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, headerSort: false, frozen: true }),
+                        {
+                            title: 'Image', field: 'image_path', headerSort: false, width: 70, hozAlign: 'center',
+                            formatter: function (cell) {
+                                const v = cell.getValue();
+                                if (isAbParentRow(cell.getRow().getData()) || !v) return '';
+                                return '<img src="' + v + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;">';
+                            }
+                        },
+                        { title: 'SKU', field: 'sku', hozAlign: 'left', headerHozAlign: 'center', minWidth: 180, frozen: true },
+                        { title: 'Product Id', field: 'product_id', hozAlign: 'left', headerHozAlign: 'center', minWidth: 140 },
+                        { title: 'Status', field: 'status', hozAlign: 'center', headerHozAlign: 'center', width: 90 },
+                        { title: 'SOH', field: 'soh', hozAlign: 'center', headerHozAlign: 'center', width: 60, sorter: 'number' },
+                        { title: 'INV', field: 'INV', hozAlign: 'center', headerHozAlign: 'center', width: 55, sorter: 'number' },
+                        { title: 'OV L30', field: 'L30', hozAlign: 'center', headerHozAlign: 'center', width: 60, sorter: 'number' },
                         {
                             title: 'Dil',
                             field: 'dil_percent',
                             hozAlign: 'center',
                             headerHozAlign: 'center',
-                            width: 70,
+                            width: 55,
                             sorter: 'number',
-                            headerTooltip: 'Dil = OV L30 ÷ INV × 100 — same as /bestbuy-pricing',
+                            headerTooltip: 'Dil = OV L30 ÷ INV × 100',
                             formatter: function (cell) {
                                 const rowData = cell.getRow().getData();
                                 const dil = abDilValue(rowData);
@@ -276,21 +306,95 @@
                                 return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(dil) + '%</span>';
                             }
                         },
-                        { title: 'Status', field: 'status', hozAlign: 'center', headerHozAlign: 'center', width: 100 },
                         {
-                            title: 'SKU Price.1',
-                            field: 'sku_price',
-                            hozAlign: 'right',
-                            headerHozAlign: 'center',
-                            width: 120,
+                            title: 'AB L30', field: 'AB L30', hozAlign: 'center', headerHozAlign: 'center', width: 60, sorter: 'number',
+                            headerTooltip: 'Alibaba units sold in the last 30 Pacific days'
+                        },
+                        {
+                            title: 'Price', field: 'price', hozAlign: 'center', headerHozAlign: 'center', width: 80, sorter: 'number',
+                            headerTooltip: 'Alibaba API SKU price',
                             formatter: function (cell) {
-                                const v = cell.getValue();
-                                return v === null || v === undefined || v === '' ? '-' : Number(v).toFixed(2);
+                                const d = cell.getRow().getData();
+                                if (isAbParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                                const v = parseFloat(cell.getValue()) || 0;
+                                if (v === 0) return '<span style="color:#a00211;font-weight:600;">$0.00</span>';
+                                return '$' + v.toFixed(2);
                             }
                         },
-                        { title: 'SOH', field: 'soh', hozAlign: 'right', headerHozAlign: 'center', width: 80 },
+                        {
+                            title: "<span style='color:#a00211;'>Missing</span>", field: 'Missing', hozAlign: 'center', width: 60, headerSort: false,
+                            formatter: function (cell) {
+                                const d = cell.getRow().getData();
+                                if (isAbParentRow(d)) return '';
+                                const price = parseFloat(d.price) || 0;
+                                const inv = parseFloat(d.INV) || 0;
+                                return (inv > 0 && price === 0) ? '<span style="color:#a00211;font-weight:600;">M</span>' : '';
+                            }
+                        },
+                        {
+                            title: 'GPFT%', field: 'GPFT%', hozAlign: 'center', width: 55, sorter: 'number',
+                            headerTooltip: 'GPFT = ((Price × Alibaba margin) − LP) ÷ Price. Ship is not subtracted.',
+                            formatter: function (cell) {
+                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
+                                return abPct(cell.getValue(), 'gpft');
+                            }
+                        },
+                        {
+                            title: 'NPFT', field: 'PFT %', hozAlign: 'center', width: 55, sorter: 'number',
+                            headerTooltip: 'Alibaba has no ads. NPFT = GPFT.',
+                            formatter: function (cell) {
+                                const d = cell.getRow().getData();
+                                if (isAbParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                                return abPct(d['GPFT%'], 'gpft');
+                            }
+                        },
+                        {
+                            title: 'GROI%', field: 'ROI%', hozAlign: 'center', width: 55, sorter: 'number',
+                            headerTooltip: 'GROI = ((Price × Alibaba margin) − LP) ÷ LP. Ship is not subtracted.',
+                            formatter: function (cell) {
+                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
+                                return abPct(cell.getValue(), 'roi');
+                            }
+                        },
+                        {
+                            title: 'NROI', field: 'NROI', hozAlign: 'center', width: 55, sorter: 'number',
+                            headerTooltip: 'Alibaba has no ads. NROI = GROI.',
+                            formatter: function (cell) {
+                                const d = cell.getRow().getData();
+                                if (isAbParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                                return abPct(d['ROI%'], 'roi');
+                            }
+                        },
+                        {
+                            title: 'Profit', field: 'Profit', hozAlign: 'center', sorter: 'number', visible: false, width: 70,
+                            formatter: function (cell) { return abMoney(cell.getValue()); }
+                        },
+                        {
+                            title: 'Sales', field: 'Sales L30', hozAlign: 'center', sorter: 'number', visible: false, width: 80,
+                            headerTooltip: 'Order line sales in the last 30 Pacific days',
+                            formatter: function (cell) { return abMoney(cell.getValue()); }
+                        },
+                        {
+                            title: 'LP', field: 'LP_productmaster', hozAlign: 'center', sorter: 'number', visible: false, width: 60,
+                            formatter: function (cell) { return abMoney(cell.getValue()); }
+                        },
+                        {
+                            title: 'Ship', field: 'Ship_productmaster', hozAlign: 'center', sorter: 'number', visible: false, width: 60,
+                            headerTooltip: 'Product master ship. Not used in Alibaba GPFT or GROI.',
+                            formatter: function (cell) { return abMoney(cell.getValue()); }
+                        },
                     ],
                 });
+                if (window.ParentExpand) {
+                    ParentExpand.configure({
+                        parentField: 'Parent',
+                        skuField: 'sku',
+                        getTable: function () { return abTable; },
+                        getDataset: function () { return abAllRows; },
+                        onCollapse: function () { applyFilters(); }
+                    });
+                    ParentExpand.bind();
+                }
                 applyFilters();
             })
             .finally(() => { loader.style.display = 'none'; });

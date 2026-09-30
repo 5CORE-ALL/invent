@@ -790,6 +790,7 @@
                     field: "parent",
                     width: 120,
                     frozen: true,
+                    visible: false,
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '';
@@ -887,6 +888,103 @@
                     }
                 },
                 {
+                    title: "GPFT%",
+                    field: "gpft",
+                    sorter: "number",
+                    hozAlign: "center",
+                    width: 55,
+                    headerTooltip: "GPFT = ((Price × margin) − LP − ship) ÷ Price.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v) || (v === 0 && dpIsParentRow(d))) return '<span style="color:#6c757d;">–</span>';
+                        return dpPctHtml(v, 'gpft');
+                    }
+                },
+                {
+                    title: "NPFT",
+                    field: "npft",
+                    sorter: "number",
+                    hozAlign: "center",
+                    width: 55,
+                    headerTooltip: "Vinted has no ads. NPFT = GPFT.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const v = parseFloat(d.gpft);
+                        if (isNaN(v) || (v === 0 && dpIsParentRow(d))) return '<span style="color:#6c757d;">–</span>';
+                        return dpPctHtml(v, 'gpft');
+                    }
+                },
+                {
+                    title: "GROI%",
+                    field: "groi",
+                    sorter: "number",
+                    hozAlign: "center",
+                    width: 55,
+                    headerTooltip: "GROI = ((Price × margin) − LP − ship) ÷ LP. Margin from marketplace Vinted.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                        return dpPctHtml(parseFloat(cell.getValue()) || 0, 'groi');
+                    }
+                },
+                {
+                    title: "NROI",
+                    field: "nroi",
+                    sorter: "number",
+                    hozAlign: "center",
+                    width: 55,
+                    headerTooltip: "Vinted has no ads. NROI = GROI.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                        return dpPctHtml(parseFloat(d.groi) || 0, 'groi');
+                    }
+                },
+                {
+                    title: "Profit",
+                    field: "profit",
+                    sorter: "number",
+                    hozAlign: "center",
+                    visible: false,
+                    width: 70,
+                    headerTooltip: "Unit profit = (Price × margin) − LP − ship.",
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue()) || 0;
+                        const color = v >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color:${color};font-weight:600;">${money(v)}</span>`;
+                    }
+                },
+                {
+                    title: "Sales",
+                    field: "sales",
+                    sorter: "number",
+                    hozAlign: "center",
+                    visible: false,
+                    width: 80,
+                    headerTooltip: "Σ item_price × qty from Vinted sales sheet (L30 window)",
+                    formatter: function(cell) { return money(cell.getValue()); }
+                },
+                {
+                    title: "LP",
+                    field: "lp",
+                    sorter: "number",
+                    hozAlign: "right",
+                    visible: false,
+                    formatter: function(cell) { return money(cell.getValue()); }
+                },
+                {
+                    title: "Ship",
+                    field: "Ship_productmaster",
+                    sorter: "number",
+                    hozAlign: "right",
+                    visible: false,
+                    width: 70,
+                    headerTooltip: "Product master ship. Subtracted in GPFT, GROI, PFT, S PRC, and Offer Sprice.",
+                    formatter: function(cell) { return money(cell.getValue()); }
+                },
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
+                {
                     title: "SPRICE",
                     field: "SPRICE",
                     sorter: "number",
@@ -924,89 +1022,44 @@
                     }
                 },
                 {
-                    title: "OP",
-                    field: "op_sprice",
+                    title: "SGPFT",
+                    field: "sgpft",
+                    sorter: "number",
                     hozAlign: "center",
-                    width: 50,
-                    headerSort: true,
-                    sorter: "number",
-                    headerTooltip: "Offer Sprice calculator — stored separately from S Price. Click to view Offer Sprice and SGPFT / SGROI / SPFT / SNROI. Ship is subtracted.",
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        if (dpIsParentRow(d)) return '';
-                        return '<i class="fas fa-question-circle vn-op-btn" title="Offer Sprice"'
-                            + ' style="color:#0d6efd;font-size:15px;cursor:pointer;line-height:1;"></i>';
-                    },
-                    cellClick: function(e, cell) {
-                        const d = cell.getRow().getData();
-                        if (dpIsParentRow(d)) return;
-                        openVnOpSpriceModal(cell.getRow());
-                    }
-                },
-                {
-                    title: "GROI",
-                    field: "groi",
-                    sorter: "number",
-                    hozAlign: "right",
-                    headerTooltip: "GROI = ((Price × margin) − LP − ship) ÷ LP. Margin from marketplace Vinted.",
+                    width: 55,
+                    headerTooltip: "SGPFT = ((S PRC × margin) − ship − LP) ÷ S PRC.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
-                        return dpPctHtml(parseFloat(cell.getValue()) || 0, 'groi');
+                        return dpPctHtml(dpSpriceMetrics(d).sgpft, 'gpft');
                     }
                 },
                 {
-                    title: "GPFT",
-                    field: "gpft",
+                    title: "SNPFT",
+                    field: "snpft",
                     sorter: "number",
-                    hozAlign: "right",
-                    headerTooltip: "GPFT = ((Price × margin) − LP − ship) ÷ Price.",
+                    hozAlign: "center",
+                    width: 55,
+                    headerTooltip: "Vinted has no ads. SNPFT = SGPFT.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
-                        const v = parseFloat(cell.getValue());
-                        if (isNaN(v) || (v === 0 && dpIsParentRow(d))) return '<span style="color:#6c757d;">–</span>';
-                        return dpPctHtml(v, 'gpft');
+                        if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                        return dpPctHtml(dpSpriceMetrics(d).sgpft, 'gpft');
                     }
                 },
                 {
-                    title: "Profit",
-                    field: "profit",
+                    title: "SNROI",
+                    field: "sroi",
                     sorter: "number",
-                    hozAlign: "right",
-                    headerTooltip: "Unit profit = (Price × margin) − LP − ship.",
+                    hozAlign: "center",
+                    width: 55,
+                    headerTooltip: "SNROI = ((S PRC × margin) − LP − ship) ÷ LP.",
                     formatter: function(cell) {
-                        const v = parseFloat(cell.getValue()) || 0;
-                        const color = v >= 0 ? '#28a745' : '#dc3545';
-                        return `<span style="color:${color};font-weight:600;">${money(v)}</span>`;
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                        return dpPctHtml(dpSpriceMetrics(d).sroi, 'groi');
                     }
                 },
-                {
-                    title: "Sales",
-                    field: "sales",
-                    sorter: "number",
-                    hozAlign: "right",
-                    headerTooltip: "Σ item_price × qty from Vinted sales sheet (L30 window)",
-                    formatter: function(cell) { return money(cell.getValue()); }
-                },
-                {
-                    title: "LP",
-                    field: "lp",
-                    sorter: "number",
-                    hozAlign: "right",
-                    visible: false,
-                    formatter: function(cell) { return money(cell.getValue()); }
-                },
-                {
-                    title: "Ship",
-                    field: "Ship_productmaster",
-                    sorter: "number",
-                    hozAlign: "right",
-                    visible: false,
-                    width: 70,
-                    headerTooltip: "Product master ship. Subtracted in GPFT, GROI, PFT, S PRC, and Offer Sprice.",
-                    formatter: function(cell) { return money(cell.getValue()); }
-                },
-                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "Sprc Dil",
                     field: "SPRC_DIL",
@@ -1021,30 +1074,6 @@
                         return '<span style="font-weight:600;color:#6f42c1;">$' + meta.sprc.toFixed(2) + '</span>';
                     },
                     width: 78
-                },
-                {
-                    title: "SGROI",
-                    field: "sroi",
-                    sorter: "number",
-                    hozAlign: "right",
-                    headerTooltip: "SGROI = ((S PRC × margin) − LP − ship) ÷ LP.",
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
-                        return dpPctHtml(dpSpriceMetrics(d).sroi, 'groi');
-                    }
-                },
-                {
-                    title: "SGPFT",
-                    field: "sgpft",
-                    sorter: "number",
-                    hozAlign: "right",
-                    headerTooltip: "SGPFT = ((S PRC × margin) − ship − LP) ÷ S PRC.",
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
-                        return dpPctHtml(dpSpriceMetrics(d).sgpft, 'gpft');
-                    }
                 },
             ],
             dataLoaded: function() {
