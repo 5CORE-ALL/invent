@@ -211,6 +211,137 @@ trait MiraklMcmBulletImport
         return rtrim((string) $this->miraklMcmConfig('mcm_base_url', ''), '/');
     }
 
+    /**
+     * P41 header that carries the category. Mirakl answers transformation error 1004
+     * ("The category could not be identified") when this header does not match the operator's
+     * category attribute, so it is taken from config, else detected from PM11, else defaulted.
+     */
+    protected function miraklMcmCategoryColumn(): string
+    {
+        $configured = trim((string) $this->miraklMcmConfig('mcm_category_column', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $cacheKey = $this->miraklMcmConfigKey().'_mcm_category_column';
+        $rejected = $this->miraklMcmRejectedCategoryColumns();
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && $cached !== '' && ! in_array($cached, $rejected, true)) {
+            return $cached;
+        }
+
+        $detected = $this->detectMiraklMcmCategoryColumn($rejected);
+        $column = $detected;
+        if ($column === null) {
+            $candidates = array_values(array_diff($this->miraklMcmCategoryColumnCandidates(), $rejected));
+            if ($candidates === []) {
+                // Every guess was rejected by Mirakl: start the rotation over rather than give up.
+                Cache::forget($this->miraklMcmConfigKey().'_mcm_category_column_rejected');
+                $candidates = $this->miraklMcmCategoryColumnCandidates();
+            }
+            $column = $candidates[0];
+        }
+        Cache::put($cacheKey, $column, $detected !== null ? 43200 : 600);
+        if ($detected === null) {
+            Log::info($this->miraklMcmMarketplaceLabel().' MCM category column not found in PM11, using default', ['column' => $column, 'rejected' => $rejected]);
+        }
+
+        return $column;
+    }
+
+    /**
+     * Header names tried in order when PM11 does not reveal the operator's category attribute.
+     *
+     * @return list<string>
+     */
+    protected function miraklMcmCategoryColumnCandidates(): array
+    {
+        $common = ['category', 'categoryCode', 'category_code', 'category-code', 'Category', 'CATEGORY', 'hierarchy', 'hierarchyCode'];
+        if ($this->miraklMcmConfigKey() === 'macy') {
+            array_unshift($common, 'categoryCode');
+        }
+
+        return array_values(array_unique($common));
+    }
+
+    /**
+     * Columns Mirakl already answered with transformation error 1004 for; skipped on the next try.
+     *
+     * @return list<string>
+     */
+    protected function miraklMcmRejectedCategoryColumns(): array
+    {
+        $rejected = Cache::get($this->miraklMcmConfigKey().'_mcm_category_column_rejected');
+
+        return is_array($rejected) ? array_values(array_filter($rejected, 'is_string')) : [];
+    }
+
+    /**
+     * Remember a category header Mirakl rejected (1004) so the next publish tries another one, and
+     * return the header that will be used next (null when the column is pinned by config).
+     */
+    protected function rememberMiraklMcmCategoryColumnRejected(string $column): ?string
+    {
+        if (trim((string) $this->miraklMcmConfig('mcm_category_column', '')) !== '') {
+            return null;
+        }
+        $rejected = $this->miraklMcmRejectedCategoryColumns();
+        if (! in_array($column, $rejected, true)) {
+            $rejected[] = $column;
+        }
+        Cache::put($this->miraklMcmConfigKey().'_mcm_category_column_rejected', $rejected, 86400);
+        Cache::forget($this->miraklMcmConfigKey().'_mcm_category_column');
+
+        return $this->miraklMcmCategoryColumn();
+    }
+
+    /**
+     * Look through PM11 for the attribute that represents the category (role or code).
+     *
+     * @param  list<string>  $exclude  attribute codes Mirakl already rejected as the category header
+     */
+    protected function detectMiraklMcmCategoryColumn(array $exclude = []): ?string
+    {
+        try {
+            $attributes = $this->fetchMiraklMcmPm11Attributes();
+        } catch (\Throwable $e) {
+            Log::warning($this->miraklMcmMarketplaceLabel().' PM11 fetch for category column failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        $best = null;
+        $bestScore = 0;
+        foreach ($attributes as $attribute) {
+            if (! is_array($attribute)) {
+                continue;
+            }
+            $code = trim((string) ($attribute['code'] ?? ''));
+            if ($code === '' || in_array($code, $exclude, true)) {
+                continue;
+            }
+            $score = 0;
+            foreach ((array) ($attribute['roles'] ?? []) as $role) {
+                $type = is_array($role) ? (string) ($role['type'] ?? '') : (string) $role;
+                if (stripos($type, 'CATEGORY') !== false || stripos($type, 'HIERARCHY') !== false) {
+                    $score = max($score, 100);
+                }
+            }
+            $lower = strtolower($code);
+            if (in_array($lower, ['category', 'categorycode', 'category-code', 'category_code', 'hierarchy', 'hierarchycode', 'hierarchy-code', 'hierarchy_code'], true)) {
+                $score = max($score, 80);
+            } elseif (str_contains($lower, 'categor') || str_contains($lower, 'hierarch')) {
+                $score = max($score, 40);
+            }
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = $code;
+            }
+        }
+
+        return $best;
+    }
+
     /** @return array<string, int|string> */
     protected function miraklMcmQueryParams(): array
     {
@@ -922,7 +1053,6 @@ trait MiraklMcmBulletImport
         return ['bulletPoints'];
     }
 
-    /** @return list<array<string, mixed>> */
     /**
      * Operator category tree (H11 GET /api/hierarchies): code, label, parent_code, level.
      * Cached 12h; an empty list is cached briefly so a failing operator does not slow every search.
@@ -981,6 +1111,7 @@ trait MiraklMcmBulletImport
         return $rows;
     }
 
+    /** @return list<array<string, mixed>> */
     protected function fetchMiraklMcmPm11Attributes(?string $hierarchy = null): array
     {
         $cacheKey = $this->miraklMcmConfigKey().'_mcm_pm11_'.($hierarchy ?? 'all');
@@ -1195,7 +1326,7 @@ trait MiraklMcmBulletImport
     protected function resolveMiraklMcmP41TitleOnlyRowValues(string $sku, string $title, ?string $hierarchy): array
     {
         $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = (string) $this->miraklMcmConfig('mcm_category_column', 'categoryCode');
+        $categoryColumn = $this->miraklMcmCategoryColumn();
 
         $row = [
             $skuColumn => $sku,
@@ -1577,7 +1708,7 @@ trait MiraklMcmBulletImport
     protected function resolveMiraklMcmP41ImageOnlyRowValues(string $sku, array $imageUrls, ?string $hierarchy): array
     {
         $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = (string) $this->miraklMcmConfig('mcm_category_column', 'categoryCode');
+        $categoryColumn = $this->miraklMcmCategoryColumn();
 
         $row = [
             $skuColumn => $sku,
@@ -1598,7 +1729,7 @@ trait MiraklMcmBulletImport
     protected function resolveMiraklMcmP41ImageRowValues(string $sku, array $imageUrls, ?string $hierarchy): array
     {
         $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = (string) $this->miraklMcmConfig('mcm_category_column', 'categoryCode');
+        $categoryColumn = $this->miraklMcmCategoryColumn();
         $offer = $this->fetchMiraklMcmOfferBySku($sku);
         $priceRow = $this->fetchMiraklMcmPriceDataRowBySku($sku) ?? $this->fetchMiraklMcmRelatedPriceDataRow($sku);
         $connect = $this->resolveMiraklMcmConnectCatalogContext($sku);
@@ -1869,7 +2000,7 @@ trait MiraklMcmBulletImport
     protected function resolveMiraklMcmP41DescriptionOnlyRowValues(string $sku, string $description, ?string $hierarchy): array
     {
         $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = (string) $this->miraklMcmConfig('mcm_category_column', 'categoryCode');
+        $categoryColumn = $this->miraklMcmCategoryColumn();
 
         $row = [
             $skuColumn => $sku,
@@ -1895,7 +2026,7 @@ trait MiraklMcmBulletImport
         int $maxLen
     ): array {
         $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = (string) $this->miraklMcmConfig('mcm_category_column', 'categoryCode');
+        $categoryColumn = $this->miraklMcmCategoryColumn();
 
         $row = [$skuColumn => $sku];
         if ($hierarchy !== null && trim($hierarchy) !== '') {
@@ -1945,11 +2076,11 @@ trait MiraklMcmBulletImport
         $defaults = (array) $this->miraklMcmConfig('mcm_p41_defaults', []);
         $hierarchyDefaults = (array) ($this->miraklMcmConfig('mcm_p41_hierarchy_defaults', [])[$hierarchy ?? ''] ?? []);
         $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = (string) $this->miraklMcmConfig('mcm_category_column', 'categoryCode');
+        $categoryColumn = $this->miraklMcmCategoryColumn();
 
         $row = $this->miraklMcmP41RowFromMasterProduct($master);
         if ($this->miraklMcmCategoryCodeFromProduct($variantMaster) === '') {
-            unset($row['categoryCode']);
+            unset($row[$categoryColumn], $row['categoryCode']);
         }
 
         $upc = $this->miraklMcmOfferReference($offer, 'UPC')
@@ -2460,7 +2591,7 @@ trait MiraklMcmBulletImport
         $row = [];
         $category = $this->miraklMcmCategoryCodeFromProduct($master);
         if ($category !== '') {
-            $row['categoryCode'] = $category;
+            $row[$this->miraklMcmCategoryColumn()] = $category;
         }
 
         $productSku = trim((string) ($master['product_sku'] ?? ''));
@@ -2810,10 +2941,23 @@ trait MiraklMcmBulletImport
                     }
                 }
 
+                $hint = '';
+                if (preg_match('/\b1004\b|category could not be identified/i', $errorReport)) {
+                    $column = $this->miraklMcmCategoryColumn();
+                    $envName = strtoupper(str_replace('purchasingpower', 'purchasing_power', $this->miraklMcmConfigKey())).'_MCM_CATEGORY_COLUMN';
+                    $nextColumn = $this->rememberMiraklMcmCategoryColumnRejected($column);
+                    $hint = " Mirakl did not recognise \"{$column}\" as the category column.";
+                    $hint .= $nextColumn !== null && $nextColumn !== $column
+                        ? " Click Publish again — the next attempt sends the category as \"{$nextColumn}\" (or set {$envName} to the operator's category attribute code)."
+                        : " Set {$envName} to the operator's category attribute code.";
+                } elseif (preg_match('/\b100[156]\b|category is unknown|leaf operator/i', $errorReport)) {
+                    $hint = ' Pick a leaf category from the Category tab (the code sent is not a valid leaf on this marketplace).';
+                }
+
                 return [
                     'success' => false,
                     'message' => "{$label} P41 import {$status} with {$transformErrors} transform error(s)."
-                        .($errorReport !== '' ? ' Error report: '.mb_substr($errorReport, 0, 1500) : ''),
+                        .($errorReport !== '' ? ' Error report: '.mb_substr($errorReport, 0, 1500) : '').$hint,
                     'import_status' => $status,
                     'response' => $json,
                 ];

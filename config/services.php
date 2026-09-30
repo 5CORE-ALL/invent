@@ -331,6 +331,8 @@ return [
         'mcm_base_url' => env('BESTBUY_MCM_BASE_URL', 'https://bestbuyus-prod.mirakl.net'),
         'shop_id' => env('BESTBUY_SHOP_ID'),
         'mcm_sku_column' => env('BESTBUY_MCM_SKU_COLUMN', 'shop-sku'),
+        /** P41 category header; empty = detect from PM11 (falls back to "category"). */
+        'mcm_category_column' => env('BESTBUY_MCM_CATEGORY_COLUMN', ''),
         'mcm_import_poll_attempts' => (int) env('BESTBUY_MCM_IMPORT_POLL_ATTEMPTS', 60),
         'mcm_import_poll_delay_seconds' => (int) env('BESTBUY_MCM_IMPORT_POLL_DELAY_SECONDS', 2),
         'mcm_bullet_fallback_codes' => ['bulletPoints'],
@@ -354,6 +356,8 @@ return [
         'mcm_base_url' => env('PURCHASING_POWER_MCM_BASE_URL', 'https://purchasingpowerus-prod.mirakl.net'),
         'shop_id' => env('PURCHASING_POWER_SHOP_ID'),
         'mcm_sku_column' => env('PURCHASING_POWER_MCM_SKU_COLUMN', 'shop-sku'),
+        /** P41 category header; empty = detect from PM11 (falls back to "category"). */
+        'mcm_category_column' => env('PURCHASING_POWER_MCM_CATEGORY_COLUMN', ''),
         'mcm_import_poll_attempts' => (int) env('PURCHASING_POWER_MCM_IMPORT_POLL_ATTEMPTS', 60),
         'mcm_import_poll_delay_seconds' => (int) env('PURCHASING_POWER_MCM_IMPORT_POLL_DELAY_SECONDS', 2),
         'mcm_bullet_fallback_codes' => ['bulletPoints'],
