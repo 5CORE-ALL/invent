@@ -94,6 +94,7 @@ class ShopifyOhioLocationResolver
         $maxAttempts = 3;
         for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
             try {
+                ShopifyAdminCallPacer::wait();
                 $response = Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',

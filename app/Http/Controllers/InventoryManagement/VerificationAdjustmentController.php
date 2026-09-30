@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\ShopifyInventoryLog;
 use App\Jobs\UpdateShopifyInventoryJob;
 use App\Models\LostGainAqHistory;
+use App\Services\ShopifyAdminCallPacer;
 use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -66,6 +67,18 @@ class VerificationAdjustmentController extends Controller
 
         return Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
             ->withHeaders(['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * One Shopify Admin call, paced under 2 per second, retried when Shopify returns 429.
+     */
+    protected function sendShopify(callable $call, int $attempts = 6): \Illuminate\Http\Client\Response
+    {
+        return $this->retryOnRateLimit(function () use ($call) {
+            ShopifyAdminCallPacer::wait();
+
+            return $call();
+        }, $attempts, 0.0);
     }
 
     /**
@@ -886,8 +899,10 @@ class VerificationAdjustmentController extends Controller
 
         if ($row && $row->variant_id) {
             try {
-                $response = $this->shopifyHttp()->timeout(8)
-                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$row->variant_id}.json");
+                $response = $this->sendShopify(function () use ($row) {
+                    return $this->shopifyHttp()->timeout(8)
+                        ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$row->variant_id}.json");
+                });
                 if ($response->successful()) {
                     $inventoryItemId = $response->json('variant.inventory_item_id');
                 }
@@ -925,13 +940,15 @@ query ($q: String!) {
 GQL;
 
         try {
-            $response = $this->shopifyHttp()->timeout(8)
-                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json", [
-                    'query' => $query,
-                    'variables' => [
-                        'q' => 'sku:"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $normalizedSku).'"',
-                    ],
-                ]);
+            $response = $this->sendShopify(function () use ($query, $normalizedSku) {
+                return $this->shopifyHttp()->timeout(8)
+                    ->post("https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json", [
+                        'query' => $query,
+                        'variables' => [
+                            'q' => 'sku:"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $normalizedSku).'"',
+                        ],
+                    ]);
+            });
         } catch (\Exception $e) {
             Log::warning('Fast SKU GraphQL lookup failed', [
                 'sku' => $normalizedSku,
@@ -955,14 +972,14 @@ GQL;
 
     protected function postInventoryAdjustment(string $inventoryItemId, string $locationId, int $adjustment): int
     {
-        $response = $this->retryOnRateLimit(function () use ($inventoryItemId, $locationId, $adjustment) {
+        $response = $this->sendShopify(function () use ($inventoryItemId, $locationId, $adjustment) {
             return $this->shopifyHttp()->timeout(8)
                 ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
                     'inventory_item_id' => $inventoryItemId,
                     'location_id' => $locationId,
                     'available_adjustment' => $adjustment,
                 ]);
-        }, 4, 0.5);
+        });
 
         if (! $response->successful()) {
             $errorMessage = "HTTP {$response->status()}";
@@ -987,13 +1004,13 @@ GQL;
      */
     protected function connectInventoryToMainWarehouse(string $inventoryItemId, string $locationId): void
     {
-        $response = $this->retryOnRateLimit(function () use ($inventoryItemId, $locationId) {
+        $response = $this->sendShopify(function () use ($inventoryItemId, $locationId) {
             return $this->shopifyHttp()->timeout(8)
                 ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/connect.json", [
                     'inventory_item_id' => $inventoryItemId,
                     'location_id' => $locationId,
                 ]);
-        }, 4, 0.5);
+        });
 
         if (! $response->successful()) {
             $errorMessage = "HTTP {$response->status()}";

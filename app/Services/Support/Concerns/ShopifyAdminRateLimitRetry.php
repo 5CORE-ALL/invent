@@ -46,9 +46,19 @@ trait ShopifyAdminRateLimitRetry
      */
     private function shopifyAdditionalWaitSecondsFrom429(Response $response): float
     {
+        $bodyWait = 0.0;
+        $body = strtolower((string) $response->body());
+        if (str_contains($body, 'calls per second') || str_contains($body, 'reduce request rates')) {
+            $bodyWait = 2.0;
+        }
+
         $retryAfter = $response->header('Retry-After');
         if ($retryAfter !== null && $retryAfter !== '' && is_numeric($retryAfter)) {
-            return min(120.0, max(0.0, (float) $retryAfter));
+            return min(120.0, max($bodyWait, (float) $retryAfter));
+        }
+
+        if ($bodyWait > 0) {
+            return $bodyWait;
         }
 
         $callLimit = $response->header('X-Shopify-API-Call-Limit')
