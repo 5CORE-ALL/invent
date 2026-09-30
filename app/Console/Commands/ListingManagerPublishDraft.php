@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\Log;
  */
 class ListingManagerPublishDraft extends Command
 {
-    protected $signature = 'listing-manager:publish-draft {id : listing_manager_channel_drafts.id}';
+    protected $signature = 'listing-manager:publish-draft {id : listing_manager_channel_drafts.id}
+        {--follow-newegg : Poll the pending Newegg Data Feed every minute instead of publishing once}';
 
     protected $description = 'Publish a Listing Manager draft to its marketplace (background worker for slow channels)';
 
@@ -24,8 +25,9 @@ class ListingManagerPublishDraft extends Command
         @set_time_limit(0);
         @ini_set('memory_limit', '1024M');
         $id = (int) $this->argument('id');
+        $follow = (bool) $this->option('follow-newegg');
 
-        $this->line('['.now()->toDateTimeString().'] publish-draft '.$id.' start');
+        $this->line('['.now()->toDateTimeString().'] publish-draft '.$id.($follow ? ' follow-newegg' : '').' start');
 
         // Exceptions are handled in runQueuedDraftPublish(); this covers fatals (memory, timeouts)
         // that would otherwise leave the draft at "Publishing…" forever.
@@ -48,7 +50,9 @@ class ListingManagerPublishDraft extends Command
             }
         });
 
-        $outcome = app(ListingManagerController::class)->runQueuedDraftPublish($id);
+        $outcome = $follow
+            ? app(ListingManagerController::class)->followNeweggFeed($id)
+            : app(ListingManagerController::class)->runQueuedDraftPublish($id);
         $success = (bool) ($outcome['body']['success'] ?? false);
         $message = (string) ($outcome['body']['message'] ?? '');
 
