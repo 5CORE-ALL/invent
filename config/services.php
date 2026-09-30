@@ -697,6 +697,8 @@ return [
         'connect_timeout' => (int) env('NEWEGG_CONNECT_TIMEOUT', 15),
         'default_subcategory_id' => env('NEWEGG_DEFAULT_SUBCATEGORY_ID'),
         'default_manufacturer' => env('NEWEGG_DEFAULT_MANUFACTURER', env('LISTING_MANAGER_DEFAULT_BRAND', '5 Core')),
+        // Appended to the SKU as Manufacturer Part # when Newegg's catalog links the real MPN/UPC to a removed product.
+        'alternate_mpn_suffix' => env('NEWEGG_ALTERNATE_MPN_SUFFIX', '-5C'),
     ],
 
     /*

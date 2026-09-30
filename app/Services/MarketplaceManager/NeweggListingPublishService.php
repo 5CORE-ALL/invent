@@ -139,14 +139,16 @@ class NeweggListingPublishService
             ];
         }
 
+        $description = trim((string) ($overrides['description'] ?? '')) ?: $this->resolveDescription($product, $title);
+        $bullets = $this->resolveBullets($product);
         $res = $this->api->createListing([
             'sku' => $sku,
             'title' => $title,
             'manufacturer' => trim((string) ($overrides['manufacturer'] ?? '')) ?: $this->resolveManufacturer($product),
             'mpn' => $sku,
             'upc' => trim((string) ($overrides['upc'] ?? '')) ?: $this->resolveUpc($product),
-            'description' => trim((string) ($overrides['description'] ?? '')) ?: $this->resolveDescription($product, $title),
-            'bullets' => $this->resolveBullets($product),
+            'description' => $description,
+            'bullets' => $bullets,
             'images' => $images,
             'price' => $price,
             'inventory' => $inv,
@@ -169,6 +171,10 @@ class NeweggListingPublishService
         }
 
         $itemNumber = trim((string) ($res['item_number'] ?? ''));
+        $message = (string) ($res['message'] ?? ('Published '.$sku.' to Newegg.'));
+        if (! empty($res['existing'])) {
+            $message = $this->refreshExistingContent($sku, $itemNumber, $title, $description, $bullets, $images);
+        }
         try {
             $this->api->updateItemPrice($sku, $price);
             $this->api->updateItemInventory($sku, $inv);
@@ -184,11 +190,69 @@ class NeweggListingPublishService
 
         return [
             'success' => true,
-            'message' => $res['message'] ?? ('Published '.$sku.' to Newegg.'),
+            'message' => $message,
             'goods_id' => $itemNumber !== '' ? $itemNumber : null,
             'sku_id' => $itemNumber !== '' ? $itemNumber : null,
             'skus' => [$sku],
         ];
+    }
+
+    /**
+     * The SKU is already on Newegg (possibly inactive because content was rejected): push the
+     * draft's title, description, bullets and images onto that item so Newegg can re-activate it.
+     *
+     * @param  list<string>  $bullets
+     * @param  list<string>  $images
+     */
+    private function refreshExistingContent(string $sku, string $itemNumber, string $title, string $description, array $bullets, array $images): string
+    {
+        $state = 'unknown';
+        try {
+            $details = app(NeweggLiveListingsService::class)->liveDetailsByProductIds(array_filter([$itemNumber, $sku]));
+            $row = $details[$itemNumber] ?? $details[$sku] ?? null;
+            if (is_array($row) && in_array($row['state'] ?? '', ['active', 'inactive'], true)) {
+                $state = (string) $row['state'];
+            }
+        } catch (\Throwable) {
+        }
+
+        $pushed = [];
+        $failed = [];
+        $steps = [
+            'title' => fn () => $title !== '' ? $this->api->updateTitle($sku, $title) : null,
+            'description' => fn () => $description !== '' ? $this->api->updateDescription($sku, $description) : null,
+            'bullets' => fn () => $bullets !== [] ? $this->api->updateBulletPoints($sku, implode("\n", $bullets)) : null,
+            'images' => fn () => $images !== [] ? $this->api->updateImages($sku, $images) : null,
+        ];
+        foreach ($steps as $label => $step) {
+            try {
+                $result = $step();
+            } catch (\Throwable $e) {
+                $result = ['success' => false, 'message' => $e->getMessage()];
+            }
+            if ($result === null) {
+                continue;
+            }
+            if (! empty($result['success'])) {
+                $pushed[] = $label;
+            } else {
+                $failed[] = $label.': '.trim((string) ($result['message'] ?? 'failed'));
+            }
+        }
+
+        $message = 'Connected existing Newegg listing '.$sku.($itemNumber !== '' ? ' ('.$itemNumber.')' : '')
+            .($state !== 'unknown' ? ', currently '.$state.' on Newegg' : '').'.';
+        if ($pushed !== []) {
+            $message .= ' Updated '.implode(', ', $pushed).'.';
+        }
+        if ($failed !== []) {
+            $message .= ' Could not update '.implode('; ', $failed).'.';
+        }
+        if ($state === 'inactive') {
+            $message .= ' Newegg re-activates the item once it accepts the new content (usually within a few hours).';
+        }
+
+        return $message;
     }
 
     /**
@@ -255,14 +319,16 @@ class NeweggListingPublishService
                 continue;
             }
             $listedId = trim((string) ($listedMap[strtolower($sku)] ?? ''));
-            if ($listedId !== '' && $this->isLiveOnNewegg($sku, $listedId)) {
+            // Save & Publish from Listing Manager connects an item that already exists on Newegg
+            // (often inactive for missing images) and refreshes its content instead of skipping it.
+            if (! $fromListingManager && $listedId !== '' && $this->isLiveOnNewegg($sku, $listedId)) {
                 continue;
             }
             if (! $fromListingManager && ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
                 continue;
             }
             $product = $products->get(strtolower($sku)) ?: $this->findProduct($sku);
-            if (! $product || $this->productImages($product, $sku) === []) {
+            if (! $product || (! $fromListingManager && $this->productImages($product, $sku) === [])) {
                 continue;
             }
             $out[] = $sku;
