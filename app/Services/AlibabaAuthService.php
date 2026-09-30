@@ -26,7 +26,8 @@ class AlibabaAuthService
     {
         $configured = trim((string) (config('services.alibaba.auth_base') ?: ''));
         $bases = [
-            $configured !== '' ? $configured : 'https://open-api.alibaba.com/oauth/authorize',
+            $configured !== '' ? $configured : 'https://openapi-api.alibaba.com/oauth/authorize',
+            'https://openapi-api.alibaba.com/oauth/authorize',
             'https://open-api.alibaba.com/oauth/authorize',
             'https://oauth.alibaba.com/authorize',
             'https://api.taobao.global/oauth/authorize',
