@@ -736,7 +736,7 @@
                             <a href="{{ route('inv.under.30.days') }}">Inv&lt;30 Days</a>
                         </li>
                         <li>
-                            <a href="{{ route('inv.change.seven.days') }}">Inv Change 7days</a>
+                            <a href="{{ route('inv.change.l30') }}">Inv Change L30</a>
                         </li>
                         {{-- <li>
                             <a href="{{ route('inventory.manage.index') }}">

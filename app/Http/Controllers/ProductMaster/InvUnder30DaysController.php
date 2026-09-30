@@ -93,12 +93,12 @@ class InvUnder30DaysController extends Controller
     /**
      * Days Exp = (INV / OVL30) * 30 — days the current inventory lasts at the L30 sales rate.
      */
-    public static function daysExp(float $inv, float $ovl30): ?float
+    public static function daysExp(float $inv, float $ovl30): ?int
     {
         if ($ovl30 <= 0) {
             return null;
         }
 
-        return round(($inv / $ovl30) * 30, 1);
+        return (int) round(($inv / $ovl30) * 30);
     }
 }

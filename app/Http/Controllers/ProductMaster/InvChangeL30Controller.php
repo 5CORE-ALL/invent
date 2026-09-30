@@ -12,10 +12,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * "Inv Change 7days": CP Master rows whose Shopify INV differs from the daily
- * snapshot taken 7 days ago (shopifysku_inventory_history.closing_inventory).
+ * "Inv Change L30": CP Master rows with zero Shopify INV and OVL30 > 0, alongside the INV they had
+ * 7 days ago (shopifysku_inventory_history.closing_inventory) so recent stock-outs surface first.
  */
-class InvChangeSevenDaysController extends Controller
+class InvChangeL30Controller extends Controller
 {
     public const WINDOW_DAYS = 7;
 
@@ -26,7 +26,7 @@ class InvChangeSevenDaysController extends Controller
         $mode = $request->query('mode', '');
         $demo = $request->query('demo', '');
 
-        return view('inv-change-seven-days', compact('mode', 'demo'));
+        return view('inv-change-l30', compact('mode', 'demo'));
     }
 
     public function getData(Request $request)
@@ -45,18 +45,20 @@ class InvChangeSevenDaysController extends Controller
                     continue;
                 }
 
-                $key = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                if ($key === '' || ! array_key_exists($key, $baseline['inv'])) {
+                $inv = (float) ($product['shopify_inv'] ?? 0);
+                if ($inv > 0) {
                     continue;
                 }
 
-                $inv = (float) ($product['shopify_inv'] ?? 0);
                 $ovl30 = (float) ($product['shopify_quantity'] ?? 0);
-                $prevInv = (float) $baseline['inv'][$key];
-                $change = $inv - $prevInv;
-                if (abs($change) < 0.0001) {
+                if ($ovl30 <= 0) {
                     continue;
                 }
+
+                $key = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                $hasBaseline = $key !== '' && array_key_exists($key, $baseline['inv']);
+                $prevInv = $hasBaseline ? (float) $baseline['inv'][$key] : null;
+                $change = $prevInv !== null ? $inv - $prevInv : null;
 
                 $rows[] = [
                     'id' => $product['id'] ?? null,
@@ -66,14 +68,19 @@ class InvChangeSevenDaysController extends Controller
                     'inv' => $inv,
                     'prev_inv' => $prevInv,
                     'change' => $change,
-                    'change_pct' => $prevInv > 0 ? round(($change / $prevInv) * 100) : null,
-                    'baseline_date' => $baseline['date'][$key] ?? null,
+                    'change_pct' => ($prevInv !== null && $prevInv > 0) ? round(($change / $prevInv) * 100) : null,
+                    'baseline_date' => $hasBaseline ? ($baseline['date'][$key] ?? null) : null,
                     'ovl30' => $ovl30,
                     'dil' => InvUnder30DaysController::dilPercent($inv, $ovl30),
                 ];
             }
 
-            usort($rows, static fn (array $a, array $b) => abs($b['change']) <=> abs($a['change']));
+            // SKUs that ran out most recently (had the most stock 7 days ago) first, then by OVL30.
+            usort($rows, static function (array $a, array $b) {
+                $cmp = ($b['prev_inv'] ?? -1) <=> ($a['prev_inv'] ?? -1);
+
+                return $cmp !== 0 ? $cmp : ($b['ovl30'] <=> $a['ovl30']);
+            });
 
             return response()->json([
                 'status' => 200,
@@ -82,11 +89,11 @@ class InvChangeSevenDaysController extends Controller
                 'data' => array_values($rows),
             ]);
         } catch (\Throwable $e) {
-            Log::error('Inv Change 7days data failed: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            Log::error('Inv Change L30 data failed: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
 
             return response()->json([
                 'status' => 500,
-                'message' => 'Unable to load Inv Change 7days data.',
+                'message' => 'Unable to load Inv Change L30 data.',
                 'data' => [],
             ], 500);
         }

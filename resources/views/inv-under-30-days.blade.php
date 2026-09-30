@@ -68,7 +68,7 @@
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="inv30Refresh">
                             <i class="fas fa-rotate me-1"></i>Refresh
                         </button>
-                        <span class="badge bg-primary-subtle text-primary" id="inv30Count">0</span>
+                        <span class="badge bg-primary fs-6 px-3 py-2" title="Rows currently shown">Rows: <span id="inv30Count">0</span></span>
                     </div>
                 </div>
                 <div class="row g-2 align-items-end mb-3">
@@ -115,29 +115,35 @@ document.addEventListener('DOMContentLoaded', function () {
         return Number.isInteger(n) ? String(n) : n.toFixed(decimals || 2).replace(/\.?0+$/, '');
     }
 
+    let allRows = [];
+
+    function rowPasses(data) {
+        const skuQ = (document.getElementById('inv30SkuSearch').value || '').trim().toLowerCase();
+        const parentQ = (document.getElementById('inv30ParentSearch').value || '').trim().toLowerCase();
+        if (!(Number(data.inv) > 0)) return false;
+        if (!(Number(data.dil) > 100)) return false;
+        if (skuQ && !String(data.sku || '').toLowerCase().includes(skuQ)) return false;
+        if (parentQ && !String(data.parent || '').toLowerCase().includes(parentQ)) return false;
+        return true;
+    }
+
     function updateCount() {
-        if (!table) return;
-        document.getElementById('inv30Count').textContent = String(table.getDataCount('active'));
+        const n = allRows.filter(rowPasses).length;
+        document.getElementById('inv30Count').textContent = n.toLocaleString();
     }
 
     function applyFilters() {
         if (!table) return;
-        const skuQ = (document.getElementById('inv30SkuSearch').value || '').trim().toLowerCase();
-        const parentQ = (document.getElementById('inv30ParentSearch').value || '').trim().toLowerCase();
-        table.setFilter(function (data) {
-            if (!(Number(data.inv) > 0)) return false;
-            if (!(Number(data.dil) > 100)) return false;
-            if (skuQ && !String(data.sku || '').toLowerCase().includes(skuQ)) return false;
-            if (parentQ && !String(data.parent || '').toLowerCase().includes(parentQ)) return false;
-            return true;
-        });
+        table.setFilter(rowPasses);
         updateCount();
     }
 
     table = new Tabulator('#inv30-table', {
         ajaxURL: dataUrl,
         ajaxResponse: function (url, params, response) {
-            return response?.data || [];
+            allRows = Array.isArray(response?.data) ? response.data : [];
+            updateCount();
+            return allRows;
         },
         layout: 'fitColumns',
         height: '72vh',
@@ -146,10 +152,7 @@ document.addEventListener('DOMContentLoaded', function () {
         paginationSizeSelector: [25, 50, 100, 200, true],
         placeholder: 'No SKUs with INV > 0 and DIL > 100%',
         initialSort: [{ column: 'dil', dir: 'desc' }],
-        initialFilter: [
-            { field: 'inv', type: '>', value: 0 },
-            { field: 'dil', type: '>', value: 100 },
-        ],
+        initialFilter: rowPasses,
         columns: [
             {
                 title: 'Image',
@@ -230,13 +233,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 headerHozAlign: 'center',
                 sorter: 'number',
                 formatter: function (cell) {
-                    return fmtNum(cell.getValue(), 1);
+                    const v = cell.getValue();
+                    return (v === null || v === undefined) ? '—' : String(Math.round(Number(v)));
                 },
             },
         ],
     });
 
-    table.on('dataLoaded', updateCount);
     table.on('dataFiltered', updateCount);
 
     let searchTimer = null;

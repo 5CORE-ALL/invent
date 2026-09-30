@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Inv Change 7days', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Inv Change L30', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -41,23 +41,11 @@
         background: #f8fafc;
         display: block;
     }
-    .invc7-dil {
-        font-weight: 700;
-        padding: 2px 8px;
-        border-radius: 999px;
-        font-size: 0.85rem;
-    }
-    .invc7-dil--hot { background: #fee2e2; color: #b91c1c; }
-    .invc7-dil--warm { background: #fef3c7; color: #b45309; }
-    .invc7-dil--ok { background: #dcfce7; color: #15803d; }
-    .invc7-change { font-size: 0.75rem; font-weight: 600; }
-    .invc7-change--up { color: #15803d; }
-    .invc7-change--down { color: #b91c1c; }
 </style>
 @endsection
 
 @section('content')
-@include('layouts.shared.page-title', ['page_title' => 'Inv Change 7days', 'sub_title' => 'Inventory'])
+@include('layouts.shared.page-title', ['page_title' => 'Inv Change L30', 'sub_title' => 'Inventory'])
 
 <div class="row">
     <div class="col-12">
@@ -65,19 +53,14 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                     <div>
-                        <h4 class="mb-0">Inv Change 7days</h4>
-                        <small class="text-muted">SKUs whose Shopify INV changed versus the daily snapshot from 7 days ago (<span id="invc7Baseline">—</span>). Same data as CP Master.</small>
+                        <h4 class="mb-0">Inv Change L30</h4>
+                        <small class="text-muted">SKUs with zero Shopify INV and OVL30 &gt; 0. Same data as CP Master.<span id="invc7Baseline" class="d-none"></span></small>
                     </div>
                     <div class="d-flex align-items-center gap-2">
-                        <select id="invc7Direction" class="form-select form-select-sm" style="width: auto;">
-                            <option value="all">Up &amp; Down</option>
-                            <option value="down">Decreased only</option>
-                            <option value="up">Increased only</option>
-                        </select>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="invc7Refresh">
                             <i class="fas fa-rotate me-1"></i>Refresh
                         </button>
-                        <span class="badge bg-primary-subtle text-primary" id="invc7Count">0</span>
+                        <span class="badge bg-primary fs-6 px-3 py-2" title="Rows currently shown">Rows: <span id="invc7Count">0</span></span>
                     </div>
                 </div>
                 <div class="row g-2 align-items-end mb-3">
@@ -107,7 +90,7 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const dataUrl = @json(route('inv.change.seven.days.data'));
+    const dataUrl = @json(route('inv.change.l30.data'));
     let table = null;
 
     function escapeHtml(str) {
@@ -124,24 +107,26 @@ document.addEventListener('DOMContentLoaded', function () {
         return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
     }
 
+    let allRows = [];
+
+    function rowPasses(data) {
+        const skuQ = (document.getElementById('invc7SkuSearch').value || '').trim().toLowerCase();
+        const parentQ = (document.getElementById('invc7ParentSearch').value || '').trim().toLowerCase();
+        if (Number(data.inv) !== 0) return false;
+        if (!(Number(data.ovl30) > 0)) return false;
+        if (skuQ && !String(data.sku || '').toLowerCase().includes(skuQ)) return false;
+        if (parentQ && !String(data.parent || '').toLowerCase().includes(parentQ)) return false;
+        return true;
+    }
+
     function updateCount() {
-        if (!table) return;
-        document.getElementById('invc7Count').textContent = String(table.getDataCount('active'));
+        const n = allRows.filter(rowPasses).length;
+        document.getElementById('invc7Count').textContent = n.toLocaleString();
     }
 
     function applyFilters() {
         if (!table) return;
-        const skuQ = (document.getElementById('invc7SkuSearch').value || '').trim().toLowerCase();
-        const parentQ = (document.getElementById('invc7ParentSearch').value || '').trim().toLowerCase();
-        const dir = document.getElementById('invc7Direction').value || 'all';
-        table.setFilter(function (data) {
-            if (skuQ && !String(data.sku || '').toLowerCase().includes(skuQ)) return false;
-            if (parentQ && !String(data.parent || '').toLowerCase().includes(parentQ)) return false;
-            const change = Number(data.change || 0);
-            if (dir === 'up' && change <= 0) return false;
-            if (dir === 'down' && change >= 0) return false;
-            return true;
-        });
+        table.setFilter(rowPasses);
         updateCount();
     }
 
@@ -151,14 +136,18 @@ document.addEventListener('DOMContentLoaded', function () {
             if (response && response.baseline_date) {
                 document.getElementById('invc7Baseline').textContent = response.baseline_date;
             }
-            return response?.data || [];
+            allRows = Array.isArray(response?.data) ? response.data : [];
+            updateCount();
+            return allRows;
         },
         layout: 'fitColumns',
         height: '72vh',
         pagination: true,
         paginationSize: 50,
         paginationSizeSelector: [25, 50, 100, 200, true],
-        placeholder: 'No INV changes in the last 7 days',
+        placeholder: 'No SKUs with zero INV and OVL30 > 0',
+        initialSort: [{ column: 'ovl30', dir: 'asc' }],
+        initialFilter: rowPasses,
         columns: [
             {
                 title: 'Image',
@@ -197,17 +186,12 @@ document.addEventListener('DOMContentLoaded', function () {
             {
                 title: 'INV',
                 field: 'inv',
-                width: 130,
+                width: 100,
                 hozAlign: 'right',
                 headerHozAlign: 'center',
                 sorter: 'number',
                 formatter: function (cell) {
-                    const d = cell.getRow().getData();
-                    const change = Number(d.change || 0);
-                    const cls = change > 0 ? 'invc7-change--up' : 'invc7-change--down';
-                    const sign = change > 0 ? '+' : '';
-                    const pct = (d.change_pct === null || d.change_pct === undefined) ? '' : ` (${sign}${d.change_pct}%)`;
-                    return `${fmtNum(cell.getValue())}<div class="invc7-change ${cls}" title="Was ${fmtNum(d.prev_inv)} on ${escapeHtml(d.baseline_date || '')}">${sign}${fmtNum(change)}${pct} from ${fmtNum(d.prev_inv)}</div>`;
+                    return fmtNum(cell.getValue());
                 },
             },
             {
@@ -221,29 +205,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     return fmtNum(cell.getValue());
                 },
             },
-            {
-                title: 'DIL',
-                field: 'dil',
-                width: 100,
-                hozAlign: 'center',
-                headerHozAlign: 'center',
-                sorter: 'number',
-                formatter: function (cell) {
-                    const v = cell.getValue();
-                    const inv = Number(cell.getRow().getData().inv);
-                    if (v === null || v === undefined) {
-                        return inv === 0 ? '<span class="invc7-dil invc7-dil--hot">0 inv</span>' : '<span class="text-muted">—</span>';
-                    }
-                    const n = Number(v);
-                    const cls = n >= 200 ? 'invc7-dil--hot' : (n >= 100 ? 'invc7-dil--warm' : 'invc7-dil--ok');
-                    return `<span class="invc7-dil ${cls}">${n}%</span>`;
-                },
-            },
-            { title: 'Change', field: 'change', visible: false, sorter: 'number' },
+            { title: 'Inv 7d ago', field: 'prev_inv', visible: false, sorter: 'number' },
         ],
     });
 
-    table.on('dataLoaded', updateCount);
     table.on('dataFiltered', updateCount);
 
     let searchTimer = null;
@@ -253,7 +218,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     document.getElementById('invc7SkuSearch').addEventListener('input', onSearchInput);
     document.getElementById('invc7ParentSearch').addEventListener('input', onSearchInput);
-    document.getElementById('invc7Direction').addEventListener('change', applyFilters);
     document.getElementById('invc7Refresh').addEventListener('click', function () {
         if (table) table.replaceData();
     });
