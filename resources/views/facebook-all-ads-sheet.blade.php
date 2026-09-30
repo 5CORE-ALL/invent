@@ -314,9 +314,9 @@
                         <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
                               class="faas-stat-badge faas-stat-badge--acos badge-chart-link"
                               title="Click for 32-day trend">Acos:<span id="faasAcosValue">0%</span></span>
-                        {{-- TCOS = Facebook Ad Spend / Shopify S Sales × 100 --}}
+                        {{-- TCOS = Facebook Ad Spend / FB Marketplace L30 sales × 100 --}}
                         <span id="faasTcosBadge" class="faas-stat-badge faas-stat-badge--tcos"
-                              title="TCOS = Facebook Ad Spend / Shopify S Sales × 100 (same as /all-marketplace-master Ads%)">TCOS:<span id="faasTcosValue">0%</span></span>
+                              title="TCOS = Facebook Ad Spend / FB Marketplace L30 sales × 100">TCOS:<span id="faasTcosValue">0%</span></span>
                         <span id="faasCtrBadge" data-metric="ctr" data-label="CTR"
                               class="faas-stat-badge faas-stat-badge--ctr badge-chart-link"
                               title="Click for 32-day trend">CTR:<span id="faasCtrValue">0%</span></span>
@@ -1035,9 +1035,9 @@
         // ?ch=… so the server filters rows by the CH column.
         const CH_FILTER = @json($chFilter);
         const B2B_FILTER = @json($b2bFilter);
-        // TCOS = same Ads% as /all-marketplace-master (Spend / Shopify S Sales).
+        // TCOS = Active FB ad spend / FB Marketplace L30 sales.
         let faasMasterTcosPercent = null;
-        let faasShopifyNetSales = 0;
+        let faasFacebookSales = 0;
         let faasFacebookAdSpend = 0;
         // Dropdown choices on this page. On Video/Carousal pages this is a
         // restricted subset so users can't pick a value that would make the
@@ -1694,7 +1694,7 @@
                     updateBatchPill(resp.batch);
                     faasMasterTcosPercent = (resp.tcos_percent != null && resp.tcos_percent !== undefined)
                         ? Number(resp.tcos_percent) : null;
-                    faasShopifyNetSales = Number(resp.shopify_net_sales || 0);
+                    faasFacebookSales = Number(resp.facebook_sales || 0);
                     faasFacebookAdSpend = Number(resp.facebook_ad_spend || 0);
 
                     // Weighted CTR/CVR averages for the whole dataset — computed once
@@ -2208,23 +2208,21 @@
                     : (soldSum > 0 ? '$' + Math.round(spendSum / soldSum).toLocaleString() : '—');
             }
 
-            // TCOS — same as /all-marketplace-master FB Marketplace Ads%/TACOS %
-            // (Facebook Ad Spend / Shopify S Sales × 100).
+            // TCOS = Active FB ad spend / FB Marketplace's own L30 sales.
             const tcosEl = document.getElementById('faasTcosValue');
             if (tcosEl) {
                 const tcos = (faasMasterTcosPercent != null && isFinite(faasMasterTcosPercent))
                     ? faasMasterTcosPercent
-                    : (faasShopifyNetSales > 0
-                        ? (faasFacebookAdSpend / faasShopifyNetSales) * 100
+                    : (faasFacebookSales > 0
+                        ? (faasFacebookAdSpend / faasFacebookSales) * 100
                         : (faasFacebookAdSpend > 0 ? 100 : 0));
-                // 1 decimal — matches master Ads% display (e.g. 33.3%)
                 tcosEl.textContent = (Math.round(tcos * 10) / 10) + '%';
                 const tcosBadge = document.getElementById('faasTcosBadge');
                 if (tcosBadge) {
                     tcosBadge.title = 'TCOS = Ad Spend $'
                         + Math.round(faasFacebookAdSpend).toLocaleString()
-                        + ' / Shopify S Sales $' + Math.round(faasShopifyNetSales).toLocaleString()
-                        + ' = ' + (Math.round(tcos * 10) / 10) + '% (same as /all-marketplace-master Ads%)';
+                        + ' / FB Marketplace sales $' + Math.round(faasFacebookSales).toLocaleString()
+                        + ' = ' + (Math.round(tcos * 10) / 10) + '%';
                 }
             }
 

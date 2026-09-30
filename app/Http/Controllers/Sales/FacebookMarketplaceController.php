@@ -542,23 +542,18 @@ class FacebookMarketplaceController extends Controller
         $computed = self::computeLiveMetrics();
         $summary = $computed['summary'];
 
-        // Facebook ads — same TCOS as /facebook-ads + master: Spend / Shopify S Sales
+        // Facebook ads — same TCOS as /facebook-ads: Spend / this page's own L30 sales
         $adSpend = 0.0;
-        $shopifyNetSales = 0.0;
         try {
             $adSpend = (float) (app(ShopifyAdsMasterController::class)->getFacebookChannelSpend()['spend'] ?? 0);
         } catch (\Throwable $e) {
             Log::warning('facebook-marketplace ads spend failed: ' . $e->getMessage());
         }
-        try {
-            $shopifyNetSales = (float) ShopifyAdsMasterController::advertisementMasterNetSales();
-        } catch (\Throwable $e) {
-            Log::warning('facebook-marketplace Shopify S Sales failed: ' . $e->getMessage());
-        }
+        $ownSales = (float) ($summary['total_sales'] ?? 0);
         $gpft = (float) ($summary['gpft_percent'] ?? 0);
         $roi = (float) ($summary['roi_percent'] ?? 0);
-        $adsPct = $shopifyNetSales > 0
-            ? ($adSpend / $shopifyNetSales) * 100
+        $adsPct = $ownSales > 0
+            ? ($adSpend / $ownSales) * 100
             : ($adSpend > 0 ? 100.0 : 0.0);
         $summary['total_ad_spend'] = round($adSpend, 2);
         $summary['ads_percent'] = round($adsPct, 1);

@@ -153,7 +153,7 @@
                             title="L30 ROI% = Σ PFT / Σ COGS × 100">ROI: 0%</span>
                         <span class="badge fs-6 p-2" id="fbm-ads-badge"
                             style="background-color: #d63384; color: white; font-weight: bold;"
-                            title="Ads% = Facebook ads spend (CH=FB from /facebook-ads) / Sales × 100">Ads: 0%</span>
+                            title="Ads% = Facebook ads spend (CH=FB, Active) / this page's own L30 sales × 100">Ads: 0%</span>
                         <span class="badge fs-6 p-2" id="fbm-ad-spend-badge"
                             style="background-color: #fd7e14; color: white; font-weight: bold;"
                             title="Total Facebook ads spend (CH=FB)">Ad Spend: $0</span>
