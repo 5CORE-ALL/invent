@@ -279,20 +279,16 @@
                                 <label class="form-label small mb-1" for="of-order-date">Order date &amp; time ({{ $ofTimezone ?? 'America/Los_Angeles' }}) <span class="text-danger">*</span></label>
                                 <input type="datetime-local" class="form-control form-control-sm" id="of-order-date" required min="{{ ($ofDateEarliest ?? '2026-09-15') }}T00:00">
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <label class="form-label small mb-1" for="of-order-paid">Paid / Unpaid</label>
                                 <select class="form-select form-select-sm" id="of-order-paid">
                                     <option value="1">Paid</option>
                                     <option value="0">Unpaid</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <label class="form-label small mb-1" for="of-order-amount">Order amount</label>
                                 <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="of-order-amount" placeholder="0.00">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small mb-1" for="of-order-reference">Shopify / Veeqo order # <span class="text-muted">(optional, used to find the label)</span></label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-reference" maxlength="128" placeholder="#345678">
                             </div>
                         </div>
 
@@ -1321,7 +1317,7 @@
         document.getElementById('of-order-modal-label').textContent = 'Create order';
         document.getElementById('of-order-save').textContent = 'Create order';
         setOrderField('of-order-manual-id', '');
-        ['of-order-marketplace', 'of-order-order-id', 'of-order-amount', 'of-order-reference', 'of-order-customer',
+        ['of-order-marketplace', 'of-order-order-id', 'of-order-amount', 'of-order-customer',
          'of-order-email', 'of-order-phone', 'of-order-address1', 'of-order-address2', 'of-order-city',
          'of-order-state', 'of-order-zip', 'of-order-notes'].forEach(function (id) { setOrderField(id, ''); });
         setOrderField('of-order-country', 'US');
@@ -1346,7 +1342,6 @@
         setOrderField('of-order-date', String(row.order_date || '').replace(' ', 'T').slice(0, 16));
         setOrderField('of-order-paid', row.paid ? '1' : '0');
         setOrderField('of-order-amount', row.amount == null ? '' : row.amount);
-        setOrderField('of-order-reference', row.reference || '');
         setOrderField('of-order-customer', row.customer_name || '');
         setOrderField('of-order-email', row.customer_email || '');
         setOrderField('of-order-phone', row.customer_phone || '');
@@ -1373,7 +1368,6 @@
             order_date: String(document.getElementById('of-order-date')?.value || '').replace('T', ' '),
             paid: document.getElementById('of-order-paid')?.value === '1' ? 1 : 0,
             amount: document.getElementById('of-order-amount')?.value || '',
-            reference: document.getElementById('of-order-reference')?.value || '',
             customer_name: document.getElementById('of-order-customer')?.value || '',
             customer_email: document.getElementById('of-order-email')?.value || '',
             customer_phone: document.getElementById('of-order-phone')?.value || '',

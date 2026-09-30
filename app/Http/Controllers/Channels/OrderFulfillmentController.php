@@ -647,13 +647,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
         $clean = static fn ($v) => ($v === null || trim((string) $v) === '') ? null : trim((string) $v);
 
-        return [
+        $header = [
             'marketplace' => trim((string) $data['marketplace']),
             'order_id' => trim((string) $data['order_id']),
             'order_date' => $orderDate->format('Y-m-d H:i:s'),
             'paid' => (bool) ($data['paid'] ?? true),
             'amount' => isset($data['amount']) && $data['amount'] !== '' ? round((float) $data['amount'], 2) : null,
-            'reference' => $clean($data['reference'] ?? null),
             'customer_name' => $clean($data['customer_name'] ?? null),
             'customer_email' => $clean($data['customer_email'] ?? null),
             'customer_phone' => $clean($data['customer_phone'] ?? null),
@@ -665,6 +664,13 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'country' => $clean($data['country'] ?? null),
             'notes' => $clean($data['notes'] ?? null),
         ];
+        // The label is found by the marketplace order id; a Shopify/Veeqo reference is
+        // not asked for on the form and is only kept when a caller sends one.
+        if ($request->has('reference')) {
+            $header['reference'] = $clean($data['reference'] ?? null);
+        }
+
+        return $header;
     }
 
     /**
