@@ -716,7 +716,9 @@
                     Each row is an inclusive <strong>ACOS %</strong> range plus a
                     <strong>&gt;Spend</strong> minimum. Rows are checked <strong>top to bottom</strong>;
                     the first band that matches both the campaign's ACOS and Spend
-                    gets its Sbgt. Use <code>9999</code> on ACOS <em>To</em> for a catch-all.
+                    gets its Sbgt. <strong>Sbgt 0</strong> pauses the campaign on Push
+                    and shows <strong>Danger / Need Audit</strong> in the Audit column.
+                    Use <code>9999</code> on ACOS <em>To</em> for a catch-all.
                 </p>
 
                 <table class="table table-sm table-bordered align-middle mb-0" id="sbgt-rule-table">
@@ -1748,6 +1750,15 @@
                         const cid   = (row['CAMPAIGN ID'] ?? '').toString();
                         const score = row._audit_score;
                         if (!cid || !/^\d{6,}$/.test(cid)) return '';
+                        if (row._pause) {
+                            return `<button type="button"
+                                            class="btn btn-sm py-0 px-2"
+                                            style="font-size:11px;background:#dc2626;color:#fff;font-weight:700;line-height:1.25;"
+                                            data-audit-cid="${cid}"
+                                            title="ACOS and spend hit the Sbgt 0 band — campaign should be paused">
+                                        Danger<br><span style="font-weight:600;">Need Audit</span>
+                                    </button>`;
+                        }
                         if (score == null) {
                             return `<button type="button"
                                             class="btn btn-sm btn-outline-primary py-0 px-2"
@@ -2403,7 +2414,7 @@
         const SBGT_RULE_GET_URL  = '/facebook-all-ads-sheet/rule';
         const SBGT_RULE_SAVE_URL = '/facebook-all-ads-sheet/rule';
         let currentSbgtRule = { bands: [] };
-        const DEFAULT_BAND_LABELS = ['Excellent', 'Good', 'Fair', 'Poor', 'Bad', 'Critical'];
+        const DEFAULT_BAND_LABELS = ['Excellent', 'Good', 'Fair', 'Poor', 'Bad', 'Pause'];
 
         /** Upgrade legacy acos_max-only bands to From–To for the editor. */
         function normalizeSbgtBandsForUi(bands) {
@@ -2425,13 +2436,13 @@
                 };
             };
             if (hasFromTo) {
-                return bands.map((b, i) => withDefaults(b, i));
+                return renameLastBand(bands.map((b, i) => withDefaults(b, i)));
             }
             const sorted = [...bands].sort(
                 (a, b) => (Number(a.acos_max) || 0) - (Number(b.acos_max) || 0)
             );
             let prevTo = 0;
-            return sorted.map((b, i) => {
+            return renameLastBand(sorted.map((b, i) => {
                 const to = Number(b.acos_max ?? 9999);
                 const row = withDefaults({
                     ...b,
@@ -2440,7 +2451,17 @@
                 }, i);
                 prevTo = to;
                 return row;
-            });
+            }));
+        }
+
+        /** The last band used to be labeled Critical. Show it as Pause. */
+        function renameLastBand(bands) {
+            if (!bands.length) return bands;
+            const last = bands[bands.length - 1];
+            if (String(last.label || '').trim().toLowerCase() === 'critical') {
+                last.label = 'Pause';
+            }
+            return bands;
         }
 
         // Selected values for each multi-select filter. Empty set →
@@ -3046,7 +3067,10 @@
                 const sbgt = toNumber(r['Sbgt']);
                 // Meta campaign IDs are large numeric strings — guard
                 // against placeholders ("—", "N/A") that snuck in.
-                if (cid && /^\d{6,}$/.test(cid) && sbgt > 0) {
+                if (!cid || !/^\d{6,}$/.test(cid)) return;
+                if (r._pause) {
+                    out.push({ campaign_id: cid, sbgt: 0, pause: true });
+                } else if (sbgt > 0) {
                     out.push({ campaign_id: cid, sbgt: sbgt });
                 }
             });
@@ -3066,7 +3090,7 @@
                 chunks.push(allRows.slice(i, i + SBGT_PUSH_CHUNK_SIZE));
             }
 
-            const aggregated = { pushed: 0, failed: 0, skipped: 0, results: [] };
+            const aggregated = { pushed: 0, paused: 0, failed: 0, skipped: 0, results: [] };
             let done = 0;
 
             for (const chunk of chunks) {
@@ -3098,6 +3122,7 @@
                 }
 
                 aggregated.pushed  += body.pushed  ?? 0;
+                aggregated.paused  += body.paused  ?? 0;
                 aggregated.failed  += body.failed  ?? 0;
                 aggregated.skipped += body.skipped ?? 0;
                 aggregated.results.push(...(body.results || []));
@@ -3112,6 +3137,7 @@
             if (summary) {
                 summary.innerHTML =
                     `<span class="badge bg-success">Pushed: ${payload.pushed ?? 0}</span>` +
+                    `<span class="badge bg-danger">Paused: ${payload.paused ?? 0}</span>` +
                     `<span class="badge bg-danger">Failed: ${payload.failed ?? 0}</span>` +
                     `<span class="badge bg-secondary">Skipped: ${payload.skipped ?? 0}</span>`;
             }
@@ -3121,11 +3147,16 @@
                     const tr = document.createElement('tr');
                     const cls = r.status === 'pushed'
                         ? 'badge bg-success'
-                        : (r.status === 'failed' ? 'badge bg-danger' : 'badge bg-secondary');
+                        : (r.status === 'paused'
+                            ? 'badge bg-danger'
+                            : (r.status === 'failed' ? 'badge bg-danger' : 'badge bg-secondary'));
+                    const sbgtCell = r.status === 'paused'
+                        ? 'Pause'
+                        : (r.sbgt != null ? '$' + r.sbgt : '—');
                     tr.innerHTML = `
                         <td class="text-muted small">${i + 1}</td>
                         <td><code>${r.campaign_id || ''}</code></td>
-                        <td>${r.sbgt != null ? '$' + r.sbgt : '—'}</td>
+                        <td>${sbgtCell}</td>
                         <td><span class="${cls}">${r.status}</span></td>
                         <td class="small">${(r.reason || '').toString().replace(/</g, '&lt;')}</td>`;
                     body.appendChild(tr);
@@ -3137,13 +3168,18 @@
 
         document.getElementById('faasPushSbgtBtn')?.addEventListener('click', function () {
             const rows = collectSbgtRowsToPush();
+            const pauseN = rows.filter(r => r.pause).length;
+            const budgetN = rows.length - pauseN;
             if (rows.length === 0) {
-                alert('No campaigns with both a Campaign ID and an Sbgt value are currently visible.\n\n'
+                alert('No campaigns with a Campaign ID and an Sbgt (or a pause band) are currently visible.\n\n'
                     + 'Tip: upload Spend + Sales sheets, then come back and try again.');
                 return;
             }
-            if (!confirm(`Push suggested daily budget to ${rows.length} Meta campaign(s)?\n\n`
-                + 'This updates live ad budgets on Meta — make sure the Sbgt rule is what you want.')) {
+            const parts = [];
+            if (budgetN) parts.push(`set the daily budget on ${budgetN} campaign(s)`);
+            if (pauseN) parts.push(`pause ${pauseN} campaign(s) that hit Sbgt 0`);
+            if (!confirm(`Push to Meta: ${parts.join(' and ')}?\n\n`
+                + 'This updates live ads on Meta.')) {
                 return;
             }
 
@@ -3873,6 +3909,7 @@
 
         function faasExportCellValue(row, field) {
             if (field === 'Audit') {
+                if (row._pause) return 'Danger — Need Audit';
                 return row._audit_score != null ? `${row._audit_score}%` : '';
             }
             if (field === 'History') {
