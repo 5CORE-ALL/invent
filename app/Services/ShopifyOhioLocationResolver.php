@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Resolve the Shopify Ohio warehouse location for inventory updates.
- * Prefers SHOPIFY_INVENTORY_LOCATION_ID, then a location named "Ohio".
+ * Resolve the Shopify warehouse location for inventory updates.
+ * Prefers SHOPIFY_INVENTORY_LOCATION_ID, then a location named "Ohio" or "Main Warehouse".
  */
 class ShopifyOhioLocationResolver
 {
@@ -36,9 +36,54 @@ class ShopifyOhioLocationResolver
     }
 
     /**
+     * Shopify location named Main Warehouse only. Other locations are ignored.
+     */
+    public static function mainWarehouseLocationId(): ?string
+    {
+        $cached = Cache::get('shopify_main_warehouse_location_id');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $locations = self::fetchLocations();
+        if ($locations === null) {
+            return null;
+        }
+
+        foreach ($locations as $loc) {
+            if (! is_array($loc) || ($loc['active'] ?? true) === false || empty($loc['id'])) {
+                continue;
+            }
+            if (self::locationNameRank((string) ($loc['name'] ?? '')) !== 1) {
+                continue;
+            }
+
+            $id = (string) $loc['id'];
+            Cache::put('shopify_main_warehouse_location_id', $id, 3600);
+
+            return $id;
+        }
+
+        return null;
+    }
+
+    /**
      * locations.json is shared by every Accept. A 429 must be retried; a miss must not be cached.
      */
     private static function fetchOhioLocationId(): ?string
+    {
+        $locations = self::fetchLocations();
+        if ($locations === null) {
+            return null;
+        }
+
+        return self::pickLocationId($locations);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>|null null when the request failed
+     */
+    private static function fetchLocations(): ?array
     {
         $domain = config('services.shopify.store_url');
         $token = config('services.shopify.access_token') ?: config('services.shopify.password');
@@ -85,13 +130,56 @@ class ShopifyOhioLocationResolver
                 return null;
             }
 
-            foreach ($response->json('locations') ?? [] as $loc) {
-                if (stripos($loc['name'] ?? '', 'Ohio') !== false) {
-                    return (string) $loc['id'];
-                }
-            }
+            return $response->json('locations') ?? [];
+        }
 
-            return null;
+        return null;
+    }
+
+    /**
+     * Ohio first (older stores), then Main Warehouse, then the only active location.
+     *
+     * @param  array<int, array<string, mixed>>  $locations
+     */
+    private static function pickLocationId(array $locations): ?string
+    {
+        $active = [];
+        foreach ($locations as $loc) {
+            if (! is_array($loc) || ($loc['active'] ?? true) === false || empty($loc['id'])) {
+                continue;
+            }
+            $active[] = $loc;
+        }
+
+        $bestId = null;
+        $bestRank = PHP_INT_MAX;
+        foreach ($active as $loc) {
+            $rank = self::locationNameRank((string) ($loc['name'] ?? ''));
+            if ($rank !== null && $rank < $bestRank) {
+                $bestRank = $rank;
+                $bestId = (string) $loc['id'];
+            }
+        }
+
+        if ($bestId !== null) {
+            return $bestId;
+        }
+
+        if (count($active) === 1) {
+            return (string) $active[0]['id'];
+        }
+
+        return null;
+    }
+
+    private static function locationNameRank(string $name): ?int
+    {
+        $compact = strtolower((string) preg_replace('/\s+/', '', trim($name)));
+        if (str_contains(strtolower($name), 'ohio')) {
+            return 0;
+        }
+        if ($compact === 'mainwarehouse') {
+            return 1;
         }
 
         return null;
@@ -122,7 +210,7 @@ class ShopifyOhioLocationResolver
             ]);
         }
 
-        // Fallback: scan all shop locations for a name containing "Ohio" that appears in levels
+        // Fallback: Ohio or Main Warehouse, when that location is one of these levels.
         $locationIds = array_map('strval', array_column($levels, 'location_id'));
         if (count($locationIds) > 1) {
             try {
@@ -135,11 +223,9 @@ class ShopifyOhioLocationResolver
                     ])->timeout(15)->get("https://{$domain}/admin/api/2025-01/locations.json");
 
                     if ($locResponse->successful()) {
-                        foreach ($locResponse->json('locations') ?? [] as $loc) {
-                            $id = (string) ($loc['id'] ?? '');
-                            if ($id !== '' && stripos($loc['name'] ?? '', 'Ohio') !== false && in_array($id, $locationIds, true)) {
-                                return $id;
-                            }
+                        $picked = self::pickLocationId($locResponse->json('locations') ?? []);
+                        if ($picked !== null && in_array($picked, $locationIds, true)) {
+                            return $picked;
                         }
                     }
                 }

@@ -846,38 +846,21 @@ class VerificationAdjustmentController extends Controller
             return ['success' => false, 'error' => 'SKU not found in Shopify: '.$normalizedSku];
         }
 
-        $locationId = $this->getPreferredShopifyLocationId();
+        $locationId = \App\Services\ShopifyOhioLocationResolver::mainWarehouseLocationId();
         if (! $locationId) {
-            try {
-                $locationId = $this->getLocationIdFast($inventoryItemId);
-            } catch (\Exception $e) {
-                return ['success' => false, 'error' => 'Location lookup failed: '.$e->getMessage()];
-            }
-        }
-        if (! $locationId) {
-            return ['success' => false, 'error' => 'Location not found in Shopify.'];
+            return ['success' => false, 'error' => 'Main Warehouse was not found in Shopify. Inventory was not sent to another warehouse.'];
         }
 
         try {
             $available = $this->postInventoryAdjustment($inventoryItemId, $locationId, $adjustment);
         } catch (\Exception $e) {
-            $preferred = $this->getPreferredShopifyLocationId();
-            if (! $preferred) {
+            if (! $this->inventoryNotStockedAtLocation($e)) {
                 return ['success' => false, 'error' => $e->getMessage()];
             }
 
             try {
-                $fallback = $this->getLocationIdFast($inventoryItemId);
-            } catch (\Exception $lookupError) {
-                return ['success' => false, 'error' => $e->getMessage()];
-            }
-
-            if (! $fallback || $fallback === $locationId) {
-                return ['success' => false, 'error' => $e->getMessage()];
-            }
-
-            try {
-                $available = $this->postInventoryAdjustment($inventoryItemId, $fallback, $adjustment);
+                $this->connectInventoryToMainWarehouse($inventoryItemId, $locationId);
+                $available = $this->postInventoryAdjustment($inventoryItemId, $locationId, $adjustment);
             } catch (\Exception $retryError) {
                 return ['success' => false, 'error' => $retryError->getMessage()];
             }
@@ -992,6 +975,35 @@ GQL;
         }
 
         return (int) ($response->json('inventory_level.available') ?? 0);
+    }
+
+    protected function inventoryNotStockedAtLocation(\Exception $e): bool
+    {
+        return str_contains(strtolower($e->getMessage()), 'not stocked');
+    }
+
+    /**
+     * Stock the item at Main Warehouse so the adjustment stays on that location.
+     */
+    protected function connectInventoryToMainWarehouse(string $inventoryItemId, string $locationId): void
+    {
+        $response = $this->retryOnRateLimit(function () use ($inventoryItemId, $locationId) {
+            return $this->shopifyHttp()->timeout(8)
+                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/connect.json", [
+                    'inventory_item_id' => $inventoryItemId,
+                    'location_id' => $locationId,
+                ]);
+        }, 4, 0.5);
+
+        if (! $response->successful()) {
+            $errorMessage = "HTTP {$response->status()}";
+            $responseData = $response->json();
+            if (isset($responseData['errors'])) {
+                $errorMessage .= ' - '.json_encode($responseData['errors']);
+            }
+
+            throw new \Exception($errorMessage);
+        }
     }
 
     /**

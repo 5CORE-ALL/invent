@@ -41,6 +41,36 @@ class VerificationAdjustmentLocationLookupTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_main_warehouse_is_used_when_ohio_is_absent(): void
+    {
+        Http::fake([
+            'https://example.myshopify.com/admin/api/2025-01/locations.json' => Http::response([
+                'locations' => [
+                    ['id' => 10, 'name' => 'Shop location', 'active' => true],
+                    ['id' => 77, 'name' => 'Main Warehouse', 'active' => true],
+                ],
+            ], 200),
+        ]);
+
+        $this->assertSame('77', ShopifyOhioLocationResolver::preferredLocationId());
+    }
+
+    public function test_verification_push_location_is_main_warehouse_even_when_others_exist(): void
+    {
+        Http::fake([
+            'https://example.myshopify.com/admin/api/2025-01/locations.json' => Http::response([
+                'locations' => [
+                    ['id' => 10, 'name' => 'Ohio Warehouse', 'active' => true],
+                    ['id' => 77, 'name' => 'Main Warehouse', 'active' => true],
+                    ['id' => 88, 'name' => 'West Warehouse', 'active' => true],
+                ],
+            ], 200),
+        ]);
+
+        $this->assertSame('77', ShopifyOhioLocationResolver::mainWarehouseLocationId());
+        $this->assertSame('10', ShopifyOhioLocationResolver::preferredLocationId());
+    }
+
     public function test_location_lookup_retries_http_429_then_caches_the_level(): void
     {
         config(['services.shopify.inventory_location_id' => '555']);
