@@ -120,6 +120,11 @@
             line-height: 1;
         }
         .of-edit-btn:hover { color: #0a58ca; }
+        .of-actions .btn { padding: 0 0.3rem; }
+        .of-actions .btn:disabled { opacity: 0.6; }
+        .of-order-line { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem; }
+        .of-order-line .of-line-sku { flex: 1; }
+        .of-order-line .of-line-qty { width: 90px; }
         .of-tracking {
             font-size: 0.78rem;
             font-weight: 600;
@@ -139,6 +144,9 @@
             <div class="card shadow-sm">
                 <div class="card-body py-2">
                     <div id="of-toolbar" class="mb-2">
+                        @if(!empty($ofCreateOrders))
+                            <button type="button" class="btn btn-sm btn-primary" id="of-create-order-btn"><i class="fas fa-plus me-1" aria-hidden="true"></i>Create order</button>
+                        @endif
                         <span class="badge bg-dark of-summary-badge" id="of-rows-badge" title="Number of rows currently shown after filters">Rows: <span id="of-order-count">0</span></span>
                         <button type="button" class="badge bg-secondary of-summary-badge" id="of-channels-badge" title="Show connected marketplaces">Channels: <span id="of-channel-count">0</span></button>
                         <span class="badge of-summary-badge" style="background:#d1e7dd; color:#0f5132;">Paid: <span id="of-paid-count">0</span></span>
@@ -169,7 +177,7 @@
                         </select>
                         <input type="text" id="of-search" class="form-control form-control-sm" style="min-width:180px; flex:1;" placeholder="Search order id…" autocomplete="off" title="Filter by order id">
                     </div>
-                    <p class="small text-muted mb-2">@if(!empty($ofDeliveredOnly))Orders from 15 Sep 2026 whose marketplace status or carrier tracking status is Delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofTransitOnly))Orders from 15 Sep 2026 that are shipped or in transit and not yet delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofScanPendingOnly))Orders from 15 Sep 2026 that have a tracking number and no carrier scan yet. The date filter defaults to the last 30 days.@elseif(!empty($ofUnpaidOnly))Unpaid orders from 15 Sep 2026. The date filter defaults to the last 30 days.@elseif(!empty($ofPendingOnly))Orders from 15 Sep 2026 that are still waiting to ship. The date filter defaults to the last 30 days.@else Orders from 15 Sep 2026. The date filter defaults to the last 30 days. Search matches the order id. Carrier and tracking status come from the tracking number (USPS, GOFO, FedEx, UPS).@endif</p>
+                    <p class="small text-muted mb-2">@if(!empty($ofCreateOrders))Orders entered by hand for marketplaces without an API. They also appear on the Orders page under the marketplace name. A new order shows <strong>Order Created</strong>; use <i class="fas fa-check-circle" aria-hidden="true"></i> Fulfill once the label is bought — the tracking number is fetched from Veeqo / 4Seller at that moment and the status becomes Fulfilled.@elseif(!empty($ofDeliveredOnly))Orders from 15 Sep 2026 whose marketplace status or carrier tracking status is Delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofTransitOnly))Orders from 15 Sep 2026 that are shipped or in transit and not yet delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofScanPendingOnly))Orders from 15 Sep 2026 that have a tracking number and no carrier scan yet. The date filter defaults to the last 30 days.@elseif(!empty($ofUnpaidOnly))Unpaid orders from 15 Sep 2026. The date filter defaults to the last 30 days.@elseif(!empty($ofPendingOnly))Orders from 15 Sep 2026 that are still waiting to ship. The date filter defaults to the last 30 days.@else Orders from 15 Sep 2026. The date filter defaults to the last 30 days. Search matches the order id. Carrier and tracking status come from the tracking number (USPS, GOFO, FedEx, UPS).@endif</p>
                     <div id="order-fulfillment-table" style="height: calc(100vh - 280px);"></div>
                 </div>
             </div>
@@ -225,6 +233,144 @@
             </div>
         </div>
     </div>
+
+    {{-- Manual order: create / edit --}}
+    <div class="modal fade" id="of-order-modal" tabindex="-1" aria-labelledby="of-order-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <form id="of-order-form" autocomplete="off">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="of-order-modal-label">Create order</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="of-order-manual-id" value="">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1" for="of-order-marketplace">Marketplace <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-marketplace" list="of-manual-marketplaces" maxlength="128" required placeholder="e.g. Walmart, Etsy, Faire…">
+                                <datalist id="of-manual-marketplaces">
+                                    @foreach(($ofManualMarketplaces ?? []) as $mpName)
+                                        <option value="{{ $mpName }}"></option>
+                                    @endforeach
+                                </datalist>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1" for="of-order-order-id">Order ID <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-order-id" maxlength="128" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1" for="of-order-date">Order date &amp; time ({{ $ofTimezone ?? 'America/Los_Angeles' }}) <span class="text-danger">*</span></label>
+                                <input type="datetime-local" class="form-control form-control-sm" id="of-order-date" required min="{{ ($ofDateEarliest ?? '2026-09-15') }}T00:00">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1" for="of-order-paid">Paid / Unpaid</label>
+                                <select class="form-select form-select-sm" id="of-order-paid">
+                                    <option value="1">Paid</option>
+                                    <option value="0">Unpaid</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1" for="of-order-amount">Order amount</label>
+                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="of-order-amount" placeholder="0.00">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1" for="of-order-reference">Shopify / Veeqo order # <span class="text-muted">(optional, used to find the label)</span></label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-reference" maxlength="128" placeholder="#345678">
+                            </div>
+                        </div>
+
+                        <hr class="my-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label small mb-0">Items <span class="text-danger">*</span></label>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="of-order-add-line"><i class="fas fa-plus me-1" aria-hidden="true"></i>Add SKU</button>
+                        </div>
+                        <div id="of-order-lines"></div>
+                        <div class="form-text" id="of-order-lines-help">One grid row is created per SKU.</div>
+
+                        <hr class="my-3">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1" for="of-order-customer">Customer name</label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-customer" maxlength="191">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1" for="of-order-email">Email</label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-email" maxlength="191">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1" for="of-order-phone">Phone</label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-phone" maxlength="64">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1" for="of-order-address1">Address line 1</label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-address1" maxlength="191">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1" for="of-order-address2">Address line 2</label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-address2" maxlength="191">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1" for="of-order-city">City</label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-city" maxlength="128">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1" for="of-order-state">State</label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-state" maxlength="128">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1" for="of-order-zip">ZIP</label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-zip" maxlength="32">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1" for="of-order-country">Country</label>
+                                <input type="text" class="form-control form-control-sm" id="of-order-country" maxlength="64" value="US">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small mb-1" for="of-order-notes">Notes</label>
+                                <textarea class="form-control form-control-sm" id="of-order-notes" rows="2" maxlength="5000"></textarea>
+                            </div>
+                        </div>
+                        <div id="of-order-error" class="text-danger small mt-2" style="display:none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="of-order-save">Create order</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {{-- Manual order: fulfil when no tracking number could be fetched --}}
+    <div class="modal fade" id="of-fulfill-modal" tabindex="-1" aria-labelledby="of-fulfill-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form id="of-fulfill-form" autocomplete="off">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="of-fulfill-modal-label">Mark as fulfilled</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="of-fulfill-manual-id" value="">
+                        <div class="mb-2">
+                            <div class="small text-muted">Order</div>
+                            <div id="of-fulfill-order" class="fw-semibold"></div>
+                        </div>
+                        <div class="alert alert-warning py-2 small" id="of-fulfill-message"></div>
+                        <label for="of-fulfill-tracking" class="form-label">Tracking number</label>
+                        <input type="text" class="form-control" id="of-fulfill-tracking" maxlength="128" placeholder="Enter the number from the label">
+                        <div id="of-fulfill-error" class="text-danger small mt-2" style="display:none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Not yet</button>
+                        <button type="button" class="btn btn-outline-primary" id="of-fulfill-retry">Search again</button>
+                        <button type="submit" class="btn btn-primary" id="of-fulfill-save">Fulfill with this number</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -240,11 +386,13 @@
     const scanPendingOnly = @json((bool) ($ofScanPendingOnly ?? false));
     const unpaidOnly = @json((bool) ($ofUnpaidOnly ?? false));
     const pendingOnly = @json((bool) ($ofPendingOnly ?? false));
-    const pageKey = deliveredOnly ? 'delivered'
+    const createOrdersPage = @json((bool) ($ofCreateOrders ?? false));
+    const pageKey = createOrdersPage ? 'create_orders'
+        : (deliveredOnly ? 'delivered'
         : (transitOnly ? 'transit'
         : (scanPendingOnly ? 'scan_pending'
         : (unpaidOnly ? 'unpaid'
-        : (pendingOnly ? 'pending' : 'orders'))));
+        : (pendingOnly ? 'pending' : 'orders')))));
     const statusStorageKey = 'of-status-filter:' + pageKey;
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -274,7 +422,15 @@
         if (scanPendingOnly) params.scan_pending = 1;
         if (unpaidOnly) params.unpaid = 1;
         if (pendingOnly) params.pending = 1;
+        if (createOrdersPage) params.manual = 1;
         return params;
+    }
+
+    // Manual orders share one slug; count each typed marketplace name on its own.
+    function channelKey(row) {
+        if (!row) return '';
+        if (row.mm_slug === 'manual') return 'manual:' + String(row.channel || '').trim().toLowerCase();
+        return String(row.mm_slug || row.channel || '').trim();
     }
 
     function formatDateTime(raw) {
@@ -300,7 +456,8 @@
         let paid = 0;
         let unpaid = 0;
         (rows || []).forEach(function (row) {
-            if (row.mm_slug) channels[row.mm_slug] = true;
+            const key = channelKey(row);
+            if (key) channels[key] = true;
             if (row.paid) paid++;
             else unpaid++;
         });
@@ -607,22 +764,38 @@
             {
                 title: 'Edit',
                 field: 'id',
-                width: 70,
+                width: createOrdersPage ? 150 : 100,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: false,
                 formatter: function (cell) {
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'btn btn-sm btn-link of-edit-btn';
-                    btn.title = 'Add tracking number';
-                    btn.innerHTML = '<i class="fas fa-pen" aria-hidden="true"></i>';
-                    btn.addEventListener('click', function (ev) {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                        openTrackingModal(cell.getRow().getData());
-                    });
-                    return btn;
+                    const row = cell.getRow().getData();
+                    const wrap = document.createElement('span');
+                    wrap.className = 'of-actions';
+                    const add = function (icon, title, cls, handler, disabled) {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'btn btn-sm btn-link of-edit-btn ' + (cls || '');
+                        btn.title = title;
+                        btn.disabled = !!disabled;
+                        btn.innerHTML = '<i class="fas ' + icon + '" aria-hidden="true"></i>';
+                        btn.addEventListener('click', function (ev) {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            handler(cell.getRow().getData());
+                        });
+                        wrap.appendChild(btn);
+                    };
+                    add('fa-pen', 'Add tracking number', '', openTrackingModal);
+                    if (row.manual) {
+                        const fulfilled = String(row.status || '').toLowerCase() === 'fulfilled';
+                        add('fa-check-circle', fulfilled ? 'Fulfilled' : 'Fulfill (fetch tracking and mark fulfilled)', fulfilled ? 'text-success' : '', fulfillManualOrder, fulfilled);
+                        if (createOrdersPage) {
+                            add('fa-edit', 'Edit order', '', openOrderModalForEdit);
+                            add('fa-trash', 'Delete order', 'text-danger', deleteManualOrder);
+                        }
+                    }
+                    return wrap;
                 },
             },
         ],
@@ -683,7 +856,7 @@
     function openChannelsModal() {
         const grouped = {};
         rowsForCounts().forEach(function (row) {
-            const slug = String(row.mm_slug || row.channel || '').trim();
+            const slug = channelKey(row);
             if (!slug) return;
             if (!grouped[slug]) {
                 grouped[slug] = { label: String(row.channel || slug), count: 0 };
@@ -934,6 +1107,328 @@
             err.style.display = 'block';
         }).always(function () {
             saveBtn.disabled = false;
+        });
+    });
+
+    /* ----------------------------------------------------------------
+     | Manual orders (Create Orders page + manual rows on the other pages)
+     |----------------------------------------------------------------*/
+    const manualStoreUrl = @json(route('order.fulfillment.manual.store'));
+    const manualUrlBase = @json(url('/order-fulfillment/manual-orders'));
+
+    function manualUrl(id, suffix) {
+        return manualUrlBase + '/' + encodeURIComponent(id) + (suffix || '');
+    }
+
+    function showFormError(id, message) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = message || '';
+        el.style.display = message ? 'block' : 'none';
+    }
+
+    function ajaxErrorMessage(xhr, fallback) {
+        const body = xhr && xhr.responseJSON;
+        if (body && body.errors) {
+            const first = Object.keys(body.errors)[0];
+            if (first && body.errors[first] && body.errors[first][0]) return body.errors[first][0];
+        }
+        return (body && body.message) || fallback;
+    }
+
+    function showModal(id) {
+        const el = document.getElementById(id);
+        if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).show();
+    }
+
+    function hideModal(id) {
+        const el = document.getElementById(id);
+        if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();
+    }
+
+    function refreshAfterRowsChanged() {
+        try {
+            const sorters = table.getSorters();
+            if (sorters.length) table.setSort(sorters.map(function (s) { return { column: s.field, dir: s.dir }; }));
+        } catch (e) { /* keep current order */ }
+        renderStatusOptions(table.getData());
+        applyFilters(table);
+        setNavCount('create_orders', table.getData().filter(function (r) { return r.manual; }).length);
+        setTimeout(function () { fillTracking(0); fillTrackingStatus(0); }, 200);
+    }
+
+    function addOrderLine(sku, qty, removable) {
+        const host = document.getElementById('of-order-lines');
+        if (!host) return;
+        const line = document.createElement('div');
+        line.className = 'of-order-line';
+        line.innerHTML =
+            '<input type="text" class="form-control form-control-sm of-line-sku" placeholder="SKU" maxlength="191" required>' +
+            '<input type="number" class="form-control form-control-sm of-line-qty" placeholder="Qty" min="1" value="1">' +
+            '<button type="button" class="btn btn-sm btn-link text-danger of-line-remove" title="Remove"><i class="fas fa-times" aria-hidden="true"></i></button>';
+        line.querySelector('.of-line-sku').value = sku || '';
+        line.querySelector('.of-line-qty').value = qty || 1;
+        const remove = line.querySelector('.of-line-remove');
+        if (removable === false) remove.style.visibility = 'hidden';
+        remove.addEventListener('click', function () {
+            if (host.querySelectorAll('.of-order-line').length > 1) line.remove();
+        });
+        host.appendChild(line);
+    }
+
+    function readOrderLines() {
+        const lines = [];
+        document.querySelectorAll('#of-order-lines .of-order-line').forEach(function (line) {
+            const sku = String(line.querySelector('.of-line-sku')?.value || '').trim();
+            const qty = parseInt(line.querySelector('.of-line-qty')?.value || '1', 10) || 1;
+            if (sku) lines.push({ sku: sku, qty: qty });
+        });
+        return lines;
+    }
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+
+    function nowLocalValue() {
+        const d = new Date();
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    }
+
+    function setOrderField(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.value = value == null ? '' : value;
+    }
+
+    function openOrderModalForCreate() {
+        document.getElementById('of-order-modal-label').textContent = 'Create order';
+        document.getElementById('of-order-save').textContent = 'Create order';
+        setOrderField('of-order-manual-id', '');
+        ['of-order-marketplace', 'of-order-order-id', 'of-order-amount', 'of-order-reference', 'of-order-customer',
+         'of-order-email', 'of-order-phone', 'of-order-address1', 'of-order-address2', 'of-order-city',
+         'of-order-state', 'of-order-zip', 'of-order-notes'].forEach(function (id) { setOrderField(id, ''); });
+        setOrderField('of-order-country', 'US');
+        setOrderField('of-order-paid', '1');
+        setOrderField('of-order-date', nowLocalValue());
+        const host = document.getElementById('of-order-lines');
+        if (host) host.innerHTML = '';
+        addOrderLine('', 1, true);
+        document.getElementById('of-order-add-line').style.display = '';
+        document.getElementById('of-order-lines-help').textContent = 'One grid row is created per SKU.';
+        showFormError('of-order-error', '');
+        showModal('of-order-modal');
+        setTimeout(function () { document.getElementById('of-order-marketplace')?.focus(); }, 200);
+    }
+
+    function openOrderModalForEdit(row) {
+        document.getElementById('of-order-modal-label').textContent = 'Edit order ' + (row.order_id || '');
+        document.getElementById('of-order-save').textContent = 'Save changes';
+        setOrderField('of-order-manual-id', row.manual_id || '');
+        setOrderField('of-order-marketplace', row.channel || '');
+        setOrderField('of-order-order-id', row.order_id || '');
+        setOrderField('of-order-date', String(row.order_date || '').replace(' ', 'T').slice(0, 16));
+        setOrderField('of-order-paid', row.paid ? '1' : '0');
+        setOrderField('of-order-amount', row.amount == null ? '' : row.amount);
+        setOrderField('of-order-reference', row.reference || '');
+        setOrderField('of-order-customer', row.customer_name || '');
+        setOrderField('of-order-email', row.customer_email || '');
+        setOrderField('of-order-phone', row.customer_phone || '');
+        setOrderField('of-order-address1', row.address1 || '');
+        setOrderField('of-order-address2', row.address2 || '');
+        setOrderField('of-order-city', row.city || '');
+        setOrderField('of-order-state', row.state || '');
+        setOrderField('of-order-zip', row.zip || '');
+        setOrderField('of-order-country', row.country || '');
+        setOrderField('of-order-notes', row.notes || '');
+        const host = document.getElementById('of-order-lines');
+        if (host) host.innerHTML = '';
+        addOrderLine(row.sku || '', row.qty || 1, false);
+        document.getElementById('of-order-add-line').style.display = 'none';
+        document.getElementById('of-order-lines-help').textContent = 'Order details apply to every SKU line of this order; the SKU and qty here apply to this row only.';
+        showFormError('of-order-error', '');
+        showModal('of-order-modal');
+    }
+
+    function orderHeaderPayload() {
+        return {
+            marketplace: document.getElementById('of-order-marketplace')?.value || '',
+            order_id: document.getElementById('of-order-order-id')?.value || '',
+            order_date: String(document.getElementById('of-order-date')?.value || '').replace('T', ' '),
+            paid: document.getElementById('of-order-paid')?.value === '1' ? 1 : 0,
+            amount: document.getElementById('of-order-amount')?.value || '',
+            reference: document.getElementById('of-order-reference')?.value || '',
+            customer_name: document.getElementById('of-order-customer')?.value || '',
+            customer_email: document.getElementById('of-order-email')?.value || '',
+            customer_phone: document.getElementById('of-order-phone')?.value || '',
+            address1: document.getElementById('of-order-address1')?.value || '',
+            address2: document.getElementById('of-order-address2')?.value || '',
+            city: document.getElementById('of-order-city')?.value || '',
+            state: document.getElementById('of-order-state')?.value || '',
+            zip: document.getElementById('of-order-zip')?.value || '',
+            country: document.getElementById('of-order-country')?.value || '',
+            notes: document.getElementById('of-order-notes')?.value || '',
+        };
+    }
+
+    document.getElementById('of-create-order-btn')?.addEventListener('click', openOrderModalForCreate);
+    document.getElementById('of-order-add-line')?.addEventListener('click', function () { addOrderLine('', 1, true); });
+
+    document.getElementById('of-order-form')?.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        const saveBtn = document.getElementById('of-order-save');
+        const manualId = document.getElementById('of-order-manual-id')?.value || '';
+        const payload = orderHeaderPayload();
+        const lines = readOrderLines();
+        if (!payload.marketplace.trim() || !payload.order_id.trim() || !payload.order_date.trim()) {
+            showFormError('of-order-error', 'Marketplace, order ID and order date are required.');
+            return;
+        }
+        if (!lines.length) {
+            showFormError('of-order-error', 'Add at least one SKU.');
+            return;
+        }
+        showFormError('of-order-error', '');
+        saveBtn.disabled = true;
+        const isEdit = manualId !== '';
+        if (isEdit) {
+            payload.sku = lines[0].sku;
+            payload.qty = lines[0].qty;
+            payload._method = 'PUT';
+        } else {
+            payload.lines = lines;
+        }
+        $.ajax({
+            url: isEdit ? manualUrl(manualId) : manualStoreUrl,
+            type: 'POST',
+            dataType: 'json',
+            headers: { 'X-CSRF-TOKEN': csrfToken() },
+            data: payload,
+        }).done(function (res) {
+            if (!res || res.success === false) {
+                showFormError('of-order-error', (res && res.message) || 'Could not save the order.');
+                return;
+            }
+            const rows = Array.isArray(res.rows) ? res.rows : [];
+            if (isEdit) {
+                table.updateOrAddData(rows);
+            } else {
+                table.addData(rows);
+                const list = document.getElementById('of-manual-marketplaces');
+                if (list && payload.marketplace && !Array.from(list.options).some(function (o) { return o.value.toLowerCase() === payload.marketplace.trim().toLowerCase(); })) {
+                    const opt = document.createElement('option');
+                    opt.value = payload.marketplace.trim();
+                    list.appendChild(opt);
+                }
+            }
+            refreshAfterRowsChanged();
+            hideModal('of-order-modal');
+        }).fail(function (xhr) {
+            showFormError('of-order-error', ajaxErrorMessage(xhr, 'Could not save the order.'));
+        }).always(function () {
+            saveBtn.disabled = false;
+        });
+    });
+
+    function deleteManualOrder(row) {
+        if (!row || !row.manual_id) return;
+        if (!window.confirm('Delete order ' + (row.order_id || '') + ' (' + (row.sku || '') + ')?')) return;
+        $.ajax({
+            url: manualUrl(row.manual_id),
+            type: 'POST',
+            dataType: 'json',
+            headers: { 'X-CSRF-TOKEN': csrfToken() },
+            data: { _method: 'DELETE' },
+        }).done(function (res) {
+            if (res && res.success) {
+                const live = table.getRow(row.id);
+                if (live) live.delete();
+                refreshAfterRowsChanged();
+            } else {
+                window.alert((res && res.message) || 'Could not delete the order.');
+            }
+        }).fail(function (xhr) {
+            window.alert(ajaxErrorMessage(xhr, 'Could not delete the order.'));
+        });
+    }
+
+    let fulfillInFlight = false;
+
+    function postFulfill(manualId, trackingNumber, onNoTracking, onDone) {
+        if (fulfillInFlight) return;
+        fulfillInFlight = true;
+        $.ajax({
+            url: manualUrl(manualId, '/fulfill'),
+            type: 'POST',
+            dataType: 'json',
+            timeout: 60000,
+            headers: { 'X-CSRF-TOKEN': csrfToken() },
+            data: { tracking_number: trackingNumber || '' },
+        }).done(function (res) {
+            const rows = (res && Array.isArray(res.rows)) ? res.rows : [];
+            table.updateOrAddData(rows);
+            (res && Array.isArray(res.updates) ? res.updates : []).forEach(applyTrackingUpdate);
+            refreshAfterRowsChanged();
+            if (onDone) onDone(res);
+        }).fail(function (xhr) {
+            const body = xhr && xhr.responseJSON;
+            if (body && body.no_tracking) {
+                onNoTracking(body.message || 'No tracking number found yet.');
+                return;
+            }
+            const message = ajaxErrorMessage(xhr, 'Could not fulfill the order.');
+            if (onDone) onDone(null, message); else window.alert(message);
+        }).always(function () {
+            fulfillInFlight = false;
+        });
+    }
+
+    function fulfillManualOrder(row) {
+        if (!row || !row.manual_id) return;
+        postFulfill(row.manual_id, '', function (message) {
+            setOrderField('of-fulfill-manual-id', row.manual_id);
+            setOrderField('of-fulfill-tracking', row.tracking || '');
+            document.getElementById('of-fulfill-order').textContent = (row.channel || '') + ' · ' + (row.order_id || '') + ' · ' + (row.sku || '');
+            document.getElementById('of-fulfill-message').textContent = message;
+            showFormError('of-fulfill-error', '');
+            showModal('of-fulfill-modal');
+            setTimeout(function () { document.getElementById('of-fulfill-tracking')?.focus(); }, 200);
+        }, function (res, error) {
+            if (error) window.alert(error);
+        });
+    }
+
+    document.getElementById('of-fulfill-retry')?.addEventListener('click', function () {
+        const manualId = document.getElementById('of-fulfill-manual-id')?.value || '';
+        if (!manualId) return;
+        const btn = this;
+        btn.disabled = true;
+        showFormError('of-fulfill-error', '');
+        postFulfill(manualId, '', function (message) {
+            btn.disabled = false;
+            document.getElementById('of-fulfill-message').textContent = message;
+        }, function (res, error) {
+            btn.disabled = false;
+            if (error) { showFormError('of-fulfill-error', error); return; }
+            hideModal('of-fulfill-modal');
+        });
+    });
+
+    document.getElementById('of-fulfill-form')?.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        const manualId = document.getElementById('of-fulfill-manual-id')?.value || '';
+        const number = String(document.getElementById('of-fulfill-tracking')?.value || '').trim();
+        if (!manualId) return;
+        if (!number) {
+            showFormError('of-fulfill-error', 'Enter the tracking number, or choose "Search again".');
+            return;
+        }
+        const saveBtn = document.getElementById('of-fulfill-save');
+        saveBtn.disabled = true;
+        postFulfill(manualId, number, function (message) {
+            saveBtn.disabled = false;
+            showFormError('of-fulfill-error', message);
+        }, function (res, error) {
+            saveBtn.disabled = false;
+            if (error) { showFormError('of-fulfill-error', error); return; }
+            hideModal('of-fulfill-modal');
         });
     });
 })();
