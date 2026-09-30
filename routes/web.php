@@ -1129,6 +1129,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-doubtful-status', [VerificationAdjustmentController::class, 'updateDoubtfulStatus']);
     Route::get('/verified-stock-activity-log', [VerificationAdjustmentController::class, 'getVerifiedStockActivityLog']);
     Route::get('/view-inventory-data', [VerificationAdjustmentController::class, 'viewInventory'])->name('view-inventory-data');
+    Route::get('/inv-under-30-days', [\App\Http\Controllers\ProductMaster\InvUnder30DaysController::class, 'index'])->name('inv.under.30.days');
+    Route::get('/inv-under-30-days/data', [\App\Http\Controllers\ProductMaster\InvUnder30DaysController::class, 'getData'])->name('inv.under.30.days.data');
+    Route::get('/inv-change-L30', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'index'])->name('inv.change.l30');
+    Route::get('/inv-change-L30/data', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'getData'])->name('inv.change.l30.data');
+    Route::redirect('/inv-change-seven-days', '/inv-change-L30');
     Route::get('/sku-adjustment-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory'])->name('sku-adjustment-history');
     Route::get('/shopify-inventory-history-url', [VerificationAdjustmentController::class, 'getShopifyInventoryHistoryUrl']);
     Route::post('/row-hide-toggle', [VerificationAdjustmentController::class, 'toggleHide']);
