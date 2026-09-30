@@ -132,6 +132,32 @@ class MiraklListingPublishService
         $bullets = $this->resolveBullets($product);
         $inv = $this->shopifyInv($sku);
 
+        // The picked category drives the P41 hierarchy for every push below.
+        $api->setMiraklMcmHierarchyOverride($sku, $categoryCode);
+        try {
+            return $this->pushProduct($api, $sku, $title, $description, $bullets, $images, $price, $inv, $channel, $label, $categoryCode);
+        } finally {
+            $api->setMiraklMcmHierarchyOverride($sku, '');
+        }
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
+     */
+    private function pushProduct(
+        MacysApiService|BestBuyApiService|PurchasingPowerApiService $api,
+        string $sku,
+        string $title,
+        string $description,
+        string $bullets,
+        array $images,
+        float $price,
+        int $inv,
+        string $channel,
+        string $label,
+        string $categoryCode
+    ): array {
         $titleRes = $api->updateTitle($sku, $title);
         if (empty($titleRes['success'])) {
             return [
@@ -196,25 +222,63 @@ class MiraklListingPublishService
     public function searchListingCategories(string $q, string $channel, string $title = ''): array
     {
         $channel = $this->normalizeChannel($channel);
-        $needle = mb_strtolower(trim($q !== '' ? $q : $title));
+        $label = $this->channelLabel($channel);
         $rows = $this->categoryRowsForChannel($channel);
-        $out = [];
-        $seen = [];
-        foreach ($rows as $row) {
-            $id = trim((string) ($row['id'] ?? ''));
-            $name = trim((string) ($row['name'] ?? $id));
-            if ($id === '' || isset($seen[$id])) {
-                continue;
-            }
-            if ($needle !== '' && ! str_contains(mb_strtolower($id.' '.$name), $needle)) {
-                continue;
-            }
-            $seen[$id] = true;
-            $out[] = [
-                'id' => $id,
-                'name' => $name !== '' ? $name : $id,
-                'path' => $name !== '' ? $name : $id,
+        if ($rows === []) {
+            $api = $this->apiFor($channel);
+
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => $api->isConfigured()
+                    ? $label.' returned no categories (Mirakl H11 /api/hierarchies). Check the MCM API key and try again.'
+                    : $label.' MCM API key is not configured, so its category tree cannot be loaded.',
             ];
+        }
+
+        $needle = mb_strtolower(trim($q));
+        $terms = $needle !== ''
+            ? array_values(array_filter(preg_split('/\s+/', $needle) ?: []))
+            : [];
+        // No query yet: use the product title to suggest categories, otherwise list leaves.
+        $titleTerms = $needle === '' && trim($title) !== ''
+            ? array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($title)) ?: [], fn ($w) => mb_strlen($w) >= 4))
+            : [];
+
+        $scored = [];
+        foreach ($rows as $row) {
+            $hay = mb_strtolower($row['id'].' '.$row['path']);
+            $score = 0;
+            if ($terms !== []) {
+                foreach ($terms as $term) {
+                    if (! str_contains($hay, $term)) {
+                        continue 2;
+                    }
+                }
+                $score = str_contains(mb_strtolower($row['name']), $needle) ? 3 : 1;
+            } elseif ($titleTerms !== []) {
+                foreach ($titleTerms as $word) {
+                    if (str_contains($hay, $word)) {
+                        $score++;
+                    }
+                }
+            }
+            if ($row['leaf']) {
+                $score += 2;
+            }
+            $scored[] = [$score, $row];
+        }
+        if ($terms === [] && $titleTerms !== []) {
+            $matched = array_filter($scored, fn ($item) => $item[0] > 2);
+            if ($matched !== []) {
+                $scored = array_values($matched);
+            }
+        }
+        usort($scored, fn ($a, $b) => $b[0] <=> $a[0] ?: strcmp($a[1]['path'], $b[1]['path']));
+
+        $out = [];
+        foreach ($scored as [, $row]) {
+            $out[] = ['id' => $row['id'], 'name' => $row['name'], 'path' => $row['path']];
             if (count($out) >= 40) {
                 break;
             }
@@ -399,11 +463,77 @@ class MiraklListingPublishService
     /**
      * @return list<array{id: string, name: string}>
      */
+    /**
+     * Operator category tree from Mirakl H11, with the codes already used on our price data
+     * merged in (they may be leaves the tree call did not return).
+     *
+     * @return list<array{id: string, name: string, path: string, leaf: bool}>
+     */
     private function categoryRowsForChannel(string $channel): array
     {
+        $byCode = [];
+        $hasChildren = [];
+        try {
+            $tree = $this->apiFor($channel)->fetchMiraklMcmHierarchies();
+        } catch (\Throwable $e) {
+            Log::warning('Mirakl hierarchy fetch failed', ['channel' => $channel, 'error' => $e->getMessage()]);
+            $tree = [];
+        }
+        foreach ($tree as $node) {
+            $byCode[$node['code']] = $node;
+            if ($node['parent_code'] !== '') {
+                $hasChildren[$node['parent_code']] = true;
+            }
+        }
+
+        $pathFor = function (string $code) use ($byCode): string {
+            $parts = [];
+            $guard = 0;
+            while ($code !== '' && isset($byCode[$code]) && $guard++ < 12) {
+                array_unshift($parts, $byCode[$code]['label'] !== '' ? $byCode[$code]['label'] : $code);
+                $code = $byCode[$code]['parent_code'];
+            }
+
+            return implode(' > ', $parts);
+        };
+
+        $rows = [];
+        foreach ($byCode as $code => $node) {
+            $name = $node['label'] !== '' ? $node['label'] : $code;
+            $rows[$code] = [
+                'id' => $code,
+                'name' => $name,
+                'path' => $pathFor($code) ?: $name,
+                'leaf' => ! isset($hasChildren[$code]),
+            ];
+        }
+
+        foreach ($this->priceDataCategoryRows($channel) as $row) {
+            if (isset($rows[$row['id']])) {
+                continue;
+            }
+            $rows[$row['id']] = [
+                'id' => $row['id'],
+                'name' => $row['name'] !== '' ? $row['name'] : $row['id'],
+                'path' => $row['name'] !== '' ? $row['name'] : $row['id'],
+                'leaf' => true,
+            ];
+        }
+
+        return array_values($rows);
+    }
+
+    /**
+     * @return list<array{id: string, name: string}>
+     */
+    private function priceDataCategoryRows(string $channel): array
+    {
+        if ($channel === 'purchasingpower') {
+            return [];
+        }
         $table = $channel === 'bestbuyusa' ? 'bestbuy_price_data' : 'macys_price_data';
         $model = $channel === 'bestbuyusa' ? BestbuyPriceData::class : MacysPriceData::class;
-        if (! Schema::hasTable($table)) {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'category_code')) {
             return [];
         }
 

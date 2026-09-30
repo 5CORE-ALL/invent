@@ -677,6 +677,27 @@ trait MiraklMcmBulletImport
         ), fn ($line) => $line !== ''));
     }
 
+    /** @var array<string, string> SKU (upper) => category code chosen by the caller for this request */
+    protected array $miraklMcmHierarchyOverrides = [];
+
+    /**
+     * Category the user picked (Listing Manager) wins over anything derived from existing data.
+     */
+    public function setMiraklMcmHierarchyOverride(string $sku, string $categoryCode): void
+    {
+        $sku = strtoupper(trim($sku));
+        $categoryCode = trim($categoryCode);
+        if ($sku === '') {
+            return;
+        }
+        if ($categoryCode === '') {
+            unset($this->miraklMcmHierarchyOverrides[$sku]);
+
+            return;
+        }
+        $this->miraklMcmHierarchyOverrides[$sku] = $categoryCode;
+    }
+
     protected function resolveMiraklMcmHierarchyForSku(string $sku): ?string
     {
         return $this->resolveMiraklMcmHierarchyForP41($sku);
@@ -684,6 +705,15 @@ trait MiraklMcmBulletImport
 
     protected function resolveMiraklMcmHierarchyForP41(string $sku): ?string
     {
+        $override = $this->miraklMcmHierarchyOverrides[strtoupper(trim($sku))] ?? '';
+        if ($override === '' && count($this->miraklMcmHierarchyOverrides) === 1) {
+            // Offer SKU may differ in case/spacing from the product SKU the caller registered.
+            $override = (string) reset($this->miraklMcmHierarchyOverrides);
+        }
+        if ($override !== '') {
+            return $override;
+        }
+
         $fromMaster = $this->resolveMiraklMcmHierarchyFromMasterCatalog($sku);
         if ($fromMaster !== null) {
             return $fromMaster;
@@ -893,6 +923,64 @@ trait MiraklMcmBulletImport
     }
 
     /** @return list<array<string, mixed>> */
+    /**
+     * Operator category tree (H11 GET /api/hierarchies): code, label, parent_code, level.
+     * Cached 12h; an empty list is cached briefly so a failing operator does not slow every search.
+     *
+     * @return list<array{code: string, label: string, parent_code: string, level: int}>
+     */
+    public function fetchMiraklMcmHierarchies(): array
+    {
+        if ($this->miraklMcmApiKey() === null || $this->miraklMcmBaseUrl() === '') {
+            return [];
+        }
+        $cacheKey = $this->miraklMcmConfigKey().'_mcm_h11_hierarchies';
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $rows = [];
+        try {
+            $response = $this->miraklMcmRequest()
+                ->timeout(60)
+                ->get($this->miraklMcmBaseUrl().'/api/hierarchies', array_merge($this->miraklMcmQueryParams(), ['max_level' => 10]));
+            if ($response->status() === 400) {
+                // Some operators reject max_level; retry with defaults.
+                $response = $this->miraklMcmRequest()->timeout(60)->get($this->miraklMcmBaseUrl().'/api/hierarchies', $this->miraklMcmQueryParams());
+            }
+            if (! $response->successful()) {
+                Log::warning($this->miraklMcmMarketplaceLabel().' H11 hierarchy fetch failed', [
+                    'status' => $response->status(),
+                    'response' => mb_substr($response->body(), 0, 1000),
+                ]);
+            } else {
+                $list = $response->json('hierarchies');
+                foreach (is_array($list) ? $list : [] as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+                    $code = trim((string) ($item['code'] ?? ''));
+                    if ($code === '') {
+                        continue;
+                    }
+                    $rows[] = [
+                        'code' => $code,
+                        'label' => trim((string) ($item['label'] ?? $code)),
+                        'parent_code' => trim((string) ($item['parent_code'] ?? '')),
+                        'level' => (int) ($item['level'] ?? 0),
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning($this->miraklMcmMarketplaceLabel().' H11 hierarchy fetch error', ['error' => $e->getMessage()]);
+        }
+
+        Cache::put($cacheKey, $rows, $rows !== [] ? 43200 : 300);
+
+        return $rows;
+    }
+
     protected function fetchMiraklMcmPm11Attributes(?string $hierarchy = null): array
     {
         $cacheKey = $this->miraklMcmConfigKey().'_mcm_pm11_'.($hierarchy ?? 'all');
