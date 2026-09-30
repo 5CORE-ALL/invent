@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Models\AlibabaMetric;
 use App\Models\AlibabaOrderMetric;
+use App\Models\AlibabaSheetPrice;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use Carbon\Carbon;
@@ -33,8 +35,13 @@ class AlibabaSalesController extends Controller
             ->orderByDesc('order_date')
             ->get();
 
-        $skus = $rows->pluck('sku')->filter()->unique()->values()->all();
-        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+        $productIds = $rows->pluck('product_id')->filter()->unique()->values();
+        $metricSkus = AlibabaMetric::query()->whereIn('product_id', $productIds)->pluck('sku', 'product_id');
+        $sheetSkus = AlibabaSheetPrice::query()->whereIn('product_id', $productIds)->pluck('sku', 'product_id');
+        $resolvedSkus = $rows->map(function ($row) use ($metricSkus, $sheetSkus) {
+            return $this->catalogSku($row, $metricSkus, $sheetSkus);
+        })->filter()->unique()->values()->all();
+        $productMasters = ProductMaster::whereIn('sku', $resolvedSkus)->get()->keyBy('sku');
         $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
 
         $orderTotals = [];
@@ -49,7 +56,7 @@ class AlibabaSalesController extends Controller
 
         $data = [];
         foreach ($rows as $row) {
-            $sku = trim((string) $row->sku);
+            $sku = $this->catalogSku($row, $metricSkus, $sheetSkus);
             if ($sku === '' || $sku === '__order__') {
                 continue;
             }
@@ -172,6 +179,46 @@ class AlibabaSalesController extends Controller
         }
 
         return $total;
+    }
+
+    /**
+     * Orders without sku_code store the Alibaba product id in sku. Use the sheet/metric SKU.
+     *
+     * @param  \Illuminate\Support\Collection<string, mixed>  $metricSkus
+     * @param  \Illuminate\Support\Collection<string, mixed>  $sheetSkus
+     */
+    private function catalogSku(AlibabaOrderMetric $row, $metricSkus, $sheetSkus): string
+    {
+        $sku = trim((string) $row->sku);
+        $productId = trim((string) $row->product_id);
+        if ($this->isCatalogSku($sku, $productId)) {
+            return $sku;
+        }
+
+        foreach ([$metricSkus[$productId] ?? null, $sheetSkus[$productId] ?? null, $this->modelNumber($row)] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($this->isCatalogSku($candidate, $productId)) {
+                return $candidate;
+            }
+        }
+
+        return $sku;
+    }
+
+    private function isCatalogSku(string $sku, string $productId): bool
+    {
+        return $sku !== '' && $sku !== '__order__' && $sku !== $productId && ! ctype_digit($sku);
+    }
+
+    private function modelNumber(AlibabaOrderMetric $row): string
+    {
+        $raw = is_array($row->raw_payload) ? $row->raw_payload : [];
+        $product = $raw['order_products']['trade_ecology_order_product'] ?? $raw['order_products'] ?? [];
+        if (isset($product[0]) && is_array($product[0])) {
+            $product = $product[0];
+        }
+
+        return trim((string) (is_array($product) ? ($product['model_number'] ?? '') : ''));
     }
 
     private function productLp(?ProductMaster $pm): float

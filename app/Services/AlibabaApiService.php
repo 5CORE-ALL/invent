@@ -714,9 +714,14 @@ class AlibabaApiService extends AliExpressApiService
                 continue;
             }
 
+            $skuCode = trim((string) ($product['sku_code'] ?? ''));
+            if ($skuCode === '') {
+                $skuCode = trim((string) ($product['model_number'] ?? ''));
+            }
+
             $lines[] = [
                 'product_id' => (string) ($product['product_id'] ?? ''),
-                'sku_code' => (string) ($product['sku_code'] ?? $product['sku_id'] ?? ''),
+                'sku_code' => $skuCode,
                 'product_count' => $qty,
                 'quantity' => $qty,
                 'product_unit_price' => ['amount' => $price],
