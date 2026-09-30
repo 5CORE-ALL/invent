@@ -122,7 +122,12 @@
         .of-order-line { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem; }
         .of-order-line .of-line-sku-wrap { flex: 1; position: relative; }
         .of-order-line .of-line-sku { width: 100%; }
-        .of-order-line .of-line-qty { width: 90px; }
+        .of-order-line .of-line-qty { width: 72px; }
+        .of-order-line .of-line-price { width: 100px; }
+        .of-order-line .of-line-total { width: 90px; text-align: right; font-size: 0.85rem; color: #0f172a; white-space: nowrap; }
+        .of-order-lines-head { display: flex; gap: 0.5rem; font-size: 0.75rem; color: #64748b; margin-bottom: 0.2rem; }
+        .of-order-lines-head .of-line-sku-wrap { flex: 1; }
+        .of-order-lines-head .of-line-remove { width: 31px; }
         .of-sku-suggest {
             position: absolute; left: 0; right: 0; top: 100%; z-index: 1080;
             background: #fff; border: 1px solid #dee2e6; border-radius: 0.375rem;
@@ -286,7 +291,7 @@
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small mb-1" for="of-order-amount">Order amount</label>
+                                <label class="form-label small mb-1" for="of-order-amount">Order amount <small class="text-muted fw-normal" id="of-order-amount-hint">(auto: items × qty)</small></label>
                                 <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="of-order-amount" placeholder="0.00">
                             </div>
                         </div>
@@ -295,6 +300,13 @@
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <label class="form-label small mb-0">Items <span class="text-danger">*</span></label>
                             <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="of-order-add-line"><i class="fas fa-plus me-1" aria-hidden="true"></i>Add SKU</button>
+                        </div>
+                        <div class="of-order-lines-head">
+                            <div class="of-line-sku-wrap">SKU</div>
+                            <div class="of-line-qty">Qty</div>
+                            <div class="of-line-price">Price</div>
+                            <div class="of-line-total">Total</div>
+                            <div class="of-line-remove"></div>
                         </div>
                         <div id="of-order-lines"></div>
                         <div class="form-text" id="of-order-lines-help">One grid row is created per SKU.</div>
@@ -1181,7 +1193,51 @@
         setTimeout(function () { fillTracking(0); fillTrackingStatus(0); }, 200);
     }
 
-    function addOrderLine(sku, qty, removable) {
+    // Order amount follows the item lines until the user types their own figure.
+    let amountTouched = false;
+    let amountAutoMode = 'sum'; // 'sum' = live total of the lines; 'server' = blank → recalculated on save (edit mode)
+
+    function money(n) {
+        return Number(n || 0).toFixed(2);
+    }
+
+    function lineTotal(line) {
+        const qty = parseInt(line.querySelector('.of-line-qty')?.value || '1', 10) || 1;
+        const priceRaw = String(line.querySelector('.of-line-price')?.value || '').trim();
+        if (priceRaw === '' || isNaN(parseFloat(priceRaw))) return null;
+        return Math.round(parseFloat(priceRaw) * qty * 100) / 100;
+    }
+
+    function recalcOrderAmount() {
+        let sum = 0;
+        let priced = false;
+        document.querySelectorAll('#of-order-lines .of-order-line').forEach(function (line) {
+            const total = lineTotal(line);
+            const cell = line.querySelector('.of-line-total');
+            if (cell) cell.textContent = total === null ? '—' : '$' + money(total);
+            if (total !== null) { sum += total; priced = true; }
+        });
+        const amount = document.getElementById('of-order-amount');
+        const hint = document.getElementById('of-order-amount-hint');
+        if (!amount || amountTouched) return;
+        if (amountAutoMode === 'server') {
+            amount.value = '';
+            amount.placeholder = 'recalculated on save';
+            if (hint) hint.textContent = '(auto: all items of this order, on save)';
+            return;
+        }
+        amount.value = priced ? money(sum) : '';
+        amount.placeholder = '0.00';
+        if (hint) hint.textContent = '(auto: items × qty)';
+    }
+
+    document.getElementById('of-order-amount')?.addEventListener('input', function () {
+        amountTouched = true;
+        const hint = document.getElementById('of-order-amount-hint');
+        if (hint) hint.textContent = '(entered by you)';
+    });
+
+    function addOrderLine(sku, qty, removable, price) {
         const host = document.getElementById('of-order-lines');
         if (!host) return;
         const line = document.createElement('div');
@@ -1192,23 +1248,36 @@
                 '<div class="of-sku-suggest" role="listbox"></div>' +
             '</div>' +
             '<input type="number" class="form-control form-control-sm of-line-qty" placeholder="Qty" min="1" value="1">' +
+            '<input type="number" class="form-control form-control-sm of-line-price" placeholder="Price" min="0" step="0.01" title="Item price (fetched from CP Master, editable)">' +
+            '<div class="of-line-total">—</div>' +
             '<button type="button" class="btn btn-sm btn-link text-danger of-line-remove" title="Remove"><i class="fas fa-times" aria-hidden="true"></i></button>';
         line.querySelector('.of-line-sku').value = sku || '';
         line.querySelector('.of-line-qty').value = qty || 1;
-        attachSkuSuggest(line.querySelector('.of-line-sku'), line.querySelector('.of-sku-suggest'), line.querySelector('.of-line-qty'));
+        line.querySelector('.of-line-price').value = (price === null || price === undefined || price === '') ? '' : money(price);
+        const priceInput = line.querySelector('.of-line-price');
+        const qtyInput = line.querySelector('.of-line-qty');
+        attachSkuSuggest(line.querySelector('.of-line-sku'), line.querySelector('.of-sku-suggest'), qtyInput, priceInput);
+        function onLineChange() {
+            // Editing a line of an existing order: let the server re-total all its lines.
+            if (amountAutoMode === 'server') amountTouched = false;
+            recalcOrderAmount();
+        }
+        qtyInput.addEventListener('input', onLineChange);
+        priceInput.addEventListener('input', onLineChange);
         const remove = line.querySelector('.of-line-remove');
         if (removable === false) remove.style.visibility = 'hidden';
         remove.addEventListener('click', function () {
-            if (host.querySelectorAll('.of-order-line').length > 1) line.remove();
+            if (host.querySelectorAll('.of-order-line').length > 1) { line.remove(); recalcOrderAmount(); }
         });
         host.appendChild(line);
+        recalcOrderAmount();
     }
 
     const skuSuggestUrl = @json(route('order.fulfillment.sku.suggest'));
     const skuSuggestCache = {};
 
-    // Live SKU search against CP Master: type → matching SKUs (prefix first) with inventory.
-    function attachSkuSuggest(input, box, qtyInput) {
+    // Live SKU search against CP Master: type → matching SKUs (prefix first) with inventory and price.
+    function attachSkuSuggest(input, box, qtyInput, priceInput) {
         if (!input || !box) return;
         let items = [];
         let active = -1;
@@ -1225,8 +1294,24 @@
             const item = items[index];
             if (!item) return;
             input.value = item.sku;
+            if (priceInput) {
+                priceInput.value = (item.price === null || item.price === undefined) ? '' : money(item.price);
+                recalcOrderAmount();
+            }
             close();
             if (qtyInput) { qtyInput.focus(); qtyInput.select(); }
+        }
+
+        // Typed exactly (no click on a suggestion): still pull the price when the SKU matches.
+        function fillPriceFromExactMatch() {
+            if (!priceInput || String(priceInput.value || '').trim() !== '') return;
+            const typed = String(input.value || '').trim().toLowerCase();
+            if (!typed) return;
+            const match = items.find(function (it) { return String(it.sku || '').toLowerCase() === typed; });
+            if (match && match.price !== null && match.price !== undefined) {
+                priceInput.value = money(match.price);
+                recalcOrderAmount();
+            }
         }
 
         function render() {
@@ -1237,10 +1322,11 @@
             }
             box.innerHTML = items.map(function (item, i) {
                 const inv = (item.inv === null || item.inv === undefined) ? '' : ('inv ' + Number(item.inv).toLocaleString());
+                const price = (item.price === null || item.price === undefined) ? '' : ('$' + money(item.price));
                 const parent = item.parent ? escapeHtml(item.parent) : '';
                 return '<div class="of-sku-item' + (i === active ? ' active' : '') + '" data-index="' + i + '" role="option">' +
                     '<code>' + escapeHtml(item.sku) + '</code>' +
-                    '<small>' + [parent, inv].filter(Boolean).join(' · ') + '</small>' +
+                    '<small>' + [parent, inv, price].filter(Boolean).join(' · ') + '</small>' +
                     '</div>';
             }).join('');
             box.classList.add('show');
@@ -1261,6 +1347,7 @@
                 skuSuggestCache[key] = items;
                 active = items.length ? 0 : -1;
                 if (document.activeElement === input) render();
+                else fillPriceFromExactMatch();
             }).fail(function () {
                 if (seq === requestSeq) close();
             });
@@ -1299,6 +1386,7 @@
             choose(parseInt(el.getAttribute('data-index'), 10));
         });
         input.addEventListener('blur', function () {
+            fillPriceFromExactMatch();
             setTimeout(close, 150);
         });
     }
@@ -1308,7 +1396,8 @@
         document.querySelectorAll('#of-order-lines .of-order-line').forEach(function (line) {
             const sku = String(line.querySelector('.of-line-sku')?.value || '').trim();
             const qty = parseInt(line.querySelector('.of-line-qty')?.value || '1', 10) || 1;
-            if (sku) lines.push({ sku: sku, qty: qty });
+            const priceRaw = String(line.querySelector('.of-line-price')?.value || '').trim();
+            if (sku) lines.push({ sku: sku, qty: qty, price: priceRaw });
         });
         return lines;
     }
@@ -1404,9 +1493,11 @@
         setOrderField('of-order-country', 'US');
         setOrderField('of-order-paid', '1');
         setOrderField('of-order-date', nowLocalValue());
+        amountTouched = false;
+        amountAutoMode = 'sum';
         const host = document.getElementById('of-order-lines');
         if (host) host.innerHTML = '';
-        addOrderLine('', 1, true);
+        addOrderLine('', 1, true, null);
         document.getElementById('of-order-add-line').style.display = '';
         document.getElementById('of-order-lines-help').textContent = 'One grid row is created per SKU.';
         showFormError('of-order-error', '');
@@ -1433,9 +1524,14 @@
         setOrderField('of-order-zip', row.zip || '');
         setOrderField('of-order-country', row.country || '');
         setOrderField('of-order-notes', row.notes || '');
+        // Keep the stored order total until a line changes; then the server re-totals every line.
+        amountTouched = true;
+        amountAutoMode = 'server';
+        const hint = document.getElementById('of-order-amount-hint');
+        if (hint) hint.textContent = '(order total)';
         const host = document.getElementById('of-order-lines');
         if (host) host.innerHTML = '';
-        addOrderLine(row.sku || '', row.qty || 1, false);
+        addOrderLine(row.sku || '', row.qty || 1, false, row.unit_price);
         document.getElementById('of-order-add-line').style.display = 'none';
         document.getElementById('of-order-lines-help').textContent = 'Order details apply to every SKU line of this order; the SKU and qty here apply to this row only.';
         showFormError('of-order-error', '');
@@ -1485,6 +1581,7 @@
         if (isEdit) {
             payload.sku = lines[0].sku;
             payload.qty = lines[0].qty;
+            payload.price = lines[0].price;
             payload._method = 'PUT';
         } else {
             payload.lines = lines;

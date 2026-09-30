@@ -23,6 +23,7 @@ class OrderFulfillmentManualOrder extends Model
         'order_date',
         'sku',
         'qty',
+        'unit_price',
         'paid',
         'amount',
         'reference',
@@ -48,5 +49,6 @@ class OrderFulfillmentManualOrder extends Model
         'paid' => 'boolean',
         'qty' => 'integer',
         'amount' => 'decimal:2',
+        'unit_price' => 'decimal:2',
     ];
 }
