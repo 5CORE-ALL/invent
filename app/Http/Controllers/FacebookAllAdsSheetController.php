@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
+use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Models\FacebookAdType;
 use App\Models\FacebookAllAdsSheet;
 use App\Models\FacebookB2bB2cOption;
@@ -371,24 +372,30 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
-     * TCOS for /facebook-ads — same Ads%/TACOS as /all-marketplace-master FB Marketplace:
-     *   Facebook Ad Spend (CH=FB) / Shopify S Sales (store net sales) × 100
-     * Same denominator as /shopify-ads-master Facebook TCOS (not FB Marketplace sales).
+     * TCOS for /facebook-ads:
+     *   Facebook Ad Spend (CH=FB, Active) / FB Marketplace L30 sales × 100
+     * Denominator is Facebook's own uploaded sales (sold_price × qty), same
+     * window as /facebook-marketplace, not Shopify store sales.
      *
      * @return array{
-     *   shopify_net_sales: float,
+     *   facebook_sales: float,
      *   facebook_ad_spend: float,
      *   tcos_percent: float
      * }
      */
     private function tcosPayloadMatchingMaster(): array
     {
-        $netSales = 0.0;
+        $sales = 0.0;
         $adSpend = 0.0;
         try {
-            $netSales = (float) ShopifyAdsMasterController::advertisementMasterNetSales();
+            $range = FacebookMarketplaceController::l30PacificRange();
+            $live = FacebookMarketplaceController::computeSalesMetricsForPacificRange(
+                $range['start'],
+                $range['end']
+            );
+            $sales = (float) ($live['total_sales'] ?? 0);
         } catch (\Throwable $e) {
-            Log::warning('facebook-ads TCOS Shopify S Sales lookup failed: ' . $e->getMessage());
+            Log::warning('facebook-ads TCOS FB Marketplace sales lookup failed: ' . $e->getMessage());
         }
         try {
             $adSpend = (float) (app(ShopifyAdsMasterController::class)->getFacebookChannelSpend()['spend'] ?? 0);
@@ -396,10 +403,10 @@ class FacebookAllAdsSheetController extends Controller
             Log::warning('facebook-ads TCOS spend lookup failed: ' . $e->getMessage());
         }
 
-        $tcos = $netSales > 0 ? ($adSpend / $netSales) * 100 : ($adSpend > 0 ? 100.0 : 0.0);
+        $tcos = $sales > 0 ? ($adSpend / $sales) * 100 : ($adSpend > 0 ? 100.0 : 0.0);
 
         return [
-            'shopify_net_sales' => round($netSales, 2),
+            'facebook_sales' => round($sales, 2),
             'facebook_ad_spend' => round($adSpend, 2),
             'tcos_percent' => round($tcos, 1),
         ];

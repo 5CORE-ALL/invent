@@ -159,6 +159,7 @@ class OverallAmazonController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $this->lmpSkuGroupService->prepareForSkus($skus);
 
@@ -176,8 +177,6 @@ class OverallAmazonController extends Controller
         // and "MS 080 WH 2 PCS" matches the datasheet's "MS 080 WH 2PC". Only ~1k rows.
         // Collisions (e.g. "SS ECO 2PK ORG WoB" vs "SSECO2PKORGWoB") are resolved per PM SKU.
         $amazonDatasheetsBySku = AmazonDatasheet::groupedByNormalizedSku();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         // A L30 = real Amazon order units in the same Pacific L30 window as /amazon/daily-sales.
         $amazonL30UnitsBySku = [];
@@ -401,7 +400,7 @@ class OverallAmazonController extends Controller
             $row['cvr_prev_a_l30'] = $prevHit !== null ? (int) $prevHit['a_l30'] : null;
             $row['cvr_prev_date'] = $cvrPrevDate;
 
-            $row['INV'] = $shopify->inv ?? 0;
+            $row['INV'] = ($shopify && $shopify->inv !== null) ? (float) $shopify->inv : 0;
             
             // Get Amazon inventory from stock mappings (null-safe, handle string values)
             $stockMapping = $stockMappings->get($pm->sku);
@@ -418,8 +417,8 @@ class OverallAmazonController extends Controller
             // If it doesn't exist, mark as missing
             $row['is_missing_amazon'] = $amazonSheet ? false : true;
             
-            // OV L30 is Shopify sold units. A_L30 (Amazon sold / 0 Sold) must not feed Dil.
-            $row['ov_l30'] = (int) ($shopify->quantity ?? 0);
+            // Same Shopify row as INV and the image. Not A_L30, shopify_l30, or a daily snapshot.
+            $row['ov_l30'] = ($shopify && $shopify->quantity !== null) ? (float) $shopify->quantity : 0;
             $row['L30'] = $row['ov_l30'];
             $row['fba'] = $pm->fba;
 

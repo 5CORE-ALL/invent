@@ -86,7 +86,7 @@ class CollectAmazonMetrics extends Command
         $monitor->setExpected($amazonDatasheets->count());
 
         $shopifyBySku = ShopifySku::query()
-            ->select('sku', 'inv', 'quantity')
+            ->select('sku', 'quantity')
             ->whereNotNull('sku')
             ->get()
             ->keyBy(function ($row) {
@@ -174,6 +174,7 @@ class CollectAmazonMetrics extends Command
                             'record_date' => $today,
                         ]);
                         $existingPayload = is_array($daily->daily_data) ? $daily->daily_data : [];
+                        unset($existingPayload['inv']);
                         $daily->daily_data = array_merge($existingPayload, [
                             'price' => round($price, 2),
                             'sprice' => $sprice,
@@ -183,7 +184,6 @@ class CollectAmazonMetrics extends Command
                             'a_l30' => $aL30,
                             'ad_spend_l30' => round($adSpendL30, 2),
                             'organic_views' => $organicViews,
-                            'inv' => (int) ($shopify?->inv ?? 0),
                             'l30' => (int) ($shopify?->quantity ?? 0),
                         ]);
                         $daily->save();

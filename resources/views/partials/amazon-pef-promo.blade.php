@@ -940,15 +940,9 @@
         }
         function amzPefOvL30(d) {
             if (!d) return 0;
-            // Shopify sold units only. A_L30 is Amazon sold and must not become Dil 0.
-            const candidates = [d.ov_l30, d.L30, d._dil_ov_l30];
-            for (let i = 0; i < candidates.length; i++) {
-                const raw = candidates[i];
-                if (raw == null || raw === '') continue;
-                const n = Number(raw);
-                if (isFinite(n) && n > 0) return n;
-            }
-            return 0;
+            // CP Master OV L30 only (shopify_skus.quantity). Do not fall through to A_L30 or a snapshot.
+            const n = Number(d.ov_l30 != null && d.ov_l30 !== '' ? d.ov_l30 : d.L30);
+            return isFinite(n) ? n : 0;
         }
         function amzPefDil(d) {
             const inv = amzPefInv(d);
