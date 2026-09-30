@@ -261,12 +261,14 @@
                         <div class="row g-2">
                             <div class="col-md-4">
                                 <label class="form-label small mb-1" for="of-order-marketplace">Marketplace <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-marketplace" list="of-manual-marketplaces" maxlength="128" required placeholder="e.g. Walmart, Etsy, Faire…">
-                                <datalist id="of-manual-marketplaces">
+                                <select class="form-select form-select-sm" id="of-order-marketplace-select" required>
+                                    <option value="">Select marketplace…</option>
                                     @foreach(($ofManualMarketplaces ?? []) as $mpName)
-                                        <option value="{{ $mpName }}"></option>
+                                        <option value="{{ $mpName }}">{{ $mpName }}</option>
                                     @endforeach
-                                </datalist>
+                                    <option value="__other__">Other (type a name)…</option>
+                                </select>
+                                <input type="text" class="form-control form-control-sm mt-1" id="of-order-marketplace" maxlength="128" placeholder="New marketplace name" style="display:none;">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small mb-1" for="of-order-order-id">Order ID <span class="text-danger">*</span></label>
@@ -1334,11 +1336,69 @@
         if (el) el.value = value == null ? '' : value;
     }
 
+    const marketplaceSelect = document.getElementById('of-order-marketplace-select');
+    const marketplaceOther = document.getElementById('of-order-marketplace');
+
+    function syncMarketplaceOther() {
+        if (!marketplaceSelect || !marketplaceOther) return;
+        const other = marketplaceSelect.value === '__other__';
+        marketplaceOther.style.display = other ? '' : 'none';
+        marketplaceOther.required = other;
+        if (!other) marketplaceOther.value = '';
+    }
+
+    function findMarketplaceOption(name) {
+        const key = String(name || '').trim().toLowerCase();
+        if (!key || !marketplaceSelect) return null;
+        return Array.from(marketplaceSelect.options).find(function (o) {
+            return o.value !== '__other__' && o.value.trim().toLowerCase() === key;
+        }) || null;
+    }
+
+    function addMarketplaceOption(name) {
+        name = String(name || '').trim();
+        if (!name || !marketplaceSelect) return null;
+        const existing = findMarketplaceOption(name);
+        if (existing) return existing;
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        const otherOpt = marketplaceSelect.querySelector('option[value="__other__"]');
+        const before = Array.from(marketplaceSelect.options).find(function (o) {
+            return o.value && o.value !== '__other__' && o.value.localeCompare(name, undefined, { sensitivity: 'base' }) > 0;
+        }) || otherOpt;
+        marketplaceSelect.insertBefore(opt, before || null);
+        return opt;
+    }
+
+    function setMarketplaceField(name) {
+        if (!marketplaceSelect) return;
+        name = String(name || '').trim();
+        if (!name) {
+            marketplaceSelect.value = '';
+        } else {
+            marketplaceSelect.value = (findMarketplaceOption(name) || addMarketplaceOption(name)).value;
+        }
+        syncMarketplaceOther();
+    }
+
+    function marketplaceValue() {
+        if (!marketplaceSelect) return '';
+        if (marketplaceSelect.value === '__other__') return String(marketplaceOther?.value || '').trim();
+        return marketplaceSelect.value.trim();
+    }
+
+    marketplaceSelect?.addEventListener('change', function () {
+        syncMarketplaceOther();
+        if (marketplaceSelect.value === '__other__') setTimeout(function () { marketplaceOther?.focus(); }, 50);
+    });
+
     function openOrderModalForCreate() {
         document.getElementById('of-order-modal-label').textContent = 'Create order';
         document.getElementById('of-order-save').textContent = 'Create order';
         setOrderField('of-order-manual-id', '');
-        ['of-order-marketplace', 'of-order-order-id', 'of-order-amount', 'of-order-customer',
+        setMarketplaceField('');
+        ['of-order-order-id', 'of-order-amount', 'of-order-customer',
          'of-order-email', 'of-order-phone', 'of-order-address1', 'of-order-address2', 'of-order-city',
          'of-order-state', 'of-order-zip', 'of-order-notes'].forEach(function (id) { setOrderField(id, ''); });
         setOrderField('of-order-country', 'US');
@@ -1351,14 +1411,14 @@
         document.getElementById('of-order-lines-help').textContent = 'One grid row is created per SKU.';
         showFormError('of-order-error', '');
         showModal('of-order-modal');
-        setTimeout(function () { document.getElementById('of-order-marketplace')?.focus(); }, 200);
+        setTimeout(function () { marketplaceSelect?.focus(); }, 200);
     }
 
     function openOrderModalForEdit(row) {
         document.getElementById('of-order-modal-label').textContent = 'Edit order ' + (row.order_id || '');
         document.getElementById('of-order-save').textContent = 'Save changes';
         setOrderField('of-order-manual-id', row.manual_id || '');
-        setOrderField('of-order-marketplace', row.channel || '');
+        setMarketplaceField(row.channel || '');
         setOrderField('of-order-order-id', row.order_id || '');
         setOrderField('of-order-date', String(row.order_date || '').replace(' ', 'T').slice(0, 16));
         setOrderField('of-order-paid', row.paid ? '1' : '0');
@@ -1384,7 +1444,7 @@
 
     function orderHeaderPayload() {
         return {
-            marketplace: document.getElementById('of-order-marketplace')?.value || '',
+            marketplace: marketplaceValue(),
             order_id: document.getElementById('of-order-order-id')?.value || '',
             order_date: String(document.getElementById('of-order-date')?.value || '').replace('T', ' '),
             paid: document.getElementById('of-order-paid')?.value === '1' ? 1 : 0,
@@ -1445,13 +1505,8 @@
                 table.updateOrAddData(rows);
             } else {
                 table.addData(rows);
-                const list = document.getElementById('of-manual-marketplaces');
-                if (list && payload.marketplace && !Array.from(list.options).some(function (o) { return o.value.toLowerCase() === payload.marketplace.trim().toLowerCase(); })) {
-                    const opt = document.createElement('option');
-                    opt.value = payload.marketplace.trim();
-                    list.appendChild(opt);
-                }
             }
+            addMarketplaceOption(payload.marketplace);
             refreshAfterRowsChanged();
             hideModal('of-order-modal');
         }).fail(function (xhr) {

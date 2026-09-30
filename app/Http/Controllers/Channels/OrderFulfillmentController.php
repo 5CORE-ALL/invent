@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Channels;
 
 use App\Models\AmazonOrder;
+use App\Models\ChannelMaster;
 use App\Models\Inventory;
 use App\Models\OrderFulfillmentManualOrder;
 use App\Models\OrderFulfillmentTracking;
@@ -590,28 +591,58 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
-     * Marketplace names typed before, for the create form's suggestion list.
+     * Every marketplace we sell on, for the create form's dropdown: API channels
+     * from the Marketplace Manager registry, active rows of channel_master, and
+     * names already used on manual orders. De-duplicated case-insensitively.
      *
      * @return list<string>
      */
     protected function manualMarketplaceNames(): array
     {
-        if (! Schema::hasTable('order_fulfillment_manual_orders')) {
-            return [];
+        $names = [];
+        $add = function ($value) use (&$names): void {
+            $value = trim((string) $value);
+            if ($value === '') {
+                return;
+            }
+            $key = strtolower(preg_replace('/\s+/', ' ', $value));
+            if (! isset($names[$key])) {
+                $names[$key] = $value;
+            }
+        };
+
+        foreach (MarketplaceManagerRegistry::channels() as $channel) {
+            $add($channel['label'] ?? ($channel['slug'] ?? ''));
         }
+
         try {
-            return OrderFulfillmentManualOrder::query()
-                ->select('marketplace')
-                ->distinct()
-                ->orderBy('marketplace')
-                ->pluck('marketplace')
-                ->map(fn ($v) => trim((string) $v))
-                ->filter()
-                ->values()
-                ->all();
+            if (Schema::hasTable('channel_master')) {
+                ChannelMaster::query()
+                    ->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['active'])
+                    ->orderBy('channel')
+                    ->pluck('channel')
+                    ->each($add);
+            }
         } catch (\Throwable) {
-            return [];
+            // channel_master unavailable: fall back to the other sources
         }
+
+        try {
+            if (Schema::hasTable('order_fulfillment_manual_orders')) {
+                OrderFulfillmentManualOrder::query()
+                    ->select('marketplace')
+                    ->distinct()
+                    ->pluck('marketplace')
+                    ->each($add);
+            }
+        } catch (\Throwable) {
+            // manual table unavailable
+        }
+
+        $list = array_values($names);
+        usort($list, fn (string $a, string $b) => strcasecmp($a, $b));
+
+        return $list;
     }
 
     /**
