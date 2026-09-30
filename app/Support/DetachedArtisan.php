@@ -40,7 +40,8 @@ class DetachedArtisan
                 $parts[] = escapeshellarg('--'.ltrim((string) $key, '-').'='.$value);
             }
         }
-        $shell = 'nohup '.implode(' ', $parts).' >/dev/null 2>&1 &';
+        // Keep stdout/stderr: a fatal error in the detached process is otherwise invisible.
+        $shell = 'nohup '.implode(' ', $parts).' >>'.escapeshellarg(self::logFile()).' 2>&1 &';
 
         try {
             $exitCode = 1;
@@ -52,6 +53,14 @@ class DetachedArtisan
         }
 
         return $exitCode === 0;
+    }
+
+    /**
+     * Where detached commands append their console output (PHP fatals included).
+     */
+    public static function logFile(): string
+    {
+        return storage_path('logs/detached-artisan.log');
     }
 
     public static function available(): bool

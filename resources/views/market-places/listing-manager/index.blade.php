@@ -1713,7 +1713,7 @@
                 <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
                     <div>
                         <div class="lc-section-title mb-0">Marketplaces</div>
-                        <p class="lc-help mb-0">Only marketplaces where this SKU is already listed can be selected. The existing product is updated; nothing new is created.</p>
+                        <p class="lc-help mb-0">Only marketplaces where this SKU already exists (active or inactive) can be selected. The existing product is updated in place; nothing new is created.</p>
                     </div>
                     <div class="form-check mb-0">
                         <input class="form-check-input" type="checkbox" id="lm-push-select-all">
@@ -1781,7 +1781,7 @@
         return '/storage/' + v.replace(/^\/+/, '');
     }
 
-    function statusPill(ui) {
+    function statusPill(ui, hint) {
         const map = {
             'Missing Info': 'lm-status-missing',
             'Ready': 'lm-status-ready',
@@ -1790,7 +1790,8 @@
             'Publishing…': 'lm-status-queued',
         };
         const cls = map[ui] || 'lm-status-missing';
-        return `<span class="lm-status-pill ${cls}">${escapeHtml(ui || 'Missing Info')}</span>`;
+        const title = hint ? ` title="${escapeHtml(hint)}"` : '';
+        return `<span class="lm-status-pill ${cls}"${title}>${escapeHtml(ui || 'Missing Info')}</span>`;
     }
 
     function showPanel(name) {
@@ -3210,6 +3211,11 @@
         if (err.title.length) banners.push(['danger', 'Title & Description tab is missing required information. Please fill in those required fields.']);
         if (err.images.length) banners.push(['danger', 'Images tab is missing required information. Please fill in those required fields.']);
         if (err.pricing.length) banners.push(['danger', 'Price & Stock tab is missing required information. Please fill in those required fields.']);
+        if (serverDraft && serverDraft.status === 'queued') {
+            banners.push(['warn', `Publishing to ${(serverDraft.channel || 'the marketplace')} in the background. This row updates automatically when the marketplace import finishes.`]);
+        } else if (serverDraft && serverDraft.status === 'failed' && serverDraft.last_error) {
+            banners.push(['danger', `Last publish failed — ${serverDraft.last_error}`]);
+        }
         if (!(serverDraft && serverDraft.status === 'listed')) {
             const ch = escapeHtml((serverDraft && serverDraft.channel) || 'channel');
             banners.push(['info', `This is a draft listing and not yet published to ${ch}.`]);
@@ -4078,6 +4084,34 @@
         });
     }
 
+    // Mirakl channels publish from a background process; keep the grid fresh until they leave "Publishing…".
+    let backgroundPublishTimer = null;
+    let backgroundPublishStarted = 0;
+    function watchBackgroundPublishes() {
+        if (backgroundPublishTimer) return;
+        backgroundPublishStarted = Date.now();
+        backgroundPublishTimer = setInterval(function () {
+            if (!draftsTable) return;
+            const rows = draftsTable.getData() || [];
+            const stillQueued = rows.some(r => r.status === 'queued');
+            const expired = Date.now() - backgroundPublishStarted > 45 * 60 * 1000;
+            if (!stillQueued || expired) {
+                clearInterval(backgroundPublishTimer);
+                backgroundPublishTimer = null;
+                if (!stillQueued) {
+                    const failed = rows.filter(r => r.status === 'failed' && r.last_error);
+                    if (failed.length) {
+                        toast('Background publish finished with errors: ' + failed[0].last_error, 'error');
+                    } else {
+                        toast('Background publish finished. Check the Active tab.', 'success');
+                    }
+                }
+                return;
+            }
+            loadDrafts();
+        }, 10000);
+    }
+
     function publishDraft() {
         const id = $('#lc-draft-id').val();
         if (!id) return;
@@ -4093,10 +4127,14 @@
                 },
             });
         }).then(function (res) {
-            toast(res.message || 'Published.', 'success');
+            toast(res.message || 'Published.', res.queued ? 'info' : 'success');
             if (res.draft) fillEditor(res.draft);
             loadDrafts();
-            if (res.success) {
+            if (res.queued) {
+                // 202: the marketplace import runs in a background process; refresh until it lands.
+                watchBackgroundPublishes();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('lmListingEditorModal')).hide();
+            } else if (res.success) {
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('lmListingEditorModal')).hide();
             }
         }).fail(function (xhr) {
@@ -4218,6 +4256,10 @@
                 const sort = $('#lm-draft-sort').val();
                 if (sort === 'name') rows = rows.slice().sort((a,b) => String(a.title||'').localeCompare(String(b.title||'')));
                 if (sort === 'sku') rows = rows.slice().sort((a,b) => String(a.sku||'').localeCompare(String(b.sku||'')));
+                if (rows.some(r => r.status === 'queued')) {
+                    // Page (re)opened while a background publish is running: keep refreshing.
+                    setTimeout(watchBackgroundPublishes, 0);
+                }
                 return rows;
             },
             columns: [
@@ -4251,7 +4293,20 @@
                 },
                 {
                     title: 'Status', field: 'ui_status', width: 120, hozAlign: 'center',
-                    formatter: c => statusPill(c.getValue())
+                    formatter: c => {
+                        const row = c.getRow().getData() || {};
+                        const hint = row.status === 'failed'
+                            ? (row.last_error || 'Publish failed — open the editor for details.')
+                            : (row.status === 'queued' ? 'Publishing in the background; refreshes automatically.' : '');
+                        return statusPill(c.getValue(), hint);
+                    },
+                    cellClick: (e, cell) => {
+                        const row = cell.getRow().getData() || {};
+                        if (row.status === 'failed' && row.last_error) {
+                            e.preventDefault();
+                            toast(row.last_error, 'error');
+                        }
+                    }
                 },
                 { title: 'SKU', field: 'sku', minWidth: 130 },
                 {
@@ -4656,12 +4711,24 @@
                     if (id) draftedIds.add(id);
                 }
             });
-            return { listed, drafted, listedIds, draftedIds };
+            // Exists on the marketplace (maybe inactive) but not "Active" here: still updatable.
+            const updatable = new Map();
+            (p && p.updatable_on ? p.updatable_on : []).forEach(function (r) {
+                const info = { state: String(r.state || 'unknown'), listing_id: r.listing_id || '' };
+                updatable.set(String(r.channel || '').toLowerCase(), info);
+                if (r.channel_id) updatable.set('#' + Number(r.channel_id), info);
+            });
+            return { listed, drafted, listedIds, draftedIds, updatable };
         }
 
         function channelIsListed(c, flags) {
             const name = String(c.channel || '').toLowerCase();
             return !!(flags && ((flags.listed && flags.listed.has(name)) || (flags.listedIds && flags.listedIds.has(Number(c.id)))));
+        }
+
+        function channelUpdatableInfo(c, flags) {
+            if (!flags || !flags.updatable) return null;
+            return flags.updatable.get(String(c.channel || '').toLowerCase()) || flags.updatable.get('#' + Number(c.id)) || null;
         }
 
         // Update-only: channels where the SKU is not listed are shown but cannot be selected.
@@ -4673,12 +4740,23 @@
                 const src = logoSrc(c.logo);
                 const name = String(c.channel || '').toLowerCase();
                 const isListed = channelIsListed(c, flags);
-                const on = isListed && checked.has(Number(c.id));
+                const updatable = !isListed ? channelUpdatableInfo(c, flags) : null;
+                const canPush = isListed || !!updatable;
+                const on = canPush && checked.has(Number(c.id));
                 let badge = '<span class="lm-push-badge skipped">Not listed · will be skipped</span>';
-                if (isListed) badge = '<span class="lm-push-badge listed">Listed</span>';
-                else if (drafted.has(name) || draftedIds.has(Number(c.id))) badge = '<span class="lm-push-badge draft">Draft only · not live</span>';
-                return `<label class="lm-channel-row ${on ? 'is-checked' : ''} ${isListed ? '' : 'is-disabled'}" title="${isListed ? '' : 'This SKU is not listed here yet, so there is nothing to update.'}">
-                    <input type="checkbox" class="form-check-input lm-channel-cb" value="${c.id}" ${on ? 'checked' : ''} ${isListed ? '' : 'disabled'}>
+                let hint = 'This SKU is not listed here yet, so there is nothing to update.';
+                if (isListed) {
+                    badge = '<span class="lm-push-badge listed">Listed</span>';
+                    hint = '';
+                } else if (updatable) {
+                    const st = updatable.state === 'inactive' ? 'inactive' : (updatable.state === 'active' ? 'active' : 'on marketplace');
+                    badge = `<span class="lm-push-badge ${updatable.state === 'inactive' ? 'draft' : 'listed'}">Exists on ${escapeHtml(c.channel)} · ${st} · can update</span>`;
+                    hint = 'This SKU already exists on ' + c.channel + (updatable.state === 'inactive' ? ' but is inactive there' : '') + '. Selected fields update that product in place.';
+                } else if (drafted.has(name) || draftedIds.has(Number(c.id))) {
+                    badge = '<span class="lm-push-badge draft">Draft only · not live</span>';
+                }
+                return `<label class="lm-channel-row ${on ? 'is-checked' : ''} ${canPush ? '' : 'is-disabled'}" title="${escapeHtml(hint)}">
+                    <input type="checkbox" class="form-check-input lm-channel-cb" value="${c.id}" ${on ? 'checked' : ''} ${canPush ? '' : 'disabled'}>
                     ${src ? `<img src="${escapeHtml(src)}" alt="">` : '<span class="lm-thumb-empty"><i class="fas fa-store"></i></span>'}
                     <span class="fw-semibold">${escapeHtml(c.channel)}</span>
                     ${badge}
@@ -4879,13 +4957,13 @@
             const flags = productChannelFlags(currentProduct);
             loadChannels().then(function () {
                 const enabled = allChannels.filter(c => c.enabled);
-                const extra = allChannels.filter(c => !c.enabled && channelIsListed(c, flags));
+                const canPush = c => channelIsListed(c, flags) || !!channelUpdatableInfo(c, flags);
+                const extra = allChannels.filter(c => !c.enabled && canPush(c));
                 const list = extra.concat(enabled).sort((a, b) => {
-                    const la = channelIsListed(a, flags) ? 0 : 1;
-                    const lb = channelIsListed(b, flags) ? 0 : 1;
-                    return la - lb || String(a.channel || '').localeCompare(String(b.channel || ''));
+                    const rank = c => channelIsListed(c, flags) ? 0 : (channelUpdatableInfo(c, flags) ? 1 : 2);
+                    return rank(a) - rank(b) || String(a.channel || '').localeCompare(String(b.channel || ''));
                 });
-                const pre = list.filter(c => channelIsListed(c, flags)).map(c => c.id);
+                const pre = list.filter(canPush).map(c => c.id);
                 renderPushChannelRows(list, pre, flags);
                 $('#lm-push-select-all').prop('checked', pre.length > 0);
                 if (!pre.length) {
@@ -5259,8 +5337,8 @@
             loadDrafts();
         }
         $('#lm-action-publish-selected').on('click', function () {
-            const rows = (draftsTable.getSelectedData() || []).filter(r => r.ui_status === 'Ready' && r.status !== 'listed');
-            if (!rows.length) { toast('Select Ready drafts only.', 'error'); return; }
+            const rows = (draftsTable.getSelectedData() || []).filter(r => (r.ui_status === 'Ready' || r.ui_status === 'Failed') && r.status !== 'listed');
+            if (!rows.length) { toast('Select Ready (or Failed) drafts only.', 'error'); return; }
             const $btn = $(this);
             if ($btn.data('busy')) return;
             $btn.data('busy', true);
@@ -5326,27 +5404,6 @@
             }
             next();
         });
-
-        // Mirakl channels publish from a background process; keep the grid fresh until they leave "Publishing…".
-        let backgroundPublishTimer = null;
-        let backgroundPublishStarted = 0;
-        function watchBackgroundPublishes() {
-            if (backgroundPublishTimer) return;
-            backgroundPublishStarted = Date.now();
-            backgroundPublishTimer = setInterval(function () {
-                const stillQueued = (draftsTable.getData() || []).some(r => r.status === 'queued');
-                const expired = Date.now() - backgroundPublishStarted > 10 * 60 * 1000;
-                if (!stillQueued || expired) {
-                    clearInterval(backgroundPublishTimer);
-                    backgroundPublishTimer = null;
-                    if (!stillQueued) {
-                        toast('Background publish finished. Check the Active tab, or the row notes if it failed.', 'success');
-                    }
-                    return;
-                }
-                loadDrafts();
-            }, 10000);
-        }
 
         $('#lm-action-delete-selected').on('click', function () {
             const rows = draftsTable.getSelectedData() || [];

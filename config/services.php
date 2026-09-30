@@ -52,6 +52,12 @@ return [
         'connect_image_clear_before_push' => filter_var(env('MACY_CONNECT_IMAGE_CLEAR_BEFORE_PUSH', true), FILTER_VALIDATE_BOOL),
         /** Build P41 rows with PM11 REQUIRED fields + offer/macys_price_data (not bullets-only). */
         'mcm_p41_enriched_row' => filter_var(env('MACY_MCM_P41_ENRICHED_ROW', true), FILTER_VALIDATE_BOOL),
+        /** OF01 offer import (Listing Manager publish): empty state = copy from an existing live offer, else "11". */
+        'mcm_offer_state_code' => env('MACY_MCM_OFFER_STATE_CODE', ''),
+        'mcm_offer_product_id_type' => env('MACY_MCM_OFFER_PRODUCT_ID_TYPE', 'SHOP_SKU'),
+        'mcm_offer_leadtime_to_ship' => env('MACY_MCM_OFFER_LEADTIME_TO_SHIP'),
+        /** Operator-mandatory offer columns, e.g. ['logistic-class' => 'STD'] */
+        'mcm_offer_extra_columns' => [],
         /**
          * Optional map Connect category id/label → Macy MCM PM11 hierarchy (categoryCode).
          * Live Macy offer/product category takes priority when available.
@@ -343,6 +349,11 @@ return [
         'mcm_image_push' => filter_var(env('BESTBUY_MCM_IMAGE_PUSH', true), FILTER_VALIDATE_BOOL),
         'mcm_image_allow_locked_override' => filter_var(env('BESTBUY_MCM_IMAGE_ALLOW_LOCKED_OVERRIDE', true), FILTER_VALIDATE_BOOL),
         'mcm_p41_enriched_row' => filter_var(env('BESTBUY_MCM_P41_ENRICHED_ROW', true), FILTER_VALIDATE_BOOL),
+        /** OF01 offer import (Listing Manager publish): empty state = copy from an existing live offer, else "11". */
+        'mcm_offer_state_code' => env('BESTBUY_MCM_OFFER_STATE_CODE', ''),
+        'mcm_offer_product_id_type' => env('BESTBUY_MCM_OFFER_PRODUCT_ID_TYPE', 'SHOP_SKU'),
+        'mcm_offer_leadtime_to_ship' => env('BESTBUY_MCM_OFFER_LEADTIME_TO_SHIP'),
+        'mcm_offer_extra_columns' => [],
     ],
 
     'purchasingpower' => [
@@ -366,6 +377,11 @@ return [
         'features_benefits_verify_delay_seconds' => (int) env('PURCHASING_POWER_BULLET_VERIFY_DELAY_SECONDS', 2),
         'mcm_title_push' => filter_var(env('PURCHASING_POWER_MCM_TITLE_PUSH', true), FILTER_VALIDATE_BOOL),
         'mcm_p41_enriched_row' => filter_var(env('PURCHASING_POWER_MCM_P41_ENRICHED_ROW', false), FILTER_VALIDATE_BOOL),
+        /** OF01 offer import (Listing Manager publish): empty state = copy from an existing live offer, else "11". */
+        'mcm_offer_state_code' => env('PURCHASING_POWER_MCM_OFFER_STATE_CODE', ''),
+        'mcm_offer_product_id_type' => env('PURCHASING_POWER_MCM_OFFER_PRODUCT_ID_TYPE', 'SHOP_SKU'),
+        'mcm_offer_leadtime_to_ship' => env('PURCHASING_POWER_MCM_OFFER_LEADTIME_TO_SHIP'),
+        'mcm_offer_extra_columns' => [],
     ],
 
     /*

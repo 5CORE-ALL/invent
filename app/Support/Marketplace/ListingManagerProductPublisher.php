@@ -229,9 +229,24 @@ class ListingManagerProductPublisher
             }
         }
 
-        if ($isLive) {
+        // App-only channels: the SKU may already exist on the marketplace (active or inactive —
+        // e.g. Newegg without images) without being "Active" in Listing Manager. Updating that
+        // product in place is fine; only the local Active status stays untouched.
+        $existsOnMarketplace = false;
+        $marketplaceState = 'unknown';
+        if (! $isLive && $appOnly && $key !== '') {
+            $exists = ListingManagerPublishStatus::existsOnMarketplace($channelName, $sku);
+            if ($exists['exists']) {
+                $existsOnMarketplace = true;
+                $marketplaceState = $exists['state'];
+                $live = ['listed' => true, 'listing_id' => $exists['listing_id'], 'source' => $exists['source']];
+            }
+        }
+
+        if ($isLive || $existsOnMarketplace) {
             if ($draft) {
-                $this->applyFieldsToDraft($draft, $fields, true, $live['listing_id'] ?? null);
+                // Only keep/flip to Active when Listing Manager already treats it as live.
+                $this->applyFieldsToDraft($draft, $fields, $isLive, $live['listing_id'] ?? null);
             }
             if ($key === '') {
                 return [
@@ -250,13 +265,19 @@ class ListingManagerProductPublisher
             if ($detail === '') {
                 $detail = $ok ? 'Updated.' : 'Update failed.';
             }
+            $prefix = 'Live listing updated. ';
+            if ($existsOnMarketplace) {
+                $prefix = $marketplaceState === 'inactive'
+                    ? 'Marketplace listing updated (it is currently inactive on '.$channelName.'; it goes live once the marketplace accepts the content). '
+                    : 'Marketplace listing updated. ';
+            }
 
             return [
                 'channel_id' => $channelId,
                 'channel' => $channelName,
                 'marketplace' => $key,
                 'success' => $ok,
-                'message' => $ok ? ('Live listing updated. '.$detail) : $detail,
+                'message' => $ok ? ($prefix.$detail) : $detail,
                 'mode' => 'live',
             ];
         }

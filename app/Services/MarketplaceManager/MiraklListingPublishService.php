@@ -36,6 +36,9 @@ class MiraklListingPublishService
 
     /**
      * @param  list<string>  $skus
+     * @param  array<string, mixed>  $overrides  Listing Manager draft values (title, description, price,
+     *                                           quantity, images, upc, brand) that win over Product Master;
+     *                                           'relist' => true re-pushes a SKU already marked listed locally.
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
     public function publishSkus(
@@ -44,7 +47,8 @@ class MiraklListingPublishService
         bool $expandSiblings = true,
         string $mode = 'variation',
         string $parentHint = '',
-        ?string $categoryCode = null
+        ?string $categoryCode = null,
+        array $overrides = []
     ): array {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -62,9 +66,10 @@ class MiraklListingPublishService
         }
 
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
+        $relist = filter_var($overrides['relist'] ?? false, FILTER_VALIDATE_BOOL);
         $publishSkus = ($expandSiblings && $mode === 'variation')
             ? $this->expandToPublishableSiblings($skus, $channel)
-            : $this->filterPublishable($skus, $channel);
+            : $this->filterPublishable($skus, $channel, $relist, $this->overrideImages($overrides) === []);
 
         if ($publishSkus === []) {
             return ['success' => false, 'message' => $this->publishBlockReason($skus, $channel, $label)];
@@ -76,7 +81,7 @@ class MiraklListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], $channel, false, 'single', $parentHint, $categoryCode);
+                $one = $this->publishSkus([$sku], $channel, false, 'single', $parentHint, $categoryCode, $this->overridesForSku($overrides, $sku));
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -100,17 +105,24 @@ class MiraklListingPublishService
         }
 
         $sku = $publishSkus[0];
+        $overrides = $this->overridesForSku($overrides, $sku);
         $product = $this->findProduct($sku);
         if (! $product) {
             return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
         }
 
-        $title = $this->resolveTitle($product, $sku);
+        // Listing Manager draft values take precedence over Product Master defaults.
+        $title = mb_substr(trim((string) ($overrides['title'] ?? '')), 0, 150);
+        if ($title === '') {
+            $title = $this->resolveTitle($product, $sku);
+        }
         if ($title === '') {
             return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
         }
 
-        $price = $this->resolvePrice($sku, $product, $channel);
+        $price = isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0
+            ? round((float) $overrides['price'], 2)
+            : $this->resolvePrice($sku, $product, $channel);
         if ($price === null || $price <= 0) {
             return [
                 'success' => false,
@@ -118,7 +130,10 @@ class MiraklListingPublishService
             ];
         }
 
-        $images = $this->productImages($product, $sku);
+        $images = $this->overrideImages($overrides);
+        if ($images === []) {
+            $images = $this->productImages($product, $sku);
+        }
         if ($images === []) {
             return ['success' => false, 'message' => 'No public image URL for '.$sku.'. Add an https image on CP Master (or Image Master).'];
         }
@@ -128,14 +143,24 @@ class MiraklListingPublishService
             $categoryCode = $this->existingCategoryCode($sku, $channel);
         }
 
-        $description = $this->resolveDescription($product, $title);
+        $description = trim((string) ($overrides['description'] ?? ''));
+        if ($description === '') {
+            $description = $this->resolveDescription($product, $title);
+        }
         $bullets = $this->resolveBullets($product);
-        $inv = $this->shopifyInv($sku);
+        $inv = isset($overrides['quantity']) && is_numeric($overrides['quantity'])
+            ? max(0, (int) $overrides['quantity'])
+            : $this->shopifyInv($sku);
+        $offerOptions = [];
+        $upc = preg_replace('/\D+/', '', (string) ($overrides['upc'] ?? '')) ?: '';
+        if ($upc !== '') {
+            $offerOptions['upc'] = $upc;
+        }
 
         // The picked category drives the P41 hierarchy for every push below.
         $api->setMiraklMcmHierarchyOverride($sku, $categoryCode);
         try {
-            return $this->pushProduct($api, $sku, $title, $description, $bullets, $images, $price, $inv, $channel, $label, $categoryCode);
+            return $this->pushProduct($api, $sku, $title, $description, $bullets, $images, $price, $inv, $channel, $label, $categoryCode, $offerOptions);
         } finally {
             $api->setMiraklMcmHierarchyOverride($sku, '');
         }
@@ -156,7 +181,8 @@ class MiraklListingPublishService
         int $inv,
         string $channel,
         string $label,
-        string $categoryCode
+        string $categoryCode,
+        array $offerOptions = []
     ): array {
         $titleRes = $api->updateTitle($sku, $title);
         if (empty($titleRes['success'])) {
@@ -183,25 +209,42 @@ class MiraklListingPublishService
         if ($bullets !== '' && method_exists($api, 'updateBulletPoints')) {
             $api->updateBulletPoints($sku, $bullets);
         }
+
+        // The offer (OF01) is what makes the product sellable; P41 alone only fills the catalog.
+        $offerId = '';
+        $offerOk = false;
         try {
-            $priceRes = $api->updatePrice($sku, $price);
-            if (empty($priceRes['success'])) {
-                $parts[] = trim((string) ($priceRes['message'] ?? 'Price will apply after the offer is live'));
-            }
+            $offerRes = $api->upsertMiraklMcmOffer($sku, $price, $inv, $offerOptions);
+            $offerOk = (bool) ($offerRes['success'] ?? false);
+            $parts[] = trim((string) ($offerRes['message'] ?? ''));
+            $offerId = trim((string) ($offerRes['offer_id'] ?? ''));
         } catch (\Throwable $e) {
-            $parts[] = 'Price follow-up: '.$e->getMessage();
+            $parts[] = $label.' offer (OF01) failed: '.$e->getMessage();
+            Log::warning('Mirakl publish offer import failed', ['sku' => $sku, 'channel' => $channel, 'error' => $e->getMessage()]);
         }
-        try {
-            $invRes = $api->updateItemInventoryBulk([['sku' => $sku, 'quantity' => $inv]]);
-            if (is_array($invRes) && isset($invRes['success']) && ! $invRes['success']) {
-                $parts[] = trim((string) ($invRes['message'] ?? 'Inventory follow-up pending'));
+
+        if (! $offerOk) {
+            // Legacy follow-ups; they only work when an offer already exists on the marketplace.
+            try {
+                $priceRes = $api->updatePrice($sku, $price);
+                if (empty($priceRes['success'])) {
+                    $parts[] = trim((string) ($priceRes['message'] ?? 'Price will apply after the offer is live'));
+                }
+            } catch (\Throwable $e) {
+                $parts[] = 'Price follow-up: '.$e->getMessage();
             }
-        } catch (\Throwable $e) {
-            Log::warning('Mirakl publish inventory follow-up failed', [
-                'sku' => $sku,
-                'channel' => $channel,
-                'error' => $e->getMessage(),
-            ]);
+            try {
+                $invRes = $api->updateItemInventoryBulk([['sku' => $sku, 'quantity' => $inv]]);
+                if (is_array($invRes) && isset($invRes['success']) && ! $invRes['success']) {
+                    $parts[] = trim((string) ($invRes['message'] ?? 'Inventory follow-up pending'));
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Mirakl publish inventory follow-up failed', [
+                    'sku' => $sku,
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         $this->persistListed($sku, $title, $price, $inv, $channel, $categoryCode);
@@ -210,10 +253,47 @@ class MiraklListingPublishService
         return [
             'success' => true,
             'message' => trim(implode(' ', array_filter($parts))) ?: ('Published '.$sku.' to '.$label.'.'),
-            'goods_id' => $sku,
+            'goods_id' => $offerId !== '' ? $offerId : $sku,
             'sku_id' => $sku,
             'skus' => [$sku],
         ];
+    }
+
+    /**
+     * Draft field overrides belong to the draft's own SKU; siblings only inherit the relist flag.
+     *
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function overridesForSku(array $overrides, string $sku): array
+    {
+        $target = trim((string) ($overrides['sku'] ?? ''));
+        if ($target === '' || strcasecmp($target, trim($sku)) === 0) {
+            return $overrides;
+        }
+
+        return array_intersect_key($overrides, ['relist' => true, 'sku' => true]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return list<string>
+     */
+    private function overrideImages(array $overrides): array
+    {
+        $images = is_array($overrides['images'] ?? null) ? $overrides['images'] : [];
+        $out = [];
+        foreach ($images as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && preg_match('~^https://~i', $url) && ! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+            if (count($out) >= 8) {
+                break;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -342,10 +422,12 @@ class MiraklListingPublishService
      * @param  list<string>  $skus
      * @return list<string>
      */
-    private function filterPublishable(array $skus, string $channel): array
+    private function filterPublishable(array $skus, string $channel, bool $relist = false, bool $requireMasterImages = true): array
     {
         $cfg = ChannelListingRegistry::get($channel);
-        $listedMap = $cfg ? ChannelListingRegistry::loadListedIds($cfg, $skus) : [];
+        // P41/OF01 are upserts, so a Listing Manager re-publish may target a SKU already marked listed
+        // locally (e.g. after a partial earlier attempt); only bulk "Missing L" publishes skip those.
+        $listedMap = (! $relist && $cfg) ? ChannelListingRegistry::loadListedIds($cfg, $skus) : [];
         $out = [];
         foreach ($skus as $sku) {
             $sku = trim((string) $sku);
@@ -356,7 +438,7 @@ class MiraklListingPublishService
                 continue;
             }
             $product = $this->findProduct($sku);
-            if (! $product || $this->productImages($product, $sku) === []) {
+            if (! $product || ($requireMasterImages && $this->productImages($product, $sku) === [])) {
                 continue;
             }
             $out[] = $sku;
