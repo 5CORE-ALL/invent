@@ -732,6 +732,12 @@
                         <li>
                             <a href="{{ route('view-inventory-data') }}">Inv Main</a>
                         </li>
+                        <li>
+                            <a href="{{ route('inv.under.30.days') }}">Inv&lt;30 Days</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('inv.change.seven.days') }}">Inv Change 7days</a>
+                        </li>
                         {{-- <li>
                             <a href="{{ route('inventory.manage.index') }}">
                                 <i class="ri-stack-line me-1"></i>Inv Manage Inventory & Sync
