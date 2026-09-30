@@ -3,6 +3,8 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\AlibabaMetric;
+use App\Models\AlibabaPricingPrice;
+use App\Models\AlibabaSheetPrice;
 use App\Services\AlibabaApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -200,9 +202,12 @@ class AlibabaLinkMapSyncService
             }
 
             $rows = $this->aliExpressApi->extractSkuRowsFromListItem($item, fetchDetail: false);
-            if (! $this->rowsHaveRealSku($rows)) {
-                $rows = $this->aliExpressApi->extractSkuRowsFromListItem($item, fetchDetail: true);
+            if (! $this->rowsHaveRealSku($rows) || ! $this->rowsHavePrice($rows)) {
+                $detailRows = $this->aliExpressApi->extractSkuRowsFromListItem($item, fetchDetail: true);
                 usleep(100000);
+                if ($this->rowsHavePrice($detailRows) || ! $this->rowsHaveRealSku($rows)) {
+                    $rows = $detailRows;
+                }
             }
 
             foreach ($rows as $row) {
@@ -212,19 +217,59 @@ class AlibabaLinkMapSyncService
                     continue;
                 }
 
-                AlibabaMetric::updateOrCreate(
-                    ['sku' => $sku],
-                    [
-                        'product_id' => $productId,
-                        'product_name' => $row['product_name'] ?? null,
-                        'price' => $row['price'] ?? 0,
-                    ]
-                );
+                $price = is_numeric($row['price'] ?? null) ? (float) $row['price'] : 0.0;
+                $fill = [
+                    'product_id' => $productId,
+                    'product_name' => $row['product_name'] ?? null,
+                ];
+                if ($price > 0) {
+                    $fill['price'] = $price;
+                }
+                AlibabaMetric::updateOrCreate(['sku' => $sku], $fill);
+                $this->persistApiPrice($productId, $sku, $price, $row['stock'] ?? null, $row['status'] ?? null);
                 $upserted++;
             }
         }
 
         return $upserted;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    protected function persistApiPrice(string $productId, string $sku, float $price, mixed $stock, mixed $status): void
+    {
+        if ($price <= 0) {
+            return;
+        }
+
+        $soh = is_numeric($stock) ? (int) $stock : null;
+        $statusText = is_string($status) && trim($status) !== '' ? trim($status) : null;
+
+        if (Schema::hasTable('alibaba_sheet_prices')) {
+            $existing = AlibabaSheetPrice::query()->where('product_id', $productId)->first();
+            if ($existing === null || strcasecmp((string) $existing->sku, $sku) === 0) {
+                $sheet = [
+                    'sku' => $sku,
+                    'sku_price' => $price,
+                ];
+                if ($soh !== null) {
+                    $sheet['soh'] = $soh;
+                }
+                if ($existing === null && $statusText !== null) {
+                    $sheet['status'] = $statusText;
+                }
+                AlibabaSheetPrice::updateOrCreate(['product_id' => $productId], $sheet);
+            }
+        }
+
+        if (Schema::hasTable('alibaba_pricing_prices')) {
+            $pricing = ['price' => $price];
+            if ($soh !== null) {
+                $pricing['ab_stock'] = $soh;
+            }
+            AlibabaPricingPrice::updateOrCreate(['sku' => $sku], $pricing);
+        }
     }
 
     /**
@@ -236,6 +281,20 @@ class AlibabaLinkMapSyncService
             $sku = trim((string) ($row['sku'] ?? ''));
             $productId = (string) ($row['product_id'] ?? '');
             if ($sku !== '' && $productId !== '' && $sku !== $productId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    protected function rowsHavePrice(array $rows): bool
+    {
+        foreach ($rows as $row) {
+            if (is_numeric($row['price'] ?? null) && (float) $row['price'] > 0) {
                 return true;
             }
         }

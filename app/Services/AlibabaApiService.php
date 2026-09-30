@@ -116,6 +116,21 @@ class AlibabaApiService extends AliExpressApiService
         return $last;
     }
 
+    public function extractSkuRowsFromListItem(array $item, bool $fetchDetail = false): array
+    {
+        $parent = parent::extractSkuRowsFromListItem($item, $fetchDetail);
+        $productId = (string) ($item['product_id'] ?? $item['productId'] ?? $item['id'] ?? '');
+
+        return $this->preferSkuRows($this->icbuSkuRows($item, $productId), $parent);
+    }
+
+    public function extractSkuRowsFromProductInfo(array $info, string $productId, ?string $productName = null): array
+    {
+        $parent = parent::extractSkuRowsFromProductInfo($info, $productId, $productName);
+
+        return $this->preferSkuRows($this->icbuSkuRows($info, $productId, $productName), $parent);
+    }
+
     public function getProductInfo(string $productId): array
     {
         $productId = trim($productId);
@@ -846,5 +861,213 @@ class AlibabaApiService extends AliExpressApiService
             'current_page' => $result['current_page'] ?? $result['currentPage'] ?? null,
             'page_size' => $pageSize,
         ];
+    }
+
+    /**
+     * ICBU product payloads use product_sku.skus, not AliExpress aeop SKU lists.
+     *
+     * @param  array<string, mixed>  $info
+     * @return array<int, array{product_id: string, sku: string, price: float, stock: int|null, product_name: ?string, status: ?string}>
+     */
+    protected function icbuSkuRows(array $info, string $productId, ?string $productName = null): array
+    {
+        $productId = trim($productId !== '' ? $productId : (string) ($info['product_id'] ?? $info['id'] ?? ''));
+        if ($productId === '') {
+            return [];
+        }
+
+        $productName = $productName ?: $this->icbuText($info['subject'] ?? $info['product_name'] ?? $info['title'] ?? null);
+        $status = $this->icbuText($info['status'] ?? $info['display'] ?? null);
+        $rows = [];
+
+        foreach ($this->icbuSkuNodes($info) as $node) {
+            $sku = trim((string) ($node['sku_code'] ?? $node['sku'] ?? $node['cargo_number'] ?? ''));
+            if ($sku === '' || strcasecmp($sku, $productId) === 0) {
+                continue;
+            }
+            $rows[] = [
+                'product_id' => $productId,
+                'sku' => $sku,
+                'price' => $this->icbuPrice($node),
+                'stock' => $this->icbuStock($node),
+                'product_name' => $productName,
+                'status' => $status,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $primary
+     * @param  array<int, array<string, mixed>>  $fallback
+     * @return array<int, array<string, mixed>>
+     */
+    protected function preferSkuRows(array $primary, array $fallback): array
+    {
+        if ($primary === []) {
+            return $fallback;
+        }
+
+        $bySku = [];
+        foreach ($fallback as $row) {
+            $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($sku !== '') {
+                $bySku[$sku] = $row;
+            }
+        }
+
+        $out = [];
+        foreach ($primary as $row) {
+            $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+            $price = (float) ($row['price'] ?? 0);
+            if ($price <= 0 && isset($bySku[$sku]) && is_numeric($bySku[$sku]['price'] ?? null)) {
+                $row['price'] = (float) $bySku[$sku]['price'];
+            }
+            if (($row['stock'] ?? null) === null && isset($bySku[$sku])) {
+                $row['stock'] = $bySku[$sku]['stock'] ?? null;
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return array<int, array<string, mixed>>
+     */
+    protected function icbuSkuNodes(array $info): array
+    {
+        $bags = [$info];
+        foreach (['product_sku', 'productSku'] as $key) {
+            if (isset($info[$key]) && is_array($info[$key])) {
+                $bags[] = $info[$key];
+            }
+        }
+
+        $out = [];
+        foreach ($bags as $bag) {
+            foreach (['skus', 'sku_list', 'sku_definition', 'sku_info_list', 'product_sku_list'] as $key) {
+                if (! isset($bag[$key])) {
+                    continue;
+                }
+                $list = $bag[$key];
+                if (is_array($list) && isset($list['sku_definition']) && is_array($list['sku_definition'])) {
+                    $list = $list['sku_definition'];
+                } elseif (is_array($list) && isset($list['sku']) && is_array($list['sku'])) {
+                    $list = $list['sku'];
+                }
+                if (is_array($list) && $list !== [] && ! array_is_list($list)) {
+                    $list = [$list];
+                }
+                if (! is_array($list)) {
+                    continue;
+                }
+                foreach ($list as $node) {
+                    if (is_array($node)) {
+                        $out[] = $node;
+                    }
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    protected function icbuPrice(array $node): float
+    {
+        foreach (['price', 'sku_price', 'bulk_price', 'unit_price', 'fob_price', 'fob_min_price'] as $key) {
+            $amount = $this->icbuMoney($node[$key] ?? null);
+            if ($amount > 0) {
+                return $amount;
+            }
+        }
+
+        foreach (['sourcing_trade', 'wholesale_trade', 'product_price'] as $key) {
+            if (! isset($node[$key]) || ! is_array($node[$key])) {
+                continue;
+            }
+            $amount = $this->icbuPrice($node[$key]);
+            if ($amount > 0) {
+                return $amount;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    protected function icbuStock(array $node): ?int
+    {
+        foreach (['inventory', 'stock', 'sku_stock', 'current_inventory'] as $key) {
+            if (isset($node[$key]) && is_numeric($node[$key])) {
+                return max(0, (int) $node[$key]);
+            }
+        }
+
+        $list = $node['inventory_dto_list'] ?? $node['inventory_list'] ?? null;
+        if (is_array($list) && $list !== [] && ! array_is_list($list)) {
+            $list = [$list];
+        }
+        if (! is_array($list)) {
+            return null;
+        }
+
+        $sum = 0;
+        $found = false;
+        foreach ($list as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            foreach (['current_inventory', 'inventory', 'stock'] as $key) {
+                if (isset($entry[$key]) && is_numeric($entry[$key])) {
+                    $sum += max(0, (int) $entry[$key]);
+                    $found = true;
+                    break;
+                }
+            }
+        }
+
+        return $found ? $sum : null;
+    }
+
+    protected function icbuMoney(mixed $value): float
+    {
+        if (is_array($value)) {
+            foreach (['amount', 'min', 'min_price', 'value', 'price'] as $key) {
+                if (array_key_exists($key, $value)) {
+                    $amount = $this->icbuMoney($value[$key]);
+                    if ($amount > 0) {
+                        return $amount;
+                    }
+                }
+            }
+
+            return 0.0;
+        }
+        if (is_int($value) || is_float($value)) {
+            return (float) $value;
+        }
+        if (is_string($value) && preg_match('/\d+(?:\.\d+)?/', $value, $match) === 1) {
+            return (float) $match[0];
+        }
+
+        return 0.0;
+    }
+
+    protected function icbuText(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+        $text = trim($value);
+
+        return $text !== '' ? $text : null;
     }
 }
