@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\AmazonAdsLiveBidBgtSyncService;
+use App\Support\AmazonAdsDesiredSbgtResolver;
 use App\Support\AmazonAdsLiveSyncFollowUp;
 use App\Support\AmazonAdsSbgt;
 use Illuminate\Console\Command;
@@ -10,6 +11,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 class AmazonAdsLiveBidBgtSync extends Command
 {
@@ -44,21 +46,26 @@ class AmazonAdsLiveBidBgtSync extends Command
         $failed = 0;
 
         try {
-            for ($pass = 0; $pass < 2; $pass++) {
+            $this->refreshStoredSbgt($channelOpt, $onlyCid);
+            for ($pass = 0; $pass < 8; $pass++) {
                 Cache::forget(AmazonAdsLiveSyncFollowUp::DIRTY_KEY);
                 $rows = $this->rowsFromReports($channelOpt, $limit, $onlyCid, $retryFailed);
                 if ($rows === []) {
                     $this->info('No Enabled calendar-day campaigns have Lbgt different from SBGT or Lbid different from SBID.');
-                } else {
-                    $this->info('Enabled calendar-day mismatches: '.count($rows).'. Pull live budget and bid, then push only rows that still differ.');
-                    $out = $sync->syncRows($rows, 'cron-live-sync');
-                    $failed += (int) $out['failed'];
-                    $this->info('Synced '.$out['synced'].' | Failed '.$out['failed'].' | Skipped '.$out['skipped'].' | In progress '.$out['in_progress']);
-                }
-                if (! Cache::has(AmazonAdsLiveSyncFollowUp::DIRTY_KEY)) {
                     break;
                 }
-                $this->info('Grid saved a newer SBID or SBGT during this run. Checking those rows.');
+                $this->info('Enabled calendar-day mismatches: '.count($rows).'. Pull live budget and bid, then push only rows that still differ.');
+                $out = $sync->syncRows($rows, 'cron-live-sync');
+                $failed += (int) $out['failed'];
+                $this->info('Synced '.$out['synced'].' | Failed '.$out['failed'].' | Skipped '.$out['skipped'].' | In progress '.$out['in_progress']);
+                $dirty = Cache::has(AmazonAdsLiveSyncFollowUp::DIRTY_KEY);
+                $moreRemain = count($rows) >= $limit && (int) $out['synced'] > 0;
+                if (! $dirty && ! $moreRemain) {
+                    break;
+                }
+                $this->info($dirty
+                    ? 'Grid saved a newer SBID or SBGT during this run. Checking those rows.'
+                    : 'This pass hit the limit. Checking the remaining mismatches.');
             }
         } finally {
             Cache::forget(AmazonAdsLiveSyncFollowUp::RUN_KEY);
@@ -66,6 +73,56 @@ class AmazonAdsLiveBidBgtSync extends Command
         }
 
         return $failed > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Write the same six-part SBGT the grid shows onto the latest enabled row,
+     * then the mismatch query below can push it. Without this, 21:50 only sees
+     * whatever was saved last time the page was opened.
+     */
+    private function refreshStoredSbgt(string $channelOpt, string $onlyCid): void
+    {
+        $channels = $channelOpt === 'sp' || $channelOpt === 'sb' ? [$channelOpt] : ['sp', 'sb'];
+        foreach ($channels as $channel) {
+            $table = $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports';
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sbgt') || ! Schema::hasColumn($table, 'campaignStatus')) {
+                continue;
+            }
+            $day = $this->latestReportDay($table);
+            if ($day === null) {
+                continue;
+            }
+            $q = DB::table($table)
+                ->where('report_date_range', $day)
+                ->whereRaw("UPPER(TRIM(campaignStatus)) = 'ENABLED'")
+                ->select('campaign_id', 'campaignName', 'sbgt');
+            if ($onlyCid !== '') {
+                $q->where('campaign_id', $onlyCid);
+            }
+            $campaigns = $q->get();
+            if ($campaigns->isEmpty()) {
+                continue;
+            }
+            try {
+                $desired = AmazonAdsDesiredSbgtResolver::sbgtForCampaigns($campaigns, $channel);
+            } catch (Throwable $e) {
+                $this->warn(strtoupper($channel).' grid SBGT was not recalculated: '.$e->getMessage());
+
+                continue;
+            }
+            $idToBgt = [];
+            foreach ($desired as $cid => $sbgt) {
+                if ($sbgt === null || $cid === '') {
+                    continue;
+                }
+                $idToBgt[(string) $cid] = $sbgt;
+            }
+            if ($idToBgt === []) {
+                continue;
+            }
+            AmazonAdsSbgt::persistByRowId($table, [], $idToBgt);
+            $this->info(strtoupper($channel).' grid SBGT saved for '.count($idToBgt).' enabled campaigns on '.$day.'.');
+        }
     }
 
     /**

@@ -1521,6 +1521,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Recalculates the grid SBGT, then pushes every Enabled bid/budget that
+        // still differs. Opening the page is not required.
         $schedule->command('amazon:ads-live-bid-bgt-sync --limit=200 --retry-failed')
             ->dailyAt('21:50')
             ->timezone('Asia/Kolkata')
