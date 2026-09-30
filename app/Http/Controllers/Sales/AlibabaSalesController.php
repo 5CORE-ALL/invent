@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Sales;
 
 use App\Http\Controllers\Controller;
 use App\Models\AlibabaOrderMetric;
+use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -34,6 +35,7 @@ class AlibabaSalesController extends Controller
 
         $skus = $rows->pluck('sku')->filter()->unique()->values()->all();
         $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+        $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
 
         $orderTotals = [];
         foreach ($rows as $row) {
@@ -53,23 +55,14 @@ class AlibabaSalesController extends Controller
             }
 
             $pm = $productMasters[$sku] ?? null;
-            [$lp, $ship, $weightAct] = $this->productCosts($pm);
+            $lp = $this->productLp($pm);
 
             $quantity = (float) $row->quantity;
             $unitPrice = (float) $row->amount;
             $lineAmount = round($unitPrice * max($quantity, 0), 2);
-            $tWeight = $weightAct * $quantity;
-
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $quantity > 0 ? $ship / $quantity : $ship;
-            } else {
-                $shipCost = $ship;
-            }
 
             $cogs = $lp * $quantity;
-            $pftEach = ($unitPrice * 0.85) - $lp - $shipCost;
+            $pftEach = ($unitPrice * $margin) - $lp;
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
             $pft = $pftEach * $quantity;
             $roi = $lp > 0 ? ($pft / $lp) * 100 : 0;
@@ -92,9 +85,6 @@ class AlibabaSalesController extends Controller
                 'status' => (string) ($row->status ?? ''),
                 'period' => 'l30',
                 'lp' => round($lp, 2),
-                'ship' => round($ship, 2),
-                't_weight' => round($tWeight, 2),
-                'ship_cost' => round($shipCost, 2),
                 'cogs' => round($cogs, 2),
                 'pft_each' => round($pftEach, 2),
                 'pft_each_pct' => round($pftEachPct, 2),
@@ -122,9 +112,6 @@ class AlibabaSalesController extends Controller
                 'status' => true,
                 'period' => true,
                 'lp' => true,
-                'ship' => true,
-                't_weight' => true,
-                'ship_cost' => true,
                 'cogs' => true,
                 'pft_each' => true,
                 'pft_each_pct' => true,
@@ -187,16 +174,10 @@ class AlibabaSalesController extends Controller
         return $total;
     }
 
-    /**
-     * @return array{0: float, 1: float, 2: float}
-     */
-    private function productCosts(?ProductMaster $pm): array
+    private function productLp(?ProductMaster $pm): float
     {
-        $lp = 0.0;
-        $ship = 0.0;
-        $weightAct = 0.0;
         if (! $pm) {
-            return [$lp, $ship, $weightAct];
+            return 0.0;
         }
 
         $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
@@ -205,17 +186,14 @@ class AlibabaSalesController extends Controller
         }
         foreach ($values as $k => $v) {
             if (strtolower((string) $k) === 'lp') {
-                $lp = (float) $v;
-                break;
+                return (float) $v;
             }
         }
-        if ($lp === 0.0 && isset($pm->lp)) {
-            $lp = (float) $pm->lp;
+        if (isset($pm->lp)) {
+            return (float) $pm->lp;
         }
-        $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0);
-        $weightAct = isset($values['wt_act']) ? (float) $values['wt_act'] : 0;
 
-        return [$lp, $ship, $weightAct];
+        return 0.0;
     }
 
     private function orderGrandTotal(array $raw): float

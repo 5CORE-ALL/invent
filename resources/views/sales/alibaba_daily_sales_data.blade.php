@@ -460,41 +460,6 @@
                         }
                     },
                     {
-                        title: "Ship",
-                        field: "ship",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 100,
-                        formatter: "money",
-                        formatterParams: {
-                            decimal: ".",
-                            thousand: ",",
-                            symbol: "$",
-                            precision: 2
-                        }
-                    },
-                    {
-                        title: "T Weight",
-                        field: "t_weight",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 100
-                    },
-                    {
-                        title: "Ship Cost",
-                        field: "ship_cost",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 100,
-                        formatter: "money",
-                        formatterParams: {
-                            decimal: ".",
-                            thousand: ",",
-                            symbol: "$",
-                            precision: 2
-                        }
-                    },
-                    {
                         title: "COGS",
                         field: "cogs",
                         hozAlign: "center",
@@ -674,8 +639,8 @@
                 const t = String(title || field || '').toLowerCase();
 
                 if (
-                    /^(price|sale_amount|lp|ship|ship_cost|cogs|pft_each|pft_each_pct|pft|roi)$/i.test(f) ||
-                    /\b(price|sales?\s*amt|lp|ship|cogs|pft|roi)\b/i.test(t)
+                    /^(price|sale_amount|lp|cogs|pft_each|pft_each_pct|pft|roi)$/i.test(f) ||
+                    /\b(price|sales?\s*amt|lp|cogs|pft|roi)\b/i.test(t)
                 ) {
                     return 'price';
                 }
