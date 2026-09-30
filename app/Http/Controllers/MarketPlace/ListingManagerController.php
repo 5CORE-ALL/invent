@@ -2718,13 +2718,34 @@ class ListingManagerController extends Controller
                 $publishDetails['item_specifics'] = ListingManagerEbayTradingPublisher::withoutUpcKeys($publishDetails['item_specifics']);
             }
         }
+        $recoveredFeedId = '';
         if ($editorFamily === 'newegg' && trim((string) ($publishDetails['newegg_feed_request_id'] ?? '')) === '') {
-            if (preg_match_all('/RequestId\s+([A-Z0-9]+)/i', (string) $draft->notes, $feedIds) && ($feedIds[1] ?? []) !== []) {
-                $publishDetails['newegg_feed_request_id'] = (string) end($feedIds[1]);
+            $recoveredFeedId = $this->recoverOpenNeweggFeedId((string) $draft->notes, $details);
+            if ($recoveredFeedId !== '') {
+                $publishDetails['newegg_feed_request_id'] = $recoveredFeedId;
             }
         }
 
         $result = app(ListingManagerPublishDispatcher::class)->publish($draft, $publishDetails);
+
+        if ($editorFamily === 'newegg' && ! ($result['success'] ?? false) && empty($result['queued'])) {
+            $failedFeedId = trim((string) ($result['request_id'] ?? ''));
+            if ($failedFeedId !== '') {
+                $details = $this->rememberFailedNeweggFeedId($details, $failedFeedId);
+                $draft->listing_details = $details;
+            }
+            // The id scraped from the notes belonged to an earlier attempt that Newegg already rejected;
+            // its stale error must not block a fresh submission with the current data.
+            if ($recoveredFeedId !== '' && strcasecmp($failedFeedId, $recoveredFeedId) === 0) {
+                $publishDetails['newegg_feed_request_id'] = '';
+                $result = app(ListingManagerPublishDispatcher::class)->publish($draft, $publishDetails);
+                $retryFeedId = trim((string) ($result['request_id'] ?? ''));
+                if (! ($result['success'] ?? false) && empty($result['queued']) && $retryFeedId !== '') {
+                    $details = $this->rememberFailedNeweggFeedId($details, $retryFeedId);
+                    $draft->listing_details = $details;
+                }
+            }
+        }
 
         if (! ($result['success'] ?? false)) {
             if (! empty($result['queued'])) {
@@ -2983,6 +3004,57 @@ class ListingManagerController extends Controller
             'not_listed' => $stillMissing,
             'checked' => $checked,
         ]);
+    }
+
+    /**
+     * Newegg feed RequestId from the draft notes that may still be open. Ids on "Publish failed"
+     * lines and ids Newegg already rejected are skipped, otherwise the same dead feed is re-checked
+     * on every publish and its old error (e.g. disallowed HTML tag) blocks the SKU forever.
+     *
+     * @param  array<string, mixed>  $details
+     */
+    private function recoverOpenNeweggFeedId(string $notes, array $details): string
+    {
+        $failed = array_map(
+            static fn ($id) => strtoupper(trim((string) $id)),
+            is_array($details['newegg_failed_request_ids'] ?? null) ? $details['newegg_failed_request_ids'] : []
+        );
+        $open = '';
+        foreach (preg_split('/\r?\n/', $notes) ?: [] as $line) {
+            if (stripos($line, 'Publish failed') !== false) {
+                continue;
+            }
+            if (! preg_match_all('/RequestId\s+([A-Z0-9]+)/i', $line, $m)) {
+                continue;
+            }
+            foreach ($m[1] as $id) {
+                if (! in_array(strtoupper($id), $failed, true)) {
+                    $open = (string) $id;
+                }
+            }
+        }
+
+        return $open;
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     * @return array<string, mixed>
+     */
+    private function rememberFailedNeweggFeedId(array $details, string $requestId): array
+    {
+        $requestId = trim($requestId);
+        if ($requestId === '') {
+            return $details;
+        }
+        $list = is_array($details['newegg_failed_request_ids'] ?? null) ? $details['newegg_failed_request_ids'] : [];
+        $list = array_values(array_filter(array_map(static fn ($id) => trim((string) $id), $list)));
+        if (! in_array($requestId, $list, true)) {
+            $list[] = $requestId;
+        }
+        $details['newegg_failed_request_ids'] = array_slice($list, -20);
+
+        return $details;
     }
 
     public function deleteDraft(int $id)
