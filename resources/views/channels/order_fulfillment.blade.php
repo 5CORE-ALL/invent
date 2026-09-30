@@ -590,6 +590,15 @@
         countsFromRows(table.getData('active'));
     }
 
+    // Tabulator only reads the placeholder option once; write the text into the DOM too.
+    function showTablePlaceholder(message) {
+        if (!table) return;
+        table.options.placeholder = message;
+        const el = document.querySelector('#order-fulfillment-table .tabulator-placeholder-contents')
+            || document.querySelector('#order-fulfillment-table .tabulator-placeholder');
+        if (el) el.textContent = message;
+    }
+
     const table = new Tabulator('#order-fulfillment-table', {
         pagination: true,
         paginationMode: 'local',
@@ -617,7 +626,9 @@
                             const body = JSON.parse(xhr.responseText || '{}');
                             if (body && body.message) message = body.message;
                         } catch (e) { /* keep default */ }
-                        if (table) table.options.placeholder = message;
+                        if (xhr && xhr.status) message += ' (HTTP ' + xhr.status + ')';
+                        else if (xhr && xhr.statusText === 'timeout') message += ' (timed out)';
+                        showTablePlaceholder(message);
                         reject(xhr);
                     },
                 });
@@ -640,7 +651,9 @@
             navStatusCounts = (response && response.nav_status_counts) || null;
             setNavCounts(response && response.nav_counts);
             if (response && response.success === false) {
-                this.options.placeholder = response.message || 'Failed to load orders.';
+                showTablePlaceholder(response.message || 'Failed to load orders.');
+            } else if (!rows.length) {
+                showTablePlaceholder(createOrdersPage ? 'No manual orders in this date range yet. Click "Create order" to add one.' : 'No orders in this date range.');
             }
             return rows;
         },
@@ -1300,9 +1313,20 @@
 
     function pad2(n) { return String(n).padStart(2, '0'); }
 
+    const orderTimezone = @json($ofTimezone ?? 'America/Los_Angeles');
+
+    // Current wall-clock time in the grid's timezone (Pacific), not the browser's.
     function nowLocalValue() {
-        const d = new Date();
-        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+        try {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: orderTimezone, hourCycle: 'h23',
+                year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+            }).formatToParts(new Date()).reduce(function (acc, p) { acc[p.type] = p.value; return acc; }, {});
+            return parts.year + '-' + parts.month + '-' + parts.day + 'T' + parts.hour + ':' + parts.minute;
+        } catch (e) {
+            const d = new Date();
+            return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+        }
     }
 
     function setOrderField(id, value) {

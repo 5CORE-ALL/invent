@@ -529,10 +529,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         [$from, $to] = $this->resolveOrderDateRange();
         $tz = $this->sofTimezone();
 
+        // Hand-typed dates can run a few hours ahead of the Pacific "today" the
+        // range ends on, so allow one extra day at the top end.
         $orders = OrderFulfillmentManualOrder::query()
             ->whereBetween('order_date', [
                 $from->copy()->format('Y-m-d H:i:s'),
-                $to->copy()->format('Y-m-d H:i:s'),
+                $to->copy()->addDay()->endOfDay()->format('Y-m-d H:i:s'),
             ])
             ->orderBy('order_date')
             ->orderBy('id')
