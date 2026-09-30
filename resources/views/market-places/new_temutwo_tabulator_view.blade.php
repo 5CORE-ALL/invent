@@ -233,7 +233,7 @@
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
         @include('partials.ebay-sprc-dil', [
             'ebaySprcDilPart' => 'css',
-            'ebaySprcDilChannel' => 'temu',
+            'ebaySprcDilChannel' => 'newtemutwo',
             'ebaySprcDilClampToNearest' => true,
         ])
         .nto-reload-push-switch {
@@ -525,7 +525,7 @@
                     </select>
                     @include('partials.ebay-sprc-dil', [
                         'ebaySprcDilPart' => 'buttons',
-                        'ebaySprcDilChannel' => 'temu',
+                        'ebaySprcDilChannel' => 'newtemutwo',
                         'ebaySprcDilZeroSoldUsesMinGroi' => true,
                         'ebaySprcDilClampToNearest' => true,
                     ])
@@ -749,7 +749,7 @@
     </div>
     @include('partials.ebay-sprc-dil', [
         'ebaySprcDilPart' => 'modals',
-        'ebaySprcDilChannel' => 'temu',
+        'ebaySprcDilChannel' => 'newtemutwo',
         'ebaySprcDilZeroSoldUsesMinGroi' => true,
         'ebaySprcDilClampToNearest' => true,
     ])
@@ -1141,7 +1141,7 @@
 
     @include('partials.ebay-sprc-dil', [
         'ebaySprcDilPart' => 'script',
-        'ebaySprcDilChannel' => 'temu',
+        'ebaySprcDilChannel' => 'newtemutwo',
         'ebaySprcDilZeroSoldUsesMinGroi' => true,
         'ebaySprcDilClampToNearest' => true,
     ])
@@ -3648,7 +3648,7 @@
 
         $(document).on('ajaxComplete.ntoDilPersist', function(e, xhr, settings) {
             const url = String((settings && settings.url) || '');
-            if (url.indexOf('/channel-promo-pricing/temu/dil-groi') === -1) return;
+            if (url.indexOf('/channel-promo-pricing/newtemutwo/dil-groi') === -1) return;
             const method = String((settings && (settings.type || settings.method)) || 'GET').toUpperCase();
             if (method !== 'POST') return;
             setTimeout(function() {

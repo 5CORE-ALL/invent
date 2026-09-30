@@ -3415,7 +3415,7 @@ class AmazonAdsController extends Controller
 
     /**
      * Same green / yellow / red as the dots on the row.
-     * Failed stays red. BID is green when Lbid matches SBID. BGT is green when Lbgt matches the saved SBGT, unless that row failed.
+     * A displayed match is green even if an older sync failed. A real gap stays red only when the numbers still differ.
      */
     private static function liveSyncColorSql(string $alias, string $field, bool $storedSbgtColumn = false): string
     {
@@ -3425,7 +3425,7 @@ class AmazonAdsController extends Controller
             $match = self::storedBidMatchesSql($alias);
             $differ = self::storedBidDiffersSql($alias);
 
-            return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
+            return "CASE WHEN ({$match}) THEN 'green' WHEN {$failed} THEN 'red' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
         }
         if ($field === 'bgt') {
             $match = $storedSbgtColumn
@@ -3435,7 +3435,7 @@ class AmazonAdsController extends Controller
                 ? self::storedBudgetDiffersSql($alias)
                 : self::storedBudgetDesiredDiffersSql($alias);
 
-            return "CASE WHEN {$failed} THEN 'red' WHEN ({$match}) THEN 'green' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
+            return "CASE WHEN ({$match}) THEN 'green' WHEN {$failed} THEN 'red' WHEN {$synced} AND NOT ({$differ}) THEN 'green' ELSE 'yellow' END";
         }
 
         return "CASE WHEN {$failed} THEN 'red' WHEN {$synced} THEN 'green' ELSE 'yellow' END";

@@ -313,7 +313,6 @@ abstract class IssueBoardControllerBase extends Controller
             })
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(1000)
             ->get();
 
         $tz = config('app.timezone');

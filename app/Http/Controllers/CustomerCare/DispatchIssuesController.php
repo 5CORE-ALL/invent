@@ -1211,7 +1211,6 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
         $rows = $query->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(1000)
             ->get();
 
         // Build image map straight from product_master. Most rows have NULL

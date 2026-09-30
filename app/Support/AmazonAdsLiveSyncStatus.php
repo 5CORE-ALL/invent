@@ -106,7 +106,7 @@ final class AmazonAdsLiveSyncStatus
                     ? ($row['sbid'] ?? $row['last_sbid'] ?? null)
                     : ($row['sbgt'] ?? null);
                 $presented = self::present($field, $state, $desired);
-                if ($field === 'bid' && $presented['color'] !== self::RED && self::displayedBidsMatch($row['last_sbid'] ?? null, $row['sbid'] ?? $desired)) {
+                if ($field === 'bid' && self::displayedBidsMatch($row['last_sbid'] ?? null, $row['sbid'] ?? $desired)) {
                     $shown = self::money($row['last_sbid'] ?? null);
                     $want = self::money($row['sbid'] ?? $desired);
                     $presented = [
@@ -122,7 +122,7 @@ final class AmazonAdsLiveSyncStatus
                         'reason' => 'sbid_differs',
                         'tip' => 'Pending — saved SBID '.self::money($row['sbid']).' does not match live BID '.self::money($row['last_sbid']),
                     ];
-                } elseif ($field === 'bgt' && $presented['color'] !== self::RED && self::displayedBudgetsMatch($row['bgt'] ?? null, $row['sbgt'] ?? null)) {
+                } elseif ($field === 'bgt' && self::displayedBudgetsMatch($row['bgt'] ?? null, $row['sbgt'] ?? null)) {
                     $shown = self::money($row['bgt'] ?? null);
                     $want = self::money($row['sbgt'] ?? null);
                     $presented = [

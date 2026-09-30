@@ -123,8 +123,38 @@
         .faas-stat-badge--sold  { background: #8b5cf6; }   /* purple  */
         .faas-stat-badge--acos  { background: #ea580c; }   /* orange  */
         .faas-stat-badge--tcos  { background: #7c3aed; }   /* violet — matches /advertisement-master */
+        @keyframes faas-audit-flash {
+            0%, 100% { opacity: 1; }
+            50%      { opacity: 0.2; }
+        }
+        .faas-audit-now {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            color: #dc2626;
+            font-weight: 800;
+            font-size: 11px;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            animation: faas-audit-flash 0.9s ease-in-out infinite;
+        }
+        .faas-audit-done {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            color: #16a34a;
+            font-weight: 700;
+            font-size: 11px;
+            line-height: 1.2;
+            cursor: pointer;
+            text-align: center;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .faas-audit-now { animation: none; }
+        }
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
+        .faas-stat-badge--cps   { background: #0d9488; }   /* teal    */
 
         /* ── Badge trend chart modal — full screen width, pinned to top
            (same look & sizing as /all-marketplace-master adBreakdownChartModal).
@@ -146,6 +176,98 @@
             width: 100%;
             max-width: 100%;
         }
+
+        /* Keep the sheet inside the viewport. Toolbars wrap; the grid
+           scrolls sideways inside its own box instead of widening the page. */
+        .faas-sheet {
+            min-width: 0;
+            max-width: 100%;
+        }
+        .faas-sheet > .card {
+            max-width: 100%;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .faas-badge-row,
+        .faas-filter-row,
+        .faas-badges,
+        .faas-actions {
+            min-width: 0;
+        }
+        .faas-actions {
+            margin-left: auto;
+        }
+        #faas-search {
+            flex: 1 1 12rem;
+            min-width: 8rem;
+            max-width: 100%;
+        }
+        .faas-range {
+            flex: 0 1 auto;
+        }
+        .faas-range .form-control {
+            width: 64px;
+            text-align: center;
+        }
+        #faas-table-wrapper {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
+            height: calc(100vh - 260px);
+            min-height: 320px;
+            overflow: hidden;
+        }
+        #facebook-all-ads-table {
+            flex: 1 1 auto;
+            height: 100%;
+            min-height: 0;
+            min-width: 0;
+        }
+        #facebook-all-ads-table,
+        #facebook-all-ads-table .tabulator {
+            width: 100% !important;
+            max-width: 100%;
+            min-width: 0;
+        }
+        #facebook-all-ads-table .tabulator-tableholder {
+            overflow-x: auto !important;
+        }
+        #facebook-all-ads-table .tabulator-cell[tabulator-field="Campaign name"] {
+            overflow: hidden;
+        }
+
+        @media (max-width: 991.98px) {
+            #faas-table-wrapper {
+                height: 60vh;
+                min-height: 280px;
+            }
+            .faas-stat-badge {
+                font-size: 11px;
+                padding: 5px 8px;
+            }
+            .faas-actions {
+                margin-left: 0;
+            }
+            #faas-search {
+                flex: 1 1 100%;
+                min-width: 0;
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .faas-range .form-control {
+                width: 52px;
+            }
+            .faas-sheet .card-body {
+                padding-left: 0.65rem;
+                padding-right: 0.65rem;
+            }
+            .faas-sheet > .card > .card-body:last-child {
+                padding: 0;
+            }
+        }
     </style>
 @endsection
 
@@ -158,15 +280,11 @@
     <div class="toast-container"></div>
 
     <div class="row">
+        <div class="col-12 faas-sheet">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <div class="d-flex align-items-center justify-content-between flex-nowrap gap-2">
-                    {{-- Left group: title + sum-badges. flex-grow + overflow-x-auto
-                         lets the strip scroll horizontally on narrow screens
-                         instead of pushing the right-side controls onto a
-                         second line. --}}
-                    <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1"
-                         style="min-width:0;">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 faas-badge-row">
+                    <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1 faas-badges">
                         {{-- Live sums of the IMPR / CLK columns
                              across whatever rows are currently visible
                              (after search / header filters). Updated by
@@ -196,24 +314,20 @@
                         <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
                               class="faas-stat-badge faas-stat-badge--acos badge-chart-link"
                               title="Click for 32-day trend">Acos:<span id="faasAcosValue">0%</span></span>
-                        @if (($chFilter ?? null) === 'FB')
-                        {{-- TCOS = same Ads%/TACOS as /all-marketplace-master FB Marketplace:
-                             Facebook Ad Spend / Shopify S Sales × 100 --}}
+                        {{-- TCOS = Facebook Ad Spend / Shopify S Sales × 100 --}}
                         <span id="faasTcosBadge" class="faas-stat-badge faas-stat-badge--tcos"
                               title="TCOS = Facebook Ad Spend / Shopify S Sales × 100 (same as /all-marketplace-master Ads%)">TCOS:<span id="faasTcosValue">0%</span></span>
-                        @endif
                         <span id="faasCtrBadge" data-metric="ctr" data-label="CTR"
                               class="faas-stat-badge faas-stat-badge--ctr badge-chart-link"
                               title="Click for 32-day trend">CTR:<span id="faasCtrValue">0%</span></span>
                         <span id="faasCvrBadge" data-metric="cvr" data-label="CVR"
                               class="faas-stat-badge faas-stat-badge--cvr badge-chart-link"
                               title="Click for 32-day trend">CVR:<span id="faasCvrValue">0%</span></span>
+                        <span id="faasCpsBadge" class="faas-stat-badge faas-stat-badge--cps"
+                              title="CPS = Spend / Sold (visible rows)">CPS:<span id="faasCpsValue">$0</span></span>
                     </div>
 
-                    {{-- Right group: stays on the same row as the badges
-                         (flex-shrink-0 prevents the badge strip from
-                         pushing it down). --}}
-                    <div class="d-flex align-items-center flex-nowrap gap-2 flex-shrink-0">
+                    <div class="d-flex align-items-center flex-wrap gap-2 faas-actions">
                         {{-- Column visibility (saved per-page in
                              channel_tabulator_column_settings, channel
                              "facebook_all_ads_sheet") --}}
@@ -307,7 +421,7 @@
                  one continuous chrome. --}}
             <div class="card-body py-2 border-top">
                 {{-- Order: Type · Search · Sbgt (2nd-last) · Stat (last) --}}
-                <div class="d-flex align-items-center flex-nowrap gap-2">
+                <div class="d-flex align-items-center flex-wrap gap-2 faas-filter-row">
                     {{-- Bulk-set the CH (channel) on the selected rows, or
                          every visible row when none are checked. --}}
                     <button type="button"
@@ -392,22 +506,38 @@
                            id="faas-search"
                            class="form-control form-control-sm"
                            placeholder="Search across all columns…"
-                           style="flex-grow:1; min-width:220px;">
+                           autocomplete="off">
 
                     {{-- CTR % min-max range filter. --}}
-                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by CTR %">
+                    <div class="d-flex align-items-center gap-1 faas-range" title="Filter rows by CTR %">
                         <span class="small fw-semibold text-muted">CTR%</span>
-                        <input type="number" id="faasCtrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasCtrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal">
                         <span class="text-muted">–</span>
-                        <input type="number" id="faasCtrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasCtrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal">
                     </div>
 
                     {{-- CVR % min-max range filter. --}}
-                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by CVR %">
+                    <div class="d-flex align-items-center gap-1 faas-range" title="Filter rows by CVR %">
                         <span class="small fw-semibold text-muted">CVR%</span>
-                        <input type="number" id="faasCvrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasCvrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal">
                         <span class="text-muted">–</span>
-                        <input type="number" id="faasCvrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <input type="number" id="faasCvrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal">
+                    </div>
+
+                    {{-- Spend $ min-max range filter. --}}
+                    <div class="d-flex align-items-center gap-1 faas-range" title="Filter rows by Spend $">
+                        <span class="small fw-semibold text-muted">Spend$</span>
+                        <input type="number" id="faasSpendMin" class="form-control form-control-sm" placeholder="Min" min="0" step="1" inputmode="decimal">
+                        <span class="text-muted">–</span>
+                        <input type="number" id="faasSpendMax" class="form-control form-control-sm" placeholder="Max" min="0" step="1" inputmode="decimal">
+                    </div>
+
+                    {{-- ACOS % min-max range filter. --}}
+                    <div class="d-flex align-items-center gap-1 faas-range" title="Filter rows by ACOS %">
+                        <span class="small fw-semibold text-muted">ACOS%</span>
+                        <input type="number" id="faasAcosMin" class="form-control form-control-sm" placeholder="Min" min="0" step="1" inputmode="decimal">
+                        <span class="text-muted">–</span>
+                        <input type="number" id="faasAcosMax" class="form-control form-control-sm" placeholder="Max" min="0" step="1" inputmode="decimal">
                     </div>
 
                     {{-- Sbgt-band multi-select (penultimate). --}}
@@ -459,10 +589,11 @@
             </div>
 
             <div class="card-body" style="padding: 0;">
-                <div id="faas-table-wrapper" style="height: calc(100vh - 230px); display: flex; flex-direction: column;">
-                    <div id="facebook-all-ads-table" style="flex: 1;"></div>
+                <div id="faas-table-wrapper">
+                    <div id="facebook-all-ads-table"></div>
                 </div>
             </div>
+        </div>
         </div>
     </div>
 
@@ -611,7 +742,9 @@
                     Each row is an inclusive <strong>ACOS %</strong> range plus a
                     <strong>&gt;Spend</strong> minimum. Rows are checked <strong>top to bottom</strong>;
                     the first band that matches both the campaign's ACOS and Spend
-                    gets its Sbgt. Use <code>9999</code> on ACOS <em>To</em> for a catch-all.
+                    gets its Sbgt. <strong>Sbgt 0</strong> pauses the campaign on Push
+                    and flashes <strong>AUDIT NOW</strong> in the Audit Req column.
+                    Use <code>9999</code> on ACOS <em>To</em> for a catch-all.
                 </p>
 
                 <table class="table table-sm table-bordered align-middle mb-0" id="sbgt-rule-table">
@@ -747,7 +880,7 @@
             <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
                 <h5 class="modal-title" id="auditModalLabel">
                     <i class="fas fa-clipboard-check me-2"></i>
-                    Campaign Audit — <span id="auditCampaignName" class="fw-normal opacity-75"></span>
+                    Audit Req — <span id="auditCampaignName" class="fw-normal opacity-75"></span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -796,11 +929,12 @@
                     </button>
                 </div>
 
-                <label class="form-label small text-muted mb-1">Comments</label>
+                <label class="form-label small text-muted mb-1">Audit details</label>
                 <textarea id="auditComments"
                           class="form-control form-control-sm"
-                          rows="3"
-                          placeholder="Notes about what looked off or what to revisit next time…"></textarea>
+                          rows="4"
+                          placeholder="Record whatever you need to note for this audit…"></textarea>
+                <div class="form-text">Date and time are saved automatically with this entry.</div>
 
                 <hr class="my-3">
                 <h6 class="small text-uppercase text-muted mb-2">Audit history</h6>
@@ -1634,30 +1768,26 @@
                              + `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${text}</span>`
                              + `${copy}</span>`;
                     }
-                    // Audit column — small button that opens the audit
-                    // modal. Cell text shows the latest score (0–100%)
-                    // colour-coded green/amber/red. Empty for never-
-                    // audited campaigns ("Audit" prompt only).
-                    function formatAuditCell(cell) {
-                        const row   = cell.getRow().getData();
-                        const cid   = (row['CAMPAIGN ID'] ?? '').toString();
-                        const score = row._audit_score;
+                    function formatAuditReqCell(cell) {
+                        const row = cell.getRow().getData();
+                        const cid = (row['CAMPAIGN ID'] ?? '').toString();
                         if (!cid || !/^\d{6,}$/.test(cid)) return '';
-                        if (score == null) {
-                            return `<button type="button"
-                                            class="btn btn-sm btn-outline-primary py-0 px-2"
-                                            style="font-size:11px;"
-                                            data-audit-cid="${cid}">
-                                        <i class="fas fa-clipboard-check"></i> Audit
-                                    </button>`;
+                        const paused = !!(row._pause) || /paus/i.test(String(row.Status || ''));
+                        if (paused && !row._audit_at) {
+                            return `<button type="button" class="faas-audit-now" data-audit-cid="${cid}"
+                                        title="This campaign is paused. Record the audit — the date and time are saved automatically.">AUDIT NOW</button>`;
                         }
-                        const colour = score >= 80 ? '#16a34a'
-                                     : score >= 50 ? '#ca8a04'
-                                     : '#dc2626';
-                        return `<button type="button"
-                                        class="btn btn-sm py-0 px-2"
-                                        style="font-size:11px;background:${colour};color:#fff;font-weight:700;"
-                                        data-audit-cid="${cid}">${score}%</button>`;
+                        if (row._audit_at) {
+                            const when = faasAuditStamp(row._audit_at);
+                            const esc = (s) => String(s || '')
+                                .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            const note = esc(row._audit_comments);
+                            const tip = note
+                                ? (when + ' — ' + note)
+                                : ('Audited ' + when + (row._audit_by ? ' by ' + esc(row._audit_by) : ''));
+                            return `<button type="button" class="faas-audit-done" data-audit-cid="${cid}" title="${tip}">Done<br><span style="font-weight:600;">${when}</span></button>`;
+                        }
+                        return '<span class="text-muted">—</span>';
                     }
                     // History column — last audit "MMM dd · name" with
                     // a tooltip carrying the comments. Empty when
@@ -1769,7 +1899,7 @@
                         else if (c.field === 'CVR')          formatter = formatCvrCell;
                         else if (c.field === 'Campaign name') formatter = formatCampaignNameCell;
                         else if (c.field === 'Link')         formatter = formatLinkCell;
-                        else if (c.field === 'Audit')        formatter = formatAuditCell;
+                        else if (c.field === 'Audit Req')   formatter = formatAuditReqCell;
                         else if (c.field === 'History')      formatter = formatHistoryCell;
 
                         // Numeric columns ship as already-formatted
@@ -1803,15 +1933,16 @@
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
                         ]);
                         const minWidth = NARROW.has(c.field) ? 70
-                                       : (c.field === 'Campaign name' ? 220
+                                       : (c.field === 'Campaign name' ? 160
                                        : (c.field === 'CAMPAIGN ID'  ? 150
                                        : (c.field === 'Link'         ? 60
-                                       : (c.field === 'Audit'        ? 80
+                                       : (c.field === 'Audit Req'   ? 110
                                        : (c.field === 'History'      ? 140 : 100)))));
+                        const maxWidth = c.field === 'Campaign name' ? 280 : undefined;
                         const widthGrow = NARROW.has(c.field) ? 0
                                        : (c.field === 'Campaign name' ? 3
                                        : (c.field === 'Link'         ? 0
-                                       : (c.field === 'Audit'        ? 0
+                                       : (c.field === 'Audit Req'   ? 0
                                        : (c.field === 'History'      ? 0 : 1))));
                         // Link header — show just the icon, no word.
                         const title = c.field === 'Link'
@@ -1820,8 +1951,8 @@
                         // Action columns aren't sortable — sorting them
                         // is meaningless (Audit is a button, History is
                         // a person+date string, Link is an icon).
-                        const NO_SORT = new Set(['Audit', 'History', 'Link']);
-                        return {
+                        const NO_SORT = new Set(['Audit Req', 'History', 'Link']);
+                        const col = {
                           
                             title:        title,
                             field:        c.field,
@@ -1833,6 +1964,8 @@
                             formatter:    formatter,
                             sorter:       sorter,
                         };
+                        if (maxWidth) col.maxWidth = maxWidth;
+                        return col;
                     });
                     // Prepend the Ad Type + CH dropdown columns. (Row index
                     // hidden by request — the data is still in the row
@@ -1983,7 +2116,24 @@
                     // (search box, header filters, ad-type filter, …).
                     tabulator.on('dataFiltered', updateMetricBadges);
                     tabulator.on('dataLoaded',   updateMetricBadges);
+                    bindFaasTableResize();
                 });
+        }
+
+        // Redraw when the card width changes (window resize, sidebar
+        // toggle) so columns stay inside the viewport.
+        function bindFaasTableResize() {
+            if (bindFaasTableResize.bound) return;
+            bindFaasTableResize.bound = true;
+            const wrap = document.getElementById('faas-table-wrapper');
+            if (!wrap || typeof ResizeObserver === 'undefined') return;
+            let timer = null;
+            new ResizeObserver(function () {
+                clearTimeout(timer);
+                timer = setTimeout(function () {
+                    if (tabulator) tabulator.redraw(true);
+                }, 150);
+            }).observe(wrap);
         }
 
         // ── Live sum badges (Impressions / Clicks) ────────────────────
@@ -2050,11 +2200,18 @@
             acosEl.textContent  = divPct(spendSum, salesSum, 0);
             ctrEl.textContent   = divPct(clkSum,   imprSum,  1);
             cvrEl.textContent   = divPct(soldSum,  clkSum,   1);
+            // CPS mirrors the controller's cpsValue(): Spend / Sold, 0 dp,
+            // "$0" when nothing was spent, "—" when spend has no sales.
+            const cpsEl = document.getElementById('faasCpsValue');
+            if (cpsEl) {
+                cpsEl.textContent = spendSum <= 0 ? '$0'
+                    : (soldSum > 0 ? '$' + Math.round(spendSum / soldSum).toLocaleString() : '—');
+            }
 
             // TCOS — same as /all-marketplace-master FB Marketplace Ads%/TACOS %
             // (Facebook Ad Spend / Shopify S Sales × 100).
             const tcosEl = document.getElementById('faasTcosValue');
-            if (tcosEl && CH_FILTER === 'FB') {
+            if (tcosEl) {
                 const tcos = (faasMasterTcosPercent != null && isFinite(faasMasterTcosPercent))
                     ? faasMasterTcosPercent
                     : (faasShopifyNetSales > 0
@@ -2175,8 +2332,8 @@
             // search box, Sbgt, Type and Status filters always AND
             // together correctly.
             input.oninput = applyAllFilters;
-            // CTR / CVR range boxes re-run the same combined filter.
-            ['faasCtrMin', 'faasCtrMax', 'faasCvrMin', 'faasCvrMax'].forEach(function (id) {
+            // CTR / CVR / Spend / ACOS range boxes re-run the same combined filter.
+            ['faasCtrMin', 'faasCtrMax', 'faasCvrMin', 'faasCvrMax', 'faasSpendMin', 'faasSpendMax', 'faasAcosMin', 'faasAcosMax'].forEach(function (id) {
                 const el = document.getElementById(id);
                 if (el) el.oninput = applyAllFilters;
             });
@@ -2271,7 +2428,7 @@
         const SBGT_RULE_GET_URL  = '/facebook-all-ads-sheet/rule';
         const SBGT_RULE_SAVE_URL = '/facebook-all-ads-sheet/rule';
         let currentSbgtRule = { bands: [] };
-        const DEFAULT_BAND_LABELS = ['Excellent', 'Good', 'Fair', 'Poor', 'Bad', 'Critical'];
+        const DEFAULT_BAND_LABELS = ['Excellent', 'Good', 'Fair', 'Poor', 'Bad', 'Pause'];
 
         /** Upgrade legacy acos_max-only bands to From–To for the editor. */
         function normalizeSbgtBandsForUi(bands) {
@@ -2293,13 +2450,13 @@
                 };
             };
             if (hasFromTo) {
-                return bands.map((b, i) => withDefaults(b, i));
+                return renameLastBand(bands.map((b, i) => withDefaults(b, i)));
             }
             const sorted = [...bands].sort(
                 (a, b) => (Number(a.acos_max) || 0) - (Number(b.acos_max) || 0)
             );
             let prevTo = 0;
-            return sorted.map((b, i) => {
+            return renameLastBand(sorted.map((b, i) => {
                 const to = Number(b.acos_max ?? 9999);
                 const row = withDefaults({
                     ...b,
@@ -2308,7 +2465,17 @@
                 }, i);
                 prevTo = to;
                 return row;
-            });
+            }));
+        }
+
+        /** The last band used to be labeled Critical. Show it as Pause. */
+        function renameLastBand(bands) {
+            if (!bands.length) return bands;
+            const last = bands[bands.length - 1];
+            if (String(last.label || '').trim().toLowerCase() === 'critical') {
+                last.label = 'Pause';
+            }
+            return bands;
         }
 
         // Selected values for each multi-select filter. Empty set →
@@ -2361,7 +2528,12 @@
             const ctrMax = faasRangeVal('faasCtrMax');
             const cvrMin = faasRangeVal('faasCvrMin');
             const cvrMax = faasRangeVal('faasCvrMax');
-            const hasRange = ctrMin !== null || ctrMax !== null || cvrMin !== null || cvrMax !== null;
+            const spendMin = faasRangeVal('faasSpendMin');
+            const spendMax = faasRangeVal('faasSpendMax');
+            const acosMin = faasRangeVal('faasAcosMin');
+            const acosMax = faasRangeVal('faasAcosMax');
+            const hasRange = ctrMin !== null || ctrMax !== null || cvrMin !== null || cvrMax !== null
+                || spendMin !== null || spendMax !== null || acosMin !== null || acosMax !== null;
 
             // Fast path — no filters active → clear so Tabulator skips
             // the per-row predicate cost entirely.
@@ -2384,6 +2556,12 @@
                     if (ctrMax !== null && ctr > ctrMax) return false;
                     if (cvrMin !== null && cvr < cvrMin) return false;
                     if (cvrMax !== null && cvr > cvrMax) return false;
+                    const spend = toNumber(row['SPEND']);
+                    if (spendMin !== null && spend < spendMin) return false;
+                    if (spendMax !== null && spend > spendMax) return false;
+                    const acos = toNumber(row['Acos']);
+                    if (acosMin !== null && acos < acosMin) return false;
+                    if (acosMax !== null && acos > acosMax) return false;
                 }
                 // Type (ad_type) — exact-match by full string.
                 if (typeSel.size > 0) {
@@ -2903,7 +3081,10 @@
                 const sbgt = toNumber(r['Sbgt']);
                 // Meta campaign IDs are large numeric strings — guard
                 // against placeholders ("—", "N/A") that snuck in.
-                if (cid && /^\d{6,}$/.test(cid) && sbgt > 0) {
+                if (!cid || !/^\d{6,}$/.test(cid)) return;
+                if (r._pause) {
+                    out.push({ campaign_id: cid, sbgt: 0, pause: true });
+                } else if (sbgt > 0) {
                     out.push({ campaign_id: cid, sbgt: sbgt });
                 }
             });
@@ -2923,7 +3104,7 @@
                 chunks.push(allRows.slice(i, i + SBGT_PUSH_CHUNK_SIZE));
             }
 
-            const aggregated = { pushed: 0, failed: 0, skipped: 0, results: [] };
+            const aggregated = { pushed: 0, paused: 0, failed: 0, skipped: 0, results: [] };
             let done = 0;
 
             for (const chunk of chunks) {
@@ -2955,6 +3136,7 @@
                 }
 
                 aggregated.pushed  += body.pushed  ?? 0;
+                aggregated.paused  += body.paused  ?? 0;
                 aggregated.failed  += body.failed  ?? 0;
                 aggregated.skipped += body.skipped ?? 0;
                 aggregated.results.push(...(body.results || []));
@@ -2969,6 +3151,7 @@
             if (summary) {
                 summary.innerHTML =
                     `<span class="badge bg-success">Pushed: ${payload.pushed ?? 0}</span>` +
+                    `<span class="badge bg-danger">Paused: ${payload.paused ?? 0}</span>` +
                     `<span class="badge bg-danger">Failed: ${payload.failed ?? 0}</span>` +
                     `<span class="badge bg-secondary">Skipped: ${payload.skipped ?? 0}</span>`;
             }
@@ -2978,11 +3161,16 @@
                     const tr = document.createElement('tr');
                     const cls = r.status === 'pushed'
                         ? 'badge bg-success'
-                        : (r.status === 'failed' ? 'badge bg-danger' : 'badge bg-secondary');
+                        : (r.status === 'paused'
+                            ? 'badge bg-danger'
+                            : (r.status === 'failed' ? 'badge bg-danger' : 'badge bg-secondary'));
+                    const sbgtCell = r.status === 'paused'
+                        ? 'Pause'
+                        : (r.sbgt != null ? '$' + r.sbgt : '—');
                     tr.innerHTML = `
                         <td class="text-muted small">${i + 1}</td>
                         <td><code>${r.campaign_id || ''}</code></td>
-                        <td>${r.sbgt != null ? '$' + r.sbgt : '—'}</td>
+                        <td>${sbgtCell}</td>
                         <td><span class="${cls}">${r.status}</span></td>
                         <td class="small">${(r.reason || '').toString().replace(/</g, '&lt;')}</td>`;
                     body.appendChild(tr);
@@ -2994,13 +3182,18 @@
 
         document.getElementById('faasPushSbgtBtn')?.addEventListener('click', function () {
             const rows = collectSbgtRowsToPush();
+            const pauseN = rows.filter(r => r.pause).length;
+            const budgetN = rows.length - pauseN;
             if (rows.length === 0) {
-                alert('No campaigns with both a Campaign ID and an Sbgt value are currently visible.\n\n'
+                alert('No campaigns with a Campaign ID and an Sbgt (or a pause band) are currently visible.\n\n'
                     + 'Tip: upload Spend + Sales sheets, then come back and try again.');
                 return;
             }
-            if (!confirm(`Push suggested daily budget to ${rows.length} Meta campaign(s)?\n\n`
-                + 'This updates live ad budgets on Meta — make sure the Sbgt rule is what you want.')) {
+            const parts = [];
+            if (budgetN) parts.push(`set the daily budget on ${budgetN} campaign(s)`);
+            if (pauseN) parts.push(`pause ${pauseN} campaign(s) that hit Sbgt 0`);
+            if (!confirm(`Push to Meta: ${parts.join(' and ')}?\n\n`
+                + 'This updates live ads on Meta.')) {
                 return;
             }
 
@@ -3337,7 +3530,7 @@
         // Initial load — pull saved column visibility first so the very
         // first table render already respects it (no flash of hidden cols).
         // ── Campaign Audit modal ─────────────────────────────────────
-        // Click handler: any "Audit" button (formatAuditCell) opens
+        // Click handler: AUDIT NOW / the green audit stamp opens
         // the modal seeded with the latest audit + history. Save
         // POSTs to /audit and refreshes just the row in-place so the
         // table doesn't have to be reloaded.
@@ -3630,7 +3823,13 @@
                     if (note) notes[cb.dataset.auditKey] = note;
                 }
             });
-            const comments = document.getElementById('auditComments').value || '';
+            const comments = (document.getElementById('auditComments').value || '').trim();
+            if (!comments && customItems.length === 0) {
+                const e = document.getElementById('auditError');
+                e.textContent = 'Enter the audit details before saving.';
+                e.classList.remove('d-none');
+                return Promise.resolve();
+            }
             const btn = opts.button || null;
             const original = btn ? btn.innerHTML : '';
             if (btn) {
@@ -3728,9 +3927,20 @@
                 .filter(c => c.field && ! c.field.startsWith('_'));
         }
 
+        function faasAuditStamp(at) {
+            const d = new Date(String(at || '').replace(' ', 'T'));
+            if (isNaN(d.getTime())) return String(at || '');
+            return d.toLocaleString('en-US', {
+                month: 'short', day: '2-digit',
+                hour: 'numeric', minute: '2-digit',
+            });
+        }
+
         function faasExportCellValue(row, field) {
-            if (field === 'Audit') {
-                return row._audit_score != null ? `${row._audit_score}%` : '';
+            if (field === 'Audit Req') {
+                if (row._audit_at) return faasAuditStamp(row._audit_at);
+                if (row._pause || /paus/i.test(String(row.Status || ''))) return 'AUDIT NOW';
+                return '';
             }
             if (field === 'History') {
                 if (! row._audit_at) return '';

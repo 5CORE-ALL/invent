@@ -327,6 +327,7 @@ use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Http\Controllers\Sales\AmazonSalesDataTestController;
 use App\Http\Controllers\Sales\BestBuySalesController;
 use App\Http\Controllers\Sales\DobaSalesController;
+use App\Http\Controllers\Sales\AlibabaSalesController;
 use App\Http\Controllers\Sales\EbaySalesController;
 use App\Http\Controllers\Sales\NeweggSalesController;
 use App\Http\Controllers\Sales\MercariController;
@@ -1312,8 +1313,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                     ->orWhere('department', 'like', '%"Orders on Hold"%');
             });
         $rows = $query
+            ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(1000)
             ->get([
                 'id',
                 'sku',
@@ -2532,8 +2533,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             })
+            ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(1000)
             ->get($qcIssueCols);
 
         $skus = $rows->map(fn ($r) => strtoupper(trim((string) ($r->sku ?? ''))))->filter()->unique()->values()->all();
@@ -3775,6 +3776,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     Route::get('/ebay/sku-sales-data', [EbaySalesController::class, 'getSkuSalesData'])->name('ebay.sku.sales.data');
 
+    Route::get('/alibaba/daily-sales-data', [AlibabaSalesController::class, 'getData'])->name('alibaba.daily.sales.data');
+    Route::get('/alibaba/daily-sales', [AlibabaSalesController::class, 'index'])->name('alibaba.daily.sales');
+    Route::get('/alibaba-daily-sales-column-visibility', [AlibabaSalesController::class, 'getColumnVisibility']);
+    Route::post('/alibaba-daily-sales-column-visibility', [AlibabaSalesController::class, 'saveColumnVisibility']);
+
     // Newegg Sales Routes
     Route::get('/newegg/daily-sales-data', [NeweggSalesController::class, 'getData'])->name('newegg.daily.sales.data');
     Route::get('/newegg/daily-sales', [NeweggSalesController::class, 'index'])->name('newegg.daily.sales');
@@ -4267,6 +4273,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Shopify B2B Sales Routes
     Route::get('/shopify-b2b/daily-sales-data', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getData'])->name('shopify-b2b.daily.sales.data');
+    Route::post('/shopify-b2b/daily-sales/fetch', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'fetchFromStore'])->name('shopify-b2b.daily.sales.fetch');
     Route::get('/shopify-b2b/daily-sales', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'index'])->name('shopify-b2b.daily.sales');
     Route::get('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getColumnVisibility']);
     Route::post('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'saveColumnVisibility']);

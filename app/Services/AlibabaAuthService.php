@@ -26,9 +26,10 @@ class AlibabaAuthService
     {
         $configured = trim((string) (config('services.alibaba.auth_base') ?: ''));
         $bases = [
-            $configured !== '' ? $configured : 'https://oauth.alibaba.com/authorize',
-            'https://oauth.alibaba.com/authorize',
+            $configured !== '' ? $configured : 'https://openapi-api.alibaba.com/oauth/authorize',
+            'https://openapi-api.alibaba.com/oauth/authorize',
             'https://open-api.alibaba.com/oauth/authorize',
+            'https://oauth.alibaba.com/authorize',
             'https://api.taobao.global/oauth/authorize',
         ];
 
@@ -150,6 +151,20 @@ class AlibabaAuthService
 
         $lastMessage = 'Alibaba '.$path.' failed.';
 
+        $businessParams = $this->iopBusinessVariants($business)[0] ?? $business;
+        $official = $this->postSignedIop(
+            'https://openapi-api.alibaba.com/rest'.$path,
+            $path,
+            $appKey,
+            $appSecret,
+            $businessParams,
+            false
+        );
+        if (! empty($official['success']) || $this->isDefinitiveTokenError($official)) {
+            return $official;
+        }
+        $lastMessage = $official['message'] ?? $lastMessage;
+
         foreach ($this->iopRestBases() as $rest) {
             foreach ($this->iopBusinessVariants($business) as $params) {
                 $parsed = $this->postSignedIop($rest, $path, $appKey, $appSecret, $params);
@@ -202,6 +217,7 @@ class AlibabaAuthService
         $configured = trim((string) (config('services.alibaba.rest_base') ?: ''));
 
         return array_values(array_unique(array_filter([
+            'https://openapi-api.alibaba.com/rest',
             $configured !== '' ? rtrim($configured, '/') : null,
             'https://open-api.alibaba.com/rest',
             'https://api.taobao.global/rest',
@@ -218,6 +234,7 @@ class AlibabaAuthService
         $leaf = $path === '/auth/token/refresh' ? 'refresh' : 'create';
 
         return [
+            'https://openapi-api.alibaba.com/rest/auth/token/'.$leaf,
             'https://open-api.alibaba.com/rest/auth/token/'.$leaf,
             'https://api.taobao.global/rest/auth/token/'.$leaf,
             'https://api-sg.alibaba.com/auth/token/'.$leaf,
@@ -253,19 +270,38 @@ class AlibabaAuthService
      */
     protected function postSignedIop(string $url, string $method, string $appKey, string $appSecret, array $business, bool $includeMethod = true): array
     {
-        $params = array_merge([
+        $sys = [
             'app_key' => $appKey,
             'sign_method' => 'sha256',
             'timestamp' => (string) (int) round(microtime(true) * 1000),
-        ], $business);
-
+        ];
         if ($includeMethod) {
-            $params['method'] = $method;
+            $sys['method'] = $method;
         }
 
-        $params['sign'] = $this->signIop($params, $method, $appSecret);
+        $endpoint = $url;
+        if (str_starts_with($method, '/') && ! str_contains($url, $method)) {
+            $endpoint = rtrim($url, '/').$method;
+        }
 
-        return $this->postForm($url, $params);
+        $signed = array_merge($sys, $business);
+        $sys['sign'] = $this->signIop($signed, $method, $appSecret);
+
+        return $this->postForm($endpoint.'?'.http_build_query($sys), $business);
+    }
+
+    /**
+     * @param  array{success?: bool, message?: string}  $result
+     */
+    protected function isDefinitiveTokenError(array $result): bool
+    {
+        $message = strtolower((string) ($result['message'] ?? ''));
+
+        return str_contains($message, 'invalidcode')
+            || str_contains($message, 'invalid authorization code')
+            || str_contains($message, 'missingparameter')
+            || str_contains($message, 'appwhiteiplimit')
+            || str_contains($message, 'invalidappkey');
     }
 
     /**

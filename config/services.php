@@ -943,7 +943,7 @@ return [
         // Official ICBU OAuth: authorize → code → POST /auth/token/create.
         // Callback must match openapi.alibaba.com App Overview exactly (not /index — that is TikTok 2).
         'redirect_uri' => env('ALIBABA_REDIRECT_URI', 'https://inventory.5coremanagement.com/alibaba/callback'),
-        'auth_base' => env('ALIBABA_AUTH_BASE', 'https://oauth.alibaba.com/authorize'),
+        'auth_base' => env('ALIBABA_AUTH_BASE', 'https://openapi-api.alibaba.com/oauth/authorize'),
         'token_url' => env('ALIBABA_TOKEN_URL', 'https://open-api.alibaba.com/rest/auth/token/create'),
         'oauth_site' => env('ALIBABA_OAUTH_SITE', 'alibaba'),
     ],

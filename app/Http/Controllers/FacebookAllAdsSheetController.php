@@ -724,6 +724,9 @@ class FacebookAllAdsSheetController extends Controller
                     // the cell background with this colour so users
                     // can scan the recommendation strength at a glance.
                     $clean['_sbgt_color'] = $match['color'];
+                    // Sbgt 0 on a matched band (the Pause row) pauses
+                    // the campaign on Push and flags the Audit cell.
+                    $clean['_pause'] = ! empty($match['pause']);
                 }
             }
             // Pass 3 — apply `formatter` to source-based columns.
@@ -1006,14 +1009,14 @@ class FacebookAllAdsSheetController extends Controller
      * band's colour, so callers can paint cells / chips with the
      * matched band's colour.
      *
-     * @return array{sbgt: ?int, color: ?string}
+     * @return array{sbgt: ?int, color: ?string, pause: bool}
      */
     private function acosBudgetMatch($spend, $sales): array
     {
         $s = $this->parseNumeric($spend);
         $r = $this->parseNumeric($sales);
         if (($s === null || $s == 0.0) && ($r === null || $r == 0.0)) {
-            return ['sbgt' => null, 'color' => null];
+            return ['sbgt' => null, 'color' => null, 'pause' => false];
         }
         $acos = ($r === null || $r == 0.0)
             ? 99999.0
@@ -1028,9 +1031,12 @@ class FacebookAllAdsSheetController extends Controller
             $spendTo   = (float) ($band['spend_to'] ?? 9999);
             if ($acos >= $from && $acos <= $to
                 && $spendAmt >= $spendFrom && $spendAmt <= $spendTo) {
+                $sbgt = (int) ($band['sbgt'] ?? 0);
+
                 return [
-                    'sbgt'  => (int) ($band['sbgt'] ?? 0),
+                    'sbgt'  => $sbgt,
                     'color' => $this->acosSchemaColor($acos),
+                    'pause' => $sbgt <= 0,
                 ];
             }
         }
@@ -1038,6 +1044,7 @@ class FacebookAllAdsSheetController extends Controller
         return [
             'sbgt'  => (int) ($last['sbgt'] ?? 1),
             'color' => $this->acosSchemaColor($acos),
+            'pause' => false,
         ];
     }
 
@@ -1148,6 +1155,11 @@ class FacebookAllAdsSheetController extends Controller
             return $cmp !== 0 ? $cmp : ($a['spend_from'] <=> $b['spend_from']);
         });
 
+        $last = count($out) - 1;
+        if ($last >= 0 && strcasecmp(trim($out[$last]['label']), 'Critical') === 0) {
+            $out[$last]['label'] = 'Pause';
+        }
+
         return $out;
     }
 
@@ -1165,7 +1177,7 @@ class FacebookAllAdsSheetController extends Controller
                 ['acos_from' => 20, 'acos_to' => 30,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 10, 'label' => 'Fair',      'color' => '#93c5fd'],
                 ['acos_from' => 30, 'acos_to' => 40,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 5,  'label' => 'Poor',      'color' => '#facc15'],
                 ['acos_from' => 40, 'acos_to' => 50,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 2,  'label' => 'Bad',       'color' => '#dc2626'],
-                ['acos_from' => 50, 'acos_to' => 9999, 'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 1,  'label' => 'Critical',  'color' => '#dc2626'],
+                ['acos_from' => 50, 'acos_to' => 9999, 'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 1,  'label' => 'Pause',     'color' => '#dc2626'],
             ],
         ];
     }
@@ -1499,6 +1511,7 @@ class FacebookAllAdsSheetController extends Controller
         $userId  = optional($request->user())->id;
         $base    = "https://graph.facebook.com/{$apiVersion}";
         $pushed  = 0;
+        $paused  = 0;
         $failed  = 0;
         $skipped = 0;
         $results = [];
@@ -1507,6 +1520,7 @@ class FacebookAllAdsSheetController extends Controller
             $cid  = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
             $sbgt = isset($row['sbgt']) ? $row['sbgt'] : null;
             $sbgtNum = $this->parseNumeric($sbgt);
+            $pause = filter_var($row['pause'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
             // Skip rows with no campaign id or no recommendation — these
             // are the "blank Sbgt" rows the user could see in the table.
@@ -1517,6 +1531,26 @@ class FacebookAllAdsSheetController extends Controller
                     'status'      => 'skipped',
                     'reason'      => 'Missing or invalid campaign id',
                 ];
+                continue;
+            }
+            if ($pause) {
+                $outcome = $this->pauseMetaCampaign($base, $accessToken, $cid, $userId);
+                if ($outcome['ok']) {
+                    $paused++;
+                    $results[] = [
+                        'campaign_id' => $cid,
+                        'status'      => 'paused',
+                        'sbgt'        => 0,
+                    ];
+                } else {
+                    $failed++;
+                    $results[] = [
+                        'campaign_id' => $cid,
+                        'status'      => 'failed',
+                        'reason'      => $outcome['reason'],
+                    ];
+                }
+                usleep(150000);
                 continue;
             }
             if ($sbgtNum === null || $sbgtNum <= 0) {
@@ -1606,10 +1640,74 @@ class FacebookAllAdsSheetController extends Controller
         return response()->json([
             'success' => true,
             'pushed'  => $pushed,
+            'paused'  => $paused,
             'failed'  => $failed,
             'skipped' => $skipped,
             'results' => $results,
         ]);
+    }
+
+    /**
+     * Pause one Meta campaign. Sbgt 0 on a matched rule band means pause,
+     * not a $0 daily budget.
+     *
+     * @return array{ok: bool, reason: string}
+     */
+    private function pauseMetaCampaign(string $base, string $accessToken, string $cid, mixed $userId): array
+    {
+        try {
+            $resp = \Illuminate\Support\Facades\Http::asForm()
+                ->timeout(20)
+                ->post("{$base}/{$cid}", [
+                    'access_token' => $accessToken,
+                    'status'       => 'PAUSED',
+                ]);
+
+            $body = $resp->json() ?? [];
+            $ok   = $resp->successful() && (($body['success'] ?? false) === true || isset($body['id']));
+            $reason = $ok ? '' : ($body['error']['message'] ?? ('HTTP '.$resp->status()));
+
+            DB::table('meta_action_logs')->insert([
+                'user_id'            => $userId ?? 0,
+                'action_type'        => 'pause_campaign',
+                'entity_type'        => 'campaign',
+                'entity_meta_id'     => $cid,
+                'status'             => $ok ? 'success' : 'failed',
+                'request_payload'    => json_encode(['status' => 'PAUSED']),
+                'response_payload'   => json_encode($body),
+                'error_message'      => $ok ? null : ($body['error']['message'] ?? null),
+                'meta_error_code'    => $ok ? null : (string) ($body['error']['code'] ?? ''),
+                'meta_error_message' => $ok ? null : ($body['error']['error_user_msg'] ?? $body['error']['message'] ?? null),
+                'created_at'         => now(),
+                'updated_at'         => now(),
+            ]);
+
+            if ($ok && Schema::hasTable('meta_campaigns')) {
+                DB::table('meta_campaigns')
+                    ->where('meta_id', $cid)
+                    ->update([
+                        'status'           => 'PAUSED',
+                        'effective_status' => 'PAUSED',
+                        'updated_at'       => now(),
+                    ]);
+            }
+
+            return ['ok' => $ok, 'reason' => $reason];
+        } catch (\Throwable $e) {
+            DB::table('meta_action_logs')->insert([
+                'user_id'         => $userId ?? 0,
+                'action_type'     => 'pause_campaign',
+                'entity_type'     => 'campaign',
+                'entity_meta_id'  => $cid,
+                'status'          => 'failed',
+                'request_payload' => json_encode(['status' => 'PAUSED']),
+                'error_message'   => $e->getMessage(),
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ]);
+
+            return ['ok' => false, 'reason' => $e->getMessage()];
+        }
     }
 
     /**
@@ -2322,13 +2420,13 @@ class FacebookAllAdsSheetController extends Controller
         // acosBudgetRule(). Placed at the end so the row reads as
         // "metrics → recommendation".
         ['title' => 'Sbgt',          'rule'    => 'acos_budget'],
-        // Audit + History — placeholder columns. The cell value comes
-        // from facebook_campaign_audits (latest row per campaign id);
-        // the projection writes `_audit_score`, `_audit_at`,
-        // `_audit_by`, `_audit_comments` onto each row and the JS
-        // formatters render the Audit button + History summary from
-        // those hidden fields.
-        ['title' => 'Audit',         'sources' => []],
+        // Audit Req + History — placeholder columns. The cell value
+        // comes from facebook_campaign_audits (latest row per campaign
+        // id); the projection writes `_audit_score`, `_audit_at`,
+        // `_audit_by`, `_audit_comments` onto each row. Paused rows
+        // with no saved audit flash "AUDIT NOW"; a saved audit turns
+        // the cell green and keeps the notes + timestamp.
+        ['title' => 'Audit Req',     'sources' => []],
         ['title' => 'History',       'sources' => []],
         // Campaign delivery state, sourced verbatim from Meta's Spend
         // export (column header: "Campaign delivery"). Values include

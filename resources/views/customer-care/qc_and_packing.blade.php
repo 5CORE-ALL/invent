@@ -5184,7 +5184,12 @@
 
             async function loadHoldIssueRows() {
                 try {
-                    const response = await fetch(recordsListUrl, {
+                    let listUrl = recordsListUrl;
+                    if (lockedDepartment) {
+                        listUrl += (listUrl.indexOf('?') >= 0 ? '&' : '?') +
+                            'department=' + encodeURIComponent(lockedDepartment);
+                    }
+                    const response = await fetch(listUrl, {
                         headers: {
                             'Accept': 'application/json',
                             'X-Requested-With': 'XMLHttpRequest',

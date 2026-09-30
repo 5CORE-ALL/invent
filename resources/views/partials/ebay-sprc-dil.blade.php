@@ -9,7 +9,7 @@
   AliExpress only: Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
   Shein sold rows: Dil below the first slab or above the last uses the nearest slab.
   eBay 1–3: 0–0 slab on top for Dil = 0. Dil below the first remaining slab or above the last uses the nearest slab.
-  Temu 1 / New Temu One / New Temu Two: 0–0 slab on top for Dil = 0. Temu L30 = 0 uses the minimum Target NROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
+  Temu 1 / New Temu One / New Temu Two: 0–0 slab on top for Dil = 0. Temu L30 = 0 uses the minimum Target NROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu One stores temu_dil_vs_groi. New Temu Two stores newtemutwo_dil_vs_groi. A slab edit on one page does not write the other.
   CVR overlay Count and Adj: Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold.
   Horizontal / opposite-arrow rows are excluded. Shein applies the overlay only when the SKU has views.
   Macys: 0–0 slab on top for Dil = 0. Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
@@ -38,7 +38,7 @@
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop'], true);
-    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
+    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
@@ -46,7 +46,7 @@
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'instagram', 'mercari_wship', 'mercari_woship'], true);
     $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop', 'instagram'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
-        'temu', 'temu2', 'temu3' => 'Temu L30',
+        'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3' => 'Temu L30',
         'macys', 'macy' => 'MC L30',
         'purchasing_power' => 'PP L30',
         'wayfair' => 'A L30',
@@ -71,8 +71,8 @@
     $ebaySprcDilTargetNroi = true;
     $ebaySprcDilTargetLabel = $ebaySprcDilTargetNroi ? 'SNROI' : 'GROI';
     $ebaySprcDilPageLabel = match ($ebaySprcDilChannel) {
-        'temu' => 'Temu',
-        'temu2' => 'Temu 2',
+        'temu', 'newtemuone' => 'Temu 1',
+        'newtemutwo', 'temu2' => 'Temu 2',
         'temu3' => 'Temu 3',
         'ebay2' => 'eBay 2',
         'ebay3' => 'eBay 3',
@@ -646,6 +646,8 @@
         }
         function ebayDgIsTemu() {
             return EBAY_DIL_GROI_CHANNEL === 'temu'
+                || EBAY_DIL_GROI_CHANNEL === 'newtemuone'
+                || EBAY_DIL_GROI_CHANNEL === 'newtemutwo'
                 || EBAY_DIL_GROI_CHANNEL === 'temu2'
                 || EBAY_DIL_GROI_CHANNEL === 'temu3'
                 || (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel());
@@ -1052,8 +1054,10 @@
                 if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
                 return !(Number(d && (d['B2B L30'] != null ? d['B2B L30'] : d['B2C L30'])) > 0);
             }
-            // Temu 1: 0 Sold is Temu orders L30, not Shopify OV / metrics L30.
-            if (EBAY_DIL_GROI_CHANNEL === 'temu') {
+            // Temu 1 / Temu 2 analytics: 0 Sold is Temu orders L30, not Shopify OV / metrics L30.
+            if (EBAY_DIL_GROI_CHANNEL === 'temu'
+                || EBAY_DIL_GROI_CHANNEL === 'newtemuone'
+                || EBAY_DIL_GROI_CHANNEL === 'newtemutwo') {
                 if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
                 return !(Number(d && d.temu_l30) > 0);
             }
@@ -1226,7 +1230,7 @@
             }
             if (ch === 'reverb') return read(function() { return REVERB_CHANNEL_ADS_PCT; });
             if (ch === 'amazon') return read(function() { return AMAZON_CHANNEL_ADS_PCT; });
-            if (ch === 'temu' || ch === 'temu2' || ch === 'temu3') {
+            if (ch === 'temu' || ch === 'newtemuone' || ch === 'newtemutwo' || ch === 'temu2' || ch === 'temu3') {
                 if (typeof temuAdsPercentForNet === 'function') {
                     const n = parseFloat(temuAdsPercentForNet());
                     if (isFinite(n) && n > 0) return n;
