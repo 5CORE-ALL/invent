@@ -72,7 +72,7 @@ class AlibabaSalesController extends Controller
             $pftEach = ($unitPrice * $margin) - $lp;
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
             $pft = $pftEach * $quantity;
-            $roi = $lp > 0 ? ($pft / $lp) * 100 : 0;
+            $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
             $orderId = (string) $row->order_id;
             $orderTotal = $orderTotals[$orderId] ?? 0;
