@@ -94,6 +94,15 @@ class ListingManagerPublishDispatcher
                     'category_name' => $categoryName,
                 ];
             }
+            if ($key === 'aliexpress') {
+                $images = is_array($details['images'] ?? null) ? $details['images'] : [];
+                $overrides = [
+                    'title' => trim((string) $draft->title),
+                    'description' => trim((string) ($details['description'] ?? '')),
+                    'price' => $draft->price !== null ? (float) $draft->price : null,
+                    'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
+                ];
+            }
             if ($key === 'wayfair') {
                 $images = is_array($details['images'] ?? null) ? $details['images'] : [];
                 $overrides = [
@@ -151,6 +160,15 @@ class ListingManagerPublishDispatcher
     public static function canDirectPublish(string $channelName): bool
     {
         return self::supportsListingApi($channelName);
+    }
+
+    /**
+     * Channels whose publish polls a marketplace import (Mirakl P41/P42 can take minutes) and
+     * therefore runs as a background CLI process instead of inside the HTTP request.
+     */
+    public static function publishesInBackground(string $channelName): bool
+    {
+        return MiraklListingPublishService::isMiraklListingChannel($channelName);
     }
 
     /**

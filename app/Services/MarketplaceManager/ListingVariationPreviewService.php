@@ -107,7 +107,7 @@ class ListingVariationPreviewService
             return $this->faire->publishSkus($skus, $expandSiblings, $mode, $overrides);
         }
         if ($channel === 'aliexpress') {
-            return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb, $weightKg);
+            return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb, $weightKg, $overrides);
         }
         if (in_array($channel, ['reverb', 'reverbcom'], true)) {
             return $this->reverb->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName);

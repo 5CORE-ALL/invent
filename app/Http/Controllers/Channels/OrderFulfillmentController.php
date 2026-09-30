@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Channels;
 
 use App\Models\AmazonOrder;
 use App\Models\Inventory;
+use App\Models\OrderFulfillmentManualOrder;
 use App\Models\OrderFulfillmentTracking;
 use App\Models\ProductMaster;
 use App\Services\FourSellerApiService;
@@ -54,6 +55,21 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'ofDeliveredOnly' => false,
             'ofTransitOnly' => false,
             'ofScanPendingOnly' => false,
+            'ofCreateOrders' => false,
+            'ofManualMarketplaces' => $this->manualMarketplaceNames(),
+            'ofTimezone' => $this->sofTimezone(),
+        ]);
+    }
+
+    /**
+     * Manual orders for marketplaces without an API. Same grid; rows come from
+     * order_fulfillment_manual_orders only.
+     */
+    public function createOrders(GofoExpressService $gofo, VeeqoApiService $veeqo): View
+    {
+        return $this->index($gofo, $veeqo)->with([
+            'ofPageTitle' => 'Create Orders',
+            'ofCreateOrders' => true,
         ]);
     }
 
@@ -115,11 +131,17 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         try {
             @set_time_limit(120);
 
-            $rows = $this->collectFulfillmentRows();
+            $manualOnly = request()->boolean('manual');
+            $rows = $manualOnly ? $this->manualFulfillmentRows() : $this->collectFulfillmentRows();
             $rows = $this->attachCpMasterInventory($rows);
             $rows = $this->attachSavedTracking($rows);
             $rows = $this->attachCarrierAndTrackingStatus($rows);
-            [$navCounts, $navStatusCounts] = $this->fulfillmentNavCounts($rows);
+            [$navCounts, $navStatusCounts] = $manualOnly
+                ? [$this->emptyFulfillmentNavCounts(), []]
+                : $this->fulfillmentNavCounts($rows);
+            if ($manualOnly) {
+                $navCounts['create_orders'] = count($rows);
+            }
             if (request()->boolean('delivered')) {
                 $rows = array_values(array_filter(
                     $rows,
@@ -152,6 +174,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $unpaid = 0;
             foreach ($rows as $row) {
                 $slug = (string) ($row['mm_slug'] ?? '');
+                if ($slug === 'manual') {
+                    $slug = 'manual:'.strtolower(trim((string) ($row['channel'] ?? '')));
+                }
                 if ($slug !== '') {
                     $channels[$slug] = true;
                 }
@@ -197,7 +222,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
      * Row totals for the Order Fulfillment sidebar, before the current page filter.
      *
      * @param  list<array<string, mixed>>  $rows
-     * @return array{0: array{orders: int, pending: int, unpaid: int, scan_pending: int, transit: int, delivered: int}, 1: array<string, array<string, int>>}
+     * @return array{0: array{orders: int, pending: int, unpaid: int, scan_pending: int, transit: int, delivered: int, create_orders: int}, 1: array<string, array<string, int>>}
      */
     protected function fulfillmentNavCounts(array $rows): array
     {
@@ -217,6 +242,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 $status = '—';
             }
             $buckets = ['orders'];
+            if (($row['mm_slug'] ?? '') === self::MANUAL_SLUG) {
+                $counts['create_orders']++;
+            }
             if (empty($row['paid'])) {
                 $counts['unpaid']++;
                 $buckets[] = 'unpaid';
@@ -246,7 +274,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
-     * @return array{orders: int, pending: int, unpaid: int, scan_pending: int, transit: int, delivered: int}
+     * @return array{orders: int, pending: int, unpaid: int, scan_pending: int, transit: int, delivered: int, create_orders: int}
      */
     protected function emptyFulfillmentNavCounts(): array
     {
@@ -257,6 +285,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'scan_pending' => 0,
             'transit' => 0,
             'delivered' => 0,
+            'create_orders' => 0,
         ];
     }
 
@@ -377,6 +406,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $slug === 'doba' => $compact === 'UNSHIPPED',
             in_array($slug, ['tiktok', 'tiktok2'], true) => $upper === 'AWAITING_SHIPMENT',
             $slug === 'topdawg' => in_array($lower, ['pending', 'processing', 'saved'], true),
+            $slug === 'manual' => $compact === 'ORDER_CREATED',
             default => in_array($compact, ['PENDING', 'UNSHIPPED', 'AWAITING_SHIPMENT', 'NOT_STARTED'], true),
         };
     }
@@ -421,6 +451,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                     report($e);
                 }
             }
+        }
+
+        try {
+            array_push($rows, ...$this->manualFulfillmentRows());
+        } catch (\Throwable $e) {
+            report($e);
         }
 
         usort($rows, static function (array $a, array $b): int {
@@ -472,6 +508,461 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         return [$from, $to];
+    }
+
+    /* ------------------------------------------------------------------
+     | Manual orders (marketplaces without an API)
+     |------------------------------------------------------------------*/
+
+    public const MANUAL_SLUG = 'manual';
+
+    /**
+     * Grid rows for manual orders inside the current date range.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function manualFulfillmentRows(): array
+    {
+        if (! Schema::hasTable('order_fulfillment_manual_orders')) {
+            return [];
+        }
+        [$from, $to] = $this->resolveOrderDateRange();
+        $tz = $this->sofTimezone();
+
+        // Hand-typed dates can run a few hours ahead of the Pacific "today" the
+        // range ends on, so allow one extra day at the top end.
+        $orders = OrderFulfillmentManualOrder::query()
+            ->whereBetween('order_date', [
+                $from->copy()->format('Y-m-d H:i:s'),
+                $to->copy()->addDay()->endOfDay()->format('Y-m-d H:i:s'),
+            ])
+            ->orderBy('order_date')
+            ->orderBy('id')
+            ->get();
+
+        $rows = [];
+        foreach ($orders as $order) {
+            $rows[] = $this->manualRow($order, $tz);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function manualRow(OrderFulfillmentManualOrder $order, ?string $tz = null): array
+    {
+        $tz ??= $this->sofTimezone();
+        $marketplace = trim((string) $order->marketplace);
+        $orderDate = $order->order_date ? $order->order_date->format('Y-m-d H:i:s') : null;
+
+        return [
+            'id' => self::MANUAL_SLUG.'-'.$order->id,
+            'channel' => $marketplace !== '' ? $marketplace : 'Manual',
+            'mm_slug' => self::MANUAL_SLUG,
+            'manual' => true,
+            'manual_id' => (int) $order->id,
+            'order_id' => trim((string) $order->order_id),
+            // Stored as the Pacific wall clock the user typed; shown unchanged.
+            'order_date' => $this->formatOrderDate($orderDate, $tz),
+            'paid' => (bool) $order->paid,
+            'paid_label' => $order->paid ? 'Paid' : 'Unpaid',
+            'status' => (string) ($order->status ?: OrderFulfillmentManualOrder::STATUS_CREATED),
+            'sku' => $this->inventoryLookupSku((string) $order->sku),
+            'qty' => (int) ($order->qty ?: 1),
+            'inv' => null,
+            'source_id' => (int) $order->id,
+            'reference' => trim((string) ($order->reference ?? '')),
+            'amount' => $order->amount !== null ? (float) $order->amount : null,
+            'customer_name' => (string) ($order->customer_name ?? ''),
+            'customer_email' => (string) ($order->customer_email ?? ''),
+            'customer_phone' => (string) ($order->customer_phone ?? ''),
+            'address1' => (string) ($order->address1 ?? ''),
+            'address2' => (string) ($order->address2 ?? ''),
+            'city' => (string) ($order->city ?? ''),
+            'state' => (string) ($order->state ?? ''),
+            'zip' => (string) ($order->zip ?? ''),
+            'country' => (string) ($order->country ?? ''),
+            'notes' => (string) ($order->notes ?? ''),
+            'fulfilled_at' => $order->fulfilled_at ? $order->fulfilled_at->format('Y-m-d H:i:s') : null,
+        ];
+    }
+
+    /**
+     * Marketplace names typed before, for the create form's suggestion list.
+     *
+     * @return list<string>
+     */
+    protected function manualMarketplaceNames(): array
+    {
+        if (! Schema::hasTable('order_fulfillment_manual_orders')) {
+            return [];
+        }
+        try {
+            return OrderFulfillmentManualOrder::query()
+                ->select('marketplace')
+                ->distinct()
+                ->orderBy('marketplace')
+                ->pluck('marketplace')
+                ->map(fn ($v) => trim((string) $v))
+                ->filter()
+                ->values()
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function validatedManualOrderHeader(Request $request): array
+    {
+        $data = $request->validate([
+            'marketplace' => 'required|string|max:128',
+            'order_id' => 'required|string|max:128',
+            'order_date' => 'required|date',
+            'paid' => 'nullable|boolean',
+            'amount' => 'nullable|numeric|min:0|max:999999999',
+            'reference' => 'nullable|string|max:128',
+            'customer_name' => 'nullable|string|max:191',
+            'customer_email' => 'nullable|string|max:191',
+            'customer_phone' => 'nullable|string|max:64',
+            'address1' => 'nullable|string|max:191',
+            'address2' => 'nullable|string|max:191',
+            'city' => 'nullable|string|max:128',
+            'state' => 'nullable|string|max:128',
+            'zip' => 'nullable|string|max:32',
+            'country' => 'nullable|string|max:64',
+            'notes' => 'nullable|string|max:5000',
+        ]);
+
+        $tz = $this->sofTimezone();
+        $orderDate = \Carbon\Carbon::parse((string) $data['order_date'], $tz);
+        $earliest = $this->earliestOrderDate();
+        if ($orderDate->lt($earliest)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'order_date' => 'Order date cannot be before '.$earliest->format('d M Y').'.',
+            ]);
+        }
+
+        $clean = static fn ($v) => ($v === null || trim((string) $v) === '') ? null : trim((string) $v);
+
+        $header = [
+            'marketplace' => trim((string) $data['marketplace']),
+            'order_id' => trim((string) $data['order_id']),
+            'order_date' => $orderDate->format('Y-m-d H:i:s'),
+            'paid' => (bool) ($data['paid'] ?? true),
+            'amount' => isset($data['amount']) && $data['amount'] !== '' ? round((float) $data['amount'], 2) : null,
+            'customer_name' => $clean($data['customer_name'] ?? null),
+            'customer_email' => $clean($data['customer_email'] ?? null),
+            'customer_phone' => $clean($data['customer_phone'] ?? null),
+            'address1' => $clean($data['address1'] ?? null),
+            'address2' => $clean($data['address2'] ?? null),
+            'city' => $clean($data['city'] ?? null),
+            'state' => $clean($data['state'] ?? null),
+            'zip' => $clean($data['zip'] ?? null),
+            'country' => $clean($data['country'] ?? null),
+            'notes' => $clean($data['notes'] ?? null),
+        ];
+        // The label is found by the marketplace order id; a Shopify/Veeqo reference is
+        // not asked for on the form and is only kept when a caller sends one.
+        if ($request->has('reference')) {
+            $header['reference'] = $clean($data['reference'] ?? null);
+        }
+
+        return $header;
+    }
+
+    /**
+     * @return list<array{sku: string, qty: int}>
+     */
+    protected function validatedManualOrderLines(Request $request): array
+    {
+        $request->validate([
+            'lines' => 'required|array|min:1|max:50',
+            'lines.*.sku' => 'required|string|max:191',
+            'lines.*.qty' => 'nullable|integer|min:1|max:100000',
+        ]);
+
+        $lines = [];
+        foreach ((array) $request->input('lines', []) as $line) {
+            $sku = trim((string) ($line['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $lines[] = ['sku' => $sku, 'qty' => max(1, (int) ($line['qty'] ?? 1))];
+        }
+        if ($lines === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['lines' => 'Add at least one SKU.']);
+        }
+
+        return $lines;
+    }
+
+    public function storeManualOrder(Request $request): JsonResponse
+    {
+        $this->ensureManualOrdersTable();
+        $header = $this->validatedManualOrderHeader($request);
+        $lines = $this->validatedManualOrderLines($request);
+
+        $duplicate = OrderFulfillmentManualOrder::query()
+            ->whereRaw('LOWER(marketplace) = ?', [strtolower($header['marketplace'])])
+            ->where('order_id', $header['order_id'])
+            ->exists();
+        if ($duplicate) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order '.$header['order_id'].' for '.$header['marketplace'].' already exists.',
+            ], 422);
+        }
+
+        $rows = [];
+        DB::transaction(function () use ($header, $lines, &$rows): void {
+            foreach ($lines as $line) {
+                $order = OrderFulfillmentManualOrder::query()->create($header + [
+                    'sku' => $line['sku'],
+                    'qty' => $line['qty'],
+                    'status' => OrderFulfillmentManualOrder::STATUS_CREATED,
+                    'created_by' => auth()->id(),
+                ]);
+                $rows[] = $this->manualRow($order);
+            }
+        });
+
+        $rows = $this->attachCpMasterInventory($rows);
+        $rows = $this->attachSavedTracking($rows);
+
+        return response()->json(['success' => true, 'rows' => $rows]);
+    }
+
+    /**
+     * Edits apply to every SKU line of the same order (they share the header).
+     */
+    public function updateManualOrder(Request $request, int $id): JsonResponse
+    {
+        $this->ensureManualOrdersTable();
+        $order = OrderFulfillmentManualOrder::query()->find($id);
+        if ($order === null) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+        $header = $this->validatedManualOrderHeader($request);
+
+        $request->validate([
+            'sku' => 'nullable|string|max:191',
+            'qty' => 'nullable|integer|min:1|max:100000',
+        ]);
+        $sku = trim((string) $request->input('sku', ''));
+        $qty = (int) $request->input('qty', 0);
+
+        $siblings = OrderFulfillmentManualOrder::query()
+            ->whereRaw('LOWER(marketplace) = ?', [strtolower((string) $order->marketplace)])
+            ->where('order_id', (string) $order->order_id)
+            ->get();
+
+        $rows = [];
+        DB::transaction(function () use ($siblings, $order, $header, $sku, $qty, &$rows): void {
+            foreach ($siblings as $sibling) {
+                $sibling->fill($header);
+                if ((int) $sibling->id === (int) $order->id) {
+                    if ($sku !== '') {
+                        $sibling->sku = $sku;
+                    }
+                    if ($qty > 0) {
+                        $sibling->qty = $qty;
+                    }
+                }
+                $sibling->save();
+                $rows[] = $this->manualRow($sibling);
+            }
+        });
+
+        $rows = $this->attachCpMasterInventory($rows);
+        $rows = $this->attachSavedTracking($rows);
+
+        return response()->json(['success' => true, 'rows' => $rows]);
+    }
+
+    public function deleteManualOrder(int $id): JsonResponse
+    {
+        $this->ensureManualOrdersTable();
+        $order = OrderFulfillmentManualOrder::query()->find($id);
+        if ($order === null) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+        $rowKey = self::MANUAL_SLUG.'-'.$order->id;
+        $order->delete();
+        if (Schema::hasTable('order_fulfillment_trackings')) {
+            OrderFulfillmentTracking::query()->where('row_key', $rowKey)->delete();
+        }
+
+        return response()->json(['success' => true, 'id' => $rowKey]);
+    }
+
+    /**
+     * Fulfil = the user's decision. Tracking is fetched now (Veeqo → 4Seller) if
+     * none is saved; without a number the order stays "Order Created".
+     */
+    public function fulfillManualOrder(Request $request, int $id): JsonResponse
+    {
+        @set_time_limit(60);
+        $this->ensureManualOrdersTable();
+        $this->ensureTrackingTable();
+
+        $order = OrderFulfillmentManualOrder::query()->find($id);
+        if ($order === null) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+        $request->validate(['tracking_number' => 'nullable|string|max:128']);
+        $typed = trim((string) $request->input('tracking_number', ''));
+
+        $siblings = OrderFulfillmentManualOrder::query()
+            ->whereRaw('LOWER(marketplace) = ?', [strtolower((string) $order->marketplace)])
+            ->where('order_id', (string) $order->order_id)
+            ->get();
+
+        $group = [
+            'mm_slug' => self::MANUAL_SLUG,
+            'order_id' => trim((string) $order->order_id),
+            'sku' => (string) $order->sku,
+            'source_id' => (int) $order->id,
+            'reference' => trim((string) ($order->reference ?? '')),
+            'rows' => $siblings->map(fn ($s) => ['id' => self::MANUAL_SLUG.'-'.$s->id, 'sku' => (string) $s->sku])->all(),
+        ];
+
+        if ($typed !== '') {
+            foreach ($group['rows'] as $line) {
+                $this->rememberTracking($line['id'], self::MANUAL_SLUG, $group['order_id'], $line['sku'], $typed, null, 'manual', true);
+            }
+            $updates = array_map(fn ($line) => [
+                'id' => $line['id'],
+                'tracking' => $typed,
+                'tracking_source' => 'manual',
+                'tracking_checked' => true,
+            ], $group['rows']);
+        } else {
+            $updates = $this->resolveTrackingGroup($group, microtime(true) + 40.0, $this->labelTrackingLookup());
+        }
+
+        $number = '';
+        foreach ($updates as $update) {
+            if (trim((string) ($update['tracking'] ?? '')) !== '') {
+                $number = trim((string) $update['tracking']);
+                break;
+            }
+        }
+        if ($number === '') {
+            return response()->json([
+                'success' => false,
+                'no_tracking' => true,
+                'message' => 'No tracking number found yet in Veeqo or 4Seller for order '.$group['order_id'].'. Enter it below, or try again after the label is purchased.',
+            ], 422);
+        }
+
+        $now = now();
+        foreach ($siblings as $sibling) {
+            $sibling->status = OrderFulfillmentManualOrder::STATUS_FULFILLED;
+            $sibling->fulfilled_at = $now;
+            $sibling->fulfilled_by = auth()->id();
+            $sibling->save();
+        }
+
+        $rows = $siblings->map(fn ($s) => $this->manualRow($s))->all();
+        $rows = $this->attachCpMasterInventory($rows);
+        $rows = $this->attachSavedTracking($rows);
+        $rows = $this->attachCarrierAndTrackingStatus($rows);
+
+        return response()->json([
+            'success' => true,
+            'rows' => $rows,
+            'updates' => $this->withCarrierOnUpdates($updates),
+        ]);
+    }
+
+    /**
+     * SKU search for the manual order form: CP Master SKUs containing the typed
+     * text, prefix matches first, with their inventory.
+     */
+    public function suggestSkus(Request $request): JsonResponse
+    {
+        $q = trim(str_replace("\u{00a0}", ' ', (string) $request->input('q', '')));
+        $q = preg_replace('/\s+/', ' ', $q) ?? $q;
+        if ($q === '' || ! Schema::hasTable('product_master')) {
+            return response()->json(['success' => true, 'items' => []]);
+        }
+
+        $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $q).'%';
+        $prefix = str_replace(['%', '_'], ['\%', '\_'], $q).'%';
+        $normalized = "REPLACE(REPLACE(sku, CHAR(194,160), ' '), '  ', ' ')";
+
+        try {
+            $products = ProductMaster::query()
+                ->whereRaw("{$normalized} LIKE ?", [$like])
+                ->where('sku', 'NOT LIKE', 'PARENT%')
+                ->orderByRaw("CASE WHEN {$normalized} LIKE ? THEN 0 ELSE 1 END, LENGTH(sku), sku", [$prefix])
+                ->limit(20)
+                ->get(['sku', 'parent']);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['success' => true, 'items' => []]);
+        }
+
+        $skus = $products->map(fn ($p) => $this->inventoryLookupSku((string) $p->sku))->filter()->unique()->values()->all();
+        $inv = $this->cpMasterInventoryByCompactSku($skus);
+
+        $items = [];
+        foreach ($products as $product) {
+            $sku = $this->inventoryLookupSku((string) $product->sku);
+            if ($sku === '') {
+                continue;
+            }
+            $key = ProductMaster::skuCompact($sku);
+            $items[] = [
+                'sku' => $sku,
+                'parent' => trim((string) ($product->parent ?? '')),
+                'inv' => $key !== '' && array_key_exists($key, $inv) ? $inv[$key] : null,
+            ];
+        }
+
+        return response()->json(['success' => true, 'items' => $items]);
+    }
+
+    protected function ensureManualOrdersTable(): void
+    {
+        if (Schema::hasTable('order_fulfillment_manual_orders')) {
+            return;
+        }
+
+        Schema::create('order_fulfillment_manual_orders', function ($table) {
+            $table->id();
+            $table->string('marketplace', 128);
+            $table->string('order_id', 128);
+            $table->dateTime('order_date');
+            $table->string('sku', 191);
+            $table->unsignedInteger('qty')->default(1);
+            $table->boolean('paid')->default(true);
+            $table->decimal('amount', 12, 2)->nullable();
+            $table->string('reference', 128)->nullable();
+            $table->string('customer_name', 191)->nullable();
+            $table->string('customer_email', 191)->nullable();
+            $table->string('customer_phone', 64)->nullable();
+            $table->string('address1', 191)->nullable();
+            $table->string('address2', 191)->nullable();
+            $table->string('city', 128)->nullable();
+            $table->string('state', 128)->nullable();
+            $table->string('zip', 32)->nullable();
+            $table->string('country', 64)->nullable();
+            $table->text('notes')->nullable();
+            $table->string('status', 32)->default('Order Created');
+            $table->timestamp('fulfilled_at')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('fulfilled_by')->nullable();
+            $table->timestamps();
+            $table->index(['marketplace', 'order_id'], 'of_manual_mp_order_idx');
+            $table->index('order_date', 'of_manual_order_date_idx');
+        });
     }
 
     /**
@@ -973,6 +1464,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'rows.*.order_id' => 'nullable|string|max:128',
             'rows.*.sku' => 'nullable|string|max:191',
             'rows.*.source_id' => 'nullable|integer',
+            'rows.*.reference' => 'nullable|string|max:128',
         ]);
 
         $groups = $this->trackingGroupsFromRows($validated['rows']);
@@ -1029,6 +1521,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'order_id' => $orderId,
                 'sku' => (string) ($row['sku'] ?? ''),
                 'source_id' => (int) ($row['source_id'] ?? 0),
+                'reference' => (string) ($row['reference'] ?? ''),
                 'rows' => [],
                 'checked_at' => $checkedAt,
             ];
@@ -1094,6 +1587,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'order_id' => $orderId,
                 'sku' => trim((string) ($row['sku'] ?? '')),
                 'source_id' => (int) ($row['source_id'] ?? 0),
+                'reference' => trim((string) ($row['reference'] ?? '')),
                 'rows' => [],
             ];
             $groups[$groupKey]['rows'][] = [
@@ -1129,6 +1623,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             if ($plain !== '' && $plain !== $veeqoRef) {
                 $veeqoQueries[] = $plain;
             }
+            // Manual orders may carry the Shopify/Veeqo order number the label was bought under.
+            $reference = ltrim(trim((string) ($group['reference'] ?? '')), '#');
+            if ($reference !== '' && ! in_array($reference, $veeqoQueries, true)) {
+                $veeqoQueries[] = $reference;
+            }
+            $fourSellerRefs = $reference !== '' && $reference !== $plain ? [$plain, $reference] : [$plain];
 
             try {
                 $local = $lookup->localMarketplaceTracking($slug, array_values(array_unique([$plain, $orderId])));
@@ -1176,7 +1676,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 try {
                     $fourSeller = app(FourSellerApiService::class);
                     $fourSeller->setTimeout(4);
-                    $fs = $fourSeller->findShipment([$plain], 1);
+                    $fs = $fourSeller->findShipment($fourSellerRefs, count($fourSellerRefs));
                     if (is_array($fs) && trim((string) ($fs['tracking'] ?? '')) !== '') {
                         $hit = [
                             'tracking' => (string) $fs['tracking'],

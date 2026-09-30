@@ -645,6 +645,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/order-fulfillment/scan-pending', [OrderFulfillmentController::class, 'scanPending'])->name('order.fulfillment.scan-pending');
     Route::get('/order-fulfillment/unpaid', [OrderFulfillmentController::class, 'unpaid'])->name('order.fulfillment.unpaid');
     Route::get('/order-fulfillment/pending', [OrderFulfillmentController::class, 'pending'])->name('order.fulfillment.pending');
+    Route::get('/order-fulfillment/create-orders', [OrderFulfillmentController::class, 'createOrders'])->name('order.fulfillment.create-orders');
+    Route::post('/order-fulfillment/manual-orders', [OrderFulfillmentController::class, 'storeManualOrder'])->name('order.fulfillment.manual.store');
+    Route::put('/order-fulfillment/manual-orders/{id}', [OrderFulfillmentController::class, 'updateManualOrder'])->whereNumber('id')->name('order.fulfillment.manual.update');
+    Route::delete('/order-fulfillment/manual-orders/{id}', [OrderFulfillmentController::class, 'deleteManualOrder'])->whereNumber('id')->name('order.fulfillment.manual.delete');
+    Route::post('/order-fulfillment/manual-orders/{id}/fulfill', [OrderFulfillmentController::class, 'fulfillManualOrder'])->whereNumber('id')->name('order.fulfillment.manual.fulfill');
+    Route::get('/order-fulfillment/sku-suggest', [OrderFulfillmentController::class, 'suggestSkus'])->name('order.fulfillment.sku.suggest');
     Route::get('/order-fulfillment/data', [OrderFulfillmentController::class, 'data'])->name('order.fulfillment.data');
     Route::post('/order-fulfillment/tracking/lookup', [OrderFulfillmentController::class, 'lookupTracking'])->name('order.fulfillment.tracking.lookup');
     Route::post('/order-fulfillment/tracking', [OrderFulfillmentController::class, 'saveTracking'])->name('order.fulfillment.tracking.save');

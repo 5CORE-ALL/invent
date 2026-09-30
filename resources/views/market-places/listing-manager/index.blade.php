@@ -121,6 +121,7 @@
         .lm-status-ready { background: #dbeafe; color: #1d4ed8; }
         .lm-status-active { background: #dcfce7; color: #166534; }
         .lm-status-failed { background: #fee2e2; color: #991b1b; }
+        .lm-status-queued { background: #fef9c3; color: #854d0e; }
         .tabulator.lm-tabulator { border: none; }
         .tabulator.lm-tabulator .tabulator-header { background: #f8fafc; border-color: var(--lc-border); }
         .tabulator.lm-tabulator .tabulator-header .tabulator-col-content {
@@ -1786,6 +1787,7 @@
             'Ready': 'lm-status-ready',
             'Active': 'lm-status-active',
             'Failed': 'lm-status-failed',
+            'Publishing…': 'lm-status-queued',
         };
         const cls = map[ui] || 'lm-status-missing';
         return `<span class="lm-status-pill ${cls}">${escapeHtml(ui || 'Missing Info')}</span>`;
@@ -5265,11 +5267,17 @@
             let i = 0;
             let ok = 0;
             let fail = 0;
+            let queued = 0;
+            let queuedMessage = '';
             const errors = [];
             showPublishLoader('Publishing 1 of ' + rows.length + '…');
             function finish() {
                 hidePublishLoader();
                 $btn.data('busy', false);
+                if (queued > 0) {
+                    toast(queuedMessage || (queued + ' listing(s) are publishing in the background.'), 'info');
+                    watchBackgroundPublishes();
+                }
                 if (ok > 0) {
                     toast(ok === 1
                         ? 'Published successfully. The listing is now Active.'
@@ -5280,7 +5288,7 @@
                     switchDraftsTab('active');
                     return;
                 }
-                toast(errors[0] || 'Publish failed.', 'error');
+                if (fail > 0) toast(errors[0] || 'Publish failed.', 'error');
                 loadDrafts();
             }
             function next() {
@@ -5297,6 +5305,9 @@
                 }).done(function (res) {
                     if (res && res.success) {
                         ok += 1;
+                    } else if (res && res.queued) {
+                        queued += 1;
+                        if (res.message) queuedMessage = res.message;
                     } else {
                         fail += 1;
                         if (res && res.message) errors.push(res.message);
@@ -5304,13 +5315,38 @@
                 }).fail(function (xhr) {
                     fail += 1;
                     const timedOut = xhr.statusText === 'timeout' || xhr.status === 0;
-                    errors.push(xhr.responseJSON?.message || (timedOut
-                        ? ((row.sku || 'This listing') + ' is still being created. Wait a minute, then click Publish again.')
-                        : ('Publish failed for ' + (row.sku || 'listing') + '.')));
+                    let fallback = 'Publish failed for ' + (row.sku || 'listing') + '.';
+                    if (timedOut) {
+                        fallback = (row.sku || 'This listing') + ' is still being created. Wait a minute, then click Publish again.';
+                    } else if (xhr.status >= 500) {
+                        fallback = 'Server error ' + xhr.status + (xhr.statusText ? ' (' + xhr.statusText + ')' : '') + ' while publishing ' + (row.sku || 'listing') + '. Wait a minute, then click Check Live Status.';
+                    }
+                    errors.push(xhr.responseJSON?.message || fallback);
                 }).always(next);
             }
             next();
         });
+
+        // Mirakl channels publish from a background process; keep the grid fresh until they leave "Publishing…".
+        let backgroundPublishTimer = null;
+        let backgroundPublishStarted = 0;
+        function watchBackgroundPublishes() {
+            if (backgroundPublishTimer) return;
+            backgroundPublishStarted = Date.now();
+            backgroundPublishTimer = setInterval(function () {
+                const stillQueued = (draftsTable.getData() || []).some(r => r.status === 'queued');
+                const expired = Date.now() - backgroundPublishStarted > 10 * 60 * 1000;
+                if (!stillQueued || expired) {
+                    clearInterval(backgroundPublishTimer);
+                    backgroundPublishTimer = null;
+                    if (!stillQueued) {
+                        toast('Background publish finished. Check the Active tab, or the row notes if it failed.', 'success');
+                    }
+                    return;
+                }
+                loadDrafts();
+            }, 10000);
+        }
 
         $('#lm-action-delete-selected').on('click', function () {
             const rows = draftsTable.getSelectedData() || [];

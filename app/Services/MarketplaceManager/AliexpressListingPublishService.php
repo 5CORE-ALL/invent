@@ -28,7 +28,7 @@ class AliexpressListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null, array $overrides = []): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -42,14 +42,37 @@ class AliexpressListingPublishService
             ];
         }
 
+        // Listing Manager drafts carry their own title / price / images; those win over Product Master.
+        $overrideImages = $this->cleanOverrideImages($overrides['images'] ?? []);
+        $overrideTitle = trim((string) ($overrides['title'] ?? ''));
+        $overrideDescription = trim((string) ($overrides['description'] ?? ''));
+        $overridePrice = isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0
+            ? round((float) $overrides['price'], 2)
+            : null;
+        $seedSku = $skus[0];
+
         $publishSkus = $expandSiblings
             ? $this->expandToPublishableSiblings($skus)
-            : $this->filterPublishable($skus);
+            : $this->filterPublishable($skus, $overrideImages !== []);
+
+        $ignoreListed = false;
+        if ($publishSkus === [] && ! $expandSiblings && count($skus) === 1) {
+            // Listing Manager publish of a SKU our metrics already map to a product: link the
+            // draft to that product when AliExpress still has it, otherwise treat the row as stale.
+            $linked = $this->linkAlreadyListedDraft($seedSku, $overrideTitle, $overrideDescription, $overrideImages);
+            if ($linked !== null && empty($linked['stale'])) {
+                return $linked;
+            }
+            if ($linked !== null) {
+                $ignoreListed = true;
+                $publishSkus = $this->filterPublishable($skus, $overrideImages !== [], true);
+            }
+        }
 
         if ($publishSkus === []) {
             return [
                 'success' => false,
-                'message' => 'No Missing L child SKUs left to publish (already listed, NRL, or missing images).',
+                'message' => $this->publishBlockReason($skus, $overrideImages !== [], $ignoreListed),
             ];
         }
 
@@ -60,7 +83,7 @@ class AliexpressListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryId, $categoryName, $weightLb, $weightKg);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryId, $categoryName, $weightLb, $weightKg, strcasecmp($sku, $seedSku) === 0 ? $overrides : []);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -90,7 +113,7 @@ class AliexpressListingPublishService
             return ['success' => false, 'message' => 'SKU not found in product master.'];
         }
 
-        $title = $this->resolveTitle($primary, $primarySku);
+        $title = $overrideTitle !== '' ? $overrideTitle : $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
             return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
         }
@@ -102,14 +125,18 @@ class AliexpressListingPublishService
             if (! $product) {
                 return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
             }
-            $price = $this->resolvePrice($sku, $product);
+            $isSeed = strcasecmp($sku, $seedSku) === 0;
+            $price = $isSeed && $overridePrice !== null ? $overridePrice : $this->resolvePrice($sku, $product);
             if ($price === null || $price <= 0) {
                 return [
                     'success' => false,
                     'message' => 'No price found for '.$sku.'. Set Shopify price or AliExpress Std Prc.',
                 ];
             }
-            $images = $this->productImages($product, $sku);
+            $images = $isSeed && $overrideImages !== [] ? $overrideImages : $this->productImages($product, $sku);
+            if ($images === [] && $overrideImages !== []) {
+                $images = $overrideImages;
+            }
             if ($images === []) {
                 return ['success' => false, 'message' => 'No images on Image Master or Shopify for '.$sku.'. Add photos on Image Master, then publish again.'];
             }
@@ -198,7 +225,7 @@ class AliexpressListingPublishService
             ];
         }
         $subject = mb_substr($title, 0, 128);
-        $description = $this->resolveDescription($primary, $subject);
+        $description = $overrideDescription !== '' ? $overrideDescription : $this->resolveDescription($primary, $subject);
         $skuInfoList = [];
         foreach ($prepared as $row) {
             $skuRow = array_merge([
@@ -318,10 +345,28 @@ class AliexpressListingPublishService
      * @param  list<string>  $skus
      * @return list<string>
      */
-    private function filterPublishable(array $skus): array
+    private function filterPublishable(array $skus, bool $hasOverrideImages = false, bool $ignoreListed = false): array
     {
-        $metrics = AliexpressListingCounts::metricsByNormalizedSku();
-        $pricing = AliexpressListingCounts::pricingSkusByNormalizedSku();
+        $out = [];
+        foreach ($this->classifyPublishable($skus, $hasOverrideImages, $ignoreListed) as $sku => $reason) {
+            if ($reason === null) {
+                $out[] = $sku;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * SKU => null when publishable, otherwise the reason it is skipped.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string|null>
+     */
+    private function classifyPublishable(array $skus, bool $hasOverrideImages = false, bool $ignoreListed = false): array
+    {
+        $metrics = $ignoreListed ? [] : AliexpressListingCounts::metricsByNormalizedSku();
+        $pricing = $ignoreListed ? [] : AliexpressListingCounts::pricingSkusByNormalizedSku();
         $products = ProductMaster::query()
             ->whereNull('deleted_at')
             ->whereIn('sku', $skus)
@@ -331,21 +376,254 @@ class AliexpressListingPublishService
         $out = [];
         foreach ($skus as $sku) {
             $sku = trim($sku);
-            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+            if ($sku === '') {
+                continue;
+            }
+            if (stripos($sku, 'PARENT') !== false) {
+                $out[$sku] = 'parent row (publish the child SKUs)';
                 continue;
             }
             $resolved = AliexpressListingCounts::resolveListed($sku, $metrics, $pricing);
             if ($resolved['listed'] ?? false) {
+                $id = trim((string) ($resolved['product_id'] ?? ''));
+                $out[$sku] = 'already listed on AliExpress'.($id !== '' ? ' (product '.$id.')' : '')
+                    .' according to aliexpress_metric / pricing. If it is not in Seller Center, remove that row and publish again';
                 continue;
             }
             $product = $products->get(strtolower($sku));
-            if (! $product || $this->productImages($product, $sku) === []) {
+            if (! $product) {
+                $out[$sku] = 'not in Product Master';
                 continue;
             }
-            $out[] = $sku;
+            if (! $hasOverrideImages && $this->productImages($product, $sku) === []) {
+                $out[$sku] = 'no https image on Image Master / Shopify (add photos on Image Master or on the draft)';
+                continue;
+            }
+            $out[$sku] = null;
         }
 
         return $out;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    private function publishBlockReason(array $skus, bool $hasOverrideImages = false, bool $ignoreListed = false): string
+    {
+        $reasons = [];
+        foreach ($this->classifyPublishable($skus, $hasOverrideImages, $ignoreListed) as $sku => $reason) {
+            if ($reason !== null) {
+                $reasons[] = $sku.': '.$reason;
+            }
+        }
+
+        return $reasons !== []
+            ? 'AliExpress publish skipped — '.implode('; ', $reasons).'.'
+            : 'No Missing L child SKUs left to publish (already listed, NRL, or missing images).';
+    }
+
+    /**
+     * Ask AliExpress what a product id currently is.
+     *
+     * checked=false means the API could not answer (network, auth); found=false with checked=true
+     * means AliExpress no longer has the product. status is product_status_type as returned
+     * (onSelling / auditing / offline / editingRequired …), skus the SKU codes on the product.
+     *
+     * @return array{checked: bool, found: bool, status: string, skus: list<string>, message: string}
+     */
+    public function liveProductStatus(string $productId): array
+    {
+        $productId = trim($productId);
+        $none = ['checked' => false, 'found' => false, 'status' => '', 'skus' => [], 'message' => ''];
+        if ($productId === '' || ! ctype_digit($productId)) {
+            return $none + ['message' => 'Not an AliExpress product id.'];
+        }
+        if (! $this->api->isConfigured()) {
+            return ['message' => 'AliExpress API credentials missing.'] + $none;
+        }
+
+        $info = $this->api->getProductInfo($productId);
+        if (empty($info['success'])) {
+            $apiMessage = trim((string) ($info['message'] ?? ''));
+            $gone = (bool) preg_match('/not\s+(exist|found)|no\s+such|deleted|invalid\s+product|does\s+not\s+belong/i', $apiMessage);
+
+            return ['checked' => $gone, 'found' => false, 'status' => '', 'skus' => [], 'message' => $apiMessage];
+        }
+
+        $data = is_array($info['data'] ?? null) ? $info['data'] : [];
+        $status = trim((string) ($data['product_status_type'] ?? $data['productStatusType'] ?? $data['product_status'] ?? ''));
+        $skus = [];
+        foreach ($this->api->extractSkuRowsFromProductInfo($data, $productId) as $row) {
+            $code = trim((string) ($row['sku'] ?? ''));
+            if ($code !== '' && $code !== $productId && ! in_array($code, $skus, true)) {
+                $skus[] = $code;
+            }
+        }
+        $found = $data !== [] && ! in_array(strtolower($status), ['service_delete', 'deleted', 'delete'], true);
+
+        return ['checked' => true, 'found' => $found, 'status' => $status, 'skus' => $skus, 'message' => ''];
+    }
+
+    /**
+     * onSelling (On Sale tab) or auditing (Under Review) count as live; offline (Unavailable),
+     * editingRequired (Failed) and drafts do not.
+     */
+    public static function isSellableStatus(string $status): bool
+    {
+        return in_array(strtolower(trim($status)), ['onselling', 'on_selling', 'auditing', 'under_review'], true);
+    }
+
+    /**
+     * @param  list<string>  $productSkus
+     */
+    private function productSkusContain(array $productSkus, string $sku): bool
+    {
+        $wantNorm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $wantCompact = AliexpressListingCounts::compactSku($sku);
+        foreach ($productSkus as $code) {
+            if ($wantNorm !== '' && ShopifySku::normalizeSkuForShopifyLookup($code) === $wantNorm) {
+                return true;
+            }
+            if ($wantCompact !== '' && AliexpressListingCounts::compactSku($code) === $wantCompact) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Listing Manager publish of a SKU that aliexpress_metric / pricing already maps to a product id.
+     * When AliExpress still sells that product (or it can be put back on sale), push the draft's
+     * title / images / description onto it and report success so the draft moves to Active.
+     * Returns ['stale' => true] when AliExpress no longer has the product or the product does not
+     * carry this SKU (caller publishes it as new), null when the SKU is not mapped at all.
+     *
+     * @param  list<string>  $images
+     * @return array<string, mixed>|null
+     */
+    private function linkAlreadyListedDraft(string $sku, string $title, string $description, array $images): ?array
+    {
+        $productId = trim((string) (AliexpressListingCounts::resolveListed(
+            $sku,
+            AliexpressListingCounts::metricsByNormalizedSku(),
+            AliexpressListingCounts::pricingSkusByNormalizedSku()
+        )['product_id'] ?? ''));
+        if ($productId === '') {
+            return null;
+        }
+
+        $live = $this->liveProductStatus($productId);
+        if (! $live['checked']) {
+            return [
+                'success' => false,
+                'message' => $sku.' is mapped to AliExpress product '.$productId.' but AliExpress could not confirm it'
+                    .($live['message'] !== '' ? ': '.$live['message'] : '.').' Try again, or remove the aliexpress_metric row if the product was deleted.',
+            ];
+        }
+        if (! $live['found']) {
+            Log::info('AliExpress publish: mapped product no longer exists, publishing as new', ['sku' => $sku, 'product_id' => $productId, 'message' => $live['message']]);
+
+            return ['stale' => true];
+        }
+        if ($live['skus'] !== [] && ! $this->productSkusContain($live['skus'], $sku)) {
+            Log::info('AliExpress publish: mapped product does not carry this SKU, publishing as new', ['sku' => $sku, 'product_id' => $productId, 'product_skus' => $live['skus']]);
+
+            return ['stale' => true];
+        }
+
+        $status = $live['status'];
+        $broughtOnline = false;
+        if (! self::isSellableStatus($status)) {
+            $lower = strtolower($status);
+            if ($lower === 'offline' || $lower === '') {
+                $online = $this->api->onlineProducts([$productId]);
+                if ((int) ($online['online'] ?? 0) > 0) {
+                    $broughtOnline = true;
+                    $status = 'onSelling';
+                } else {
+                    $errors = array_filter(array_map('strval', is_array($online['errors'] ?? null) ? $online['errors'] : []));
+                    $why = $errors !== [] ? implode('; ', $errors) : trim((string) ($online['message'] ?? 'AliExpress rejected the request'));
+
+                    return [
+                        'success' => false,
+                        'message' => $sku.' is on AliExpress as product #'.$productId.' but it is offline (Unavailable tab) and could not be put back on sale: '.$why
+                            .'. Fix it in Seller Center, or delete that product there and publish again.',
+                    ];
+                }
+            } else {
+                return [
+                    'success' => false,
+                    'message' => $sku.' is on AliExpress as product #'.$productId.' with status "'.$status.'" (not on sale). '
+                        .'Fix it in Seller Center (Failed / Draft tab), or delete that product there and publish again.',
+                ];
+            }
+        }
+
+        $this->rememberLiveStatus($productId, $sku, $status);
+
+        $updated = [];
+        $warnings = [];
+        $record = static function (string $part, array $res) use (&$updated, &$warnings): void {
+            if (! empty($res['success'])) {
+                $updated[] = $part;
+            } else {
+                $warnings[] = $part.': '.trim((string) ($res['message'] ?? 'update failed'));
+            }
+        };
+        if ($title !== '') {
+            $record('title', $this->api->updateTitle($productId, mb_substr($title, 0, 128)));
+        }
+        if ($images !== []) {
+            $record('images', $this->api->updateImages($productId, $images, 'replace'));
+        }
+        if ($description !== '') {
+            $record('description', $this->api->updateProductDescription($productId, $description));
+        }
+        $this->forgetListingCaches();
+
+        $message = $broughtOnline
+            ? $sku.' was offline on AliExpress as product #'.$productId.' — put back on sale and draft linked to it.'
+            : $sku.' is already on AliExpress as product #'.$productId.($status !== '' ? ' ('.$status.')' : '').' — draft linked to it.';
+        if ($updated !== []) {
+            $message .= ' Updated '.implode(', ', $updated).' from the draft.';
+        }
+        if ($warnings !== []) {
+            $message .= ' Not updated — '.implode('; ', $warnings).'.';
+        }
+
+        return [
+            'success' => true,
+            'message' => $message,
+            'goods_id' => $productId,
+            'sku_id' => $productId,
+            'skus' => [$sku],
+        ];
+    }
+
+    /**
+     * @param  mixed  $images
+     * @return list<string>
+     */
+    private function cleanOverrideImages(mixed $images): array
+    {
+        if (! is_array($images)) {
+            return [];
+        }
+        $out = [];
+        foreach ($images as $raw) {
+            $raw = trim((string) $raw);
+            if ($raw === '' || preg_match('#^[a-z][a-z0-9+.-]*:#i', $raw) && ! preg_match('#^https?://#i', $raw)) {
+                continue; // data:, blob:, file: … cannot be fetched by AliExpress
+            }
+            $url = $this->absoluteImageUrl($raw);
+            if ($url === '' || ! preg_match('#^https?://#i', $url) || in_array($url, $out, true)) {
+                continue;
+            }
+            $out[] = $url;
+        }
+
+        return array_slice($out, 0, 6);
     }
 
     /**
@@ -1384,6 +1662,26 @@ class AliexpressListingPublishService
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+    }
+
+    /**
+     * Store the status AliExpress just reported so grid counts stop trusting a stale sync row.
+     */
+    private function rememberLiveStatus(string $productId, string $sku, string $status): void
+    {
+        if ($productId === '' || $status === '' || ! Schema::hasTable('aliexpress_metric') || ! Schema::hasColumn('aliexpress_metric', 'listing_status')) {
+            return;
+        }
+        try {
+            AliexpressMetric::query()
+                ->where('product_id', $productId)
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))]);
+                })
+                ->update(['listing_status' => $status]);
+        } catch (\Throwable $e) {
+            Log::warning('AliExpress live status persist failed', ['sku' => $sku, 'product_id' => $productId, 'error' => $e->getMessage()]);
         }
     }
 
