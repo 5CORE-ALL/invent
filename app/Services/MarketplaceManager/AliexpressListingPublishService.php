@@ -28,7 +28,7 @@ class AliexpressListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null, array $overrides = []): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -42,14 +42,23 @@ class AliexpressListingPublishService
             ];
         }
 
+        // Listing Manager drafts carry their own title / price / images; those win over Product Master.
+        $overrideImages = $this->cleanOverrideImages($overrides['images'] ?? []);
+        $overrideTitle = trim((string) ($overrides['title'] ?? ''));
+        $overrideDescription = trim((string) ($overrides['description'] ?? ''));
+        $overridePrice = isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0
+            ? round((float) $overrides['price'], 2)
+            : null;
+        $seedSku = $skus[0];
+
         $publishSkus = $expandSiblings
             ? $this->expandToPublishableSiblings($skus)
-            : $this->filterPublishable($skus);
+            : $this->filterPublishable($skus, $overrideImages !== []);
 
         if ($publishSkus === []) {
             return [
                 'success' => false,
-                'message' => 'No Missing L child SKUs left to publish (already listed, NRL, or missing images).',
+                'message' => $this->publishBlockReason($skus, $overrideImages !== []),
             ];
         }
 
@@ -60,7 +69,7 @@ class AliexpressListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryId, $categoryName, $weightLb, $weightKg);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryId, $categoryName, $weightLb, $weightKg, strcasecmp($sku, $seedSku) === 0 ? $overrides : []);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -90,7 +99,7 @@ class AliexpressListingPublishService
             return ['success' => false, 'message' => 'SKU not found in product master.'];
         }
 
-        $title = $this->resolveTitle($primary, $primarySku);
+        $title = $overrideTitle !== '' ? $overrideTitle : $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
             return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
         }
@@ -102,14 +111,18 @@ class AliexpressListingPublishService
             if (! $product) {
                 return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
             }
-            $price = $this->resolvePrice($sku, $product);
+            $isSeed = strcasecmp($sku, $seedSku) === 0;
+            $price = $isSeed && $overridePrice !== null ? $overridePrice : $this->resolvePrice($sku, $product);
             if ($price === null || $price <= 0) {
                 return [
                     'success' => false,
                     'message' => 'No price found for '.$sku.'. Set Shopify price or AliExpress Std Prc.',
                 ];
             }
-            $images = $this->productImages($product, $sku);
+            $images = $isSeed && $overrideImages !== [] ? $overrideImages : $this->productImages($product, $sku);
+            if ($images === [] && $overrideImages !== []) {
+                $images = $overrideImages;
+            }
             if ($images === []) {
                 return ['success' => false, 'message' => 'No images on Image Master or Shopify for '.$sku.'. Add photos on Image Master, then publish again.'];
             }
@@ -198,7 +211,7 @@ class AliexpressListingPublishService
             ];
         }
         $subject = mb_substr($title, 0, 128);
-        $description = $this->resolveDescription($primary, $subject);
+        $description = $overrideDescription !== '' ? $overrideDescription : $this->resolveDescription($primary, $subject);
         $skuInfoList = [];
         foreach ($prepared as $row) {
             $skuRow = array_merge([
@@ -318,7 +331,25 @@ class AliexpressListingPublishService
      * @param  list<string>  $skus
      * @return list<string>
      */
-    private function filterPublishable(array $skus): array
+    private function filterPublishable(array $skus, bool $hasOverrideImages = false): array
+    {
+        $out = [];
+        foreach ($this->classifyPublishable($skus, $hasOverrideImages) as $sku => $reason) {
+            if ($reason === null) {
+                $out[] = $sku;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * SKU => null when publishable, otherwise the reason it is skipped.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string|null>
+     */
+    private function classifyPublishable(array $skus, bool $hasOverrideImages = false): array
     {
         $metrics = AliexpressListingCounts::metricsByNormalizedSku();
         $pricing = AliexpressListingCounts::pricingSkusByNormalizedSku();
@@ -331,21 +362,75 @@ class AliexpressListingPublishService
         $out = [];
         foreach ($skus as $sku) {
             $sku = trim($sku);
-            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+            if ($sku === '') {
+                continue;
+            }
+            if (stripos($sku, 'PARENT') !== false) {
+                $out[$sku] = 'parent row (publish the child SKUs)';
                 continue;
             }
             $resolved = AliexpressListingCounts::resolveListed($sku, $metrics, $pricing);
             if ($resolved['listed'] ?? false) {
+                $id = trim((string) ($resolved['product_id'] ?? ''));
+                $out[$sku] = 'already listed on AliExpress'.($id !== '' ? ' (product '.$id.')' : '')
+                    .' according to aliexpress_metric / pricing. If it is not in Seller Center, remove that row and publish again';
                 continue;
             }
             $product = $products->get(strtolower($sku));
-            if (! $product || $this->productImages($product, $sku) === []) {
+            if (! $product) {
+                $out[$sku] = 'not in Product Master';
                 continue;
             }
-            $out[] = $sku;
+            if (! $hasOverrideImages && $this->productImages($product, $sku) === []) {
+                $out[$sku] = 'no https image on Image Master / Shopify (add photos on Image Master or on the draft)';
+                continue;
+            }
+            $out[$sku] = null;
         }
 
         return $out;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    private function publishBlockReason(array $skus, bool $hasOverrideImages = false): string
+    {
+        $reasons = [];
+        foreach ($this->classifyPublishable($skus, $hasOverrideImages) as $sku => $reason) {
+            if ($reason !== null) {
+                $reasons[] = $sku.': '.$reason;
+            }
+        }
+
+        return $reasons !== []
+            ? 'AliExpress publish skipped — '.implode('; ', $reasons).'.'
+            : 'No Missing L child SKUs left to publish (already listed, NRL, or missing images).';
+    }
+
+    /**
+     * @param  mixed  $images
+     * @return list<string>
+     */
+    private function cleanOverrideImages(mixed $images): array
+    {
+        if (! is_array($images)) {
+            return [];
+        }
+        $out = [];
+        foreach ($images as $raw) {
+            $raw = trim((string) $raw);
+            if ($raw === '' || preg_match('#^[a-z][a-z0-9+.-]*:#i', $raw) && ! preg_match('#^https?://#i', $raw)) {
+                continue; // data:, blob:, file: … cannot be fetched by AliExpress
+            }
+            $url = $this->absoluteImageUrl($raw);
+            if ($url === '' || ! preg_match('#^https?://#i', $url) || in_array($url, $out, true)) {
+                continue;
+            }
+            $out[] = $url;
+        }
+
+        return array_slice($out, 0, 6);
     }
 
     /**
