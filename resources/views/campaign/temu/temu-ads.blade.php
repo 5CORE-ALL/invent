@@ -731,7 +731,7 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-2">
                         <strong>Clicks</strong> uses the Clicks from/to columns (period clicks).
-                        <strong>Target ROAS</strong> is the clicks slab, then <strong>Add to ROAS</strong> from the matching Dil slab.
+                        <strong>Target ROAS</strong> fills the T ROAS column from the matching clicks slab.
                         <strong>Push ROAS</strong> sends that T ROAS to Temu for existing ads via <code>temu.searchrec.ad.modify</code> (status 5).
                         Leave To empty for that value and above. First matching range wins.
                     </p>
@@ -748,33 +748,12 @@
                             <tbody id="roas-rule-slabs-tbody"></tbody>
                         </table>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="roas-rule-slab-add-btn">
-                        <i class="fa fa-plus"></i> Add slab
-                    </button>
-                    <div class="fw-semibold small mt-3 mb-1">Dil conditions</div>
-                    <p class="small text-muted mb-2">
-                        Dil% = Ovl30 ÷ Inv × 100. <strong>Add to ROAS</strong> is added to the clicks slab’s Target ROAS.
-                        Inventory 0 has no Dil, so nothing is added. First matching range wins. Leave To empty for that value and above.
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-2">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Dil from</th>
-                                    <th>Dil to</th>
-                                    <th>Add to ROAS</th>
-                                    <th style="width:70px;"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="roas-rule-dil-tbody"></tbody>
-                        </table>
-                    </div>
                     <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="roas-rule-dil-add-btn">
-                            <i class="fa fa-plus"></i> Add Dil slab
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="roas-rule-slab-add-btn">
+                            <i class="fa fa-plus"></i> Add slab
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="roas-rule-push-btn"
-                            title="Push Target ROAS (clicks slab plus Dil add) to Temu for existing ads">
+                            title="Push Target ROAS from each clicks slab to Temu for existing ads">
                             <i class="fa fa-cloud-upload"></i> Push ROAS
                         </button>
                     </div>
@@ -1022,17 +1001,16 @@
                 return Number(v).toFixed(1) + '%';
             };
             function targetRoasValue(row) {
-                if (window.TemuAdsColorRules && typeof TemuAdsColorRules.targetRoasForRow === 'function') {
-                    return TemuAdsColorRules.targetRoasForRow(row);
-                }
-                if (window.TemuAdsColorRules && typeof TemuAdsColorRules.targetRoasForClicks === 'function') {
-                    return TemuAdsColorRules.targetRoasForClicks(row && row.clicks);
+                if (window.TemuAdsColorRules && typeof TemuAdsColorRules.targetRoasForSpend === 'function') {
+                    return TemuAdsColorRules.targetRoasForClicks
+                        ? TemuAdsColorRules.targetRoasForClicks(row && row.clicks)
+                        : TemuAdsColorRules.targetRoasForSpend(row && row.clicks);
                 }
                 return 8;
             }
             const tRoasFmt = (cell) => {
                 const el = cell.getElement && cell.getElement();
-                if (el) el.title = 'Target ROAS = clicks slab + Dil add (Ovl30 ÷ Inv × 100)';
+                if (el) el.title = 'Target ROAS';
                 const row = cell.getRow ? cell.getRow().getData() : {};
                 const n = Number(targetRoasValue(row));
                 if (!isFinite(n)) return '';
@@ -2342,7 +2320,7 @@
                         width: 68,
                         minWidth: 60,
                         hozAlign: 'center',
-                        headerTooltip: 'Target ROAS = clicks slab + Dil add. Dil% = Ovl30 ÷ Inv × 100.',
+                        headerTooltip: 'Target ROAS',
                         formatter: tRoasFmt,
                         sorter: function (a, b, aRow, bRow) {
                             return Number(targetRoasValue(aRow && aRow.getData())) - Number(targetRoasValue(bRow && bRow.getData()));
@@ -2458,10 +2436,7 @@
                                 renderPauseRunSlabs();
                                 syncPauseRunInvZeroCheckbox();
                             }
-                            if (!document.activeElement || !document.activeElement.closest('#roas-rule-slabs-tbody, #roas-rule-dil-tbody')) {
-                                renderRoasRuleSlabs();
-                                renderDilSlabs();
-                            }
+                            renderRoasRuleSlabs();
                     table.redraw(true);
                             if (typeof applyPauseRunSlabsToTable === 'function') applyPauseRunSlabsToTable();
                             else if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
@@ -2700,57 +2675,15 @@
                     : slabs;
             }
 
-            function renderDilSlabs(slabs) {
-                const tbody = document.getElementById('roas-rule-dil-tbody');
-                if (!tbody) return;
-                const list = Array.isArray(slabs)
-                    ? slabs
-                    : (window.TemuAdsColorRules && TemuAdsColorRules.getRoasRuleDilSlabs
-                        ? TemuAdsColorRules.getRoasRuleDilSlabs()
-                        : []);
-                tbody.innerHTML = '';
-                list.forEach(function (slab) {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML =
-                        '<td><input type="number" class="form-control form-control-sm rr-dil-min" min="0" step="1" placeholder="from" value="' + roasRuleNumAttr(slab.dil_min) + '"></td>' +
-                        '<td><input type="number" class="form-control form-control-sm rr-dil-max" min="0" step="1" placeholder="and above" value="' + roasRuleNumAttr(slab.dil_max) + '"></td>' +
-                        '<td><input type="number" class="form-control form-control-sm rr-dil-add" step="0.1" placeholder="0" title="Added to the clicks slab Target ROAS" value="' + roasRuleNumAttr(slab.add_roas != null ? slab.add_roas : 0) + '"></td>' +
-                        '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger rr-dil-remove" title="Remove">&times;</button></td>';
-                    tbody.appendChild(tr);
-                });
-            }
-
-            function collectDilSlabs() {
-                const rows = document.querySelectorAll('#roas-rule-dil-tbody tr');
-                const slabs = [];
-                rows.forEach(function (tr) {
-                    const dilMin = tr.querySelector('.rr-dil-min');
-                    const dilMax = tr.querySelector('.rr-dil-max');
-                    const addRoas = tr.querySelector('.rr-dil-add');
-                    slabs.push({
-                        dil_min: dilMin ? dilMin.value : '',
-                        dil_max: dilMax ? dilMax.value : '',
-                        add_roas: addRoas ? addRoas.value : '',
-                    });
-                });
-                return window.TemuAdsColorRules && TemuAdsColorRules.normalizeDilSlabs
-                    ? TemuAdsColorRules.normalizeDilSlabs(slabs)
-                    : slabs;
-            }
-
             function saveRoasRuleFromModal() {
                 const slabs = collectRoasRuleSlabs();
-                const dilSlabs = collectDilSlabs();
-                if (window.TemuAdsColorRules && TemuAdsColorRules.setRoasRule) {
-                    TemuAdsColorRules.setRoasRule(slabs, dilSlabs, true);
-                } else if (window.TemuAdsColorRules && TemuAdsColorRules.setRoasRuleSlabs) {
+                if (window.TemuAdsColorRules && TemuAdsColorRules.setRoasRuleSlabs) {
                     TemuAdsColorRules.setRoasRuleSlabs(slabs, true);
                 }
-                return { slabs: slabs, dilSlabs: dilSlabs };
+                return slabs;
             }
 
             renderRoasRuleSlabs();
-            renderDilSlabs();
 
             const roasRuleTbody = document.getElementById('roas-rule-slabs-tbody');
             if (roasRuleTbody) {
@@ -2770,24 +2703,6 @@
                     const nextMin = last && last.clicks_max != null ? Number(last.clicks_max) + 1 : 0;
                     current.push({ clicks_min: nextMin, clicks_max: null, target_roas: 8 });
                     renderRoasRuleSlabs(current);
-                });
-            }
-            const dilTbody = document.getElementById('roas-rule-dil-tbody');
-            if (dilTbody) {
-                dilTbody.addEventListener('click', function (e) {
-                    const btn = e.target.closest('.rr-dil-remove');
-                    if (!btn) return;
-                    btn.closest('tr').remove();
-                });
-            }
-            const addDilSlabBtn = document.getElementById('roas-rule-dil-add-btn');
-            if (addDilSlabBtn) {
-                addDilSlabBtn.addEventListener('click', function () {
-                    const current = collectDilSlabs();
-                    const last = current[current.length - 1];
-                    const nextMin = last && last.dil_max != null ? Number(last.dil_max) + 1 : 0;
-                    current.push({ dil_min: nextMin, dil_max: null, add_roas: 0 });
-                    renderDilSlabs(current);
                 });
             }
             document.getElementById('roas-rule-save-btn').addEventListener('click', function () {
@@ -2818,10 +2733,9 @@
                     const gid = rowGoodsId(row);
                     if (!gid || seen[gid]) return;
                     seen[gid] = true;
-                    const n = Number(targetRoasValue(row));
                     items.push({
                         goods_id: gid,
-                        roas: (isFinite(n) && n >= 0.1) ? Math.round(n * 10) / 10 : 0.1,
+                        roas: createRoasForGoods(gid, 8),
                     });
                 });
                 return { items: items, usingSelection: usingSelection };
@@ -2842,7 +2756,7 @@
                     (queued.usingSelection
                         ? 'Push Target ROAS to Temu for the ' + items.length + ' selected ads?'
                         : 'Push Target ROAS to Temu for all ' + items.length + ' visible ads?') +
-                    '\nEach ad uses T ROAS (clicks slab + Dil add) via temu.searchrec.ad.modify.'
+                    '\nEach ad uses T ROAS from its clicks slab via temu.searchrec.ad.modify.'
                 )) {
                     return;
                 }
@@ -2865,7 +2779,7 @@
                     }
                     try {
                         const res = window.TemuAdsColorRules && TemuAdsColorRules.pushRoasRule
-                            ? await TemuAdsColorRules.pushRoasRule(chunk, { slabs: slabs.slabs || slabs, dilSlabs: slabs.dilSlabs || [] })
+                            ? await TemuAdsColorRules.pushRoasRule(chunk, { slabs: slabs })
                             : { ok: false, data: { message: 'Push ROAS function is not available' } };
                         const data = res.data || {};
                         updated += (data.updated && data.updated.length) ? data.updated.length : 0;

@@ -23,12 +23,6 @@
         { clicks_min: 6, clicks_max: 9, target_roas: 10 },
         { clicks_min: 10, clicks_max: null, target_roas: 12 },
     ];
-    var DEFAULT_DIL_SLABS = [
-        { dil_min: 0, dil_max: 0, add_roas: 0 },
-        { dil_min: 1, dil_max: 24, add_roas: 0 },
-        { dil_min: 25, dil_max: 49, add_roas: 0 },
-        { dil_min: 50, dil_max: null, add_roas: 0 },
-    ];
     var ROAS_RULE_STYLES = {
         red: { color: '#a00211', background: '', weight: '700' },
         yellow: { color: '#111111', background: '#ffc107', weight: '700' },
@@ -172,72 +166,12 @@
         return out;
     }
 
-    function toAddRoas(v) {
-        if (v === null || v === undefined || v === '') return null;
-        var n = parseMoney(v);
-        if (!isFinite(n)) return null;
-        return Math.round(n * 100) / 100;
-    }
-
-    function toDilOrNull(v) {
-        if (v === null || v === undefined || v === '') return null;
-        var n = parseMoney(v);
-        if (!isFinite(n) || n < 0) return null;
-        return Math.round(n * 100) / 100;
-    }
-
-    function copyDefaultDilSlabs() {
-        return DEFAULT_DIL_SLABS.map(function (s) {
-            return { dil_min: s.dil_min, dil_max: s.dil_max, add_roas: s.add_roas };
-        });
-    }
-
-    function normalizeDilSlabs(raw) {
-        if (raw == null) return copyDefaultDilSlabs();
-        var list = raw;
-        if (typeof raw === 'string') {
-            try { list = JSON.parse(raw); } catch (e) { list = null; }
-        }
-        if (!Array.isArray(list)) return copyDefaultDilSlabs();
-        var out = [];
-        list.forEach(function (item) {
-            if (!item || typeof item !== 'object') return;
-            var dilMin = toDilOrNull(item.dil_min != null ? item.dil_min : item.min);
-            var dilMax = toDilOrNull(item.dil_max != null ? item.dil_max : item.max);
-            var addRoas = toAddRoas(item.add_roas);
-            if (dilMin === null && dilMax === null && addRoas === null) return;
-            if (addRoas === null) addRoas = 0;
-            if (dilMax !== null && dilMin !== null && dilMax < dilMin) dilMax = dilMin;
-            out.push({ dil_min: dilMin, dil_max: dilMax, add_roas: addRoas });
-        });
-        return out;
-    }
-
-    function readStoredRoasRule() {
-        var raw = null;
-        try {
-            raw = JSON.parse(global.localStorage && localStorage.getItem(ROAS_RULE_STORAGE_KEY));
-        } catch (e) {
-            raw = null;
-        }
-        if (raw && !Array.isArray(raw) && typeof raw === 'object') {
-            return {
-                slabs: normalizeRoasRuleSlabs(raw.slabs),
-                dil: normalizeDilSlabs(raw.dil),
-            };
-        }
-        return {
-            slabs: normalizeRoasRuleSlabs(raw),
-            dil: normalizeDilSlabs(null),
-        };
-    }
-
     function loadLocalRoasRuleSlabs() {
-        return readStoredRoasRule().slabs;
-    }
-
-    function loadLocalDilSlabs() {
-        return readStoredRoasRule().dil;
+        try {
+            return normalizeRoasRuleSlabs(global.localStorage && localStorage.getItem(ROAS_RULE_STORAGE_KEY));
+        } catch (e) {
+            return normalizeRoasRuleSlabs(null);
+        }
     }
 
     function inMoneyRange(n, min, max) {
@@ -401,7 +335,6 @@
         pauseRunSlabs: loadLocalSlabs(),
         pauseRunInvZero: loadInvZeroPause(),
         roasRuleSlabs: loadLocalRoasRuleSlabs(),
-        roasRuleDilSlabs: loadLocalDilSlabs(),
         autoPauseCron: true,
     };
 
@@ -420,7 +353,6 @@
         rules.pauseRunSlabs = loadLocalSlabs();
         rules.pauseRunInvZero = loadInvZeroPause();
         rules.roasRuleSlabs = loadLocalRoasRuleSlabs();
-        rules.roasRuleDilSlabs = loadLocalDilSlabs();
     }
 
     function configureChannel(prefix) {
@@ -434,10 +366,7 @@
             localStorage.setItem(ROAS_STORAGE_KEY, String(rules.targetRoasBidding));
             localStorage.setItem(SLABS_STORAGE_KEY, JSON.stringify(rules.pauseRunSlabs));
             localStorage.setItem(INV_ZERO_STORAGE_KEY, rules.pauseRunInvZero ? '1' : '0');
-            localStorage.setItem(ROAS_RULE_STORAGE_KEY, JSON.stringify({
-                slabs: rules.roasRuleSlabs,
-                dil: rules.roasRuleDilSlabs,
-            }));
+            localStorage.setItem(ROAS_RULE_STORAGE_KEY, JSON.stringify(rules.roasRuleSlabs));
         } catch (e) { /* ignore */ }
     }
 
@@ -515,15 +444,6 @@
         saveRoasRuleSlabsRemote();
     }
 
-    function setRoasRule(slabs, dilSlabs, doSaveRemote) {
-        rules.roasRuleSlabs = normalizeRoasRuleSlabs(slabs);
-        rules.roasRuleDilSlabs = normalizeDilSlabs(dilSlabs);
-        persistLocal();
-        notify();
-        if (doSaveRemote === false) return;
-        saveRoasRuleSlabsRemote();
-    }
-
     function saveRoasRuleSlabsRemote() {
         var url = rules.saveUrl;
         if (!url) return;
@@ -537,7 +457,6 @@
             },
             body: JSON.stringify({
                 roas_rule_slabs: rules.roasRuleSlabs,
-                roas_rule_dil_slabs: rules.roasRuleDilSlabs,
             }),
         }).catch(function () { /* keep local value */ });
     }
@@ -597,37 +516,7 @@
             var stored = parseRoas(row.t_roas);
             if (isFinite(stored)) return stored;
         }
-        return targetRoasForRow(row);
-    }
-
-    function rowDilPercent(row) {
-        if (!row) return null;
-        var inv = parseFloat(row.inv);
-        var sold = parseFloat(row.ovl30);
-        if (!isFinite(inv) || inv <= 0) return null;
-        if (!isFinite(sold) || sold < 0) sold = 0;
-        return Math.round((sold / inv) * 100);
-    }
-
-    function matchDilSlab(dil) {
-        var n = parseFloat(dil);
-        if (!isFinite(n)) return null;
-        var slabs = Array.isArray(rules.roasRuleDilSlabs) ? rules.roasRuleDilSlabs : [];
-        for (var i = 0; i < slabs.length; i++) {
-            var s = slabs[i];
-            if (inMoneyRange(n, s.dil_min, s.dil_max)) return s;
-        }
-        return null;
-    }
-
-    function targetRoasForRow(row) {
-        var base = targetRoasForClicks(rowClicksForTRoas(row));
-        var dil = rowDilPercent(row);
-        if (dil === null) return base;
-        var slab = matchDilSlab(dil);
-        if (!slab || slab.add_roas == null) return base;
-        var n = Math.round((Number(base) + Number(slab.add_roas)) * 100) / 100;
-        return n < 0.1 ? 0.1 : n;
+        return targetRoasForClicks(rowClicksForTRoas(row));
     }
 
     function stopAcosPercent(targetRoas, row) {
@@ -991,8 +880,6 @@
             items: Array.isArray(items) ? items : [],
         };
         if (opts.slabs) body.roas_rule_slabs = opts.slabs;
-        if (opts.dilSlabs) body.roas_rule_dil_slabs = opts.dilSlabs;
-        else if (opts.slabs) body.roas_rule_dil_slabs = rules.roasRuleDilSlabs;
         return fetch(url, {
             method: 'POST',
             headers: {
@@ -1028,12 +915,8 @@
                 if (data.pause_run_inv_zero != null) {
                     setPauseRunInvZero(!!data.pause_run_inv_zero, false);
                 }
-                if (data.roas_rule_slabs != null || data.roas_rule_dil_slabs != null) {
-                    setRoasRule(
-                        data.roas_rule_slabs != null ? data.roas_rule_slabs : rules.roasRuleSlabs,
-                        data.roas_rule_dil_slabs != null ? data.roas_rule_dil_slabs : rules.roasRuleDilSlabs,
-                        false
-                    );
+                if (data.roas_rule_slabs != null) {
+                    setRoasRuleSlabs(data.roas_rule_slabs, false);
                 }
                 if (data.auto_pause_cron != null) {
                     rules.autoPauseCron = !!data.auto_pause_cron;
@@ -1083,14 +966,10 @@
         DEFAULT_PAUSE_RUN_SLABS: DEFAULT_PAUSE_RUN_SLABS,
         getRoasRuleSlabs: function () { return normalizeRoasRuleSlabs(rules.roasRuleSlabs); },
         setRoasRuleSlabs: setRoasRuleSlabs,
-        getRoasRuleDilSlabs: function () { return normalizeDilSlabs(rules.roasRuleDilSlabs); },
-        setRoasRule: setRoasRule,
         normalizeRoasRuleSlabs: normalizeRoasRuleSlabs,
-        normalizeDilSlabs: normalizeDilSlabs,
         DEFAULT_ROAS_RULE_SLABS: DEFAULT_ROAS_RULE_SLABS,
         colorSpend1: colorSpend1,
         targetRoasForClicks: targetRoasForClicks,
-        targetRoasForRow: targetRoasForRow,
         targetRoasForSpend: targetRoasForSpend,
         colorRoasRange: colorRoasRange,
         colorSpendRoasAlert: colorSpendRoasAlert,

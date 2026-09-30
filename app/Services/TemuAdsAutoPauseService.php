@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
-use App\Support\CpMasterDil;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -65,139 +64,18 @@ class TemuAdsAutoPauseService
         return $this->targetRoasBidding();
     }
 
-    public function targetRoasForClicksAndDil(int $clicks, ?float $dil): float
-    {
-        $base = $this->targetRoasForClicks($clicks);
-        if ($dil === null) {
-            return $base;
-        }
-        foreach ($this->dilSlabs() as $slab) {
-            $min = $slab['dil_min'];
-            $max = $slab['dil_max'];
-            if ($min === null && $max === null) {
-                continue;
-            }
-            if ($min !== null && $dil < $min) {
-                continue;
-            }
-            if ($max !== null && $dil > $max) {
-                continue;
-            }
-            $n = round($base + (float) $slab['add_roas'], 2);
-
-            return $n < 0.1 ? 0.1 : $n;
-        }
-
-        return $base;
-    }
-
     /**
      * @return array<int, array{clicks_min: int|null, clicks_max: int|null, target_roas: float|null}>
      */
     public function roasRuleSlabs(): array
     {
-        $decoded = $this->decodeStoredRoasRule();
-        $raw = array_key_exists('slabs', $decoded) || array_key_exists('dil', $decoded)
-            ? ($decoded['slabs'] ?? [])
-            : $decoded;
-        $slabs = $this->normalizeRoasRuleSlabs($raw);
-
-        return $slabs !== [] ? $slabs : $this->defaultRoasRuleSlabs();
-    }
-
-    /**
-     * @return array<int, array{dil_min: float|null, dil_max: float|null, add_roas: float}>
-     */
-    public function dilSlabs(): array
-    {
-        $decoded = $this->decodeStoredRoasRule();
-        if (! array_key_exists('dil', $decoded)) {
-            return $this->defaultDilSlabs();
-        }
-
-        return $this->normalizeDilSlabs(is_array($decoded['dil']) ? $decoded['dil'] : []);
-    }
-
-    /**
-     * @return array<mixed>
-     */
-    private function decodeStoredRoasRule(): array
-    {
         $row = ChannelTabulatorColumnSetting::query()
             ->where('channel_name', 'temu_ads_roas_rule_slabs')
             ->first();
         $raw = $row && is_array($row->column_order) ? $row->column_order : [];
-        if (is_string($raw)) {
-            $decoded = json_decode($raw, true);
-            $raw = is_array($decoded) ? $decoded : [];
-        }
-        if (! is_array($raw)) {
-            return [];
-        }
-        if (count($raw) === 1 && is_string($raw[0] ?? null)) {
-            $decoded = json_decode((string) $raw[0], true);
-            $raw = is_array($decoded) ? $decoded : [];
-        }
+        $slabs = $this->normalizeRoasRuleSlabs($raw);
 
-        return $raw;
-    }
-
-    /**
-     * @return array<int, array{dil_min: float|null, dil_max: float|null, add_roas: float}>
-     */
-    private function defaultDilSlabs(): array
-    {
-        return [
-            ['dil_min' => 0.0, 'dil_max' => 0.0, 'add_roas' => 0.0],
-            ['dil_min' => 1.0, 'dil_max' => 24.0, 'add_roas' => 0.0],
-            ['dil_min' => 25.0, 'dil_max' => 49.0, 'add_roas' => 0.0],
-            ['dil_min' => 50.0, 'dil_max' => null, 'add_roas' => 0.0],
-        ];
-    }
-
-    /**
-     * @param  mixed  $raw
-     * @return array<int, array{dil_min: float|null, dil_max: float|null, add_roas: float}>
-     */
-    private function normalizeDilSlabs($raw): array
-    {
-        if (! is_array($raw)) {
-            return [];
-        }
-        $out = [];
-        foreach ($raw as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $min = $this->dilBound($item['dil_min'] ?? $item['min'] ?? null);
-            $max = $this->dilBound($item['dil_max'] ?? $item['max'] ?? null);
-            $add = null;
-            if (isset($item['add_roas']) && $item['add_roas'] !== '' && is_numeric($item['add_roas'])) {
-                $add = round((float) $item['add_roas'], 2);
-            }
-            if ($min === null && $max === null && $add === null) {
-                continue;
-            }
-            if ($add === null) {
-                $add = 0.0;
-            }
-            if ($max !== null && $min !== null && $max < $min) {
-                $max = $min;
-            }
-            $out[] = ['dil_min' => $min, 'dil_max' => $max, 'add_roas' => $add];
-        }
-
-        return $out;
-    }
-
-    private function dilBound(mixed $v): ?float
-    {
-        if ($v === null || $v === '' || ! is_numeric($v)) {
-            return null;
-        }
-        $n = round((float) $v, 2);
-
-        return $n < 0 ? null : $n;
+        return $slabs !== [] ? $slabs : $this->defaultRoasRuleSlabs();
     }
 
     /**
@@ -462,11 +340,10 @@ class TemuAdsAutoPauseService
             $roas = (float) ($roasRow->roas ?? 0);
             $spend = (float) ($roasRow->ad_spend ?? 0);
             $clicks = (int) ($roasRow->clicks ?? 0);
+            $tRoas = $this->targetRoasForClicks($clicks);
             $skuKey = ShopifySku::normalizeSkuForShopifyLookup((string) ($roasRow->sku ?? ''));
             $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
             $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
-            $sold = $shopify ? (float) ($shopify->quantity ?? $shopify->shopify_l30 ?? 0) : 0;
-            $tRoas = $this->targetRoasForClicksAndDil($clicks, CpMasterDil::percent($sold, $inv));
 
             $desired = $this->actionFromPauseRunSlabs($l7Clicks, $inv);
             if ($desired === 'run' && $status === 'Active') {

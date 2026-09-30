@@ -350,14 +350,14 @@ class Temu2AdsController extends Controller
             'roas_rule_slabs.*.roas_max' => 'nullable|numeric|min:0|max:1000',
             'roas_rule_slabs.*.target_roas' => 'nullable|numeric|min:-100|max:1000',
             'roas_rule_slabs.*.style' => 'nullable|in:red,green,pink,yellow',
-            'roas_rule_dil_slabs' => 'nullable|array',
-            'roas_rule_dil_slabs.*.dil_min' => 'nullable|numeric|min:0|max:100000',
-            'roas_rule_dil_slabs.*.dil_max' => 'nullable|numeric|min:0|max:100000',
-            'roas_rule_dil_slabs.*.add_roas' => 'nullable|numeric|min:-1000|max:1000',
         ]);
 
-        if ($request->has('roas_rule_slabs') || $request->has('roas_rule_dil_slabs')) {
-            $this->storeRoasRuleFromRequest($request);
+        if ($request->has('roas_rule_slabs')) {
+            $roasRuleSlabs = $this->normalizeRoasRuleSlabs($request->input('roas_rule_slabs'));
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => 'temu2_ads_roas_rule_slabs'],
+                ['column_order' => [json_encode($roasRuleSlabs)]]
+            );
         }
 
         @set_time_limit(180);
@@ -471,8 +471,7 @@ class Temu2AdsController extends Controller
             'target_roas_bidding' => $pause->targetRoasBidding(),
             'pause_run_slabs' => $this->pauseRunSlabs(),
             'pause_run_inv_zero' => $this->pauseRunInvZero(),
-            'roas_rule_slabs' => $this->roasRuleRecord()['slabs'],
-            'roas_rule_dil_slabs' => $this->roasRuleRecord()['dil'],
+            'roas_rule_slabs' => $this->roasRuleSlabs(),
             'auto_pause_cron' => $pause->cronEnabled(),
             'matching_active_ads' => 0,
         ]);
@@ -497,10 +496,6 @@ class Temu2AdsController extends Controller
             'roas_rule_slabs.*.roas_max' => 'nullable|numeric|min:0|max:1000',
             'roas_rule_slabs.*.target_roas' => 'nullable|numeric|min:-100|max:1000',
             'roas_rule_slabs.*.style' => 'nullable|in:red,green,pink,yellow',
-            'roas_rule_dil_slabs' => 'nullable|array',
-            'roas_rule_dil_slabs.*.dil_min' => 'nullable|numeric|min:0|max:100000',
-            'roas_rule_dil_slabs.*.dil_max' => 'nullable|numeric|min:0|max:100000',
-            'roas_rule_dil_slabs.*.add_roas' => 'nullable|numeric|min:-1000|max:1000',
         ]);
 
         $below = $request->has('l7_clicks_red_below')
@@ -537,12 +532,14 @@ class Temu2AdsController extends Controller
             );
         }
 
-        $roasRule = $this->roasRuleRecord();
-        if ($request->has('roas_rule_slabs') || $request->has('roas_rule_dil_slabs')) {
-            $roasRule = $this->storeRoasRuleFromRequest($request);
+        $roasRuleSlabs = $this->roasRuleSlabs();
+        if ($request->has('roas_rule_slabs')) {
+            $roasRuleSlabs = $this->normalizeRoasRuleSlabs($request->input('roas_rule_slabs'));
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => 'temu2_ads_roas_rule_slabs'],
+                ['column_order' => [json_encode($roasRuleSlabs)]]
+            );
         }
-        $roasRuleSlabs = $roasRule['slabs'];
-        $roasRuleDilSlabs = $roasRule['dil'];
 
         return response()->json([
             'success' => true,
@@ -551,7 +548,6 @@ class Temu2AdsController extends Controller
             'pause_run_slabs' => $slabs,
             'pause_run_inv_zero' => $invZero,
             'roas_rule_slabs' => $roasRuleSlabs,
-            'roas_rule_dil_slabs' => $roasRuleDilSlabs,
             'auto_pause_cron' => $pause->cronEnabled(),
             'matching_active_ads' => 0,
         ]);
@@ -635,133 +631,14 @@ class Temu2AdsController extends Controller
     /**
      * @return array<int, array{clicks_min: int|null, clicks_max: int|null, target_roas: float|null}>
      */
-    /**
-     * @return array{slabs: array<int, array{clicks_min: int|null, clicks_max: int|null, target_roas: float|null}>, dil: array<int, array{dil_min: float|null, dil_max: float|null, add_roas: float}>}
-     */
-    private function roasRuleRecord(): array
+    private function roasRuleSlabs(): array
     {
         $row = ChannelTabulatorColumnSetting::query()
             ->where('channel_name', 'temu2_ads_roas_rule_slabs')
             ->first();
         $raw = $row && is_array($row->column_order) ? $row->column_order : [];
-        $decoded = $this->decodeRoasRuleStored($raw);
-        $hasWrapper = array_key_exists('slabs', $decoded) || array_key_exists('dil', $decoded);
-        if ($hasWrapper) {
-            $slabs = $this->normalizeRoasRuleSlabs($decoded['slabs'] ?? []);
-            $dil = array_key_exists('dil', $decoded)
-                ? $this->normalizeDilSlabs(is_array($decoded['dil']) ? $decoded['dil'] : [])
-                : $this->defaultDilSlabs();
-        } else {
-            $slabs = $this->normalizeRoasRuleSlabs($decoded);
-            $dil = $this->defaultDilSlabs();
-        }
 
-        return [
-            'slabs' => $slabs !== [] ? $slabs : $this->defaultRoasRuleSlabs(),
-            'dil' => $dil,
-        ];
-    }
-
-    /**
-     * @return array{slabs: array<int, array{clicks_min: int|null, clicks_max: int|null, target_roas: float|null}>, dil: array<int, array{dil_min: float|null, dil_max: float|null, add_roas: float}>}
-     */
-    private function storeRoasRuleFromRequest(Request $request): array
-    {
-        $current = $this->roasRuleRecord();
-        $slabs = $request->has('roas_rule_slabs')
-            ? $this->normalizeRoasRuleSlabs($request->input('roas_rule_slabs'))
-            : $current['slabs'];
-        if ($slabs === []) {
-            $slabs = $current['slabs'] !== [] ? $current['slabs'] : $this->defaultRoasRuleSlabs();
-        }
-        $dil = $request->has('roas_rule_dil_slabs')
-            ? $this->normalizeDilSlabs($request->input('roas_rule_dil_slabs'))
-            : $current['dil'];
-        ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => 'temu2_ads_roas_rule_slabs'],
-            ['column_order' => [json_encode(['slabs' => $slabs, 'dil' => $dil])]]
-        );
-
-        return ['slabs' => $slabs, 'dil' => $dil];
-    }
-
-    /**
-     * @param  mixed  $raw
-     * @return array<mixed>
-     */
-    private function decodeRoasRuleStored($raw): array
-    {
-        if (is_string($raw)) {
-            $decoded = json_decode($raw, true);
-            $raw = is_array($decoded) ? $decoded : [];
-        }
-        if (! is_array($raw)) {
-            return [];
-        }
-        if (count($raw) === 1 && is_string($raw[0] ?? null)) {
-            $decoded = json_decode((string) $raw[0], true);
-            $raw = is_array($decoded) ? $decoded : [];
-        }
-
-        return $raw;
-    }
-
-    /**
-     * @return array<int, array{dil_min: float|null, dil_max: float|null, add_roas: float}>
-     */
-    private function defaultDilSlabs(): array
-    {
-        return [
-            ['dil_min' => 0.0, 'dil_max' => 0.0, 'add_roas' => 0.0],
-            ['dil_min' => 1.0, 'dil_max' => 24.0, 'add_roas' => 0.0],
-            ['dil_min' => 25.0, 'dil_max' => 49.0, 'add_roas' => 0.0],
-            ['dil_min' => 50.0, 'dil_max' => null, 'add_roas' => 0.0],
-        ];
-    }
-
-    /**
-     * @param  mixed  $raw
-     * @return array<int, array{dil_min: float|null, dil_max: float|null, add_roas: float}>
-     */
-    private function normalizeDilSlabs($raw): array
-    {
-        if (! is_array($raw)) {
-            return [];
-        }
-        $out = [];
-        foreach ($raw as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $min = $this->dilBound($item['dil_min'] ?? $item['min'] ?? null);
-            $max = $this->dilBound($item['dil_max'] ?? $item['max'] ?? null);
-            $add = null;
-            if (isset($item['add_roas']) && $item['add_roas'] !== '' && is_numeric($item['add_roas'])) {
-                $add = round((float) $item['add_roas'], 2);
-            }
-            if ($min === null && $max === null && $add === null) {
-                continue;
-            }
-            if ($add === null) {
-                $add = 0.0;
-            }
-            if ($max !== null && $min !== null && $max < $min) {
-                $max = $min;
-            }
-            $out[] = ['dil_min' => $min, 'dil_max' => $max, 'add_roas' => $add];
-        }
-
-        return $out;
-    }
-
-    private function dilBound(mixed $v): ?float
-    {
-        if ($v === null || $v === '' || ! is_numeric($v)) {
-            return null;
-        }
-        $n = round((float) $v, 2);
-
-        return $n < 0 ? null : $n;
+        return $this->normalizeRoasRuleSlabs($raw) ?: $this->defaultRoasRuleSlabs();
     }
 
     /**
