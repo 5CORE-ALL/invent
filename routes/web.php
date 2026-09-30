@@ -327,6 +327,7 @@ use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Http\Controllers\Sales\AmazonSalesDataTestController;
 use App\Http\Controllers\Sales\BestBuySalesController;
 use App\Http\Controllers\Sales\DobaSalesController;
+use App\Http\Controllers\Sales\AlibabaSalesController;
 use App\Http\Controllers\Sales\EbaySalesController;
 use App\Http\Controllers\Sales\NeweggSalesController;
 use App\Http\Controllers\Sales\MercariController;
@@ -3770,6 +3771,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);
     Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     Route::get('/ebay/sku-sales-data', [EbaySalesController::class, 'getSkuSalesData'])->name('ebay.sku.sales.data');
+
+    Route::get('/alibaba/daily-sales-data', [AlibabaSalesController::class, 'getData'])->name('alibaba.daily.sales.data');
+    Route::get('/alibaba/daily-sales', [AlibabaSalesController::class, 'index'])->name('alibaba.daily.sales');
+    Route::get('/alibaba-daily-sales-column-visibility', [AlibabaSalesController::class, 'getColumnVisibility']);
+    Route::post('/alibaba-daily-sales-column-visibility', [AlibabaSalesController::class, 'saveColumnVisibility']);
 
     // Newegg Sales Routes
     Route::get('/newegg/daily-sales-data', [NeweggSalesController::class, 'getData'])->name('newegg.daily.sales.data');

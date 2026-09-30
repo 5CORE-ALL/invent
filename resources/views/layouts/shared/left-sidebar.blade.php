@@ -3122,6 +3122,8 @@
 
                         <li><a href="{{ url('aliexpress-tabulator') }}">Aliexpress Sales Data</a></li>
 
+                        <li><a href="{{ route('alibaba.daily.sales') }}">Alibaba Sales Data</a></li>
+
 
                         <li><a href="{{ url('shopify-b2c/daily-sales') }}">Shopify B2C Sales</a></li>
 

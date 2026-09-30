@@ -253,7 +253,6 @@ class AlibabaAuthService
     {
         $core = array_filter([
             'code' => $business['code'] ?? null,
-            'uuid' => isset($business['code']) ? '1' : null,
             'refresh_token' => $business['refresh_token'] ?? null,
         ], static fn ($value) => $value !== null && $value !== '');
 
