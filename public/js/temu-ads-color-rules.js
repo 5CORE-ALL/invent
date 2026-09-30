@@ -637,11 +637,19 @@
         return s === 'Active' || s === 'Inactive';
     }
 
+    function tRoasIsZero(row) {
+        var t = targetRoasForClicks(rowClicksForTRoas(row));
+        return !(t > 0);
+    }
+
     function computedPauseRunAction(row) {
         if (!rowHasLiveAd(row)) {
             return '';
         }
         if (rules.pauseRunInvZero && rowInv(row) <= 0) {
+            return 'pause';
+        }
+        if (tRoasIsZero(row)) {
             return 'pause';
         }
         return actionFromSlabs(row && row.clicks_l7 != null ? row.clicks_l7 : 0);
@@ -659,8 +667,9 @@
         }
         var action = pauseRunAction(row);
         var goodsId = String(row.goods_id || '');
+        var reason = tRoasIsZero(row) ? 'T ROAS is 0' : 'L7 Clicks';
         return '<button type="button" class="temu-pause-run-btn is-' + action + '" data-goods-id="' + goodsId +
-            '" data-action="' + action + '" title="' + (action === 'pause' ? 'Pause' : 'Run') + ' — recommended from L7 Clicks. Click to ' +
+            '" data-action="' + action + '" title="' + (action === 'pause' ? 'Pause' : 'Run') + ' — recommended from ' + reason + '. Click to ' +
             (action === 'pause' ? 'run' : 'pause') + ' this ad on Temu">' +
             '<span class="temu-pause-run-knob"></span></button>';
     }

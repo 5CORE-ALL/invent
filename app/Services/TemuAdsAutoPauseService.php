@@ -346,6 +346,9 @@ class TemuAdsAutoPauseService
             $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
 
             $desired = $this->actionFromPauseRunSlabs($l7Clicks, $inv);
+            if ($tRoas <= 0) {
+                $desired = 'pause';
+            }
             if ($desired === 'run' && $status === 'Active') {
                 continue;
             }

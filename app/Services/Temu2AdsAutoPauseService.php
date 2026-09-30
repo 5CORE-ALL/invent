@@ -214,6 +214,9 @@ class Temu2AdsAutoPauseService
             $clicks = (int) ($roasRow->clicks ?? 0);
             $tRoas = $this->targetRoasForClicks($clicks);
             $desired = $l7Clicks < $threshold ? 'run' : 'pause';
+            if ($tRoas <= 0) {
+                $desired = 'pause';
+            }
             if ($desired === 'run' && $status === 'Active') {
                 continue;
             }
