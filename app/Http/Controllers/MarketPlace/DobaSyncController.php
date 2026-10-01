@@ -899,6 +899,13 @@ class DobaSyncController extends Controller
             ], 422);
         }
 
+        if (MarketplaceSyncSettings::shopifyImportPaused('doba')) {
+            return response()->json([
+                'success' => false,
+                'message' => MarketplaceSyncSettings::shopifyImportPausedMessage('doba'),
+            ], 422);
+        }
+
         // Manual push is synchronous — only auto-import uses the queue.
         $push = app(DobaOrderPushService::class);
         try {

@@ -26,6 +26,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Marketplaces whose orders must NOT be created on Shopify by this app
+    |--------------------------------------------------------------------------
+    |
+    | Doba's own Shopify app ("For Doba Supplier Integration") already creates
+    | the order, so a copy from here deducted inventory twice. Comma-separated
+    | slugs; set MM_PAUSED_SHOPIFY_IMPORTS="" to resume everything.
+    |
+    */
+    'paused_shopify_imports' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', strtolower((string) env('MM_PAUSED_SHOPIFY_IMPORTS', 'doba')))
+    ))),
+
+    /*
+    |--------------------------------------------------------------------------
     | Inventory sync cadence (documented; schedule lives in Console\Kernel)
     |--------------------------------------------------------------------------
     | - Full SyncInventoryTo*: every 4 hours

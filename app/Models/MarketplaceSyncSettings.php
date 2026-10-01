@@ -74,9 +74,29 @@ class MarketplaceSyncSettings extends Model
 
     public static function canAutoImportToShopify(string $marketplace, ?array $settings = null): bool
     {
+        if (self::shopifyImportPaused($marketplace)) {
+            return false;
+        }
         $settings ??= self::getFor($marketplace);
 
         return (bool) ($settings['order']['auto_import_to_shopify'] ?? false);
+    }
+
+    /**
+     * Hard stop for creating this marketplace's orders on Shopify (auto and
+     * manual), independent of the saved settings. See config/marketplace_manager.php.
+     */
+    public static function shopifyImportPaused(string $marketplace): bool
+    {
+        $paused = (array) config('marketplace_manager.paused_shopify_imports', []);
+
+        return in_array(strtolower(trim($marketplace)), $paused, true);
+    }
+
+    public static function shopifyImportPausedMessage(string $marketplace): string
+    {
+        return ucfirst($marketplace).' orders are not created on Shopify by this app right now — '
+            .ucfirst($marketplace).'\'s own Shopify app already creates them (otherwise inventory is deducted twice).';
     }
 
     public static function importPaidOrdersOnly(string $marketplace, ?array $settings = null): bool
