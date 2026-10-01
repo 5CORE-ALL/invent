@@ -119,15 +119,42 @@
         .of-edit-btn:hover { color: #0a58ca; }
         .of-actions .btn { padding: 0 0.3rem; }
         .of-actions .btn:disabled { opacity: 0.6; }
-        .of-order-line { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem; }
-        .of-order-line .of-line-sku-wrap { flex: 1; position: relative; }
+        /* Create / edit order modal: compact, sectioned layout */
+        .of-modal .modal-dialog { max-width: 820px; }
+        .of-modal .modal-content { border: 0; border-radius: 0.6rem; box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22); }
+        .of-modal .modal-header { padding: 0.7rem 1.1rem; border-bottom: 1px solid #e9edf3; }
+        .of-modal .modal-title { font-size: 0.98rem; font-weight: 700; color: #0f172a; }
+        .of-modal .modal-body { padding: 0.85rem 1.1rem 0.6rem; background: #f8fafc; }
+        .of-modal .modal-footer { padding: 0.6rem 1.1rem; border-top: 1px solid #e9edf3; justify-content: space-between; }
+        .of-modal .form-label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: #64748b; margin-bottom: 0.15rem; }
+        .of-modal .form-label .text-danger { margin-left: 1px; }
+        .of-modal .form-control-sm, .of-modal .form-select-sm { font-size: 0.82rem; padding: 0.28rem 0.5rem; min-height: 30px; border-color: #d7dde6; }
+        .of-modal .form-control-sm:focus, .of-modal .form-select-sm:focus { border-color: #86b7fe; box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.12); }
+        .of-modal textarea.form-control-sm { min-height: 0; }
+        .of-sec { background: #fff; border: 1px solid #e6eaf0; border-radius: 0.5rem; padding: 0.65rem 0.8rem 0.7rem; margin-bottom: 0.6rem; }
+        .of-sec-title { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .of-sec-title h6 { margin: 0; font-size: 0.78rem; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 0.4rem; }
+        .of-sec-title h6 i { color: #0d6efd; font-size: 0.75rem; width: 14px; text-align: center; }
+        .of-sec-title .of-sec-sub { font-size: 0.7rem; color: #94a3b8; font-weight: 400; }
+        .of-order-lines-head, .of-order-line {
+            display: grid; grid-template-columns: minmax(0, 1fr) 64px 96px 84px 26px;
+            gap: 0.4rem; align-items: center;
+        }
+        .of-order-lines-head { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #94a3b8; padding: 0 0 0.25rem; border-bottom: 1px solid #eef2f6; margin-bottom: 0.35rem; }
+        .of-order-lines-head .of-line-qty, .of-order-lines-head .of-line-price { text-align: center; }
+        .of-order-lines-head .of-line-total { text-align: right; }
+        .of-order-line { margin-bottom: 0.35rem; }
+        .of-order-line .of-line-sku-wrap { position: relative; min-width: 0; }
         .of-order-line .of-line-sku { width: 100%; }
-        .of-order-line .of-line-qty { width: 72px; }
-        .of-order-line .of-line-price { width: 100px; }
-        .of-order-line .of-line-total { width: 90px; text-align: right; font-size: 0.85rem; color: #0f172a; white-space: nowrap; }
-        .of-order-lines-head { display: flex; gap: 0.5rem; font-size: 0.75rem; color: #64748b; margin-bottom: 0.2rem; }
-        .of-order-lines-head .of-line-sku-wrap { flex: 1; }
-        .of-order-lines-head .of-line-remove { width: 31px; }
+        .of-order-line .of-line-qty { text-align: center; }
+        .of-order-line .of-line-price { text-align: right; }
+        .of-order-line .of-line-total { text-align: right; font-size: 0.82rem; font-weight: 600; color: #0f172a; white-space: nowrap; }
+        .of-order-line .of-line-remove { padding: 0; line-height: 1; font-size: 0.85rem; }
+        .of-order-lines-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; padding-top: 0.45rem; border-top: 1px dashed #e2e8f0; font-size: 0.76rem; color: #64748b; }
+        .of-order-lines-foot strong { color: #0f172a; font-size: 0.88rem; }
+        .of-amount-hint { font-size: 0.68rem; color: #94a3b8; text-transform: none; letter-spacing: 0; font-weight: 400; }
+        .of-modal .of-footer-summary { font-size: 0.78rem; color: #64748b; }
+        .of-modal .of-footer-summary strong { color: #0f172a; }
         .of-sku-suggest {
             position: absolute; left: 0; right: 0; top: 100%; z-index: 1080;
             background: #fff; border: 1px solid #dee2e6; border-radius: 0.375rem;
@@ -253,8 +280,8 @@
     </div>
 
     {{-- Manual order: create / edit --}}
-    <div class="modal fade" id="of-order-modal" tabindex="-1" aria-labelledby="of-order-modal-label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+    <div class="modal fade of-modal" id="of-order-modal" tabindex="-1" aria-labelledby="of-order-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <form id="of-order-form" autocomplete="off">
                     <div class="modal-header">
@@ -263,102 +290,127 @@
                     </div>
                     <div class="modal-body">
                         <input type="hidden" id="of-order-manual-id" value="">
-                        <div class="row g-2">
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1" for="of-order-marketplace">Marketplace <span class="text-danger">*</span></label>
-                                <select class="form-select form-select-sm" id="of-order-marketplace-select" required>
-                                    <option value="">Select marketplace…</option>
-                                    @foreach(($ofManualMarketplaces ?? []) as $mpName)
-                                        <option value="{{ $mpName }}">{{ $mpName }}</option>
-                                    @endforeach
-                                    <option value="__other__">Other (type a name)…</option>
-                                </select>
-                                <input type="text" class="form-control form-control-sm mt-1" id="of-order-marketplace" maxlength="128" placeholder="New marketplace name" style="display:none;">
+
+                        <div class="of-sec">
+                            <div class="of-sec-title">
+                                <h6><i class="fas fa-receipt" aria-hidden="true"></i>Order details</h6>
+                                <span class="of-sec-sub">Times are {{ $ofTimezone ?? 'America/Los_Angeles' }}</span>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1" for="of-order-order-id">Order ID <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-order-id" maxlength="128" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1" for="of-order-date">Order date &amp; time ({{ $ofTimezone ?? 'America/Los_Angeles' }}) <span class="text-danger">*</span></label>
-                                <input type="datetime-local" class="form-control form-control-sm" id="of-order-date" required min="{{ ($ofDateEarliest ?? '2026-09-15') }}T00:00">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1" for="of-order-paid">Paid / Unpaid</label>
-                                <select class="form-select form-select-sm" id="of-order-paid">
-                                    <option value="1">Paid</option>
-                                    <option value="0">Unpaid</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1" for="of-order-amount">Order amount <small class="text-muted fw-normal" id="of-order-amount-hint">(auto: items × qty)</small></label>
-                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="of-order-amount" placeholder="0.00">
+                            <div class="row g-2">
+                                <div class="col-md-3">
+                                    <label class="form-label" for="of-order-marketplace-select">Marketplace <span class="text-danger">*</span></label>
+                                    <select class="form-select form-select-sm" id="of-order-marketplace-select" required>
+                                        <option value="">Select…</option>
+                                        @foreach(($ofManualMarketplaces ?? []) as $mpName)
+                                            <option value="{{ $mpName }}">{{ $mpName }}</option>
+                                        @endforeach
+                                        <option value="__other__">Other (type a name)…</option>
+                                    </select>
+                                    <input type="text" class="form-control form-control-sm mt-1" id="of-order-marketplace" maxlength="128" placeholder="New marketplace name" style="display:none;">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label" for="of-order-order-id">Order ID <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-order-id" maxlength="128" required placeholder="Marketplace order #">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label" for="of-order-date">Order date <span class="text-danger">*</span></label>
+                                    <input type="datetime-local" class="form-control form-control-sm" id="of-order-date" required min="{{ ($ofDateEarliest ?? '2026-09-15') }}T00:00">
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label class="form-label" for="of-order-paid">Payment</label>
+                                            <select class="form-select form-select-sm" id="of-order-paid">
+                                                <option value="1">Paid</option>
+                                                <option value="0">Unpaid</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label" for="of-order-amount">Amount</label>
+                                            <input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" id="of-order-amount" placeholder="0.00">
+                                        </div>
+                                    </div>
+                                    <div class="of-amount-hint mt-1 text-end" id="of-order-amount-hint">auto: items × qty</div>
+                                </div>
                             </div>
                         </div>
 
-                        <hr class="my-3">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <label class="form-label small mb-0">Items <span class="text-danger">*</span></label>
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="of-order-add-line"><i class="fas fa-plus me-1" aria-hidden="true"></i>Add SKU</button>
+                        <div class="of-sec">
+                            <div class="of-sec-title">
+                                <h6><i class="fas fa-box-open" aria-hidden="true"></i>Items <span class="text-danger">*</span></h6>
+                                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" id="of-order-add-line" style="font-size:0.75rem;"><i class="fas fa-plus me-1" aria-hidden="true"></i>Add SKU</button>
+                            </div>
+                            <div class="of-order-lines-head">
+                                <div class="of-line-sku-wrap">SKU</div>
+                                <div class="of-line-qty">Qty</div>
+                                <div class="of-line-price">Price</div>
+                                <div class="of-line-total">Total</div>
+                                <div class="of-line-remove"></div>
+                            </div>
+                            <div id="of-order-lines"></div>
+                            <div class="of-order-lines-foot">
+                                <span id="of-order-lines-help">One grid row is created per SKU.</span>
+                                <span><span id="of-order-lines-count">0 items</span> &middot; Items total <strong id="of-order-lines-total">—</strong></span>
+                            </div>
                         </div>
-                        <div class="of-order-lines-head">
-                            <div class="of-line-sku-wrap">SKU</div>
-                            <div class="of-line-qty">Qty</div>
-                            <div class="of-line-price">Price</div>
-                            <div class="of-line-total">Total</div>
-                            <div class="of-line-remove"></div>
-                        </div>
-                        <div id="of-order-lines"></div>
-                        <div class="form-text" id="of-order-lines-help">One grid row is created per SKU.</div>
 
-                        <hr class="my-3">
-                        <div class="row g-2">
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1" for="of-order-customer">Customer name</label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-customer" maxlength="191">
+                        <div class="of-sec">
+                            <div class="of-sec-title">
+                                <h6><i class="fas fa-user" aria-hidden="true"></i>Customer &amp; shipping</h6>
+                                <span class="of-sec-sub">Optional</span>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1" for="of-order-email">Email</label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-email" maxlength="191">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1" for="of-order-phone">Phone</label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-phone" maxlength="64">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small mb-1" for="of-order-address1">Address line 1</label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-address1" maxlength="191">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small mb-1" for="of-order-address2">Address line 2</label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-address2" maxlength="191">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1" for="of-order-city">City</label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-city" maxlength="128">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1" for="of-order-state">State</label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-state" maxlength="128">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1" for="of-order-zip">ZIP</label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-zip" maxlength="32">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1" for="of-order-country">Country</label>
-                                <input type="text" class="form-control form-control-sm" id="of-order-country" maxlength="64" value="US">
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label small mb-1" for="of-order-notes">Notes</label>
-                                <textarea class="form-control form-control-sm" id="of-order-notes" rows="2" maxlength="5000"></textarea>
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <label class="form-label" for="of-order-customer">Customer name</label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-customer" maxlength="191">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="of-order-email">Email</label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-email" maxlength="191">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="of-order-phone">Phone</label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-phone" maxlength="64">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="of-order-address1">Address line 1</label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-address1" maxlength="191">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="of-order-address2">Address line 2</label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-address2" maxlength="191">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="of-order-city">City</label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-city" maxlength="128">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label" for="of-order-state">State</label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-state" maxlength="128">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label" for="of-order-zip">ZIP</label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-zip" maxlength="32">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label" for="of-order-country">Country</label>
+                                    <input type="text" class="form-control form-control-sm" id="of-order-country" maxlength="64" value="US">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="of-order-notes">Notes</label>
+                                    <textarea class="form-control form-control-sm" id="of-order-notes" rows="1" maxlength="5000" placeholder="Internal notes (optional)"></textarea>
+                                </div>
                             </div>
                         </div>
-                        <div id="of-order-error" class="text-danger small mt-2" style="display:none;"></div>
+
+                        <div id="of-order-error" class="text-danger small mb-1" style="display:none;"></div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="of-order-save">Create order</button>
+                        <span class="of-footer-summary" id="of-order-footer-summary"></span>
+                        <span>
+                            <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-sm btn-primary px-3" id="of-order-save">Create order</button>
+                        </span>
                     </div>
                 </form>
             </div>
@@ -1208,33 +1260,59 @@
         return Math.round(parseFloat(priceRaw) * qty * 100) / 100;
     }
 
+    function setText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
+    function updateFooterSummary() {
+        const lines = document.querySelectorAll('#of-order-lines .of-order-line');
+        let count = 0;
+        let units = 0;
+        lines.forEach(function (line) {
+            if (String(line.querySelector('.of-line-sku')?.value || '').trim() === '') return;
+            count += 1;
+            units += parseInt(line.querySelector('.of-line-qty')?.value || '1', 10) || 1;
+        });
+        const amount = String(document.getElementById('of-order-amount')?.value || '').trim();
+        const parts = [count + (count === 1 ? ' SKU' : ' SKUs') + ', ' + units + (units === 1 ? ' unit' : ' units')];
+        if (amount !== '' && !isNaN(parseFloat(amount))) parts.push('Order total $' + money(parseFloat(amount)));
+        const el = document.getElementById('of-order-footer-summary');
+        if (el) el.innerHTML = parts.map(function (p, i) { return i === parts.length - 1 && parts.length > 1 ? '<strong>' + escapeHtml(p) + '</strong>' : escapeHtml(p); }).join(' &middot; ');
+    }
+
     function recalcOrderAmount() {
         let sum = 0;
         let priced = false;
+        let count = 0;
         document.querySelectorAll('#of-order-lines .of-order-line').forEach(function (line) {
             const total = lineTotal(line);
             const cell = line.querySelector('.of-line-total');
             if (cell) cell.textContent = total === null ? '—' : '$' + money(total);
             if (total !== null) { sum += total; priced = true; }
+            if (String(line.querySelector('.of-line-sku')?.value || '').trim() !== '') count += 1;
         });
+        setText('of-order-lines-count', count + (count === 1 ? ' item' : ' items'));
+        setText('of-order-lines-total', priced ? '$' + money(sum) : '—');
         const amount = document.getElementById('of-order-amount');
-        const hint = document.getElementById('of-order-amount-hint');
-        if (!amount || amountTouched) return;
-        if (amountAutoMode === 'server') {
-            amount.value = '';
-            amount.placeholder = 'recalculated on save';
-            if (hint) hint.textContent = '(auto: all items of this order, on save)';
-            return;
+        if (amount && !amountTouched) {
+            if (amountAutoMode === 'server') {
+                amount.value = '';
+                amount.placeholder = 'on save';
+                setText('of-order-amount-hint', 'auto: re-totalled from all items on save');
+            } else {
+                amount.value = priced ? money(sum) : '';
+                amount.placeholder = '0.00';
+                setText('of-order-amount-hint', 'auto: items × qty');
+            }
         }
-        amount.value = priced ? money(sum) : '';
-        amount.placeholder = '0.00';
-        if (hint) hint.textContent = '(auto: items × qty)';
+        updateFooterSummary();
     }
 
     document.getElementById('of-order-amount')?.addEventListener('input', function () {
         amountTouched = true;
-        const hint = document.getElementById('of-order-amount-hint');
-        if (hint) hint.textContent = '(entered by you)';
+        setText('of-order-amount-hint', 'entered manually');
+        updateFooterSummary();
     });
 
     function addOrderLine(sku, qty, removable, price) {
@@ -1244,11 +1322,11 @@
         line.className = 'of-order-line';
         line.innerHTML =
             '<div class="of-line-sku-wrap">' +
-                '<input type="text" class="form-control form-control-sm of-line-sku" placeholder="Type to search CP Master SKUs…" maxlength="191" required autocomplete="off" spellcheck="false">' +
+                '<input type="text" class="form-control form-control-sm of-line-sku" placeholder="Search CP Master SKU…" maxlength="191" required autocomplete="off" spellcheck="false">' +
                 '<div class="of-sku-suggest" role="listbox"></div>' +
             '</div>' +
             '<input type="number" class="form-control form-control-sm of-line-qty" placeholder="Qty" min="1" value="1">' +
-            '<input type="number" class="form-control form-control-sm of-line-price" placeholder="Price" min="0" step="0.01" title="Item price (fetched from CP Master, editable)">' +
+            '<input type="number" class="form-control form-control-sm of-line-price" placeholder="0.00" min="0" step="0.01" title="Item price (fetched from CP Master, editable)">' +
             '<div class="of-line-total">—</div>' +
             '<button type="button" class="btn btn-sm btn-link text-danger of-line-remove" title="Remove"><i class="fas fa-times" aria-hidden="true"></i></button>';
         line.querySelector('.of-line-sku').value = sku || '';
@@ -1264,6 +1342,8 @@
         }
         qtyInput.addEventListener('input', onLineChange);
         priceInput.addEventListener('input', onLineChange);
+        line.querySelector('.of-line-sku').addEventListener('input', recalcOrderAmount);
+        line.querySelector('.of-line-sku').addEventListener('change', recalcOrderAmount);
         const remove = line.querySelector('.of-line-remove');
         if (removable === false) remove.style.visibility = 'hidden';
         remove.addEventListener('click', function () {
@@ -1527,13 +1607,12 @@
         // Keep the stored order total until a line changes; then the server re-totals every line.
         amountTouched = true;
         amountAutoMode = 'server';
-        const hint = document.getElementById('of-order-amount-hint');
-        if (hint) hint.textContent = '(order total)';
+        setText('of-order-amount-hint', 'stored order total');
         const host = document.getElementById('of-order-lines');
         if (host) host.innerHTML = '';
         addOrderLine(row.sku || '', row.qty || 1, false, row.unit_price);
         document.getElementById('of-order-add-line').style.display = 'none';
-        document.getElementById('of-order-lines-help').textContent = 'Order details apply to every SKU line of this order; the SKU and qty here apply to this row only.';
+        document.getElementById('of-order-lines-help').textContent = 'Header changes apply to every SKU of this order; SKU, qty and price here apply to this row only.';
         showFormError('of-order-error', '');
         showModal('of-order-modal');
     }
