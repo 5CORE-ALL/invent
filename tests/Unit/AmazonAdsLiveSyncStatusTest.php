@@ -122,7 +122,7 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
         $this->assertSame('sbid_differs', $rows[0]['bid_sync_reason']);
         $this->assertStringContainsString('$0.68', $rows[0]['bid_sync_tip']);
         $this->assertStringContainsString('$0.83', $rows[0]['bid_sync_tip']);
-        $this->assertStringContainsString('SBID', $rows[0]['pushAlert']);
+        $this->assertSame('', $rows[0]['pushAlert']);
     }
 
     public function test_one_cent_lbid_sbid_gap_is_an_alert(): void
@@ -143,9 +143,9 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
 
         $this->assertSame('yellow', $rows[0]['bid_sync_color']);
         $this->assertSame('sbid_differs', $rows[0]['bid_sync_reason']);
-        $this->assertStringContainsString('SBID', $rows[0]['pushAlert']);
-        $this->assertStringContainsString('$0.37', $rows[0]['pushAlert']);
-        $this->assertStringContainsString('$0.36', $rows[0]['pushAlert']);
+        $this->assertSame('', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('$0.37', $rows[0]['bid_sync_tip']);
+        $this->assertStringContainsString('$0.36', $rows[0]['bid_sync_tip']);
     }
 
     public function test_green_bid_when_verified_live_matches_sbid(): void
@@ -342,9 +342,9 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
         $this->assertSame('yellow', $rows[0]['bgt_sync_color']);
         $this->assertSame('sbgt_differs', $rows[0]['bgt_sync_reason']);
         $this->assertSame('', $rows[0]['pushAlert']);
-        $this->assertStringContainsString('SBGT:', $rows[0]['sbgtAlert']);
-        $this->assertStringContainsString('$4.00', $rows[0]['sbgtAlert']);
-        $this->assertStringContainsString('$1.00', $rows[0]['sbgtAlert']);
+        $this->assertSame('', $rows[0]['sbgtAlert']);
+        $this->assertStringContainsString('$4.00', $rows[0]['bgt_sync_tip']);
+        $this->assertStringContainsString('$1.00', $rows[0]['bgt_sync_tip']);
     }
 
     public function test_matching_lbgt_and_sbgt_clears_stale_pause_alert(): void

@@ -114,7 +114,10 @@ class AmazonPushedPricePullService
     }
 
     /**
-     * Live SP-API GET: prefer sale, but ignore Your Price when it is not the Sale we pushed.
+     * Live SP-API GET: keep the calculated S PRC in the Price column.
+     * Ignore Your Price when it is not the Sale we pushed. A live price a few
+     * cents off must not replace the S PRC — the blue badge is an exact-cent
+     * compare, so writing 56.97 over a 56.95 S PRC turns the alert back on.
      */
     public static function livePriceToPersist(?float $live, ?float $expectedPushed): ?float
     {
@@ -127,7 +130,7 @@ class AmazonPushedPricePullService
         }
         $expectedPushed = round($expectedPushed, 2);
         if (abs($live - $expectedPushed) <= self::LIVE_MATCH_TOLERANCE) {
-            return $live;
+            return $expectedPushed;
         }
 
         return null;

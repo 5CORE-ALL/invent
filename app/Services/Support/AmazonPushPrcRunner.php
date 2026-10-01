@@ -159,18 +159,28 @@ class AmazonPushPrcRunner
                         ]);
                     }
 
+                    $std = round((float) ($task['std'] ?? 0), 2);
+                    $target = round((float) ($task['effective'] ?? $task['sale'] ?? $task['std'] ?? 0), 2);
+                    $sale = (isset($task['sale']) && $task['sale'] !== null && $task['sale'] !== '')
+                        ? round((float) $task['sale'], 2)
+                        : null;
+                    // Badge compares Price to S PRC (effective). A missing sale used to
+                    // push Your Price / Std, so Price never matched and the count stayed.
+                    if ($target > 0 && ($sale === null || abs($sale - $target) > 0.009)) {
+                        $sale = $target;
+                    }
                     $applyData = [
                         'sku' => $sku,
-                        'price' => $task['std'],
+                        'price' => $std > 0 ? $std : $target,
                         'asin' => $task['asin'] ?? null,
                         'push_shopify' => false,
                         'update_amazon_min_price' => true,
-                        'min_price' => $task['min'] ?? null,
+                        'min_price' => $sale ?? ($task['min'] ?? null),
                         'max_price' => $task['max'] ?? null,
-                        'business_price' => $task['business'] ?? null,
+                        'business_price' => $sale ?? ($task['business'] ?? null),
                     ];
-                    if (isset($task['sale']) && $task['sale'] !== null) {
-                        $applyData['sale_price'] = $task['sale'];
+                    if ($sale !== null && $sale > 0) {
+                        $applyData['sale_price'] = $sale;
                     }
                     $applyReq = Request::create('/apply-amazon-price', 'POST', $applyData);
                     $applyRes = $controller->applyAmazonPrice($applyReq);

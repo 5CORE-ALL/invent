@@ -729,7 +729,7 @@
      tabindex="-1"
      aria-labelledby="sbgtRuleModalLabel"
      aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
                 <h5 class="modal-title" id="sbgtRuleModalLabel">
@@ -739,24 +739,26 @@
             </div>
             <div class="modal-body">
                 <p class="small text-muted mb-3">
-                    Each row is an inclusive <strong>ACOS %</strong> range plus a
-                    <strong>&gt;Spend</strong> minimum. Rows are checked <strong>top to bottom</strong>;
-                    the first band that matches both the campaign's ACOS and Spend
-                    gets its Sbgt. <strong>Sbgt 0</strong> pauses the campaign on Push
+                    Each row is a band. Pick <strong>&gt;</strong>, <strong>&gt;=</strong>,
+                    <strong>&lt;</strong>, <strong>&lt;=</strong>, or <strong>=</strong>
+                    on ACOS From, ACOS To, and Spend. Rows are checked
+                    <strong>top to bottom</strong>; the first band whose three
+                    comparisons all match the campaign gets its Sbgt.
+                    <strong>Sbgt 0</strong> pauses the campaign on Meta automatically
                     and flashes <strong>AUDIT NOW</strong> in the Audit Req column.
-                    Use <code>9999</code> on ACOS <em>To</em> for a catch-all.
+                    Use <code>9999</code> with <code>&lt;=</code> on ACOS <em>To</em> for a catch-all.
                 </p>
 
                 <table class="table table-sm table-bordered align-middle mb-0" id="sbgt-rule-table">
                     <thead class="table-light">
                         <tr>
                             <th style="width:40px;">#</th>
-                            <th style="width:70px;">ACOS%</th>
-                            <th style="width:110px;">ACOS From (%)</th>
-                            <th style="width:110px;">ACOS To (%)</th>
-                            <th style="width:110px;">&gt;Spend</th>
-                            <th style="width:100px;">Sbgt</th>
-                            <th style="width:50px;"></th>
+                            <th style="width:110px;">ACOS%</th>
+                            <th style="min-width:180px;">ACOS From (%)</th>
+                            <th style="min-width:180px;">ACOS To (%)</th>
+                            <th style="min-width:170px;">Spend</th>
+                            <th style="width:90px;">Sbgt</th>
+                            <th style="width:120px;"></th>
                         </tr>
                     </thead>
                     <tbody id="sbgt-bands-body"></tbody>
@@ -1773,9 +1775,13 @@
                         const cid = (row['CAMPAIGN ID'] ?? '').toString();
                         if (!cid || !/^\d{6,}$/.test(cid)) return '';
                         const paused = !!(row._pause) || /paus/i.test(String(row.Status || ''));
-                        if (paused && !row._audit_at) {
+                        const highSpend = toNumber(row['SPEND']) > 30;
+                        if ((paused || highSpend) && !row._audit_at) {
+                            const why = highSpend
+                                ? 'Spend is above $30.'
+                                : 'This campaign is paused.';
                             return `<button type="button" class="faas-audit-now" data-audit-cid="${cid}"
-                                        title="This campaign is paused. Record the audit — the date and time are saved automatically.">AUDIT NOW</button>`;
+                                        title="${why} Record the audit — the date and time are saved automatically.">AUDIT NOW</button>`;
                         }
                         if (row._audit_at) {
                             const when = faasAuditStamp(row._audit_at);
@@ -2117,6 +2123,9 @@
                     tabulator.on('dataFiltered', updateMetricBadges);
                     tabulator.on('dataLoaded',   updateMetricBadges);
                     bindFaasTableResize();
+                    if (resp.batch && resp.batch.upload_type === 'merged') {
+                        autoPauseZeroSbgt(resp.data || []);
+                    }
                 });
         }
 
@@ -2422,11 +2431,27 @@
         });
 
         // ── SBGT Rule editor ──────────────────────────────────────────
-        // Bands: { acos_from, acos_to, spend_from, spend_to, sbgt, label, color }
+        // Bands: { acos_from, acos_from_op, acos_to, acos_to_op,
+        //          spend_from, spend_op, spend_to, sbgt, label, color }
         const SBGT_RULE_GET_URL  = '/facebook-all-ads-sheet/rule';
         const SBGT_RULE_SAVE_URL = '/facebook-all-ads-sheet/rule';
         let currentSbgtRule = { bands: [] };
         const DEFAULT_BAND_LABELS = ['Excellent', 'Good', 'Fair', 'Poor', 'Bad', 'Pause'];
+        const SBGT_OPS = ['>', '>=', '<', '<=', '='];
+
+        function sbgtOp(value, fallback) {
+            return SBGT_OPS.includes(value) ? value : fallback;
+        }
+
+        function sbgtOpSelect(idx, field, value, fallback) {
+            const current = sbgtOp(value, fallback);
+            const opts = SBGT_OPS.map(op => {
+                const label = op.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const selected = op === current ? ' selected' : '';
+                return `<option value="${label}"${selected}>${label}</option>`;
+            }).join('');
+            return `<select class="form-select form-select-sm" data-idx="${idx}" data-field="${field}" style="width:4.4rem;flex:0 0 auto;">${opts}</select>`;
+        }
 
         /** Upgrade legacy acos_max-only bands to From–To for the editor. */
         function normalizeSbgtBandsForUi(bands) {
@@ -2438,13 +2463,16 @@
             const withDefaults = (b, i) => {
                 const label = (b.label ?? '').toString().trim();
                 return {
-                    acos_from:   Number(b.acos_from ?? 0),
-                    acos_to:     Number(b.acos_to ?? 9999),
-                    spend_from:  Number(b.spend_from ?? 0),
-                    spend_to:    Number(b.spend_to ?? 9999),
-                    sbgt:        b.sbgt,
-                    label:       label || (DEFAULT_BAND_LABELS[i] || 'Band'),
-                    color:       b.color ?? '#6c757d',
+                    acos_from:    Number(b.acos_from ?? 0),
+                    acos_from_op: sbgtOp(b.acos_from_op, '>='),
+                    acos_to:      Number(b.acos_to ?? 9999),
+                    acos_to_op:   sbgtOp(b.acos_to_op, '<='),
+                    spend_from:   Number(b.spend_from ?? 0),
+                    spend_op:     sbgtOp(b.spend_op, '>='),
+                    spend_to:     Number(b.spend_to ?? 9999),
+                    sbgt:         b.sbgt,
+                    label:        label || (DEFAULT_BAND_LABELS[i] || 'Band'),
+                    color:        b.color ?? '#6c757d',
                 };
             };
             if (hasFromTo) {
@@ -2882,26 +2910,51 @@
                                placeholder="e.g. Good"
                                style="background:${schema.bg};color:${schema.fg};border:none;min-width:6.5rem;">
                     </td>
-                    <td><input type="number" step="0.1" min="0"
-                               class="form-control form-control-sm"
-                               value="${band.acos_from ?? ''}"
-                               data-idx="${i}" data-field="acos_from"
-                               placeholder="0"></td>
-                    <td><input type="number" step="0.1" min="0"
-                               class="form-control form-control-sm"
-                               value="${band.acos_to ?? ''}"
-                               data-idx="${i}" data-field="acos_to"
-                               placeholder="9999"></td>
-                    <td><input type="number" step="0.01" min="0"
-                               class="form-control form-control-sm"
-                               value="${band.spend_from ?? ''}"
-                               data-idx="${i}" data-field="spend_from"
-                               placeholder="0"></td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            ${sbgtOpSelect(i, 'acos_from_op', band.acos_from_op, '>=')}
+                            <input type="number" step="0.1" min="0"
+                                   class="form-control form-control-sm"
+                                   value="${band.acos_from ?? ''}"
+                                   data-idx="${i}" data-field="acos_from"
+                                   placeholder="0">
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            ${sbgtOpSelect(i, 'acos_to_op', band.acos_to_op, '<=')}
+                            <input type="number" step="0.1" min="0"
+                                   class="form-control form-control-sm"
+                                   value="${band.acos_to ?? ''}"
+                                   data-idx="${i}" data-field="acos_to"
+                                   placeholder="9999">
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            ${sbgtOpSelect(i, 'spend_op', band.spend_op, '>=')}
+                            <input type="number" step="0.01" min="0"
+                                   class="form-control form-control-sm"
+                                   value="${band.spend_from ?? ''}"
+                                   data-idx="${i}" data-field="spend_from"
+                                   placeholder="0">
+                        </div>
+                    </td>
                     <td><input type="number" step="1" min="0"
                                class="form-control form-control-sm"
                                value="${band.sbgt ?? ''}"
                                data-idx="${i}" data-field="sbgt"></td>
-                    <td class="text-center">
+                    <td class="text-center text-nowrap">
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                data-move-idx="${i}" data-move="-1" title="Move band up"
+                                ${i === 0 ? 'disabled' : ''}>
+                            <i class="fas fa-arrow-up"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                data-move-idx="${i}" data-move="1" title="Move band down"
+                                ${i === bands.length - 1 ? 'disabled' : ''}>
+                            <i class="fas fa-arrow-down"></i>
+                        </button>
                         <button type="button" class="btn btn-sm btn-outline-danger"
                                 data-remove-idx="${i}" title="Remove band">
                             <i class="fas fa-trash"></i>
@@ -2912,11 +2965,16 @@
 
             // Wire field inputs → write back into currentSbgtRule.bands.
             const floatFields = new Set(['acos_from', 'acos_to', 'spend_from']);
-            tbody.querySelectorAll('input[data-idx]').forEach(inp => {
-                inp.addEventListener('input', function () {
+            const opFields = new Set(['acos_from_op', 'acos_to_op', 'spend_op']);
+            tbody.querySelectorAll('[data-idx]').forEach(inp => {
+                const write = function () {
                     const idx = +this.dataset.idx;
                     const fld = this.dataset.field;
                     if (!currentSbgtRule.bands[idx]) return;
+                    if (opFields.has(fld)) {
+                        currentSbgtRule.bands[idx][fld] = sbgtOp(this.value, this.value);
+                        return;
+                    }
                     currentSbgtRule.bands[idx][fld] = (fld === 'sbgt')
                         ? (this.value === '' ? '' : parseInt(this.value, 10))
                         : (floatFields.has(fld)
@@ -2933,6 +2991,21 @@
                             labelInp.style.color = schema.fg;
                         }
                     }
+                };
+                inp.addEventListener('input', write);
+                inp.addEventListener('change', write);
+            });
+
+            tbody.querySelectorAll('[data-move-idx]').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const idx = +this.dataset.moveIdx;
+                    const dir = +this.dataset.move;
+                    const next = idx + dir;
+                    const list = currentSbgtRule.bands;
+                    if (next < 0 || next >= list.length) return;
+                    const [row] = list.splice(idx, 1);
+                    list.splice(next, 0, row);
+                    renderSbgtBands(list);
                 });
             });
 
@@ -2969,13 +3042,16 @@
                 ? Number(bands[bands.length - 1].acos_to ?? 0)
                 : 0;
             currentSbgtRule.bands.push({
-                acos_from:   lastTo,
-                acos_to:     9999,
-                spend_from:  0,
-                spend_to:    9999,
-                sbgt:        1,
-                label:       DEFAULT_BAND_LABELS[bands.length] || 'Band',
-                color:       acosSchemaStyleForBand(lastTo, 9999).bg,
+                acos_from:    lastTo,
+                acos_from_op: '>=',
+                acos_to:      9999,
+                acos_to_op:   '<=',
+                spend_from:   0,
+                spend_op:     '>=',
+                spend_to:     9999,
+                sbgt:         1,
+                label:        DEFAULT_BAND_LABELS[bands.length] || 'Band',
+                color:        acosSchemaStyleForBand(lastTo, 9999).bg,
             });
             renderSbgtBands(currentSbgtRule.bands);
         });
@@ -2992,9 +3068,12 @@
                     ? NaN : parseFloat(b.acos_to);
                 return {
                     acos_from: acosFrom,
+                    acos_from_op: sbgtOp(b.acos_from_op, '>='),
                     acos_to: acosTo,
+                    acos_to_op: sbgtOp(b.acos_to_op, '<='),
                     spend_from: (b.spend_from === '' || b.spend_from === null || b.spend_from === undefined)
                         ? NaN : parseFloat(b.spend_from),
+                    spend_op: sbgtOp(b.spend_op, '>='),
                     spend_to: 9999,
                     sbgt:     (b.sbgt === '' || b.sbgt === null || b.sbgt === undefined)
                         ? NaN : parseInt(b.sbgt, 10),
@@ -3011,12 +3090,14 @@
                 if (!isFinite(b.acos_from) || !isFinite(b.acos_to)
                     || !isFinite(b.spend_from)
                     || !isFinite(b.sbgt)) {
-                    errEl.textContent = 'Every band needs numeric ACOS From/To, >Spend, and Sbgt.';
+                    errEl.textContent = 'Every band needs numeric ACOS From/To, Spend, and Sbgt.';
                     errEl.classList.remove('d-none');
                     return;
                 }
-                if (b.acos_from > b.acos_to) {
-                    errEl.textContent = 'Each band needs ACOS From ≤ ACOS To.';
+                const lower = b.acos_from_op === '>' || b.acos_from_op === '>=';
+                const upper = b.acos_to_op === '<' || b.acos_to_op === '<=';
+                if (lower && upper && b.acos_from > b.acos_to) {
+                    errEl.textContent = 'Each band needs ACOS From ≤ ACOS To when From is > or >= and To is < or <=.';
                     errEl.classList.remove('d-none');
                     return;
                 }
@@ -3080,7 +3161,9 @@
                 // Meta campaign IDs are large numeric strings — guard
                 // against placeholders ("—", "N/A") that snuck in.
                 if (!cid || !/^\d{6,}$/.test(cid)) return;
-                if (r._pause) {
+                const sbgtBlank = r['Sbgt'] === null || r['Sbgt'] === undefined
+                    || String(r['Sbgt']).trim() === '';
+                if (r._pause || (!sbgtBlank && sbgt === 0)) {
                     out.push({ campaign_id: cid, sbgt: 0, pause: true });
                 } else if (sbgt > 0) {
                     out.push({ campaign_id: cid, sbgt: sbgt });
@@ -3107,8 +3190,10 @@
 
             for (const chunk of chunks) {
                 done += chunk.length;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing '
-                    + done + '/' + allRows.length + '…';
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing '
+                        + done + '/' + allRows.length + '…';
+                }
 
                 const resp = await fetch(SBGT_PUSH_URL, {
                     method: 'POST',
@@ -3176,6 +3261,45 @@
             }
             const modalEl = document.getElementById('sbgtResultModal');
             if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+
+        // Campaigns already sent for auto-pause during this page view.
+        const faasAutoPausedIds = new Set();
+
+        function autoPauseZeroSbgt(rows) {
+            const targets = [];
+            (rows || []).forEach(r => {
+                const cid = (r['CAMPAIGN ID'] ?? '').toString().trim();
+                const raw = r['Sbgt'];
+                const blank = raw === null || raw === undefined || String(raw).trim() === '';
+                if (!cid || !/^\d{6,}$/.test(cid) || faasAutoPausedIds.has(cid)) return;
+                if (/paus/i.test(String(r.Status || ''))) return;
+                if (!(r._pause || (!blank && toNumber(raw) === 0))) return;
+                faasAutoPausedIds.add(cid);
+                targets.push({ campaign_id: cid, sbgt: 0, pause: true, auto: true });
+            });
+            if (!targets.length) return;
+
+            pushSbgtInChunks(targets, null)
+                .then(payload => {
+                    const pausedIds = (payload.results || [])
+                        .filter(r => r.status === 'paused')
+                        .map(r => r.campaign_id);
+                    if (tabulator && pausedIds.length) {
+                        const set = new Set(pausedIds);
+                        tabulator.getRows().forEach(row => {
+                            const id = (row.getData()['CAMPAIGN ID'] ?? '').toString();
+                            if (set.has(id)) row.update({ Status: 'Paused' });
+                        });
+                    }
+                    if ((payload.paused || 0) > 0 || (payload.failed || 0) > 0) {
+                        renderSbgtResult(payload);
+                    }
+                })
+                .catch(err => {
+                    targets.forEach(t => faasAutoPausedIds.delete(t.campaign_id));
+                    alert('Auto-pause for Sbgt 0 failed: ' + err.message);
+                });
         }
 
         document.getElementById('faasPushSbgtBtn')?.addEventListener('click', function () {
@@ -3937,7 +4061,7 @@
         function faasExportCellValue(row, field) {
             if (field === 'Audit Req') {
                 if (row._audit_at) return faasAuditStamp(row._audit_at);
-                if (row._pause || /paus/i.test(String(row.Status || ''))) return 'AUDIT NOW';
+                if (row._pause || /paus/i.test(String(row.Status || '')) || toNumber(row['SPEND']) > 30) return 'AUDIT NOW';
                 return '';
             }
             if (field === 'History') {

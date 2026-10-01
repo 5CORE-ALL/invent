@@ -2582,8 +2582,9 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Calendar mode + campaign search: include matching L30 rows for campaigns Amazon omitted
-     * from the selected daily window (zero-activity days). Returns true when applied.
+     * Calendar mode: keep the selected day's rows, and also L30 rows for campaigns Amazon
+     * omitted from that day (zero impressions). Search used to be required, so the default
+     * grid hid enabled campaigns the Amazon console still lists. Returns true when applied.
      *
      * @param  array<int, string>  $dbColumns
      */
@@ -2594,8 +2595,7 @@ class AmazonAdsController extends Controller
         Request $request,
         string $search
     ): bool {
-        if ($search === ''
-            || ! in_array('campaignName', $dbColumns, true)
+        if (! in_array('campaignName', $dbColumns, true)
             || ! in_array('report_date_range', $dbColumns, true)
             || ! in_array('campaign_id', $dbColumns, true)
             || ! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)
@@ -2610,16 +2610,24 @@ class AmazonAdsController extends Controller
         $from = self::normalizeDateInput((string) $request->input('date_from'));
         $to = self::normalizeDateInput((string) $request->input('date_to'));
         if ($from === null && $to === null) {
-            return false;
+            $latest = self::latestDailyReportYmdInTable($table);
+            if ($latest === null || $latest === '') {
+                return false;
+            }
+            $from = $latest;
+            $to = $latest;
         }
 
-        $like = '%'.addcslashes($search, '%_\\').'%';
+        $like = $search !== '' ? '%'.addcslashes($search, '%_\\').'%' : null;
         $hasAdType = in_array('ad_type', $dbColumns, true);
 
         // Two index lookups. OR + NOT EXISTS makes MySQL scan the whole report table.
         $dailyIds = DB::table($table)->select('id');
         self::whereReportDateRangeDailyYmdInRange($dailyIds, $from, $to);
-        $dailyIdList = $dailyIds->where('campaignName', 'LIKE', $like)->pluck('id')->all();
+        if ($like !== null) {
+            $dailyIds->where('campaignName', 'LIKE', $like);
+        }
+        $dailyIdList = $dailyIds->pluck('id')->all();
 
         $present = DB::table($table)->select('campaign_id');
         if ($hasAdType) {
@@ -2637,12 +2645,13 @@ class AmazonAdsController extends Controller
         }
 
         $l30IdList = [];
-        $l30Rows = DB::table($table)
+        $l30Query = DB::table($table)
             ->select($hasAdType ? ['id', 'campaign_id', 'ad_type'] : ['id', 'campaign_id'])
-            ->where('report_date_range', 'L30')
-            ->where('campaignName', 'LIKE', $like)
-            ->get();
-        foreach ($l30Rows as $row) {
+            ->where('report_date_range', 'L30');
+        if ($like !== null) {
+            $l30Query->where('campaignName', 'LIKE', $like);
+        }
+        foreach ($l30Query->get() as $row) {
             $cid = trim((string) ($row->campaign_id ?? ''));
             if ($cid === '') {
                 continue;
@@ -4691,8 +4700,8 @@ class AmazonAdsController extends Controller
         $recordsTotal = $recordsFiltered;
 
         $queryForAggregates = $query->clone();
-        // Calendar latest-day grid omits paused L30 campaigns Amazon still counts.
-        // Spend / Clicks / Sold / Sales / ACOS badges use the L30 summary universe.
+        // Calendar grid includes that day's rows plus L30 rows Amazon omitted (no impressions).
+        // Spend / Clicks / Sold / Sales / ACOS badges still sum the L30 summary universe.
         if (self::shouldUseL30SummaryUniverseForBadges($table, $request)) {
             $queryForAggregates = self::l30SummaryUniverseQuery($table, $request, $search, $dbColumns);
         }

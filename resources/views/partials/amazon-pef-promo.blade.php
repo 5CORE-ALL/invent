@@ -2927,7 +2927,9 @@
                     ? amzFinalSpriceToSave(d, plan.sale)
                     : capped;
                 plan.sale = saleCap > 0 ? saleCap : capped;
-            } else if (plan.std > 0 && capped + 0.0001 < plan.std) {
+            } else if (plan.std > 0 && Math.abs(capped - plan.std) > 0.009) {
+                // Dil target can sit above Std. Sale must still be that target
+                // or the push writes Your Price and the blue badge never clears.
                 plan.sale = capped;
             }
             const saleBase = plan.sale != null ? plan.sale : capped;
@@ -3467,13 +3469,35 @@
             }
         }
 
+        function amzEachTableRow(fn) {
+            if (!table || typeof table.getRows !== 'function') return;
+            let rows = [];
+            try { rows = table.getRows('all') || []; } catch (e) { rows = []; }
+            if (!rows.length) {
+                try { rows = table.getRows() || []; } catch (e2) { rows = []; }
+            }
+            rows.forEach(fn);
+        }
+        function amzSyncAllTableData(sku, patch) {
+            if (typeof allTableData === 'undefined' || !Array.isArray(allTableData) || !patch) return;
+            const key = String(sku || '').toUpperCase();
+            if (!key) return;
+            for (let i = 0; i < allTableData.length; i++) {
+                const rowSku = String(amzPefSku(allTableData[i]) || '').toUpperCase();
+                if (rowSku !== key) continue;
+                Object.keys(patch).forEach(function(k) { allTableData[i][k] = patch[k]; });
+                break;
+            }
+        }
         function applyAmzPushPrcTaskStatusesToTable(tasks) {
             if (!table || !Array.isArray(tasks)) return;
             const bySku = {};
             tasks.forEach(function(t) {
                 if (t && t.sku) bySku[String(t.sku).toUpperCase()] = t;
             });
-            table.getRows().forEach(function(row) {
+            // Pagination: getRows() is only the current page. The badge counts every
+            // SKU, so a finished push on another page never lowered the 400–500 count.
+            amzEachTableRow(function(row) {
                 const d = row.getData();
                 if (!amzPefIsChildRow(d)) return;
                 const sku = amzPefSku(d).toUpperCase();
@@ -3508,7 +3532,11 @@
                     if (d.PUSH_PRC_STATUS === 'processing') return;
                     patch = { PUSH_PRC_STATUS: 'processing' };
                 }
-                if (patch) row.update(patch);
+                if (patch) {
+                    row.update(patch);
+                    amzSyncAllTableData(sku, patch);
+                    try { row.reformat(); } catch (e) { /* off-page row */ }
+                }
             });
             if (typeof window.updateAmazonSummary === 'function') {
                 try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
@@ -3537,13 +3565,17 @@
                 }
             });
             if (!Object.keys(bySku).length) return;
-            table.getRows().forEach(function(row) {
+            amzEachTableRow(function(row) {
                 const d = row.getData();
                 if (!amzPefIsChildRow(d)) return;
-                const live = bySku[amzPefSku(d).toUpperCase()];
+                const sku = amzPefSku(d).toUpperCase();
+                const live = bySku[sku];
                 if (!(live > 0)) return;
                 if (Number(d.price) === live && Number(d.Price) === live) return;
-                row.update({ price: live, Price: live });
+                const patch = { price: live, Price: live };
+                row.update(patch);
+                amzSyncAllTableData(sku, patch);
+                try { row.reformat(); } catch (e) { /* off-page row */ }
             });
             if (typeof window.updateAmazonSummary === 'function') {
                 try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
