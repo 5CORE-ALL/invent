@@ -998,8 +998,10 @@ class FacebookAllAdsSheetController extends Controller
      * users can edit them at runtime via the "Sbgt Rule" modal — same
      * pattern as /ebay/campaign-ads → ebay_sbid_rules.
      *
-     * Each band is an inclusive From–To ACOS % range. Bands are evaluated
-     * top to bottom; the first range that contains the row's ACOS wins.
+     * Each band carries its own comparison on ACOS From, ACOS To, and
+     * Spend (>, >=, <, <=, =). Bands are evaluated top to bottom in the
+     * order they were saved; the first band whose three comparisons all
+     * match wins.
      *
      * Edge cases:
      *   • Both spend and sales blank/zero → null (no row data, leave empty).
@@ -1035,9 +1037,12 @@ class FacebookAllAdsSheetController extends Controller
             $from      = (float) ($band['acos_from'] ?? 0);
             $to        = (float) ($band['acos_to'] ?? 9999);
             $spendFrom = (float) ($band['spend_from'] ?? 0);
-            $spendTo   = (float) ($band['spend_to'] ?? 9999);
-            if ($acos >= $from && $acos <= $to
-                && $spendAmt >= $spendFrom && $spendAmt <= $spendTo) {
+            $fromOp    = $this->sbgtOp($band['acos_from_op'] ?? null, '>=');
+            $toOp      = $this->sbgtOp($band['acos_to_op'] ?? null, '<=');
+            $spendOp   = $this->sbgtOp($band['spend_op'] ?? null, '>=');
+            if ($this->sbgtCompare($acos, $fromOp, $from)
+                && $this->sbgtCompare($acos, $toOp, $to)
+                && $this->sbgtCompare($spendAmt, $spendOp, $spendFrom)) {
                 $sbgt = (int) ($band['sbgt'] ?? 0);
 
                 return [
@@ -1085,11 +1090,33 @@ class FacebookAllAdsSheetController extends Controller
         return $this->acosSchemaColor(($from + $hi) / 2);
     }
 
+    /** Allowed comparisons on a band bound. */
+    private const SBGT_OPS = ['>', '>=', '<', '<=', '='];
+
+    private function sbgtOp(?string $op, string $default): string
+    {
+        $op = trim((string) $op);
+
+        return in_array($op, self::SBGT_OPS, true) ? $op : $default;
+    }
+
+    private function sbgtCompare(float $value, string $op, float $bound): bool
+    {
+        return match ($op) {
+            '>'  => $value > $bound,
+            '>=' => $value >= $bound,
+            '<'  => $value < $bound,
+            '<=' => $value <= $bound,
+            '='  => abs($value - $bound) < 0.0001,
+            default => false,
+        };
+    }
+
     /**
-     * Load the stored Sbgt bands, normalised to From–To ranges and
-     * sorted ascending by `acos_from`, then `spend_from`.
+     * Load the stored Sbgt bands in saved order (top to bottom is the
+     * match order). Each bound keeps the operator the user picked.
      *
-     * @return array<int, array{acos_from:float, acos_to:float, spend_from:float, spend_to:float, sbgt:int, label?:string, color?:string}>
+     * @return array<int, array{acos_from:float, acos_from_op:string, acos_to:float, acos_to_op:string, spend_from:float, spend_op:string, spend_to:float, sbgt:int, label?:string, color?:string}>
      */
     private function loadSbgtBands(): array
     {
@@ -1103,12 +1130,13 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
-     * Convert stored bands to inclusive From–To ranges. Legacy rows that
-     * only have `acos_max` (cumulative upper bound) are upgraded on read.
-     * Missing spend ranges default to 0–9999 (match any spend).
+     * Convert stored bands to From–To ranges with a comparison on each
+     * bound. Legacy rows that only have `acos_max` (cumulative upper
+     * bound) are upgraded on read. Missing operators keep the old
+     * inclusive ACOS range and spend >= minimum.
      *
      * @param  array<int, array<string, mixed>>  $bands
-     * @return array<int, array{acos_from:float, acos_to:float, spend_from:float, spend_to:float, sbgt:int, label:string, color:string}>
+     * @return array<int, array{acos_from:float, acos_from_op:string, acos_to:float, acos_to_op:string, spend_from:float, spend_op:string, spend_to:float, sbgt:int, label:string, color:string}>
      */
     private function normalizeSbgtBands(array $bands): array
     {
@@ -1131,13 +1159,16 @@ class FacebookAllAdsSheetController extends Controller
             foreach ($bands as $band) {
                 $to = (float) ($band['acos_max'] ?? 9999);
                 $converted[] = [
-                    'acos_from'   => $prevTo,
-                    'acos_to'     => $to,
-                    'spend_from'  => (float) ($band['spend_from'] ?? 0),
-                    'spend_to'    => (float) ($band['spend_to'] ?? 9999),
-                    'sbgt'        => (int) ($band['sbgt'] ?? 0),
-                    'label'       => (string) ($band['label'] ?? ''),
-                    'color'       => (string) ($band['color'] ?? '#6c757d'),
+                    'acos_from'     => $prevTo,
+                    'acos_from_op'  => $this->sbgtOp($band['acos_from_op'] ?? null, '>='),
+                    'acos_to'       => $to,
+                    'acos_to_op'    => $this->sbgtOp($band['acos_to_op'] ?? null, '<='),
+                    'spend_from'    => (float) ($band['spend_from'] ?? 0),
+                    'spend_op'      => $this->sbgtOp($band['spend_op'] ?? null, '>='),
+                    'spend_to'      => (float) ($band['spend_to'] ?? 9999),
+                    'sbgt'          => (int) ($band['sbgt'] ?? 0),
+                    'label'         => (string) ($band['label'] ?? ''),
+                    'color'         => (string) ($band['color'] ?? '#6c757d'),
                 ];
                 $prevTo = $to;
             }
@@ -1147,20 +1178,18 @@ class FacebookAllAdsSheetController extends Controller
         $out = [];
         foreach ($bands as $band) {
             $out[] = [
-                'acos_from'   => (float) ($band['acos_from'] ?? 0),
-                'acos_to'     => (float) ($band['acos_to'] ?? 9999),
-                'spend_from'  => (float) ($band['spend_from'] ?? 0),
-                'spend_to'    => (float) ($band['spend_to'] ?? 9999),
-                'sbgt'        => (int) ($band['sbgt'] ?? 0),
-                'label'       => (string) ($band['label'] ?? ''),
-                'color'       => (string) ($band['color'] ?? '#6c757d'),
+                'acos_from'     => (float) ($band['acos_from'] ?? 0),
+                'acos_from_op'  => $this->sbgtOp($band['acos_from_op'] ?? null, '>='),
+                'acos_to'       => (float) ($band['acos_to'] ?? 9999),
+                'acos_to_op'    => $this->sbgtOp($band['acos_to_op'] ?? null, '<='),
+                'spend_from'    => (float) ($band['spend_from'] ?? 0),
+                'spend_op'      => $this->sbgtOp($band['spend_op'] ?? null, '>='),
+                'spend_to'      => (float) ($band['spend_to'] ?? 9999),
+                'sbgt'          => (int) ($band['sbgt'] ?? 0),
+                'label'         => (string) ($band['label'] ?? ''),
+                'color'         => (string) ($band['color'] ?? '#6c757d'),
             ];
         }
-
-        usort($out, function ($a, $b) {
-            $cmp = $a['acos_from'] <=> $b['acos_from'];
-            return $cmp !== 0 ? $cmp : ($a['spend_from'] <=> $b['spend_from']);
-        });
 
         $last = count($out) - 1;
         if ($last >= 0 && strcasecmp(trim($out[$last]['label']), 'Critical') === 0) {
@@ -1179,12 +1208,12 @@ class FacebookAllAdsSheetController extends Controller
     {
         return [
             'bands' => [
-                ['acos_from' => 0,  'acos_to' => 10,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 20, 'label' => 'Excellent', 'color' => '#ec4899'],
-                ['acos_from' => 10, 'acos_to' => 20,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 15, 'label' => 'Good',      'color' => '#22c55e'],
-                ['acos_from' => 20, 'acos_to' => 30,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 10, 'label' => 'Fair',      'color' => '#93c5fd'],
-                ['acos_from' => 30, 'acos_to' => 40,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 5,  'label' => 'Poor',      'color' => '#facc15'],
-                ['acos_from' => 40, 'acos_to' => 50,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 2,  'label' => 'Bad',       'color' => '#dc2626'],
-                ['acos_from' => 50, 'acos_to' => 9999, 'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 1,  'label' => 'Pause',     'color' => '#dc2626'],
+                ['acos_from' => 0,  'acos_from_op' => '>=', 'acos_to' => 10,   'acos_to_op' => '<=', 'spend_from' => 0, 'spend_op' => '>=', 'spend_to' => 9999, 'sbgt' => 20, 'label' => 'Excellent', 'color' => '#ec4899'],
+                ['acos_from' => 10, 'acos_from_op' => '>=', 'acos_to' => 20,   'acos_to_op' => '<=', 'spend_from' => 0, 'spend_op' => '>=', 'spend_to' => 9999, 'sbgt' => 15, 'label' => 'Good',      'color' => '#22c55e'],
+                ['acos_from' => 20, 'acos_from_op' => '>=', 'acos_to' => 30,   'acos_to_op' => '<=', 'spend_from' => 0, 'spend_op' => '>=', 'spend_to' => 9999, 'sbgt' => 10, 'label' => 'Fair',      'color' => '#93c5fd'],
+                ['acos_from' => 30, 'acos_from_op' => '>=', 'acos_to' => 40,   'acos_to_op' => '<=', 'spend_from' => 0, 'spend_op' => '>=', 'spend_to' => 9999, 'sbgt' => 5,  'label' => 'Poor',      'color' => '#facc15'],
+                ['acos_from' => 40, 'acos_from_op' => '>=', 'acos_to' => 50,   'acos_to_op' => '<=', 'spend_from' => 0, 'spend_op' => '>=', 'spend_to' => 9999, 'sbgt' => 2,  'label' => 'Bad',       'color' => '#dc2626'],
+                ['acos_from' => 50, 'acos_from_op' => '>=', 'acos_to' => 9999, 'acos_to_op' => '<=', 'spend_from' => 0, 'spend_op' => '>=', 'spend_to' => 9999, 'sbgt' => 1,  'label' => 'Pause',     'color' => '#dc2626'],
             ],
         ];
     }
@@ -1439,27 +1468,30 @@ class FacebookAllAdsSheetController extends Controller
             $from      = (float) ($b['acos_from'] ?? 0);
             $to        = (float) ($b['acos_to'] ?? 9999);
             $spendFrom = (float) ($b['spend_from'] ?? 0);
-            if ($from > $to) {
+            $fromOp    = $this->sbgtOp($b['acos_from_op'] ?? null, '>=');
+            $toOp      = $this->sbgtOp($b['acos_to_op'] ?? null, '<=');
+            $spendOp   = $this->sbgtOp($b['spend_op'] ?? null, '>=');
+            $lowerOps  = ['>', '>='];
+            $upperOps  = ['<', '<='];
+            if (in_array($fromOp, $lowerOps, true) && in_array($toOp, $upperOps, true) && $from > $to) {
                 return response()->json([
                     'success' => false,
-                    'error'   => 'Each band needs ACOS From ≤ ACOS To.',
+                    'error'   => 'Each band needs ACOS From ≤ ACOS To when From is > or >= and To is < or <=.',
                 ], 422);
             }
             $clean[] = [
-                'acos_from'   => $from,
-                'acos_to'     => $to,
-                'spend_from'  => $spendFrom,
-                // UI no longer edits Spend To — open-ended upper bound.
-                'spend_to'    => 9999.0,
-                'sbgt'        => (int) ($b['sbgt'] ?? 0),
-                'label'       => (string) ($b['label'] ?? ''),
-                'color'       => $this->acosSchemaColorForBand($from, $to),
+                'acos_from'    => $from,
+                'acos_from_op' => $fromOp,
+                'acos_to'      => $to,
+                'acos_to_op'   => $toOp,
+                'spend_from'   => $spendFrom,
+                'spend_op'     => $spendOp,
+                'spend_to'     => 9999.0,
+                'sbgt'         => (int) ($b['sbgt'] ?? 0),
+                'label'        => (string) ($b['label'] ?? ''),
+                'color'        => $this->acosSchemaColorForBand($from, $to),
             ];
         }
-        usort($clean, function ($a, $b) {
-            $cmp = $a['acos_from'] <=> $b['acos_from'];
-            return $cmp !== 0 ? $cmp : ($a['spend_from'] <=> $b['spend_from']);
-        });
 
         DB::table('facebook_sbgt_rules')->updateOrInsert(
             ['key' => 'facebook_all'],

@@ -729,7 +729,7 @@
      tabindex="-1"
      aria-labelledby="sbgtRuleModalLabel"
      aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
                 <h5 class="modal-title" id="sbgtRuleModalLabel">
@@ -739,23 +739,25 @@
             </div>
             <div class="modal-body">
                 <p class="small text-muted mb-3">
-                    Each row is an inclusive <strong>ACOS %</strong> range plus a
-                    <strong>&gt;Spend</strong> minimum. Rows are checked <strong>top to bottom</strong>;
-                    the first band that matches both the campaign's ACOS and Spend
-                    gets its Sbgt. <strong>Sbgt 0</strong> pauses the campaign on Push
+                    Each row is a band. Pick <strong>&gt;</strong>, <strong>&gt;=</strong>,
+                    <strong>&lt;</strong>, <strong>&lt;=</strong>, or <strong>=</strong>
+                    on ACOS From, ACOS To, and Spend. Rows are checked
+                    <strong>top to bottom</strong>; the first band whose three
+                    comparisons all match the campaign gets its Sbgt.
+                    <strong>Sbgt 0</strong> pauses the campaign on Push
                     and flashes <strong>AUDIT NOW</strong> in the Audit Req column.
-                    Use <code>9999</code> on ACOS <em>To</em> for a catch-all.
+                    Use <code>9999</code> with <code>&lt;=</code> on ACOS <em>To</em> for a catch-all.
                 </p>
 
                 <table class="table table-sm table-bordered align-middle mb-0" id="sbgt-rule-table">
                     <thead class="table-light">
                         <tr>
                             <th style="width:40px;">#</th>
-                            <th style="width:70px;">ACOS%</th>
-                            <th style="width:110px;">ACOS From (%)</th>
-                            <th style="width:110px;">ACOS To (%)</th>
-                            <th style="width:110px;">&gt;Spend</th>
-                            <th style="width:100px;">Sbgt</th>
+                            <th style="width:110px;">ACOS%</th>
+                            <th style="min-width:180px;">ACOS From (%)</th>
+                            <th style="min-width:180px;">ACOS To (%)</th>
+                            <th style="min-width:170px;">Spend</th>
+                            <th style="width:90px;">Sbgt</th>
                             <th style="width:50px;"></th>
                         </tr>
                     </thead>
@@ -2422,11 +2424,27 @@
         });
 
         // ── SBGT Rule editor ──────────────────────────────────────────
-        // Bands: { acos_from, acos_to, spend_from, spend_to, sbgt, label, color }
+        // Bands: { acos_from, acos_from_op, acos_to, acos_to_op,
+        //          spend_from, spend_op, spend_to, sbgt, label, color }
         const SBGT_RULE_GET_URL  = '/facebook-all-ads-sheet/rule';
         const SBGT_RULE_SAVE_URL = '/facebook-all-ads-sheet/rule';
         let currentSbgtRule = { bands: [] };
         const DEFAULT_BAND_LABELS = ['Excellent', 'Good', 'Fair', 'Poor', 'Bad', 'Pause'];
+        const SBGT_OPS = ['>', '>=', '<', '<=', '='];
+
+        function sbgtOp(value, fallback) {
+            return SBGT_OPS.includes(value) ? value : fallback;
+        }
+
+        function sbgtOpSelect(idx, field, value, fallback) {
+            const current = sbgtOp(value, fallback);
+            const opts = SBGT_OPS.map(op => {
+                const label = op.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const selected = op === current ? ' selected' : '';
+                return `<option value="${label}"${selected}>${label}</option>`;
+            }).join('');
+            return `<select class="form-select form-select-sm" data-idx="${idx}" data-field="${field}" style="width:4.4rem;flex:0 0 auto;">${opts}</select>`;
+        }
 
         /** Upgrade legacy acos_max-only bands to From–To for the editor. */
         function normalizeSbgtBandsForUi(bands) {
@@ -2438,13 +2456,16 @@
             const withDefaults = (b, i) => {
                 const label = (b.label ?? '').toString().trim();
                 return {
-                    acos_from:   Number(b.acos_from ?? 0),
-                    acos_to:     Number(b.acos_to ?? 9999),
-                    spend_from:  Number(b.spend_from ?? 0),
-                    spend_to:    Number(b.spend_to ?? 9999),
-                    sbgt:        b.sbgt,
-                    label:       label || (DEFAULT_BAND_LABELS[i] || 'Band'),
-                    color:       b.color ?? '#6c757d',
+                    acos_from:    Number(b.acos_from ?? 0),
+                    acos_from_op: sbgtOp(b.acos_from_op, '>='),
+                    acos_to:      Number(b.acos_to ?? 9999),
+                    acos_to_op:   sbgtOp(b.acos_to_op, '<='),
+                    spend_from:   Number(b.spend_from ?? 0),
+                    spend_op:     sbgtOp(b.spend_op, '>='),
+                    spend_to:     Number(b.spend_to ?? 9999),
+                    sbgt:         b.sbgt,
+                    label:        label || (DEFAULT_BAND_LABELS[i] || 'Band'),
+                    color:        b.color ?? '#6c757d',
                 };
             };
             if (hasFromTo) {
@@ -2882,21 +2903,36 @@
                                placeholder="e.g. Good"
                                style="background:${schema.bg};color:${schema.fg};border:none;min-width:6.5rem;">
                     </td>
-                    <td><input type="number" step="0.1" min="0"
-                               class="form-control form-control-sm"
-                               value="${band.acos_from ?? ''}"
-                               data-idx="${i}" data-field="acos_from"
-                               placeholder="0"></td>
-                    <td><input type="number" step="0.1" min="0"
-                               class="form-control form-control-sm"
-                               value="${band.acos_to ?? ''}"
-                               data-idx="${i}" data-field="acos_to"
-                               placeholder="9999"></td>
-                    <td><input type="number" step="0.01" min="0"
-                               class="form-control form-control-sm"
-                               value="${band.spend_from ?? ''}"
-                               data-idx="${i}" data-field="spend_from"
-                               placeholder="0"></td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            ${sbgtOpSelect(i, 'acos_from_op', band.acos_from_op, '>=')}
+                            <input type="number" step="0.1" min="0"
+                                   class="form-control form-control-sm"
+                                   value="${band.acos_from ?? ''}"
+                                   data-idx="${i}" data-field="acos_from"
+                                   placeholder="0">
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            ${sbgtOpSelect(i, 'acos_to_op', band.acos_to_op, '<=')}
+                            <input type="number" step="0.1" min="0"
+                                   class="form-control form-control-sm"
+                                   value="${band.acos_to ?? ''}"
+                                   data-idx="${i}" data-field="acos_to"
+                                   placeholder="9999">
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            ${sbgtOpSelect(i, 'spend_op', band.spend_op, '>=')}
+                            <input type="number" step="0.01" min="0"
+                                   class="form-control form-control-sm"
+                                   value="${band.spend_from ?? ''}"
+                                   data-idx="${i}" data-field="spend_from"
+                                   placeholder="0">
+                        </div>
+                    </td>
                     <td><input type="number" step="1" min="0"
                                class="form-control form-control-sm"
                                value="${band.sbgt ?? ''}"
@@ -2912,11 +2948,16 @@
 
             // Wire field inputs → write back into currentSbgtRule.bands.
             const floatFields = new Set(['acos_from', 'acos_to', 'spend_from']);
-            tbody.querySelectorAll('input[data-idx]').forEach(inp => {
-                inp.addEventListener('input', function () {
+            const opFields = new Set(['acos_from_op', 'acos_to_op', 'spend_op']);
+            tbody.querySelectorAll('[data-idx]').forEach(inp => {
+                const write = function () {
                     const idx = +this.dataset.idx;
                     const fld = this.dataset.field;
                     if (!currentSbgtRule.bands[idx]) return;
+                    if (opFields.has(fld)) {
+                        currentSbgtRule.bands[idx][fld] = sbgtOp(this.value, this.value);
+                        return;
+                    }
                     currentSbgtRule.bands[idx][fld] = (fld === 'sbgt')
                         ? (this.value === '' ? '' : parseInt(this.value, 10))
                         : (floatFields.has(fld)
@@ -2933,7 +2974,9 @@
                             labelInp.style.color = schema.fg;
                         }
                     }
-                });
+                };
+                inp.addEventListener('input', write);
+                inp.addEventListener('change', write);
             });
 
             // Wire the per-row remove buttons.
@@ -2969,13 +3012,16 @@
                 ? Number(bands[bands.length - 1].acos_to ?? 0)
                 : 0;
             currentSbgtRule.bands.push({
-                acos_from:   lastTo,
-                acos_to:     9999,
-                spend_from:  0,
-                spend_to:    9999,
-                sbgt:        1,
-                label:       DEFAULT_BAND_LABELS[bands.length] || 'Band',
-                color:       acosSchemaStyleForBand(lastTo, 9999).bg,
+                acos_from:    lastTo,
+                acos_from_op: '>=',
+                acos_to:      9999,
+                acos_to_op:   '<=',
+                spend_from:   0,
+                spend_op:     '>=',
+                spend_to:     9999,
+                sbgt:         1,
+                label:        DEFAULT_BAND_LABELS[bands.length] || 'Band',
+                color:        acosSchemaStyleForBand(lastTo, 9999).bg,
             });
             renderSbgtBands(currentSbgtRule.bands);
         });
@@ -2992,9 +3038,12 @@
                     ? NaN : parseFloat(b.acos_to);
                 return {
                     acos_from: acosFrom,
+                    acos_from_op: sbgtOp(b.acos_from_op, '>='),
                     acos_to: acosTo,
+                    acos_to_op: sbgtOp(b.acos_to_op, '<='),
                     spend_from: (b.spend_from === '' || b.spend_from === null || b.spend_from === undefined)
                         ? NaN : parseFloat(b.spend_from),
+                    spend_op: sbgtOp(b.spend_op, '>='),
                     spend_to: 9999,
                     sbgt:     (b.sbgt === '' || b.sbgt === null || b.sbgt === undefined)
                         ? NaN : parseInt(b.sbgt, 10),
@@ -3011,12 +3060,14 @@
                 if (!isFinite(b.acos_from) || !isFinite(b.acos_to)
                     || !isFinite(b.spend_from)
                     || !isFinite(b.sbgt)) {
-                    errEl.textContent = 'Every band needs numeric ACOS From/To, >Spend, and Sbgt.';
+                    errEl.textContent = 'Every band needs numeric ACOS From/To, Spend, and Sbgt.';
                     errEl.classList.remove('d-none');
                     return;
                 }
-                if (b.acos_from > b.acos_to) {
-                    errEl.textContent = 'Each band needs ACOS From ≤ ACOS To.';
+                const lower = b.acos_from_op === '>' || b.acos_from_op === '>=';
+                const upper = b.acos_to_op === '<' || b.acos_to_op === '<=';
+                if (lower && upper && b.acos_from > b.acos_to) {
+                    errEl.textContent = 'Each band needs ACOS From ≤ ACOS To when From is > or >= and To is < or <=.';
                     errEl.classList.remove('d-none');
                     return;
                 }

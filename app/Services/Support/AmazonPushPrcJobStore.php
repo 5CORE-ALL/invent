@@ -445,10 +445,18 @@ class AmazonPushPrcJobStore
             }
             $sale = isset($task['sale']) && is_numeric($task['sale']) ? round((float) $task['sale'], 2) : null;
             $zeroSold = ! empty($task['zero_sold']);
+            $effectiveIn = isset($task['effective']) && is_numeric($task['effective'])
+                ? round((float) $task['effective'], 2)
+                : null;
             if ($sale !== null && $sale <= 0) {
                 $sale = null;
             } elseif ($sale !== null && ! $zeroSold && $sale >= $std) {
-                $sale = null;
+                // Keep a Dil S PRC that sits at or above Your Price. Nulling it
+                // made the worker push Std, so refresh put the SKU back on the badge.
+                $isSprcTarget = $effectiveIn !== null && abs($sale - $effectiveIn) <= 0.009;
+                if (! $isSprcTarget) {
+                    $sale = null;
+                }
             }
             $saleBase = $sale !== null ? $sale : $std;
             $max = isset($task['max']) && is_numeric($task['max'])

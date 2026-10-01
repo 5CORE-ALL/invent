@@ -1601,8 +1601,22 @@ class OverallAmazonController extends Controller
         $saleRaw = $request->input('sale_price');
         if ($saleRaw !== null && $saleRaw !== '' && is_numeric($saleRaw)) {
             $saleFloat = round((float) $saleRaw, 2);
-            if ($saleFloat > 0 && $saleFloat < $priceFloat) {
-                $extras['sale_price'] = $saleFloat;
+            if ($saleFloat > 0) {
+                // Amazon will not keep a Sale above Your Price. Dil S PRC is often
+                // above Std. Dropping that Sale used to push Std, write Std into
+                // amazon_datsheets.price, and the blue badge (Price != S PRC)
+                // counted the SKU again on refresh. Raise Your Price to the S PRC.
+                if ($saleFloat > $priceFloat) {
+                    Log::info('applyAmazonPrice: raising Your Price to S PRC', [
+                        'sku' => $statusSku,
+                        'your_price_before' => $priceFloat,
+                        'sprice' => $saleFloat,
+                    ]);
+                    $priceFloat = $saleFloat;
+                }
+                if ($saleFloat <= $priceFloat) {
+                    $extras['sale_price'] = $saleFloat;
+                }
             }
         }
         $minRaw = $request->input('min_price');
