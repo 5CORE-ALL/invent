@@ -1568,19 +1568,14 @@
             }
             function amzPushAlertText(row) {
                 if (!row || !row.bid_sync_tip) return '';
-                var bidDiffers = (function () {
-                    var live = parseFloat(row.last_sbid);
-                    var want = parseFloat(row.sbid);
-                    return isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.round(live * 100) !== Math.round(want * 100);
-                })();
-                if (row.bid_sync_color === 'red' || row.bid_sync_reason === 'sbid_differs' || bidDiffers) {
+                if (row.bid_sync_color === 'red') {
                     return 'SBID: ' + row.bid_sync_tip;
                 }
                 return '';
             }
             function amzSbgtAlertText(row) {
                 if (!row || !row.bgt_sync_tip) return '';
-                if (row.bgt_sync_color === 'red' || row.bgt_sync_reason === 'paused_zero_sbgt' || row.bgt_sync_reason === 'sbgt_differs') {
+                if (row.bgt_sync_color === 'red' || row.bgt_sync_reason === 'paused_zero_sbgt') {
                     return 'SBGT: ' + row.bgt_sync_tip;
                 }
                 return '';
@@ -2090,7 +2085,7 @@
                 }
                 if (c === 'pushAlert') {
                     col.title = 'Alert';
-                    col.headerTooltip = 'Shown when SBID was not pushed, or Lbid does not match SBID. Hover the mark for the reason.';
+                    col.headerTooltip = 'Shown when the SBID push failed. A pending Lbid gap stays a yellow dot on Lbid.';
                     col.formatter = fmtPushAlert;
                     col.headerSort = false;
                     col.width = 48;
@@ -2099,7 +2094,7 @@
                 }
                 if (c === 'sbgtAlert') {
                     col.title = 'Alert';
-                    col.headerTooltip = 'Shown when SBGT was not pushed, or Lbgt does not match SBGT. Hover the mark for the reason.';
+                    col.headerTooltip = 'Shown when the SBGT push failed, or SBGT 0 paused the campaign. A pending Lbgt gap stays a yellow dot on Lbgt.';
                     col.formatter = fmtPushAlert;
                     col.headerSort = false;
                     col.width = 48;

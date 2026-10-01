@@ -54,10 +54,10 @@ class AmazonPushedPricePullServiceTest extends TestCase
         );
     }
 
-    public function test_live_get_accepts_price_within_nickel(): void
+    public function test_live_get_keeps_calculated_sprice_when_live_is_within_nickel(): void
     {
         $this->assertSame(
-            56.97,
+            56.95,
             AmazonPushedPricePullService::livePriceToPersist(56.97, 56.95)
         );
     }

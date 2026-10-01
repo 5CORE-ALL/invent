@@ -153,7 +153,7 @@ final class AmazonAdsLiveSyncStatus
     }
 
     /**
-     * Hover text for the SBID Alert column. Empty when the bid push did not fail.
+     * Hover text for the SBID Alert column. Empty unless the bid push failed.
      *
      * @param  array<string, mixed>  $row
      */
@@ -163,7 +163,7 @@ final class AmazonAdsLiveSyncStatus
     }
 
     /**
-     * Hover text for the SBGT Alert column. Empty when live budget matches SBGT and the push did not fail.
+     * Hover text for the SBGT Alert column. Empty unless the budget push failed or SBGT 0 paused the campaign.
      *
      * @param  array<string, mixed>  $row
      */
@@ -183,10 +183,9 @@ final class AmazonAdsLiveSyncStatus
         }
         $color = (string) ($row[$field.'_sync_color'] ?? '');
         $reason = (string) ($row[$field.'_sync_reason'] ?? '');
-        $shownDiffers = $field === 'bgt'
-            ? ($reason === 'paused_zero_sbgt' || $reason === 'sbgt_differs')
-            : ($reason === 'sbid_differs' || self::displayedBidsDiffer($row['last_sbid'] ?? null, $row['sbid'] ?? null));
-        if ($color === self::RED || $shownDiffers) {
+        // A gap that is still waiting to push stays a yellow dot. The red alert is a failed push,
+        // or an SBGT of 0 that paused the campaign.
+        if ($color === self::RED || ($field === 'bgt' && $reason === 'paused_zero_sbgt')) {
             return $label.': '.$tip;
         }
 
