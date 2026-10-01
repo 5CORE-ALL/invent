@@ -532,7 +532,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
         // Hand-typed dates can run a few hours ahead of the Pacific "today" the
         // range ends on, so allow one extra day at the top end.
-        $orders = OrderFulfillmentManualOrder::query()
+        $lines = OrderFulfillmentManualOrder::query()
             ->whereBetween('order_date', [
                 $from->copy()->format('Y-m-d H:i:s'),
                 $to->copy()->addDay()->endOfDay()->format('Y-m-d H:i:s'),
@@ -542,21 +542,84 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             ->get();
 
         $rows = [];
-        foreach ($orders as $order) {
-            $rows[] = $this->manualRow($order, $tz);
+        foreach ($lines->groupBy(fn ($line) => $this->manualOrderKey($line)) as $orderLines) {
+            $rows[] = $this->manualOrderRow($orderLines, $tz);
         }
 
-        return $rows;
+        return $this->attachManualLineInventory($rows);
+    }
+
+    protected function manualOrderKey(OrderFulfillmentManualOrder $line): string
+    {
+        return strtolower(trim((string) $line->marketplace)).'|'.trim((string) $line->order_id);
     }
 
     /**
+     * All SKU lines stored for the same marketplace + order id.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, OrderFulfillmentManualOrder>
+     */
+    protected function manualOrderLines(OrderFulfillmentManualOrder $order)
+    {
+        return OrderFulfillmentManualOrder::query()
+            ->whereRaw('LOWER(marketplace) = ?', [strtolower(trim((string) $order->marketplace))])
+            ->where('order_id', trim((string) $order->order_id))
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * One grid row per order: the header comes from the first line, every SKU
+     * line is listed under `lines`. The row id is the first line's id, which is
+     * also the key the tracking table and the fulfil endpoint use.
+     *
+     * @param  iterable<OrderFulfillmentManualOrder>  $lines
      * @return array<string, mixed>
      */
-    protected function manualRow(OrderFulfillmentManualOrder $order, ?string $tz = null): array
+    protected function manualOrderRow(iterable $lines, ?string $tz = null): array
     {
         $tz ??= $this->sofTimezone();
+        $lines = collect($lines)->sortBy('id')->values();
+        /** @var OrderFulfillmentManualOrder $order */
+        $order = $lines->first();
         $marketplace = trim((string) $order->marketplace);
         $orderDate = $order->order_date ? $order->order_date->format('Y-m-d H:i:s') : null;
+
+        $lineRows = [];
+        $units = 0;
+        $linesTotal = 0.0;
+        $priced = false;
+        $allFulfilled = true;
+        $fulfilledAt = null;
+        foreach ($lines as $line) {
+            $qty = (int) ($line->qty ?: 1);
+            $price = $line->unit_price !== null ? (float) $line->unit_price : null;
+            $units += $qty;
+            if ($price !== null) {
+                $priced = true;
+                $linesTotal += $price * $qty;
+            }
+            if (strcasecmp((string) $line->status, OrderFulfillmentManualOrder::STATUS_FULFILLED) !== 0) {
+                $allFulfilled = false;
+            }
+            if ($line->fulfilled_at && ($fulfilledAt === null || $line->fulfilled_at->gt($fulfilledAt))) {
+                $fulfilledAt = $line->fulfilled_at;
+            }
+            $lineRows[] = [
+                'id' => (int) $line->id,
+                'row_key' => self::MANUAL_SLUG.'-'.$line->id,
+                'sku' => $this->inventoryLookupSku((string) $line->sku),
+                'qty' => $qty,
+                'unit_price' => $price,
+                'line_total' => $price !== null ? round($price * $qty, 2) : null,
+                'inv' => null,
+            ];
+        }
+
+        $amount = $order->amount !== null ? (float) $order->amount : ($priced ? round($linesTotal, 2) : null);
+        $status = $allFulfilled
+            ? OrderFulfillmentManualOrder::STATUS_FULFILLED
+            : (string) ($order->status ?: OrderFulfillmentManualOrder::STATUS_CREATED);
 
         return [
             'id' => self::MANUAL_SLUG.'-'.$order->id,
@@ -564,19 +627,24 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'mm_slug' => self::MANUAL_SLUG,
             'manual' => true,
             'manual_id' => (int) $order->id,
+            'line_ids' => array_map(fn ($l) => $l['id'], $lineRows),
             'order_id' => trim((string) $order->order_id),
             // Stored as the Pacific wall clock the user typed; shown unchanged.
             'order_date' => $this->formatOrderDate($orderDate, $tz),
             'paid' => (bool) $order->paid,
             'paid_label' => $order->paid ? 'Paid' : 'Unpaid',
-            'status' => (string) ($order->status ?: OrderFulfillmentManualOrder::STATUS_CREATED),
-            'sku' => $this->inventoryLookupSku((string) $order->sku),
-            'qty' => (int) ($order->qty ?: 1),
-            'unit_price' => $order->unit_price !== null ? (float) $order->unit_price : null,
+            'status' => $status,
+            // First SKU keeps the single-SKU columns/filters working; all SKUs are in `lines`.
+            'sku' => $lineRows[0]['sku'] ?? '',
+            'qty' => $units,
+            'unit_price' => $lineRows[0]['unit_price'] ?? null,
+            'lines' => $lineRows,
+            'sku_count' => count($lineRows),
             'inv' => null,
             'source_id' => (int) $order->id,
             'reference' => trim((string) ($order->reference ?? '')),
-            'amount' => $order->amount !== null ? (float) $order->amount : null,
+            'amount' => $amount,
+            'lines_total' => $priced ? round($linesTotal, 2) : null,
             'customer_name' => (string) ($order->customer_name ?? ''),
             'customer_email' => (string) ($order->customer_email ?? ''),
             'customer_phone' => (string) ($order->customer_phone ?? ''),
@@ -587,8 +655,68 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'zip' => (string) ($order->zip ?? ''),
             'country' => (string) ($order->country ?? ''),
             'notes' => (string) ($order->notes ?? ''),
-            'fulfilled_at' => $order->fulfilled_at ? $order->fulfilled_at->format('Y-m-d H:i:s') : null,
+            'fulfilled_at' => $fulfilledAt ? $fulfilledAt->format('Y-m-d H:i:s') : null,
+            'created_at' => $order->created_at ? $order->created_at->format('Y-m-d H:i:s') : null,
         ];
+    }
+
+    /**
+     * CP Master stock for every SKU line of grouped manual rows (the row-level
+     * `inv` is the first SKU's stock, like other channels).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function attachManualLineInventory(array $rows): array
+    {
+        $skus = [];
+        foreach ($rows as $row) {
+            foreach ((array) ($row['lines'] ?? []) as $line) {
+                $sku = $this->inventoryLookupSku((string) ($line['sku'] ?? ''));
+                if ($sku !== '') {
+                    $skus[$sku] = true;
+                }
+            }
+        }
+        if ($skus === []) {
+            return $rows;
+        }
+        $inv = $this->cpMasterInventoryByCompactSku(array_keys($skus));
+        foreach ($rows as &$row) {
+            if (empty($row['lines'])) {
+                continue;
+            }
+            foreach ($row['lines'] as &$line) {
+                $key = ProductMaster::skuCompact($this->inventoryLookupSku((string) ($line['sku'] ?? '')));
+                $line['inv'] = $key !== '' && array_key_exists($key, $inv) ? $inv[$key] : null;
+            }
+            unset($line);
+            $row['inv'] = $row['lines'][0]['inv'] ?? null;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Fully decorated grid row for one manual order (used by the write endpoints).
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function manualOrderRowsForResponse(OrderFulfillmentManualOrder $order, bool $withStatus = false): array
+    {
+        $lines = $this->manualOrderLines($order);
+        if ($lines->isEmpty()) {
+            return [];
+        }
+        $rows = [$this->manualOrderRow($lines)];
+        $rows = $this->attachManualLineInventory($rows);
+        $rows = $this->attachSavedTracking($rows);
+        if ($withStatus) {
+            $rows = $this->attachCarrierAndTrackingStatus($rows);
+        }
+
+        return $rows;
     }
 
     /**
@@ -812,8 +940,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $header['amount'] = $this->manualOrderTotal($lines);
         }
 
-        $rows = [];
-        DB::transaction(function () use ($header, $lines, &$rows): void {
+        $first = null;
+        DB::transaction(function () use ($header, $lines, &$first): void {
             foreach ($lines as $line) {
                 $order = OrderFulfillmentManualOrder::query()->create($header + [
                     'sku' => $line['sku'],
@@ -822,18 +950,16 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                     'status' => OrderFulfillmentManualOrder::STATUS_CREATED,
                     'created_by' => auth()->id(),
                 ]);
-                $rows[] = $this->manualRow($order);
+                $first ??= $order;
             }
         });
 
-        $rows = $this->attachCpMasterInventory($rows);
-        $rows = $this->attachSavedTracking($rows);
-
-        return response()->json(['success' => true, 'rows' => $rows]);
+        return response()->json(['success' => true, 'rows' => $first ? $this->manualOrderRowsForResponse($first) : []]);
     }
 
     /**
-     * Edits apply to every SKU line of the same order (they share the header).
+     * Edit the whole order: header fields plus the full SKU line list. Lines
+     * carrying an id are updated, new ones are created, missing ones removed.
      */
     public function updateManualOrder(Request $request, int $id): JsonResponse
     {
@@ -845,52 +971,97 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $header = $this->validatedManualOrderHeader($request);
 
         $request->validate([
-            'sku' => 'nullable|string|max:191',
-            'qty' => 'nullable|integer|min:1|max:100000',
-            'price' => 'nullable|numeric|min:0|max:999999999',
+            'lines' => 'required|array|min:1|max:50',
+            'lines.*.id' => 'nullable|integer|min:1',
+            'lines.*.sku' => 'required|string|max:191',
+            'lines.*.qty' => 'nullable|integer|min:1|max:100000',
+            'lines.*.price' => 'nullable|numeric|min:0|max:999999999',
         ]);
-        $sku = trim((string) $request->input('sku', ''));
-        $qty = (int) $request->input('qty', 0);
-        $hasPrice = $request->has('price');
-        $price = $this->priceOrNull($request->input('price'));
 
-        $siblings = OrderFulfillmentManualOrder::query()
-            ->whereRaw('LOWER(marketplace) = ?', [strtolower((string) $order->marketplace)])
-            ->where('order_id', (string) $order->order_id)
-            ->get();
+        $siblings = $this->manualOrderLines($order);
+        $siblingIds = $siblings->pluck('id')->map(fn ($v) => (int) $v)->all();
 
-        $rows = [];
-        DB::transaction(function () use ($siblings, $order, $header, $sku, $qty, $hasPrice, $price, &$rows): void {
+        $wanted = [];
+        foreach ((array) $request->input('lines', []) as $line) {
+            $sku = trim((string) ($line['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $lineId = (int) ($line['id'] ?? 0);
+            $wanted[] = [
+                'id' => in_array($lineId, $siblingIds, true) ? $lineId : 0,
+                'sku' => $sku,
+                'qty' => max(1, (int) ($line['qty'] ?? 1)),
+                'unit_price' => $this->priceOrNull($line['price'] ?? null),
+            ];
+        }
+        if ($wanted === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['lines' => 'Add at least one SKU.']);
+        }
+
+        // Another order already using the new marketplace + order id?
+        $clash = OrderFulfillmentManualOrder::query()
+            ->whereRaw('LOWER(marketplace) = ?', [strtolower($header['marketplace'])])
+            ->where('order_id', $header['order_id'])
+            ->whereNotIn('id', $siblingIds)
+            ->exists();
+        if ($clash) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order '.$header['order_id'].' for '.$header['marketplace'].' already exists.',
+            ], 422);
+        }
+
+        if ($header['amount'] === null) {
+            $header['amount'] = $this->manualOrderTotal($wanted);
+        }
+
+        $keep = $order;
+        $removedKeys = [];
+        DB::transaction(function () use ($siblings, $header, $wanted, &$keep, &$removedKeys): void {
+            $byId = $siblings->keyBy(fn ($s) => (int) $s->id);
+            $seen = [];
+            $template = $siblings->first();
+            foreach ($wanted as $line) {
+                $model = $line['id'] > 0 ? ($byId[$line['id']] ?? null) : null;
+                if ($model === null) {
+                    $model = new OrderFulfillmentManualOrder([
+                        'status' => (string) ($template->status ?: OrderFulfillmentManualOrder::STATUS_CREATED),
+                        'created_by' => auth()->id(),
+                    ]);
+                    $model->fulfilled_at = $template->fulfilled_at;
+                    $model->fulfilled_by = $template->fulfilled_by;
+                }
+                $model->fill($header);
+                $model->sku = $line['sku'];
+                $model->qty = $line['qty'];
+                $model->unit_price = $line['unit_price'];
+                $model->save();
+                $seen[(int) $model->id] = true;
+            }
             foreach ($siblings as $sibling) {
-                if ((int) $sibling->id === (int) $order->id) {
-                    if ($sku !== '') {
-                        $sibling->sku = $sku;
-                    }
-                    if ($qty > 0) {
-                        $sibling->qty = $qty;
-                    }
-                    if ($hasPrice) {
-                        $sibling->unit_price = $price;
-                    }
+                if (! isset($seen[(int) $sibling->id])) {
+                    $removedKeys[] = self::MANUAL_SLUG.'-'.$sibling->id;
+                    $sibling->delete();
                 }
             }
-            // Blank amount → recompute the order total from every line of this order.
-            if ($header['amount'] === null) {
-                $header['amount'] = $this->manualOrderTotal($siblings);
-            }
-            foreach ($siblings as $sibling) {
-                $sibling->fill($header);
-                $sibling->save();
-                $rows[] = $this->manualRow($sibling);
-            }
+            $keep = OrderFulfillmentManualOrder::query()->whereIn('id', array_keys($seen))->orderBy('id')->first() ?? $keep;
         });
 
-        $rows = $this->attachCpMasterInventory($rows);
-        $rows = $this->attachSavedTracking($rows);
+        if ($removedKeys !== [] && Schema::hasTable('order_fulfillment_trackings')) {
+            OrderFulfillmentTracking::query()->whereIn('row_key', $removedKeys)->delete();
+        }
 
-        return response()->json(['success' => true, 'rows' => $rows]);
+        return response()->json([
+            'success' => true,
+            'rows' => $this->manualOrderRowsForResponse($keep),
+            'removed_ids' => array_values(array_diff([self::MANUAL_SLUG.'-'.$order->id], [self::MANUAL_SLUG.'-'.$keep->id])),
+        ]);
     }
 
+    /**
+     * Deletes the whole order (every SKU line) and its saved tracking.
+     */
     public function deleteManualOrder(int $id): JsonResponse
     {
         $this->ensureManualOrdersTable();
@@ -898,13 +1069,14 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         if ($order === null) {
             return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
         }
-        $rowKey = self::MANUAL_SLUG.'-'.$order->id;
-        $order->delete();
+        $lines = $this->manualOrderLines($order);
+        $rowKeys = $lines->map(fn ($l) => self::MANUAL_SLUG.'-'.$l->id)->all();
+        OrderFulfillmentManualOrder::query()->whereIn('id', $lines->pluck('id')->all())->delete();
         if (Schema::hasTable('order_fulfillment_trackings')) {
-            OrderFulfillmentTracking::query()->where('row_key', $rowKey)->delete();
+            OrderFulfillmentTracking::query()->whereIn('row_key', $rowKeys)->delete();
         }
 
-        return response()->json(['success' => true, 'id' => $rowKey]);
+        return response()->json(['success' => true, 'id' => self::MANUAL_SLUG.'-'.$order->id, 'ids' => $rowKeys]);
     }
 
     /**
@@ -924,10 +1096,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $request->validate(['tracking_number' => 'nullable|string|max:128']);
         $typed = trim((string) $request->input('tracking_number', ''));
 
-        $siblings = OrderFulfillmentManualOrder::query()
-            ->whereRaw('LOWER(marketplace) = ?', [strtolower((string) $order->marketplace)])
-            ->where('order_id', (string) $order->order_id)
-            ->get();
+        $siblings = $this->manualOrderLines($order);
 
         $group = [
             'mm_slug' => self::MANUAL_SLUG,
@@ -975,14 +1144,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $sibling->save();
         }
 
-        $rows = $siblings->map(fn ($s) => $this->manualRow($s))->all();
-        $rows = $this->attachCpMasterInventory($rows);
-        $rows = $this->attachSavedTracking($rows);
-        $rows = $this->attachCarrierAndTrackingStatus($rows);
-
         return response()->json([
             'success' => true,
-            'rows' => $rows,
+            'rows' => $this->manualOrderRowsForResponse($order, true),
             'updates' => $this->withCarrierOnUpdates($updates),
         ]);
     }
