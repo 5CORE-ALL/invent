@@ -744,7 +744,7 @@
                     on ACOS From, ACOS To, and Spend. Rows are checked
                     <strong>top to bottom</strong>; the first band whose three
                     comparisons all match the campaign gets its Sbgt.
-                    <strong>Sbgt 0</strong> pauses the campaign on Push
+                    <strong>Sbgt 0</strong> pauses the campaign on Meta automatically
                     and flashes <strong>AUDIT NOW</strong> in the Audit Req column.
                     Use <code>9999</code> with <code>&lt;=</code> on ACOS <em>To</em> for a catch-all.
                 </p>
@@ -2123,6 +2123,9 @@
                     tabulator.on('dataFiltered', updateMetricBadges);
                     tabulator.on('dataLoaded',   updateMetricBadges);
                     bindFaasTableResize();
+                    if (resp.batch && resp.batch.upload_type === 'merged') {
+                        autoPauseZeroSbgt(resp.data || []);
+                    }
                 });
         }
 
@@ -3158,7 +3161,9 @@
                 // Meta campaign IDs are large numeric strings — guard
                 // against placeholders ("—", "N/A") that snuck in.
                 if (!cid || !/^\d{6,}$/.test(cid)) return;
-                if (r._pause) {
+                const sbgtBlank = r['Sbgt'] === null || r['Sbgt'] === undefined
+                    || String(r['Sbgt']).trim() === '';
+                if (r._pause || (!sbgtBlank && sbgt === 0)) {
                     out.push({ campaign_id: cid, sbgt: 0, pause: true });
                 } else if (sbgt > 0) {
                     out.push({ campaign_id: cid, sbgt: sbgt });
@@ -3185,8 +3190,10 @@
 
             for (const chunk of chunks) {
                 done += chunk.length;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing '
-                    + done + '/' + allRows.length + '…';
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing '
+                        + done + '/' + allRows.length + '…';
+                }
 
                 const resp = await fetch(SBGT_PUSH_URL, {
                     method: 'POST',
@@ -3254,6 +3261,45 @@
             }
             const modalEl = document.getElementById('sbgtResultModal');
             if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+
+        // Campaigns already sent for auto-pause during this page view.
+        const faasAutoPausedIds = new Set();
+
+        function autoPauseZeroSbgt(rows) {
+            const targets = [];
+            (rows || []).forEach(r => {
+                const cid = (r['CAMPAIGN ID'] ?? '').toString().trim();
+                const raw = r['Sbgt'];
+                const blank = raw === null || raw === undefined || String(raw).trim() === '';
+                if (!cid || !/^\d{6,}$/.test(cid) || faasAutoPausedIds.has(cid)) return;
+                if (/paus/i.test(String(r.Status || ''))) return;
+                if (!(r._pause || (!blank && toNumber(raw) === 0))) return;
+                faasAutoPausedIds.add(cid);
+                targets.push({ campaign_id: cid, sbgt: 0, pause: true, auto: true });
+            });
+            if (!targets.length) return;
+
+            pushSbgtInChunks(targets, null)
+                .then(payload => {
+                    const pausedIds = (payload.results || [])
+                        .filter(r => r.status === 'paused')
+                        .map(r => r.campaign_id);
+                    if (tabulator && pausedIds.length) {
+                        const set = new Set(pausedIds);
+                        tabulator.getRows().forEach(row => {
+                            const id = (row.getData()['CAMPAIGN ID'] ?? '').toString();
+                            if (set.has(id)) row.update({ Status: 'Paused' });
+                        });
+                    }
+                    if ((payload.paused || 0) > 0 || (payload.failed || 0) > 0) {
+                        renderSbgtResult(payload);
+                    }
+                })
+                .catch(err => {
+                    targets.forEach(t => faasAutoPausedIds.delete(t.campaign_id));
+                    alert('Auto-pause for Sbgt 0 failed: ' + err.message);
+                });
         }
 
         document.getElementById('faasPushSbgtBtn')?.addEventListener('click', function () {

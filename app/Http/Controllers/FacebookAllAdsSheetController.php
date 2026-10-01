@@ -8,6 +8,7 @@ use App\Models\FacebookAdType;
 use App\Models\FacebookAllAdsSheet;
 use App\Models\FacebookB2bB2cOption;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -731,8 +732,9 @@ class FacebookAllAdsSheetController extends Controller
                     // the cell background with this colour so users
                     // can scan the recommendation strength at a glance.
                     $clean['_sbgt_color'] = $match['color'];
-                    // Sbgt 0 on a matched band (the Pause row) pauses
-                    // the campaign on Push and flags the Audit cell.
+                    // Sbgt 0 on a matched band pauses the campaign on Meta
+                    // (automatically when the sheet loads, and again on Push)
+                    // and flags the Audit cell.
                     $clean['_pause'] = ! empty($match['pause']);
                 }
             }
@@ -1568,6 +1570,16 @@ class FacebookAllAdsSheetController extends Controller
             $sbgt = isset($row['sbgt']) ? $row['sbgt'] : null;
             $sbgtNum = $this->parseNumeric($sbgt);
             $pause = filter_var($row['pause'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $auto = filter_var($row['auto'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            // A displayed Sbgt of 0 is a pause, even if the client omitted
+            // the pause flag. Blank Sbgt is not zero and must not pause.
+            $explicitZero = $sbgtNum !== null && $sbgtNum <= 0
+                && array_key_exists('sbgt', $row)
+                && $row['sbgt'] !== null
+                && $row['sbgt'] !== '';
+            if ($explicitZero) {
+                $pause = true;
+            }
 
             // Skip rows with no campaign id or no recommendation — these
             // are the "blank Sbgt" rows the user could see in the table.
@@ -1581,6 +1593,16 @@ class FacebookAllAdsSheetController extends Controller
                 continue;
             }
             if ($pause) {
+                if ($auto && $this->facebookCampaignAlreadyPaused($cid)) {
+                    $skipped++;
+                    $results[] = [
+                        'campaign_id' => $cid,
+                        'status'      => 'skipped',
+                        'sbgt'        => 0,
+                        'reason'      => 'Already paused',
+                    ];
+                    continue;
+                }
                 $outcome = $this->pauseMetaCampaign($base, $accessToken, $cid, $userId);
                 if ($outcome['ok']) {
                     $paused++;
@@ -1738,6 +1760,9 @@ class FacebookAllAdsSheetController extends Controller
                         'updated_at'       => now(),
                     ]);
             }
+            if ($ok) {
+                Cache::put('faas_sbgt_paused:'.$cid, 1, now()->addHours(12));
+            }
 
             return ['ok' => $ok, 'reason' => $reason];
         } catch (\Throwable $e) {
@@ -1755,6 +1780,23 @@ class FacebookAllAdsSheetController extends Controller
 
             return ['ok' => false, 'reason' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Skip a repeat auto-pause when Meta already has the campaign paused,
+     * or when this sheet paused it in the last 12 hours and we have no
+     * newer "active" status locally.
+     */
+    private function facebookCampaignAlreadyPaused(string $cid): bool
+    {
+        if (Schema::hasTable('meta_campaigns')) {
+            $status = DB::table('meta_campaigns')->where('meta_id', $cid)->value('status');
+            if (is_string($status) && $status !== '') {
+                return stripos($status, 'PAUS') !== false;
+            }
+        }
+
+        return Cache::has('faas_sbgt_paused:'.$cid);
     }
 
     /**
