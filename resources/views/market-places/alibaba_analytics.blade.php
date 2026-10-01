@@ -120,6 +120,11 @@
                     </div>
 
                     <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                        <select id="ab-row-type" class="form-select form-select-sm" style="width:110px;" title="All, SKU, or parent row">
+                            <option value="all">All</option>
+                            <option value="sku" selected>SKU</option>
+                            <option value="row">Row</option>
+                        </select>
                         <select id="ab-inventory-filter" class="form-select form-select-sm" style="width:140px;">
                             <option value="all">All Inventory</option>
                             <option value="zero">0 Inventory</option>
@@ -229,19 +234,18 @@
         }
 
         function abRowMatches(data) {
+            const view = document.getElementById('ab-row-type').value;
+            const parent = isAbParentRow(data);
+            if (view === 'sku' && parent) return false;
+            if (view === 'row' && !parent) return false;
             const inv = parseFloat(data.INV) || 0;
             const q = (document.getElementById('ab-search').value || '').trim().toLowerCase();
-            if (isAbParentRow(data)) {
+            if (parent) {
                 const inventory = document.getElementById('ab-inventory-filter').value;
                 if (inventory === 'zero' && inv !== 0) return false;
                 if (inventory === 'more' && !(inv > 0)) return false;
-                if (q && String(data.Parent || data.sku || '').toLowerCase().indexOf(q) === -1) return false;
-                return document.getElementById('ab-sold-filter').value === 'all'
-                    && document.getElementById('ab-gpft-filter').value === 'all'
-                    && document.getElementById('ab-cvr-filter').value === 'all'
-                    && document.getElementById('ab-roi-filter').value === 'all'
-                    && document.getElementById('ab-dil-filter').value === 'all'
-                    && document.getElementById('ab-status-filter').value === 'all';
+                if (q && (String(data.sku || '') + ' ' + String(data.parent || '')).toLowerCase().indexOf(q) === -1) return false;
+                return true;
             }
             const inventory = document.getElementById('ab-inventory-filter').value;
             if (inventory === 'zero' && inv !== 0) return false;
@@ -334,7 +338,6 @@
             .then(r => r.json())
             .then(json => {
                 abAllRows = json.data || [];
-                if (window.ParentExpand) ParentExpand.captureDataset(abAllRows);
                 if (abTable) {
                     applyFilters();
                     return;
@@ -349,9 +352,7 @@
                     paginationSizeSelector: [25, 50, 100, 250],
                     initialSort: [{ column: 'al30', dir: 'desc' }],
                     rowFormatter: function (row) {
-                        const data = row.getData();
-                        if (isAbParentRow(data)) {
-                            row.getElement().classList.add('parent-row');
+                        if (isAbParentRow(row.getData())) {
                             row.getElement().style.backgroundColor = '#fffef2';
                         }
                     },
@@ -364,7 +365,6 @@
                                 return '<span style="color:#0d6efd;font-size:11px;font-weight:600;">' + v + '</span>';
                             }
                         },
-                        (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, headerSort: false, frozen: true }),
                         {
                             title: 'Image', field: 'image_path', headerSort: false, width: 60, hozAlign: 'center',
                             formatter: function (cell) {
@@ -439,22 +439,12 @@
                         { title: 'SOH', field: 'soh', hozAlign: 'center', width: 55, sorter: 'number' },
                     ],
                 });
-                if (window.ParentExpand) {
-                    ParentExpand.configure({
-                        parentField: 'Parent',
-                        skuField: 'sku',
-                        getTable: function () { return abTable; },
-                        getDataset: function () { return abAllRows; },
-                        onCollapse: function () { applyFilters(); }
-                    });
-                    ParentExpand.bind();
-                }
                 updateSummary((abAllRows || []).filter(abRowMatches));
             })
             .finally(() => { loader.style.display = 'none'; });
         }
 
-        ['ab-inventory-filter', 'ab-sold-filter', 'ab-gpft-filter', 'ab-cvr-filter', 'ab-roi-filter', 'ab-dil-filter', 'ab-status-filter'].forEach(function (id) {
+        ['ab-row-type', 'ab-inventory-filter', 'ab-sold-filter', 'ab-gpft-filter', 'ab-cvr-filter', 'ab-roi-filter', 'ab-dil-filter', 'ab-status-filter'].forEach(function (id) {
             document.getElementById(id).addEventListener('change', applyFilters);
         });
         document.getElementById('ab-search').addEventListener('input', applyFilters);

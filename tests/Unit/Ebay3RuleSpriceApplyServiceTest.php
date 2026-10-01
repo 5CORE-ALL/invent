@@ -171,6 +171,48 @@ class Ebay3RuleSpriceApplyServiceTest extends TestCase
         );
     }
 
+    public function test_export_cell_sprice_uses_dil_not_saved(): void
+    {
+        $svc = EbayRuleSpriceApplyService::for('ebay1');
+        $store = [
+            'rules' => AmazonDilGroiRule::defaults(),
+            'cvr_adj' => AmazonDilGroiRule::defaultCvrAdj(),
+        ];
+        $row = [
+            '(Child) sku' => 'ABC',
+            'INV' => 10,
+            'L30' => 0.3,
+            'LP_productmaster' => 20,
+            'Ship_productmaster' => 0,
+            'SCVR' => 8,
+            'CVR_60' => 8,
+            'lmp_price' => 0,
+            'SPRICE' => 22,
+            'percentage' => 0.80,
+        ];
+
+        $price = $svc->cellSpriceFromViewRow($row, $store, 0.80, 0.0);
+        $this->assertEqualsWithDelta(37.50, $price, 0.01);
+        $this->assertNotEqualsWithDelta(22.0, $price, 0.01);
+    }
+
+    public function test_export_cell_sprice_skips_parent_rows(): void
+    {
+        $price = EbayRuleSpriceApplyService::for('ebay1')->cellSpriceFromViewRow([
+            '(Child) sku' => 'PARENT FOO',
+            'is_parent_summary' => true,
+            'INV' => 10,
+            'L30' => 3,
+            'LP_productmaster' => 20,
+            'SPRICE' => 22,
+        ], [
+            'rules' => AmazonDilGroiRule::defaults(),
+            'cvr_adj' => AmazonDilGroiRule::defaultCvrAdj(),
+        ], 0.80, 0.0);
+
+        $this->assertNull($price);
+    }
+
     public function test_channels_from_arg(): void
     {
         $this->assertSame(['ebay1', 'ebay2', 'ebay3'], EbayRuleSpriceApplyService::channelsFromArg('all'));

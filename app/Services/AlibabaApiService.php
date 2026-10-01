@@ -1066,6 +1066,35 @@ class AlibabaApiService extends AliExpressApiService
         return 0.0;
     }
 
+    protected function icbuAttributeText(array $product): string
+    {
+        $chunks = [];
+        $this->collectPieceLabels($product['productSku'] ?? $product['product_sku'] ?? [], $chunks);
+        $this->collectPieceLabels($product['attributes'] ?? [], $chunks);
+
+        return implode(' ', $chunks);
+    }
+
+    /**
+     * @param  list<string>  $chunks
+     */
+    protected function collectPieceLabels(mixed $node, array &$chunks): void
+    {
+        if (is_string($node)) {
+            if (preg_match('/\d+\s*(?:pcs?|pieces?)/i', $node) === 1) {
+                $chunks[] = $node;
+            }
+
+            return;
+        }
+        if (! is_array($node)) {
+            return;
+        }
+        foreach ($node as $value) {
+            $this->collectPieceLabels($value, $chunks);
+        }
+    }
+
     protected function icbuText(mixed $value): ?string
     {
         if (! is_string($value)) {
@@ -1159,6 +1188,7 @@ class AlibabaApiService extends AliExpressApiService
         }
 
         $sku = '';
+        $skuCodes = [];
         $price = 0.0;
         $soh = null;
         if (is_array($skuBag)) {
@@ -1167,6 +1197,9 @@ class AlibabaApiService extends AliExpressApiService
                     continue;
                 }
                 $code = trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? ''));
+                if ($code !== '') {
+                    $skuCodes[] = $code;
+                }
                 if ($sku === '' && $code !== '') {
                     $sku = $code;
                 }
@@ -1201,6 +1234,24 @@ class AlibabaApiService extends AliExpressApiService
             $mapped = AlibabaMetric::query()->where('product_id', $productId)->value('sku');
             $sku = trim((string) $mapped);
         }
+        $subject = $this->icbuText($product['subject'] ?? $product['product_name'] ?? $product['title'] ?? null) ?? '';
+        $attrText = $this->icbuAttributeText($product);
+        $hint = trim($subject.' '.$attrText);
+        if (preg_match('/\b(\d+)\s*(?:pcs?|pieces?)\b/i', $hint, $match) === 1) {
+            $labeled = null;
+            foreach ($skuCodes as $code) {
+                if (preg_match('/\b'.$match[1].'\s*pcs?\b/i', $code) === 1) {
+                    $labeled = $code;
+                    break;
+                }
+            }
+            if ($labeled !== null) {
+                $sku = $labeled;
+            } elseif ($sku !== '' && preg_match('/\b\d+\s*pcs?\b/i', $sku) !== 1) {
+                $sku = trim($sku.' '.$match[1].'PCS');
+            }
+        }
+
         if ($sku === '' || $sku === $productId) {
             return null;
         }

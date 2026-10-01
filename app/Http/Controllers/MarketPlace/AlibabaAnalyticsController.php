@@ -37,7 +37,15 @@ class AlibabaAnalyticsController extends Controller
             ->orderBy('product_id')
             ->get();
 
-        $skus = $sheetRows->pluck('sku')->filter()->unique()->values()->all();
+        $namesByProduct = $this->productNamesByProductId($sheetRows->pluck('product_id')->filter()->all());
+        $displaySkus = [];
+        foreach ($sheetRows as $row) {
+            $displaySkus[] = $this->skuWithPieceCount((string) $row->sku, $namesByProduct[trim((string) $row->product_id)] ?? '');
+        }
+        $skus = array_values(array_unique(array_filter(array_merge(
+            $sheetRows->pluck('sku')->filter()->all(),
+            $displaySkus
+        ))));
         $shopifyData = $skus === [] ? collect() : ShopifySku::mapByProductSkus($skus);
         $pmByNorm = $this->productMasterByNormalizedSku($skus);
         $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
@@ -46,10 +54,12 @@ class AlibabaAnalyticsController extends Controller
 
         $children = [];
         foreach ($sheetRows as $row) {
-            $sku = (string) $row->sku;
-            $skuKey = strtoupper(trim($sku));
-            $pm = $pmByNorm[$skuKey] ?? null;
-            $shopify = $shopifyData->get($sku);
+            $storedSku = trim((string) $row->sku);
+            $productId = trim((string) $row->product_id);
+            $sku = $this->skuWithPieceCount($storedSku, $namesByProduct[$productId] ?? '');
+            $skuKey = strtoupper($sku);
+            $pm = $pmByNorm[$skuKey] ?? $pmByNorm[strtoupper($storedSku)] ?? null;
+            $shopify = $shopifyData->get($sku) ?? $shopifyData->get($storedSku);
             $inv = (int) ($shopify->inv ?? 0);
             $ovL30 = (int) ($shopify->quantity ?? 0);
             $dil = $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0.0;
@@ -69,15 +79,16 @@ class AlibabaAnalyticsController extends Controller
             }
             $metrics = $this->priceMetrics($price, $lp, $margin);
             $cvr = $ovL30 > 0 ? round(($abL30 / $ovL30) * 100, 2) : 0.0;
+            $image = $this->productImage($pm, $shopify);
 
             $children[] = [
                 'Parent' => $parent,
                 'parent' => $parent,
                 'sku' => $sku,
                 '(Child) sku' => $sku,
-                'image_path' => $this->productImage($pm, $shopify),
-                'image' => $this->productImage($pm, $shopify),
-                'product_id' => (string) $row->product_id,
+                'image_path' => $image,
+                'image' => $image,
+                'product_id' => $productId,
                 'status' => $row->status,
                 'sku_price' => $row->sku_price !== null ? (float) $row->sku_price : null,
                 'soh' => $row->soh !== null ? (int) $row->soh : null,
@@ -130,7 +141,6 @@ class AlibabaAnalyticsController extends Controller
             'data' => $rows->values(),
             'stats' => [
                 'total' => $childRows->count(),
-                'parents' => $rows->where(fn ($r) => ! empty($r['is_parent_summary']))->count(),
                 'active' => $active,
                 'bulk' => $bulk,
                 'manual' => $manual,
@@ -250,6 +260,44 @@ class AlibabaAnalyticsController extends Controller
     }
 
     /**
+     * @param  array<int, mixed>  $productIds
+     * @return array<string, string>
+     */
+    protected function productNamesByProductId(array $productIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            fn ($id) => trim((string) $id),
+            $productIds
+        ))));
+        if ($ids === [] || ! Schema::hasTable('alibaba_metrics')) {
+            return [];
+        }
+
+        $names = [];
+        foreach (AlibabaMetric::query()->whereIn('product_id', $ids)->get(['product_id', 'sku', 'product_name']) as $metric) {
+            $id = trim((string) $metric->product_id);
+            $text = trim((string) ($metric->product_name ?? ''));
+            $sku = trim((string) ($metric->sku ?? ''));
+            $names[$id] = trim($text.' '.$sku);
+        }
+
+        return $names;
+    }
+
+    protected function skuWithPieceCount(string $sku, string $hint): string
+    {
+        $sku = trim($sku);
+        if ($sku === '' || preg_match('/\b\d+\s*pcs?\b/i', $sku) === 1) {
+            return $sku;
+        }
+        if (preg_match('/\b(\d+)\s*(?:pcs?|pieces?)\b/i', $hint, $match) !== 1) {
+            return $sku;
+        }
+
+        return trim($sku.' '.$match[1].'PCS');
+    }
+
+    /**
      * Unit profit = (price × Alibaba margin) − LP. Ship is not subtracted.
      *
      * @return array{profit_each: float, gpft: float, roi: float}
@@ -319,9 +367,6 @@ class AlibabaAnalyticsController extends Controller
     }
 
     /**
-     * Insert parent summary rows after each Product Master parent group.
-     * Parent INV / OV L30 / Dil match /bestbuy-pricing: Dil = OV L30 ÷ INV.
-     *
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
      */
@@ -396,7 +441,7 @@ class AlibabaAnalyticsController extends Controller
             $sumInv += (int) ($row['INV'] ?? 0);
             $sumOvL30 += (int) ($row['L30'] ?? 0);
             $sumSoh += (int) ($row['soh'] ?? 0);
-            $sumAbL30 += (int) ($row['al30'] ?? $row['AB L30'] ?? 0);
+            $sumAbL30 += (int) ($row['al30'] ?? 0);
             $sumSales += (float) ($row['sales'] ?? 0);
         }
 
@@ -405,7 +450,7 @@ class AlibabaAnalyticsController extends Controller
 
         return [
             'Parent' => $key,
-            'parent' => $key,
+            'parent' => $parentName,
             'sku' => $key,
             '(Child) sku' => $key,
             'image_path' => null,
