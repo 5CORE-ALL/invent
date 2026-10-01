@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\AmazonOrder;
 use App\Models\AmazonProductReview;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonSkuDailyData;
@@ -30,6 +32,9 @@ use Throwable;
  */
 class AmazonSprcDilAutoPushService
 {
+    /** @var array<string, int>|null Real-order A L30, same window as /amazon-tabulator-view */
+    private ?array $l30OrderUnitsBySku = null;
+
     /**
      * @param  list<string>|null  $onlySkus  Uppercase SKUs; null = all listed candidates
      * @param  callable(string): void|null  $logger
@@ -383,7 +388,9 @@ class AmazonSprcDilAutoPushService
             // Same as amzPefDil: raw (L30 / INV) × 100 — do not round before slab match.
             $dil = ($l30 / $inv) * 100;
             $sess30 = (float) ($m->sessions_l30 ?? 0);
-            $aL30 = (float) ($m->units_ordered_l30 ?? 0);
+            // Same A L30 as the tabulator badge (real orders). Datasheet units_ordered_l30
+            // is a different number and kept S PRC ≠ Price for hundreds of SKUs.
+            $aL30 = (float) AmazonOrder::unitsSoldForProductSku($sku, $this->l30OrderUnitsBySku(), $sellerSku);
             $sess60 = (float) ($m->sessions_l60 ?? 0);
             $aL60 = (float) ($m->units_ordered_l60 ?? 0);
             $cvr = $sess30 > 0 ? round(($aL30 / $sess30) * 100, 2) : 0.0;
@@ -422,6 +429,27 @@ class AmazonSprcDilAutoPushService
         }
 
         return $out;
+    }
+
+    /**
+     * Real Amazon units in the daily-sales L30 window — same source as the tabulator A L30 column.
+     *
+     * @return array<string, int>
+     */
+    private function l30OrderUnitsBySku(): array
+    {
+        if ($this->l30OrderUnitsBySku !== null) {
+            return $this->l30OrderUnitsBySku;
+        }
+        try {
+            [$start, $end] = AmazonOrder::dailySalesL30Window(AmazonSalesController::DAILY_SALES_WINDOW_DAYS);
+            $this->l30OrderUnitsBySku = AmazonOrder::unitsSoldBySkuForWindow($start, $end);
+        } catch (Throwable $e) {
+            Log::warning('Amazon Sprc Dil: failed loading order L30 units', ['error' => $e->getMessage()]);
+            $this->l30OrderUnitsBySku = [];
+        }
+
+        return $this->l30OrderUnitsBySku;
     }
 
     /**
