@@ -109,74 +109,33 @@ class SheinApiService
             return ['success' => false, 'message' => 'Title is empty after trimming.'];
         }
 
-        $endpoint = (string) config(
-            'services.shein.product_update_path',
-            '/open-api/openapi-business-backend/product/update'
-        );
-        $url = $this->baseUrl.$endpoint;
+        // /openapi-business-backend/product/update is rejected with openapi00007.
+        // Edits go through publishOrEdit (edit_type=1) with the live SPU.
+        return $this->editListedProduct($sku, ['title' => $normalized]);
+    }
 
-        $payload = [
-            'skuCode' => $sku,
-            'productName' => $normalized,
+    /**
+     * Shein has no partial-update endpoint that accepts our signature. Each field
+     * in one push is merged and sent as one publishOrEdit of the live product.
+     *
+     * @param  array{title?: string, description?: string, bullets?: list<string>, images?: list<string>}  $changes
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    private function editListedProduct(string $sku, array $changes): array
+    {
+        $sku = trim($sku);
+        $key = 'shein.lm.edit.'.md5(mb_strtolower($sku));
+        $pending = Cache::get($key);
+        $merged = array_merge(is_array($pending) ? $pending : [], $changes);
+        Cache::put($key, $merged, now()->addMinutes(5));
+
+        $result = app(\App\Services\MarketplaceManager\SheinListingPublishService::class)
+            ->editListedSku($sku, $merged);
+
+        return [
+            'success' => (bool) ($result['success'] ?? false),
+            'message' => (string) ($result['message'] ?? 'Shein update failed.'),
         ];
-
-        if ($spuCode !== null && $spuCode !== '') {
-            $payload['spuCode'] = $spuCode;
-        } else {
-            $metric = $this->safeSheinMetricFindBySku($sku);
-            if ($metric && ! empty($metric->spu_name)) {
-                $payload['spuCode'] = $metric->spu_name;
-            }
-        }
-
-        try {
-            Log::info('Shein updateTitle request', [
-                'sku' => $sku,
-                'title_length' => mb_strlen($normalized),
-                'endpoint' => $endpoint,
-            ]);
-
-            $response = Http::withoutVerifying()
-                ->timeout(45)
-                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
-                ->post($url, $payload);
-
-            $body = $response->body();
-            $json = is_array($response->json()) ? $response->json() : null;
-
-            if (! $response->successful()) {
-                Log::error('Shein updateTitle HTTP failure', [
-                    'status' => $response->status(),
-                    'body' => mb_substr($body, 0, 2000),
-                ]);
-
-                return [
-                    'success' => false,
-                    'message' => 'HTTP '.$response->status().': '.mb_substr($body, 0, 400),
-                ];
-            }
-
-            if ($this->sheinResponseIndicatesSuccess($json)) {
-                $this->safeSheinMetricUpdateTitle($sku, $normalized);
-
-                Log::info('Shein updateTitle success', ['sku' => $sku]);
-
-                return [
-                    'success' => true,
-                    'message' => 'Title updated.',
-                    'title' => $normalized,
-                ];
-            }
-
-            $message = $this->sheinExtractErrorMessage($json);
-            Log::error('Shein updateTitle API error', ['response' => $json]);
-
-            return ['success' => false, 'message' => $message];
-        } catch (\Throwable $e) {
-            Log::error('Shein updateTitle exception', ['error' => $e->getMessage()]);
-
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
     }
 
     /**
@@ -1840,52 +1799,12 @@ class SheinApiService
             return ['success' => false, 'message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.'];
         }
 
-        $endpoint = (string) config(
-            'services.shein.product_update_path',
-            '/open-api/openapi-business-backend/product/update'
-        );
-        $url = $this->baseUrl.$endpoint;
+        $lines = array_values(array_filter(array_map(
+            static fn ($line) => trim((string) $line),
+            preg_split('/\r\n|\r|\n/', $bulletPoints) ?: []
+        ), static fn ($line) => $line !== ''));
 
-        $metric = $this->safeSheinMetricFindBySku($sku);
-        $productName = $metric && ! empty($metric->product_name) ? $metric->product_name : $sku;
-
-        $payload = [
-            'skuCode' => $sku,
-            'productName' => $productName,
-            'productDesc' => $bulletPoints,
-        ];
-
-        if ($metric && ! empty($metric->spu_name)) {
-            $payload['spuCode'] = $metric->spu_name;
-        }
-
-        try {
-            $response = Http::withoutVerifying()
-                ->timeout(60)
-                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
-                ->post($url, $payload);
-
-            $json = is_array($response->json()) ? $response->json() : null;
-
-            if (! $response->successful()) {
-                return [
-                    'success' => false,
-                    'message' => 'HTTP '.$response->status().': '.mb_substr((string) $response->body(), 0, 500),
-                ];
-            }
-
-            if ($this->sheinResponseIndicatesSuccess($json)) {
-                Log::info('Shein updateBulletPoints success', ['sku' => $sku]);
-
-                return ['success' => true, 'message' => 'Shein product description updated.'];
-            }
-
-            return ['success' => false, 'message' => $this->sheinExtractErrorMessage($json)];
-        } catch (\Throwable $e) {
-            Log::error('Shein updateBulletPoints exception', ['error' => $e->getMessage()]);
-
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
+        return $this->editListedProduct($sku, ['bullets' => $lines]);
     }
 
     /**
@@ -1893,7 +1812,13 @@ class SheinApiService
      */
     public function updateProductDescription(string $identifier, string $description): array
     {
-        return $this->updateBulletPoints($identifier, $description);
+        $description = trim($description);
+        if (trim($identifier) === '' || $description === '') {
+            return ['success' => false, 'message' => 'SKU (or spu) and description are required.'];
+        }
+        $sku = $this->resolveSheinSellerSku($identifier);
+
+        return $this->editListedProduct($sku, ['description' => $description]);
     }
 
     /**
@@ -1983,55 +1908,19 @@ class SheinApiService
         }
 
         $sku = $this->resolveSheinSellerSku($identifier);
-        $skuCode = $this->resolveSheinSkuCode($identifier);
         $openKeyId = config('services.shein.open_key_id');
         $secretKey = config('services.shein.secret_key');
         if (empty($openKeyId) || empty($secretKey)) {
             return ['success' => false, 'message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.'];
         }
 
-        $endpoint = (string) config('services.shein.product_update_path', '/open-api/openapi-business-backend/product/update');
-        $url = $this->baseUrl.$endpoint;
-        $metric = $this->safeSheinMetricFindBySku($sku);
-        $productName = $metric && ! empty($metric->product_name) ? $metric->product_name : $sku;
-        $imageList = array_map(fn ($imageUrl, $i) => [
-            'imageUrl' => $imageUrl,
-            'imageSort' => $i + 1,
-            'imageType' => $i === 0 ? 1 : 2,
-        ], $images, array_keys($images));
-
-        $skuCodes = array_values(array_unique(array_filter([$skuCode, $sku, $identifier], fn ($v) => trim((string) $v) !== '')));
-        $payloadAttempts = [];
-        foreach ($skuCodes as $code) {
-            $payloadAttempts[] = ['skuCode' => $code, 'productName' => $productName, 'imageList' => $imageList];
-            $payloadAttempts[] = ['skuCode' => $code, 'productName' => $productName, 'mainImageUrl' => $images[0], 'imageUrls' => $images];
-            $payloadAttempts[] = ['skuCode' => $code, 'productName' => $productName, 'mainImage' => $images[0], 'detailImageList' => $imageList];
-        }
-        if ($metric && ! empty($metric->spu_name)) {
-            foreach ($payloadAttempts as &$payload) {
-                $payload['spuCode'] = $metric->spu_name;
-            }
-            unset($payload);
+        $result = $this->editListedProduct($sku, ['images' => $images]);
+        if (! empty($result['success'])) {
+            $this->saveImageUrlsToMetricsRow('shein_metrics', $sku, $images);
+            $result['normalized_urls'] = $images;
         }
 
-        $lastMessage = 'Shein image update failed.';
-        foreach ($payloadAttempts as $payload) {
-            try {
-                $response = Http::withoutVerifying()->timeout(60)->withHeaders($this->buildSheinAuthHeaders($endpoint))->post($url, $payload);
-
-                $json = is_array($response->json()) ? $response->json() : null;
-                if ($response->successful() && $this->sheinResponseIndicatesSuccess($json)) {
-                    $this->saveImageUrlsToMetricsRow('shein_metrics', $sku, $images);
-
-                    return ['success' => true, 'message' => 'Shein product images updated.', 'normalized_urls' => $images];
-                }
-                $lastMessage = $this->sheinExtractErrorMessage($json) ?: ('HTTP '.$response->status());
-            } catch (\Throwable $e) {
-                $lastMessage = $e->getMessage();
-            }
-        }
-
-        return ['success' => false, 'message' => $lastMessage];
+        return $result;
     }
 
     /**

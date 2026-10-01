@@ -955,6 +955,11 @@ final class EbayTradingReviseItem
         $merged = self::deduplicateItemSpecificsByName($merged);
         $merged = self::applyRequiredTypeFallback($merged);
         $merged = self::applyRequiredAmplifierTypeFallback($merged);
+        $merged = self::applyRequiredNamedFallback(
+            $merged,
+            'Form Factor',
+            (string) config('services.ebay.form_factor_fallback_value', 'Handheld')
+        );
         $merged = self::applyForcedBrandForBulletUpdate($merged);
         $merged = self::applyForcedMpnFromSku($item, $merged);
 
@@ -1007,6 +1012,29 @@ final class EbayTradingReviseItem
         }
 
         $rows[] = ['name' => 'Amplifier Type', 'values' => [$value]];
+
+        return $rows;
+    }
+
+    /**
+     * Some categories reject a bullet revise until a named item specific is present.
+     *
+     * @param  array<int, array{name: string, values: list<string>}>  $rows
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function applyRequiredNamedFallback(array $rows, string $name, string $value): array
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return $rows;
+        }
+        $want = strtolower(trim($name));
+        foreach ($rows as $row) {
+            if (strtolower(trim($row['name'])) === $want) {
+                return $rows;
+            }
+        }
+        $rows[] = ['name' => $name, 'values' => [$value]];
 
         return $rows;
     }
@@ -2116,7 +2144,7 @@ final class EbayTradingReviseItem
             $inventory = self::updateSellInventoryTitle($authToken, $sku, $title);
             if ($inventory['exists'] ?? false) {
                 if ($inventory['success'] ?? false) {
-                    return ['success' => true, 'message' => 'Title updated successfully.'];
+                    return ['success' => true, 'message' => 'Title updated on eBay item '.$itemId.' (Seller Hub inventory for SKU '.$sku.').'];
                 }
 
                 return [
@@ -2436,7 +2464,7 @@ final class EbayTradingReviseItem
 
                 return [
                     'success' => true,
-                    'message' => 'Title updated successfully.',
+                    'message' => 'Title updated successfully (eBay item '.$itemId.').',
                     'warnings' => $errors,
                 ];
             }
@@ -2558,7 +2586,7 @@ final class EbayTradingReviseItem
                     'warnings' => $errors,
                 ]);
 
-                return ['success' => true, 'message' => 'eBay listing updated ('.$contextLabel.').'];
+                return ['success' => true, 'message' => 'eBay listing updated ('.$contextLabel.') on item '.$itemId.'.'];
             }
 
             $firstErr = $errors[0] ?? [];

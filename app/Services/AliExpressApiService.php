@@ -4589,34 +4589,7 @@ class AliExpressApiService
         }
         $html .= '</ul>';
 
-        $editRequest = [
-            'product_id' => (string) $productId,
-            'multi_language_description_list' => [
-                [
-                    'language' => $language ?: 'en',
-                    'mobile_detail' => $html,
-                    'web_detail' => $html,
-                ],
-            ],
-        ];
-
-        $res = $this->callSync('aliexpress.solution.product.edit', [
-            'edit_product_request' => $this->encodeRequestPayload($editRequest),
-        ]);
-
-        if (! empty($res['success'])) {
-            return [
-                'success' => true,
-                'message' => 'AliExpress product detail updated.',
-                'data' => $res['data'] ?? $res['result'] ?? null,
-            ];
-        }
-
-        return [
-            'success' => false,
-            'message' => (string) ($res['message'] ?? 'AliExpress product edit failed.'),
-            'response' => $res['response'] ?? $res,
-        ];
+        return $this->editAliExpressHtml($productId, $html, 'AliExpress product detail updated.');
     }
 
     /**
@@ -4644,33 +4617,76 @@ class AliExpressApiService
 
         $html = '<div class="product-description">'.nl2br(htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
 
-        $editRequest = [
+        return $this->editAliExpressHtml($productId, $html, 'AliExpress product description updated.');
+    }
+
+    /**
+     * Description edits must use the same REST gateway as title updates. The legacy /sync
+     * call returns "signature does not conform", and product.edit also requires package size.
+     *
+     * @return array{success: bool, message: string, data?: mixed, response?: mixed}
+     */
+    private function editAliExpressHtml(string $productId, string $html, string $okMessage): array
+    {
+        $last = ['success' => false, 'message' => 'AliExpress product edit failed.'];
+        foreach ([
+            'aliexpress.postproduct.redefining.editsinglefiled',
+            'aliexpress.postproduct.redefining.editSingleFiled',
+        ] as $method) {
+            foreach (['detail', 'description'] as $field) {
+                foreach ([
+                    ['product_id' => $productId, 'fied_name' => $field, 'fiedvalue' => $html],
+                    ['productId' => $productId, 'fiedName' => $field, 'fiedValue' => $html],
+                ] as $params) {
+                    $single = $this->callApiFlexible($method, [
+                        'rest' => $params,
+                        'sync' => $params,
+                    ]);
+                    if (! empty($single['success'])) {
+                        return [
+                            'success' => true,
+                            'message' => $okMessage,
+                            'data' => $single['data'] ?? $single['result'] ?? null,
+                        ];
+                    }
+                    $last = $single;
+                }
+            }
+        }
+
+        $pkg = $this->aliexpressPackageSizeFields($productId);
+        $edit = array_merge([
             'product_id' => (string) $productId,
-            'multi_language_description_list' => [
-                [
-                    'language' => $language ?: 'en',
-                    'mobile_detail' => $html,
-                    'web_detail' => $html,
-                ],
+            'multi_language_description_list' => [[
+                'language' => 'en',
+                'mobile_detail' => $html,
+                'web_detail' => $html,
+            ]],
+            'logistics_size' => [
+                'package_length' => $pkg['package_length'],
+                'package_width' => $pkg['package_width'],
+                'package_height' => $pkg['package_height'],
             ],
-        ];
-
-        $res = $this->callSync('aliexpress.solution.product.edit', [
-            'edit_product_request' => $this->encodeRequestPayload($editRequest),
-        ]);
-
-        if (! empty($res['success'])) {
-            return [
-                'success' => true,
-                'message' => 'AliExpress product description updated.',
-                'data' => $res['data'] ?? $res['result'] ?? null,
-            ];
+        ], $pkg);
+        $encoded = $this->encodeRequestPayload($edit);
+        foreach (['rest', 'sync'] as $gateway) {
+            $res = $gateway === 'rest'
+                ? $this->callRestGateway('aliexpress.solution.product.edit', ['edit_product_request' => $encoded])
+                : $this->callSync('aliexpress.solution.product.edit', ['edit_product_request' => $encoded]);
+            if (! empty($res['success'])) {
+                return [
+                    'success' => true,
+                    'message' => $okMessage,
+                    'data' => $res['data'] ?? $res['result'] ?? null,
+                ];
+            }
+            $last = $res;
         }
 
         return [
             'success' => false,
-            'message' => (string) ($res['message'] ?? 'AliExpress product edit failed.'),
-            'response' => $res['response'] ?? $res,
+            'message' => (string) ($last['message'] ?? 'AliExpress product edit failed.'),
+            'response' => $last['response'] ?? $last,
         ];
     }
 
@@ -6464,9 +6480,16 @@ class AliExpressApiService
             }
         }
 
+        $pkg = $this->aliexpressPackageSizeFields($productId);
         $attempts = [
-            ['product_id' => $productId, 'image_u_r_ls' => $joined, 'main_image_url' => $primary],
-            ['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary],
+            array_merge(['product_id' => $productId, 'image_u_r_ls' => $joined, 'main_image_url' => $primary], $pkg),
+            array_merge(['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary], $pkg, [
+                'logistics_size' => [
+                    'package_length' => $pkg['package_length'],
+                    'package_width' => $pkg['package_width'],
+                    'package_height' => $pkg['package_height'],
+                ],
+            ]),
             ['product_id' => $productId, 'aeop_a_e_product_s_k_us' => ['sku_code' => $skuCode, 'sku_image' => $primary]],
         ];
 
@@ -6498,14 +6521,14 @@ class AliExpressApiService
         $table = app(\App\Services\Support\MarketplaceMetricsTableResolver::class)
             ->table($this->channelImageMetricsMarketplaceKey())
             ?? ($this->channelImageMetricsMarketplaceKey() === 'alibaba' ? 'alibaba_metrics' : 'aliexpress_metric');
-                $this->saveImageUrlsToMetricsRow($table, $sku, $images);
+        $this->saveImageUrlsToMetricsRow($table, $sku, $images);
 
-                return [
-                    'success' => true,
+        return [
+            'success' => true,
             'message' => (string) ($res['message'] ?? $this->channelLabel.' product images updated.'),
-                    'normalized_urls' => $images,
-                ];
-            }
+            'normalized_urls' => $images,
+        ];
+    }
 
     protected function channelImageMetricsMarketplaceKey(): string
     {
@@ -6545,7 +6568,7 @@ class AliExpressApiService
         }
 
         return $this->findChannelProductIdFromDataView($trim);
-        }
+    }
 
     protected function findChannelProductIdFromDataView(string $trim): ?string
     {
