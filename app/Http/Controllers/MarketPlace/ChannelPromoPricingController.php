@@ -1482,6 +1482,7 @@ class ChannelPromoPricingController extends Controller
                 'target_metric' => $targetMetric,
                 'rules' => AmazonDilGroiRule::defaultsForChannel($channel),
                 'cvr_adj' => $unpacked['cvr_adj'],
+                'clearance_nroi' => $unpacked['clearance_nroi'],
             ]);
         }
 
@@ -1493,6 +1494,7 @@ class ChannelPromoPricingController extends Controller
                 ? AmazonDilGroiRule::ensureZeroToZero($unpacked['rules'])
                 : $unpacked['rules'],
             'cvr_adj' => $unpacked['cvr_adj'],
+            'clearance_nroi' => $unpacked['clearance_nroi'],
         ]);
     }
 
@@ -1533,10 +1535,20 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeCvrAdj($cvrIncoming)
             : $existing['cvr_adj'];
 
+        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj];
+        if ($request->exists('clearance_nroi')) {
+            $rawNroi = $request->input('clearance_nroi');
+            $visibility['clearance_nroi'] = is_numeric($rawNroi)
+                ? round(max(0, (float) $rawNroi), 2)
+                : null;
+        } elseif (array_key_exists('clearance_nroi', $existing) && $existing['clearance_nroi'] !== null) {
+            $visibility['clearance_nroi'] = $existing['clearance_nroi'];
+        }
+
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_dil_vs_groi'],
             [
-                'visibility' => ['rules' => $rules, 'cvr_adj' => $cvrAdj],
+                'visibility' => $visibility,
                 'column_order' => array_column($rules, 'key'),
             ]
         );
@@ -1557,6 +1569,7 @@ class ChannelPromoPricingController extends Controller
             'target_metric' => $this->dilTargetMetric($channel),
             'rules' => $rules,
             'cvr_adj' => $cvrAdj,
+            'clearance_nroi' => $visibility['clearance_nroi'] ?? null,
         ]);
     }
 

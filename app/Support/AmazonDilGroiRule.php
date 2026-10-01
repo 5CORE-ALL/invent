@@ -453,15 +453,20 @@ class AmazonDilGroiRule
     {
         $rulesRaw = $saved;
         $cvrRaw = null;
+        $clearanceNroi = null;
         if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
             $rulesRaw = $saved['rules'];
             $cvrRaw = is_array($saved['cvr_adj'] ?? null) ? $saved['cvr_adj'] : null;
+            if (isset($saved['clearance_nroi']) && is_numeric($saved['clearance_nroi'])) {
+                $clearanceNroi = round(max(0, (float) $saved['clearance_nroi']), 2);
+            }
         }
         $rules = self::normalizeList(is_array($rulesRaw) ? $rulesRaw : []);
 
         return [
             'rules' => $rules,
             'cvr_adj' => self::normalizeCvrAdj($cvrRaw),
+            'clearance_nroi' => $clearanceNroi,
         ];
     }
 

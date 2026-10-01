@@ -114,8 +114,12 @@
         width: 14px;
         height: 14px;
         border-radius: 50%;
+        border: none;
+        padding: 0;
         box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        cursor: pointer;
     }
+    .invdays-nrp-dot:hover { transform: scale(1.25); }
 </style>
 @endsection
 
@@ -127,6 +131,11 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="invdays-toolbar">
+                    <button type="button" class="btn btn-sm text-white text-nowrap d-none" id="invdaysBulkYes" style="background:#16a34a;">Clearance Yes</button>
+                    <button type="button" class="btn btn-sm btn-secondary text-nowrap d-none" id="invdaysBulkNo">Clearance NO</button>
+                    <button type="button" class="btn btn-sm text-white text-nowrap d-none" id="invdaysBulkReq" style="background:#22c55e;">NRP REQ</button>
+                    <button type="button" class="btn btn-sm text-white text-nowrap d-none" id="invdaysBulkNr" style="background:#dc3545;">NRP NR</button>
+                    <button type="button" class="btn btn-sm text-dark text-nowrap d-none" id="invdaysBulkLater" style="background:#facc15;">NRP LATER</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" id="invdaysRefresh">
                         <i class="fas fa-rotate me-1"></i>Refresh
                     </button>
@@ -186,6 +195,9 @@
 document.addEventListener('DOMContentLoaded', function () {
     const dataUrl = @json(route('inv.days.data'));
     const clearanceUrl = @json(route('inv.days.clearance'));
+    const clearanceBulkUrl = @json(route('inv.days.clearance.bulk'));
+    const nrpBulkUrl = @json(route('inv.days.nrp.bulk'));
+    const selectedSkus = new Set();
     const clearanceHistoryUrl = @json(route('inv.days.clearance.history'));
     let table = null;
 
@@ -322,6 +334,39 @@ document.addEventListener('DOMContentLoaded', function () {
         initialSort: [{ column: 'days_exp', dir: 'desc' }],
         initialFilter: rowPasses,
         columns: [
+            {
+                title: '',
+                field: '_select',
+                width: 46,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerSort: false,
+                titleFormatter: function () {
+                    return '<input type="checkbox" id="invdaysSelectAll" aria-label="Select all shown rows">';
+                },
+                formatter: function (cell) {
+                    const sku = cell.getRow().getData().sku;
+                    const checked = selectedSkus.has(sku) ? ' checked' : '';
+                    return `<input type="checkbox" class="invdays-row-check" data-sku="${escapeHtml(sku)}"${checked} aria-label="Select row">`;
+                },
+                headerClick: function (e) {
+                    const box = e.target.closest('#invdaysSelectAll');
+                    if (!box) return;
+                    shownSkus().forEach(function (sku) {
+                        if (box.checked) selectedSkus.add(sku);
+                        else selectedSkus.delete(sku);
+                    });
+                    refreshVisibleChecks();
+                },
+                cellClick: function (e, cell) {
+                    const box = e.target.closest('.invdays-row-check');
+                    if (!box) return;
+                    const sku = cell.getRow().getData().sku;
+                    if (box.checked) selectedSkus.add(sku);
+                    else selectedSkus.delete(sku);
+                    syncBulkUi();
+                },
+            },
             {
                 title: 'Image',
                 field: 'image',
@@ -484,7 +529,15 @@ document.addEventListener('DOMContentLoaded', function () {
                         color = '#facc15';
                         tip = 'LATER';
                     }
-                    return `<span class="invdays-nrp-dot" style="background-color:${color};" title="${tip}" aria-label="${tip}"></span>`;
+                    return `<button type="button" class="invdays-nrp-dot" style="background-color:${color};" title="${tip}" aria-label="${tip}"></button>`;
+                },
+                cellClick: function (e, cell) {
+                    if (!e.target.closest('.invdays-nrp-dot')) return;
+                    const data = cell.getRow().getData();
+                    let value = String(data.nr || '').trim().toUpperCase();
+                    if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') value = 'REQ';
+                    const next = value === 'REQ' ? 'NR' : (value === 'NR' ? 'LATER' : 'REQ');
+                    applyNrp([{ sku: data.sku, parent: data.parent || '' }], next, false);
                 },
             },
         ],
@@ -557,7 +610,121 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    table.on('dataFiltered', updateCount);
+    table.on('dataFiltered', function () {
+        updateCount();
+        syncBulkUi();
+    });
+
+    function shownSkus() {
+        return allRows.filter(rowPasses).map(function (row) { return row.sku; });
+    }
+
+    function syncBulkUi() {
+        const n = selectedSkus.size;
+        document.getElementById('invdaysBulkYes').classList.toggle('d-none', n === 0);
+        document.getElementById('invdaysBulkNo').classList.toggle('d-none', n === 0);
+        document.getElementById('invdaysBulkReq').classList.toggle('d-none', n === 0);
+        document.getElementById('invdaysBulkNr').classList.toggle('d-none', n === 0);
+        document.getElementById('invdaysBulkLater').classList.toggle('d-none', n === 0);
+        document.getElementById('invdaysBulkYes').textContent = n ? 'Clearance Yes (' + n + ')' : 'Clearance Yes';
+        document.getElementById('invdaysBulkNo').textContent = n ? 'Clearance NO (' + n + ')' : 'Clearance NO';
+        document.getElementById('invdaysBulkReq').textContent = n ? 'NRP REQ (' + n + ')' : 'NRP REQ';
+        document.getElementById('invdaysBulkNr').textContent = n ? 'NRP NR (' + n + ')' : 'NRP NR';
+        document.getElementById('invdaysBulkLater').textContent = n ? 'NRP LATER (' + n + ')' : 'NRP LATER';
+        const allBox = document.getElementById('invdaysSelectAll');
+        if (!allBox) return;
+        const shown = shownSkus();
+        const selectedShown = shown.filter(function (sku) { return selectedSkus.has(sku); }).length;
+        allBox.checked = shown.length > 0 && selectedShown === shown.length;
+        allBox.indeterminate = selectedShown > 0 && selectedShown < shown.length;
+    }
+
+    function refreshVisibleChecks() {
+        if (!table) return;
+        table.getRows().forEach(function (row) {
+            const el = row.getElement();
+            if (el && el.isConnected) row.reformat();
+        });
+        syncBulkUi();
+    }
+
+    function applyToSelectedRows(chosen, patch, clearSelection) {
+        const updates = [];
+        allRows.forEach(function (row) {
+            if (!chosen.has(row.sku)) return;
+            Object.assign(row, patch);
+            if (row.id != null) updates.push(Object.assign({ id: row.id }, patch));
+        });
+        if (updates.length && table) table.updateData(updates);
+        if (clearSelection) selectedSkus.clear();
+        refreshVisibleChecks();
+    }
+
+    async function applyBulkClearance(value) {
+        const skus = Array.from(selectedSkus);
+        if (!skus.length) return;
+        const yesBtn = document.getElementById('invdaysBulkYes');
+        const noBtn = document.getElementById('invdaysBulkNo');
+        yesBtn.disabled = true;
+        noBtn.disabled = true;
+        try {
+            const res = await fetch(clearanceBulkUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({ skus: skus, value: value }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Unable to save clearance.');
+            applyToSelectedRows(new Set(skus), { clearance: value, clearance_has_history: true }, true);
+        } catch (err) {
+            alert(err.message || 'Unable to save clearance.');
+        } finally {
+            yesBtn.disabled = false;
+            noBtn.disabled = false;
+        }
+    }
+
+    document.getElementById('invdaysBulkYes').addEventListener('click', function () { applyBulkClearance('YES'); });
+    document.getElementById('invdaysBulkNo').addEventListener('click', function () { applyBulkClearance('NO'); });
+
+    function selectedNrpItems() {
+        return allRows.filter(function (row) { return selectedSkus.has(row.sku); }).map(function (row) {
+            return { sku: row.sku, parent: row.parent || '' };
+        });
+    }
+
+    const nrpButtons = ['invdaysBulkReq', 'invdaysBulkNr', 'invdaysBulkLater'];
+
+    async function applyNrp(items, value, clearSelection) {
+        if (!items.length) return;
+        nrpButtons.forEach(function (id) { document.getElementById(id).disabled = true; });
+        try {
+            const res = await fetch(nrpBulkUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({ items: items, value: value }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Unable to save NRP.');
+            applyToSelectedRows(new Set(items.map(function (item) { return item.sku; })), { nr: value }, clearSelection !== false);
+        } catch (err) {
+            alert(err.message || 'Unable to save NRP.');
+        } finally {
+            nrpButtons.forEach(function (id) { document.getElementById(id).disabled = false; });
+        }
+    }
+
+    document.getElementById('invdaysBulkReq').addEventListener('click', function () { applyNrp(selectedNrpItems(), 'REQ', true); });
+    document.getElementById('invdaysBulkNr').addEventListener('click', function () { applyNrp(selectedNrpItems(), 'NR', true); });
+    document.getElementById('invdaysBulkLater').addEventListener('click', function () { applyNrp(selectedNrpItems(), 'LATER', true); });
 
     let searchTimer = null;
     function onSearchInput() {
