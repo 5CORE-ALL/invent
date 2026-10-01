@@ -168,11 +168,25 @@ class SheinListingPublishService
             ];
         }
 
+        // Shein's "Merchant item number" (SPU-level seller code): the variation group for a
+        // multi-SKU listing, otherwise the SKU itself. Required or publishOrEdit returns
+        // "basic_info/supplier_code: Merchant item number cannot be empty".
+        $supplierCode = trim($parentHint);
+        if ($supplierCode === '' && count($skuRows) > 1) {
+            $supplierCode = trim((string) ($product->parent ?? ''));
+        }
+        if ($supplierCode === '' || stripos($supplierCode, 'PARENT') === 0) {
+            $supplierCode = $primarySku;
+        }
+
         $payload = [
             'brand_code' => $brandCode,
             'category_id' => (int) $category['id'],
             'edit_type' => 0,
             'product_type_id' => (int) $category['product_type_id'],
+            'supplier_code' => mb_substr($supplierCode, 0, 50),
+            'suit_flag' => 0,
+            'source_system' => 'openapi',
             'multi_language_name_list' => [['language' => 'en', 'name' => $title]],
             'multi_language_desc_list' => [['language' => 'en', 'name' => $description]],
             'site_list' => [[
