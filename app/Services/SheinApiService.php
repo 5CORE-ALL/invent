@@ -4246,6 +4246,30 @@ class SheinApiService
             'sku_code', 'skuCode', 'shein_sku_code', 'skc', 'skc_name',
         ]);
 
+        // Shein returns code 0 / "OK" even when validation failed; the real verdict is info.success
+        // and the field-level messages in pre_valid_result / mcc_valid_result.
+        $validation = self::publishValidationMessages($info);
+        $declaredSuccess = $info['success'] ?? null;
+        $failed = $declaredSuccess === false || $declaredSuccess === 'false' || $declaredSuccess === 0 || $declaredSuccess === '0'
+            || ($declaredSuccess === null && $spu === '' && $skuCode === '' && $validation !== []);
+        if ($failed) {
+            return [
+                'success' => false,
+                'message' => 'Shein did not create the product: '.($validation !== [] ? implode(' | ', $validation) : trim((string) ($json['msg'] ?? 'validation failed'))),
+                'validation' => $validation,
+                'info' => $info,
+            ];
+        }
+        if ($spu === '' && $skuCode === '') {
+            return [
+                'success' => false,
+                'message' => 'Shein answered OK but returned no SPU/SKU code, so the product was not created.'
+                    .($validation !== [] ? ' '.implode(' | ', $validation) : ''),
+                'validation' => $validation,
+                'info' => $info,
+            ];
+        }
+
         return [
             'success' => true,
             'message' => trim((string) ($json['msg'] ?? 'Published to Shein.')),
@@ -4253,6 +4277,54 @@ class SheinApiService
             'sku_code' => $skuCode !== '' ? $skuCode : null,
             'info' => $info,
         ];
+    }
+
+    /**
+     * Flatten publishOrEdit validation feedback ("module/form: message") from pre_valid_result,
+     * mcc_valid_result and any loose messages/errors arrays.
+     *
+     * @param  array<string, mixed>  $info
+     * @return list<string>
+     */
+    public static function publishValidationMessages(array $info): array
+    {
+        $out = [];
+        foreach (['pre_valid_result', 'mcc_valid_result', 'valid_result', 'errors', 'messages'] as $key) {
+            $block = $info[$key] ?? null;
+            if (is_string($block) && trim($block) !== '') {
+                $out[] = trim($block);
+                continue;
+            }
+            if (! is_array($block)) {
+                continue;
+            }
+            foreach ($block as $row) {
+                if (is_string($row)) {
+                    if (trim($row) !== '') {
+                        $out[] = trim($row);
+                    }
+                    continue;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+                $label = trim(implode('/', array_filter([
+                    trim((string) ($row['module'] ?? '')),
+                    trim((string) ($row['form'] ?? $row['field'] ?? '')),
+                ])));
+                $messages = $row['messages'] ?? $row['message'] ?? $row['msg'] ?? [];
+                $messages = is_array($messages) ? $messages : [$messages];
+                foreach ($messages as $msg) {
+                    $msg = trim((string) $msg);
+                    if ($msg === '') {
+                        continue;
+                    }
+                    $out[] = $label !== '' ? $label.': '.$msg : $msg;
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**
