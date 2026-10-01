@@ -47,6 +47,15 @@ class ImportDobaOrderToShopify implements ShouldQueue
             return;
         }
 
+        if (\App\Models\MarketplaceSyncSettings::shopifyImportPaused('doba')) {
+            // Leave the row importable so it is picked up when the pause is lifted.
+            if (! $order->shopify_order_id && (string) $order->import_status === 'queued') {
+                $order->update(['import_status' => 'ready']);
+            }
+
+            return;
+        }
+
         if ($order->shopify_order_id) {
             $pushService->ensureShopifyTypeTag($order, (string) $order->shopify_order_id);
 
