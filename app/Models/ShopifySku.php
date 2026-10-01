@@ -277,6 +277,49 @@ class ShopifySku extends Model
         return $compactHit;
     }
 
+    /**
+     * Units sold in a date window from shopify_raw_orders (Shopify orders, including
+     * Amazon and other channels that were pushed into Shopify).
+     * Keyed by normalizeSkuForShopifyLookup. Null when that table is missing.
+     *
+     * shopify_skus.quantity is a separate cache written by the products/orders API sync.
+     * That sync can miss older pages and store 0 for a SKU that did sell.
+     *
+     * @return array<string, int>|null
+     */
+    public static function soldUnitsByNormalizedSku(\DateTimeInterface $start, \DateTimeInterface $end): ?array
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('shopify_raw_orders')) {
+            return null;
+        }
+
+        $rows = \Illuminate\Support\Facades\DB::table('shopify_raw_orders')
+            ->whereBetween('order_date', [
+                $start->format('Y-m-d'),
+                $end->format('Y-m-d'),
+            ])
+            ->where(function ($query) {
+                $query->whereNull('financial_status')
+                    ->orWhereNotIn('financial_status', ['refunded', 'voided']);
+            })
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->groupBy('sku')
+            ->selectRaw('sku, SUM(COALESCE(quantity, 0)) as qty')
+            ->get();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $key = self::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($key === '') {
+                continue;
+            }
+            $map[$key] = ($map[$key] ?? 0) + (int) $row->qty;
+        }
+
+        return $map;
+    }
+
     public static function variantIdForProductSku(?string $sku): ?string
     {
         $row = self::firstForProductSku($sku);

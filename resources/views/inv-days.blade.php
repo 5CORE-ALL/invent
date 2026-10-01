@@ -127,6 +127,8 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="invdays-toolbar">
+                    <button type="button" class="btn btn-sm text-white text-nowrap d-none" id="invdaysBulkYes" style="background:#16a34a;">Clearance Yes</button>
+                    <button type="button" class="btn btn-sm btn-secondary text-nowrap d-none" id="invdaysBulkNo">Clearance NO</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" id="invdaysRefresh">
                         <i class="fas fa-rotate me-1"></i>Refresh
                     </button>
@@ -186,6 +188,8 @@
 document.addEventListener('DOMContentLoaded', function () {
     const dataUrl = @json(route('inv.days.data'));
     const clearanceUrl = @json(route('inv.days.clearance'));
+    const clearanceBulkUrl = @json(route('inv.days.clearance.bulk'));
+    const selectedSkus = new Set();
     const clearanceHistoryUrl = @json(route('inv.days.clearance.history'));
     let table = null;
 
@@ -322,6 +326,22 @@ document.addEventListener('DOMContentLoaded', function () {
         initialSort: [{ column: 'days_exp', dir: 'desc' }],
         initialFilter: rowPasses,
         columns: [
+            {
+                title: '',
+                field: '_select',
+                width: 46,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerSort: false,
+                titleFormatter: function () {
+                    return '<input type="checkbox" id="invdaysSelectAll" aria-label="Select all shown rows">';
+                },
+                formatter: function (cell) {
+                    const sku = cell.getRow().getData().sku;
+                    const checked = selectedSkus.has(sku) ? ' checked' : '';
+                    return `<input type="checkbox" class="invdays-row-check" data-sku="${escapeHtml(sku)}"${checked} aria-label="Select row">`;
+                },
+            },
             {
                 title: 'Image',
                 field: 'image',
@@ -557,7 +577,88 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    table.on('dataFiltered', updateCount);
+    table.on('dataFiltered', function () {
+        updateCount();
+        syncBulkUi();
+    });
+
+    function shownSkus() {
+        return allRows.filter(rowPasses).map(function (row) { return row.sku; });
+    }
+
+    function syncBulkUi() {
+        const n = selectedSkus.size;
+        document.getElementById('invdaysBulkYes').classList.toggle('d-none', n === 0);
+        document.getElementById('invdaysBulkNo').classList.toggle('d-none', n === 0);
+        const allBox = document.getElementById('invdaysSelectAll');
+        if (!allBox) return;
+        const shown = shownSkus();
+        const selectedShown = shown.filter(function (sku) { return selectedSkus.has(sku); }).length;
+        allBox.checked = shown.length > 0 && selectedShown === shown.length;
+        allBox.indeterminate = selectedShown > 0 && selectedShown < shown.length;
+    }
+
+    function refreshChecks() {
+        if (!table) return;
+        table.getRows().forEach(function (row) { row.reformat(); });
+        syncBulkUi();
+    }
+
+    document.getElementById('invdays-table').addEventListener('change', function (e) {
+        const target = e.target;
+        if (target.id === 'invdaysSelectAll') {
+            shownSkus().forEach(function (sku) {
+                if (target.checked) selectedSkus.add(sku);
+                else selectedSkus.delete(sku);
+            });
+            refreshChecks();
+            return;
+        }
+        if (target.classList && target.classList.contains('invdays-row-check')) {
+            const sku = target.getAttribute('data-sku');
+            if (target.checked) selectedSkus.add(sku);
+            else selectedSkus.delete(sku);
+            syncBulkUi();
+        }
+    });
+
+    async function applyBulkClearance(value) {
+        const skus = Array.from(selectedSkus);
+        if (!skus.length) return;
+        const yesBtn = document.getElementById('invdaysBulkYes');
+        const noBtn = document.getElementById('invdaysBulkNo');
+        yesBtn.disabled = true;
+        noBtn.disabled = true;
+        try {
+            const res = await fetch(clearanceBulkUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({ skus: skus, value: value }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Unable to save clearance.');
+            const chosen = new Set(skus);
+            table.getRows().forEach(function (row) {
+                if (chosen.has(row.getData().sku)) {
+                    row.update({ clearance: value, clearance_has_history: true });
+                }
+            });
+            selectedSkus.clear();
+            refreshChecks();
+        } catch (err) {
+            alert(err.message || 'Unable to save clearance.');
+        } finally {
+            yesBtn.disabled = false;
+            noBtn.disabled = false;
+        }
+    }
+
+    document.getElementById('invdaysBulkYes').addEventListener('click', function () { applyBulkClearance('YES'); });
+    document.getElementById('invdaysBulkNo').addEventListener('click', function () { applyBulkClearance('NO'); });
 
     let searchTimer = null;
     function onSearchInput() {

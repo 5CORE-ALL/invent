@@ -175,12 +175,28 @@ class ShopifyApiInventoryController extends Controller
                 return false;
             }
 
-            // Fetch orders for the period
+            // Fetch orders for the period. A stopped page walk must not be saved:
+            // every SKU starts at 0, so a short fetch writes 0 for sales that were
+            // still on the pages that never arrived (Amazon orders included).
             $ordersData = $this->fetchAllPages($startDate, $endDate);
-            Log::info('Fetched ' . count($ordersData['orders']) . ' order items');
+            $fetchComplete = (bool) ($ordersData['complete'] ?? false);
+            Log::info('Fetched ' . count($ordersData['orders']) . ' order items', [
+                'complete' => $fetchComplete,
+                'pages' => $ordersData['pages'] ?? null,
+            ]);
+            if (! $fetchComplete) {
+                Log::critical('saveDailyInventory: Shopify order pages did not finish. Refusing to save sold counts from a partial fetch.', [
+                    'pages' => $ordersData['pages'] ?? null,
+                    'order_items' => count($ordersData['orders'] ?? []),
+                ]);
+            }
 
             // Process and save data
             $simplifiedData = $this->processSimplifiedData($ordersData['orders'], $inventoryData);
+            $usedOrderHistory = $this->applyRawOrderSoldQuantities($simplifiedData, $startDate, $endDate);
+            if (! $fetchComplete && ! $usedOrderHistory) {
+                return false;
+            }
             
             // Verify we didn't lose SKUs during processing
             if (count($simplifiedData) < $inventoryCount * 0.9) {
@@ -1104,12 +1120,11 @@ GQL;
         $pageCount = 0;
 
         while ($hasMore && $attempts < 3) {
-            $pageCount++;
-            
             try {
                 $response = $this->makeApiRequest($startDate, $endDate, $sku, $pageInfo);
 
                 if ($response->successful()) {
+                    $pageCount++;
                     $orders = $response->json()['orders'] ?? [];
                     $filteredOrders = $this->filterOrders($orders, $sku);
                     $allOrders = array_merge($allOrders, $filteredOrders);
@@ -1136,10 +1151,14 @@ GQL;
             }
         }
 
-        Log::info("Fetched orders from {$pageCount} pages");
+        $complete = ! $hasMore;
+        Log::info('Fetched orders from '.$pageCount.' pages', ['complete' => $complete]);
+
         return [
             'orders' => $allOrders,
-            'totalResults' => count($allOrders)
+            'totalResults' => count($allOrders),
+            'pages' => $pageCount,
+            'complete' => $complete,
         ];
     }
 
@@ -1190,16 +1209,31 @@ GQL;
 
     protected function getNextPageInfo($response): ?string
     {
-        if ($response->hasHeader('Link') && str_contains($response->header('Link'), 'rel="next"')) {
-            $links = explode(',', $response->header('Link'));
-            foreach ($links as $link) {
-                if (str_contains($link, 'rel="next"')) {
-                    preg_match('/<(.*)>; rel="next"/', $link, $matches);
-                    parse_str(parse_url($matches[1], PHP_URL_QUERY), $query);
-                    return $query['page_info'] ?? null;
-                }
+        $linkHeader = (string) $response->header('Link');
+        if ($linkHeader === '' || ! str_contains($linkHeader, 'rel="next"')) {
+            return null;
+        }
+
+        foreach (explode(',', $linkHeader) as $link) {
+            if (! str_contains($link, 'rel="next"')) {
+                continue;
+            }
+            if (! preg_match('/<([^>]+)>/', $link, $matches)) {
+                continue;
+            }
+            $query = parse_url($matches[1], PHP_URL_QUERY);
+            if (! is_string($query) || $query === '') {
+                continue;
+            }
+            // parse_str turns "+" into a space and breaks Shopify page_info cursors,
+            // so the next page fails and the sync saves 0 for every SKU it never reached.
+            if (preg_match('/(?:^|&)page_info=([^&]*)/', $query, $pageMatch)) {
+                $pageInfo = rawurldecode($pageMatch[1]);
+
+                return $pageInfo !== '' ? $pageInfo : null;
             }
         }
+
         return null;
     }
 
@@ -1224,11 +1258,25 @@ GQL;
             ];
         }
 
-        // Update quantities for SKUs that had sales
+        $catalogKeyByNorm = [];
+        foreach ($groupedData as $sku => $row) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($norm !== '' && ! isset($catalogKeyByNorm[$norm])) {
+                $catalogKeyByNorm[$norm] = $sku;
+            }
+        }
+
+        // Update quantities for SKUs that had sales. Match spacing, case, and hyphens
+        // so an Amazon line is not dropped and left at the starting 0.
         foreach ($orders as $order) {
-            $sku = $order['sku'];
-            if (isset($groupedData[$sku])) {
-                $groupedData[$sku]['quantity'] += $order['quantity'];
+            $sku = (string) ($order['sku'] ?? '');
+            $target = $sku;
+            if (! isset($groupedData[$target])) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                $target = $catalogKeyByNorm[$norm] ?? '';
+            }
+            if ($target !== '' && isset($groupedData[$target])) {
+                $groupedData[$target]['quantity'] += $order['quantity'];
             } else {
                 Log::warning('Order SKU not found in products', ['sku' => $sku]);
             }
@@ -1236,6 +1284,28 @@ GQL;
 
         ksort($groupedData);
         return array_values($groupedData);
+    }
+
+    /**
+     * Sold units come from shopify_raw_orders (the full order sync, Amazon included)
+     * whenever that table has rows for the window.
+     *
+     * @param  array<int, array<string, mixed>>  $simplifiedData
+     */
+    protected function applyRawOrderSoldQuantities(array &$simplifiedData, Carbon $startDate, Carbon $endDate): bool
+    {
+        $sold = ShopifySku::soldUnitsByNormalizedSku($startDate, $endDate);
+        if ($sold === null || $sold === []) {
+            return false;
+        }
+
+        foreach ($simplifiedData as &$item) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup((string) ($item['sku'] ?? ''));
+            $item['quantity'] = $key === '' ? 0 : (int) ($sold[$key] ?? 0);
+        }
+        unset($item);
+
+        return true;
     }
 
     protected function saveSkus(array $simplifiedData)
@@ -1251,11 +1321,11 @@ GQL;
                 }
             }
             
-            // Only reset SKUs that we're actively updating (not ALL SKUs in table).
-            // Do not reset `inv` / GraphQL quantity columns here — those match Shopify Admin via syncLiveInventoryToDb().
+            // Do not blank `quantity` first. Each row below writes its own sold count.
+            // A zero-all update is what stored 0 for SKUs whose orders were never fetched.
+            // Do not reset `inv` / GraphQL quantity columns — those match Shopify Admin via syncLiveInventoryToDb().
             if (!empty($skusToUpdate)) {
                 ShopifySku::whereIn('sku', $skusToUpdate)->update([
-                    'quantity' => 0,
                     'price' => null,
                     'b2b_price' => null,
                     'b2c_price' => null,

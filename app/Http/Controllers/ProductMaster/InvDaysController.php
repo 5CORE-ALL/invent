@@ -5,6 +5,8 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonOrder;
+use App\Models\ShopifySku;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +34,8 @@ class InvDaysController extends Controller
             $baseData = $baseResponse->getData(true);
             $products = $baseData['data'] ?? [];
 
-            $ageBySku = $this->incomingAgeDaysBySku();
+            $ageBySku = $this->shopifyPushAgeDaysBySku();
+            $ovl30BySku = $this->ovl30BySku();
             $amazonSheets = $this->amazonSheetsByLookupKey();
             $clearanceBySku = $this->clearanceBySku();
             $nrpBySku = $this->forecastNrpBySku();
@@ -45,7 +48,7 @@ class InvDaysController extends Controller
                 }
 
                 $inv = (float) ($product['shopify_inv'] ?? 0);
-                $ovl30 = (float) ($product['shopify_quantity'] ?? 0);
+                $ovl30 = $this->ovl30ForSku($sku, $ovl30BySku, $product);
                 $salePrice = $this->amazonSalePrice($sku, $amazonSheets);
                 $clearance = $clearanceBySku[$this->skuKey($sku)] ?? null;
 
@@ -105,48 +108,14 @@ class InvDaysController extends Controller
             return response()->json(['message' => 'SKU is required.'], 422);
         }
 
-        $key = $this->skuKey($sku);
-        $user = $request->user();
-        $name = trim((string) ($user->name ?? ''));
-        if ($name === '') {
-            $name = trim((string) ($user->email ?? 'Unknown'));
-        }
+        [$name, $userId] = $this->clearanceActor($request);
 
         try {
-            $saved = DB::transaction(function () use ($sku, $key, $user, $name) {
-                $current = DB::table('inv_days_clearances')->where('sku_key', $key)->lockForUpdate()->first();
+            $saved = DB::transaction(function () use ($sku, $name, $userId) {
+                $current = DB::table('inv_days_clearances')->where('sku_key', $this->skuKey($sku))->lockForUpdate()->first();
                 $from = ($current && strtoupper((string) $current->value) === 'YES') ? 'YES' : 'NO';
-                $to = $from === 'YES' ? 'NO' : 'YES';
-                $now = now();
 
-                if ($current) {
-                    DB::table('inv_days_clearances')->where('id', $current->id)->update([
-                        'sku' => $sku,
-                        'value' => $to,
-                        'updated_at' => $now,
-                    ]);
-                } else {
-                    DB::table('inv_days_clearances')->insert([
-                        'sku_key' => $key,
-                        'sku' => $sku,
-                        'value' => $to,
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ]);
-                }
-
-                DB::table('inv_days_clearance_logs')->insert([
-                    'sku_key' => $key,
-                    'sku' => $sku,
-                    'from_value' => $from,
-                    'to_value' => $to,
-                    'changed_by' => $name,
-                    'user_id' => $user?->id,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]);
-
-                return $to;
+                return $this->writeClearance($sku, $from === 'YES' ? 'NO' : 'YES', $name, $userId, $current);
             });
         } catch (\Throwable $e) {
             Log::error('Inv Days clearance toggle failed: '.$e->getMessage());
@@ -159,6 +128,108 @@ class InvDaysController extends Controller
             'clearance' => $saved,
             'clearance_has_history' => true,
         ]);
+    }
+
+    public function bulkClearance(Request $request)
+    {
+        $value = strtoupper(trim((string) $request->input('value', '')));
+        if (! in_array($value, ['YES', 'NO'], true)) {
+            return response()->json(['message' => 'Choose Yes or NO.'], 422);
+        }
+
+        $skus = $request->input('skus', []);
+        if (! is_array($skus)) {
+            return response()->json(['message' => 'Select at least one row.'], 422);
+        }
+
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $skus
+        ), static fn ($sku) => $sku !== '' && stripos($sku, 'PARENT') !== 0)));
+
+        if ($skus === []) {
+            return response()->json(['message' => 'Select at least one row.'], 422);
+        }
+
+        [$name, $userId] = $this->clearanceActor($request);
+
+        try {
+            $updated = DB::transaction(function () use ($skus, $value, $name, $userId) {
+                $count = 0;
+                foreach ($skus as $sku) {
+                    $current = DB::table('inv_days_clearances')->where('sku_key', $this->skuKey($sku))->lockForUpdate()->first();
+                    $from = ($current && strtoupper((string) $current->value) === 'YES') ? 'YES' : 'NO';
+                    if ($from === $value) {
+                        continue;
+                    }
+                    $this->writeClearance($sku, $value, $name, $userId, $current);
+                    $count++;
+                }
+
+                return $count;
+            });
+        } catch (\Throwable $e) {
+            Log::error('Inv Days bulk clearance failed: '.$e->getMessage());
+
+            return response()->json(['message' => 'Unable to save clearance.'], 500);
+        }
+
+        return response()->json([
+            'status' => 200,
+            'clearance' => $value,
+            'updated' => $updated,
+            'clearance_has_history' => true,
+        ]);
+    }
+
+    /**
+     * @return array{0: string, 1: int|null}
+     */
+    private function clearanceActor(Request $request): array
+    {
+        $user = $request->user();
+        $name = trim((string) ($user->name ?? ''));
+        if ($name === '') {
+            $name = trim((string) ($user->email ?? 'Unknown'));
+        }
+
+        return [$name, $user?->id];
+    }
+
+    private function writeClearance(string $sku, string $to, string $name, ?int $userId, ?object $current): string
+    {
+        $key = $this->skuKey($sku);
+        $from = ($current && strtoupper((string) $current->value) === 'YES') ? 'YES' : 'NO';
+        $now = now();
+
+        if ($current) {
+            DB::table('inv_days_clearances')->where('id', $current->id)->update([
+                'sku' => $sku,
+                'value' => $to,
+                'updated_at' => $now,
+            ]);
+        } else {
+            DB::table('inv_days_clearances')->insert([
+                'sku_key' => $key,
+                'sku' => $sku,
+                'value' => $to,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        DB::table('inv_days_clearance_logs')->insert([
+            'sku_key' => $key,
+            'sku' => $sku,
+            'from_value' => $from,
+            'to_value' => $to,
+            'changed_by' => $name,
+            'user_id' => $userId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return $to;
     }
 
     public function clearanceHistory(Request $request)
@@ -322,37 +393,64 @@ class InvDaysController extends Controller
     }
 
     /**
-     * Whole days from the earliest incoming date to today.
-     * Uses incoming and incoming-return receipts first, then the product created date
-     * when a SKU was never received through Incoming.
+     * Overall L30 units. Prefer Shopify order lines (shopify_raw_orders), which include
+     * Amazon orders pushed into Shopify. shopify_skus.quantity is only a fallback when
+     * that order table is missing — the inventory sync can store 0 after a partial fetch.
+     *
+     * @return array<string, int>|null
+     */
+    private function ovl30BySku(): ?array
+    {
+        try {
+            [$start, $end] = AmazonOrder::dailySalesL30Window(
+                \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS
+            );
+
+            return ShopifySku::soldUnitsByNormalizedSku($start, $end);
+        } catch (\Throwable $e) {
+            Log::warning('Inv Days OVL30 from Shopify orders failed: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, int>|null  $ovl30BySku
+     */
+    private function ovl30ForSku(string $sku, ?array $ovl30BySku, array $product): float
+    {
+        if ($ovl30BySku === null) {
+            return (float) ($product['shopify_quantity'] ?? 0);
+        }
+
+        $key = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+        return (float) ($ovl30BySku[$key] ?? 0);
+    }
+
+    /**
+     * Whole days from the earliest date a transit-container row for this SKU
+     * was pushed into Shopify (inventory_warehouse.push_status = success).
+     * SKUs that were never pushed stay blank.
      *
      * @return array<string, int>
      */
-    private function incomingAgeDaysBySku(): array
+    private function shopifyPushAgeDaysBySku(): array
     {
         $dates = [];
 
-        $receipts = DB::table('inventories')
-            ->whereIn('type', ['incoming', 'incoming_return'])
-            ->whereNotNull('sku')
-            ->get(['sku', 'approved_at', 'created_at']);
-
-        foreach ($receipts as $row) {
-            $at = $row->approved_at ?: $row->created_at;
-            $this->keepEarliestDate($dates, (string) $row->sku, $at);
+        if (! Schema::hasTable('inventory_warehouse')) {
+            return [];
         }
 
-        $products = DB::table('product_master')
-            ->whereNull('deleted_at')
-            ->whereNotNull('sku')
-            ->get(['sku', 'created_at']);
+        $pushes = DB::table('inventory_warehouse')
+            ->where('push_status', 'success')
+            ->whereNotNull('our_sku')
+            ->where('our_sku', '!=', '')
+            ->get(['our_sku', 'updated_at', 'created_at']);
 
-        foreach ($products as $row) {
-            $key = $this->skuKey((string) $row->sku);
-            if ($key === '' || isset($dates[$key])) {
-                continue;
-            }
-            $this->keepEarliestDate($dates, (string) $row->sku, $row->created_at);
+        foreach ($pushes as $row) {
+            $this->keepEarliestDate($dates, (string) $row->our_sku, $row->updated_at ?: $row->created_at);
         }
 
         $today = Carbon::now('America/New_York')->startOfDay();
