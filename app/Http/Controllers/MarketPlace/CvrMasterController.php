@@ -15,6 +15,7 @@ use App\Models\TopDawgProduct;
 use App\Models\TopDawgDataView;
 use App\Models\TopDawgOrderMetric;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonOrder;
 use App\Models\MacyProduct;
 use App\Models\MacysPriceData;
 use App\Models\TemuMetric;
@@ -792,28 +793,25 @@ class CvrMasterController extends Controller
                 Log::warning('CVR Master: Amazon channel Ads% load failed: '.$e->getMessage());
             }
 
-            // Fetch Amazon data for GPFT/AD/PFT calculations
-            $amazonDatasheets = AmazonDatasheet::whereIn("sku", $skus)
-                ->select(['sku', 'asin', 'price', 'units_ordered_l30', 'sessions_l30'])
-                ->get()
-                ->keyBy("sku");
-            
-            // Fetch Amazon SP Campaign Reports for ad spend (L30)
-            $amazonSpCampaigns = DB::table('amazon_sp_campaign_reports')
-                ->selectRaw('
-                    campaignName,
-                    MAX(spend) as spend,
-                    SUM(sales30d) as sales30d
-                ')
-                ->where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('report_date_range', 'L30')
-                ->groupBy('campaignName')
-                ->get()
-                ->keyBy('campaignName');
+            // Amazon price / views — same datasheet match as /amazon-tabulator-view
+            // (spaces removed + PCS/PC fold, then pickBestForProductSku).
+            $amazonDatasheetsByNorm = AmazonDatasheet::groupedByNormalizedSku();
+            $amazonDatasheets = $amazonDatasheetsByNorm->flatten(1);
+
+            // A L30 — same Pacific window and order units as /amazon-tabulator-view.
+            $amazonL30UnitsBySku = [];
+            try {
+                [$amazonL30Start, $amazonL30End] = AmazonOrder::dailySalesL30Window(
+                    \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS
+                );
+                $amazonL30UnitsBySku = AmazonOrder::unitsSoldBySkuForWindow($amazonL30Start, $amazonL30End);
+            } catch (\Throwable $e) {
+                Log::warning('CVR Master: Amazon daily-sales L30 units failed: '.$e->getMessage());
+            }
             
             Log::info('CVR Master - Amazon Data fetched', [
                 'amazon_datasheets' => $amazonDatasheets->count(),
-                'amazon_campaigns' => $amazonSpCampaigns->count()
+                'amazon_l30_skus' => count($amazonL30UnitsBySku),
             ]);
 
             // Normalize SKU function (matching WalmartSheetUploadController)
@@ -2085,25 +2083,28 @@ class CvrMasterController extends Controller
                 // Doba PFT% = GPFT% (no ads — same as /doba-tabulator)
                 $dobaPFT = $dobaGPFT;
                 
-                // === AMAZON CALCULATIONS ===
-                $amazonSheet = $amazonDatasheets->get($sku);
+                // === AMAZON CALCULATIONS (same source / formula as /amazon-tabulator-view) ===
+                $amazonSheetKey = AmazonDatasheet::normalizeSkuForLookup((string) $sku);
+                $amazonSheet = AmazonDatasheet::pickBestForProductSku(
+                    (string) $sku,
+                    $amazonDatasheetsByNorm->get($amazonSheetKey)
+                );
                 $amazonPrice = $amazonSheet ? floatval($amazonSheet->price ?? 0) : 0;
-                $amazonL30 = $amazonSheet ? intval($amazonSheet->units_ordered_l30 ?? 0) : 0;
-                
-                // Amazon GPFT% = (price × marketplace_percentage - ship - lp) / price × 100
-                $amazonGPFT = $amazonPrice > 0 ? ((($amazonPrice * $amazonPercentage - $ship - $lp) / $amazonPrice) * 100) : 0;
-                // Amazon PFT% (gross from Amazon price only, using marketplace %)
-                $amzPft = $amazonPrice > 0 ? round((($amazonPrice * $amazonPercentage - $lp - $ship) / $amazonPrice) * 100, 2) : null;
-                // Amazon ROI% = ((price × percentage - lp - ship) / lp) × 100 when lp > 0
-                $amzRoi = ($lp > 0 && $amazonPrice > 0) ? round((($amazonPrice * $amazonPercentage - $lp - $ship) / $lp) * 100, 2) : null;
+                $amazonL30 = AmazonOrder::unitsSoldForProductSku(
+                    (string) $sku,
+                    $amazonL30UnitsBySku,
+                    $amazonSheet ? ($amazonSheet->sku ?? null) : null
+                );
 
-                // Get Amazon ad spend
-                $amazonCampaign = $amazonSpCampaigns->get($sku);
-                $amazonAdSpend = $amazonCampaign ? floatval($amazonCampaign->spend ?? 0) : 0;
+                // GPFT% / GROI% = ((price × 0.80 − ship − lp) / price|lp) × 100
+                $amazonGPFT = $amazonPrice > 0 ? ((($amazonPrice * 0.80 - $ship - $lp) / $amazonPrice) * 100) : 0;
+                $amzPft = $amazonPrice > 0 ? round((($amazonPrice * 0.80 - $lp - $ship) / $amazonPrice) * 100, 2) : null;
+                $amzRoi = ($lp > 0 && $amazonPrice > 0) ? round((($amazonPrice * 0.80 - $lp - $ship) / $lp) * 100, 2) : null;
+
+                // PFT% = GPFT% − channel Ads% (AMM), not per-SKU campaign spend
                 $amazonRevenue = $amazonPrice * $amazonL30;
-                $amazonAD = $amazonRevenue > 0 ? ($amazonAdSpend / $amazonRevenue) * 100 : 0;
-                
-                // Amazon PFT% = GPFT% - AD%
+                $amazonAdSpend = $amazonRevenue * ($amazonChannelAdsPct / 100);
+                $amazonAD = $amazonChannelAdsPct;
                 $amazonPFT = $amazonGPFT - $amazonAD;
 
                 // Rating/reviews and LQS from Jungle Scout
@@ -3708,54 +3709,32 @@ class CvrMasterController extends Controller
             // Fetch views data from views_pull_data for marketplaces that use it
             $viewsPullData = ViewsPullData::where('sku', $fullSku)->first();
 
-            // Fetch Amazon data (using full SKU)
-            $amazonData = AmazonDatasheet::where('sku', $fullSku)->first();
-            
-            // Amazon margin from marketplace_percentages
-            $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
-            $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
-            
-            // Calculate Amazon GPFT% (line 1887-1890: (price × 0.80 - ship - lp) / price × 100)
+            // Amazon price / views — same datasheet match as /amazon-tabulator-view
+            $amazonData = AmazonDatasheet::pickBestForProductSku(
+                (string) $fullSku,
+                AmazonDatasheet::groupedByNormalizedSku()->get(AmazonDatasheet::normalizeSkuForLookup((string) $fullSku))
+            );
+
+            // GPFT% = ((price × 0.80 − ship − lp) / price) × 100 — same as /amazon-tabulator-view
             $amazonPrice = $amazonData ? ($amazonData->price ?? 0) : 0;
-            $amazonL30 = $amazonData ? ($amazonData->units_ordered_l30 ?? 0) : 0; // CORRECT field name!
+            $amazonL30 = 0;
+            try {
+                [$amazonL30Start, $amazonL30End] = AmazonOrder::dailySalesL30Window(
+                    \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS
+                );
+                $amazonL30 = AmazonOrder::unitsSoldForProductSku(
+                    (string) $fullSku,
+                    AmazonOrder::unitsSoldBySkuForWindow($amazonL30Start, $amazonL30End),
+                    $amazonData ? ($amazonData->sku ?? null) : null
+                );
+            } catch (\Throwable $e) {
+                Log::warning('CVR breakdown Amazon L30 failed for '.$fullSku.': '.$e->getMessage());
+            }
             $amazonGPFT = $amazonPrice > 0 ? (($amazonPrice * 0.80 - $ship - $lp) / $amazonPrice) * 100 : 0;
-            
-            Log::info('Amazon GPFT calc - Price: ' . $amazonPrice . ', L30: ' . $amazonL30 . ', LP: ' . $lp . ', Ship: ' . $ship . ', GPFT%: ' . $amazonGPFT);
-            
-            // Get Amazon ad spend (line 1877-1878)
-            $amazonAdSpend = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('report_date_range', 'L30')
-                ->where('campaignName', 'LIKE', '%' . $fullSku . '%')
-                ->sum('cost');
-            
-            // Get Amazon ad sales from campaigns (line 1864-1865, 1879)
-            $amazonAdSales = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('report_date_range', 'L30')
-                ->where('campaignName', 'LIKE', '%' . $fullSku . '%')
-                ->sum('sales30d');
-            
-            Log::info('Amazon AD data - SKU: ' . $fullSku . ', Ad Spend: ' . $amazonAdSpend . ', Ad Sales (from campaigns): ' . $amazonAdSales);
-            
-            // Calculate Amazon AD% (line 1881-1885: AD_Spend / (price × A_L30) × 100)
-            // Amazon uses units_ordered (A_L30), but if 0, calculate using spend/price ratio
-            $amazonTotalRevenue = $amazonPrice * $amazonL30;
-            
-            // If no regular sales but has ad spend, calculate AD% from ad sales
-            if ($amazonL30 == 0 && $amazonAdSales > 0) {
-                $amazonTotalRevenue = $amazonPrice * $amazonAdSales;
-            }
-            
-            $amazonAD = $amazonTotalRevenue > 0 ? ($amazonAdSpend / $amazonTotalRevenue) * 100 : 0;
-            
-            Log::info('Amazon AD% calculation - L30: ' . $amazonL30 . ', Ad Sales: ' . $amazonAdSales . ', Total Revenue: ' . $amazonTotalRevenue . ', AD Spend: ' . $amazonAdSpend . ', AD%: ' . $amazonAD);
-            
-            // If ad spend exists but no sales, show 100% AD%
-            if ($amazonAdSpend > 0 && $amazonTotalRevenue == 0) {
-                $amazonAD = 100;
-            }
-            
-            // Amazon NPFT% - If no sales, NPFT = GPFT
-            $amazonNPFT = $amazonL30 == 0 ? $amazonGPFT : ($amazonGPFT - $amazonAD);
+
+            // Ads% / NPFT% are overwritten below from AMM channel Ads% (same as the analytics page).
+            $amazonAD = (float) $getChannelAdsPercent('Amazon');
+            $amazonNPFT = round($amazonGPFT - $amazonAD, 2);
             
             // Get Amazon suggested data from amazon_data_view
             $amazonDataView = AmazonDataView::where('sku', $fullSku)->first();
