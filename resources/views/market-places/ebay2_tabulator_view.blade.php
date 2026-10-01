@@ -1539,6 +1539,13 @@
             const sku = String(data['(Child) sku'] || data.SKU || data.sku || '').toUpperCase();
             return sku.indexOf('PARENT') !== -1;
         }
+        /** INV > 0 and E L30 sold ≤ 0 — SKU needs ads. Parent rows are excluded. */
+        function ebay2NeedsAds(data) {
+            if (!data || isEbay2TabulatorParentRow(data)) return false;
+            const inv = parseFloat(data.INV) || 0;
+            const sold = parseFloat(data['eBay L30']) || 0;
+            return inv > 0 && sold <= 0;
+        }
         /** Child rows with E Stock > 0 — Views / CVR / L7 badges (ignore table filters). */
         function ebay2ListingViewsScopeRows() {
             const source = (allTableData && allTableData.length)
@@ -3109,6 +3116,22 @@
                         hozAlign: "center",
                         width: 30,
                         sorter: "number"
+                    },
+                    {
+                        title: "Req Ads",
+                        field: "req_ads",
+                        hozAlign: "center",
+                        width: 72,
+                        headerTooltip: "Ads Needed Alert when INV > 0 and E L30 sold is 0 or less.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = ebay2NeedsAds(aRow.getData()) ? 1 : 0;
+                            const bv = ebay2NeedsAds(bRow.getData()) ? 1 : 0;
+                            return av - bv;
+                        },
+                        formatter: function(cell) {
+                            if (!ebay2NeedsAds(cell.getRow().getData())) return '';
+                            return '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:14px;" title="Ads Needed Alert" aria-label="Ads Needed Alert"></i>';
+                        }
                     },
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'column', 'ebayZeroSoldChannel' => 'ebay2'])
                     {
