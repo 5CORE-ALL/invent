@@ -384,8 +384,8 @@ class ChannelPushSpriceRunner
             $price = (float) ($rows[0]['price'] ?? 0);
             if ($price > 0) {
                 $last = round($price, 2);
-                if (abs($last - $expected) < 0.05) {
-                    return $last;
+                if (abs($last - $expected) <= 0.05) {
+                    return round($expected, 2);
                 }
             }
         }

@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\AmazonPushedPricePullService;
 use App\Services\ChannelLivePriceSync;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\TemuShopifySalesService;
@@ -23,6 +24,69 @@ class PushedListingPriceTest extends TestCase
     public function test_prefer_uses_catalog_when_never_pushed(): void
     {
         $this->assertSame(124.99, PushedListingPrice::prefer(124.99, null));
+    }
+
+    public function test_keep_calculated_when_live_is_a_few_cents_off(): void
+    {
+        $this->assertSame(56.95, PushedListingPrice::keepCalculated(56.96, 56.95));
+        $this->assertSame(56.95, PushedListingPrice::keepCalculated(56.97, 56.95));
+        $this->assertSame(56.95, PushedListingPrice::keepCalculated(57.00, 56.95));
+        $this->assertSame(56.95, PushedListingPrice::keepCalculated(56.95, 56.95));
+    }
+
+    public function test_keep_live_when_the_gap_is_more_than_five_cents(): void
+    {
+        $this->assertSame(57.01, PushedListingPrice::keepCalculated(57.01, 56.95));
+        $this->assertSame(124.99, PushedListingPrice::keepCalculated(124.99, 56.95));
+    }
+
+    public function test_topdawg_one_cent_keeps_calculated_sprice(): void
+    {
+        $this->assertSame(
+            19.99,
+            ChannelLivePriceSync::preferIncoming('topdawg', 'GSTOOL BLK', 20.00, [
+                'GSTOOL BLK' => 19.99,
+            ])
+        );
+    }
+
+    public function test_topdawg_different_site_cost_stays_live(): void
+    {
+        $this->assertSame(
+            12.08,
+            ChannelLivePriceSync::preferIncoming('topdawg', 'SS HD 2PK 3FT YLW BAG', 12.08, [
+                'SS HD 2PK 3FT YLW BAG' => 35.99,
+            ])
+        );
+    }
+
+    public function test_ebay_two_and_three_one_cent_keeps_calculated_sprice(): void
+    {
+        $this->assertSame(
+            42.50,
+            ChannelLivePriceSync::preferIncoming('ebay2', 'SKU', 42.51, ['SKU' => 42.50])
+        );
+        $this->assertSame(
+            42.50,
+            ChannelLivePriceSync::preferIncoming('ebay3', 'SKU', 42.49, ['SKU' => 42.50])
+        );
+    }
+
+    public function test_amazon_live_pull_keeps_calculated_sprice_within_a_nickel(): void
+    {
+        $this->assertSame(56.95, AmazonPushedPricePullService::livePriceToPersist(56.96, 56.95));
+        $this->assertSame(56.95, AmazonPushedPricePullService::livePriceToPersist(57.00, 56.95));
+        $this->assertNull(AmazonPushedPricePullService::livePriceToPersist(57.01, 56.95));
+    }
+
+    public function test_ebay_prefer_incoming_keeps_sprice_when_report_is_one_cent_off(): void
+    {
+        $this->assertSame(
+            147.04,
+            ChannelLivePriceSync::preferIncoming('ebay1', 'LS 120 CRANK', 147.05, [
+                'LS 120 CRANK' => 147.04,
+            ])
+        );
     }
 
     public function test_prefer_falls_back_to_pushed_when_catalog_has_no_price(): void

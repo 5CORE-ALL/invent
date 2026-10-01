@@ -55,6 +55,22 @@ class PushedListingPrice
     }
 
     /**
+     * Blue badges compare Price and S PRC to the cent. A live listing a few
+     * cents off the price we just calculated must not replace it.
+     * A larger gap is left as the live price.
+     */
+    public static function keepCalculated(?float $live, ?float $calculated, float $tolerance = 0.05): ?float
+    {
+        $live = ($live !== null && $live > 0) ? round($live, 2) : null;
+        $calculated = ($calculated !== null && $calculated > 0) ? round($calculated, 2) : null;
+        if ($live !== null && $calculated !== null && abs($live - $calculated) <= $tolerance) {
+            return $calculated;
+        }
+
+        return $live;
+    }
+
+    /**
      * Temu / Temu 2 / Temu 3 store supplier base, not full S PRC.
      * Do not write the customer Sale into base_price.
      */

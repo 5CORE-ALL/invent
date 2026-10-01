@@ -9171,7 +9171,9 @@ class CvrMasterController extends Controller
                         break;
                     }
                 }
-                $savePrice = $livePrice > 0 ? $livePrice : $pushedPrice;
+                $savePrice = $livePrice > 0
+                    ? (\App\Support\PushedListingPrice::keepCalculated($livePrice, $pushedPrice) ?? $pushedPrice)
+                    : $pushedPrice;
                 if ($pulled) {
                     $product = $this->persistTikTokActiveListing($channel, $sku, $pulled, $product);
                 }

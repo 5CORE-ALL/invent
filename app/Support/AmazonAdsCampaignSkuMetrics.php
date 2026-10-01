@@ -684,6 +684,87 @@ final class AmazonAdsCampaignSkuMetrics
     }
 
     /**
+     * Lowest Shopify inv among the SKUs the Campaign SKUs modal lists.
+     * Real ads win over name-derived rows, same as the modal.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, array{has_skus: bool, min: int|null}>
+     */
+    public static function shopifyInvForCampaignIds(array $campaignIds): array
+    {
+        $cids = [];
+        foreach ($campaignIds as $cid) {
+            $id = preg_replace('/\D+/', '', trim((string) $cid)) ?: '';
+            if ($id !== '') {
+                $cids[$id] = true;
+            }
+        }
+        if ($cids === [] || ! Schema::hasTable('amazon_ads_campaign_skus')) {
+            return [];
+        }
+
+        $rows = AmazonAdsCampaignSku::query()
+            ->whereIn('campaign_id', array_keys($cids))
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['campaign_id', 'sku', 'ad_id']);
+
+        $realByCid = [];
+        $nameByCid = [];
+        $skus = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            $cid = preg_replace('/\D+/', '', trim((string) ($row->campaign_id ?? ''))) ?: '';
+            if ($sku === '' || $cid === '') {
+                continue;
+            }
+            $adId = (string) ($row->ad_id ?? '');
+            if (str_starts_with($adId, 'name:')) {
+                $nameByCid[$cid][] = $sku;
+            } else {
+                $realByCid[$cid][] = $sku;
+            }
+            $skus[] = $sku;
+        }
+
+        $byCid = [];
+        foreach (array_keys($cids) as $cid) {
+            $list = $realByCid[$cid] ?? $nameByCid[$cid] ?? [];
+            if ($list !== []) {
+                $byCid[$cid] = array_values(array_unique($list));
+            }
+        }
+        if ($byCid === []) {
+            return [];
+        }
+
+        $shopify = Schema::hasTable('shopify_skus')
+            ? ShopifySku::mapByProductSkus($skus)
+            : collect();
+
+        $out = [];
+        foreach ($byCid as $cid => $list) {
+            $min = null;
+            foreach ($list as $sku) {
+                $sh = $shopify->get($sku);
+                if ($sh === null || ! is_numeric($sh->inv ?? null)) {
+                    continue;
+                }
+                $inv = (int) round((float) $sh->inv);
+                if ($min === null || $inv < $min) {
+                    $min = $inv;
+                }
+            }
+            $out[$cid] = [
+                'has_skus' => true,
+                'min' => $min,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * @return array{sku: string, price: ?float, dil: ?float, inv: ?float, l30: ?float, ovl30: ?float, lmp_price: ?float, rating: ?float, review_count: ?int}
      */
     private static function emptyMetrics(string $sku): array

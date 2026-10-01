@@ -88,12 +88,14 @@ class PefEbayPricePullService
                 return $base;
             }
 
-            $metric->ebay_price = $live;
+            $expected = ChannelLivePriceSync::lookupPushed($marketplace, $sku);
+            $persist = \App\Support\PushedListingPrice::keepCalculated($live, $expected) ?? round($live, 2);
+            $metric->ebay_price = $persist;
             $metric->save();
 
             $sprice = $this->readSprice($dvClass, $sku);
             $base['success'] = true;
-            $base['price'] = round($live, 2);
+            $base['price'] = $persist;
             $base['sprice'] = $sprice;
             $base['message'] = 'Pulled live price $'.number_format($live, 2);
 

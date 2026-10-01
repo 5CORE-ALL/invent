@@ -54,27 +54,27 @@ class ChannelPushedPricePullService
         }
 
         if ($channel === 'shopify_b2c') {
-            return $this->pullShopifyB2cAdmin($skus);
+            return $this->pullShopifyB2cAdmin($skus, $expected);
         }
 
         if ($channel === 'shopify_b2b') {
-            return $this->pullShopifyStore($skus, $channel);
+            return $this->pullShopifyStore($skus, $channel, $expected);
         }
 
         if (in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
-            return $this->pullTemu($skus, $channel);
+            return $this->pullTemu($skus, $channel, $expected);
         }
 
         if ($channel === 'newegg') {
-            return $this->pullNewegg($skus);
+            return $this->pullNewegg($skus, $expected);
         }
 
         if (in_array($channel, ['tiktok', 'tiktok2'], true)) {
-            return $this->pullTikTok($skus, $channel);
+            return $this->pullTikTok($skus, $channel, $expected);
         }
 
         if (in_array($channel, ['doba', 'doba_withoutship'], true)) {
-            return $this->pullDoba($skus, $channel);
+            return $this->pullDoba($skus, $channel, $expected);
         }
 
         if (in_array($channel, ['macys', 'macy'], true)) {
@@ -97,12 +97,38 @@ class ChannelPushedPricePullService
     }
 
     /**
+     * Price the blue badge compares. Keep the calculated S PRC when the live
+     * listing is only a few cents off. Temu stores supplier base, not full S PRC.
+     *
+     * @param  array<string, float>  $expectedBySku
+     */
+    private function listingPriceToStore(string $channel, string $sku, float $live, array $expectedBySku): float
+    {
+        $key = strtoupper(trim($sku));
+        $expected = $expectedBySku[$key] ?? null;
+        if (! ($expected > 0)) {
+            $expected = ChannelLivePriceSync::lookupPushed($channel, $sku);
+        }
+        if (in_array($channel, ['temu', 'temu2', 'temu3'], true) && $expected > 0) {
+            $base = TemuShopifySalesService::computePushBaseFromSprice((float) $expected);
+            $expected = ($base !== null && $base > 0) ? $base : null;
+        }
+        $kept = \App\Support\PushedListingPrice::keepCalculated(
+            $live,
+            $expected !== null ? (float) $expected : null
+        );
+
+        return $kept ?? round($live, 2);
+    }
+
+    /**
      * Live Temu / Temu 2 / Temu 3 supplier (base) price via bg.local.goods.sku.list.price.query.
      *
      * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,base_price?:float,sprice:?float,message:string,skipped?:bool}>
      */
-    private function pullTemu(array $skus, string $channel): array
+    private function pullTemu(array $skus, string $channel, array $expectedBySku = []): array
     {
         if ($channel === 'temu3') {
             $api = app(Temu3ApiService::class);
@@ -200,14 +226,15 @@ class ChannelPushedPricePullService
                 continue;
             }
 
+            $store = $this->listingPriceToStore($channel, $orig, (float) $live, $expectedBySku);
             try {
                 $metricClass::query()
                     ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
-                    ->update(['base_price' => $live]);
+                    ->update(['base_price' => $store]);
                 if (Schema::hasTable($pricingTable)) {
                     $pricingClass::query()
                         ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
-                        ->update(['base_price' => $live]);
+                        ->update(['base_price' => $store]);
                 }
             } catch (\Throwable $e) {
                 Log::warning('Temu live price persist failed', [
@@ -221,10 +248,10 @@ class ChannelPushedPricePullService
                 'success' => true,
                 'sku' => $orig,
                 'marketplace' => $channel,
-                'price' => $live,
-                'base_price' => $live,
+                'price' => $store,
+                'base_price' => $store,
                 'sprice' => null,
-                'message' => 'Pulled Temu base $'.number_format($live, 2),
+                'message' => 'Pulled Temu base $'.number_format($store, 2),
             ];
         }
 
@@ -371,9 +398,10 @@ class ChannelPushedPricePullService
      * GET live variant.price from Shopify Admin (same store the B2C push writes) and persist Price.
      *
      * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
      */
-    private function pullShopifyB2cAdmin(array $skus): array
+    private function pullShopifyB2cAdmin(array $skus, array $expectedBySku = []): array
     {
         $out = [];
         foreach ($skus as $i => $sku) {
@@ -399,6 +427,9 @@ class ChannelPushedPricePullService
                 }
 
                 $live = $this->fetchShopifyAdminVariantPrice($variantId);
+                if ($live > 0) {
+                    $live = $this->listingPriceToStore('shopify_b2c', $sku, $live, $expectedBySku);
+                }
                 if (! ($live > 0)) {
                     $out[] = [
                         'success' => false,
@@ -493,16 +524,26 @@ class ChannelPushedPricePullService
 
     /**
      * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
      */
-    private function pullShopifyStore(array $skus, string $channel): array
+    private function pullShopifyStore(array $skus, string $channel, array $expectedBySku = []): array
     {
         $sync = app(StorePriceSyncService::class);
         $out = [];
         foreach ($skus as $sku) {
             try {
                 $sync->sync($sku);
-                $price = $this->shopifyLivePrice($sku, $channel);
+                $raw = $this->shopifyLivePrice($sku, $channel);
+                $price = $raw;
+                if ($raw !== null && $raw > 0) {
+                    $price = $this->listingPriceToStore($channel, $sku, $raw, $expectedBySku);
+                    if (abs($price - $raw) >= 0.005) {
+                        StoreListingPrice::query()
+                            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                            ->update(['selling_price' => $price]);
+                    }
+                }
                 $ok = $price !== null && $price > 0;
                 $out[] = [
                     'success' => $ok,
@@ -559,9 +600,10 @@ class ChannelPushedPricePullService
      * Live TikTok / TikTok 2 sale price via searchProducts / getProduct.
      *
      * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string,skipped?:bool}>
      */
-    private function pullTikTok(array $skus, string $channel): array
+    private function pullTikTok(array $skus, string $channel, array $expectedBySku = []): array
     {
         $model = $channel === 'tiktok2' ? TikTokProductTwo::class : TikTokProduct::class;
         $service = $channel === 'tiktok2'
@@ -592,6 +634,9 @@ class ChannelPushedPricePullService
                     $cached?->sku_id ? (string) $cached->sku_id : null
                 );
                 $price = ($live['price'] ?? 0) > 0 ? round((float) $live['price'], 2) : 0.0;
+                if ($price > 0) {
+                    $price = $this->listingPriceToStore($channel, $sku, $price, $expectedBySku);
+                }
                 if (! ($price > 0)) {
                     $out[] = [
                         'success' => false,
@@ -655,9 +700,10 @@ class ChannelPushedPricePullService
      * Live Doba Delivery (anticipatedIncome) / Pick Up (selfPickAnticipatedIncome).
      *
      * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,self_pick_price?:?float,sprice:?float,message:string}>
      */
-    private function pullDoba(array $skus, string $channel): array
+    private function pullDoba(array $skus, string $channel, array $expectedBySku = []): array
     {
         $api = app(DobaApiService::class);
         $lookups = [];
@@ -748,6 +794,9 @@ class ChannelPushedPricePullService
             $delivery = round((float) ($live['anticipatedIncome'] ?? 0), 2);
             $pickup = round((float) ($live['selfPickAnticipatedIncome'] ?? 0), 2);
             $price = $channel === 'doba_withoutship' ? $pickup : $delivery;
+            if ($price > 0) {
+                $price = $this->listingPriceToStore($channel, $sku, $price, $expectedBySku);
+            }
             if (! ($price > 0)) {
                 $rows[] = [
                     'success' => false,
@@ -763,10 +812,10 @@ class ChannelPushedPricePullService
             $metric = $lookup['metric'] ?? null;
             if ($metric) {
                 if ($delivery > 0) {
-                    $metric->anticipated_income = $delivery;
+                    $metric->anticipated_income = $channel === 'doba_withoutship' ? $delivery : $price;
                 }
                 if ($pickup > 0) {
-                    $metric->self_pick_price = $pickup;
+                    $metric->self_pick_price = $channel === 'doba_withoutship' ? $price : $pickup;
                 }
                 $metric->save();
             }
@@ -787,9 +836,10 @@ class ChannelPushedPricePullService
 
     /**
      * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string,skipped?:bool}>
      */
-    private function pullNewegg(array $skus): array
+    private function pullNewegg(array $skus, array $expectedBySku = []): array
     {
         $api = app(NeweggApiService::class);
         $spnByExact = [];
@@ -828,6 +878,15 @@ class ChannelPushedPricePullService
 
             try {
                 $price = $api->refreshStoredSellingPrice($spn, 'USA');
+                if ($price !== null && $price > 0) {
+                    $kept = $this->listingPriceToStore('newegg', $sku, (float) $price, $expectedBySku);
+                    if (abs($kept - (float) $price) >= 0.005) {
+                        NeweggPricing::query()
+                            ->where('seller_part_number', $spn)
+                            ->update(['selling_price' => $kept]);
+                    }
+                    $price = $kept;
+                }
                 $out[] = [
                     'success' => $price !== null && $price > 0,
                     'sku' => $sku,

@@ -1956,9 +1956,13 @@
                         + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '">'
                         + '<i class="fas fa-plus"></i></button>'
                     : '';
-                var invN = row && row.Inv != null && row.Inv !== '' ? parseFloat(row.Inv) : NaN;
+                var knownSkuInv = !!(row && row.sku_inv_known);
+                var invSource = knownSkuInv ? row.sku_inv_min : (row ? row.Inv : null);
+                var invN = invSource != null && invSource !== '' ? parseFloat(invSource) : NaN;
                 var lowInv = cid !== '' && isFinite(invN) && invN < 5
-                    ? '<button type="button" class="amz-low-inv-btn" title="Inventory ' + Math.round(invN) + ' is under 5. Click to see this campaign."'
+                    ? '<button type="button" class="amz-low-inv-btn" title="'
+                        + (knownSkuInv ? 'Lowest SKU inventory ' : 'Inventory ')
+                        + Math.round(invN) + ' is under 5. Click to see this campaign."'
                         + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '">!</button>'
                     : '';
                 var copy = '<i class="fas fa-copy amz-copy-name" role="button" tabindex="0" title="Copy campaign name"'

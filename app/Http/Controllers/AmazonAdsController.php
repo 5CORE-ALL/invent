@@ -4945,6 +4945,17 @@ class AmazonAdsController extends Controller
         $ltAcosMap = $hasLtAcos
             ? self::prefetchLifetimeAcosForPageRows($table, $dbColumns, $rows)
             : [];
+        $skuInvByCid = [];
+        $skuInvCids = [];
+        foreach ($rows as $invRow) {
+            $invCid = preg_replace('/\D+/', '', trim((string) (((array) $invRow)['campaign_id'] ?? ''))) ?: '';
+            if ($invCid !== '') {
+                $skuInvCids[] = $invCid;
+            }
+        }
+        if ($skuInvCids !== []) {
+            $skuInvByCid = AmazonAdsCampaignSkuMetrics::shopifyInvForCampaignIds($skuInvCids);
+        }
         $data = [];
         $suggestedSbidByRowId = [];
         $suggestedSbidByCampaign = [];
@@ -5296,6 +5307,10 @@ class AmazonAdsController extends Controller
             }
             self::roundAmazonAdsDisplayNumericFields($arr, $columns);
             unset($arr['pink_dil_paused_at'], $arr['campaignBudgetCurrencyCode']);
+            $cidInv = preg_replace('/\D+/', '', $cid) ?: '';
+            $skuInv = $skuInvByCid[$cidInv] ?? null;
+            $arr['sku_inv_known'] = is_array($skuInv) && ($skuInv['has_skus'] ?? false);
+            $arr['sku_inv_min'] = is_array($skuInv) ? ($skuInv['min'] ?? null) : null;
             $data[] = $arr;
         }
 
