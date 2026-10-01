@@ -638,6 +638,8 @@ return [
         'type_fallback_value' => env('EBAY_TYPE_FALLBACK_VALUE', 'Audio Connector'),
         /** Guitar/amp categories may require Amplifier Type when revising bullets (eBay3). */
         'amplifier_type_fallback_value' => env('EBAY_AMPLIFIER_TYPE_FALLBACK_VALUE', 'Guitar Speaker'),
+        /** Mic and similar categories require Form Factor when revising bullets (eBay3). */
+        'form_factor_fallback_value' => env('EBAY_FORM_FACTOR_FALLBACK_VALUE', 'Handheld'),
     ],
     'ebay1' => [
         'app_id' => env('EBAY_APP_ID'),

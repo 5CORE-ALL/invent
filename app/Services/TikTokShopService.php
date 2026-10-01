@@ -1740,7 +1740,8 @@ class TikTokShopService
                     $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId)
                 );
             }
-            $lastError = (string) ($response['message'] ?? $lastError);
+            $apiMessage = $this->tiktokApiText($response['message'] ?? null);
+            $lastError = $apiMessage !== '' ? $apiMessage : $lastError;
         } catch (\Throwable $e) {
             $code = (int) $e->getCode();
             $lastError = $code > 0 ? $code.': '.$e->getMessage() : $e->getMessage();
@@ -2002,50 +2003,201 @@ class TikTokShopService
         }
 
         $this->client->setAccessToken($this->accessToken);
-        if ($this->shopCipher) {
+        $this->ensureShopCipher();
+        if (is_string($this->shopCipher) && $this->shopCipher !== '') {
             $this->client->setShopCipher($this->shopCipher);
         }
 
-        $body = $this->withPreservedSellerSkus($productId, array_merge(['product_id' => $productId], $fields));
+        // The full PUT /products/{id} edit needs the whole product; partial_edit (same signed
+        // call the title/image updates use) only touches the fields we send.
+        $hosts = array_values(array_unique(array_filter([
+            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
+            'https://open-api.tiktokglobalshop.com',
+            'https://open-api-us.tiktokglobalshop.com',
+        ])));
+        $tries = [
+            ['path' => "/product/202509/products/{$productId}/partial_edit", 'query' => []],
+            ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => ['version' => '202309']],
+            ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => []],
+        ];
+        $bodies = [$this->withPreservedSellerSkus($productId, $fields)];
+        if (($bodies[0]['skus'] ?? []) !== []) {
+            $bodies[] = $fields;
+        }
+
+        $lastError = '';
+        foreach ($hosts as $base) {
+            foreach ($tries as $try) {
+                foreach ($bodies as $body) {
+                    try {
+                        $this->tiktokOpenApi('POST', $try['path'], $try['query'], $body, 60, false, $base);
+
+                        return $this->finishNonInventoryPartialEditSuccess($productId, [
+                            'success' => true,
+                            'message' => 'TikTok Shop product updated.',
+                        ]);
+                    } catch (\Throwable $e) {
+                        $lastError = $e->getMessage();
+                        if ($this->isMissingRequiredAttributeError($lastError) && count($bodies) <= 2) {
+                            $attrs = $this->productAttributesForTitleUpdate($productId, $lastError);
+                            if ($attrs !== []) {
+                                $attrBody = array_merge($fields, ['product_attributes' => $attrs]);
+                                $bodies[] = $this->withPreservedSellerSkus($productId, $attrBody);
+                                if (($bodies[array_key_last($bodies)]['skus'] ?? []) !== []) {
+                                    $bodies[] = $attrBody;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         try {
-            if (! method_exists($this->client->Product, 'editProduct')) {
-                return ['success' => false, 'message' => 'TikTok Shop product edit API is not available in this SDK version.'];
+            if (method_exists($this->client->Product, 'editProduct')) {
+                $response = $this->client->Product->editProduct(
+                    $productId,
+                    $this->withPreservedSellerSkus($productId, $fields)
+                );
+                if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
+                    return $this->finishNonInventoryPartialEditSuccess($productId, [
+                        'success' => true,
+                        'message' => 'TikTok Shop product updated.',
+                    ]);
+                }
+                $sdkMessage = $this->tiktokApiText($response['message'] ?? null);
+                if ($sdkMessage !== '') {
+                    $lastError = $sdkMessage;
+                }
             }
-
-            $response = $this->client->Product->editProduct($body);
-            if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
-                return $this->finishNonInventoryPartialEditSuccess($productId, [
-                    'success' => true,
-                    'message' => 'TikTok Shop product updated.',
-                ]);
-            }
-
-            return [
-                'success' => false,
-                'message' => (string) ($response['message'] ?? 'TikTok Shop product update failed.'),
-            ];
         } catch (\Throwable $e) {
-            Log::error('TikTok product field update failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+            $lastError = $e->getMessage();
+        }
 
-            return ['success' => false, 'message' => $e->getMessage()];
+        Log::error('TikTok product field update failed', [
+            'identifier' => $identifier,
+            'product_id' => $productId,
+            'fields' => array_keys($fields),
+            'error' => $lastError,
+        ]);
+
+        return ['success' => false, 'message' => $lastError !== '' ? $lastError : 'TikTok Shop product update failed.'];
+    }
+
+    /**
+     * TikTok Shop has no bullet-point field, so bullets live as a marked list at the top of the
+     * description. Replace an earlier list (same marker) instead of stacking them.
+     */
+    public const BULLETS_MARKER_CLASS = 'lm-bullets';
+
+    public static function mergeBulletsIntoDescription(string $description, array $lines): string
+    {
+        $stripped = (string) preg_replace(
+            '#<ul[^>]*class="[^"]*'.self::BULLETS_MARKER_CLASS.'[^"]*"[^>]*>.*?</ul>\s*#is',
+            '',
+            $description
+        );
+        $lines = array_values(array_filter(array_map(static fn ($l) => trim((string) $l), $lines), static fn ($l) => $l !== ''));
+        if ($lines === []) {
+            return trim($stripped);
+        }
+        $list = '<ul class="'.self::BULLETS_MARKER_CLASS.'">'
+            .implode('', array_map(static fn ($l) => '<li>'.htmlspecialchars($l, ENT_QUOTES, 'UTF-8').'</li>', $lines))
+            .'</ul>';
+
+        return trim($list.($stripped !== '' ? "\n".trim($stripped) : ''));
+    }
+
+    /** @return list<string> */
+    public static function bulletsFromDescription(string $description): array
+    {
+        if (! preg_match('#<ul[^>]*class="[^"]*'.self::BULLETS_MARKER_CLASS.'[^"]*"[^>]*>(.*?)</ul>#is', $description, $m)) {
+            return [];
+        }
+        preg_match_all('#<li[^>]*>(.*?)</li>#is', (string) $m[1], $items);
+        $out = [];
+        foreach ($items[1] ?? [] as $item) {
+            $text = trim(html_entity_decode(strip_tags((string) $item), ENT_QUOTES, 'UTF-8'));
+            if ($text !== '') {
+                $out[] = $text;
+            }
+        }
+
+        return $out;
+    }
+
+    protected function liveProductDescription(string $productId): string
+    {
+        $productId = trim($productId);
+        if ($productId === '' || ! $this->accessToken) {
+            return '';
+        }
+        $this->client->setAccessToken($this->accessToken);
+        $this->ensureShopCipher();
+        if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+            $this->client->setShopCipher($this->shopCipher);
+        }
+        foreach ([
+            ['path' => "/product/202309/products/{$productId}", 'query' => []],
+            ['path' => "/product/202502/products/{$productId}", 'query' => []],
+        ] as $try) {
+            try {
+                $data = $this->tiktokOpenApi('GET', $try['path'], $try['query'], null, 30);
+                if (isset($data['description']) && is_string($data['description'])) {
+                    return $data['description'];
+                }
+            } catch (\Throwable) {
+                // try the next version / SDK
+            }
+        }
+        try {
+            $response = $this->client->Product->getProduct($productId);
+            $desc = $response['data']['description'] ?? null;
+
+            return is_string($desc) ? $desc : '';
+        } catch (\Throwable) {
+            return '';
         }
     }
 
     public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $lines = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $bulletPoints) ?: []));
-        $html = $lines === [] ? '' : '<ul>'.implode('', array_map(fn ($l) => '<li>'.htmlspecialchars($l, ENT_QUOTES, 'UTF-8').'</li>', $lines)).'</ul>';
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $bulletPoints) ?: [])));
+        if ($lines === []) {
+            return ['success' => false, 'message' => 'No bullet points to send.'];
+        }
+        $productId = $this->findTikTokProductIdBySku(trim($identifier));
+        if (! $productId) {
+            return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id. Sync TikTok listings first.'];
+        }
+        $merged = self::tiktokDescriptionHtml(self::mergeBulletsIntoDescription($this->liveProductDescription($productId), $lines));
 
-        return $this->updateTikTokProductFields($identifier, [
-            'description' => $html,
-            'product_attributes' => ['bullet_points' => array_values($lines)],
-        ]);
+        $result = $this->updateTikTokProductFields($identifier, ['description' => $merged]);
+        if ($result['success'] ?? false) {
+            $result['message'] = 'TikTok Shop description updated with the bullet list (TikTok has no separate bullet field).';
+        }
+
+        return $result;
     }
 
     public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
-        return $this->updateTikTokProductFields($identifier, ['description' => $description]);
+        $productId = $this->findTikTokProductIdBySku(trim($identifier));
+        if (! $productId) {
+            return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id. Sync TikTok listings first.'];
+        }
+        // Keep a bullet list that an earlier push placed at the top of the live description.
+        $existingBullets = self::bulletsFromDescription($this->liveProductDescription($productId));
+        $body = $existingBullets !== [] && self::bulletsFromDescription($description) === []
+            ? self::mergeBulletsIntoDescription($description, $existingBullets)
+            : $description;
+
+        $result = $this->updateTikTokProductFields($identifier, ['description' => self::tiktokDescriptionHtml($body)]);
+        if ($result['success'] ?? false) {
+            $result['message'] = 'TikTok Shop description updated.';
+        }
+
+        return $result;
     }
 
     public function updateProductDescription(string $identifier, string $description): array
@@ -5779,6 +5931,47 @@ class TikTokShopService
      * @param  array<string, mixed>|null  $jsonBody
      * @return array<string, mixed>
      */
+    /**
+     * TikTok rejects class/style attributes and non-HTML descriptions on partial_edit.
+     */
+    public static function tiktokDescriptionHtml(string $html): string
+    {
+        $html = trim($html);
+        if ($html === '') {
+            return '';
+        }
+        $html = preg_replace('/\s(?:class|style|id)="[^"]*"/i', '', $html) ?? $html;
+        if (! preg_match('/<(?:p|ul|ol|li|br|img|div|span)\b/i', $html)) {
+            $html = '<p>'.nl2br(htmlspecialchars($html, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
+        }
+
+        return mb_substr($html, 0, 10000);
+    }
+
+    /**
+     * TikTok error `message` is sometimes an object/array. Casting that to string throws
+     * "Array to string conversion" and hides the real rejection.
+     */
+    protected function tiktokApiText(mixed $value): string
+    {
+        if (is_string($value) || is_numeric($value)) {
+            return trim((string) $value);
+        }
+        if (! is_array($value)) {
+            return '';
+        }
+        $parts = [];
+        foreach ($value as $key => $item) {
+            $text = $this->tiktokApiText($item);
+            if ($text === '') {
+                continue;
+            }
+            $parts[] = is_string($key) ? $key.': '.$text : $text;
+        }
+
+        return implode(' | ', $parts);
+    }
+
     protected function tiktokOpenApi(string $method, string $path, array $query = [], ?array $jsonBody = null, int $timeout = 45, bool $retried = false, ?string $apiBase = null): array
     {
         if ($jsonBody !== null && preg_match('#/products/([^/]+)/partial_edit#', $path, $m)) {
@@ -5809,7 +6002,10 @@ class TikTokShopService
 
         $json = $response->json() ?? [];
         $code = (int) ($json['code'] ?? -1);
-        $message = (string) ($json['message'] ?? 'TikTok API error');
+        $message = $this->tiktokApiText($json['message'] ?? null);
+        if ($message === '') {
+            $message = 'TikTok API error';
+        }
         if ($code !== 0) {
             if (
                 ! $retried

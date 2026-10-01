@@ -207,32 +207,24 @@ class FaireService
             return ['success' => false, 'message' => 'Faire product not found for SKU or marketplace product id.'];
         }
 
-        $baseUrl = 'https://www.faire.com/external-api/v2';
-        $headers = [
-            'X-FAIRE-ACCESS-TOKEN' => $token,
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
-        ];
-
-        $payload = [
-            'description' => $bulletPoints,
-            'short_description' => $bulletPoints,
-        ];
-
-        try {
-            $res = Http::withoutVerifying()
-                ->withHeaders($headers)
-                ->timeout(45)
-                ->patch("{$baseUrl}/products/{$productId}", $payload);
-
-            if ($res->successful()) {
-                return ['success' => true, 'message' => 'Faire bullet points updated', 'response' => $res->json()];
-            }
-
-            return ['success' => false, 'message' => 'Faire update failed: '.$res->body()];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+        // Faire has no bullet field: bullets become a marked block at the top of the (plain-text)
+        // description, and the first bullet doubles as the ≤75-char short description.
+        $lines = array_values(array_filter(array_map(
+            static fn ($l) => trim(html_entity_decode(strip_tags((string) $l), ENT_QUOTES, 'UTF-8')),
+            preg_split('/\r\n|\r|\n/', $bulletPoints) ?: []
+        ), static fn ($l) => $l !== ''));
+        if ($lines === []) {
+            return ['success' => false, 'message' => 'No bullet points to send.'];
         }
+        $live = $this->liveProductText($productId, $token);
+        $description = self::mergeBulletsIntoDescription(self::plainText((string) ($live['description'] ?? '')), $lines);
+
+        $result = $this->patchProductText($productId, $token, $description, self::shortDescription($lines[0]));
+        if ($result['success']) {
+            $result['message'] = 'Faire bullet points written to the description (Faire has no separate bullet field).';
+        }
+
+        return $result;
     }
 
     /**
@@ -240,7 +232,174 @@ class FaireService
      */
     public function updateProductDescription(string $identifier, string $description): array
     {
-        return $this->updateBulletPoints($identifier, $description);
+        $token = config('services.faire.bearer_token')
+            ?? config('services.faire.access_token')
+            ?? config('services.faire.token');
+        if (! $token) {
+            return ['success' => false, 'message' => 'Faire API token is missing'];
+        }
+        $plain = self::plainText($description);
+        if (trim($identifier) === '' || $plain === '') {
+            return ['success' => false, 'message' => 'SKU (or Faire product id) and description are required.'];
+        }
+        $productId = $this->resolveFaireProductId($identifier);
+        if (! $productId) {
+            return ['success' => false, 'message' => 'Faire product not found for SKU or marketplace product id.'];
+        }
+
+        // Keep a bullet block that an earlier push placed at the top of the live description.
+        $live = $this->liveProductText($productId, $token);
+        $existingBullets = self::bulletsFromDescription((string) ($live['description'] ?? ''));
+        $body = $existingBullets !== [] && self::bulletsFromDescription($plain) === []
+            ? self::mergeBulletsIntoDescription($plain, $existingBullets)
+            : $plain;
+
+        // Always resend a ≤75-char short description. Faire re-validates the stored
+        // short description on every text patch, and an existing over-limit value
+        // fails the update with "short description cannot have more than 75 characters".
+        $short = trim((string) ($live['short_description'] ?? ''));
+        $result = $this->patchProductText($productId, $token, $body, self::shortDescription($short !== '' ? $short : $plain));
+        if ($result['success']) {
+            $result['message'] = 'Faire description updated.';
+        }
+
+        return $result;
+    }
+
+    public const FAIRE_SHORT_DESCRIPTION_MAX = 75;
+
+    private const BULLETS_HEADER = 'Highlights:';
+
+    /**
+     * Faire renders descriptions as plain text, so HTML from the editor is flattened to lines.
+     */
+    public static function plainText(string $html): string
+    {
+        $text = preg_replace('#<br\s*/?>#i', "\n", $html) ?? $html;
+        $text = preg_replace('#</(p|div|li|h[1-6]|tr)>#i', "\n", $text) ?? $text;
+        $text = preg_replace('#<li[^>]*>#i', '• ', $text) ?? $text;
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES, 'UTF-8');
+        $text = preg_replace('/[ \t]+/', ' ', $text) ?? $text;
+        $text = preg_replace("/[ \t]*\n[ \t]*/", "\n", $text) ?? $text;
+        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+
+        return trim($text);
+    }
+
+    /** Slice that fits Faire's short description limit in both characters and UTF-8 bytes. */
+    public static function shortDescription(string $text): string
+    {
+        $text = trim(preg_replace('/\s+/u', ' ', self::plainText($text)) ?? '');
+        $text = ltrim($text, "•-* \t");
+        $max = self::FAIRE_SHORT_DESCRIPTION_MAX;
+        if (mb_strlen($text) > $max) {
+            $cut = mb_substr($text, 0, $max);
+            $space = mb_strrpos($cut, ' ');
+            if ($space !== false && $space >= 40) {
+                $cut = mb_substr($cut, 0, $space);
+            }
+            $text = rtrim($cut, " ,;:-");
+        }
+        while ($text !== '' && strlen($text) > $max) {
+            $text = mb_substr($text, 0, mb_strlen($text) - 1);
+        }
+
+        return $text;
+    }
+
+    /**
+     * @param  list<string>  $lines
+     */
+    public static function mergeBulletsIntoDescription(string $description, array $lines): string
+    {
+        $rest = self::stripBulletsBlock($description);
+        $lines = array_values(array_filter(array_map(static fn ($l) => trim((string) $l), $lines), static fn ($l) => $l !== ''));
+        if ($lines === []) {
+            return $rest;
+        }
+        $block = self::BULLETS_HEADER."\n".implode("\n", array_map(static fn ($l) => '• '.ltrim($l, "• -*"), $lines));
+
+        return trim($block.($rest !== '' ? "\n\n".$rest : ''));
+    }
+
+    /** @return list<string> */
+    public static function bulletsFromDescription(string $description): array
+    {
+        $description = str_replace(["\r\n", "\r"], "\n", $description);
+        if (! preg_match('/(?:^|\n)'.preg_quote(self::BULLETS_HEADER, '/').'\n((?:• [^\n]*\n?)+)/u', $description, $m)) {
+            return [];
+        }
+        $out = [];
+        foreach (preg_split('/\n/', trim((string) $m[1])) ?: [] as $line) {
+            $line = trim(ltrim(trim($line), '•'));
+            if ($line !== '') {
+                $out[] = $line;
+            }
+        }
+
+        return $out;
+    }
+
+    private static function stripBulletsBlock(string $description): string
+    {
+        $description = str_replace(["\r\n", "\r"], "\n", $description);
+        $rest = preg_replace('/(?:^|\n)'.preg_quote(self::BULLETS_HEADER, '/').'\n(?:• [^\n]*\n?)+\n?/u', "\n", $description) ?? $description;
+
+        return trim($rest);
+    }
+
+    /**
+     * @return array{description?: string, short_description?: string}
+     */
+    private function liveProductText(string $productId, string $token): array
+    {
+        try {
+            $res = Http::withoutVerifying()
+                ->withHeaders([
+                    'X-FAIRE-ACCESS-TOKEN' => $token,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(30)
+                ->get("https://www.faire.com/external-api/v2/products/{$productId}");
+            if (! $res->successful()) {
+                return [];
+            }
+            $json = $res->json();
+
+            return is_array($json) ? array_intersect_key($json, ['description' => 1, 'short_description' => 1]) : [];
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array{success:bool,message:string,response?:mixed}
+     */
+    private function patchProductText(string $productId, string $token, string $description, ?string $shortDescription): array
+    {
+        $payload = ['description' => $description];
+        if ($shortDescription !== null && $shortDescription !== '') {
+            $payload['short_description'] = self::shortDescription($shortDescription);
+        }
+
+        try {
+            $res = Http::withoutVerifying()
+                ->withHeaders([
+                    'X-FAIRE-ACCESS-TOKEN' => $token,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(45)
+                ->patch("https://www.faire.com/external-api/v2/products/{$productId}", $payload);
+
+            if ($res->successful()) {
+                return ['success' => true, 'message' => 'Faire product text updated', 'response' => $res->json()];
+            }
+
+            return ['success' => false, 'message' => 'Faire update failed: '.$res->body()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 
     /**

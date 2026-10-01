@@ -179,10 +179,11 @@ class SheinListingPublishService
             $supplierCode = $primarySku;
         }
 
+        $existingSpu = $this->existingSpuName($primarySku);
         $payload = [
             'brand_code' => $brandCode,
             'category_id' => (int) $category['id'],
-            'edit_type' => 0,
+            'edit_type' => $existingSpu !== '' ? 1 : 0,
             'product_type_id' => (int) $category['product_type_id'],
             'supplier_code' => mb_substr($supplierCode, 0, 50),
             'suit_flag' => 0,
@@ -195,6 +196,9 @@ class SheinListingPublishService
             ]],
             'skc_list' => $skcList,
         ];
+        if ($existingSpu !== '') {
+            $payload['spu_name'] = $existingSpu;
+        }
         if ($productAttrs !== []) {
             $payload['product_attribute_list'] = $productAttrs;
         }
@@ -228,6 +232,470 @@ class SheinListingPublishService
             'sku_id' => $skuCode !== '' ? $skuCode : null,
             'skus' => $skuRows,
         ];
+    }
+
+    /**
+     * Edit title / description / images of a SKU that is already on Shein.
+     *
+     * Shein has no field-level update call: content changes go through publishOrEdit with
+     * edit_type=1 and the live spu_name / skc_name / sku_code, so the rest of the product
+     * (category, price, stock, attributes) is re-sent from the live full-detail row.
+     *
+     * @param  array{title?: string, description?: string, bullets?: list<string>, images?: list<string>}  $changes
+     * @return array{success: bool, message: string, spu_name?: string, sku_code?: string}
+     */
+    public function editListedSku(string $sku, array $changes): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+        if (! $this->api->isConfigured()) {
+            return ['success' => false, 'message' => 'Shein is not connected. Set SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY.'];
+        }
+
+        $skuCode = trim($this->api->resolveSheinSkuCode($sku));
+        $metric = null;
+        try {
+            if (Schema::hasTable('shein_metrics')) {
+                $metric = SheinMetric::query()->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])->first();
+                if ($skuCode === '') {
+                    $skuCode = trim((string) ($metric?->shein_sku_code ?? ''));
+                }
+            }
+        } catch (\Throwable) {
+            $metric = null;
+        }
+        if ($skuCode === '') {
+            return ['success' => false, 'message' => 'This SKU has no Shein skuCode locally; sync Shein listings first.'];
+        }
+
+        $raw = [];
+        try {
+            $details = $this->api->getProductDetails($skuCode);
+            $raw = is_array($details['raw_data'] ?? null) ? $details['raw_data'] : (is_array($details) ? $details : []);
+        } catch (\Throwable $e) {
+            Log::warning('Shein edit: full-detail lookup failed', ['sku' => $sku, 'sku_code' => $skuCode, 'error' => $e->getMessage()]);
+        }
+        if ($raw === [] && $metric && is_array($metric->raw_data ?? null)) {
+            $raw = $metric->raw_data;
+        }
+
+        $spu = $this->rawString($raw, ['spuName', 'spu_name', 'spuCode', 'spu_code']);
+        if ($spu === '') {
+            $spu = trim((string) ($metric?->spu_name ?? ''));
+        }
+        if ($spu === '') {
+            return ['success' => false, 'message' => 'Shein SPU for '.$sku.' is unknown, so the product cannot be edited through the API. Sync Shein listings first.'];
+        }
+        $skcName = $this->rawString($raw, ['skcName', 'skc_name', 'skc']);
+        $supplierSku = $this->rawString($raw, ['sellerSku', 'seller_sku', 'supplierSku', 'supplier_sku', 'productNumber']) ?: $sku;
+        $supplierCode = $this->rawString($raw, ['supplierCode', 'supplier_code', 'merchantItemNo']) ?: $supplierSku;
+
+        $product = $this->findProduct($sku);
+        $hydrated = ListingManagerAmazonHydrator::hydrate($sku, false);
+        $details = ListingManagerAmazonHydrator::detailsFromHydration($hydrated, [], 'shein');
+
+        // Category / brand / product type: live row first, then whatever the create path would pick.
+        $categoryId = (int) $this->rawString($raw, ['categoryId', 'category_id', 'productCategoryId', 'product_category_id']);
+        $productTypeId = (int) $this->rawString($raw, ['productTypeId', 'product_type_id']);
+        $brandCode = $this->rawString($raw, ['brandCode', 'brand_code']);
+        if ($categoryId <= 0 || $productTypeId <= 0) {
+            $resolved = $this->resolveCategory([$sku], $categoryId > 0 ? $categoryId : null, null);
+            if ($categoryId <= 0 && $resolved['id'] !== '') {
+                $categoryId = (int) $resolved['id'];
+            }
+            if ($productTypeId <= 0) {
+                $productTypeId = (int) ($resolved['product_type_id'] ?? 0);
+                if ($productTypeId <= 0 && $categoryId > 0) {
+                    $leaf = $this->api->findListingCategory($categoryId);
+                    $productTypeId = (int) ($leaf['product_type_id'] ?? 0);
+                }
+            }
+            if ($brandCode === '') {
+                $brandCode = trim((string) ($resolved['brand_code'] ?? ''));
+            }
+        }
+        if ($brandCode === '') {
+            $brandCode = $this->api->listingBrandCode();
+        }
+        if ($categoryId <= 0 || $productTypeId <= 0) {
+            return ['success' => false, 'message' => 'Shein did not return the category of '.$sku.' (needed for an edit). Open the product in Seller Hub to change its content.'];
+        }
+        if ($brandCode === '') {
+            return ['success' => false, 'message' => 'Shein brand_code is missing. Set SHEIN_BRAND_CODE or confirm query-brand-list is authorized.'];
+        }
+
+        $warehouseId = $this->api->listingWarehouseId();
+        if ($warehouseId === null || $warehouseId === '') {
+            return ['success' => false, 'message' => 'Shein warehouse is missing. Set SHEIN_WAREHOUSE_CODE or confirm the seller account has a default warehouse.'];
+        }
+
+        // Title / description: requested change, else the live text.
+        $title = trim((string) ($changes['title'] ?? ''));
+        if ($title === '') {
+            $title = $this->rawString($raw, ['productName', 'product_name']) ?: trim((string) ($metric?->product_name ?? ''));
+        }
+        if ($title === '' && $product) {
+            $title = $this->resolveTitle($product, $sku, $hydrated);
+        }
+        $title = $this->clipTitle($title);
+        if ($title === '') {
+            return ['success' => false, 'message' => 'Shein title for '.$sku.' is empty.'];
+        }
+
+        $liveDescription = $this->rawString($raw, ['productDesc', 'product_desc', 'description']) ?: trim((string) ($metric?->description ?? ''));
+        $description = array_key_exists('description', $changes)
+            ? self::sheinDescriptionText((string) $changes['description'])
+            : $liveDescription;
+        if (! empty($changes['bullets']) && is_array($changes['bullets'])) {
+            $description = self::mergeBulletsIntoDescription($description, $changes['bullets']);
+        } elseif (array_key_exists('description', $changes)) {
+            $keep = self::bulletsFromDescription($liveDescription);
+            if ($keep !== [] && self::bulletsFromDescription($description) === []) {
+                $description = self::mergeBulletsIntoDescription($description, $keep);
+            }
+        }
+        $description = trim($description) !== '' ? trim($description) : $title;
+        if (mb_strlen($description) > 5000) {
+            $description = rtrim(mb_substr($description, 0, 5000), " \t-–,.");
+        }
+
+        // Images: new list is re-hosted on Shein's CDN; otherwise re-send the live gallery as-is.
+        $hostedImages = [];
+        if (! empty($changes['images']) && is_array($changes['images'])) {
+            $wanted = array_values(array_filter(array_map('trim', $changes['images']), fn ($u) => preg_match('#^https?://#i', $u)));
+            $hostedImages = $wanted === [] ? [] : $this->api->uploadListingImages(array_slice($wanted, 0, 12));
+            if ($hostedImages === []) {
+                return ['success' => false, 'message' => 'Shein image upload failed for '.$sku.'. Images must be public https URLs.'];
+            }
+        } else {
+            $hostedImages = $this->liveImageInfoList($raw);
+            if ($hostedImages === [] && $product) {
+                $fallback = $this->publicImages($details['images'] ?? $hydrated['images'] ?? [], $product, $sku);
+                $hostedImages = $fallback === [] ? [] : $this->api->uploadListingImages($fallback);
+            }
+            if ($hostedImages === []) {
+                return ['success' => false, 'message' => 'Shein returned no images for '.$sku.' and none are available locally; an edit must include at least one image.'];
+            }
+        }
+
+        // Price / stock: keep what Shein has; fall back to our local values.
+        $currency = trim((string) config('services.shein.currency', 'USD')) ?: 'USD';
+        $subSite = trim((string) config('services.shein.sub_site', 'shein-us')) ?: 'shein-us';
+        $priceRow = is_array($raw['currentPrices'][0] ?? null) ? $raw['currentPrices'][0] : [];
+        $salePrice = (float) ($priceRow['salePrice'] ?? $priceRow['specialPrice'] ?? 0);
+        $shopPrice = (float) ($priceRow['shopPrice'] ?? $priceRow['suggestedRetailPrice'] ?? 0);
+        if (! empty($priceRow['currency']) && is_string($priceRow['currency'])) {
+            $currency = strtoupper(trim($priceRow['currency'])) ?: $currency;
+        }
+        if ($salePrice <= 0 && $shopPrice <= 0) {
+            $salePrice = (float) ($this->resolvePrice($sku, $hydrated) ?? 0);
+        }
+        if ($salePrice <= 0 && $shopPrice <= 0) {
+            return ['success' => false, 'message' => 'No price found for '.$sku.' (Shein did not return one and none is set locally).'];
+        }
+        $basePrice = $shopPrice > 0 ? $shopPrice : $salePrice;
+        $priceInfo = ['base_price' => round($basePrice, 2), 'currency' => $currency, 'sub_site' => $subSite];
+        if ($salePrice > 0 && $shopPrice > 0 && $salePrice < $shopPrice) {
+            $priceInfo['special_price'] = round($salePrice, 2);
+        }
+        $qty = isset($raw['goodsInventory']['inventoryQuantity']) && is_numeric($raw['goodsInventory']['inventoryQuantity'])
+            ? max(0, (int) $raw['goodsInventory']['inventoryQuantity'])
+            : $this->resolveQuantity($sku, $hydrated);
+
+        $weightGrams = $this->resolveWeightGrams($details, $hydrated, null);
+        $dims = $this->resolveDimensionsCm($details, $hydrated);
+        $template = $this->api->listingAttributeTemplate($productTypeId);
+
+        $skuPayload = [
+            'sku_code' => $skuCode,
+            'supplier_sku' => $supplierSku,
+            'height' => $dims['height'],
+            'length' => $dims['length'],
+            'width' => $dims['width'],
+            'weight' => (string) $weightGrams,
+            'mall_state' => 1,
+            'stop_purchase' => 1,
+            'stock_info_list' => [[
+                'inventory_num' => $qty,
+                'supplier_warehouse_id' => $warehouseId,
+            ]],
+            'price_info_list' => [$priceInfo],
+        ];
+        $skc = [
+            'image_info' => ['image_info_list' => $hostedImages],
+            'sku_list' => [$skuPayload],
+        ];
+        if ($skcName !== '') {
+            $skc['skc_name'] = $skcName;
+        }
+        $liveSale = $this->liveSaleAttribute($raw);
+        if ($liveSale !== null) {
+            $skc['sale_attribute'] = $liveSale;
+        } else {
+            $mainSale = $this->pickSaleAttribute($template['sale'] ?? [], true);
+            $mainValues = $this->attributeValues($mainSale);
+            if ($mainSale && $mainValues !== []) {
+                $skc['sale_attribute'] = [
+                    'attribute_id' => (int) ($mainSale['attribute_id'] ?? $mainSale['attributeId'] ?? 0),
+                    'attribute_value_id' => (int) ($mainValues[0]['id'] ?? 0),
+                ];
+            }
+        }
+
+        $payload = [
+            'brand_code' => $brandCode,
+            'category_id' => $categoryId,
+            'edit_type' => 1,
+            'product_type_id' => $productTypeId,
+            'spu_name' => $spu,
+            'supplier_code' => mb_substr($supplierCode, 0, 50),
+            'suit_flag' => 0,
+            'source_system' => 'openapi',
+            'multi_language_name_list' => [['language' => 'en', 'name' => $title]],
+            'multi_language_desc_list' => [['language' => 'en', 'name' => $description, 'description' => $description]],
+            'site_list' => [[
+                'main_site' => 'shein',
+                'sub_site_list' => [$subSite],
+            ]],
+            'skc_list' => [$skc],
+        ];
+        $productAttrs = $this->productAttributePayload($template['product'] ?? []);
+        if ($productAttrs !== []) {
+            $payload['product_attribute_list'] = $productAttrs;
+        }
+
+        Log::info('Shein listing edit: publishOrEdit', [
+            'sku' => $sku,
+            'spu' => $spu,
+            'sku_code' => $skuCode,
+            'skc_name' => $skcName,
+            'changes' => array_keys($changes),
+            'image_count' => count($hostedImages),
+        ]);
+
+        $result = $this->api->publishOrEditProduct($payload);
+        if (empty($result['success'])) {
+            return ['success' => false, 'message' => $result['message'] ?? 'Shein rejected the edit.'];
+        }
+
+        if ($metric) {
+            try {
+                $metric->product_name = $title;
+                if (Schema::hasColumn('shein_metrics', 'description')) {
+                    $metric->description = $description;
+                }
+                if (! empty($changes['images'][0]) && Schema::hasColumn('shein_metrics', 'image_url')) {
+                    $metric->image_url = (string) $changes['images'][0];
+                }
+                $metric->save();
+            } catch (\Throwable) {
+                // local mirror only
+            }
+        }
+        $this->forgetListingCaches();
+
+        $what = [];
+        if (isset($changes['title'])) {
+            $what[] = 'title';
+        }
+        if (! empty($changes['bullets'])) {
+            $what[] = 'bullet points (written into the description)';
+        }
+        if (array_key_exists('description', $changes)) {
+            $what[] = 'description';
+        }
+        if (! empty($changes['images'])) {
+            $what[] = 'images';
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Shein accepted the '.($what !== [] ? implode(', ', $what) : 'content').' update for SPU '.$spu
+                .'. Shein reviews edits before they show on the listing.',
+            'spu_name' => $spu,
+            'sku_code' => $skuCode,
+        ];
+    }
+
+    /** Shein descriptions are text with <br> line breaks; flatten editor HTML to that. */
+    public static function sheinDescriptionText(string $html): string
+    {
+        $text = preg_replace('#<br\s*/?>#i', "\n", $html) ?? $html;
+        $text = preg_replace('#</(p|div|li|h[1-6]|tr)>#i', "\n", $text) ?? $text;
+        $text = preg_replace('#<li[^>]*>#i', '• ', $text) ?? $text;
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES, 'UTF-8');
+        $text = preg_replace('/[ \t]+/', ' ', $text) ?? $text;
+        $text = preg_replace("/[ \t]*\n[ \t]*/", "\n", $text) ?? $text;
+        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+
+        return trim(str_replace("\n", '<br>', trim($text)));
+    }
+
+    /**
+     * Shein has no bullet field: bullets sit as "• …" lines at the top of the description and
+     * replace an earlier bullet block.
+     *
+     * @param  list<string>  $lines
+     */
+    public static function mergeBulletsIntoDescription(string $description, array $lines): string
+    {
+        $rest = self::stripBulletLines($description);
+        $lines = array_values(array_filter(array_map(
+            static fn ($l) => trim(ltrim(trim(html_entity_decode(strip_tags((string) $l), ENT_QUOTES, 'UTF-8')), "•-* ")),
+            $lines
+        ), static fn ($l) => $l !== ''));
+        if ($lines === []) {
+            return $rest;
+        }
+        $block = implode('<br>', array_map(static fn ($l) => '• '.$l, $lines));
+
+        return $rest !== '' ? $block.'<br><br>'.$rest : $block;
+    }
+
+    /** @return list<string> */
+    public static function bulletsFromDescription(string $description): array
+    {
+        $out = [];
+        foreach (self::descriptionLines($description) as $line) {
+            if (! str_starts_with($line, '• ')) {
+                break;
+            }
+            $out[] = trim(mb_substr($line, 2));
+        }
+
+        return array_values(array_filter($out, static fn ($l) => $l !== ''));
+    }
+
+    private static function stripBulletLines(string $description): string
+    {
+        $lines = self::descriptionLines($description);
+        while ($lines !== [] && (str_starts_with($lines[0], '• ') || trim($lines[0]) === '')) {
+            array_shift($lines);
+        }
+
+        return implode('<br>', $lines);
+    }
+
+    /** @return list<string> */
+    private static function descriptionLines(string $description): array
+    {
+        $text = preg_replace('#<br\s*/?>#i', "\n", $description) ?? $description;
+        $text = str_replace(["\r\n", "\r"], "\n", $text);
+
+        return array_map('trim', explode("\n", trim($text)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     * @param  list<string>  $keys
+     */
+    private function rawString(array $raw, array $keys): string
+    {
+        foreach ($keys as $key) {
+            if (isset($raw[$key]) && ! is_array($raw[$key])) {
+                $value = trim((string) $raw[$key]);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+        foreach (['skcList', 'skc_list', 'skuList', 'sku_list', 'skuInfo', 'spuInfo', 'productInfo'] as $nested) {
+            $node = $raw[$nested] ?? null;
+            if (is_array($node)) {
+                $node = isset($node[0]) && is_array($node[0]) ? $node[0] : $node;
+                $hit = $this->rawString($node, $keys);
+                if ($hit !== '') {
+                    return $hit;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Live gallery from full-detail imageList → publishOrEdit image_info_list.
+     *
+     * @param  array<string, mixed>  $raw
+     * @return list<array{image_sort: int, image_type: string, image_url: string}>
+     */
+    private function liveImageInfoList(array $raw): array
+    {
+        $list = $raw['imageList'] ?? $raw['image_list'] ?? $raw['imageInfoList'] ?? [];
+        if (! is_array($list)) {
+            return [];
+        }
+        $main = [];
+        $others = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $url = trim((string) ($row['imageUrl'] ?? $row['image_url'] ?? $row['url'] ?? ''));
+            if ($url === '' || ! preg_match('#^https?://#i', $url)) {
+                continue;
+            }
+            $type = strtoupper(trim((string) ($row['imageType'] ?? $row['image_type'] ?? '')));
+            if (in_array($type, ['MAIN', '1'], true)) {
+                $main[] = $url;
+            } else {
+                $others[] = $url;
+            }
+        }
+        $urls = array_values(array_unique(array_merge($main, $others)));
+        $out = [];
+        foreach ($urls as $i => $url) {
+            $out[] = [
+                'image_sort' => $i + 1,
+                'image_type' => $i === 0 ? '1' : '2',
+                'image_url' => $url,
+            ];
+        }
+        if (count($out) === 1) {
+            $out[] = ['image_sort' => 2, 'image_type' => '2', 'image_url' => $out[0]['image_url']];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     * @return array{attribute_id: int, attribute_value_id: int}|null
+     */
+    private function liveSaleAttribute(array $raw): ?array
+    {
+        foreach (['saleAttribute', 'sale_attribute', 'saleAttr'] as $key) {
+            $node = $raw[$key] ?? null;
+            if (is_array($node) && isset($node[0]) && is_array($node[0])) {
+                $node = $node[0];
+            }
+            if (is_array($node)) {
+                $id = (int) ($node['attributeId'] ?? $node['attribute_id'] ?? 0);
+                $valueId = (int) ($node['attributeValueId'] ?? $node['attribute_value_id'] ?? 0);
+                if ($id > 0 && $valueId > 0) {
+                    return ['attribute_id' => $id, 'attribute_value_id' => $valueId];
+                }
+            }
+        }
+        foreach (['saleAttributeList', 'sale_attribute_list', 'skcList', 'skc_list'] as $key) {
+            $list = $raw[$key] ?? null;
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $hit = $this->liveSaleAttribute($row);
+                if ($hit !== null) {
+                    return $hit;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -832,6 +1300,19 @@ class SheinListingPublishService
     /**
      * @param  list<string>  $skus
      */
+    private function existingSpuName(string $sku): string
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('shein_metrics') || ! Schema::hasColumn('shein_metrics', 'spu_name')) {
+            return '';
+        }
+        try {
+            return trim((string) SheinMetric::query()->where('sku', $sku)->value('spu_name'));
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
     private function persistListed(array $skus, string $spu, string $skuCode, mixed $price, string $title, string $category): void
     {
         foreach ($skus as $sku) {
