@@ -1775,9 +1775,13 @@
                         const cid = (row['CAMPAIGN ID'] ?? '').toString();
                         if (!cid || !/^\d{6,}$/.test(cid)) return '';
                         const paused = !!(row._pause) || /paus/i.test(String(row.Status || ''));
-                        if (paused && !row._audit_at) {
+                        const highSpend = toNumber(row['SPEND']) > 30;
+                        if ((paused || highSpend) && !row._audit_at) {
+                            const why = highSpend
+                                ? 'Spend is above $30.'
+                                : 'This campaign is paused.';
                             return `<button type="button" class="faas-audit-now" data-audit-cid="${cid}"
-                                        title="This campaign is paused. Record the audit — the date and time are saved automatically.">AUDIT NOW</button>`;
+                                        title="${why} Record the audit — the date and time are saved automatically.">AUDIT NOW</button>`;
                         }
                         if (row._audit_at) {
                             const when = faasAuditStamp(row._audit_at);
@@ -4011,7 +4015,7 @@
         function faasExportCellValue(row, field) {
             if (field === 'Audit Req') {
                 if (row._audit_at) return faasAuditStamp(row._audit_at);
-                if (row._pause || /paus/i.test(String(row.Status || ''))) return 'AUDIT NOW';
+                if (row._pause || /paus/i.test(String(row.Status || '')) || toNumber(row['SPEND']) > 30) return 'AUDIT NOW';
                 return '';
             }
             if (field === 'History') {
