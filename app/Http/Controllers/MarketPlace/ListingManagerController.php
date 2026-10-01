@@ -839,45 +839,45 @@ class ListingManagerController extends Controller
                 $saved = $publisher->saveLocal($sku, $validated);
             }
 
-            $channels = ChannelMaster::query()
-                ->whereIn('id', $validated['channel_ids'])
-                ->get(['id', 'channel']);
-
-            $rows = $publisher->pushSelectedChannels($sku, $channels, $validated, $parts, $updateOnly);
-            $ok = 0;
-            $fail = 0;
-            $draftCount = 0;
-            $skipped = 0;
-            foreach ($rows as $row) {
-                if (($row['mode'] ?? '') === 'skipped') {
-                    $skipped++;
-                    continue;
+            // Marketplace content updates (title + bullets + description + images, each a
+            // separate upstream call) regularly outlive the gateway timeout, so the modal asks
+            // for a background run and polls pushJobStatus() for the per-channel outcome.
+            if ($request->boolean('background') && DetachedArtisan::available()) {
+                $token = (string) \Illuminate\Support\Str::uuid();
+                Cache::put(self::pushJobCacheKey($token), [
+                    'status' => 'queued',
+                    'sku' => $sku,
+                    'channel_ids' => array_values($validated['channel_ids']),
+                    'fields' => $validated,
+                    'parts' => $parts,
+                    'update_only' => $updateOnly,
+                    'saved' => $saved,
+                    'created_at' => now()->toDateTimeString(),
+                    'results' => [],
+                ], now()->addHours(2));
+                if (DetachedArtisan::spawn('listing-manager:push-channels', [$token])) {
+                    return response()->json([
+                        'success' => true,
+                        'queued' => true,
+                        'token' => $token,
+                        'message' => 'Marketplace update started in the background.',
+                        'saved' => $saved['saved'],
+                        'results' => [],
+                    ], 202);
                 }
-                if (! empty($row['success'])) {
-                    $ok++;
-                } else {
-                    $fail++;
-                }
-                if (($row['mode'] ?? '') === 'draft') {
-                    $draftCount++;
-                }
+                Cache::forget(self::pushJobCacheKey($token));
             }
+
+            $rows = $publisher->pushSelectedChannels(
+                $sku,
+                self::pushChannels($validated['channel_ids']),
+                $validated,
+                $parts,
+                $updateOnly
+            );
             ListingManagerProductSnapshots::refreshAfterResponse($sku);
 
-            return response()->json([
-                'success' => $fail === 0,
-                'message' => $saved['message']
-                    .' Live updates: '.$ok.'.'
-                    .($fail > 0 ? ' '.$fail.' failed.' : '')
-                    .($draftCount > 0 ? ' '.$draftCount.' new-to-marketplace channel(s) saved as draft only.' : '')
-                    .($skipped > 0 ? ' '.$skipped.' not-listed channel(s) skipped.' : ''),
-                'saved' => $saved['saved'],
-                'drafts_updated' => $draftCount,
-                'total_success' => $ok,
-                'total_failed' => $fail,
-                'total_skipped' => $skipped,
-                'results' => $rows,
-            ]);
+            return response()->json(self::pushResponseBody($rows, $saved));
         } catch (\Throwable $e) {
             Log::error('ListingManager pushProductToMarketplaces failed', [
                 'sku' => $request->input('sku'),
@@ -892,6 +892,163 @@ class ListingManagerController extends Controller
                 'total_failed' => 1,
             ], 200);
         }
+    }
+
+    public static function pushJobCacheKey(string $token): string
+    {
+        return 'lm.push-job.'.preg_replace('/[^A-Za-z0-9\-]/', '', $token);
+    }
+
+    /**
+     * @param  list<int>  $channelIds
+     * @return \Illuminate\Support\Collection<int, ChannelMaster>
+     */
+    private static function pushChannels(array $channelIds)
+    {
+        return ChannelMaster::query()
+            ->whereIn('id', $channelIds)
+            ->get(['id', 'channel']);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array{saved: bool, message: string}  $saved
+     * @return array<string, mixed>
+     */
+    public static function pushResponseBody(array $rows, array $saved): array
+    {
+        $ok = 0;
+        $fail = 0;
+        $draftCount = 0;
+        $skipped = 0;
+        foreach ($rows as $row) {
+            if (($row['mode'] ?? '') === 'skipped') {
+                $skipped++;
+                continue;
+            }
+            if (! empty($row['success'])) {
+                $ok++;
+            } else {
+                $fail++;
+            }
+            if (($row['mode'] ?? '') === 'draft') {
+                $draftCount++;
+            }
+        }
+
+        return [
+            'success' => $fail === 0,
+            'message' => ($saved['message'] ?? '')
+                .' Live updates: '.$ok.'.'
+                .($fail > 0 ? ' '.$fail.' failed.' : '')
+                .($draftCount > 0 ? ' '.$draftCount.' new-to-marketplace channel(s) saved as draft only.' : '')
+                .($skipped > 0 ? ' '.$skipped.' not-listed channel(s) skipped.' : ''),
+            'saved' => (bool) ($saved['saved'] ?? true),
+            'drafts_updated' => $draftCount,
+            'total_success' => $ok,
+            'total_failed' => $fail,
+            'total_skipped' => $skipped,
+            'results' => $rows,
+        ];
+    }
+
+    /**
+     * Worker side of the background marketplace update (listing-manager:push-channels).
+     *
+     * @return array<string, mixed> final job payload
+     */
+    public function runPushJob(string $token): array
+    {
+        $key = self::pushJobCacheKey($token);
+        $job = Cache::get($key);
+        if (! is_array($job)) {
+            return ['status' => 'missing', 'message' => 'Push job not found (expired or never created).'];
+        }
+        $job['status'] = 'running';
+        $job['started_at'] = now()->toDateTimeString();
+        Cache::put($key, $job, now()->addHours(2));
+
+        $sku = (string) ($job['sku'] ?? '');
+        try {
+            $publisher = new ListingManagerProductPublisher();
+            $rows = $publisher->pushSelectedChannels(
+                $sku,
+                self::pushChannels(array_map('intval', (array) ($job['channel_ids'] ?? []))),
+                (array) ($job['fields'] ?? []),
+                (array) ($job['parts'] ?? []),
+                (bool) ($job['update_only'] ?? false)
+            );
+            try {
+                ListingManagerProductSnapshots::refreshAfterResponse($sku);
+            } catch (\Throwable $e) {
+                Log::warning('ListingManager push job: snapshot refresh failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            }
+            $body = self::pushResponseBody($rows, (array) ($job['saved'] ?? ['saved' => true, 'message' => '']));
+            $job = array_merge($job, $body, ['status' => 'done', 'finished_at' => now()->toDateTimeString()]);
+        } catch (\Throwable $e) {
+            Log::error('ListingManager push job failed', ['sku' => $sku, 'token' => $token, 'error' => $e->getMessage()]);
+            $job['status'] = 'failed';
+            $job['success'] = false;
+            $job['message'] = $e->getMessage() !== '' ? $e->getMessage() : 'Could not update marketplaces.';
+            $job['results'] = [];
+            $job['finished_at'] = now()->toDateTimeString();
+        }
+        unset($job['fields']);
+        Cache::put($key, $job, now()->addHours(2));
+
+        return $job;
+    }
+
+    /**
+     * Mark a background push as crashed (called from the worker's shutdown handler).
+     */
+    public static function failPushJob(string $token, string $reason): void
+    {
+        $key = self::pushJobCacheKey($token);
+        $job = Cache::get($key);
+        if (! is_array($job) || in_array($job['status'] ?? '', ['done', 'failed'], true)) {
+            return;
+        }
+        unset($job['fields']);
+        Cache::put($key, array_merge($job, [
+            'status' => 'failed',
+            'success' => false,
+            'message' => $reason,
+            'results' => [],
+            'finished_at' => now()->toDateTimeString(),
+        ]), now()->addHours(2));
+    }
+
+    /**
+     * Poll endpoint for a background marketplace update started by pushProductToMarketplaces().
+     */
+    public function pushJobStatus(string $token)
+    {
+        $job = Cache::get(self::pushJobCacheKey($token));
+        if (! is_array($job)) {
+            return response()->json([
+                'status' => 'missing',
+                'success' => false,
+                'message' => 'The background update is no longer tracked (it expired or the server restarted). Check the marketplace directly.',
+                'results' => [],
+            ], 404);
+        }
+        $status = (string) ($job['status'] ?? 'queued');
+        // A queued job whose worker never picked it up (spawn died) must not spin forever.
+        if ($status === 'queued' && ! empty($job['created_at'])) {
+            try {
+                if (Carbon::parse($job['created_at'])->lt(now()->subMinutes(3))) {
+                    self::failPushJob($token, 'The background worker never started. Check storage/logs/detached-artisan.log on the server.');
+                    $job = Cache::get(self::pushJobCacheKey($token)) ?: $job;
+                    $status = 'failed';
+                }
+            } catch (\Throwable) {
+                // ignore unparsable timestamps
+            }
+        }
+        unset($job['fields']);
+
+        return response()->json(array_merge($job, ['status' => $status]));
     }
 
     /**

@@ -4314,7 +4314,7 @@ class SheinApiService
             return $empty;
         }
 
-        $cacheKey = 'shein_attr_template_v1:'.$productTypeId;
+        $cacheKey = 'shein_attr_template_v2:'.$productTypeId;
         try {
             $cached = Cache::get($cacheKey);
             if (is_array($cached) && isset($cached['sale'], $cached['product'])) {
@@ -4361,11 +4361,12 @@ class SheinApiService
             $label = (int) ($attr['attribute_label'] ?? $attr['attributeLabel'] ?? 0);
             $mode = (int) ($attr['attribute_mode'] ?? $attr['attributeMode'] ?? 0);
             $status = (int) ($attr['attribute_status'] ?? $attr['attributeStatus'] ?? 0);
+            $name = mb_strtolower(trim((string) ($attr['attribute_name'] ?? $attr['attributeName'] ?? $attr['attribute_name_en'] ?? '')));
             if ($mode === 2) {
                 $sale[] = $attr;
                 continue;
             }
-            if ($status === 3 || $label === 1) {
+            if ($status === 3 || $label === 1 || str_contains($name, 'model')) {
                 $product[] = $attr;
             }
         }

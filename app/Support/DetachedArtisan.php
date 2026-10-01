@@ -41,7 +41,9 @@ class DetachedArtisan
             }
         }
         // Keep stdout/stderr: a fatal error in the detached process is otherwise invisible.
-        $shell = 'nohup '.implode(' ', $parts).' >>'.escapeshellarg(self::logFile()).' 2>&1 &';
+        // `echo $!` makes the shell exit immediately so PHP's exec() does not wait for the artisan process
+        // (that wait is what turns a slow marketplace update into an HTTP 504).
+        $shell = 'nohup '.implode(' ', $parts).' >>'.escapeshellarg(self::logFile()).' 2>&1 < /dev/null & echo $!';
 
         try {
             $exitCode = 1;

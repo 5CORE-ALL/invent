@@ -138,8 +138,22 @@ class WayfairApiService
      */
     protected function getTokenForCatalog(): string
     {
-        $scope = config('services.wayfair.catalog_scope');
-        return $this->getAccessTokenWithScope($scope !== '' ? $scope : null);
+        $configured = trim((string) config('services.wayfair.catalog_scope', ''));
+        $cached = \Illuminate\Support\Facades\Cache::get('wayfair.catalog.write_scope');
+        $scope = is_string($cached) && $cached !== '' ? $cached : $configured;
+        if ($scope === '') {
+            $scope = 'write:catalog_items';
+        }
+        try {
+            return $this->getAccessTokenWithScope($scope);
+        } catch (\Throwable $e) {
+            $msg = strtolower($e->getMessage());
+            if (! str_contains($msg, 'invalid_scope') && ! str_contains($msg, 'invalid scope')) {
+                throw $e;
+            }
+
+            return $this->getAccessTokenWithScope($configured !== '' ? $configured : null);
+        }
     }
 
     public function updatePrice(string $sku, float $price)

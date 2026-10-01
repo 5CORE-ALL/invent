@@ -5000,6 +5000,38 @@
             if (pushInFlight) e.preventDefault();
         });
 
+        // Polls a background push job until the worker stores its result (or we give up after 20 min).
+        async function waitForPushJob(token, onTick) {
+            const started = Date.now();
+            const deadline = started + 20 * 60 * 1000;
+            let misses = 0;
+            while (Date.now() < deadline) {
+                await new Promise(r => setTimeout(r, 3000));
+                let job = null;
+                try {
+                    job = await $.ajax({
+                        url: "{{ url('/listing-manager/product/push/status') }}/" + encodeURIComponent(token),
+                        method: 'GET',
+                        timeout: 30000,
+                    });
+                    misses = 0;
+                } catch (xhr) {
+                    if (xhr && xhr.status === 404) {
+                        return { success: false, message: (xhr.responseJSON && xhr.responseJSON.message) || 'The background update is no longer tracked.', results: [] };
+                    }
+                    // transient network/gateway hiccup: keep polling unless it persists
+                    if (++misses >= 10) {
+                        return { success: false, message: ajaxErrorMessage(xhr, 'Lost contact with the server while waiting for the marketplace update.'), results: [] };
+                    }
+                    continue;
+                }
+                const status = String(job && job.status || '');
+                if (status === 'done' || status === 'failed' || status === 'missing') return job;
+                if (onTick) onTick(Math.round((Date.now() - started) / 1000));
+            }
+            return { success: false, message: 'Timed out after 20 minutes waiting for the marketplace to finish; check the listing directly.', results: [] };
+        }
+
         // Runs the update-only push for one or more channels and reports per-channel results.
         async function runMarketplaceUpdate(channelIds, fields, parts, opts) {
             const o = opts || {};
@@ -5012,12 +5044,17 @@
                 if (o.onProgress) o.onProgress(i, channelIds.length, name);
                 if (o.rows) setPushRowStatus(id, 'updating', 'Updating ' + name + '…');
                 try {
-                    const res = await $.ajax({
+                    let res = await $.ajax({
                         url: "{{ url('/listing-manager/product/push') }}",
                         method: 'POST',
-                        data: Object.assign({}, fields, { channel_ids: [id], parts, skip_save: 1, update_only: 1 }),
+                        data: Object.assign({}, fields, { channel_ids: [id], parts, skip_save: 1, update_only: 1, background: 1 }),
                         timeout: 180000,
                     });
+                    if (res && res.queued && res.token) {
+                        res = await waitForPushJob(res.token, function (elapsedSec) {
+                            if (o.rows) setPushRowStatus(id, 'updating', 'Updating ' + name + '… (' + elapsedSec + 's — the marketplace is still processing)');
+                        });
+                    }
                     const row = (res.results && res.results[0]) ? res.results[0] : null;
                     const mode = row ? String(row.mode || '') : '';
                     if (row && mode === 'skipped') {

@@ -1650,6 +1650,15 @@ class TikTokShopService
             return ['success' => false, 'message' => 'Product ID and title are required.'];
         }
 
+        if (! $this->accessToken && ! $this->refreshToken) {
+            return ['success' => false, 'message' => 'TikTok access token not configured.'];
+        }
+
+        // Title is the first call in a push. Refresh before it so an expired cached token
+        // is not reported as failure while the later bullet/description calls refresh and succeed.
+        if ($this->refreshToken) {
+            $this->refreshAccessToken();
+        }
         if (! $this->accessToken) {
             return ['success' => false, 'message' => 'TikTok access token not configured.'];
         }
@@ -1745,6 +1754,26 @@ class TikTokShopService
         } catch (\Throwable $e) {
             $code = (int) $e->getCode();
             $lastError = $code > 0 ? $code.': '.$e->getMessage() : $e->getMessage();
+        }
+
+        if ($this->isExpiredAccessTokenMessage(0, $lastError) && $this->refreshAccessToken()) {
+            try {
+                $this->client->setAccessToken($this->accessToken);
+                $this->tiktokOpenApi(
+                    'POST',
+                    "/product/202309/products/{$productId}/partial_edit",
+                    [],
+                    $this->withPreservedSellerSkus($productId, ['title' => $title]),
+                    45
+                );
+
+                return $this->finishNonInventoryPartialEditSuccess(
+                    $productId,
+                    $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId)
+                );
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+            }
         }
 
         return $this->marketplaceApiFailure(
