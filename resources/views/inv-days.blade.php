@@ -26,6 +26,9 @@
     }
     .invdays-toolbar .invdays-search { width: 180px; flex: 0 0 180px; }
     .invdays-toolbar .invdays-inv-filter { width: 120px; flex: 0 0 120px; }
+    .invdays-toolbar .invdays-band-filter { width: 168px; flex: 0 0 168px; }
+    #invdays-table .tabulator-cell.invdays-band--yellow { background: #fde047 !important; }
+    #invdays-table .tabulator-cell.invdays-band--red { background: #f87171 !important; color: #fff; }
     #invdays-table.tabulator { width: 100%; }
     #invdays-table .tabulator-header {
         background: linear-gradient(180deg, #eef3fb 0%, #e3ebf8 100%);
@@ -106,6 +109,13 @@
     }
     .invdays-clearance-dot--has { background: #2563eb; }
     .invdays-clearance-dot:hover { transform: scale(1.25); }
+    .invdays-nrp-dot {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+    }
 </style>
 @endsection
 
@@ -133,6 +143,16 @@
                         <option value="all">All Inv</option>
                         <option value="zero">0 Inv</option>
                         <option value="gt">&gt; Inv</option>
+                    </select>
+                    <select id="invdaysAgeFilter" class="form-select form-select-sm invdays-band-filter" aria-label="Age Days">
+                        <option value="all">All Age</option>
+                        <option value="yellow">Age Yellow (&gt;120 &lt;180)</option>
+                        <option value="red">Age Red (≥180)</option>
+                    </select>
+                    <select id="invdaysExpFilter" class="form-select form-select-sm invdays-band-filter" aria-label="Exp Days">
+                        <option value="all">All Exp</option>
+                        <option value="yellow">Exp Yellow (&gt;120 &lt;180)</option>
+                        <option value="red">Exp Red (≥180)</option>
                     </select>
                     <div class="input-group input-group-sm invdays-search">
                         <span class="input-group-text"><i class="fas fa-search"></i></span>
@@ -218,7 +238,31 @@ document.addEventListener('DOMContentLoaded', function () {
         const invN = Number.isFinite(inv) ? inv : 0;
         if (invMode === 'zero' && invN !== 0) return false;
         if (invMode === 'gt' && !(invN > 0)) return false;
+        if (!bandMatches(document.getElementById('invdaysAgeFilter').value, data.age_days)) return false;
+        if (!bandMatches(document.getElementById('invdaysExpFilter').value, data.days_exp)) return false;
         return true;
+    }
+
+    function dayBand(v) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 'none';
+        if (n > 120 && n < 180) return 'yellow';
+        if (n >= 180) return 'red';
+        return 'none';
+    }
+
+    function bandMatches(mode, v) {
+        if (!mode || mode === 'all') return true;
+        return dayBand(v) === mode;
+    }
+
+    function paintDayCell(cell) {
+        const el = cell.getElement();
+        el.classList.remove('invdays-band--yellow', 'invdays-band--red');
+        const band = dayBand(cell.getValue());
+        if (band === 'yellow' || band === 'red') el.classList.add('invdays-band--' + band);
+        const v = cell.getValue();
+        return (v === null || v === undefined || v === '') ? '—' : String(Math.round(Number(v)));
     }
 
     function finiteNum(v) {
@@ -374,10 +418,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: missingLastSorter,
-                formatter: function (cell) {
-                    const v = cell.getValue();
-                    return (v === null || v === undefined) ? '—' : String(Math.round(Number(v)));
-                },
+                formatter: paintDayCell,
             },
             {
                 title: 'Days Exp',
@@ -386,10 +427,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: daysExpSorter,
-                formatter: function (cell) {
-                    const v = cell.getValue();
-                    return (v === null || v === undefined) ? '—' : String(Math.round(Number(v)));
-                },
+                formatter: paintDayCell,
             },
             {
                 title: 'Clearance',
@@ -418,6 +456,28 @@ document.addEventListener('DOMContentLoaded', function () {
                         return;
                     }
                     if (btn) toggleClearance(cell, btn);
+                },
+            },
+            {
+                title: 'NRP',
+                field: 'nr',
+                width: 70,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: 'string',
+                formatter: function (cell) {
+                    let value = String(cell.getValue() || '').trim().toUpperCase();
+                    if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') value = 'REQ';
+                    let color = '#22c55e';
+                    let tip = 'REQ';
+                    if (value === 'NR') {
+                        color = '#dc3545';
+                        tip = '2BDC';
+                    } else if (value === 'LATER') {
+                        color = '#facc15';
+                        tip = 'LATER';
+                    }
+                    return `<span class="invdays-nrp-dot" style="background-color:${color};" title="${tip}" aria-label="${tip}"></span>`;
                 },
             },
         ],
@@ -500,6 +560,8 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('invdaysSkuSearch').addEventListener('input', onSearchInput);
     document.getElementById('invdaysParentSearch').addEventListener('input', onSearchInput);
     document.getElementById('invdaysInvFilter').addEventListener('change', applyFilters);
+    document.getElementById('invdaysAgeFilter').addEventListener('change', applyFilters);
+    document.getElementById('invdaysExpFilter').addEventListener('change', applyFilters);
     document.getElementById('invdaysRefresh').addEventListener('click', function () {
         if (table) table.replaceData();
     });

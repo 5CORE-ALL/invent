@@ -35,6 +35,7 @@ class InvDaysController extends Controller
             $ageBySku = $this->incomingAgeDaysBySku();
             $amazonSheets = $this->amazonSheetsByLookupKey();
             $clearanceBySku = $this->clearanceBySku();
+            $nrpBySku = $this->forecastNrpBySku();
 
             $rows = [];
             foreach ($products as $product) {
@@ -61,6 +62,7 @@ class InvDaysController extends Controller
                     'days_exp' => InvUnder30DaysController::daysExp($inv, $ovl30),
                     'clearance' => $clearance['value'] ?? 'NO',
                     'clearance_has_history' => $clearance !== null,
+                    'nr' => $nrpBySku[$this->forecastSkuKey($sku)] ?? 'REQ',
                 ];
             }
 
@@ -197,6 +199,69 @@ class InvDaysController extends Controller
             'sku' => $sku,
             'data' => $data,
         ]);
+    }
+
+    /**
+     * NRP from forecast_analysis.nr, matched the same way as /forecast.analysis.
+     * REQ = green, NR (2BDC) = red, LATER = yellow. Missing rows display as REQ.
+     *
+     * @return array<string, string>
+     */
+    private function forecastNrpBySku(): array
+    {
+        if (! Schema::hasTable('forecast_analysis')) {
+            return [];
+        }
+
+        $query = DB::table('forecast_analysis')->whereNotNull('sku');
+        if (Schema::hasColumn('forecast_analysis', 'archived_at')) {
+            $query->whereNull('archived_at');
+        }
+
+        $grouped = [];
+        foreach ($query->get(['sku', 'nr', 'stage']) as $row) {
+            $key = $this->forecastSkuKey((string) $row->sku);
+            if ($key === '') {
+                continue;
+            }
+            $grouped[$key][] = $row;
+        }
+
+        $map = [];
+        foreach ($grouped as $key => $group) {
+            $picked = null;
+            foreach ($group as $row) {
+                if (trim((string) ($row->stage ?? '')) !== '') {
+                    $picked = $row;
+                    break;
+                }
+            }
+            if (! $picked) {
+                foreach ($group as $row) {
+                    if (trim((string) ($row->nr ?? '')) !== '') {
+                        $picked = $row;
+                        break;
+                    }
+                }
+            }
+            $picked = $picked ?? $group[0];
+            $nr = strtoupper(trim((string) ($picked->nr ?? '')));
+            if (! in_array($nr, ['REQ', 'NR', 'LATER'], true)) {
+                $nr = 'REQ';
+            }
+            $map[$key] = $nr;
+        }
+
+        return $map;
+    }
+
+    private function forecastSkuKey(string $sku): string
+    {
+        $sku = strtoupper(trim($sku));
+        $sku = preg_replace('/\s+/u', ' ', $sku) ?? $sku;
+        $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku) ?? $sku;
+
+        return trim($sku);
     }
 
     /**
