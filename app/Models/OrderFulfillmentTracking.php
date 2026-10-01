@@ -17,9 +17,22 @@ class OrderFulfillmentTracking extends Model
         'carrier',
         'source',
         'checked_at',
+        'shopify_order_id',
+        'shopify_fulfilled_at',
+        'shopify_push_attempts',
+        'shopify_push_checked_at',
+        'shopify_push_message',
+        'channel_pushed_at',
+        'channel_push_attempts',
+        'channel_push_message',
     ];
 
     protected $casts = [
         'checked_at' => 'datetime',
+        'shopify_fulfilled_at' => 'datetime',
+        'shopify_push_checked_at' => 'datetime',
+        'channel_pushed_at' => 'datetime',
+        'shopify_push_attempts' => 'integer',
+        'channel_push_attempts' => 'integer',
     ];
 }

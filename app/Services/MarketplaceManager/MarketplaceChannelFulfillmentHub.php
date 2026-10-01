@@ -87,20 +87,28 @@ class MarketplaceChannelFulfillmentHub
      * Push tracking to the channel. Does not fulfill Shopify (caller already did).
      *
      * @param  array<string, mixed>  $result
+     * @return array<string, mixed>|null  The channel service's result, or null when
+     *                                    nothing was attempted (unknown channel, push
+     *                                    disabled in settings, line not found).
      */
-    public function pushAfterShopifyTracking(string $marketplace, int $orderId, array $result = []): void
+    public function pushAfterShopifyTracking(string $marketplace, int $orderId, array $result = []): ?array
     {
         $marketplace = strtolower(trim($marketplace));
         if (trim((string) ($result['tracking'] ?? '')) === '' && $result !== []) {
-            return;
+            return null;
         }
 
         $line = $this->findLineByLocalId($marketplace, $orderId);
         if ($line === null) {
-            return;
+            return null;
         }
 
-        $this->pushLine($marketplace, $line, $result);
+        return $this->pushLine($marketplace, $line, $result);
+    }
+
+    public function supportsChannel(string $marketplace): bool
+    {
+        return isset($this->channelMap()[strtolower(trim($marketplace))]);
     }
 
     /**
@@ -200,34 +208,37 @@ class MarketplaceChannelFulfillmentHub
 
     /**
      * @param  array<string, mixed>  $known
+     * @return array<string, mixed>|null
      */
-    protected function pushLine(string $marketplace, object $line, array $known = []): void
+    protected function pushLine(string $marketplace, object $line, array $known = []): ?array
     {
         $map = $this->channelMap()[$marketplace] ?? null;
         if ($map === null) {
-            return;
+            return null;
         }
         [, $serviceClass] = $map;
         $service = app($serviceClass);
         if (! $this->channelAllowsPush($service)) {
-            return;
+            return null;
         }
         if (! method_exists($service, 'pushTrackingForOrder')) {
-            return;
+            return null;
         }
 
         try {
             $method = new \ReflectionMethod($service, 'pushTrackingForOrder');
-            if ($method->getNumberOfParameters() >= 2) {
-                $service->pushTrackingForOrder($line, $known);
-            } else {
-                $service->pushTrackingForOrder($line);
-            }
+            $result = $method->getNumberOfParameters() >= 2
+                ? $service->pushTrackingForOrder($line, $known)
+                : $service->pushTrackingForOrder($line);
+
+            return is_array($result) ? $result : ['success' => true, 'message' => 'Pushed.'];
         } catch (\Throwable $e) {
             Log::warning('MarketplaceChannelFulfillmentHub: channel tracking push failed', [
                 'marketplace' => $marketplace,
                 'error' => $e->getMessage(),
             ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 

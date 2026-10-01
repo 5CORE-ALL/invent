@@ -2079,6 +2079,19 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     protected function ensureTrackingTable(): void
     {
         if (Schema::hasTable('order_fulfillment_trackings')) {
+            if (! Schema::hasColumn('order_fulfillment_trackings', 'shopify_fulfilled_at')) {
+                Schema::table('order_fulfillment_trackings', function ($table) {
+                    $table->string('shopify_order_id', 64)->nullable()->after('checked_at');
+                    $table->timestamp('shopify_fulfilled_at')->nullable()->after('shopify_order_id');
+                    $table->unsignedTinyInteger('shopify_push_attempts')->default(0)->after('shopify_fulfilled_at');
+                    $table->timestamp('shopify_push_checked_at')->nullable()->after('shopify_push_attempts');
+                    $table->string('shopify_push_message', 255)->nullable()->after('shopify_push_checked_at');
+                    $table->timestamp('channel_pushed_at')->nullable()->after('shopify_push_message');
+                    $table->unsignedTinyInteger('channel_push_attempts')->default(0)->after('channel_pushed_at');
+                    $table->string('channel_push_message', 255)->nullable()->after('channel_push_attempts');
+                });
+            }
+
             return;
         }
 
@@ -2092,6 +2105,14 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $table->string('carrier', 64)->nullable();
             $table->string('source', 32)->nullable();
             $table->timestamp('checked_at')->nullable();
+            $table->string('shopify_order_id', 64)->nullable();
+            $table->timestamp('shopify_fulfilled_at')->nullable();
+            $table->unsignedTinyInteger('shopify_push_attempts')->default(0);
+            $table->timestamp('shopify_push_checked_at')->nullable();
+            $table->string('shopify_push_message', 255)->nullable();
+            $table->timestamp('channel_pushed_at')->nullable();
+            $table->unsignedTinyInteger('channel_push_attempts')->default(0);
+            $table->string('channel_push_message', 255)->nullable();
             $table->timestamps();
             $table->unique('row_key', 'of_tracking_row_key_uq');
             $table->index(['mm_slug', 'order_id'], 'of_tracking_slug_order_idx');
@@ -2147,18 +2168,32 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             return;
         }
 
-        OrderFulfillmentTracking::query()->updateOrCreate(
-            ['row_key' => $rowKey],
-            [
-                'mm_slug' => $slug,
-                'order_id' => $orderId,
-                'sku' => $sku !== '' ? $sku : null,
-                'tracking_number' => $tracking !== null && trim($tracking) !== '' ? trim($tracking) : null,
-                'carrier' => $this->carrierNameForTracking($tracking, $carrier),
-                'source' => $source,
-                'checked_at' => now(),
-            ]
-        );
+        $number = $tracking !== null && trim($tracking) !== '' ? trim($tracking) : null;
+        $values = [
+            'mm_slug' => $slug,
+            'order_id' => $orderId,
+            'sku' => $sku !== '' ? $sku : null,
+            'tracking_number' => $number,
+            'carrier' => $this->carrierNameForTracking($tracking, $carrier),
+            'source' => $source,
+            'checked_at' => now(),
+        ];
+        // A different number than the one already copied to Shopify / the
+        // marketplace must be pushed again by order-fulfillment:push-tracking.
+        if ($existing && $number !== null && $existing->shopify_fulfilled_at !== null
+            && strcasecmp((string) preg_replace('/\s+/', '', (string) $existing->tracking_number), (string) preg_replace('/\s+/', '', $number)) !== 0) {
+            $values += [
+                'shopify_fulfilled_at' => null,
+                'shopify_push_attempts' => 0,
+                'shopify_push_checked_at' => null,
+                'shopify_push_message' => null,
+                'channel_pushed_at' => null,
+                'channel_push_attempts' => 0,
+                'channel_push_message' => null,
+            ];
+        }
+
+        OrderFulfillmentTracking::query()->updateOrCreate(['row_key' => $rowKey], $values);
     }
 
     /**

@@ -2810,6 +2810,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Copy the numbers the Order Fulfillment page resolved onto the Shopify
+        // orders (mark fulfilled) and push them to marketplaces still without tracking.
+        $schedule->command('order-fulfillment:push-tracking --limit=80 --budget=540')
+            ->everyTenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('order-fulfillment-push-tracking')
+            ->withoutOverlapping(15)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Backup: queue Shopify imports for unpushed MM orders even if fetch jobs are stuck.
         // Must run inline — runInBackground() sits on the default queue and never dispatches mm-* imports.
         $schedule->command('mm:dispatch-unpushed-shopify')
