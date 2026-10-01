@@ -4270,9 +4270,19 @@ class SheinApiService
             ];
         }
 
+        Log::info('Shein publishOrEdit accepted', [
+            'supplier_code' => $payload['supplier_code'] ?? null,
+            'spu' => $spu,
+            'sku_code' => $skuCode,
+            'info' => mb_substr(json_encode($info, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '', 0, 4000),
+        ]);
+
+        $ids = array_filter(['SPU '.$spu => $spu !== '', 'SKC/SKU '.$skuCode => $skuCode !== '']);
+
         return [
             'success' => true,
-            'message' => trim((string) ($json['msg'] ?? 'Published to Shein.')),
+            'message' => 'Shein accepted the product ('.implode(', ', array_keys($ids)).'). '
+                .'New products go through Shein\'s review before they show in Seller Hub; search Product List by that SPU code.',
             'spu_name' => $spu !== '' ? $spu : null,
             'sku_code' => $skuCode !== '' ? $skuCode : null,
             'info' => $info,
