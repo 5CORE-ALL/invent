@@ -56,9 +56,31 @@ class TaskPolicy
         self::$fullAccessEmailCache = null;
     }
 
+    /**
+     * Only the president may delete tasks assigned by someone else, including corrective-action tasks.
+     * Seniors keep full edit access, but delete stays with the assignor (or the president).
+     *
+     * @var list<string>
+     */
+    private const DELETE_ANY_TASK_EMAILS = [
+        'president@5core.com',
+        'presiden@5core.com', // Known typo login used by President
+    ];
+
+    public static function userCanDeleteAnyTask(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $email = strtolower(trim((string) ($user->email ?? '')));
+
+        return $email !== '' && in_array($email, self::DELETE_ANY_TASK_EMAILS, true);
+    }
+
     public static function userCanDeleteCorrectiveTasks(?User $user): bool
     {
-        return $user !== null && self::userHasFullTaskAccess($user);
+        return self::userCanDeleteAnyTask($user);
     }
 
     public static function taskIsCorrectiveAction(Task $task): bool
@@ -155,11 +177,11 @@ class TaskPolicy
 
     /**
      * Single source of truth for delete (row + bulk).
-     * Full-access emails can delete any task (including CA); assignors can delete their own.
+     * president@5core.com can delete any task (including CA); everyone else can delete only their own non-CA tasks.
      */
     public static function userCanDeleteTask(User $user, Task $task): bool
     {
-        if (self::userHasFullTaskAccess($user)) {
+        if (self::userCanDeleteAnyTask($user)) {
             return true;
         }
 

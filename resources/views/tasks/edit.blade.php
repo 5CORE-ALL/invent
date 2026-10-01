@@ -240,8 +240,10 @@
                         @if($canEditAll)
                             @php
                                 $isCorrectiveTask = (bool) ($task->is_corrective_action ?? false);
-                                $canShowDelete = ! $isCorrectiveTask || ! empty($canDeleteCorrectiveTasks);
+                                $canShowDelete = ! empty($canDeleteThisTask);
+                                $viewerIsAssignor = \App\Policies\TaskPolicy::userIsAssignor(auth()->user(), $task->assignor ?? '');
                             @endphp
+                            @if($canShowDelete || ($isCorrectiveTask && $viewerIsAssignor))
                             <div class="row mt-2">
                                 <div class="col-12">
                                     @if($canShowDelete)
@@ -257,6 +259,7 @@
                                     @endif
                                 </div>
                             </div>
+                            @endif
                         @endif
 
                     </div> <!-- end card-body-->

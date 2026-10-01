@@ -82,8 +82,39 @@ class TaskPolicyDeletePermissionTest extends TestCase
         foreach ($emails as $email) {
             $user = $this->user($email, 'Other Name');
             $this->assertTrue(TaskPolicy::userHasSpecialTaskPermission($user), $email);
-            $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com')), $email);
-            $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com', true)), $email);
+            if ($email === 'president@5core.com') {
+                $this->assertTrue(TaskPolicy::userCanDeleteAnyTask($user), $email);
+                $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com')), $email);
+                $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com', true)), $email);
+                continue;
+            }
+
+            $this->assertFalse(TaskPolicy::userCanDeleteAnyTask($user), $email);
+            $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com')), $email);
+            $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com', true)), $email);
+            $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task($email)), $email);
+        }
+    }
+
+    public function test_seniors_cannot_delete_another_assignors_task(): void
+    {
+        TaskPolicy::resetFullAccessEmailCache();
+
+        $seniors = [
+            'sr.manager@5core.com',
+            'inventory@5core.com',
+            'sjoy7486@gmail.com',
+            'ineetkalra@5core.com',
+            'priyanka@5core.com',
+            'software5@5core.com',
+            'mgr-operations@5core.com',
+        ];
+
+        foreach ($seniors as $email) {
+            $user = $this->user($email, 'Senior');
+            $this->assertTrue(TaskPolicy::userHasFullTaskAccess($user), $email);
+            $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $this->task('other.assignor@5core.com')), $email);
+            $this->assertFalse(TaskPolicy::userCanDeleteCorrectiveTasks($user), $email);
         }
     }
 

@@ -2787,7 +2787,7 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
                         <strong>Delete Selected Tasks</strong>
-                        <small class="d-block text-muted">{{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'You can delete any selected task' : 'You can only delete tasks you assigned' }}{{ empty($canDeleteCorrectiveTasks) ? '. CA tasks can only be deleted by president@5core.com' : '' }}</small>
+                        <small class="d-block text-muted">{{ !empty($canDeleteOthersTasks) ? 'You can delete any selected task' : 'You can only delete tasks you assigned' }}{{ empty($canDeleteCorrectiveTasks) ? '. CA tasks can only be deleted by president@5core.com' : '' }}</small>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assign-assignee-btn">
                         <i class="mdi mdi-account-plus text-success me-2"></i>
@@ -3267,6 +3267,7 @@
             var bulkActionType = '';
             var isAdmin = {{ $isAdmin ? 'true' : 'false' }};
             var canDeleteAnyTask = {{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'true' : 'false' }};
+            var canDeleteOthersTasks = {{ !empty($canDeleteOthersTasks) ? 'true' : 'false' }};
             var canDeleteCorrectiveTasks = {{ !empty($canDeleteCorrectiveTasks) ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = {!! json_encode(Auth::user()->email) !!};
@@ -3322,7 +3323,7 @@
 
             function userCanDeleteTaskRow(rowData) {
                 if (!rowData) return false;
-                var baseCan = canDeleteAnyTask || currentUserIsAssignorOnTask(rowData);
+                var baseCan = canDeleteOthersTasks || currentUserIsAssignorOnTask(rowData);
                 if (!baseCan) return false;
                 if (taskIsCorrectiveAction(rowData) && !canDeleteCorrectiveTasks) return false;
                 return true;
@@ -4620,15 +4621,15 @@
                             var id = rowData.id;
                             var st = rowData.status || '';
                             
-                            // Determine permissions (special: Jasmine, Ritu mam, Joy sir can delete/edit any task)
-                            // Full edit (title, group, date, assignee, etc): assignor + president override.
+                            // Full edit (title, group, date, assignee, etc): assignor + senior override.
+                            // Delete of someone else's task: president@5core.com only.
                             // Assignees get an "Add Links" mode of the same edit page so they can attach
                             // proof / SOP / reference links to make review easier.
                             var isAssignor = currentUserIsAssignorOnTask(rowData);
                             var isAssigneeOnly = !(canDeleteAnyTask || isAssignor) && currentUserIsAssigneeOnTask(rowData);
                             var canEdit = canDeleteAnyTask || isAssignor || isAssigneeOnly;
                             var canDelete = userCanDeleteTaskRow(rowData);
-                            var wouldDeleteWithoutCa = canDeleteAnyTask || isAssignor;
+                            var wouldDeleteWithoutCa = canDeleteOthersTasks || isAssignor;
                             var canView = isAdmin || isAssignor || currentUserIsAssigneeOnTask(rowData);
                             var canReworkQuick = (isAdmin || canDeleteAnyTask || isAssignor) && st !== 'Rework' && st !== 'Archived';
                             

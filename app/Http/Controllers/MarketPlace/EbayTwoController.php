@@ -1545,6 +1545,7 @@ class EbayTwoController extends Controller
                 'ca_campaign_id' => $picked['ca_campaign_id'] ?? null,
                 'ca_campaign_status' => $picked['ca_campaign_status'] ?? null,
                 'ca_ads_running' => $picked['ca_ads_running'] ?? 0,
+                'ca_has_ad_row' => $picked['ca_has_ad_row'] ?? 0,
             ];
             if (empty($picked['eBay_item_id'] ?? null)) {
                 return $fields;
@@ -1651,6 +1652,7 @@ class EbayTwoController extends Controller
                     'ca_campaign_id' => null,
                     'ca_campaign_status' => null,
                     'ca_ads_running' => 0,
+                    'ca_has_ad_row' => 0,
                     'pmt_clicks_l30' => 0,
                     'pmt_clicks_l7' => 0,
                     'nrp' => '',
@@ -1709,7 +1711,7 @@ class EbayTwoController extends Controller
     }
 
     /**
-     * @return array{ca_bid_percentage: mixed, ca_suggested_bid: mixed, ca_promote_with_ad: mixed, ca_campaign_id: mixed, ca_campaign_status: mixed, ca_ads_running: int}
+     * @return array{ca_bid_percentage: mixed, ca_suggested_bid: mixed, ca_promote_with_ad: mixed, ca_campaign_id: mixed, ca_campaign_status: mixed, ca_ads_running: int, ca_has_ad_row: int}
      */
     private function ebay2CampaignAdsFields(?object $caRow): array
     {
@@ -1721,6 +1723,7 @@ class EbayTwoController extends Controller
                 'ca_campaign_id' => null,
                 'ca_campaign_status' => null,
                 'ca_ads_running' => 0,
+                'ca_has_ad_row' => 0,
             ];
         }
 
@@ -1731,6 +1734,7 @@ class EbayTwoController extends Controller
             'ca_campaign_id' => $caRow->campaign_id ?? $caRow->ca_campaign_id ?? null,
             'ca_campaign_status' => $caRow->campaign_status ?? $caRow->ca_campaign_status ?? null,
             'ca_ads_running' => (int) ($caRow->ads_running ?? $caRow->ca_ads_running ?? 0),
+            'ca_has_ad_row' => 1,
         ];
     }
 
