@@ -112,6 +112,20 @@
         .of-dt-date { font-weight: 600; color: #0f172a; }
         .of-dt-time { font-size: 0.72rem; color: #64748b; }
         .of-sku { font-size: 0.78rem; }
+        .of-sku-list { display: flex; flex-direction: column; gap: 0.1rem; line-height: 1.25; }
+        .of-sku-line { display: flex; align-items: baseline; gap: 0.3rem; white-space: nowrap; }
+        .of-sku-qty { color: #64748b; font-size: 0.72rem; }
+        /* View-order modal */
+        .of-view-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem 1rem; }
+        .of-view-item { min-width: 0; }
+        .of-view-item.of-view-wide { grid-column: 1 / -1; }
+        .of-view-item .of-view-label { font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: #94a3b8; }
+        .of-view-item .of-view-value { font-size: 0.84rem; color: #0f172a; word-break: break-word; }
+        .of-view-item .of-view-value.of-view-muted { color: #94a3b8; }
+        .of-view-table { font-size: 0.82rem; margin-bottom: 0; }
+        .of-view-table th { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: #94a3b8; border-bottom: 1px solid #eef2f6; padding: 0.3rem 0.4rem; }
+        .of-view-table td { padding: 0.35rem 0.4rem; vertical-align: middle; border-bottom: 1px solid #f1f5f9; }
+        .of-view-table tfoot td { border-bottom: 0; font-weight: 600; }
         .of-edit-btn {
             color: #0d6efd;
             line-height: 1;
@@ -413,6 +427,61 @@
                         </span>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    {{-- Manual order: read-only view of the complete order --}}
+    <div class="modal fade of-modal" id="of-view-modal" tabindex="-1" aria-labelledby="of-view-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="of-view-modal-label">Order</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="of-sec">
+                        <div class="of-sec-title">
+                            <h6><i class="fas fa-receipt" aria-hidden="true"></i>Order details</h6>
+                            <span id="of-view-status-badge"></span>
+                        </div>
+                        <div class="of-view-grid" id="of-view-order"></div>
+                    </div>
+                    <div class="of-sec">
+                        <div class="of-sec-title">
+                            <h6><i class="fas fa-box-open" aria-hidden="true"></i>Items</h6>
+                            <span class="of-sec-sub" id="of-view-items-sub"></span>
+                        </div>
+                        <table class="table of-view-table">
+                            <thead>
+                                <tr><th>SKU</th><th class="text-center">Qty</th><th class="text-end">Price</th><th class="text-end">Total</th><th class="text-center">Inv.</th></tr>
+                            </thead>
+                            <tbody id="of-view-lines"></tbody>
+                            <tfoot id="of-view-lines-foot"></tfoot>
+                        </table>
+                    </div>
+                    <div class="of-sec">
+                        <div class="of-sec-title">
+                            <h6><i class="fas fa-truck" aria-hidden="true"></i>Shipping &amp; tracking</h6>
+                        </div>
+                        <div class="of-view-grid" id="of-view-shipping"></div>
+                    </div>
+                    <div class="of-sec">
+                        <div class="of-sec-title">
+                            <h6><i class="fas fa-user" aria-hidden="true"></i>Customer</h6>
+                        </div>
+                        <div class="of-view-grid" id="of-view-customer"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span class="of-footer-summary" id="of-view-footer"></span>
+                    <span>
+                        @if(!empty($ofCreateOrders))
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="of-view-edit"><i class="fas fa-edit me-1" aria-hidden="true"></i>Edit</button>
+                        @endif
+                        <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Close</button>
+                    </span>
+                </div>
             </div>
         </div>
     </div>
@@ -758,6 +827,14 @@
                 minWidth: 180,
                 headerHozAlign: 'center',
                 formatter: function (cell) {
+                    const row = cell.getRow().getData();
+                    if (row.manual && Array.isArray(row.lines) && row.lines.length) {
+                        return '<span class="of-sku-list">' + row.lines.map(function (line) {
+                            const qty = Number(line.qty || 1);
+                            return '<span class="of-sku-line"><code class="of-sku">' + escapeHtml(line.sku || '') + '</code>'
+                                + (qty > 1 ? '<small class="of-sku-qty">×' + qty + '</small>' : '') + '</span>';
+                        }).join('') + '</span>';
+                    }
                     const sku = String(cell.getValue() || '').trim();
                     return sku ? '<code class="of-sku">' + escapeHtml(sku) + '</code>' : '—';
                 },
@@ -786,6 +863,21 @@
                     if (value === 'Paid') return '<span class="of-paid">Paid</span>';
                     if (value === 'Unpaid') return '<span class="of-unpaid">Unpaid</span>';
                     return '—';
+                },
+            },
+            {
+                title: 'Amount',
+                field: 'amount',
+                minWidth: 90,
+                width: 100,
+                hozAlign: 'right',
+                headerHozAlign: 'center',
+                sorter: 'number',
+                visible: createOrdersPage,
+                formatter: function (cell) {
+                    const value = cell.getValue();
+                    if (value === null || value === undefined || value === '') return '—';
+                    return '$' + Number(value).toFixed(2);
                 },
             },
             {
@@ -844,6 +936,13 @@
                 headerHozAlign: 'center',
                 sorter: 'number',
                 formatter: function (cell) {
+                    const row = cell.getRow().getData();
+                    if (row.manual && Array.isArray(row.lines) && row.lines.length > 1) {
+                        return '<span class="of-sku-list">' + row.lines.map(function (line) {
+                            const inv = line.inv;
+                            return '<span class="of-sku-line">' + ((inv === null || inv === undefined || inv === '') ? '—' : Number(inv).toLocaleString()) + '</span>';
+                        }).join('') + '</span>';
+                    }
                     const value = cell.getValue();
                     if (value === null || value === undefined || value === '') return '—';
                     return Number(value).toLocaleString();
@@ -852,7 +951,7 @@
             {
                 title: 'Edit',
                 field: 'id',
-                width: createOrdersPage ? 150 : 100,
+                width: createOrdersPage ? 175 : 125,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: false,
@@ -876,6 +975,7 @@
                     };
                     add('fa-pen', 'Add tracking number', '', openTrackingModal);
                     if (row.manual) {
+                        add('fa-eye', 'View complete order', '', openOrderViewModal);
                         const fulfilled = String(row.status || '').toLowerCase() === 'fulfilled';
                         add('fa-check-circle', fulfilled ? 'Fulfilled' : 'Fulfill (fetch tracking and mark fulfilled)', fulfilled ? 'text-success' : '', fulfillManualOrder, fulfilled);
                         if (createOrdersPage) {
@@ -1246,8 +1346,9 @@
     }
 
     // Order amount follows the item lines until the user types their own figure.
+    // In edit mode the stored total is kept until a line changes.
     let amountTouched = false;
-    let amountAutoMode = 'sum'; // 'sum' = live total of the lines; 'server' = blank → recalculated on save (edit mode)
+    let editingOrder = false;
 
     function money(n) {
         return Number(n || 0).toFixed(2);
@@ -1296,15 +1397,9 @@
         setText('of-order-lines-total', priced ? '$' + money(sum) : '—');
         const amount = document.getElementById('of-order-amount');
         if (amount && !amountTouched) {
-            if (amountAutoMode === 'server') {
-                amount.value = '';
-                amount.placeholder = 'on save';
-                setText('of-order-amount-hint', 'auto: re-totalled from all items on save');
-            } else {
-                amount.value = priced ? money(sum) : '';
-                amount.placeholder = '0.00';
-                setText('of-order-amount-hint', 'auto: items × qty');
-            }
+            amount.value = priced ? money(sum) : '';
+            amount.placeholder = '0.00';
+            setText('of-order-amount-hint', 'auto: items × qty');
         }
         updateFooterSummary();
     }
@@ -1315,11 +1410,12 @@
         updateFooterSummary();
     });
 
-    function addOrderLine(sku, qty, removable, price) {
+    function addOrderLine(sku, qty, removable, price, lineId) {
         const host = document.getElementById('of-order-lines');
         if (!host) return;
         const line = document.createElement('div');
         line.className = 'of-order-line';
+        line.dataset.lineId = lineId ? String(lineId) : '';
         line.innerHTML =
             '<div class="of-line-sku-wrap">' +
                 '<input type="text" class="form-control form-control-sm of-line-sku" placeholder="Search CP Master SKU…" maxlength="191" required autocomplete="off" spellcheck="false">' +
@@ -1336,8 +1432,8 @@
         const qtyInput = line.querySelector('.of-line-qty');
         attachSkuSuggest(line.querySelector('.of-line-sku'), line.querySelector('.of-sku-suggest'), qtyInput, priceInput);
         function onLineChange() {
-            // Editing a line of an existing order: let the server re-total all its lines.
-            if (amountAutoMode === 'server') amountTouched = false;
+            // Editing an existing order: once a line changes, the total follows the lines again.
+            if (editingOrder) { amountTouched = false; editingOrder = false; }
             recalcOrderAmount();
         }
         qtyInput.addEventListener('input', onLineChange);
@@ -1347,7 +1443,7 @@
         const remove = line.querySelector('.of-line-remove');
         if (removable === false) remove.style.visibility = 'hidden';
         remove.addEventListener('click', function () {
-            if (host.querySelectorAll('.of-order-line').length > 1) { line.remove(); recalcOrderAmount(); }
+            if (host.querySelectorAll('.of-order-line').length > 1) { line.remove(); onLineChange(); }
         });
         host.appendChild(line);
         recalcOrderAmount();
@@ -1477,7 +1573,9 @@
             const sku = String(line.querySelector('.of-line-sku')?.value || '').trim();
             const qty = parseInt(line.querySelector('.of-line-qty')?.value || '1', 10) || 1;
             const priceRaw = String(line.querySelector('.of-line-price')?.value || '').trim();
-            if (sku) lines.push({ sku: sku, qty: qty, price: priceRaw });
+            const entry = { sku: sku, qty: qty, price: priceRaw };
+            if (line.dataset.lineId) entry.id = line.dataset.lineId;
+            if (sku) lines.push(entry);
         });
         return lines;
     }
@@ -1574,10 +1672,10 @@
         setOrderField('of-order-paid', '1');
         setOrderField('of-order-date', nowLocalValue());
         amountTouched = false;
-        amountAutoMode = 'sum';
+        editingOrder = false;
         const host = document.getElementById('of-order-lines');
         if (host) host.innerHTML = '';
-        addOrderLine('', 1, true, null);
+        addOrderLine('', 1, true, null, null);
         document.getElementById('of-order-add-line').style.display = '';
         document.getElementById('of-order-lines-help').textContent = 'One grid row is created per SKU.';
         showFormError('of-order-error', '');
@@ -1604,18 +1702,107 @@
         setOrderField('of-order-zip', row.zip || '');
         setOrderField('of-order-country', row.country || '');
         setOrderField('of-order-notes', row.notes || '');
-        // Keep the stored order total until a line changes; then the server re-totals every line.
+        // Keep the stored order total until a line changes; then it follows the lines again.
         amountTouched = true;
-        amountAutoMode = 'server';
-        setText('of-order-amount-hint', 'stored order total');
+        editingOrder = true;
         const host = document.getElementById('of-order-lines');
         if (host) host.innerHTML = '';
-        addOrderLine(row.sku || '', row.qty || 1, false, row.unit_price);
-        document.getElementById('of-order-add-line').style.display = 'none';
-        document.getElementById('of-order-lines-help').textContent = 'Header changes apply to every SKU of this order; SKU, qty and price here apply to this row only.';
+        const lines = (Array.isArray(row.lines) && row.lines.length)
+            ? row.lines
+            : [{ id: row.manual_id, sku: row.sku || '', qty: row.qty || 1, unit_price: row.unit_price }];
+        lines.forEach(function (line) {
+            addOrderLine(line.sku || '', line.qty || 1, true, line.unit_price, line.id);
+        });
+        setText('of-order-amount-hint', 'stored order total');
+        document.getElementById('of-order-add-line').style.display = '';
+        document.getElementById('of-order-lines-help').textContent = 'Add, change or remove SKUs — the whole order is saved together.';
         showFormError('of-order-error', '');
         showModal('of-order-modal');
     }
+
+    /* ---- Read-only view of the complete order ---- */
+    let viewedRow = null;
+
+    function viewItem(label, value, options) {
+        options = options || {};
+        const text = (value === null || value === undefined || String(value).trim() === '') ? (options.empty || '—') : String(value);
+        const muted = text === (options.empty || '—');
+        return '<div class="of-view-item' + (options.wide ? ' of-view-wide' : '') + '"><div class="of-view-label">' + escapeHtml(label) + '</div>'
+            + '<div class="of-view-value' + (muted ? ' of-view-muted' : '') + '">' + (options.html ? text : escapeHtml(text)) + '</div></div>';
+    }
+
+    function openOrderViewModal(row) {
+        if (!row) return;
+        viewedRow = row;
+        const lines = (Array.isArray(row.lines) && row.lines.length)
+            ? row.lines
+            : [{ sku: row.sku || '', qty: row.qty || 1, unit_price: row.unit_price, line_total: null, inv: row.inv }];
+        const dt = formatDateTime(row.order_date);
+        const status = String(row.status || '').trim();
+        const fulfilled = status.toLowerCase() === 'fulfilled';
+
+        document.getElementById('of-view-modal-label').textContent = (row.channel || 'Order') + ' · ' + (row.order_id || '');
+        document.getElementById('of-view-status-badge').innerHTML =
+            '<span class="badge rounded-pill ' + (fulfilled ? 'bg-success' : 'bg-warning text-dark') + '">' + escapeHtml(status || 'Order Created') + '</span>';
+
+        document.getElementById('of-view-order').innerHTML =
+            viewItem('Marketplace', row.channel) +
+            viewItem('Order ID', row.order_id) +
+            viewItem('Order date (' + orderTimezone + ')', dt ? (dt.date + (dt.time ? ' ' + dt.time : '')) : '') +
+            viewItem('Payment', row.paid_label || (row.paid ? 'Paid' : 'Unpaid')) +
+            viewItem('Order amount', row.amount == null ? '' : '$' + money(row.amount)) +
+            viewItem('Created', row.created_at ? String(row.created_at).slice(0, 16) : '');
+
+        let units = 0;
+        let total = 0;
+        let priced = false;
+        document.getElementById('of-view-lines').innerHTML = lines.map(function (line) {
+            const qty = Number(line.qty || 1);
+            const price = (line.unit_price === null || line.unit_price === undefined) ? null : Number(line.unit_price);
+            const lineTotal = price === null ? null : Math.round(price * qty * 100) / 100;
+            units += qty;
+            if (lineTotal !== null) { total += lineTotal; priced = true; }
+            return '<tr><td><code class="of-sku">' + escapeHtml(line.sku || '') + '</code></td>'
+                + '<td class="text-center">' + qty + '</td>'
+                + '<td class="text-end">' + (price === null ? '—' : '$' + money(price)) + '</td>'
+                + '<td class="text-end">' + (lineTotal === null ? '—' : '$' + money(lineTotal)) + '</td>'
+                + '<td class="text-center">' + ((line.inv === null || line.inv === undefined || line.inv === '') ? '—' : Number(line.inv).toLocaleString()) + '</td></tr>';
+        }).join('');
+        document.getElementById('of-view-lines-foot').innerHTML =
+            '<tr><td colspan="3" class="text-end">Items total</td><td class="text-end">' + (priced ? '$' + money(total) : '—') + '</td><td></td></tr>';
+        setText('of-view-items-sub', lines.length + (lines.length === 1 ? ' SKU' : ' SKUs') + ' · ' + units + (units === 1 ? ' unit' : ' units'));
+
+        const source = String(row.tracking_source || '');
+        const sourceLabel = source === '4seller' ? '4Seller' : (source === 'gofo' ? 'GOFO' : (source === 'veeqo' ? 'Veeqo' : (source === 'channel' ? 'Marketplace' : (source === 'manual' ? 'Entered manually' : ''))));
+        document.getElementById('of-view-shipping').innerHTML =
+            viewItem('Tracking number', row.tracking, { empty: row.tracking_checked ? 'Not found yet' : 'Looking up…' }) +
+            viewItem('Carrier', row.carrier) +
+            viewItem('Tracking status', row.tracking_status) +
+            viewItem('Tracking source', sourceLabel) +
+            viewItem('Fulfilled at', row.fulfilled_at ? String(row.fulfilled_at).slice(0, 16) : '', { empty: fulfilled ? '—' : 'Not fulfilled yet' }) +
+            viewItem('Status', status);
+
+        const address = [row.address1, row.address2, [row.city, row.state, row.zip].filter(Boolean).join(', '), row.country]
+            .map(function (p) { return String(p || '').trim(); }).filter(Boolean).join('<br>');
+        document.getElementById('of-view-customer').innerHTML =
+            viewItem('Customer name', row.customer_name) +
+            viewItem('Email', row.customer_email) +
+            viewItem('Phone', row.customer_phone) +
+            viewItem('Shipping address', address || '', { html: true }) +
+            viewItem('Notes', row.notes, { wide: true });
+
+        document.getElementById('of-view-footer').innerHTML =
+            escapeHtml(lines.length + (lines.length === 1 ? ' SKU' : ' SKUs') + ', ' + units + (units === 1 ? ' unit' : ' units'))
+            + (row.amount == null ? '' : ' &middot; <strong>Order total $' + money(row.amount) + '</strong>');
+        showModal('of-view-modal');
+    }
+
+    document.getElementById('of-view-edit')?.addEventListener('click', function () {
+        if (!viewedRow) return;
+        const live = table.getRow(viewedRow.id);
+        hideModal('of-view-modal');
+        setTimeout(function () { openOrderModalForEdit(live ? live.getData() : viewedRow); }, 250);
+    });
 
     function orderHeaderPayload() {
         return {
@@ -1657,14 +1844,8 @@
         showFormError('of-order-error', '');
         saveBtn.disabled = true;
         const isEdit = manualId !== '';
-        if (isEdit) {
-            payload.sku = lines[0].sku;
-            payload.qty = lines[0].qty;
-            payload.price = lines[0].price;
-            payload._method = 'PUT';
-        } else {
-            payload.lines = lines;
-        }
+        payload.lines = lines;
+        if (isEdit) payload._method = 'PUT';
         $.ajax({
             url: isEdit ? manualUrl(manualId) : manualStoreUrl,
             type: 'POST',
@@ -1678,6 +1859,11 @@
             }
             const rows = Array.isArray(res.rows) ? res.rows : [];
             if (isEdit) {
+                // The row id follows the first SKU line; drop the old row if that line was removed.
+                (Array.isArray(res.removed_ids) ? res.removed_ids : []).forEach(function (id) {
+                    const old = table.getRow(id);
+                    if (old) old.delete();
+                });
                 table.updateOrAddData(rows);
             } else {
                 table.addData(rows);
@@ -1694,7 +1880,8 @@
 
     function deleteManualOrder(row) {
         if (!row || !row.manual_id) return;
-        if (!window.confirm('Delete order ' + (row.order_id || '') + ' (' + (row.sku || '') + ')?')) return;
+        const skus = (Array.isArray(row.lines) && row.lines.length) ? row.lines.map(function (l) { return l.sku; }).join(', ') : (row.sku || '');
+        if (!window.confirm('Delete order ' + (row.order_id || '') + ' (' + skus + ')? All its SKU lines will be removed.')) return;
         $.ajax({
             url: manualUrl(row.manual_id),
             type: 'POST',
@@ -1703,8 +1890,10 @@
             data: { _method: 'DELETE' },
         }).done(function (res) {
             if (res && res.success) {
-                const live = table.getRow(row.id);
-                if (live) live.delete();
+                [row.id].concat(Array.isArray(res.ids) ? res.ids : []).forEach(function (id) {
+                    const live = table.getRow(id);
+                    if (live) live.delete();
+                });
                 refreshAfterRowsChanged();
             } else {
                 window.alert((res && res.message) || 'Could not delete the order.');
@@ -1750,7 +1939,8 @@
         postFulfill(row.manual_id, '', function (message) {
             setOrderField('of-fulfill-manual-id', row.manual_id);
             setOrderField('of-fulfill-tracking', row.tracking || '');
-            document.getElementById('of-fulfill-order').textContent = (row.channel || '') + ' · ' + (row.order_id || '') + ' · ' + (row.sku || '');
+            const skus = (Array.isArray(row.lines) && row.lines.length) ? row.lines.map(function (l) { return l.sku; }).join(', ') : (row.sku || '');
+            document.getElementById('of-fulfill-order').textContent = (row.channel || '') + ' · ' + (row.order_id || '') + ' · ' + skus;
             document.getElementById('of-fulfill-message').textContent = message;
             showFormError('of-fulfill-error', '');
             showModal('of-fulfill-modal');
