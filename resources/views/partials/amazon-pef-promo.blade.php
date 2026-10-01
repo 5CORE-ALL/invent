@@ -205,6 +205,12 @@
             font-weight: 700;
             text-align: center;
         }
+        #amz-dil-groi-table tr[data-clearance] .amz-dg-clearance-count,
+        #amz-dil-groi-table tr[data-clearance] .amz-dg-clearance-nroi {
+            color: #dc3545;
+            font-weight: 700;
+        }
+        #amz-dil-groi-table tr[data-clearance] .amz-dg-clearance-nroi { margin-left: 0.35rem; }
         #amz-dil-groi-table .amz-dg-count {
             font-weight: 700;
             text-align: center;
@@ -1862,6 +1868,7 @@
         const amzClearanceYesUrl = @json(route('inv.days.clearance.yes'));
         let amzClearanceYesSet = null;
         let amzClearanceYesLoading = null;
+        let amzClearanceNroi = 0;
         function amzClearanceSkuKey(sku) {
             return String(sku || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
         }
@@ -1899,14 +1906,31 @@
                 return;
             }
             el.textContent = String(amzClearanceYesCount());
+            amzPaintClearanceNroiText();
+        }
+        function amzClearanceNroiNow() {
+            const raw = parseFloat($('#amz-dil-groi-tbody .amz-dg-clearance-groi').val());
+            if (isFinite(raw) && raw >= 0) return amzPefRound2(raw);
+            return isFinite(amzClearanceNroi) ? amzClearanceNroi : 0;
+        }
+        function amzPaintClearanceNroiText() {
+            amzClearanceNroi = amzClearanceNroiNow();
+            const el = document.querySelector('#amz-dil-groi-tbody .amz-dg-clearance-nroi');
+            if (el) el.textContent = amzDilGroiFmtNum(amzClearanceNroi) + '%';
         }
         function amzAppendClearanceSlabRow($tb) {
+            const nroi = isFinite(amzClearanceNroi) ? amzClearanceNroi : 0;
             $tb.append(
                 '<tr data-clearance="1">'
                 + '<td class="text-center fw-semibold">clearance</td>'
                 + '<td class="text-center fw-semibold">clearance</td>'
-                + '<td class="amz-dg-count" title="INV &gt; 0 and Clearance Yes on Inv Days"><span class="amz-dg-clearance-count">0</span></td>'
-                + '<td></td><td></td>'
+                + '<td class="amz-dg-count" title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target NROI% in red.">'
+                + '<span class="amz-dg-clearance-count">0</span>'
+                + '<span class="amz-dg-clearance-nroi">0%</span>'
+                + '</td>'
+                + '<td class="text-end">'
+                + '<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-dg-clearance-groi" value="' + nroi + '" title="Target NROI% for clearance">'
+                + '</td><td></td>'
                 + '</tr>'
             );
             amzPaintClearanceSlabCount();
@@ -2037,6 +2061,9 @@
                     amzDilGroiRules = AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
+                if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
+                    amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
+                }
                 renderAmzDilGroiModalTable();
                 redrawAmzSprcDilColumn();
                 if (fromServer.length && !(res && res.is_default)) {
@@ -2063,8 +2090,11 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
+                if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
+                    amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
+                }
                 if (res && Array.isArray(res.rules)) {
                     const saved = amzNormalizeDilGroiList(res.rules);
                     if (saved.length) {
@@ -4171,6 +4201,10 @@
                     $btn.prop('disabled', false).html(html);
                 }
             });
+            $(document).off('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dil-groi-tbody .amz-dg-clearance-groi')
+                .on('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dil-groi-tbody .amz-dg-clearance-groi', function() {
+                    amzPaintClearanceNroiText();
+                });
             $(document).off('input.amzDilGroi change.amzDilGroi', '#amz-dil-groi-tbody .amz-dil-groi-input')
                 .on('input.amzDilGroi change.amzDilGroi', '#amz-dil-groi-tbody .amz-dil-groi-input', function() {
                     amzOnDilGroiNumberChanged(this);
