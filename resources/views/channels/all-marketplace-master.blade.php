@@ -751,7 +751,7 @@
                             <span class="summary-trend-dot none" title="Channel count"></span>Channels: <span id="total-channels">0</span>
                         </span>
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific (same window &amp; AMAZON_SALES_TOTAL_MODE as Amz Daily Sales). Other channels vary.">
-                            <span class="summary-trend-dot none" data-metric="l30_sales" title="Rolling history"></span>Sales: <span id="total-l30-sales">$0</span>
+                            <span class="summary-trend-dot none" data-metric="l30_sales" title="Rolling history"></span>Sales: <span id="total-l30-sales">$0</span><span id="total-sales-growth" style="margin-left:4px;font-weight:800;"></span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
                             <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
@@ -5257,9 +5257,12 @@
                     const val = Math.round(totalL30Sales);
                     const $el = $('#total-l30-sales');
                     $el.text(toCompact(val));
-                    $el.closest('.badge').attr('title',
-                        'Sum of Sales column (channel rolling L30 / window varies). $' + val.toLocaleString('en-US'));
+                    const badge = $el.closest('.badge');
+                    const salesTitle = 'Sum of Sales column (channel rolling L30 / window varies). $' + val.toLocaleString('en-US');
+                    badge.attr('data-sales-title', salesTitle);
+                    badge.attr('title', salesTitle);
                     setBadgeExact($el, val);
+                    loadTotalSalesGrowth(val);
                 })();
                 // Show NYS when no channel had any sales yesterday — clearer than "$0".
                 (function() {
@@ -6684,25 +6687,38 @@
                 if (pct == null || !isFinite(pct) || Math.abs(pct) < 0.05) return '#6c757d';
                 return pct > 0 ? '#198754' : '#dc3545';
             }
-            function paintViewsBadgeGrowth(pct) {
-                var el = document.getElementById('total-views-growth');
+            function paintMetricBadgeGrowth(elId, titleAttr, titlePrefix, pct, colorFn) {
+                var el = document.getElementById(elId);
                 if (!el) return;
                 el.textContent = formatViewsGrowth(pct);
-                el.style.color = viewsGrowthColor(pct);
-                el.title = 'Views change versus about 30 days ago';
+                el.style.color = colorFn(pct);
+                el.title = titlePrefix + ' change versus about 30 days ago';
                 var badge = el.closest('.badge');
                 if (badge && pct != null && isFinite(pct)) {
-                    var baseTitle = badge.getAttribute('data-views-title') || badge.getAttribute('title') || '';
-                    badge.setAttribute('data-views-title', baseTitle.replace(/ Views L30 growth:.*$/, ''));
-                    badge.setAttribute('title', badge.getAttribute('data-views-title') + ' Views L30 growth: ' + formatViewsGrowth(pct));
+                    var baseTitle = badge.getAttribute(titleAttr) || badge.getAttribute('title') || '';
+                    var cleaned = baseTitle.replace(new RegExp(' ' + titlePrefix + ' L30 growth:.*$'), '');
+                    badge.setAttribute(titleAttr, cleaned);
+                    badge.setAttribute('title', cleaned + ' ' + titlePrefix + ' L30 growth: ' + formatViewsGrowth(pct));
                 }
             }
+            function paintViewsBadgeGrowth(pct) {
+                paintMetricBadgeGrowth('total-views-growth', 'data-views-title', 'Views', pct, viewsGrowthColor);
+            }
+            function salesBadgeGrowthColor(pct) {
+                if (pct == null || !isFinite(pct) || Math.abs(pct) < 0.05) return '#e5e7eb';
+                return pct > 0 ? '#bbf7d0' : '#fecaca';
+            }
+            function paintSalesBadgeGrowth(pct) {
+                paintMetricBadgeGrowth('total-sales-growth', 'data-sales-title', 'Sales', pct, salesBadgeGrowthColor);
+            }
+            var l30GrowthMetrics = { total_views: 'views', l30_sales: 'sales' };
             function paintChartViewsGrowth(values) {
                 var wrap = document.getElementById('adChartGrowthWrap');
                 var el = document.getElementById('adChartGrowth');
                 var label = document.getElementById('adChartGrowthLabel');
                 if (!wrap || !el) return;
-                if (currentChartMetric !== 'total_views') {
+                var kind = l30GrowthMetrics[currentChartMetric];
+                if (!kind) {
                     wrap.style.display = 'none';
                     return;
                 }
@@ -6718,26 +6734,38 @@
                 if (label) label.textContent = growth.span >= 25 ? 'L30 %' : (growth.span + 'D %');
                 el.textContent = formatViewsGrowth(growth.pct);
                 el.style.color = viewsGrowthColor(growth.pct);
-                el.title = 'Change from ' + growth.span + ' days earlier to the latest views';
-                if (currentChartChannel === 'all') paintViewsBadgeGrowth(growth.pct);
+                el.title = 'Change from ' + growth.span + ' days earlier to the latest ' + kind;
+                if (currentChartChannel === 'all') {
+                    if (kind === 'views') paintViewsBadgeGrowth(growth.pct);
+                    else paintSalesBadgeGrowth(growth.pct);
+                }
             }
             var viewsGrowthPrefetch = null;
-            function loadTotalViewsGrowth(badgeValue) {
-                if (viewsGrowthPrefetch && viewsGrowthPrefetch.readyState !== 4) return;
-                viewsGrowthPrefetch = $.ajax({
+            var salesGrowthPrefetch = null;
+            function loadRollingGrowth(metric, badgeValue, prefetchHolder, paint) {
+                if (prefetchHolder.req && prefetchHolder.req.readyState !== 4) return;
+                prefetchHolder.req = $.ajax({
                     url: '/channel-metric-chart-data',
                     method: 'GET',
                     data: {
                         channel: 'all',
-                        metric: 'total_views',
+                        metric: metric,
                         days: 30,
                         badge_value: badgeValue
                     }
                 }).done(function(response) {
                     var rows = response && response.success && response.data ? response.data : [];
                     var growth = viewsL30Growth(rows.map(function(row) { return Number(row.value); }));
-                    paintViewsBadgeGrowth(growth ? growth.pct : null);
+                    paint(growth ? growth.pct : null);
                 });
+            }
+            function loadTotalViewsGrowth(badgeValue) {
+                if (!viewsGrowthPrefetch) viewsGrowthPrefetch = {};
+                loadRollingGrowth('total_views', badgeValue, viewsGrowthPrefetch, paintViewsBadgeGrowth);
+            }
+            function loadTotalSalesGrowth(badgeValue) {
+                if (!salesGrowthPrefetch) salesGrowthPrefetch = {};
+                loadRollingGrowth('l30_sales', badgeValue, salesGrowthPrefetch, paintSalesBadgeGrowth);
             }
 
             // Render chart
