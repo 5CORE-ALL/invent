@@ -1135,7 +1135,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inv-days/data', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'getData'])->name('inv.days.data');
     Route::post('/inv-days/clearance', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'toggleClearance'])->name('inv.days.clearance');
     Route::post('/inv-days/clearance/bulk', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'bulkClearance'])->name('inv.days.clearance.bulk');
+    Route::post('/inv-days/nrp/bulk', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'bulkNrp'])->name('inv.days.nrp.bulk');
     Route::get('/inv-days/clearance/history', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'clearanceHistory'])->name('inv.days.clearance.history');
+    Route::get('/inv-days/clearance/yes', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'clearanceYesSkus'])->name('inv.days.clearance.yes');
     Route::get('/inv-change-L30', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'index'])->name('inv.change.l30');
     Route::get('/inv-change-L30/data', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'getData'])->name('inv.change.l30.data');
     Route::redirect('/inv-change-seven-days', '/inv-change-L30');

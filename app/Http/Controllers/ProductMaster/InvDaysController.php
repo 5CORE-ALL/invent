@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonOrder;
+use App\Models\ForecastAnalysisHistory;
 use App\Models\ShopifySku;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -155,18 +156,69 @@ class InvDaysController extends Controller
 
         try {
             $updated = DB::transaction(function () use ($skus, $value, $name, $userId) {
-                $count = 0;
+                $byKey = [];
                 foreach ($skus as $sku) {
-                    $current = DB::table('inv_days_clearances')->where('sku_key', $this->skuKey($sku))->lockForUpdate()->first();
+                    $key = $this->skuKey($sku);
+                    if ($key !== '') {
+                        $byKey[$key] = $sku;
+                    }
+                }
+
+                $existing = collect();
+                foreach (array_chunk(array_keys($byKey), 500) as $chunk) {
+                    $existing = $existing->merge(
+                        DB::table('inv_days_clearances')->whereIn('sku_key', $chunk)->get()
+                    );
+                }
+                $existing = $existing->keyBy('sku_key');
+
+                $now = now();
+                $inserts = [];
+                $logs = [];
+                $updateIds = [];
+                foreach ($byKey as $key => $sku) {
+                    $current = $existing->get($key);
                     $from = ($current && strtoupper((string) $current->value) === 'YES') ? 'YES' : 'NO';
                     if ($from === $value) {
                         continue;
                     }
-                    $this->writeClearance($sku, $value, $name, $userId, $current);
-                    $count++;
+                    if ($current) {
+                        $updateIds[] = $current->id;
+                    } else {
+                        $inserts[] = [
+                            'sku_key' => $key,
+                            'sku' => $sku,
+                            'value' => $value,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+                    }
+                    $logs[] = [
+                        'sku_key' => $key,
+                        'sku' => $sku,
+                        'from_value' => $from,
+                        'to_value' => $value,
+                        'changed_by' => $name,
+                        'user_id' => $userId,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
                 }
 
-                return $count;
+                foreach (array_chunk($updateIds, 500) as $chunk) {
+                    DB::table('inv_days_clearances')->whereIn('id', $chunk)->update([
+                        'value' => $value,
+                        'updated_at' => $now,
+                    ]);
+                }
+                foreach (array_chunk($inserts, 400) as $chunk) {
+                    DB::table('inv_days_clearances')->insert($chunk);
+                }
+                foreach (array_chunk($logs, 400) as $chunk) {
+                    DB::table('inv_days_clearance_logs')->insert($chunk);
+                }
+
+                return count($logs);
             });
         } catch (\Throwable $e) {
             Log::error('Inv Days bulk clearance failed: '.$e->getMessage());
@@ -232,6 +284,24 @@ class InvDaysController extends Controller
         return $to;
     }
 
+    public function clearanceYesSkus()
+    {
+        if (! Schema::hasTable('inv_days_clearances')) {
+            return response()->json(['skus' => []]);
+        }
+
+        $skus = DB::table('inv_days_clearances')
+            ->where('value', 'YES')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->pluck('sku')
+            ->map(static fn ($sku) => trim((string) $sku))
+            ->filter(static fn ($sku) => $sku !== '' && stripos($sku, 'PARENT') !== 0)
+            ->values();
+
+        return response()->json(['skus' => $skus]);
+    }
+
     public function clearanceHistory(Request $request)
     {
         $sku = trim((string) $request->query('sku', ''));
@@ -270,6 +340,136 @@ class InvDaysController extends Controller
             'sku' => $sku,
             'data' => $data,
         ]);
+    }
+
+    public function bulkNrp(Request $request)
+    {
+        $value = strtoupper(trim((string) $request->input('value', '')));
+        if (! in_array($value, ['REQ', 'NR', 'LATER'], true)) {
+            return response()->json(['message' => 'Choose REQ, NR, or LATER.'], 422);
+        }
+
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['message' => 'Select at least one row.'], 422);
+        }
+
+        if (! Schema::hasTable('forecast_analysis')) {
+            return response()->json(['message' => 'Forecast data is not available.'], 500);
+        }
+
+        $byKey = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                continue;
+            }
+            $key = $this->forecastSkuKey($sku);
+            if ($key === '' || isset($byKey[$key])) {
+                continue;
+            }
+            $byKey[$key] = [
+                'sku' => $sku,
+                'parent' => trim((string) ($item['parent'] ?? '')),
+            ];
+        }
+
+        if ($byKey === []) {
+            return response()->json(['message' => 'Select at least one row.'], 422);
+        }
+
+        $userName = trim((string) ($request->user()->name ?? ''));
+        if ($userName === '') {
+            $userName = trim((string) ($request->user()->email ?? 'N/A'));
+        }
+
+        try {
+            $updated = DB::transaction(function () use ($byKey, $value, $userName) {
+                $existing = DB::table('forecast_analysis')->whereNotNull('sku')->get(['id', 'sku', 'parent', 'nr', 'stage']);
+                $grouped = [];
+                foreach ($existing as $row) {
+                    $key = $this->forecastSkuKey((string) $row->sku);
+                    if ($key === '') {
+                        continue;
+                    }
+                    $grouped[$key][] = $row;
+                }
+
+                $count = 0;
+                $now = now();
+                foreach ($byKey as $key => $item) {
+                    $rows = $grouped[$key] ?? [];
+                    $current = $this->pickedForecastNr($rows);
+                    if ($rows === []) {
+                        DB::table('forecast_analysis')->insert([
+                            'sku' => $item['sku'],
+                            'parent' => $item['parent'] !== '' ? $item['parent'] : null,
+                            'nr' => $value,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ]);
+                    } else {
+                        DB::table('forecast_analysis')
+                            ->whereIn('id', array_map(static fn ($row) => $row->id, $rows))
+                            ->update(['nr' => $value, 'updated_at' => $now]);
+                    }
+
+                    if ($current !== $value && Schema::hasTable('forecast_analysis_history')) {
+                        ForecastAnalysisHistory::insert([
+                            'sku' => $item['sku'],
+                            'parent' => $item['parent'] !== '' ? $item['parent'] : null,
+                            'field' => 'nr',
+                            'old_value' => $current,
+                            'new_value' => $value,
+                            'updated_by' => $userName !== '' ? $userName : 'N/A',
+                            'updated_at' => $now,
+                        ]);
+                    }
+                    $count++;
+                }
+
+                return $count;
+            });
+        } catch (\Throwable $e) {
+            Log::error('Inv Days bulk NRP failed: '.$e->getMessage());
+
+            return response()->json(['message' => 'Unable to save NRP.'], 500);
+        }
+
+        return response()->json([
+            'status' => 200,
+            'nr' => $value,
+            'updated' => $updated,
+        ]);
+    }
+
+    /**
+     * @param  array<int, object>  $rows
+     */
+    private function pickedForecastNr(array $rows): string
+    {
+        $picked = null;
+        foreach ($rows as $row) {
+            if (trim((string) ($row->stage ?? '')) !== '') {
+                $picked = $row;
+                break;
+            }
+        }
+        if (! $picked) {
+            foreach ($rows as $row) {
+                if (trim((string) ($row->nr ?? '')) !== '') {
+                    $picked = $row;
+                    break;
+                }
+            }
+        }
+        $picked = $picked ?? ($rows[0] ?? null);
+        $nr = strtoupper(trim((string) ($picked->nr ?? '')));
+
+        return in_array($nr, ['REQ', 'NR', 'LATER'], true) ? $nr : 'REQ';
     }
 
     /**
