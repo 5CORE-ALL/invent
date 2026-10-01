@@ -257,6 +257,83 @@ class EbayRuleSpriceApplyService
         ];
     }
 
+    /**
+     * S PRC the tabulator cell paints, keyed by SKU. Parent rows are omitted.
+     * When Dil cannot price a SKU the key is absent so the caller can fall back to saved SPRICE.
+     *
+     * @param  list<array<string, mixed>|object>  $items  getViewEbayData rows
+     * @return array<string, float>
+     */
+    public function cellSpriceMapForExport(array $items): array
+    {
+        $store = $this->loadDilGroiStore();
+        $fallbackMargin = $this->takeHome();
+        $adsPct = $this->channelAdsPercent();
+        $map = [];
+        foreach ($items as $item) {
+            $item = (array) $item;
+            $sku = strtoupper(trim((string) ($item['(Child) sku'] ?? $item['sku'] ?? '')));
+            if ($sku === '') {
+                continue;
+            }
+            $rowMargin = (float) ($item['percentage'] ?? 0);
+            if ($rowMargin > 1) {
+                $rowMargin = $rowMargin / 100;
+            }
+            $price = $this->cellSpriceFromViewRow(
+                $item,
+                $store,
+                $rowMargin > 0 ? $rowMargin : $fallbackMargin,
+                $adsPct
+            );
+            if ($price !== null && $price > 0) {
+                $map[$sku] = $price;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Same dollars as ebayDisplayedSprice: Dil (OV L30 ÷ INV) → target NROI, CVR overlay, LMP cap.
+     *
+     * @param  array<string, mixed>  $item
+     * @param  array{rules?: list<array<string, mixed>>, cvr_adj?: array<string, mixed>|null}|null  $store
+     */
+    public function cellSpriceFromViewRow(array $item, ?array $store = null, ?float $margin = null, ?float $adsPct = null): ?float
+    {
+        if (! empty($item['is_parent_summary'])) {
+            return null;
+        }
+        $sku = strtoupper(trim((string) ($item['(Child) sku'] ?? $item['sku'] ?? '')));
+        if ($sku === '' || str_contains($sku, 'PARENT')) {
+            return null;
+        }
+
+        $store = $store ?? $this->loadDilGroiStore();
+        $margin = $margin ?? $this->takeHome();
+        $adsPct = $adsPct ?? $this->channelAdsPercent();
+
+        $inv = (float) ($item['INV'] ?? $item['inv'] ?? 0);
+        $ov = (float) ($item['L30'] ?? $item['ov_l30'] ?? 0);
+        $computed = $this->computeTarget([
+            'inv' => $inv,
+            'lp' => (float) ($item['LP_productmaster'] ?? $item['lp'] ?? 0),
+            'ship' => (float) ($item['Ship_productmaster'] ?? $item['ship'] ?? 0),
+            'dil' => $inv > 0 ? ($ov / $inv) * 100 : 0.0,
+            'cvr' => (float) ($item['SCVR'] ?? $item['cvr'] ?? 0),
+            'cvr_60' => (float) ($item['CVR_60'] ?? $item['cvr_60'] ?? 0),
+            'lmp' => (float) ($item['lmp_price'] ?? $item['lmp'] ?? 0),
+        ], $store['rules'] ?? [], $store['cvr_adj'] ?? null, $margin, $adsPct);
+
+        if ($computed === null) {
+            return null;
+        }
+        $price = round((float) $computed['sprice'], 2);
+
+        return $price > 0 ? $price : null;
+    }
+
     public function targetsNroi(): bool
     {
         return in_array($this->channel, ['ebay1', 'ebay2', 'ebay3'], true);

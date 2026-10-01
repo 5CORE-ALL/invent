@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use App\Models\EbayListingStatus;
 use App\Services\Ebay1CouponService;
+use App\Services\EbayRuleSpriceApplyService;
 use App\Services\EbayApiService;
 use App\Services\Ebay1PromotionService;
 use App\Services\EbayPushService;
@@ -2495,6 +2496,8 @@ class EbayController extends Controller
             $response = $this->getViewEbayData($request);
             $data = json_decode($response->getContent(), true);
             $ebayData = $data['data'] ?? [];
+            // S PRC column paints Dil → NROI (then saved SPRICE only when Dil has no price).
+            $cellSpriceBySku = EbayRuleSpriceApplyService::for('ebay1')->cellSpriceMapForExport($ebayData);
 
             // Get selected columns from request
             $selectedColumns = [];
@@ -2528,7 +2531,19 @@ class EbayController extends Controller
                 'GPFT%' => ['GPFT%', function($item) { return number_format($item['GPFT%'] ?? 0, 0); }],
                 'views' => ['Views', function($item) { return $item['views'] ?? 0; }],
                 'nr_req' => ['NR/REQ', function($item) { return $item['nr_req'] ?? ''; }],
-                'SPRICE' => ['SPRICE', function($item) { return $item['SPRICE'] ? number_format($item['SPRICE'], 2) : ''; }],
+                'SPRICE' => ['SPRICE', function ($item) use ($cellSpriceBySku) {
+                    if (! empty($item['is_parent_summary'])) {
+                        return '';
+                    }
+                    $sku = strtoupper(trim((string) ($item['(Child) sku'] ?? '')));
+                    $price = $cellSpriceBySku[$sku] ?? null;
+                    if (! ($price > 0)) {
+                        $saved = $item['SPRICE'] ?? null;
+                        $price = is_numeric($saved) ? (float) $saved : 0;
+                    }
+
+                    return ($price > 0) ? number_format((float) $price, 2) : '';
+                }],
                 'SPFT' => ['SPFT', function($item) { return $item['SPFT'] ? number_format($item['SPFT'], 0) : ''; }],
                 'SROI' => ['SROI', function($item) { return $item['SROI'] ? number_format($item['SROI'], 0) : ''; }],
                 'SGROI' => ['SGROI', function($item) { return $item['SGROI'] ? number_format($item['SGROI'], 0) : ''; }],
