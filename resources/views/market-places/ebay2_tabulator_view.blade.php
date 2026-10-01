@@ -1311,7 +1311,29 @@
             return { bid: bid, color: band.color || '#0d6efd', skip: false };
         }
 
+        /** True when this listing exists on /ebay2/campaign-ads. */
+        function ebay2HasCampaignAdsRow(data) {
+            if (!data) return false;
+            const flag = data.ca_has_ad_row;
+            if (flag == 1 || flag === true || flag === '1') return true;
+            if (flag == 0 || flag === false || flag === '0') return false;
+            if (data.ca_suggested_bid != null && data.ca_suggested_bid !== '') return true;
+            if (data.ca_bid_percentage != null && data.ca_bid_percentage !== '') return true;
+            return String(data.ca_promote_with_ad || '').trim() !== '';
+        }
+        function ebay2CampaignBidValue(data, field) {
+            const n = parseFloat(data && data[field]);
+            return isFinite(n) && n > 0 ? n : 0;
+        }
         function getCombinedSbid(row) {
+            if (!ebay2HasCampaignAdsRow(row)) {
+                return { bid: 0, color: '#6c757d', skip: true, title: 'No bid on /ebay2/campaign-ads' };
+            }
+            const esBid = ebay2CampaignBidValue(row, 'ca_suggested_bid');
+            const cBid = ebay2CampaignBidValue(row, 'ca_bid_percentage');
+            if (!(esBid > 0) && !(cBid > 0)) {
+                return { bid: 0, color: '#6c757d', skip: true, title: 'No ES Bid or C Bid on /ebay2/campaign-ads' };
+            }
             if (typeof campaignSbid === 'function') return campaignSbid(row);
             return { bid: 0, color: '#6c757d', skip: true, title: 'No Dil vs SBid' };
         }
@@ -3882,7 +3904,7 @@
                         field: "s_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "Dil vs SBid, then the CVR overlay. Blank only when the SKU has no matching slab.",
+                        headerTooltip: "Dil vs SBid, then the CVR overlay. Blank when /ebay2/campaign-ads has no ES Bid and no C Bid for this listing.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },

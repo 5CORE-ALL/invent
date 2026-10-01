@@ -248,8 +248,9 @@ class TaskController extends Controller
             ];
         }
 
-        // Special permission: Jasmine, Ritu mam, Joy sir can delete/modify any task
+        // Full-access seniors can edit any task. Delete of someone else's task is president-only.
         $canDeleteAnyTask = TaskPolicy::userHasSpecialTaskPermission($user);
+        $canDeleteOthersTasks = TaskPolicy::userCanDeleteAnyTask($user);
         $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks($user);
         $canShowTaskMaintenanceButtons = TaskPolicy::userCanAccessTaskMaintenanceTools($user);
 
@@ -277,6 +278,7 @@ class TaskController extends Controller
             'isAdmin',
             'users',
             'canDeleteAnyTask',
+            'canDeleteOthersTasks',
             'canDeleteCorrectiveTasks',
             'canShowTaskMaintenanceButtons',
             'tatChartData',
@@ -3005,6 +3007,7 @@ class TaskController extends Controller
             'image' => $taskModel->image,
             'assignor' => $taskModel->assignor,
             'assign_to' => $taskModel->assign_to,
+            'is_corrective_action' => (bool) ($taskModel->is_corrective_action ?? false),
         ];
         
         // Map assignor (email or older display-name rows) to user IDs for the form
@@ -3027,9 +3030,11 @@ class TaskController extends Controller
             $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
         }
         
-        $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks(Auth::user());
+        $editor = Auth::user();
+        $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks($editor);
+        $canDeleteThisTask = TaskPolicy::userCanDeleteTask($editor, $taskModel);
 
-        return view('tasks.edit', compact('task', 'users', 'canEditAll', 'canDeleteCorrectiveTasks'));
+        return view('tasks.edit', compact('task', 'users', 'canEditAll', 'canDeleteCorrectiveTasks', 'canDeleteThisTask'));
     }
 
     public function update(Request $request, $id)
@@ -3191,15 +3196,18 @@ class TaskController extends Controller
         $task = Task::findOrFail($id);
         $user = Auth::user();
 
-        // Gate::before lets super-admins through authorize(); CA rows stay president-only.
-        if (TaskPolicy::taskIsCorrectiveAction($task) && ! TaskPolicy::userCanDeleteCorrectiveTasks($user)) {
+        // Checked before authorize() so Gate::before cannot restore delete-any for seniors or super-admins.
+        if (! TaskPolicy::userCanDeleteTask($user, $task)) {
+            $message = TaskPolicy::taskIsCorrectiveAction($task)
+                ? 'Corrective action tasks can only be deleted by president@5core.com.'
+                : 'You can only delete tasks you assigned.';
+
             return response()->json([
                 'success' => false,
-                'message' => 'Corrective action tasks can only be deleted by president@5core.com.',
+                'message' => $message,
             ], 403);
         }
 
-        // Check if user can delete this task
         $this->authorize('delete', $task);
 
         // Cascade soft-delete any subtasks so they don't become orphaned.
