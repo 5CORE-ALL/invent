@@ -3903,8 +3903,8 @@
                         title: "S BID",
                         field: "s_bid",
                         hozAlign: "center",
-                        width: 90,
-                        headerTooltip: "Dil vs SBid, then the CVR overlay. Blank when /ebay2/campaign-ads has no ES Bid and no C Bid for this listing.",
+                        width: 110,
+                        headerTooltip: "Dil vs SBid, then the CVR overlay. Orange dil means this % came from a Dil slab. Blank when /ebay2/campaign-ads has no ES Bid and no C Bid for this listing.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
@@ -3918,7 +3918,11 @@
                             }
                             const color = res.bid > EBAY2_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
                             const title = res.title || 'Dil vs SBid';
-                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
+                            const fromDil = String(title).indexOf('→ S Bid') !== -1;
+                            const dilTag = fromDil
+                                ? '<span style="color:#fd7e14;font-weight:700;font-size:11px;margin-left:4px;">dil</span>'
+                                : '';
+                            return `<span title="${title}" style="color:${color};font-weight:700;white-space:nowrap;">${Math.round(res.bid)}%${dilTag}</span>`;
                         }
                     },
                     {
