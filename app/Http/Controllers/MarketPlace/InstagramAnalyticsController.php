@@ -47,7 +47,7 @@ class InstagramAnalyticsController extends DepopStyleAnalyticsController
      *
      * @return array<string, array{qty: int, sales: float, fallback_price: float}>
      */
-    protected static function salesL30BySku(): array
+    public static function salesL30BySku(): array
     {
         if (! Schema::hasTable('instagram_shop_sheet_data')) {
             return [];

@@ -296,7 +296,7 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
     /**
      * @return array<string, array{qty: int, sales: float}>
      */
-    protected static function salesL30BySku(): array
+    public static function salesL30BySku(): array
     {
         if (! Schema::hasTable('vinted_sales_data')) {
             return [];

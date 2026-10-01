@@ -36,6 +36,7 @@ use App\Models\Temu2Metric;
 use App\Models\Temu2DailyData;
 use App\Models\Temu2DataView;
 use App\Models\DobaDataView;
+use App\Models\DepopPricing;
 use App\Models\DobaWithoutShipDataView;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokCampaignReport;
@@ -72,12 +73,13 @@ use App\Models\Temu2CampaignReport;
 use App\Models\TemuLmp;
 use App\Models\MarketplacePercentage;
 use App\Services\LmpSkuGroupService;
+use App\Services\PricingMasterExtraChannels;
 use App\Services\TemuShopifySalesService;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\ChannelMasterCalculatedData;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Http\Controllers\Channels\ChannelMasterController;
-use App\Models\AmazonSpCampaignReport;
+use App\Models\AmazonSpCampaignReport;                    
 use App\Models\AmazonSkuCompetitor;
 use App\Models\GoogleSkuCompetitor;
 use App\Models\EbaySkuCompetitor;
@@ -1500,6 +1502,30 @@ class CvrMasterController extends Controller
                 Log::warning('CVR Master - Faire data fetch skipped: ' . $e->getMessage());
             }
 
+            // Depop — same sources/formulas as /depop/pricing (no ship, no ads).
+            // Price from depop_pricing; L30 + sales from depop_sales_data (/depop/sheet).
+            $depopMargin = DepopController::marginFactor();
+            $depopPricingBySku = [];
+            $depopSalesBySku = [];
+            try {
+                if (Schema::hasTable('depop_pricing')) {
+                    foreach (DepopPricing::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'price', 'sprice']) as $row) {
+                        $key = strtoupper(trim((string) $row->sku));
+                        if ($key !== '') {
+                            $depopPricingBySku[$key] = $row;
+                        }
+                    }
+                }
+                $depopSalesBySku = DepopController::salesL30BySku();
+                Log::info('CVR Master - Depop Data fetched', [
+                    'depop_pricings' => count($depopPricingBySku),
+                    'depop_l30_skus' => count($depopSalesBySku),
+                    'depop_percentage' => ($depopMargin * 100).'%',
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('CVR Master - Depop data fetch skipped: '.$e->getMessage());
+            }
+
             // TopDawg — same sources/formulas as /topdawg-pricing
             // Price/stock from topdawg_products (API); L30 from topdawg_order_metrics;
             // Margin from marketplace_percentages (TopDawg); no ship; Ads% = 0
@@ -2287,6 +2313,43 @@ class CvrMasterController extends Controller
                     : 0;
                 $fairePFT = $faireGPFT; // No ads
 
+                // === DEPOP (same as /depop/pricing) ===
+                // List price when uploaded; otherwise the sheet's sold unit price.
+                // GPFT/GROI = ((price × margin) − LP) / price|LP. No ship. Ads% = 0.
+                $depopKey = strtoupper(trim((string) $sku));
+                $depopPricingRow = $depopPricingBySku[$depopKey] ?? null;
+                $depopSale = $depopSalesBySku[$depopKey] ?? ['qty' => 0, 'sales' => 0.0];
+                $depopListPrice = $depopPricingRow ? (float) ($depopPricingRow->price ?? 0) : 0.0;
+                $depopL30 = (int) ($depopSale['qty'] ?? 0);
+                $depopSalesAmt = (float) ($depopSale['sales'] ?? 0);
+                $depopPrice = DepopController::effectiveSellPrice($depopListPrice, $depopSalesAmt, $depopL30);
+                $depopSprice = $depopPricingRow ? (float) ($depopPricingRow->sprice ?? 0) : 0.0;
+                $depopGPFT = DepopController::gpftPercent($depopPrice, $lp, $depopMargin);
+                $depopPFT = $depopGPFT;
+
+                // Channels that have an Analytics page but were not in this loop:
+                // Vinted, Instagram Shop, Wayfair, Temu 3, Alibaba, Mercari w Ship,
+                // Mercari w/o Ship, FB Marketplace, PLS, Newegg, Walmart.
+                $extraChannelRows = PricingMasterExtraChannels::rowsFor((string) $sku, (float) $lp, (float) $ship, (float) $temuShip);
+                $extraChannelViews = 0;
+                $extraChannelL30 = 0;
+                $temu3Views = 0;
+                $temu3L30 = 0;
+                foreach ($extraChannelRows as $extraChannelRow) {
+                    $extraMp = strtolower(trim((string) ($extraChannelRow['marketplace'] ?? '')));
+                    $isTemu3 = $extraMp === 'temu 3' || $extraMp === 'temu3';
+                    if ($extraChannelRow['views'] !== null) {
+                        if ($isTemu3) {
+                            $temu3Views += (int) $extraChannelRow['views'];
+                        }
+                        $extraChannelViews += (int) $extraChannelRow['views'];
+                    }
+                    if ($isTemu3) {
+                        $temu3L30 += (int) $extraChannelRow['l30'];
+                    }
+                    $extraChannelL30 += (int) $extraChannelRow['l30'];
+                }
+
                 // Calculate aggregated metrics across all marketplaces
                 
                 // Get views from all marketplaces
@@ -2317,7 +2380,8 @@ class CvrMasterController extends Controller
                 // Total Views (sum of all marketplace views) — Walmart excluded from this page
                 $totalViews = $amazonViews + $ebay1Views + $ebay2Views + $ebay3Views + $temuViews + $temu2Views
                               + $tiktokViews + $tiktok2Views + $bbViews + $sb2cViews
-                              + $macyViews + $reverbViews + $dobaViews + $sheinViews + $tdViews + $faireViews; // AliExpress/Faire have no views tracked
+                              + $macyViews + $reverbViews + $dobaViews + $sheinViews + $tdViews + $faireViews
+                              + $extraChannelViews;
                 // Get L30 from all marketplaces
                 $ebay1L30 = $ebay1Metric ? intval($ebay1Metric->ebay_l30 ?? 0) : 0;
                 $ebay2L30 = $ebay2Metric ? intval($ebay2Metric->ebay_l30 ?? 0) : 0;
@@ -2334,10 +2398,13 @@ class CvrMasterController extends Controller
                 // Total L30 across marketplaces (Walmart / Tiendamia excluded)
                 $totalL30 = $amazonL30 + $ebay1L30 + $ebay2L30 + $ebay3L30 + $temuL30 + $temu2L30
                            + $tiktokL30 + $tiktok2L30 + $bbL30 + $sb2cL30
-                           + $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30 + $ppL30 + $tdL30 + $faireL30;
+                           + $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30 + $ppL30 + $tdL30 + $faireL30 + $depopL30
+                           + $extraChannelL30;
                 
-                // Calculate Avg CVR using CVR formula: (Total L30 / Total Views) × 100
-                $avgCVR = $totalViews > 0 ? round(($totalL30 / $totalViews) * 100, 2) : 0;
+                // CVR% = (L30 / Views) × 100. Temu, Temu 2, and Temu 3 clicks are not part of this count.
+                $cvrViews = max(0, $totalViews - $temuViews - $temu2Views - $temu3Views);
+                $cvrL30 = max(0, $totalL30 - $temuL30 - $temu2L30 - $temu3L30);
+                $avgCVR = $cvrViews > 0 ? round(($cvrL30 / $cvrViews) * 100, 2) : 0;
                 
                 // Collect all prices (non-zero)
                 $prices = [];
@@ -2360,6 +2427,12 @@ class CvrMasterController extends Controller
                 if ($ppPrice > 0) $prices[] = $ppPrice;
                 if ($tdPrice > 0) $prices[] = $tdPrice;
                 if ($fairePrice > 0) $prices[] = $fairePrice;
+                if ($depopPrice > 0) $prices[] = $depopPrice;
+                foreach ($extraChannelRows as $extraChannelRow) {
+                    if ($extraChannelRow['price'] > 0) {
+                        $prices[] = $extraChannelRow['price'];
+                    }
+                }
                 
                 // Collect all GPFT values (non-zero or negative)
                 $gpftValues = [];
@@ -2382,6 +2455,12 @@ class CvrMasterController extends Controller
                 if ($ppPrice > 0) $gpftValues[] = $ppGPFT;
                 if ($tdPrice > 0) $gpftValues[] = $tdGPFT;
                 if ($fairePrice > 0) $gpftValues[] = $faireGPFT;
+                if ($depopPrice > 0) $gpftValues[] = $depopGPFT;
+                foreach ($extraChannelRows as $extraChannelRow) {
+                    if ($extraChannelRow['price'] > 0) {
+                        $gpftValues[] = $extraChannelRow['gpft'];
+                    }
+                }
                 
                 // Sales-weighted Ads%: (Σ ad spend $) ÷ (Σ sales $) × 100
                 // for marketplaces with ads (Amazon, Temu, Temu 2, TikTok) that have sales
@@ -2426,6 +2505,12 @@ class CvrMasterController extends Controller
                 if ($ppPrice > 0) $pftValues[] = $ppPFT;
                 if ($tdPrice > 0) $pftValues[] = $tdPFT;
                 if ($fairePrice > 0) $pftValues[] = $fairePFT;
+                if ($depopPrice > 0) $pftValues[] = $depopPFT;
+                foreach ($extraChannelRows as $extraChannelRow) {
+                    if ($extraChannelRow['price'] > 0) {
+                        $pftValues[] = $extraChannelRow['gpft'];
+                    }
+                }
                 
                 // Collect GROI% / NROI% per listed channel:
                 // GROI = GPFT% × price / LP ; NROI = NPFT% × price / LP (after ads)
@@ -2516,6 +2601,18 @@ class CvrMasterController extends Controller
                         $faireGroi = (($fairePrice * $fairePercentage - $lp) / $lp) * 100;
                         $roiValues[] = $faireGroi;
                         $nroiValues[] = $faireGroi; // Ads% = 0 → NROI = GROI
+                    }
+                    if ($depopPrice > 0) {
+                        // GROI% = ((price × margin) − LP) / LP × 100 — same as /depop/pricing (no ship)
+                        $depopGroi = DepopController::groiPercent($depopPrice, $lp, $depopMargin);
+                        $roiValues[] = $depopGroi;
+                        $nroiValues[] = $depopGroi;
+                    }
+                    foreach ($extraChannelRows as $extraChannelRow) {
+                        if ($extraChannelRow['price'] > 0) {
+                            $roiValues[] = $extraChannelRow['groi'];
+                            $nroiValues[] = $extraChannelRow['groi'];
+                        }
                     }
                 }
 
@@ -2664,10 +2761,13 @@ class CvrMasterController extends Controller
                 $missingChannelPrices = [
                     $amazonPrice, $ebay1Price, $ebay3Price, $temuPrice, $temu2Price,
                     $tiktokPrice, $tiktok2Price, $bbPrice, $sb2cPrice,
-                    $macyPrice, $reverbPrice, $dobaPrice, $sheinPrice, $aePrice, $fairePrice,
+                    $macyPrice, $reverbPrice, $dobaPrice, $sheinPrice, $aePrice, $fairePrice, $depopListPrice,
                 ];
                 if ($actWt <= 0.75) {
                     $missingChannelPrices[] = $ebay2Price;
+                }
+                foreach ($extraChannelRows as $extraChannelRow) {
+                    $missingChannelPrices[] = $extraChannelRow['list_price'];
                 }
                 $missingL = in_array(true, array_map(fn($p) => floatval($p) <= 0, $missingChannelPrices));
 
@@ -2856,6 +2956,8 @@ class CvrMasterController extends Controller
                     "o_size_charge" => $values['o_size_charge'] ?? null,
                     "temu_margin" => $temuPercentage,
                     "temu_push_status" => null,
+                    "cvr_views" => $cvrViews,
+                    "cvr_l30" => $cvrL30,
                     "avg_cvr" => $avgCVR,
                     "avg_price" => $avgPrice,
                     "avg_roi" => $avgRoi,
@@ -2974,11 +3076,12 @@ class CvrMasterController extends Controller
                 $amazonSpftVals = $rows->pluck('amazon_spft')->filter(fn ($v) => $v !== null);
                 $amazonSroiVals = $rows->pluck('amazon_sroi')->filter(fn ($v) => $v !== null);
                 $amazonSnroiVals = $rows->pluck('amazon_snroi')->filter(fn ($v) => $v !== null);
-                // Parent CVR = (Σ SW L30 / Σ Views) × 100 — same formula as child avg_cvr (not mean of child CVRs)
-                $parentSwL30 = (float) $rows->sum('m_l30');
+                // Parent CVR uses the same Temu-excluded views and L30 as each child avg_cvr.
+                $parentSwL30 = (float) $rows->sum('cvr_l30');
                 $parentTotalViews = (float) $rows->sum('total_views');
-                $parentAvgCvr = $parentTotalViews > 0
-                    ? round(($parentSwL30 / $parentTotalViews) * 100, 2)
+                $parentCvrViews = (float) $rows->sum('cvr_views');
+                $parentAvgCvr = $parentCvrViews > 0
+                    ? round(($parentSwL30 / $parentCvrViews) * 100, 2)
                     : 0;
                 $parentRow = [
                     'SL No.' => $slNo++,
@@ -5124,6 +5227,57 @@ class CvrMasterController extends Controller
                 'product_id'  => $faireMetricRowBd ? ($faireMetricRowBd->product_id ?? null) : null,
             ];
 
+            // Depop — same as /depop/pricing: list price, else sheet unit price; no ship; Ads% = 0
+            $depopMarginBd = DepopController::marginFactor();
+            $depopSkuKey = strtoupper(trim((string) $fullSku));
+            $depopPricingBd = null;
+            $depopSaleBd = ['qty' => 0, 'sales' => 0.0];
+            try {
+                if (Schema::hasTable('depop_pricing')) {
+                    $depopPricingBd = DepopPricing::where('sku', $fullSku)->first()
+                        ?? DepopPricing::whereRaw('UPPER(TRIM(sku)) = ?', [$depopSkuKey])->first();
+                }
+                $depopSaleBd = DepopController::salesL30BySku()[$depopSkuKey] ?? $depopSaleBd;
+            } catch (\Throwable $e) {
+                Log::warning('Depop breakdown data fetch skipped for SKU '.$fullSku.': '.$e->getMessage());
+            }
+            $depopListBd = $depopPricingBd ? (float) ($depopPricingBd->price ?? 0) : 0.0;
+            $depopL30Bd = (int) ($depopSaleBd['qty'] ?? 0);
+            $depopSalesBd = (float) ($depopSaleBd['sales'] ?? 0);
+            $depopPriceBd = DepopController::effectiveSellPrice($depopListBd, $depopSalesBd, $depopL30Bd);
+            $depopSpriceBd = $depopPricingBd ? (float) ($depopPricingBd->sprice ?? 0) : 0.0;
+            $depopGpftBd = DepopController::gpftPercent($depopPriceBd, $lp, $depopMarginBd);
+            $depopSgpftBd = $depopSpriceBd > 0 ? DepopController::gpftPercent($depopSpriceBd, $lp, $depopMarginBd) : 0;
+            $depopSroiBd = $depopSpriceBd > 0 ? DepopController::groiPercent($depopSpriceBd, $lp, $depopMarginBd) : 0;
+            $hasDepopData = $depopPriceBd > 0 || $depopL30Bd > 0;
+            $breakdownData[] = [
+                'marketplace' => 'Depop',
+                'sku' => $hasDepopData ? $fullSku : 'Not Listed',
+                'price' => round($depopPriceBd, 2),
+                'views' => null,
+                'l30' => $depopL30Bd,
+                'gpft' => $depopGpftBd,
+                'ad' => 0,
+                'tacos_ch' => 0,
+                'npft' => $depopGpftBd,
+                'is_listed' => $hasDepopData,
+                'sprice' => $depopSpriceBd > 0 ? round($depopSpriceBd, 2) : 0,
+                'sgpft' => $depopSgpftBd,
+                'sroi' => $depopSroiBd,
+                'spft' => $depopSgpftBd,
+                'lp' => $lp,
+                'ship' => 0,
+                'margin' => $depopMarginBd,
+                'pushed_by' => null,
+                'pushed_at' => null,
+                'buyer_link' => null,
+                'seller_link' => null,
+            ];
+
+            foreach (PricingMasterExtraChannels::rowsFor((string) $fullSku, (float) $lp, (float) $ship, (float) $temuShip) as $extraChannelRow) {
+                $breakdownData[] = PricingMasterExtraChannels::breakdownRow($extraChannelRow, (string) $fullSku, (float) $lp);
+            }
+
             // Add AliExpress
             $aeMarketplacePerc = MarketplacePercentage::where('marketplace', 'Aliexpress')
                 ->orWhere('marketplace', 'AliExpress')->first();
@@ -5621,7 +5775,7 @@ class CvrMasterController extends Controller
                     if ($spriceVal > 0 || $sgpftVal != 0) {
                         $row['spft'] = round($sgpftVal - $adsPct, 2);
                     }
-                } elseif (in_array($mp, ['temu2', 'doba', 'ppower', 'purchasingpower', 'purchase', 'topdawg', 'shein', 'faire'], true)) {
+                } elseif (in_array($mp, ['temu2', 'doba', 'ppower', 'purchasingpower', 'purchase', 'topdawg', 'shein', 'faire', 'depop', 'vinted', 'instagram shop', 'wayfair', 'temu 3', 'alibaba', 'mercari w ship', 'mercari w/o ship', 'fb marketplace', 'pls', 'newegg', 'walmart'], true)) {
                     // Temu2 / Doba / PPower / TopDawg / Shein / Faire: no ads (match channel pricing pages)
                     $row['ad'] = 0;
                     $row['tacos_ch'] = 0;
