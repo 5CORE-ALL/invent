@@ -3903,13 +3903,14 @@
                         title: "S BID",
                         field: "s_bid",
                         hozAlign: "center",
-                        width: 110,
-                        headerTooltip: "Dil vs SBid, then the CVR overlay. Orange dil means this % came from a Dil slab. Blank when /ebay2/campaign-ads has no ES Bid and no C Bid for this listing.",
+                        width: 108,
+                        headerTooltip: "Dil vs SBid, then the CVR overlay. Orange dil means this S BID is from Dil and the listing has no ad running.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
                         formatter: function(cell) {
-                            const res = getCombinedSbid(cell.getRow().getData());
+                            const row = cell.getRow().getData();
+                            const res = getCombinedSbid(row);
                             if (res && res.off) {
                                 return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
                             }
@@ -3918,11 +3919,11 @@
                             }
                             const color = res.bid > EBAY2_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
                             const title = res.title || 'Dil vs SBid';
-                            const fromDil = String(title).indexOf('→ S Bid') !== -1;
-                            const dilTag = fromDil
-                                ? '<span style="color:#fd7e14;font-weight:700;font-size:11px;margin-left:4px;">dil</span>'
+                            const noAds = !isEbay2TabulatorParentRow(row) && !ebay2AdsAlreadyRunning(row);
+                            const dilText = noAds
+                                ? '<span style="color:#fd7e14;font-weight:700;margin-left:4px;" title="No ads. This S BID is from Dil.">dil</span>'
                                 : '';
-                            return `<span title="${title}" style="color:${color};font-weight:700;white-space:nowrap;">${Math.round(res.bid)}%${dilTag}</span>`;
+                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>${dilText}`;
                         }
                     },
                     {

@@ -4502,7 +4502,7 @@ class CvrMasterController extends Controller
             // Macy — same as /macys-pricing: Price = MCM OF21 → macy_products.price.
             $macySkuNorm = strtoupper(trim(preg_replace('/\s+/u', ' ', str_replace("\u{00a0}", ' ', (string) $fullSku))));
             $macyProduct = MacyProduct::where('sku', $fullSku)->first()
-                ?? MacyProduct::whereRaw('UPPER(TRIM(REPLACE(sku, CHAR(160), \' \'))) = ?', [$macySkuNorm])->first();
+                ?? MacyProduct::whereRaw("UPPER(TRIM(REPLACE(sku, CONVERT(UNHEX('C2A0') USING utf8mb4), ' '))) = ?", [$macySkuNorm])->first();
             $macySheetRow = MacysPriceData::where('sku', $fullSku)->first()
                 ?? MacysPriceData::whereRaw('UPPER(TRIM(sku)) = ?', [$macySkuNorm])->first();
 
@@ -4889,7 +4889,7 @@ class CvrMasterController extends Controller
                 : BestbuyUsaProduct::query()
                     ->where('sku', $fullSku)
                     ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$bbSkuUpper])
-                    ->orWhereRaw("UPPER(TRIM(REPLACE(sku, CHAR(160), ' '))) = ?", [$bbNorm])
+                    ->orWhereRaw("UPPER(TRIM(REPLACE(sku, CONVERT(UNHEX('C2A0') USING utf8mb4), ' '))) = ?", [$bbNorm])
                     ->get();
             $bestbuyProduct = BestBuyPricingController::preferredProduct($bestbuyMatches->all(), $bbFreshAfter);
             $bestbuyResolved = BestBuyPricingController::resolveListedPrice(
