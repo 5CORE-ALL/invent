@@ -59,7 +59,7 @@ class InvDaysController extends Controller
                     'ovl30' => $ovl30,
                     'dil' => InvUnder30DaysController::dilPercent($inv, $ovl30),
                     'age_days' => $ageBySku[$this->skuKey($sku)] ?? null,
-                    'days_exp' => InvUnder30DaysController::daysExp($inv, $ovl30),
+                    'days_exp' => InvUnder30DaysController::daysExp($inv, $ovl30) ?? 99999,
                     'clearance' => $clearance['value'] ?? 'NO',
                     'clearance_has_history' => $clearance !== null,
                     'nr' => $nrpBySku[$this->forecastSkuKey($sku)] ?? 'REQ',
@@ -69,7 +69,7 @@ class InvDaysController extends Controller
             usort($rows, static function (array $a, array $b): int {
                 $ad = $a['days_exp'];
                 $bd = $b['days_exp'];
-                // OVL30 = 0 has no Days Exp (no sales). Those rows sort first.
+                // Missing Days Exp is stored as 99999 and sorts as that number.
                 if ($ad === null && $bd === null) {
                     return 0;
                 }

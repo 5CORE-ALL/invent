@@ -214,16 +214,14 @@ document.addEventListener('DOMContentLoaded', function () {
         return an - bn;
     }
 
+    function daysExpValue(v) {
+        const n = Number(v);
+        if (v === null || v === undefined || v === '' || !Number.isFinite(n)) return 99999;
+        return n;
+    }
+
     function daysExpSorter(a, b) {
-        const an = Number(a);
-        const bn = Number(b);
-        const aOk = a !== null && a !== undefined && a !== '' && Number.isFinite(an);
-        const bOk = b !== null && b !== undefined && b !== '' && Number.isFinite(bn);
-        if (!aOk && !bOk) return 0;
-        // No OVL30 means Days Exp is open-ended, so those rows sort as the highest.
-        if (!aOk) return 1;
-        if (!bOk) return -1;
-        return an - bn;
+        return daysExpValue(a) - daysExpValue(b);
     }
 
     let allRows = [];
@@ -427,7 +425,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: daysExpSorter,
-                formatter: paintDayCell,
+                formatter: function (cell) {
+                    const raw = cell.getValue();
+                    if (raw === null || raw === undefined || raw === '') {
+                        const el = cell.getElement();
+                        el.classList.remove('invdays-band--yellow');
+                        el.classList.add('invdays-band--red');
+                        return '99999';
+                    }
+                    return paintDayCell(cell);
+                },
             },
             {
                 title: 'Clearance',
