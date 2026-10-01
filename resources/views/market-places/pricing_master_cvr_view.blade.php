@@ -1921,7 +1921,7 @@
                             ? '<span class="badge" style="background:#28a745;">Listed</span>'
                             : '<span class="badge bg-danger">Not Listed</span>';
                         html += '<tr>' +
-                            '<td><strong>' + (item.marketplace || '-') + '</strong></td>' +
+                            '<td>' + channelAnalyticsLink(item.marketplace) + '</td>' +
                             '<td class="text-center"><span class="badge bg-danger">Missing Listing</span></td>' +
                             '<td class="text-center">' + listedBadge + '</td>' +
                             '<td class="text-end">' + l30.toLocaleString() + '</td>' +
@@ -1965,7 +1965,7 @@
                     ? '<span class="badge" style="background:#28a745;">Listed</span>'
                     : '<span class="badge bg-danger">Not Listed</span>';
                 html += `<tr>
-                    <td><strong>${item.marketplace || '-'}</strong></td>
+                    <td>${channelAnalyticsLink(item.marketplace)}</td>
                     <td class="text-center"><span class="badge bg-danger">Missing Listing</span></td>
                     <td class="text-center">${listedBadge}</td>
                     <td class="text-end">${l30.toLocaleString()}</td>
@@ -2509,6 +2509,66 @@
             scheduleAutoFitOvl30TableFont();
         });
 
+        const CHANNEL_ANALYTICS_URL = {
+            amazon: @json(route('amazon.tabulator.view')),
+            ebay: @json(route('ebay.tabulator.view')),
+            ebay1: @json(route('ebay.tabulator.view')),
+            ebay2: @json(route('ebay2.tabulator.view')),
+            ebaytwo: @json(route('ebay2.tabulator.view')),
+            ebay3: @json(route('ebay3.tabulator.view')),
+            ebaythree: @json(route('ebay3.tabulator.view')),
+            shopify: @json(route('shopify.b2c.pricing')),
+            shopifyb2c: @json(route('shopify.b2c.pricing')),
+            sb2b: @json(route('shopify.b2b.pricing')),
+            shopifyb2b: @json(route('shopify.b2b.pricing')),
+            macy: @json(route('macys.pricing')),
+            macys: @json(route('macys.pricing')),
+            reverb: @json(route('reverb.pricing')),
+            temu: @json(route('newtemuone.index')),
+            temu2: @json(route('newtemutwo.index')),
+            'temu 3': @json(route('temu3.decrease')),
+            temu3: @json(route('temu3.decrease')),
+            doba: @json(url('/doba-tabulator')),
+            tiktok: @json(route('tiktok.pricing')),
+            'tiktok 2': @json(route('tiktok2.pricing')),
+            tiktok2: @json(route('tiktok2.pricing')),
+            bestbuy: @json(route('bestbuy.pricing')),
+            shein: @json(route('shein.pricing.view')),
+            faire: @json(route('faire.pricing.view')),
+            depop: @json(route('depop.pricing')),
+            aliexpress: @json(route('aliexpress.pricing.view')),
+            ppower: @json(route('purchasing.power.pricing')),
+            purchasingpower: @json(route('purchasing.power.pricing')),
+            purchase: @json(route('purchasing.power.pricing')),
+            topdawg: @json(route('topdawg.pricing')),
+            fba: @json(url('/fba-view-page')),
+            vinted: @json(route('vinted.analytics')),
+            'instagram shop': @json(route('instagram.analytics')),
+            instagram: @json(route('instagram.analytics')),
+            wayfair: @json(route('wayfair.pricing.view')),
+            alibaba: @json(route('alibaba.analytics')),
+            'mercari w ship': @json(route('mercari.wship.tabulator.view')),
+            'mercari w/o ship': @json(route('mercari.woship.tabulator.view')),
+            'fb marketplace': @json(route('fb.marketplace.tabulator.view')),
+            pls: @json(route('pls.pricing')),
+            newegg: @json(route('newegg.pricing.view')),
+            walmart: @json(route('walmart.sheet.upload')),
+        };
+
+        function channelAnalyticsLink(name) {
+            const label = name || '-';
+            const href = CHANNEL_ANALYTICS_URL[String(name || '').toLowerCase().trim()];
+            const safe = String(label)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+            if (!href) {
+                return '<strong>' + safe + '</strong>';
+            }
+            return '<a href="' + href + '" target="_blank" rel="noopener" class="channel-analytics-link" title="Open Analytics" style="color:inherit;font-weight:600;text-decoration:underline;">' + safe + '</a>';
+        }
+
         function renderMarketplaceData(data) {
             if (data && data.length > 0) {
                 ovl30ModalData = data.slice();
@@ -2566,9 +2626,12 @@
                 const isTdMp = mpLower === 'topdawg';
                 const isSheinMp = mpLower === 'shein';
                 const isFaireMp = mpLower === 'faire';
+                const isDepopMp = mpLower === 'depop';
                 const isTiktok2Mp = mpLower === 'tiktok2' || mpLower === 'tiktok 2';
-                // Doba/PPower/TopDawg/Shein: Ads% = 0; Reverb/eBay use channel Ads% (pricing tabulators)
-                const isNoAdsMp = isDobaMp || isPpMp || isTdMp || isSheinMp || isFaireMp || isTiktok2Mp;
+                const isNoShipExtraMp = ['instagram shop', 'wayfair', 'alibaba', 'mercari w/o ship', 'fb marketplace'].includes(mpLower);
+                const isNoAdsExtraMp = ['vinted', 'instagram shop', 'wayfair', 'temu 3', 'alibaba', 'mercari w ship', 'mercari w/o ship', 'fb marketplace', 'pls', 'newegg', 'walmart'].includes(mpLower);
+                // Doba/PPower/TopDawg/Shein/Depop and the added analytics channels: Ads% = 0
+                const isNoAdsMp = isDobaMp || isPpMp || isTdMp || isSheinMp || isFaireMp || isDepopMp || isTiktok2Mp || isNoAdsExtraMp;
                 // Temu: every row uses aggregate Ads% (~2.6%) — same as /temu-decrease badgeAvgAds
                 const isTemuMpRow = mpLower === 'temu';
                 const isTemu2MpRow = mpLower === 'temu2';
@@ -2589,7 +2652,7 @@
                 const price = parseFloat(item.price || 0);
                 const lp = parseFloat(item.lp || 0);
                 // PPower/TopDawg: ship excluded from all formulas
-                const ship = (isPpMp || isTdMp || isFaireMp) ? 0 : parseFloat(item.ship || 0);
+                const ship = (isPpMp || isTdMp || isFaireMp || isDepopMp || isNoShipExtraMp) ? 0 : parseFloat(item.ship || 0);
                 // Doba 0.95; Reverb/eBay2/eBay3 0.85; PPower 0.65; TopDawg from marketplace_percentages; others 0.80
                 const isEbay23Mp = ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower);
                 const margin = (item.margin !== null && item.margin !== undefined && item.margin !== '')
@@ -2683,9 +2746,10 @@
                         totalViews += views;
                     }
                     totalL30 += l30;
-                    // For avg CVR: exclude Reverb views and L30; skip channels with no views data
+                    // Avg CVR excludes Reverb and Temu (Temu 1 / 2 / 3) views and L30.
                     const isReverb = (item.marketplace || '').toLowerCase() === 'reverb';
-                    if (!isReverb && !viewsMissing) {
+                    const isTemuCvr = mpLower === 'temu' || mpLower === 'temu2' || mpLower === 'temu 3' || mpLower === 'temu3';
+                    if (!isReverb && !isTemuCvr && !viewsMissing) {
                         totalViewsForCVR += views;
                         totalL30ForCVR += l30;
                     }
@@ -2776,7 +2840,7 @@
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
                         data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
                         data-price="${price}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${isEditable && isListed ? 1 : 0}">
-                        <td class="${textClass}">${item.marketplace || '-'}</td>
+                        <td class="${textClass}">${channelAnalyticsLink(item.marketplace)}</td>
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${priceCellHtml}</td>
@@ -2870,7 +2934,7 @@
             $('#ovl30DetailsTableBody').html(html);
             
             // Calculate averages
-            // Avg CVR using CVR formula: (Total L30 / Total Views) × 100 — exclude Reverb
+            // Avg CVR = (L30 / Views) × 100 — Reverb and Temu 1/2/3 are left out of this count
             const avgCVR = totalViewsForCVR > 0 ? (totalL30ForCVR / totalViewsForCVR) * 100 : 0;
             // Avg GPFT% = (Total PFT Amount / Total Sales Amount) × 100
             const avgGPFT = totalSalesAmount > 0 ? (totalPftAmount / totalSalesAmount) * 100 : 0;
