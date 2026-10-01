@@ -629,7 +629,7 @@ class InvDaysController extends Controller
     }
 
     /**
-     * Whole days from the earliest date a transit-container row for this SKU
+     * Whole days from the latest date a transit-container row for this SKU
      * was pushed into Shopify (inventory_warehouse.push_status = success).
      * SKUs that were never pushed stay blank.
      *
@@ -650,7 +650,7 @@ class InvDaysController extends Controller
             ->get(['our_sku', 'updated_at', 'created_at']);
 
         foreach ($pushes as $row) {
-            $this->keepEarliestDate($dates, (string) $row->our_sku, $row->updated_at ?: $row->created_at);
+            $this->keepLatestDate($dates, (string) $row->our_sku, $row->updated_at ?: $row->created_at);
         }
 
         $today = Carbon::now('America/New_York')->startOfDay();
@@ -682,7 +682,7 @@ class InvDaysController extends Controller
     /**
      * @param  array<string, string>  $dates
      */
-    private function keepEarliestDate(array &$dates, string $sku, mixed $at): void
+    private function keepLatestDate(array &$dates, string $sku, mixed $at): void
     {
         $key = $this->skuKey($sku);
         if ($key === '' || $at === null || $at === '') {
@@ -690,7 +690,7 @@ class InvDaysController extends Controller
         }
 
         $at = (string) $at;
-        if (! isset($dates[$key]) || $at < $dates[$key]) {
+        if (! isset($dates[$key]) || $at > $dates[$key]) {
             $dates[$key] = $at;
         }
     }
