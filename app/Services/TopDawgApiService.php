@@ -134,10 +134,12 @@ class TopDawgApiService
         }
         $expected = $expected !== null && $expected > 0 ? round((float) $expected, 2) : null;
         $stale = $expected !== null && abs($price - $expected) >= 0.05;
+        $persist = \App\Support\PushedListingPrice::keepCalculated($price, $expected) ?? $price;
 
-        // Price column is the live site cost, including while a push is still in review.
+        // Price column is the live site cost while a push is still in review.
+        // Once the site is within a few cents, keep the calculated S PRC.
         try {
-            ChannelLivePriceSync::writeLive('topdawg', $sku, $price);
+            ChannelLivePriceSync::writeLive('topdawg', $sku, $persist);
         } catch (\Throwable $e) {
             Log::warning('TopDawg live price persist after pull failed', [
                 'sku' => $sku,
@@ -146,7 +148,7 @@ class TopDawgApiService
         }
 
         return [
-            'price' => $price,
+            'price' => $persist,
             'stale' => $stale,
         ];
     }

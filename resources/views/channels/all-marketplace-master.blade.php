@@ -751,7 +751,7 @@
                             <span class="summary-trend-dot none" title="Channel count"></span>Channels: <span id="total-channels">0</span>
                         </span>
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific (same window &amp; AMAZON_SALES_TOTAL_MODE as Amz Daily Sales). Other channels vary.">
-                            <span class="summary-trend-dot none" data-metric="l30_sales" title="Rolling history"></span>Sales: <span id="total-l30-sales">$0</span>
+                            <span class="summary-trend-dot none" data-metric="l30_sales" title="Rolling history"></span>Sales: <span id="total-l30-sales">$0</span><span id="total-sales-growth" style="margin-left:4px;font-weight:800;"></span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
                             <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
@@ -762,8 +762,8 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_amt" style="background-color: #0f766e; color: white; font-weight: bold; cursor:pointer;" title="Y NPFT $ = sum of (Y Sales × NPFT%) per channel. Yesterday net profit using each channel’s NPFT% on the Y Sales column.">
                             <span class="summary-trend-dot none" data-metric="y_npft_amt" title="Rolling history"></span>Y NPFT: <span id="total-y-npft">$0</span>
                         </span>
-                        <span class="badge fs-6 p-2" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now.">
-                            Today Sales: <span id="total-today-sales">$0</span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="today_sales" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now. Dot compares today with yesterday.">
+                            <span class="summary-trend-dot none" data-metric="today_sales" title="Today vs yesterday"></span>Today Sales: <span id="total-today-sales">$0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % is P-Sales vs Sales.">
                             <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
@@ -1371,26 +1371,26 @@
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <div id="adBreakdownChartContainer" style="height: 28vh; display: flex; align-items: stretch;">
+                    <div id="adBreakdownChartContainer" style="height: 34vh; min-height: 220px; display: flex; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
                             <canvas id="adBreakdownChart"></canvas>
                         </div>
-                        <div id="adChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                        <div id="adChartRefPanel" style="width: 118px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; overflow: auto;">
                             <div style="text-align: center;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
-                                <div id="adChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                                <div id="adChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545; white-space: nowrap;">-</div>
                             </div>
                             <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
-                                <div id="adChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                                <div id="adChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d; white-space: nowrap;">-</div>
                             </div>
                             <div style="text-align: center;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
-                                <div id="adChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                                <div id="adChartLowest" style="font-size: 13px; font-weight: 700; color: #198754; white-space: nowrap;">-</div>
                             </div>
-                            <div id="adChartGrowthWrap" style="display:none; text-align: center; border-top: 1px dashed #adb5bd; padding-top: 4px;">
+                            <div id="adChartGrowthWrap" style="display:none; flex-shrink: 0; text-align: center; border-top: 1px dashed #adb5bd; padding-top: 4px;">
                                 <div id="adChartGrowthLabel" style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">L30 %</div>
-                                <div id="adChartGrowth" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                                <div id="adChartGrowth" style="font-size: 13px; font-weight: 700; color: #6c757d; white-space: nowrap;">-</div>
                             </div>
                         </div>
                     </div>
@@ -1520,7 +1520,23 @@
             if (!isFinite(p) || !isFinite(s) || s <= 0) return null;
             return ((p - s) / s) * 100;
         }
-        function pSalesVsL30Color(pSales, l30Sales) {
+            function todayVsYesterdayColor(today, yesterday) {
+                const t = parseNumber(today);
+                const y = parseNumber(yesterday);
+                if (!isFinite(t) || !isFinite(y)) return DEFAULT_DOT_GRAY;
+                if (Math.abs(t - y) < 0.5) return DEFAULT_DOT_GRAY;
+                return t > y ? '#28a745' : '#dc3545';
+            }
+            function todayVsYesterdayTitle(today, yesterday) {
+                const t = parseNumber(today);
+                const y = parseNumber(yesterday);
+                if (!isFinite(t) || !isFinite(y)) return 'Today vs yesterday — click for chart';
+                const diff = t - y;
+                if (Math.abs(diff) < 0.5) return 'Today in line with yesterday — click for chart';
+                const sign = diff > 0 ? '+' : '−';
+                return 'Today vs yesterday: ' + sign + '$' + Math.abs(Math.round(diff)).toLocaleString('en-US') + ' — click for chart';
+            }
+            function pSalesVsL30Color(pSales, l30Sales) {
             const p = parseNumber(pSales);
             const s = parseNumber(l30Sales);
             if (!isFinite(p) || !isFinite(s)) return DEFAULT_DOT_GRAY;
@@ -2028,7 +2044,7 @@
             var lastDotPairByKey = {};
             var invertedDotMetrics = ['acos', 'ads_pct'];
             var ySalesAllChartPrefetch = null;
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','p_nroi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','today_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','p_nroi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
 
             function getMetricDotColor(channelName, metricKey) {
@@ -2076,6 +2092,14 @@
                 document.querySelectorAll('i.metric-chart-icon, i.ad-chart-icon').forEach(function(el) {
                     var ch = el.getAttribute('data-channel');
                     var metric = el.getAttribute('data-metric');
+                    if (metric === 'today_sales' && el.hasAttribute('data-today')) {
+                        var todayVal = parseFloat(el.getAttribute('data-today'));
+                        var yVal = parseFloat(el.getAttribute('data-y-sales'));
+                        el.style.color = todayVsYesterdayColor(todayVal, yVal);
+                        el.style.display = '';
+                        el.title = todayVsYesterdayTitle(todayVal, yVal);
+                        return;
+                    }
                     if (metric === 'p_sales' && el.hasAttribute('data-p-sales')) {
                         var p = parseFloat(el.getAttribute('data-p-sales'));
                         var s = parseFloat(el.getAttribute('data-l30-sales'));
@@ -2919,11 +2943,24 @@
                         sorter: "number",
                         width: 128,
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
                             const value = parseNumber(cell.getValue() || 0);
+                            const ySales = parseNumber(row['Y Sales'] || 0);
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = todayVsYesterdayColor(value, ySales);
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="today_sales" data-today="${value}" data-y-sales="${ySales}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${todayVsYesterdayTitle(value, ySales)}"></i>`;
                             if (!value || value === 0) {
-                                return `<span style="color:#adb5bd;font-weight:600;" title="No sales yet today (Eastern)">$0</span>`;
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No sales yet today (Eastern)">$0</span>${chartIcon}`;
                             }
-                            return `<span style="font-weight:600;color:#fd7e14;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            return `<span style="font-weight:600;color:#fd7e14;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span');
+                                cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null;
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -5057,7 +5094,7 @@
             function colorSummaryBadgeDots(channelKeys) {
                 var inverted = invertedDotMetrics;
                 var sumMetrics = {
-                    l30_sales: 1, y_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, p_npft_amt: 1, l30_orders: 1, qty: 1, ad_spend: 1, pft: 1,
+                    l30_sales: 1, y_sales: 1, today_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, p_npft_amt: 1, l30_orders: 1, qty: 1, ad_spend: 1, pft: 1,
                     clicks: 1, ad_sales: 1, ad_sold: 1, total_views: 1, inv_at_lp: 1,
                     inv_at_sp: 1, inventory: 1, missing_l: 1, map: 1, nmap: 1,
                     reviews: 1, l60_sales: 1, l60_orders: 1
@@ -5257,9 +5294,12 @@
                     const val = Math.round(totalL30Sales);
                     const $el = $('#total-l30-sales');
                     $el.text(toCompact(val));
-                    $el.closest('.badge').attr('title',
-                        'Sum of Sales column (channel rolling L30 / window varies). $' + val.toLocaleString('en-US'));
+                    const badge = $el.closest('.badge');
+                    const salesTitle = 'Sum of Sales column (channel rolling L30 / window varies). $' + val.toLocaleString('en-US');
+                    badge.attr('data-sales-title', salesTitle);
+                    badge.attr('title', salesTitle);
                     setBadgeExact($el, val);
+                    loadTotalSalesGrowth(val);
                 })();
                 // Show NYS when no channel had any sales yesterday — clearer than "$0".
                 (function() {
@@ -5306,7 +5346,9 @@
                     const $el = $('#total-today-sales');
                     $el.text('$' + val.toLocaleString('en-US'));
                     $el.closest('.badge').attr('title',
-                        'Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT through now. $' + val.toLocaleString('en-US'));
+                        'Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT through now. $' + val.toLocaleString('en-US') + '. Dot compares today with yesterday.');
+                    setBadgeExact($el, val);
+                    lastDotPairByKey['all_today_sales'] = [totalYSales, totalTodaySales];
                 })();
                 (function() {
                     const val = Math.round(totalPSales);
@@ -6324,6 +6366,7 @@
                 'l60_orders': 'L60 Orders',
                 'l30_sales': 'Sales',
                 'y_sales': 'Y Sales',
+                'today_sales': 'Today Sales',
                 'y_pft': 'Y PFT',
                 'y_npft_amt': 'Y NPFT',
                 'p_sales': 'P-Sales',
@@ -6684,25 +6727,39 @@
                 if (pct == null || !isFinite(pct) || Math.abs(pct) < 0.05) return '#6c757d';
                 return pct > 0 ? '#198754' : '#dc3545';
             }
-            function paintViewsBadgeGrowth(pct) {
-                var el = document.getElementById('total-views-growth');
+            function paintMetricBadgeGrowth(elId, titleAttr, titlePrefix, pct, colorFn) {
+                var el = document.getElementById(elId);
                 if (!el) return;
                 el.textContent = formatViewsGrowth(pct);
-                el.style.color = viewsGrowthColor(pct);
-                el.title = 'Views change versus about 30 days ago';
+                el.style.color = colorFn(pct);
+                el.title = titlePrefix + ' change versus about 30 days ago';
                 var badge = el.closest('.badge');
                 if (badge && pct != null && isFinite(pct)) {
-                    var baseTitle = badge.getAttribute('data-views-title') || badge.getAttribute('title') || '';
-                    badge.setAttribute('data-views-title', baseTitle.replace(/ Views L30 growth:.*$/, ''));
-                    badge.setAttribute('title', badge.getAttribute('data-views-title') + ' Views L30 growth: ' + formatViewsGrowth(pct));
+                    var baseTitle = badge.getAttribute(titleAttr) || badge.getAttribute('title') || '';
+                    var cleaned = baseTitle.replace(new RegExp(' ' + titlePrefix + ' L30 growth:.*$'), '');
+                    badge.setAttribute(titleAttr, cleaned);
+                    badge.setAttribute('title', cleaned + ' ' + titlePrefix + ' L30 growth: ' + formatViewsGrowth(pct));
                 }
             }
+            function paintViewsBadgeGrowth(pct) {
+                paintMetricBadgeGrowth('total-views-growth', 'data-views-title', 'Views', pct, viewsGrowthColor);
+            }
+            function salesBadgeGrowthColor(pct) {
+                if (pct == null || !isFinite(pct) || Math.abs(pct) < 0.05) return '#e5e7eb';
+                return pct > 0 ? '#bbf7d0' : '#fecaca';
+            }
+            function paintSalesBadgeGrowth(pct) {
+                paintMetricBadgeGrowth('total-sales-growth', 'data-sales-title', 'Sales', pct, salesBadgeGrowthColor);
+            }
+            var l30GrowthMetrics = { total_views: 'views', l30_sales: 'sales', sales: 'sales', today_sales: 'sales' };
             function paintChartViewsGrowth(values) {
                 var wrap = document.getElementById('adChartGrowthWrap');
                 var el = document.getElementById('adChartGrowth');
                 var label = document.getElementById('adChartGrowthLabel');
                 if (!wrap || !el) return;
-                if (currentChartMetric !== 'total_views') {
+                var metricForGrowth = currentChartMetric || currentMetricKey;
+                var kind = l30GrowthMetrics[metricForGrowth];
+                if (!kind) {
                     wrap.style.display = 'none';
                     return;
                 }
@@ -6718,26 +6775,38 @@
                 if (label) label.textContent = growth.span >= 25 ? 'L30 %' : (growth.span + 'D %');
                 el.textContent = formatViewsGrowth(growth.pct);
                 el.style.color = viewsGrowthColor(growth.pct);
-                el.title = 'Change from ' + growth.span + ' days earlier to the latest views';
-                if (currentChartChannel === 'all') paintViewsBadgeGrowth(growth.pct);
+                el.title = 'Change from ' + growth.span + ' days earlier to the latest ' + kind;
+                if (currentChartChannel === 'all') {
+                    if (kind === 'views') paintViewsBadgeGrowth(growth.pct);
+                    else paintSalesBadgeGrowth(growth.pct);
+                }
             }
             var viewsGrowthPrefetch = null;
-            function loadTotalViewsGrowth(badgeValue) {
-                if (viewsGrowthPrefetch && viewsGrowthPrefetch.readyState !== 4) return;
-                viewsGrowthPrefetch = $.ajax({
+            var salesGrowthPrefetch = null;
+            function loadRollingGrowth(metric, badgeValue, prefetchHolder, paint) {
+                if (prefetchHolder.req && prefetchHolder.req.readyState !== 4) return;
+                prefetchHolder.req = $.ajax({
                     url: '/channel-metric-chart-data',
                     method: 'GET',
                     data: {
                         channel: 'all',
-                        metric: 'total_views',
+                        metric: metric,
                         days: 30,
                         badge_value: badgeValue
                     }
                 }).done(function(response) {
                     var rows = response && response.success && response.data ? response.data : [];
                     var growth = viewsL30Growth(rows.map(function(row) { return Number(row.value); }));
-                    paintViewsBadgeGrowth(growth ? growth.pct : null);
+                    paint(growth ? growth.pct : null);
                 });
+            }
+            function loadTotalViewsGrowth(badgeValue) {
+                if (!viewsGrowthPrefetch) viewsGrowthPrefetch = {};
+                loadRollingGrowth('total_views', badgeValue, viewsGrowthPrefetch, paintViewsBadgeGrowth);
+            }
+            function loadTotalSalesGrowth(badgeValue) {
+                if (!salesGrowthPrefetch) salesGrowthPrefetch = {};
+                loadRollingGrowth('l30_sales', badgeValue, salesGrowthPrefetch, paintSalesBadgeGrowth);
             }
 
             // Render chart
@@ -6772,7 +6841,7 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'p_npft_amt' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'today_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'p_npft_amt' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals

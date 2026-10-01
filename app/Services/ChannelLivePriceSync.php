@@ -289,10 +289,14 @@ class ChannelLivePriceSync
             return PushedListingPrice::temuBaseToWrite($incoming, $pushed);
         }
 
-        // Live catalog price wins. A saved S PRC stays in SPRICE, not in Price.
+        // Site / GetItem price wins when it is a real difference. A cent or two
+        // off the calculated S PRC is the same price — keep the S PRC so the
+        // blue badge stays off.
         if ($channel === 'topdawg' || self::isEbayChannel($channel)) {
             if ($incoming !== null && $incoming > 0) {
-                return round($incoming, 2);
+                $kept = PushedListingPrice::keepCalculated($incoming, $pushed);
+
+                return $kept ?? round($incoming, 2);
             }
 
             return $pushed;

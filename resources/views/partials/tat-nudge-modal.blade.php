@@ -160,9 +160,25 @@
     if (!cfg.userId) return;
 
     var timer = null;
+    var pendingDay = null;
+    var onVisible = null;
+    var tabId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+    function stopWaiting() {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        pendingDay = null;
+        if (onVisible) {
+            document.removeEventListener('visibilitychange', onVisible);
+            onVisible = null;
+        }
+    }
 
     function storageKey(day) {
         return 'tat-nudge:' + cfg.userId + ':' + day;
+    }
+    function lockKey(day) {
+        return 'tat-nudge-lock:' + cfg.userId + ':' + day;
     }
     function alreadyShown(day) {
         try { return localStorage.getItem(storageKey(day)) === '1'; } catch (e) { return false; }
@@ -170,6 +186,39 @@
     function markShown(day) {
         try { localStorage.setItem(storageKey(day), '1'); } catch (e) {}
     }
+    function claimShow(day, done) {
+        if (alreadyShown(day)) {
+            done(false);
+            return;
+        }
+        var key = lockKey(day);
+        var token = tabId + ':' + Date.now();
+        try {
+            var existing = localStorage.getItem(key);
+            if (existing) {
+                var at = parseInt(String(existing).split(':').pop(), 10);
+                if (at && (Date.now() - at) < 15000) {
+                    done(false);
+                    return;
+                }
+            }
+            localStorage.setItem(key, token);
+        } catch (e) {
+            done(true);
+            return;
+        }
+        setTimeout(function () {
+            try {
+                done(!alreadyShown(day) && localStorage.getItem(key) === token);
+            } catch (e) {
+                done(true);
+            }
+        }, 60);
+    }
+    window.addEventListener('storage', function (e) {
+        if (!pendingDay || !e || e.key !== storageKey(pendingDay) || !e.newValue) return;
+        stopWaiting();
+    });
     function pickMessage(messages) {
         var list = Array.isArray(messages) && messages.length ? messages : [];
         if (!list.length) return 'Accomplish tasks in the allotted time. A strong TAT helps with promotions and incentives.';
@@ -213,14 +262,36 @@
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
     }
 
+    function present(data) {
+        if (!pendingDay || alreadyShown(data.business_today)) return;
+        if (document.visibilityState !== 'visible') {
+            if (onVisible) return;
+            onVisible = function () {
+                if (document.visibilityState !== 'visible') return;
+                document.removeEventListener('visibilitychange', onVisible);
+                onVisible = null;
+                present(data);
+            };
+            document.addEventListener('visibilitychange', onVisible);
+            return;
+        }
+        claimShow(data.business_today, function (won) {
+            if (!won || !pendingDay) return;
+            markShown(data.business_today);
+            stopWaiting();
+            whenReady(function () { showModal(data); });
+        });
+    }
     function schedule(data) {
         if (!data || data.success === false || data.show !== true) return;
         if (alreadyShown(data.business_today)) return;
         var wait = parseInt(data.wait_ms, 10);
         if (!(wait >= 0)) wait = 0;
         if (timer) clearTimeout(timer);
+        pendingDay = data.business_today;
         timer = setTimeout(function () {
-            whenReady(function () { showModal(data); });
+            timer = null;
+            present(data);
         }, wait);
     }
 

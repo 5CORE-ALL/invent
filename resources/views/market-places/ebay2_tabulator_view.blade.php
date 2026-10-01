@@ -1539,6 +1539,27 @@
             const sku = String(data['(Child) sku'] || data.SKU || data.sku || '').toUpperCase();
             return sku.indexOf('PARENT') !== -1;
         }
+        /** Listing already has a live promoted ad (running, paused, in campaign, or C BID set). */
+        function ebay2AdsAlreadyRunning(data) {
+            if (!data) return false;
+            const runningFlag = data.ca_ads_running;
+            if (runningFlag == 1 || runningFlag === true || runningFlag === '1') return true;
+            const status = String(data.ca_campaign_status || '').toUpperCase();
+            if (status === 'RUNNING' || status === 'PAUSED' || status === 'SYSTEM_PAUSED') return true;
+            if (status === 'ENDED' || status === 'INACTIVE') return false;
+            const promote = String(data.ca_promote_with_ad || '').toUpperCase();
+            if (promote === 'AD_ALREADY_CREATED') return true;
+            const bid = parseFloat(data.ca_bid_percentage);
+            return isFinite(bid) && bid > 0;
+        }
+        /** INV > 0, E L30 sold ≤ 0, and no ad already running. Parent rows are excluded. */
+        function ebay2NeedsAds(data) {
+            if (!data || isEbay2TabulatorParentRow(data)) return false;
+            if (ebay2AdsAlreadyRunning(data)) return false;
+            const inv = parseFloat(data.INV) || 0;
+            const sold = parseFloat(data['eBay L30']) || 0;
+            return inv > 0 && sold <= 0;
+        }
         /** Child rows with E Stock > 0 — Views / CVR / L7 badges (ignore table filters). */
         function ebay2ListingViewsScopeRows() {
             const source = (allTableData && allTableData.length)
@@ -3109,6 +3130,22 @@
                         hozAlign: "center",
                         width: 30,
                         sorter: "number"
+                    },
+                    {
+                        title: "Req Ads",
+                        field: "req_ads",
+                        hozAlign: "center",
+                        width: 72,
+                        headerTooltip: "Ads Needed Alert when INV > 0, E L30 sold is 0 or less, and the listing is not already in a campaign.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = ebay2NeedsAds(aRow.getData()) ? 1 : 0;
+                            const bv = ebay2NeedsAds(bRow.getData()) ? 1 : 0;
+                            return av - bv;
+                        },
+                        formatter: function(cell) {
+                            if (!ebay2NeedsAds(cell.getRow().getData())) return '';
+                            return '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:14px;" title="Ads Needed Alert" aria-label="Ads Needed Alert"></i>';
+                        }
                     },
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'column', 'ebayZeroSoldChannel' => 'ebay2'])
                     {

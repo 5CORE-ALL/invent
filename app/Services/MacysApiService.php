@@ -561,9 +561,15 @@ class MacysApiService
         if ($expected === null || $expected <= 0) {
             $expected = ChannelLivePriceSync::lookupPushed('macys', $sku);
         }
-        $stale = $expected !== null && $expected > 0 && abs($price - (float) $expected) >= 0.05;
-        $listedPrice = $active ? ($stale ? round((float) $expected, 2) : $price) : 0;
-        $persistPrice = $stale ? round((float) $expected, 2) : $price;
+        $expectedRounded = ($expected !== null && $expected > 0) ? round((float) $expected, 2) : null;
+        $stale = $expectedRounded !== null && abs($price - $expectedRounded) >= 0.05;
+        $persistPrice = $expectedRounded !== null
+            ? \App\Support\PushedListingPrice::keepCalculated($price, $expectedRounded) ?? $expectedRounded
+            : $price;
+        if ($stale) {
+            $persistPrice = $expectedRounded;
+        }
+        $listedPrice = $active ? $persistPrice : 0;
         $listingStatus = $active ? 'active' : 'inactive';
 
         try {
@@ -605,7 +611,7 @@ class MacysApiService
         }
 
         return [
-            'price' => $price,
+            'price' => $stale ? $price : $persistPrice,
             'stock' => $stock,
             'shop_sku' => $liveSku !== '' ? $liveSku : $sku,
             'stale' => $stale,

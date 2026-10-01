@@ -672,13 +672,33 @@ class EbayTwoController extends Controller
                 DB::table('ebay2_campaign_ads as t')
                     ->join(DB::raw('(SELECT listing_id,
                                             MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
-                                            MAX(id) AS max_id
+                                            MAX(id) AS max_id,
+                                            MAX(CASE
+                                                WHEN UPPER(TRIM(COALESCE(campaign_status, ""))) IN ("RUNNING", "PAUSED", "SYSTEM_PAUSED")
+                                                  OR (
+                                                    campaign_id IS NOT NULL AND TRIM(campaign_id) <> ""
+                                                    AND bid_percentage > 0
+                                                    AND UPPER(TRIM(COALESCE(campaign_status, ""))) NOT IN ("ENDED", "INACTIVE")
+                                                  )
+                                                  OR (
+                                                    UPPER(TRIM(COALESCE(promote_with_ad, ""))) = "AD_ALREADY_CREATED"
+                                                    AND UPPER(TRIM(COALESCE(campaign_status, ""))) NOT IN ("ENDED", "INACTIVE")
+                                                  )
+                                                THEN 1 ELSE 0 END) AS ads_running
                                      FROM ebay2_campaign_ads
                                      GROUP BY listing_id) x'),
                         function ($join) {
                             $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
                         })
-                    ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid', 't.promote_with_ad')
+                    ->select(
+                        't.listing_id',
+                        't.bid_percentage',
+                        't.suggested_bid',
+                        't.promote_with_ad',
+                        't.campaign_id',
+                        't.campaign_status',
+                        'x.ads_running'
+                    )
                     ->get()
             );
         } catch (\Throwable $e) {
@@ -1506,7 +1526,7 @@ class EbayTwoController extends Controller
                 if (! $has) {
                     continue;
                 }
-                if (($child['ca_promote_with_ad'] ?? '') === 'AD_ALREADY_CREATED') {
+                if (($child['ca_promote_with_ad'] ?? '') === 'AD_ALREADY_CREATED' || ! empty($child['ca_ads_running'])) {
                     $picked = $child;
                     break;
                 }
@@ -1522,6 +1542,9 @@ class EbayTwoController extends Controller
                 'ca_bid_percentage' => $picked['ca_bid_percentage'] ?? null,
                 'ca_suggested_bid' => $picked['ca_suggested_bid'] ?? null,
                 'ca_promote_with_ad' => $picked['ca_promote_with_ad'] ?? null,
+                'ca_campaign_id' => $picked['ca_campaign_id'] ?? null,
+                'ca_campaign_status' => $picked['ca_campaign_status'] ?? null,
+                'ca_ads_running' => $picked['ca_ads_running'] ?? 0,
             ];
             if (empty($picked['eBay_item_id'] ?? null)) {
                 return $fields;
@@ -1625,6 +1648,9 @@ class EbayTwoController extends Controller
                     'ca_bid_percentage' => null,
                     'ca_suggested_bid' => null,
                     'ca_promote_with_ad' => null,
+                    'ca_campaign_id' => null,
+                    'ca_campaign_status' => null,
+                    'ca_ads_running' => 0,
                     'pmt_clicks_l30' => 0,
                     'pmt_clicks_l7' => 0,
                     'nrp' => '',
@@ -1683,7 +1709,7 @@ class EbayTwoController extends Controller
     }
 
     /**
-     * @return array{ca_bid_percentage: mixed, ca_suggested_bid: mixed, ca_promote_with_ad: mixed}
+     * @return array{ca_bid_percentage: mixed, ca_suggested_bid: mixed, ca_promote_with_ad: mixed, ca_campaign_id: mixed, ca_campaign_status: mixed, ca_ads_running: int}
      */
     private function ebay2CampaignAdsFields(?object $caRow): array
     {
@@ -1692,6 +1718,9 @@ class EbayTwoController extends Controller
                 'ca_bid_percentage' => null,
                 'ca_suggested_bid' => null,
                 'ca_promote_with_ad' => null,
+                'ca_campaign_id' => null,
+                'ca_campaign_status' => null,
+                'ca_ads_running' => 0,
             ];
         }
 
@@ -1699,6 +1728,9 @@ class EbayTwoController extends Controller
             'ca_bid_percentage' => $caRow->bid_percentage ?? $caRow->ca_bid_percentage ?? null,
             'ca_suggested_bid' => $caRow->suggested_bid ?? $caRow->ca_suggested_bid ?? null,
             'ca_promote_with_ad' => $caRow->promote_with_ad ?? $caRow->ca_promote_with_ad ?? null,
+            'ca_campaign_id' => $caRow->campaign_id ?? $caRow->ca_campaign_id ?? null,
+            'ca_campaign_status' => $caRow->campaign_status ?? $caRow->ca_campaign_status ?? null,
+            'ca_ads_running' => (int) ($caRow->ads_running ?? $caRow->ca_ads_running ?? 0),
         ];
     }
 

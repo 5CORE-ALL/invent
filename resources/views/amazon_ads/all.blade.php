@@ -293,6 +293,17 @@
             color: #2563eb; font-size: 9px; line-height: 1; cursor: pointer;
         }
         #amz-ads-raw-wrap .amz-camp-skus-btn:hover { background: #2563eb; color: #fff; border-color: #2563eb; }
+        #amz-ads-raw-wrap .amz-low-inv-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; padding: 0; margin-left: 4px; flex-shrink: 0;
+            border: 0; border-radius: 50%; background: #dc2626; color: #fff;
+            font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer;
+        }
+        #amz-ads-raw-wrap .amz-low-inv-btn:hover { background: #991b1b; }
+        .amz-sku-inv-num { font-weight: 700; font-size: 13px; line-height: 1; }
+        .amz-sku-inv-num.is-low { color: #dc2626; }
+        .amz-sku-img-cell { text-align: center; width: 64px; }
+        .amz-sku-inv-img { width: 48px; height: 48px; object-fit: contain; border-radius: 4px; background: #f8fafc; }
         .amz-cpc-avg-cell {
             display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;
         }
@@ -866,6 +877,8 @@
                         <table class="table table-sm table-striped mb-0 d-none" id="amazonAdsCampaignSkusTable">
                             <thead>
                                 <tr>
+                                    <th>Image</th>
+                                    <th>Inv</th>
                                     <th>SKU</th>
                                     <th>ASIN</th>
                                     <th>Reviews</th>
@@ -1931,6 +1944,14 @@
                 var u = String(v).trim().toUpperCase();
                 return amzEsc(map[u] || String(v).trim());
             }
+            function amzCampaignLowInvN(row) {
+                if (!row) return null;
+                var knownSkuInv = !!row.sku_inv_known;
+                var invSource = knownSkuInv ? row.sku_inv_min : row.Inv;
+                var invN = invSource != null && invSource !== '' ? parseFloat(invSource) : NaN;
+                if (!isFinite(invN) || invN >= 5) return null;
+                return Math.round(invN);
+            }
             function fmtCampaignName(cell) {
                 var v = cell.getValue();
                 var s = (v === null || v === undefined) ? '' : String(v);
@@ -1943,11 +1964,20 @@
                         + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '">'
                         + '<i class="fas fa-plus"></i></button>'
                     : '';
+                var lowN = cid !== '' ? amzCampaignLowInvN(row) : null;
+                var knownSkuInv = !!(row && row.sku_inv_known);
+                var lowInv = lowN !== null
+                    ? '<button type="button" class="amz-low-inv-btn" title="'
+                        + (knownSkuInv ? 'Lowest SKU inventory ' : 'Inventory ')
+                        + lowN + ' is under 5. Click to see this campaign."'
+                        + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '">!</button>'
+                    : '';
                 var copy = '<i class="fas fa-copy amz-copy-name" role="button" tabindex="0" title="Copy campaign name"'
                          + ' data-copy="' + attr + '" style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>';
                 return '<span style="display:inline-flex;align-items:center;gap:2px;max-width:100%;">'
                      + plus
-                     + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>' + copy + '</span>';
+                     + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>'
+                     + lowInv + copy + '</span>';
             }
             function fmtSkuInv(cell) {
                 var v = cell.getValue();
@@ -2298,6 +2328,16 @@
                 }
                 if (nameIdx !== -1) {
                     for (var fj = 0; fj <= nameIdx; fj++) defs[fj].frozen = true;
+                    defs.splice(nameIdx + 1, 0, {
+                        title: 'Inv Alert',
+                        field: 'invAlert',
+                        visible: false,
+                        download: true,
+                        headerSort: false,
+                        accessorDownload: function (value, data) {
+                            return amzCampaignLowInvN(data) === null ? '' : '!';
+                        }
+                    });
                 }
                 var againIdx = -1;
                 for (var ak = 0; ak < defs.length; ak++) {
@@ -3171,7 +3211,17 @@
                     body.innerHTML = skus.map(function (s) {
                         var state = String(s.state || '—');
                         var color = state.toUpperCase() === 'ENABLED' ? '#16a34a' : (state.toUpperCase() === 'PAUSED' ? '#dc2626' : '#6b7280');
+                        var inv = s && s.inv != null && s.inv !== '' ? parseFloat(s.inv) : NaN;
+                        var invHtml = isFinite(inv)
+                            ? '<span class="amz-sku-inv-num' + (inv < 5 ? ' is-low' : '') + '">' + Math.round(inv) + '</span>'
+                            : '<span class="text-muted">—</span>';
+                        var img = s && s.image ? String(s.image) : '';
+                        var imgHtml = img
+                            ? '<img class="amz-sku-inv-img" src="' + amzEsc(img) + '" alt="' + amzEsc(s.sku || '') + '">'
+                            : '<span class="amz-sku-inv-img d-inline-flex align-items-center justify-content-center text-muted">—</span>';
                         return '<tr>'
+                            + '<td class="amz-sku-img-cell">' + imgHtml + '</td>'
+                            + '<td class="text-center">' + invHtml + '</td>'
                             + '<td class="fw-semibold">' + amzEsc(s.sku || '—') + '</td>'
                             + '<td>' + amzEsc(s.asin || '—') + '</td>'
                             + '<td>' + amzFormatSkuReviews(s) + '</td>'
@@ -3212,11 +3262,13 @@
                     });
             }
             document.addEventListener('click', function (e) {
+                var lowInv = e.target.closest ? e.target.closest('.amz-low-inv-btn') : null;
                 var plus = e.target.closest ? e.target.closest('.amz-camp-skus-btn') : null;
-                if (plus) {
+                var opener = lowInv || plus;
+                if (opener) {
                     e.stopPropagation();
                     e.preventDefault();
-                    amzOpenCampaignSkus(plus.getAttribute('data-campaign-id') || '', plus.getAttribute('data-campaign-name') || '');
+                    amzOpenCampaignSkus(opener.getAttribute('data-campaign-id') || '', opener.getAttribute('data-campaign-name') || '');
                     return;
                 }
                 var cpcDot = e.target.closest ? e.target.closest('.amz-cpc-avg-history-dot') : null;
