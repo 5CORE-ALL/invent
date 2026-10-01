@@ -1944,6 +1944,14 @@
                 var u = String(v).trim().toUpperCase();
                 return amzEsc(map[u] || String(v).trim());
             }
+            function amzCampaignLowInvN(row) {
+                if (!row) return null;
+                var knownSkuInv = !!row.sku_inv_known;
+                var invSource = knownSkuInv ? row.sku_inv_min : row.Inv;
+                var invN = invSource != null && invSource !== '' ? parseFloat(invSource) : NaN;
+                if (!isFinite(invN) || invN >= 5) return null;
+                return Math.round(invN);
+            }
             function fmtCampaignName(cell) {
                 var v = cell.getValue();
                 var s = (v === null || v === undefined) ? '' : String(v);
@@ -1956,13 +1964,12 @@
                         + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '">'
                         + '<i class="fas fa-plus"></i></button>'
                     : '';
+                var lowN = cid !== '' ? amzCampaignLowInvN(row) : null;
                 var knownSkuInv = !!(row && row.sku_inv_known);
-                var invSource = knownSkuInv ? row.sku_inv_min : (row ? row.Inv : null);
-                var invN = invSource != null && invSource !== '' ? parseFloat(invSource) : NaN;
-                var lowInv = cid !== '' && isFinite(invN) && invN < 5
+                var lowInv = lowN !== null
                     ? '<button type="button" class="amz-low-inv-btn" title="'
                         + (knownSkuInv ? 'Lowest SKU inventory ' : 'Inventory ')
-                        + Math.round(invN) + ' is under 5. Click to see this campaign."'
+                        + lowN + ' is under 5. Click to see this campaign."'
                         + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '">!</button>'
                     : '';
                 var copy = '<i class="fas fa-copy amz-copy-name" role="button" tabindex="0" title="Copy campaign name"'
@@ -2321,6 +2328,16 @@
                 }
                 if (nameIdx !== -1) {
                     for (var fj = 0; fj <= nameIdx; fj++) defs[fj].frozen = true;
+                    defs.splice(nameIdx + 1, 0, {
+                        title: 'Inv Alert',
+                        field: 'invAlert',
+                        visible: false,
+                        download: true,
+                        headerSort: false,
+                        accessorDownload: function (value, data) {
+                            return amzCampaignLowInvN(data) === null ? '' : '!';
+                        }
+                    });
                 }
                 var againIdx = -1;
                 for (var ak = 0; ak < defs.length; ak++) {
