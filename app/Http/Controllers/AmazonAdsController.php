@@ -9,6 +9,7 @@ use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Services\AmazonAdsLiveBidBgtSyncService;
 use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPauseRuleState;
+use App\Models\ShopifySku;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsBgtCvrRule;
 use App\Support\AmazonAdsBgtDilRule;
@@ -4032,13 +4033,30 @@ class AmazonAdsController extends Controller
         );
         $skus = $resolved['skus'];
         $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus(array_column($skus, 'sku'));
+        $shopify = Schema::hasTable('shopify_skus')
+            ? ShopifySku::mapByProductSkus(array_column($skus, 'sku'))
+            : collect();
         foreach ($skus as $i => $skuRow) {
-            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $skuRow['sku'])));
+            $sku = (string) ($skuRow['sku'] ?? '');
+            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
             $hit = $reviews[$key] ?? null;
+            $sh = $shopify->get($sku);
+            if ($sh === null && $sku !== '') {
+                foreach ($shopify as $pmSku => $row) {
+                    if (strcasecmp(trim((string) $pmSku), trim($sku)) === 0) {
+                        $sh = $row;
+                        break;
+                    }
+                }
+            }
+            $inv = $sh !== null && is_numeric($sh->inv ?? null) ? (int) round((float) $sh->inv) : null;
+            $image = $sh !== null ? trim((string) ($sh->image_src ?? '')) : '';
             $skus[$i]['amz_avg_rating'] = is_array($hit) && $hit['rating'] !== null
                 ? (float) $hit['rating']
                 : null;
             $skus[$i]['amz_review_count'] = is_array($hit) ? (int) ($hit['review_count'] ?? 0) : null;
+            $skus[$i]['inv'] = $inv;
+            $skus[$i]['image'] = $image !== '' ? $image : null;
         }
 
         return response()->json([

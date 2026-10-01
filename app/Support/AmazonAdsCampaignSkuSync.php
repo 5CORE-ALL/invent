@@ -197,7 +197,51 @@ final class AmazonAdsCampaignSkuSync
             }
         }
 
-        return self::upsertRows($payload);
+        $upserted = self::upsertRows($payload);
+        self::dropStaleSbSkus($profileId, $parsed, $payload);
+
+        return $upserted;
+    }
+
+    /**
+     * An SB creative swap leaves the previous ASINs in place because each SKU has its own ad_id.
+     * Drop rows for this ad that are not in the creative we just saved. If none of the current
+     * ASINs map to a SKU, the previous rows stay.
+     *
+     * @param  list<array{ad_id: string, asins: list<string>}>  $parsed
+     * @param  list<array<string, mixed>>  $payload
+     */
+    public static function dropStaleSbSkus(string $profileId, array $parsed, array $payload): int
+    {
+        if ($parsed === [] || ! Schema::hasTable('amazon_ads_campaign_skus')) {
+            return 0;
+        }
+        $keptByAmazonAd = [];
+        foreach ($payload as $row) {
+            $stored = (string) ($row['ad_id'] ?? '');
+            $ref = self::amazonAdRef($stored);
+            if (($ref['channel'] ?? null) !== 'sb' || $ref['ad_id'] === '') {
+                continue;
+            }
+            $keptByAmazonAd[$ref['ad_id']][] = $stored;
+        }
+
+        $dropped = 0;
+        foreach ($parsed as $ad) {
+            $amazonAdId = (string) ($ad['ad_id'] ?? '');
+            $kept = $keptByAmazonAd[$amazonAdId] ?? [];
+            if ($amazonAdId === '' || $kept === []) {
+                continue;
+            }
+            $prefix = self::SB_AD_PREFIX.$amazonAdId.':';
+            $dropped += AmazonAdsCampaignSku::query()
+                ->where('profile_id', $profileId)
+                ->where('ad_id', 'like', $prefix.'%')
+                ->whereNotIn('ad_id', $kept)
+                ->delete();
+        }
+
+        return $dropped;
     }
 
     /**
