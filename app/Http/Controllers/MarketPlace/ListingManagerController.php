@@ -2747,7 +2747,7 @@ class ListingManagerController extends Controller
      *
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function runQueuedDraftPublish(int $id): array
+    public function runQueuedDraftPublish(int $id, bool $keepLock = false): array
     {
         $draft = ListingManagerChannelDraft::query()->with('channel:id,channel')->find($id);
         if (! $draft) {
@@ -2775,8 +2775,73 @@ class ListingManagerController extends Controller
 
             return ['status' => 500, 'body' => ['success' => false, 'message' => $e->getMessage()]];
         } finally {
-            Cache::forget(self::backgroundPublishLockKey($id));
+            if (! $keepLock) {
+                Cache::forget(self::backgroundPublishLockKey($id));
+            }
         }
+    }
+
+    /**
+     * Newegg feed follower: while the draft is still waiting on a Newegg Data Feed, re-run the publish
+     * (which resumes the stored RequestId) every minute until Newegg answers or the window closes.
+     * Runs inside `artisan listing-manager:publish-draft {id} --follow-newegg`.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function followNeweggFeed(int $id, int $maxMinutes = 40, int $intervalSeconds = 60): array
+    {
+        $lockKey = self::backgroundPublishLockKey($id);
+        $deadline = now()->addMinutes($maxMinutes);
+        $outcome = ['status' => 202, 'body' => ['success' => false, 'queued' => true, 'message' => 'Waiting for Newegg.']];
+
+        try {
+            while (true) {
+                sleep(max(5, $intervalSeconds));
+                $draft = ListingManagerChannelDraft::query()->find($id);
+                if (! $draft || $draft->status !== 'queued') {
+                    // Finished elsewhere (or deleted); nothing left to follow.
+                    return ['status' => 200, 'body' => ['success' => true, 'message' => 'Draft '.$id.' is no longer waiting on Newegg.']];
+                }
+                Cache::put($lockKey, now()->toDateTimeString(), now()->addMinutes(self::BACKGROUND_PUBLISH_LOCK_MINUTES));
+                $outcome = $this->runQueuedDraftPublish($id, true);
+                if (($outcome['body']['success'] ?? false) || empty($outcome['body']['queued'])) {
+                    return $outcome;
+                }
+                if (now()->gte($deadline)) {
+                    $draft = ListingManagerChannelDraft::query()->find($id);
+                    if ($draft && $draft->status === 'queued') {
+                        $draft->status = 'ready';
+                        $draft->notes = trim((string) $draft->notes."\nNewegg has not finished the item feed after ".$maxMinutes
+                            .' minutes. Click Save & Publish to check it again (the same RequestId is resumed).');
+                        $draft->save();
+                    }
+
+                    return ['status' => 202, 'body' => ['success' => false, 'queued' => true,
+                        'message' => 'Newegg feed still open after '.$maxMinutes.' minutes; stopped following.']];
+                }
+            }
+        } finally {
+            Cache::forget($lockKey);
+        }
+    }
+
+    /**
+     * Start the Newegg feed follower for a draft that just received a RequestId. True when a follower
+     * is running (new or existing); false when no background process could be started.
+     */
+    private function startNeweggFeedFollow(ListingManagerChannelDraft $draft): bool
+    {
+        $lockKey = self::backgroundPublishLockKey((int) $draft->id);
+        if (! Cache::add($lockKey, now()->toDateTimeString(), now()->addMinutes(self::BACKGROUND_PUBLISH_LOCK_MINUTES))) {
+            // Already being followed (the follower itself re-enters here after each check).
+            return true;
+        }
+        if (DetachedArtisan::spawn('listing-manager:publish-draft', [(int) $draft->id, 'follow-newegg' => true])) {
+            return true;
+        }
+        Cache::forget($lockKey);
+
+        return false;
     }
 
     /**
@@ -2872,15 +2937,26 @@ class ListingManagerController extends Controller
                     $draft->listing_details = $details;
                 }
                 $message = trim((string) ($result['message'] ?? ''));
+                $status = 422;
+                // Newegg answers a Data Feed minutes later; keep checking it in the background so the
+                // user does not have to click Publish again, and show Publishing… meanwhile.
+                if ($editorFamily === 'newegg' && $requestId !== '' && $this->startNeweggFeedFollow($draft)) {
+                    $draft->status = 'queued';
+                    $draft->publish_checked_at = now();
+                    $status = 202;
+                    $message = preg_replace('/\s*Click Publish again[^.]*\.\s*/i', ' ', $message) ?? $message;
+                    $message = trim($message).' Checking Newegg automatically every minute; the row shows Publishing… until it lands.';
+                }
                 $notes = (string) $draft->notes;
                 if ($message !== '' && ! str_contains($notes, $requestId !== '' ? $requestId : $message)) {
                     $draft->notes = trim($notes."\n".$message);
                 }
                 $draft->save();
 
-                return ['status' => 422, 'body' => [
+                return ['status' => $status, 'body' => [
                     'success' => false,
-                    'message' => $result['message'],
+                    'queued' => $status === 202,
+                    'message' => $message !== '' ? $message : ($result['message'] ?? 'Publish queued.'),
                     'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
                 ]];
             }
