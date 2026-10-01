@@ -2731,7 +2731,7 @@ class ListingManagerController extends Controller
             return response()->json([
                 'success' => false,
                 'queued' => true,
-                'message' => 'Publishing '.$draft->seller_sku.' to '.$channelName.' in the background (the marketplace import takes 1–5 minutes). The row shows Publishing… until it finishes.',
+                'message' => 'Publishing '.$draft->seller_sku.' to '.$channelName.' in the background (image uploads and the marketplace import can take a few minutes). The row shows Publishing… until it finishes.',
                 'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
             ], 202);
         }
@@ -2791,8 +2791,12 @@ class ListingManagerController extends Controller
     public function followNeweggFeed(int $id, int $maxMinutes = 40, int $intervalSeconds = 60): array
     {
         $lockKey = self::backgroundPublishLockKey($id);
+        $followKey = self::neweggFollowLockKey($id);
         $deadline = now()->addMinutes($maxMinutes);
         $outcome = ['status' => 202, 'body' => ['success' => false, 'queued' => true, 'message' => 'Waiting for Newegg.']];
+        // Hold the publish lock for the whole wait so the stale-queued guard and Check Live Status leave the row alone.
+        Cache::put($lockKey, now()->toDateTimeString(), now()->addMinutes(self::BACKGROUND_PUBLISH_LOCK_MINUTES));
+        Cache::put($followKey, now()->toDateTimeString(), now()->addMinutes(self::BACKGROUND_PUBLISH_LOCK_MINUTES));
 
         try {
             while (true) {
@@ -2821,8 +2825,14 @@ class ListingManagerController extends Controller
                 }
             }
         } finally {
+            Cache::forget($followKey);
             Cache::forget($lockKey);
         }
+    }
+
+    public static function neweggFollowLockKey(int $draftId): string
+    {
+        return 'lm.newegg-follow.'.$draftId;
     }
 
     /**
@@ -2831,15 +2841,18 @@ class ListingManagerController extends Controller
      */
     private function startNeweggFeedFollow(ListingManagerChannelDraft $draft): bool
     {
-        $lockKey = self::backgroundPublishLockKey((int) $draft->id);
-        if (! Cache::add($lockKey, now()->toDateTimeString(), now()->addMinutes(self::BACKGROUND_PUBLISH_LOCK_MINUTES))) {
+        $id = (int) $draft->id;
+        $followKey = self::neweggFollowLockKey($id);
+        if (! Cache::add($followKey, now()->toDateTimeString(), now()->addMinutes(self::BACKGROUND_PUBLISH_LOCK_MINUTES))) {
             // Already being followed (the follower itself re-enters here after each check).
             return true;
         }
-        if (DetachedArtisan::spawn('listing-manager:publish-draft', [(int) $draft->id, 'follow-newegg' => true])) {
+        // Hold the publish lock across the hand-off so the row is not judged stale before the follower starts.
+        Cache::put(self::backgroundPublishLockKey($id), now()->toDateTimeString(), now()->addMinutes(self::BACKGROUND_PUBLISH_LOCK_MINUTES));
+        if (DetachedArtisan::spawn('listing-manager:publish-draft', [$id, 'follow-newegg' => true])) {
             return true;
         }
-        Cache::forget($lockKey);
+        Cache::forget($followKey);
 
         return false;
     }

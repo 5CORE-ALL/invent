@@ -4087,25 +4087,35 @@
     // Mirakl channels publish from a background process; keep the grid fresh until they leave "Publishing…".
     let backgroundPublishTimer = null;
     let backgroundPublishStarted = 0;
+    let backgroundPublishWatched = new Set();
     function watchBackgroundPublishes() {
+        if (!draftsTable) return;
+        // Only report on the rows that were actually publishing, not on older Failed rows.
+        (draftsTable.getData() || []).forEach(r => { if (r.status === 'queued') backgroundPublishWatched.add(Number(r.id)); });
         if (backgroundPublishTimer) return;
         backgroundPublishStarted = Date.now();
         backgroundPublishTimer = setInterval(function () {
             if (!draftsTable) return;
             const rows = draftsTable.getData() || [];
+            rows.forEach(r => { if (r.status === 'queued') backgroundPublishWatched.add(Number(r.id)); });
             const stillQueued = rows.some(r => r.status === 'queued');
             const expired = Date.now() - backgroundPublishStarted > 45 * 60 * 1000;
             if (!stillQueued || expired) {
                 clearInterval(backgroundPublishTimer);
                 backgroundPublishTimer = null;
                 if (!stillQueued) {
-                    const failed = rows.filter(r => r.status === 'failed' && r.last_error);
+                    const watched = rows.filter(r => backgroundPublishWatched.has(Number(r.id)));
+                    const failed = watched.filter(r => r.status === 'failed' && r.last_error);
+                    const demoted = watched.filter(r => r.status !== 'failed' && r.status !== 'listed' && r.last_error);
                     if (failed.length) {
-                        toast('Background publish finished with errors: ' + failed[0].last_error, 'error');
+                        toast(failed[0].channel + ' publish failed for ' + failed[0].sku + ': ' + failed[0].last_error, 'error');
+                    } else if (demoted.length) {
+                        toast(demoted[0].channel + ' did not list ' + demoted[0].sku + ': ' + demoted[0].last_error, 'error');
                     } else {
                         toast('Background publish finished. Check the Active tab.', 'success');
                     }
                 }
+                backgroundPublishWatched = new Set();
                 return;
             }
             loadDrafts();
