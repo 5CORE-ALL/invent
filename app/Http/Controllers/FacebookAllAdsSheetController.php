@@ -1093,9 +1093,12 @@ class FacebookAllAdsSheetController extends Controller
     /** Allowed comparisons on a band bound. */
     private const SBGT_OPS = ['>', '>=', '<', '<=', '='];
 
-    private function sbgtOp(?string $op, string $default): string
+    private function sbgtOp(mixed $op, string $default): string
     {
-        $op = trim((string) $op);
+        if (! is_string($op)) {
+            return $default;
+        }
+        $op = trim($op);
 
         return in_array($op, self::SBGT_OPS, true) ? $op : $default;
     }
@@ -1453,8 +1456,8 @@ class FacebookAllAdsSheetController extends Controller
 
     /**
      * POST endpoint — replaces the rule with the supplied bands.
-     * Bands are normalised (numeric coercion + sort) before persisting
-     * so the projection pass never has to defensively re-sort.
+     * Bands are normalised (numeric coercion + operator whitelist) and
+     * stored in the order sent, which is the top-to-bottom match order.
      */
     public function saveRule(Request $request)
     {

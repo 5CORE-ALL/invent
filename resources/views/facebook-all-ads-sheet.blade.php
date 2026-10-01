@@ -758,7 +758,7 @@
                             <th style="min-width:180px;">ACOS To (%)</th>
                             <th style="min-width:170px;">Spend</th>
                             <th style="width:90px;">Sbgt</th>
-                            <th style="width:50px;"></th>
+                            <th style="width:120px;"></th>
                         </tr>
                     </thead>
                     <tbody id="sbgt-bands-body"></tbody>
@@ -2937,7 +2937,17 @@
                                class="form-control form-control-sm"
                                value="${band.sbgt ?? ''}"
                                data-idx="${i}" data-field="sbgt"></td>
-                    <td class="text-center">
+                    <td class="text-center text-nowrap">
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                data-move-idx="${i}" data-move="-1" title="Move band up"
+                                ${i === 0 ? 'disabled' : ''}>
+                            <i class="fas fa-arrow-up"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                data-move-idx="${i}" data-move="1" title="Move band down"
+                                ${i === bands.length - 1 ? 'disabled' : ''}>
+                            <i class="fas fa-arrow-down"></i>
+                        </button>
                         <button type="button" class="btn btn-sm btn-outline-danger"
                                 data-remove-idx="${i}" title="Remove band">
                             <i class="fas fa-trash"></i>
@@ -2977,6 +2987,19 @@
                 };
                 inp.addEventListener('input', write);
                 inp.addEventListener('change', write);
+            });
+
+            tbody.querySelectorAll('[data-move-idx]').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const idx = +this.dataset.moveIdx;
+                    const dir = +this.dataset.move;
+                    const next = idx + dir;
+                    const list = currentSbgtRule.bands;
+                    if (next < 0 || next >= list.length) return;
+                    const [row] = list.splice(idx, 1);
+                    list.splice(next, 0, row);
+                    renderSbgtBands(list);
+                });
             });
 
             // Wire the per-row remove buttons.
