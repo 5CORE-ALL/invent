@@ -4,14 +4,13 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AlibabaMetric;
-use App\Models\AlibabaOrderMetric;
 use App\Models\AlibabaPricingPrice;
 use App\Models\AlibabaSheetPrice;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Http\Controllers\Sales\AlibabaSalesController;
 use App\Services\AlibabaApiService;
-use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -24,7 +23,11 @@ class AlibabaAnalyticsController extends Controller
 
     public function index(): View
     {
-        return view('market-places.alibaba_analytics');
+        $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
+
+        return view('market-places.alibaba_analytics', [
+            'marginPercent' => round($margin * 100, 2),
+        ]);
     }
 
     public function data(): JsonResponse
@@ -37,8 +40,9 @@ class AlibabaAnalyticsController extends Controller
         $skus = $sheetRows->pluck('sku')->filter()->unique()->values()->all();
         $shopifyData = $skus === [] ? collect() : ShopifySku::mapByProductSkus($skus);
         $pmByNorm = $this->productMasterByNormalizedSku($skus);
-        $l30 = $this->l30ByCatalogSku($sheetRows);
         $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
+        $l30 = app(AlibabaSalesController::class)->l30SkuTotals();
+        $salesUsed = [];
 
         $children = [];
         foreach ($sheetRows as $row) {
@@ -52,34 +56,49 @@ class AlibabaAnalyticsController extends Controller
             $parent = trim((string) ($pm->parent ?? ''));
             $price = $row->sku_price !== null ? (float) $row->sku_price : 0.0;
             $lp = $pm ? (float) ($pm->unitLandedPrice() ?? 0) : 0.0;
-            $ship = $this->productShip($pm);
-            $abL30 = (int) ($l30['qty'][$skuKey] ?? 0);
+            $bucket = $l30[$skuKey] ?? ['qty' => 0, 'sales' => 0.0];
+            if ($skuKey !== '' && isset($salesUsed[$skuKey])) {
+                $abL30 = 0;
+                $sales = 0.0;
+            } else {
+                if ($skuKey !== '') {
+                    $salesUsed[$skuKey] = true;
+                }
+                $abL30 = (int) ($bucket['qty'] ?? 0);
+                $sales = round((float) ($bucket['sales'] ?? 0), 2);
+            }
             $metrics = $this->priceMetrics($price, $lp, $margin);
+            $cvr = $ovL30 > 0 ? round(($abL30 / $ovL30) * 100, 2) : 0.0;
 
             $children[] = [
                 'Parent' => $parent,
+                'parent' => $parent,
                 'sku' => $sku,
                 '(Child) sku' => $sku,
                 'image_path' => $this->productImage($pm, $shopify),
+                'image' => $this->productImage($pm, $shopify),
                 'product_id' => (string) $row->product_id,
                 'status' => $row->status,
                 'sku_price' => $row->sku_price !== null ? (float) $row->sku_price : null,
                 'soh' => $row->soh !== null ? (int) $row->soh : null,
                 'inv_update' => $row->inv_update,
                 'INV' => $inv,
+                'inv' => $inv,
                 'L30' => $ovL30,
                 'ov_l30' => $ovL30,
                 'dil_percent' => $dil,
+                'al30' => $abL30,
                 'AB L30' => $abL30,
                 'price' => $price,
+                'gpft' => $metrics['gpft'],
+                'groi' => $metrics['roi'],
                 'GPFT%' => $metrics['gpft'],
-                'PFT %' => $metrics['gpft'],
                 'ROI%' => $metrics['roi'],
-                'NROI' => $metrics['roi'],
-                'Profit' => round($metrics['profit_each'] * $abL30, 2),
-                'Sales L30' => round((float) ($l30['sales'][$skuKey] ?? 0), 2),
-                'LP_productmaster' => round($lp, 2),
-                'Ship_productmaster' => round($ship, 2),
+                'profit' => $metrics['profit_each'],
+                'sales' => $sales,
+                'lp' => round($lp, 2),
+                'cvr' => $cvr,
+                '_margin' => $margin,
                 'is_parent' => false,
                 'is_parent_summary' => false,
                 'is_parent_row' => false,
@@ -231,52 +250,6 @@ class AlibabaAnalyticsController extends Controller
     }
 
     /**
-     * Last 30 Pacific days of Alibaba orders, keyed by catalog SKU.
-     *
-     * @param  \Illuminate\Support\Collection<int, AlibabaSheetPrice>  $sheetRows
-     * @return array{qty: array<string, int>, sales: array<string, float>}
-     */
-    protected function l30ByCatalogSku($sheetRows): array
-    {
-        $qty = [];
-        $sales = [];
-        if (! Schema::hasTable('alibaba_order_metrics')) {
-            return ['qty' => $qty, 'sales' => $sales];
-        }
-
-        $skuByProduct = [];
-        foreach ($sheetRows as $row) {
-            $productId = trim((string) $row->product_id);
-            $sku = trim((string) $row->sku);
-            if ($productId !== '' && $sku !== '') {
-                $skuByProduct[$productId] = $sku;
-            }
-        }
-
-        $start = Carbon::now('America/Los_Angeles')->subDays(30);
-        $orders = AlibabaOrderMetric::query()
-            ->where('order_date', '>=', $start)
-            ->get(['sku', 'product_id', 'quantity', 'amount']);
-
-        foreach ($orders as $order) {
-            $productId = trim((string) ($order->product_id ?? ''));
-            $stored = trim((string) ($order->sku ?? ''));
-            $catalog = ($stored !== '' && $stored !== $productId && ! ctype_digit($stored))
-                ? $stored
-                : ($skuByProduct[$productId] ?? '');
-            if ($catalog === '') {
-                continue;
-            }
-            $key = strtoupper($catalog);
-            $units = (int) ($order->quantity ?? 0);
-            $qty[$key] = ($qty[$key] ?? 0) + $units;
-            $sales[$key] = ($sales[$key] ?? 0) + ((float) ($order->amount ?? 0) * $units);
-        }
-
-        return ['qty' => $qty, 'sales' => $sales];
-    }
-
-    /**
      * Unit profit = (price × Alibaba margin) − LP. Ship is not subtracted.
      *
      * @return array{profit_each: float, gpft: float, roi: float}
@@ -305,20 +278,6 @@ class AlibabaAnalyticsController extends Controller
         $path = $values['image_path'] ?? ($pm->image_path ?? null);
 
         return is_string($path) && trim($path) !== '' ? $path : null;
-    }
-
-    protected function productShip(?ProductMaster $pm): float
-    {
-        if (! $pm) {
-            return 0.0;
-        }
-        foreach ($this->productValues($pm) as $key => $value) {
-            if (strtolower((string) $key) === 'ship' && is_numeric($value)) {
-                return (float) $value;
-            }
-        }
-
-        return 0.0;
     }
 
     /**
@@ -423,7 +382,6 @@ class AlibabaAnalyticsController extends Controller
         $sumSoh = 0;
         $sumAbL30 = 0;
         $sumSales = 0.0;
-        $sumProfit = 0.0;
         $seenSku = [];
 
         foreach ($childRows as $row) {
@@ -438,9 +396,8 @@ class AlibabaAnalyticsController extends Controller
             $sumInv += (int) ($row['INV'] ?? 0);
             $sumOvL30 += (int) ($row['L30'] ?? 0);
             $sumSoh += (int) ($row['soh'] ?? 0);
-            $sumAbL30 += (int) ($row['AB L30'] ?? 0);
-            $sumSales += (float) ($row['Sales L30'] ?? 0);
-            $sumProfit += (float) ($row['Profit'] ?? 0);
+            $sumAbL30 += (int) ($row['al30'] ?? $row['AB L30'] ?? 0);
+            $sumSales += (float) ($row['sales'] ?? 0);
         }
 
         $dil = $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0.0;
@@ -448,28 +405,32 @@ class AlibabaAnalyticsController extends Controller
 
         return [
             'Parent' => $key,
+            'parent' => $key,
             'sku' => $key,
             '(Child) sku' => $key,
             'image_path' => null,
+            'image' => null,
             'product_id' => '',
             'status' => '',
             'sku_price' => null,
             'soh' => $sumSoh,
             'inv_update' => '',
             'INV' => $sumInv,
+            'inv' => $sumInv,
             'L30' => $sumOvL30,
             'ov_l30' => $sumOvL30,
             'dil_percent' => $dil,
+            'al30' => $sumAbL30,
             'AB L30' => $sumAbL30,
             'price' => null,
+            'gpft' => null,
+            'groi' => null,
             'GPFT%' => null,
-            'PFT %' => null,
             'ROI%' => null,
-            'NROI' => null,
-            'Profit' => round($sumProfit, 2),
-            'Sales L30' => round($sumSales, 2),
-            'LP_productmaster' => null,
-            'Ship_productmaster' => null,
+            'profit' => null,
+            'sales' => round($sumSales, 2),
+            'lp' => null,
+            'cvr' => 0,
             'is_parent' => true,
             'is_parent_summary' => true,
             'is_parent_row' => true,

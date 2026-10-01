@@ -73,6 +73,27 @@ class AlibabaSalesController extends Controller
     }
 
     /**
+     * Same last-30-day lines as /alibaba/daily-sales, summed by catalog SKU.
+     *
+     * @return array<string, array{qty: int, sales: float}>
+     */
+    public function l30SkuTotals(): array
+    {
+        $start = Carbon::now(self::TZ)->subDays(30);
+        $totals = [];
+        foreach ($this->buildLineRows($this->ordersBetween($start, null)) as $line) {
+            $key = strtoupper(trim((string) ($line['sku'] ?? '')));
+            if ($key === '') {
+                continue;
+            }
+            $totals[$key]['qty'] = ($totals[$key]['qty'] ?? 0) + (int) ($line['quantity'] ?? 0);
+            $totals[$key]['sales'] = ($totals[$key]['sales'] ?? 0) + (float) ($line['sale_amount'] ?? 0);
+        }
+
+        return $totals;
+    }
+
+    /**
      * @return \Illuminate\Support\Collection<int, AlibabaOrderMetric>
      */
     private function ordersBetween(Carbon $start, ?Carbon $end)
