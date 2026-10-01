@@ -17238,6 +17238,13 @@ class ChannelMasterController extends Controller
 
             $isAll = ($channel === 'all');
 
+            if ($metric === 'today_sales') {
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->buildTodaySalesChart($channel, $days, $isAll, $request->input('badge_value')),
+                ]);
+            }
+
             // Map frontend metric names to summary_data keys
             $metricMap = [
                 'l60_sales' => 'l60_sales',
@@ -17987,6 +17994,40 @@ class ChannelMasterController extends Controller
             $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
             $row->summary_data = AmazonAdsAdvertisementMasterHistory::rewriteChannelMasterAmazonSpend($sd, $parent, $asOf);
         }
+    }
+
+    /**
+     * Today Sales chart: completed daily sales through yesterday, plus today's Eastern total.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildTodaySalesChart(string $channel, int $days, bool $isAll, mixed $badgeValue): array
+    {
+        $days = $days > 0 ? $days : 30;
+        $chart = $isAll
+            ? $this->fastAllMarketplaceYSalesChartFromSnapshots($days, null)
+            : \App\Support\Marketplace\ChartDatePad::fillGapsThroughYesterday(
+                $this->buildDailyYSalesChart($channel, $days, false),
+                $days
+            );
+
+        $label = Carbon::now('America/New_York')->startOfDay()->format('M d');
+        if ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue)) {
+            $todayValue = (float) $badgeValue;
+        } elseif ($isAll) {
+            $todayValue = (float) \App\Models\ChannelMasterCalculatedData::query()->sum('today_sales');
+        } else {
+            $todayValue = $this->getSavedTableMetric($channel, 'today_sales') ?? 0.0;
+        }
+        $todayValue = round($todayValue, 2);
+
+        if ($chart !== [] && ($chart[array_key_last($chart)]['date'] ?? '') === $label) {
+            $chart[array_key_last($chart)]['value'] = $todayValue;
+        } else {
+            $chart[] = ['date' => $label, 'value' => $todayValue];
+        }
+
+        return $chart;
     }
 
     /**
@@ -21273,6 +21314,7 @@ class ChannelMasterController extends Controller
 
         return match ($metric) {
             'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
+            'today_sales' => $row->today_sales !== null ? (float) $row->today_sales : null,
             'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
             'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
             'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,

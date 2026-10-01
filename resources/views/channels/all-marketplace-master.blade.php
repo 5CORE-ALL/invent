@@ -762,8 +762,8 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_amt" style="background-color: #0f766e; color: white; font-weight: bold; cursor:pointer;" title="Y NPFT $ = sum of (Y Sales × NPFT%) per channel. Yesterday net profit using each channel’s NPFT% on the Y Sales column.">
                             <span class="summary-trend-dot none" data-metric="y_npft_amt" title="Rolling history"></span>Y NPFT: <span id="total-y-npft">$0</span>
                         </span>
-                        <span class="badge fs-6 p-2" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now.">
-                            Today Sales: <span id="total-today-sales">$0</span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="today_sales" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now. Dot compares today with yesterday.">
+                            <span class="summary-trend-dot none" data-metric="today_sales" title="Today vs yesterday"></span>Today Sales: <span id="total-today-sales">$0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % is P-Sales vs Sales.">
                             <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
@@ -1520,7 +1520,23 @@
             if (!isFinite(p) || !isFinite(s) || s <= 0) return null;
             return ((p - s) / s) * 100;
         }
-        function pSalesVsL30Color(pSales, l30Sales) {
+            function todayVsYesterdayColor(today, yesterday) {
+                const t = parseNumber(today);
+                const y = parseNumber(yesterday);
+                if (!isFinite(t) || !isFinite(y)) return DEFAULT_DOT_GRAY;
+                if (Math.abs(t - y) < 0.5) return DEFAULT_DOT_GRAY;
+                return t > y ? '#28a745' : '#dc3545';
+            }
+            function todayVsYesterdayTitle(today, yesterday) {
+                const t = parseNumber(today);
+                const y = parseNumber(yesterday);
+                if (!isFinite(t) || !isFinite(y)) return 'Today vs yesterday — click for chart';
+                const diff = t - y;
+                if (Math.abs(diff) < 0.5) return 'Today in line with yesterday — click for chart';
+                const sign = diff > 0 ? '+' : '−';
+                return 'Today vs yesterday: ' + sign + '$' + Math.abs(Math.round(diff)).toLocaleString('en-US') + ' — click for chart';
+            }
+            function pSalesVsL30Color(pSales, l30Sales) {
             const p = parseNumber(pSales);
             const s = parseNumber(l30Sales);
             if (!isFinite(p) || !isFinite(s)) return DEFAULT_DOT_GRAY;
@@ -2028,7 +2044,7 @@
             var lastDotPairByKey = {};
             var invertedDotMetrics = ['acos', 'ads_pct'];
             var ySalesAllChartPrefetch = null;
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','p_nroi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','today_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','p_nroi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
 
             function getMetricDotColor(channelName, metricKey) {
@@ -2076,6 +2092,14 @@
                 document.querySelectorAll('i.metric-chart-icon, i.ad-chart-icon').forEach(function(el) {
                     var ch = el.getAttribute('data-channel');
                     var metric = el.getAttribute('data-metric');
+                    if (metric === 'today_sales' && el.hasAttribute('data-today')) {
+                        var todayVal = parseFloat(el.getAttribute('data-today'));
+                        var yVal = parseFloat(el.getAttribute('data-y-sales'));
+                        el.style.color = todayVsYesterdayColor(todayVal, yVal);
+                        el.style.display = '';
+                        el.title = todayVsYesterdayTitle(todayVal, yVal);
+                        return;
+                    }
                     if (metric === 'p_sales' && el.hasAttribute('data-p-sales')) {
                         var p = parseFloat(el.getAttribute('data-p-sales'));
                         var s = parseFloat(el.getAttribute('data-l30-sales'));
@@ -2919,11 +2943,24 @@
                         sorter: "number",
                         width: 128,
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
                             const value = parseNumber(cell.getValue() || 0);
+                            const ySales = parseNumber(row['Y Sales'] || 0);
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = todayVsYesterdayColor(value, ySales);
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="today_sales" data-today="${value}" data-y-sales="${ySales}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${todayVsYesterdayTitle(value, ySales)}"></i>`;
                             if (!value || value === 0) {
-                                return `<span style="color:#adb5bd;font-weight:600;" title="No sales yet today (Eastern)">$0</span>`;
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No sales yet today (Eastern)">$0</span>${chartIcon}`;
                             }
-                            return `<span style="font-weight:600;color:#fd7e14;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            return `<span style="font-weight:600;color:#fd7e14;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span');
+                                cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null;
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -5057,7 +5094,7 @@
             function colorSummaryBadgeDots(channelKeys) {
                 var inverted = invertedDotMetrics;
                 var sumMetrics = {
-                    l30_sales: 1, y_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, p_npft_amt: 1, l30_orders: 1, qty: 1, ad_spend: 1, pft: 1,
+                    l30_sales: 1, y_sales: 1, today_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, p_npft_amt: 1, l30_orders: 1, qty: 1, ad_spend: 1, pft: 1,
                     clicks: 1, ad_sales: 1, ad_sold: 1, total_views: 1, inv_at_lp: 1,
                     inv_at_sp: 1, inventory: 1, missing_l: 1, map: 1, nmap: 1,
                     reviews: 1, l60_sales: 1, l60_orders: 1
@@ -5309,7 +5346,9 @@
                     const $el = $('#total-today-sales');
                     $el.text('$' + val.toLocaleString('en-US'));
                     $el.closest('.badge').attr('title',
-                        'Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT through now. $' + val.toLocaleString('en-US'));
+                        'Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT through now. $' + val.toLocaleString('en-US') + '. Dot compares today with yesterday.');
+                    setBadgeExact($el, val);
+                    lastDotPairByKey['all_today_sales'] = [totalYSales, totalTodaySales];
                 })();
                 (function() {
                     const val = Math.round(totalPSales);
@@ -6327,6 +6366,7 @@
                 'l60_orders': 'L60 Orders',
                 'l30_sales': 'Sales',
                 'y_sales': 'Y Sales',
+                'today_sales': 'Today Sales',
                 'y_pft': 'Y PFT',
                 'y_npft_amt': 'Y NPFT',
                 'p_sales': 'P-Sales',
@@ -6800,7 +6840,7 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'p_npft_amt' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'today_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'p_npft_amt' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals
