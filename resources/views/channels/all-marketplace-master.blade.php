@@ -1371,26 +1371,26 @@
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <div id="adBreakdownChartContainer" style="height: 28vh; display: flex; align-items: stretch;">
+                    <div id="adBreakdownChartContainer" style="height: 34vh; min-height: 220px; display: flex; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
                             <canvas id="adBreakdownChart"></canvas>
                         </div>
-                        <div id="adChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                        <div id="adChartRefPanel" style="width: 118px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; overflow: auto;">
                             <div style="text-align: center;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
-                                <div id="adChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                                <div id="adChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545; white-space: nowrap;">-</div>
                             </div>
                             <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
-                                <div id="adChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                                <div id="adChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d; white-space: nowrap;">-</div>
                             </div>
                             <div style="text-align: center;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
-                                <div id="adChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                                <div id="adChartLowest" style="font-size: 13px; font-weight: 700; color: #198754; white-space: nowrap;">-</div>
                             </div>
-                            <div id="adChartGrowthWrap" style="display:none; text-align: center; border-top: 1px dashed #adb5bd; padding-top: 4px;">
+                            <div id="adChartGrowthWrap" style="display:none; flex-shrink: 0; text-align: center; border-top: 1px dashed #adb5bd; padding-top: 4px;">
                                 <div id="adChartGrowthLabel" style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">L30 %</div>
-                                <div id="adChartGrowth" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                                <div id="adChartGrowth" style="font-size: 13px; font-weight: 700; color: #6c757d; white-space: nowrap;">-</div>
                             </div>
                         </div>
                     </div>
@@ -6751,13 +6751,14 @@
             function paintSalesBadgeGrowth(pct) {
                 paintMetricBadgeGrowth('total-sales-growth', 'data-sales-title', 'Sales', pct, salesBadgeGrowthColor);
             }
-            var l30GrowthMetrics = { total_views: 'views', l30_sales: 'sales' };
+            var l30GrowthMetrics = { total_views: 'views', l30_sales: 'sales', sales: 'sales' };
             function paintChartViewsGrowth(values) {
                 var wrap = document.getElementById('adChartGrowthWrap');
                 var el = document.getElementById('adChartGrowth');
                 var label = document.getElementById('adChartGrowthLabel');
                 if (!wrap || !el) return;
-                var kind = l30GrowthMetrics[currentChartMetric];
+                var metricForGrowth = currentChartMetric || currentMetricKey;
+                var kind = l30GrowthMetrics[metricForGrowth];
                 if (!kind) {
                     wrap.style.display = 'none';
                     return;
