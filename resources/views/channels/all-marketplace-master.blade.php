@@ -6751,7 +6751,7 @@
             function paintSalesBadgeGrowth(pct) {
                 paintMetricBadgeGrowth('total-sales-growth', 'data-sales-title', 'Sales', pct, salesBadgeGrowthColor);
             }
-            var l30GrowthMetrics = { total_views: 'views', l30_sales: 'sales', sales: 'sales' };
+            var l30GrowthMetrics = { total_views: 'views', l30_sales: 'sales', sales: 'sales', today_sales: 'sales' };
             function paintChartViewsGrowth(values) {
                 var wrap = document.getElementById('adChartGrowthWrap');
                 var el = document.getElementById('adChartGrowth');
