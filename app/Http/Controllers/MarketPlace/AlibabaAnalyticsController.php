@@ -130,7 +130,6 @@ class AlibabaAnalyticsController extends Controller
             'data' => $rows->values(),
             'stats' => [
                 'total' => $childRows->count(),
-                'parents' => $rows->where(fn ($r) => ! empty($r['is_parent_summary']))->count(),
                 'active' => $active,
                 'bulk' => $bulk,
                 'manual' => $manual,
@@ -319,9 +318,6 @@ class AlibabaAnalyticsController extends Controller
     }
 
     /**
-     * Insert parent summary rows after each Product Master parent group.
-     * Parent INV / OV L30 / Dil match /bestbuy-pricing: Dil = OV L30 ÷ INV.
-     *
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
      */
@@ -396,7 +392,7 @@ class AlibabaAnalyticsController extends Controller
             $sumInv += (int) ($row['INV'] ?? 0);
             $sumOvL30 += (int) ($row['L30'] ?? 0);
             $sumSoh += (int) ($row['soh'] ?? 0);
-            $sumAbL30 += (int) ($row['al30'] ?? $row['AB L30'] ?? 0);
+            $sumAbL30 += (int) ($row['al30'] ?? 0);
             $sumSales += (float) ($row['sales'] ?? 0);
         }
 
@@ -405,7 +401,7 @@ class AlibabaAnalyticsController extends Controller
 
         return [
             'Parent' => $key,
-            'parent' => $key,
+            'parent' => $parentName,
             'sku' => $key,
             '(Child) sku' => $key,
             'image_path' => null,
