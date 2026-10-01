@@ -1003,10 +1003,12 @@ class FacebookAllAdsSheetController extends Controller
      * order they were saved; the first band whose three comparisons all
      * match wins.
      *
-     * Edge cases:
-     *   • Both spend and sales blank/zero → null (no row data, leave empty).
-     *   • Spend > 0 but sales == 0       → ACOS treated as 99999 so the
-     *                                       highest catch-all band wins.
+     * ACOS used here is the same figure the Acos column shows:
+     *   • Both spend and sales blank → no Sbgt.
+     *   • Spend is 0                 → 0%.
+     *   • Spend > 0 but sales is 0   → 100%.
+     * A row gets an Sbgt only when a band's three comparisons all match.
+     * Unmatched rows stay blank so a spend limit is not skipped.
      */
     private function acosBudgetRule($spend, $sales): ?int
     {
@@ -1024,12 +1026,19 @@ class FacebookAllAdsSheetController extends Controller
     {
         $s = $this->parseNumeric($spend);
         $r = $this->parseNumeric($sales);
-        if (($s === null || $s == 0.0) && ($r === null || $r == 0.0)) {
+        // Same edge cases as the Acos column. A campaign that spent with
+        // no sales is 100%, not an out-of-range sentinel, so a catch-all
+        // band whose ACOS To is 9999 can still match it.
+        if ($s === null && $r === null) {
             return ['sbgt' => null, 'color' => null, 'pause' => false];
         }
-        $acos = ($r === null || $r == 0.0)
-            ? 99999.0
-            : ($s / $r) * 100;
+        if ($s === null || $s == 0.0) {
+            $acos = 0.0;
+        } elseif ($r === null || $r == 0.0) {
+            $acos = 100.0;
+        } else {
+            $acos = ($s / $r) * 100;
+        }
         $spendAmt = $s === null ? 0.0 : (float) $s;
 
         $bands = $this->loadSbgtBands();
@@ -1052,12 +1061,8 @@ class FacebookAllAdsSheetController extends Controller
                 ];
             }
         }
-        $last = end($bands) ?: [];
-        return [
-            'sbgt'  => (int) ($last['sbgt'] ?? 1),
-            'color' => $this->acosSchemaColor($acos),
-            'pause' => false,
-        ];
+
+        return ['sbgt' => null, 'color' => null, 'pause' => false];
     }
 
     /**
