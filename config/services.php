@@ -699,6 +699,8 @@ return [
         'default_manufacturer' => env('NEWEGG_DEFAULT_MANUFACTURER', env('LISTING_MANAGER_DEFAULT_BRAND', '5 Core')),
         // Appended to the SKU as Manufacturer Part # when Newegg's catalog links the real MPN/UPC to a removed product.
         'alternate_mpn_suffix' => env('NEWEGG_ALTERNATE_MPN_SUFFIX', '-5C'),
+        // How long a content push (title/description/bullets/images feed) waits for Newegg's feed result.
+        'content_feed_wait_seconds' => (int) env('NEWEGG_CONTENT_FEED_WAIT_SECONDS', 30),
     ],
 
     /*
