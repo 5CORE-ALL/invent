@@ -216,40 +216,32 @@ class NeweggListingPublishService
         } catch (\Throwable) {
         }
 
-        $pushed = [];
-        $failed = [];
-        $steps = [
-            'title' => fn () => $title !== '' ? $this->api->updateTitle($sku, $title) : null,
-            'description' => fn () => $description !== '' ? $this->api->updateDescription($sku, $description) : null,
-            'bullets' => fn () => $bullets !== [] ? $this->api->updateBulletPoints($sku, implode("\n", $bullets)) : null,
-            'images' => fn () => $images !== [] ? $this->api->updateImages($sku, $images) : null,
-        ];
-        foreach ($steps as $label => $step) {
-            try {
-                $result = $step();
-            } catch (\Throwable $e) {
-                $result = ['success' => false, 'message' => $e->getMessage()];
-            }
-            if ($result === null) {
-                continue;
-            }
-            if (! empty($result['success'])) {
-                $pushed[] = $label;
-            } else {
-                $failed[] = $label.': '.trim((string) ($result['message'] ?? 'failed'));
-            }
+        $labels = array_keys(array_filter([
+            'title' => $title !== '',
+            'description' => $description !== '',
+            'bullets' => $bullets !== [],
+            'images' => $images !== [],
+        ]));
+        try {
+            $result = $this->api->updateItemContent($sku, [
+                'title' => $title,
+                'description' => $description,
+                'bullets' => $bullets,
+                'images' => $images,
+            ], (int) config('services.newegg.content_feed_wait_seconds', 30));
+        } catch (\Throwable $e) {
+            $result = ['success' => false, 'message' => $e->getMessage()];
         }
 
         $message = 'Connected existing Newegg listing '.$sku.($itemNumber !== '' ? ' ('.$itemNumber.')' : '')
             .($state !== 'unknown' ? ', currently '.$state.' on Newegg' : '').'.';
-        if ($pushed !== []) {
-            $message .= ' Updated '.implode(', ', $pushed).'.';
+        if (! empty($result['success'])) {
+            $message .= ' Sent '.implode(', ', $labels).': '.trim((string) ($result['message'] ?? ''));
+        } else {
+            $message .= ' Could not update '.implode(', ', $labels).': '.trim((string) ($result['message'] ?? 'failed'));
         }
-        if ($failed !== []) {
-            $message .= ' Could not update '.implode('; ', $failed).'.';
-        }
-        if ($state === 'inactive') {
-            $message .= ' Newegg re-activates the item once it accepts the new content (usually within a few hours).';
+        if ($state === 'inactive' && ! empty($result['success'])) {
+            $message .= ' Newegg re-activates the item once it accepts the images.';
         }
 
         return $message;

@@ -1559,8 +1559,9 @@ class NeweggApiService
             '/marketplace/contentmgmt/item/basicinfo',
             '/marketplace/contentmgmt/item/update',
         ];
+        $restFields = array_diff_key($itemFields, array_flip(['ImageMode', 'FeedWaitSeconds', 'Activate']));
         foreach ($this->neweggSkuCandidates($sku) as $candidate) {
-            $body = ['Item' => array_merge(['SellerPartNumber' => $candidate], $itemFields)];
+            $body = ['Item' => array_merge(['SellerPartNumber' => $candidate], $restFields)];
             foreach ($paths as $path) {
                 $res = $this->request('PUT', $path, [], $body);
                 if ($this->extractItemSuccess($res)) {
@@ -1608,85 +1609,169 @@ class NeweggApiService
      * @param  array<string, mixed>  $itemFields
      * @return array{success: bool, message: string}
      */
-    protected function submitItemBasicInfoFeed(string $sku, array $itemFields): array
+    protected function submitItemBasicInfoFeed(string $sku, array $itemFields, string $platform = 'b2c'): array
     {
         if (! $this->sellerId || ! $this->apiKey || ! $this->secretKey) {
             return ['success' => false, 'message' => 'Newegg API credentials are not configured.'];
         }
 
+        $xml = self::buildItemContentFeedXml($this->neweggSkuCandidates($sku)[0] ?? $sku, $itemFields);
+        if ($xml === '') {
+            return ['success' => false, 'message' => 'No Newegg title, description, bullet or image fields to submit.'];
+        }
+
+        $submitted = $this->submitXmlFeed($xml, 'ITEM_DATA', $platform);
+        if (empty($submitted['success'])) {
+            return $submitted;
+        }
+        $requestId = trim((string) ($submitted['request_id'] ?? ''));
+        $wait = isset($itemFields['FeedWaitSeconds'])
+            ? max(0, (int) $itemFields['FeedWaitSeconds'])
+            : (int) config('services.newegg.content_feed_wait_seconds', 30);
+
+        return $this->waitForContentFeed($sku, $requestId, $platform, $wait);
+    }
+
+    /**
+     * ITEM_DATA feed that updates an item already in the seller's list. Newegg processes title,
+     * description and bullets under "Update Item" and images under "Replace Image" /
+     * "Update/Append Image" (the image actions ignore every other field), so the two go in as
+     * separate <Item> rows of one feed. Returns '' when there is nothing to send.
+     *
+     * @param  array<string, mixed>  $itemFields
+     */
+    public static function buildItemContentFeedXml(string $sellerPartNumber, array $itemFields): string
+    {
+        $sellerPart = '<SellerPartNumber>'.htmlspecialchars($sellerPartNumber, ENT_XML1 | ENT_COMPAT, 'UTF-8').'</SellerPartNumber>';
+        $cdata = static fn (string $text): string => '<![CDATA['.str_replace(']]>', ']] >', $text).']]>';
+
+        $basic = '';
         $title = trim((string) ($itemFields['WebsiteShortTitle'] ?? $itemFields['Title'] ?? ''));
-        $sellerPart = htmlspecialchars($this->neweggSkuCandidates($sku)[0] ?? $sku, ENT_XML1 | ENT_COMPAT, 'UTF-8');
-        $safeTitle = str_replace(']]>', ']] >', $title);
-        $imageXml = $this->neweggItemImagesXml($itemFields);
-        $titleXml = $title !== ''
-            ? '<WebsiteShortTitle><![CDATA['.$safeTitle.']]></WebsiteShortTitle>'
-            : '';
-        if ($titleXml === '' && $imageXml === '') {
-            return ['success' => false, 'message' => 'No Newegg title or image fields to submit.'];
+        if ($title !== '') {
+            $basic .= '<WebsiteShortTitle>'.$cdata($title).'</WebsiteShortTitle>';
         }
-        $xml = '<?xml version="1.0" encoding="UTF-8"?>'
+        $description = self::descriptionHtmlForFeed((string) ($itemFields['ProductDescription'] ?? $itemFields['ItemDescription'] ?? ''));
+        if ($description !== '') {
+            $basic .= '<ProductDescription>'.$cdata($description).'</ProductDescription>';
+        }
+        $bulletsRaw = (string) ($itemFields['BulletDescription'] ?? '');
+        $bullets = array_values(array_filter(array_map('trim', preg_split('/\r?\n|\^\^/', $bulletsRaw) ?: [])));
+        if ($bullets !== []) {
+            $basic .= '<BulletDescription>'.$cdata(implode('^^', array_slice($bullets, 0, 5))).'</BulletDescription>';
+        }
+
+        $items = '';
+        if ($basic !== '') {
+            $items .= '<Item><Action>Update Item</Action><BasicInfo>'.$sellerPart.$basic.'</BasicInfo></Item>';
+        }
+        $imageXml = self::neweggItemImagesXml($itemFields);
+        if ($imageXml !== '') {
+            $append = strtolower(trim((string) ($itemFields['ImageMode'] ?? 'replace'))) === 'append';
+            $activate = ($itemFields['Activate'] ?? true) ? '<ActivationMark>True</ActivationMark>' : '';
+            $items .= '<Item><Action>'.($append ? 'Update/Append Image' : 'Replace Image').'</Action>'
+                .'<BasicInfo>'.$sellerPart.$activate.$imageXml.'</BasicInfo></Item>';
+        }
+        if ($items === '') {
+            return '';
+        }
+
+        return '<?xml version="1.0" encoding="UTF-8"?>'
             .'<NeweggEnvelope>'
-            .'<Header><DocumentVersion>2.0</DocumentVersion></Header>'
+            .'<Header><DocumentVersion>1.0</DocumentVersion></Header>'
             .'<MessageType>BatchItemCreation</MessageType>'
-            .'<Message><Itemfeed><Item>'
-            .'<Action>UpdateItem</Action>'
-            .'<BasicInfo>'
-            .'<SellerPartNumber>'.$sellerPart.'</SellerPartNumber>'
-            .$titleXml
-            .$imageXml
-            .'</BasicInfo>'
-            .'</Item></Itemfeed></Message>'
+            .'<Message><Itemfeed>'.$items.'</Itemfeed></Message>'
             .'</NeweggEnvelope>';
+    }
 
-        $url = $this->baseUrl.'/marketplace/datafeedmgmt/feeds/submitfeed?'
-            .http_build_query([
-                'sellerid' => $this->sellerId,
-                'requesttype' => 'ITEM_DATA',
-            ]);
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => $this->apiKey,
-                'SecretKey' => $this->secretKey,
-                'Content-Type' => 'application/xml',
-                'Accept' => 'application/json',
-            ])
-                ->timeout($this->timeout)
-                ->connectTimeout($this->connectTimeout)
-                ->withBody($xml, 'application/xml')
-                ->post($url);
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => 'Newegg feed submit failed: '.$e->getMessage()];
+    /**
+     * Poll a content feed for up to $maxSeconds so the caller learns whether Newegg accepted it
+     * instead of treating "submitted" as done.
+     *
+     * @return array{success: bool, message: string, request_id: string, pending?: bool}
+     */
+    protected function waitForContentFeed(string $sku, string $requestId, string $platform, int $maxSeconds): array
+    {
+        if ($requestId === '') {
+            return ['success' => true, 'message' => 'Newegg item feed submitted.', 'request_id' => ''];
+        }
+        $deadline = time() + $maxSeconds;
+        $status = ['success' => true, 'status' => '', 'message' => ''];
+        while (true) {
+            $status = $this->getFeedStatus($requestId, $platform);
+            if (str_contains(strtolower((string) ($status['message'] ?? '')), 'cloudflare')) {
+                break;
+            }
+            $report = $this->getFeedResult($requestId, $platform);
+            $state = strtoupper(trim((string) ($status['status'] ?? '')));
+            if (! self::neweggFeedStillOpen($state, $report)) {
+                $errors = $report['errors'] ?? [];
+                if ($errors !== [] && (int) ($report['success_count'] ?? 0) < 1) {
+                    return [
+                        'success' => false,
+                        'message' => 'Newegg rejected the update for '.$sku.' (RequestId '.$requestId.'): '.implode(' ', array_slice($errors, 0, 4)),
+                        'request_id' => $requestId,
+                    ];
+                }
+                if (empty($status['success']) && trim((string) ($status['message'] ?? '')) !== '') {
+                    return [
+                        'success' => false,
+                        'message' => 'Newegg feed '.$state.' for '.$sku.' (RequestId '.$requestId.'): '.$status['message'],
+                        'request_id' => $requestId,
+                    ];
+                }
+
+                return [
+                    'success' => true,
+                    'message' => 'Newegg accepted the update for '.$sku.' (RequestId '.$requestId.').'
+                        .($errors !== [] ? ' Notes: '.implode(' ', array_slice($errors, 0, 3)) : '')
+                        .' Changes appear on the listing after Newegg processes them (images usually within a few hours).',
+                    'request_id' => $requestId,
+                ];
+            }
+            if (time() + 5 > $deadline) {
+                break;
+            }
+            sleep(5);
         }
 
-        if ($response->successful() || in_array($response->status(), [200, 201, 202], true)) {
-            $json = $response->json();
-            if (! is_array($json)) {
-                return ['success' => false, 'message' => $this->extractItemError($this->normalize($response))];
-            }
-            if (! empty($json[0]['Message']) || data_get($json, 'NeweggAPIResponse.IsSuccess') === false) {
-                return ['success' => false, 'message' => $this->extractItemError($this->normalize($response))];
-            }
-            $requestId = (string) (data_get($json, 'NeweggAPIResponse.ResponseBody.ResponseList.0.RequestId')
-                ?? data_get($json, 'ResponseBody.ResponseList.0.RequestId')
-                ?? '');
+        return [
+            'success' => true,
+            'pending' => true,
+            'message' => 'Newegg item feed submitted for '.$sku.' (RequestId '.$requestId.'); Newegg is still processing it.'
+                .' If the change is not visible within an hour, check Seller Portal > Data Feeds > Feed Status for this RequestId.',
+            'request_id' => $requestId,
+        ];
+    }
 
-            return [
-                'success' => true,
-                'message' => $requestId !== ''
-                    ? 'Newegg item feed submitted (RequestId '.$requestId.').'
-                    : 'Newegg item feed submitted.',
-            ];
+    /**
+     * Newegg wants a direct JPG/JPEG/GIF link: drop cache-buster query strings (Shopify ?v=…) and
+     * skip formats it does not accept.
+     */
+    public static function neweggImageUrl(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '' || ! preg_match('#^https?://#i', $url)) {
+            return '';
+        }
+        $parts = parse_url($url);
+        $path = (string) ($parts['path'] ?? '');
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        if ($ext !== '' && ! in_array($ext, ['jpg', 'jpeg', 'gif'], true)) {
+            return '';
+        }
+        $clean = ($parts['scheme'] ?? 'https').'://'.($parts['host'] ?? '').(isset($parts['port']) ? ':'.$parts['port'] : '').$path;
+        if (! empty($parts['query']) && ! preg_match('/^v=\d+$/', (string) $parts['query'])) {
+            // Non-Shopify hosts may need their query string to serve the file.
+            $clean .= '?'.$parts['query'];
         }
 
-        $normalized = $this->normalize($response);
-
-        return ['success' => false, 'message' => $this->extractItemError($normalized)];
+        return $clean;
     }
 
     /**
      * @param  array<string, mixed>  $itemFields
      */
-    protected function neweggItemImagesXml(array $itemFields): string
+    protected static function neweggItemImagesXml(array $itemFields): string
     {
         $urls = [];
         foreach (['Image', 'PrimaryImage', 'ImageUrl'] as $key) {
@@ -1714,7 +1799,7 @@ class NeweggApiService
                 }
             }
         }
-        $urls = array_values(array_unique($urls));
+        $urls = array_values(array_unique(array_filter(array_map([self::class, 'neweggImageUrl'], $urls))));
         if ($urls === []) {
             return '';
         }
@@ -1735,6 +1820,37 @@ class NeweggApiService
             'WebsiteShortTitle' => $title,
             'Title' => $title,
         ]);
+    }
+
+    /**
+     * Push title, description, bullets and images to an existing item in one ITEM_DATA feed.
+     *
+     * @param  array{title?: string, description?: string, bullets?: list<string>|string, images?: list<string>}  $content
+     * @return array{success: bool, message: string, request_id?: string, pending?: bool}
+     */
+    public function updateItemContent(string $sku, array $content, int $waitSeconds = 45, string $platform = 'b2c'): array
+    {
+        $fields = ['FeedWaitSeconds' => $waitSeconds];
+        if (trim((string) ($content['title'] ?? '')) !== '') {
+            $fields['WebsiteShortTitle'] = trim((string) $content['title']);
+        }
+        if (trim((string) ($content['description'] ?? '')) !== '') {
+            $fields['ProductDescription'] = (string) $content['description'];
+        }
+        $bullets = $content['bullets'] ?? [];
+        $bullets = is_array($bullets) ? implode("\n", array_filter(array_map('trim', $bullets))) : trim((string) $bullets);
+        if ($bullets !== '') {
+            $fields['BulletDescription'] = $bullets;
+        }
+        $images = is_array($content['images'] ?? null) ? array_values(array_filter(array_map('trim', $content['images']))) : [];
+        if ($images !== []) {
+            $fields['ItemImages'] = $images;
+        }
+        if (count($fields) === 1) {
+            return ['success' => false, 'message' => 'No Newegg content fields to submit.'];
+        }
+
+        return $this->submitItemBasicInfoFeed($sku, $fields, $platform);
     }
 
     public function updateBulletPoints(string $identifier, string $bulletPoints): array
@@ -1778,6 +1894,7 @@ class NeweggApiService
                 'IsPrimary' => $i === 0 ? 'true' : 'false',
             ], $images, array_keys($images)),
             'AdditionalImages' => array_slice($images, 1),
+            'ImageMode' => strtolower(trim($mode)) === 'append' ? 'append' : 'replace',
         ]);
     }
 
