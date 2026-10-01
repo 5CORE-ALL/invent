@@ -300,9 +300,9 @@
             font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer;
         }
         #amz-ads-raw-wrap .amz-low-inv-btn:hover { background: #991b1b; }
-        .amz-sku-inv-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; }
         .amz-sku-inv-num { font-weight: 700; font-size: 13px; line-height: 1; }
         .amz-sku-inv-num.is-low { color: #dc2626; }
+        .amz-sku-img-cell { text-align: center; width: 64px; }
         .amz-sku-inv-img { width: 48px; height: 48px; object-fit: contain; border-radius: 4px; background: #f8fafc; }
         .amz-cpc-avg-cell {
             display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;
@@ -877,6 +877,7 @@
                         <table class="table table-sm table-striped mb-0 d-none" id="amazonAdsCampaignSkusTable">
                             <thead>
                                 <tr>
+                                    <th>Image</th>
                                     <th>Inv</th>
                                     <th>SKU</th>
                                     <th>ASIN</th>
@@ -3198,7 +3199,8 @@
                             ? '<img class="amz-sku-inv-img" src="' + amzEsc(img) + '" alt="' + amzEsc(s.sku || '') + '">'
                             : '<span class="amz-sku-inv-img d-inline-flex align-items-center justify-content-center text-muted">—</span>';
                         return '<tr>'
-                            + '<td><div class="amz-sku-inv-cell">' + invHtml + imgHtml + '</div></td>'
+                            + '<td class="amz-sku-img-cell">' + imgHtml + '</td>'
+                            + '<td class="text-center">' + invHtml + '</td>'
                             + '<td class="fw-semibold">' + amzEsc(s.sku || '—') + '</td>'
                             + '<td>' + amzEsc(s.asin || '—') + '</td>'
                             + '<td>' + amzFormatSkuReviews(s) + '</td>'
