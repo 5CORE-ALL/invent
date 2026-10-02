@@ -13,6 +13,7 @@ use App\Services\GofoExpressService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
+use App\Services\OrderFulfillment\ChannelBatchTrackingLookup;
 use App\Services\SheinApiService;
 use App\Services\ShipmentTrackingService;
 use App\Services\VeeqoApiService;
@@ -1766,11 +1767,16 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         ]);
     }
 
+    /** Share of the backfill budget the batch channel sweep may use. */
+    private const TRACKING_SWEEP_BUDGET_SHARE = 0.45;
+
     /**
      * Scheduler entry point: resolve orders in the default range that still have
      * no tracking number, so the page shows numbers without waiting on the browser.
+     * A batch sweep (synced marketplace rows + TikTok/Shein bulk detail APIs) runs
+     * first for every missing order; the per-order resolver handles the rest.
      *
-     * @return array{groups: int, found: int, missed: int, pending: int, seconds: float}
+     * @return array{groups: int, found: int, missed: int, pending: int, swept: int, seconds: float}
      */
     public function backfillTracking(int $maxGroups = 60, int $budgetSeconds = 540): array
     {
@@ -1780,6 +1786,23 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
         $rows = $this->attachSavedTracking($this->collectFulfillmentRows());
         $cooldown = now()->subMinutes(self::TRACKING_MISS_COOLDOWN_MINUTES);
+
+        $missing = [];
+        foreach ($rows as $row) {
+            if (trim((string) ($row['tracking'] ?? '')) !== '' || ! empty($row['manual'])) {
+                continue;
+            }
+            $slug = (string) ($row['mm_slug'] ?? '');
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            if ($slug === '' || $orderId === '') {
+                continue;
+            }
+            $missing[$slug.'|'.$orderId] ??= ['mm_slug' => $slug, 'order_id' => $orderId, 'rows' => []];
+            $missing[$slug.'|'.$orderId]['rows'][] = ['id' => (string) $row['id'], 'sku' => (string) ($row['sku'] ?? '')];
+        }
+        $sweepDeadline = min($deadline, $startedAt + max(20, $budgetSeconds * self::TRACKING_SWEEP_BUDGET_SHARE));
+        $sweptKeys = $this->sweepChannelTracking($missing, $sweepDeadline);
+
         $groups = [];
         foreach ($rows as $row) {
             if (trim((string) ($row['tracking'] ?? '')) !== '') {
@@ -1795,6 +1818,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 continue;
             }
             $key = $slug.'|'.$orderId;
+            if (isset($sweptKeys[$key])) {
+                continue;
+            }
             $groups[$key] ??= [
                 'mm_slug' => $slug,
                 'order_id' => $orderId,
@@ -1842,8 +1868,65 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'found' => $found,
             'missed' => $done - $found,
             'pending' => max(0, count($groups) - $done),
+            'swept' => count($sweptKeys),
             'seconds' => round(microtime(true) - $startedAt, 1),
         ];
+    }
+
+    /**
+     * Batch tracking for every order still missing a number. Hits are saved as
+     * source "channel" (order-fulfillment:push-tracking then fulfils Shopify).
+     *
+     * @param  array<string, array{mm_slug: string, order_id: string, rows: list<array{id: string, sku: string}>}>  $missing
+     * @return array<string, true> group keys that now have tracking
+     */
+    protected function sweepChannelTracking(array $missing, float $deadline): array
+    {
+        if ($missing === []) {
+            return [];
+        }
+        $bySlug = [];
+        foreach ($missing as $key => $group) {
+            $bySlug[$group['mm_slug']][$group['order_id']] = $key;
+        }
+
+        $lookup = app(ChannelBatchTrackingLookup::class);
+        $found = [];
+        foreach ($bySlug as $slug => $keysByOrder) {
+            if (microtime(true) >= $deadline) {
+                break;
+            }
+            try {
+                $hits = $lookup->lookup((string) $slug, array_map('strval', array_keys($keysByOrder)), $deadline);
+            } catch (\Throwable $e) {
+                report($e);
+
+                continue;
+            }
+            foreach ($hits as $orderId => $hit) {
+                $key = $keysByOrder[(string) $orderId] ?? null;
+                $number = trim((string) ($hit['tracking'] ?? ''));
+                if ($key === null || $number === '') {
+                    continue;
+                }
+                $group = $missing[$key];
+                foreach ($group['rows'] as $line) {
+                    $this->rememberTracking(
+                        (string) $line['id'],
+                        (string) $group['mm_slug'],
+                        (string) $group['order_id'],
+                        (string) ($line['sku'] ?? ''),
+                        $number,
+                        trim((string) ($hit['carrier'] ?? '')) ?: null,
+                        'channel',
+                        false
+                    );
+                }
+                $found[$key] = true;
+            }
+        }
+
+        return $found;
     }
 
     /**

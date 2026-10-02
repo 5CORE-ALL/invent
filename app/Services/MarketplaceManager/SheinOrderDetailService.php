@@ -4,7 +4,9 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\MarketplaceSyncSettings;
 use App\Models\SheinOrderMetric;
+use App\Services\OrderFulfillment\ChannelBatchTrackingLookup;
 use App\Services\SheinApiService;
+use App\Support\TrackingPayloadExtractor;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -702,6 +704,8 @@ class SheinOrderDetailService
         $country = trim((string) ($receive['country'] ?? $receive['countryCode'] ?? $order['ShipToCountryCode'] ?? ''));
         $company = trim((string) ($receive['company'] ?? $order['ShipToCompany'] ?? ''));
 
+        $shipped = TrackingPayloadExtractor::find($order, ChannelBatchTrackingLookup::sheinNonTrackingIds($order));
+
         $orderTotal = $order['productTotalPrice'] ?? $order['orderTotalInfo']['totalPrice'] ?? $order['OrderTotalAmount'] ?? null;
         $shippingAmount = $order['freight'] ?? $order['ShippingAmount'] ?? null;
 
@@ -748,8 +752,8 @@ class SheinOrderDetailService
                 'order_product_dto' => $products,
             ],
             'logistic_info_list' => [],
-            'logistics_type' => '',
-            'logistics_no' => null,
+            'logistics_type' => $shipped['carrier'] ?? '',
+            'logistics_no' => $shipped['tracking'] ?? null,
         ];
     }
 }

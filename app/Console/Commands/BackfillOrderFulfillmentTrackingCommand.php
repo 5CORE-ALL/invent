@@ -12,7 +12,7 @@ class BackfillOrderFulfillmentTrackingCommand extends Command
         {--groups=60 : Orders to resolve per run}
         {--budget=540 : Seconds this run may spend}';
 
-    protected $description = 'Fill Order Fulfillment tracking numbers (Veeqo → marketplace API → 4Seller) for orders that still have none, so the page shows them without waiting on the browser.';
+    protected $description = 'Fill Order Fulfillment tracking numbers (marketplace batch sweep, then Veeqo → marketplace API → 4Seller per order) for orders that still have none, so the page shows them without waiting on the browser.';
 
     public function handle(): int
     {
@@ -31,7 +31,8 @@ class BackfillOrderFulfillmentTrackingCommand extends Command
         }
 
         $this->info(sprintf(
-            'OK: %d order(s) checked, %d tracking number(s) found, %d still missing, %d waiting for a later run (%.1fs).',
+            'OK: %d found by the marketplace batch sweep; %d order(s) checked one by one, %d tracking number(s) found, %d still missing, %d waiting for a later run (%.1fs).',
+            $result['swept'] ?? 0,
             $result['groups'],
             $result['found'],
             $result['missed'],
