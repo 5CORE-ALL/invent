@@ -1858,6 +1858,7 @@ class OverallAmazonController extends Controller
         }
 
         $tasks = $this->dropPushPrcTasksAlreadyAtListingPrice($tasks);
+        $blocked = 0;
         if ($request->boolean('retry_failed')) {
             $retrySkus = [];
             foreach ($tasks as $task) {
@@ -1865,7 +1866,9 @@ class OverallAmazonController extends Controller
             }
             $store->forgetBlocked($retrySkus);
         } else {
+            $beforeBlock = count($tasks);
             $tasks = $store->dropBlockedTasks($tasks, $store->mergeFailedBlock($store->load()));
+            $blocked = $beforeBlock - count($tasks);
         }
         $store->compactDuplicateSkus();
         $store->markPendingAlreadyAtListingPrice();
@@ -1876,15 +1879,31 @@ class OverallAmazonController extends Controller
                 'success' => true,
                 'mode' => 'noop',
                 'worker_spawned' => false,
-                'message' => 'Nothing new to queue — Price already equals S PRC (blue triangle only).',
+                'message' => $blocked > 0
+                    ? 'Nothing new to queue — Amazon already rejected this S PRC. Push the row again to retry.'
+                    : 'Nothing new to queue — Price already equals S PRC (blue triangle only).',
             ]));
+        }
+
+        $ready = 0;
+        foreach ($tasks as $task) {
+            $sku = trim((string) ($task['sku'] ?? ''));
+            $std = is_numeric($task['std'] ?? null) ? (float) $task['std'] : 0.0;
+            if ($sku !== '' && $std > 0) {
+                $ready++;
+            }
         }
 
         $result = $store->createOrAppend($tasks);
         $state = $result['state'];
         $mode = $result['mode'];
         if ((int) ($state['total'] ?? 0) === 0) {
-            return response()->json(['success' => false, 'message' => 'No valid push items (need SKU + Std > 0)'], 400);
+            return response()->json([
+                'success' => false,
+                'message' => $ready > 0
+                    ? 'Nothing queued — this S PRC is blocked after a failed Amazon push. Push the row again to retry.'
+                    : 'No valid push items (need SKU + Std > 0)',
+            ], 400);
         }
 
         $this->amazonPushPrcReleaseUniqueJobLock();

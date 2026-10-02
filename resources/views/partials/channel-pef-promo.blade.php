@@ -9293,7 +9293,7 @@
                 chPromoToast('error', 'S PRC required — Push Prc sends S PRC to the live listing');
                 return;
             }
-            if (!confirm('Push S PRC $' + price.toFixed(2) + ' to eBay for ' + sku + '?')) {
+            if (!confirm('Push S PRC $' + price.toFixed(2) + ' to ' + ((chPromoCfg && chPromoCfg.label) || 'the listing') + ' for ' + sku + '?')) {
                 return;
             }
             chPromoQueueSpricePushes([{ row: row, price: price }]);
@@ -9320,7 +9320,7 @@
                 return;
             }
             if (!confirm(
-                'Push S PRC to eBay for ' + ready.length + ' selected SKU(s)?'
+                'Push S PRC to ' + ((chPromoCfg && chPromoCfg.label) || 'the listing') + ' for ' + ready.length + ' selected SKU(s)?'
                 + (skipped ? ('\n(' + skipped + ' skipped — no S PRC)') : '')
             )) return;
             chPromoQueueSpricePushes(ready);
@@ -10764,7 +10764,7 @@
                 hozAlign: 'center',
                 vertAlign: 'middle',
                 headerSort: true,
-                headerTooltip: 'Push Prc — send S PRC to the live eBay listing. Select SKUs and click this header (or a selected cell) to bulk push.',
+                headerTooltip: 'Push Prc — send S PRC to the live ' + ((chPromoCfg && chPromoCfg.label) || 'listing') + '. Select SKUs and click this header (or a selected cell) to bulk push.',
                 sorter: function(a, b, aRow, bRow) {
                     return chPromoPushSpriceAmount(aRow.getData()) - chPromoPushSpriceAmount(bRow.getData());
                 },
@@ -10803,22 +10803,27 @@
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
                             + dot + '<span style="color:#adb5bd;" title="S PRC required">—</span></span>';
                     }
+                    const place = (chPromoCfg && chPromoCfg.label) || 'listing';
+                    const live = (typeof chPromoLivePrice === 'function') ? chPromoLivePrice(d) : 0;
+                    const alreadyLive = live > 0 && typeof chPromoNearlyEqual === 'function' && chPromoNearlyEqual(price, live);
                     let icon = '<i class="fas fa-upload"></i>';
                     let color = '#FF9900';
-                    let tip = 'Push S PRC $' + price.toFixed(2) + ' to eBay listing';
+                    let tip = 'Push S PRC $' + price.toFixed(2) + ' to ' + place;
                     if (status === 'processing' || status === 'queued') {
                         icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
                         color = '#ffc107';
                         tip = 'Pushing S PRC…';
-                    } else if (status === 'error') {
+                    } else if (status === 'error' && !(CHANNEL_PROMO_CHANNEL === 'alibaba' && alreadyLive)) {
                         icon = '<i class="fa-solid fa-xmark"></i>';
                         color = '#dc3545';
                         tip = 'Last S PRC push failed — click to retry';
-                    } else if (status === 'pushed') {
+                    } else if (status === 'pushed' || (CHANNEL_PROMO_CHANNEL === 'alibaba' && alreadyLive)) {
                         icon = '<i class="fa-solid fa-check-double"></i>';
                         color = '#28a745';
                         const last = Number(d.PUSH_PRC_VALUE) || price;
-                        tip = 'Pushed S PRC $' + Number(last).toFixed(2) + ' — click to push again';
+                        tip = alreadyLive
+                            ? ('Listing price matches S PRC $' + price.toFixed(2) + ' — click to push again')
+                            : ('Pushed S PRC $' + Number(last).toFixed(2) + ' — click to push again');
                     }
                     return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
                         + dot

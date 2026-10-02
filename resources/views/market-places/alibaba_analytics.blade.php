@@ -430,7 +430,7 @@
         }
 
         function abClassifyColumn(field) {
-            if (/^(price|groi|gpft|profit|sales|sprice|sgpft|sgroi|sroi|snroi|sngpft|snpft|sprc_dil)$/i.test(field)) return 'price';
+            if (/^(price|groi|gpft|profit|sales|sprice|sgpft|sgroi|sroi|snroi|sngpft|snpft|sprc_dil|push_prc)$/i.test(field)) return 'price';
             if (/^(product_id|status)$/i.test(field)) return 'other';
             return 'basic';
         }
@@ -753,6 +753,15 @@
                                 return '<span style="font-weight:600;color:#6f42c1;" title="' + tip.replace(/"/g, '&quot;') + '">$' + meta.sprc.toFixed(2) + '</span>';
                             }
                         },
+                        (function () {
+                            if (typeof channelPromoPushPrcColumn !== 'function') return { title: 'Push Prc', field: 'push_prc', visible: false };
+                            const col = channelPromoPushPrcColumn();
+                            delete col.titleFormatter;
+                            delete col.headerClick;
+                            col.width = 96;
+                            col.headerTooltip = 'Push S PRC to the Alibaba listing. Upload = not on the listing yet. Green check = Price already matches S PRC.';
+                            return col;
+                        })(),
                         {
                             title: 'Price', field: 'price', hozAlign: 'center', width: 80, sorter: 'number',
                             headerTooltip: 'Alibaba API SKU price',
