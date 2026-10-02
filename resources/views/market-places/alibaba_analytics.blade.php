@@ -374,6 +374,16 @@
                             }
                         },
                         { title: 'SKU', field: 'sku', hozAlign: 'left', minWidth: 160, frozen: true, cssClass: 'fw-bold' },
+                        {
+                            title: 'Link', field: 'product_url', headerSort: false, hozAlign: 'center', width: 64,
+                            headerTooltip: 'Open the Alibaba product page',
+                            formatter: function (cell) {
+                                if (isAbParentRow(cell.getRow().getData())) return '';
+                                const url = cell.getValue();
+                                if (!url) return '<span style="color:#6c757d;">–</span>';
+                                return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">Link</a>';
+                            }
+                        },
                         { title: 'INV', field: 'INV', hozAlign: 'center', width: 55, sorter: 'number' },
                         { title: 'OV L30', field: 'L30', hozAlign: 'center', width: 60, sorter: 'number' },
                         {

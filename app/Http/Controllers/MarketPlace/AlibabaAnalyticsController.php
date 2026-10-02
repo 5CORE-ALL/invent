@@ -89,6 +89,7 @@ class AlibabaAnalyticsController extends Controller
                 'image_path' => $image,
                 'image' => $image,
                 'product_id' => $productId,
+                'product_url' => $this->productPageUrl($productId),
                 'status' => $row->status,
                 'sku_price' => $row->sku_price !== null ? (float) $row->sku_price : null,
                 'soh' => $row->soh !== null ? (int) $row->soh : null,
@@ -284,6 +285,16 @@ class AlibabaAnalyticsController extends Controller
         return $names;
     }
 
+    protected function productPageUrl(string $productId): ?string
+    {
+        $productId = trim($productId);
+        if ($productId === '' || preg_match('/^\d+$/', $productId) !== 1) {
+            return null;
+        }
+
+        return 'https://www.alibaba.com/product-detail/x_'.$productId.'.html';
+    }
+
     protected function skuWithPieceCount(string $sku, string $hint): string
     {
         $sku = trim($sku);
@@ -456,6 +467,7 @@ class AlibabaAnalyticsController extends Controller
             'image_path' => null,
             'image' => null,
             'product_id' => '',
+            'product_url' => null,
             'status' => '',
             'sku_price' => null,
             'soh' => $sumSoh,
