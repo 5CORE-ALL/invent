@@ -34,6 +34,9 @@ class NeweggApiService
     protected int $timeout;
     protected int $connectTimeout;
 
+    /** @var list<string> Sources tried by the last lookupItemSubcategoryId() call. */
+    protected array $lastSubcategorySources = [];
+
     public function __construct()
     {
         $this->sellerId       = config('services.newegg.seller_id');
@@ -1622,7 +1625,9 @@ class NeweggApiService
             return [
                 'success' => false,
                 'message' => 'Newegg content updates require the item SubCategoryID (the feed is rejected with "Subcategory is missing" without it). '
-                    .'Set NEWEGG_DEFAULT_SUBCATEGORY_ID to this SKU\'s Newegg subcategory, then push again.',
+                    .'Could not resolve it for '.$sku.'; tried: '
+                    .($this->lastSubcategorySources !== [] ? implode('; ', $this->lastSubcategorySources) : 'none')
+                    .'. Pick the Newegg category on this SKU\'s Listing Manager Newegg draft (Category tab), then push again.',
             ];
         }
         $xml = self::buildItemContentFeedXml($this->neweggSkuCandidates($sku)[0] ?? $sku, $itemFields);
@@ -1968,23 +1973,272 @@ class NeweggApiService
     protected function lookupItemSubcategoryId(string $sku, string $platform = 'b2c'): string
     {
         $sku = trim($sku);
-        $configured = trim((string) config('services.newegg.default_subcategory_id', ''));
+        $this->lastSubcategorySources = [];
         if ($sku === '') {
-            return $configured;
+            return $this->subcategoryFromConfig();
         }
 
-        $cacheKey = 'newegg.item.subcategory.v1.'.$platform.'.'.md5(strtoupper($sku));
+        Cache::forget('newegg.item.subcategory.v1.'.$platform.'.'.md5(strtoupper($sku)));
+        $cacheKey = $this->itemSubcategoryCacheKey($sku, $platform);
         $cached = Cache::get($cacheKey);
-        if (is_string($cached) && preg_match('/^\d+$/', $cached)) {
+        if (is_string($cached) && preg_match('/^\d+$/', $cached) && $cached !== '0') {
+            $this->lastSubcategorySources[] = 'cache (hit)';
+
             return $cached;
         }
 
-        $found = '';
+        $resolvers = [
+            'Listing Manager draft (this SKU)' => fn () => $this->subcategoryFromDrafts([$sku], $platform),
+            'Newegg Item Basic Info report (newegg_items)' => fn () => $this->subcategoryFromItemReport($sku, $platform),
+            'previous Newegg feed results' => fn () => $this->subcategoryFromFeedResults($sku, $platform),
+            'Newegg item inventory / lookup API' => fn () => $this->subcategoryFromItemApi($sku, $platform),
+            'Listing Manager drafts (same parent SKUs)' => fn () => $this->subcategoryFromSiblingDrafts($sku, $platform),
+        ];
+        foreach ($resolvers as $label => $resolver) {
+            try {
+                $found = (string) $resolver();
+            } catch (\Throwable $e) {
+                Log::warning('Newegg subcategory resolver failed', ['sku' => $sku, 'source' => $label, 'error' => $e->getMessage()]);
+                $found = '';
+            }
+            $this->lastSubcategorySources[] = $label.($found !== '' ? ' (found '.$found.')' : '');
+            if ($found !== '') {
+                Cache::put($cacheKey, $found, now()->addDays(30));
+
+                return $found;
+            }
+        }
+
+        return $this->subcategoryFromConfig();
+    }
+
+    private function itemSubcategoryCacheKey(string $sku, string $platform): string
+    {
+        return 'newegg.item.subcategory.v2.'.$platform.'.'.md5(strtoupper(trim($sku)));
+    }
+
+    private function subcategoryFromConfig(): string
+    {
+        $configured = trim((string) config('services.newegg.default_subcategory_id', ''));
+        $this->lastSubcategorySources[] = 'NEWEGG_DEFAULT_SUBCATEGORY_ID'.($configured !== '' ? ' (found '.$configured.')' : ' (not set)');
+
+        return preg_match('/^\d+$/', $configured) ? $configured : '';
+    }
+
+    private static function numericSubcategory(mixed $value): string
+    {
+        $value = trim((string) (is_scalar($value) ? $value : ''));
+
+        return ($value !== '' && $value !== '0' && preg_match('/^\d+$/', $value)) ? $value : '';
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function neweggChannelIds(string $platform): array
+    {
+        if (! class_exists(\App\Models\ChannelMaster::class)) {
+            return [];
+        }
+        $preferred = [];
+        $other = [];
+        foreach (\App\Models\ChannelMaster::query()->get(['id', 'channel']) as $channel) {
+            $key = \App\Support\Marketplace\ListingChannelCounts::normalize((string) $channel->channel);
+            if (! str_starts_with($key, 'newegg')) {
+                continue;
+            }
+            $isB2b = str_contains($key, 'b2b') || str_contains($key, 'business');
+            if (($platform === 'b2b') === $isB2b) {
+                $preferred[] = (int) $channel->id;
+            } else {
+                $other[] = (int) $channel->id;
+            }
+        }
+
+        return array_merge($preferred, $other);
+    }
+
+    /**
+     * Newegg drafts store the selected subcategory as primary_category_id / category_id.
+     *
+     * @param  list<string>  $skus
+     */
+    private function subcategoryFromDrafts(array $skus, string $platform): string
+    {
+        $channelIds = $this->neweggChannelIds($platform);
+        $skus = array_values(array_filter(array_map('trim', $skus)));
+        if ($channelIds === [] || $skus === []) {
+            return '';
+        }
+        $drafts = \App\Models\ListingManagerChannelDraft::query()
+            ->whereIn('channel_id', $channelIds)
+            ->whereIn('seller_sku', $skus)
+            ->orderByDesc('updated_at')
+            ->get(['channel_id', 'seller_sku', 'listing_details']);
+        $drafts = $drafts->sortBy(fn ($d) => array_search((int) $d->channel_id, $channelIds, true))->values();
+        foreach ($drafts as $draft) {
+            $details = is_array($draft->listing_details) ? $draft->listing_details : [];
+            foreach (['newegg_subcategory_id', 'subcategory_id', 'SubCategoryID', 'primary_category_id', 'category_id', 'category_uuid'] as $key) {
+                $id = self::numericSubcategory($details[$key] ?? null);
+                if ($id !== '') {
+                    return $id;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function subcategoryFromSiblingDrafts(string $sku, string $platform): string
+    {
+        $pm = \App\Models\ProductMaster::query()->where('sku', $sku)->first(['sku', 'parent']);
+        $parent = trim((string) ($pm->parent ?? ''));
+        if ($parent === '') {
+            return '';
+        }
+        $siblings = \App\Models\ProductMaster::query()
+            ->where('parent', $parent)
+            ->where('sku', '!=', $sku)
+            ->limit(100)
+            ->pluck('sku')
+            ->map(fn ($s) => trim((string) $s))
+            ->filter()
+            ->values()
+            ->all();
+        $siblings[] = $parent;
+
+        return $this->subcategoryFromDrafts($siblings, $platform);
+    }
+
+    /**
+     * Item Basic Info report rows (newegg:items --save) keep every report column in raw_json.
+     */
+    private function subcategoryFromItemReport(string $sku, string $platform): string
+    {
+        if (! class_exists(\App\Models\NeweggItem::class) || ! \Illuminate\Support\Facades\Schema::hasTable('newegg_items')) {
+            return '';
+        }
+        $rows = \App\Models\NeweggItem::query()
+            ->whereIn('seller_part_number', $this->neweggSkuCandidates($sku))
+            ->get(['raw_json']);
+        foreach ($rows as $row) {
+            $raw = $row->raw_json;
+            if (is_string($raw)) {
+                $raw = json_decode($raw, true);
+            }
+            if (! is_array($raw)) {
+                continue;
+            }
+            $id = $this->neweggSubcategoryIdFromPayload($raw);
+            if ($id !== '') {
+                return $id;
+            }
+            foreach ($raw as $key => $value) {
+                $norm = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $key) ?? '');
+                if (in_array($norm, ['subcategoryid', 'subcatid', 'itemsubcategoryid'], true)) {
+                    $id = self::numericSubcategory($value);
+                    if ($id !== '') {
+                        return $id;
+                    }
+                }
+            }
+            foreach ($raw as $key => $value) {
+                $norm = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $key) ?? '');
+                if (in_array($norm, ['subcategory', 'subcategoryname', 'itemsubcategory'], true) && is_string($value) && trim($value) !== '') {
+                    $id = self::numericSubcategory($value) ?: $this->subcategoryIdByName($value, $platform);
+                    if ($id !== '') {
+                        return $id;
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function subcategoryIdByName(string $name, string $platform): string
+    {
+        $needle = mb_strtolower(trim($name));
+        if ($needle === '') {
+            return '';
+        }
+        foreach ($this->listingCategoryLeaves($platform) as $leaf) {
+            if (mb_strtolower(trim((string) ($leaf['name'] ?? ''))) === $needle
+                || mb_strtolower(trim((string) ($leaf['path'] ?? ''))) === $needle) {
+                return (string) $leaf['id'];
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * ITEM_DATA processing reports echo AdditionalInfo.SubCategoryID per SellerPartNumber.
+     */
+    private function subcategoryFromFeedResults(string $sku, string $platform): string
+    {
+        $requestIds = [];
+        $pending = trim((string) Cache::get($this->pendingNeweggFeedCacheKey($platform, $sku), ''));
+        if ($pending !== '') {
+            $requestIds[] = $pending;
+        }
+        $channelIds = $this->neweggChannelIds($platform);
+        if ($channelIds !== []) {
+            $drafts = \App\Models\ListingManagerChannelDraft::query()
+                ->whereIn('channel_id', $channelIds)
+                ->where('seller_sku', $sku)
+                ->get(['listing_details']);
+            foreach ($drafts as $draft) {
+                $details = is_array($draft->listing_details) ? $draft->listing_details : [];
+                foreach (['newegg_feed_request_id', 'newegg_request_id', 'feed_request_id'] as $key) {
+                    $id = trim((string) ($details[$key] ?? ''));
+                    if ($id !== '' && ! in_array($id, $requestIds, true)) {
+                        $requestIds[] = $id;
+                    }
+                }
+            }
+        }
+
+        $wanted = array_map('strtoupper', $this->neweggSkuCandidates($sku));
+        foreach (array_slice($requestIds, 0, 3) as $requestId) {
+            $path = ($platform === 'b2b' ? '/marketplace/b2b' : '/marketplace').'/datafeedmgmt/feeds/result/'.$requestId;
+            $res = $this->request('GET', $path);
+            $payload = is_array($res['json'] ?? null) ? $res['json'] : [];
+            $raw = (string) ($res['raw'] ?? '');
+            if ($payload === [] && $raw !== '' && str_contains($raw, '<')) {
+                $xml = @simplexml_load_string($raw);
+                $payload = $xml !== false ? (json_decode((string) json_encode($xml), true) ?: []) : [];
+            }
+            $results = data_get($payload, 'NeweggEnvelope.Message.ProcessingReport.Result')
+                ?? data_get($payload, 'Message.ProcessingReport.Result')
+                ?? data_get($payload, 'ProcessingReport.Result')
+                ?? [];
+            if (is_array($results) && (isset($results['AdditionalInfo']) || isset($results['ErrorList']))) {
+                $results = [$results];
+            }
+            foreach (is_array($results) ? $results : [] as $row) {
+                $info = is_array($row['AdditionalInfo'] ?? null) ? $row['AdditionalInfo'] : [];
+                $part = strtoupper(trim((string) ($info['SellerPartNumber'] ?? '')));
+                $id = self::numericSubcategory($info['SubCategoryID'] ?? null);
+                if ($id !== '' && ($part === '' || in_array($part, $wanted, true))) {
+                    return $id;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function subcategoryFromItemApi(string $sku, string $platform): string
+    {
         foreach ($this->neweggSkuCandidates($sku) as $candidate) {
             $inv = $this->getItemInventory($candidate, 1);
+            if (! empty($inv['blocked_by_cloudflare'])) {
+                return '';
+            }
             $found = $this->neweggSubcategoryIdFromPayload($inv['json'] ?? null);
             if ($found !== '') {
-                break;
+                return $found;
             }
             $path = $platform === 'b2b'
                 ? '/marketplace/b2b/contentmgmt/item/lookup'
@@ -1995,18 +2249,11 @@ class NeweggApiService
             ]);
             $found = $this->neweggSubcategoryIdFromPayload($lookup['json'] ?? null);
             if ($found !== '') {
-                break;
+                return $found;
             }
         }
 
-        if ($found === '') {
-            $found = $configured;
-        }
-        if (preg_match('/^\d+$/', $found)) {
-            Cache::put($cacheKey, $found, now()->addHours(12));
-        }
-
-        return $found;
+        return '';
     }
 
     private function neweggSubcategoryIdFromPayload(mixed $payload): string
@@ -2161,6 +2408,10 @@ class NeweggApiService
         Cache::forget($this->pendingNeweggFeedCacheKey($platform, $sku));
         if (! empty($resolved['success'])) {
             Cache::forget($this->neweggCreateAttemptCacheKey($platform, $sku));
+            $createdSubcategory = self::numericSubcategory($fields['subcategory_id'] ?? null);
+            if ($createdSubcategory !== '') {
+                Cache::forever($this->itemSubcategoryCacheKey($sku, $platform), $createdSubcategory);
+            }
 
             return $resolved;
         }

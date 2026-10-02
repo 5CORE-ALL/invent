@@ -42,6 +42,47 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Listing Description body for a push: the caller's full HTML is kept intact (only active content
+     * eBay rejects is removed). Product images are appended only when the HTML has no <img> of its own.
+     */
+    public static function buildListingDescriptionHtml(string $description, string $identifier, ?string $skuHint = null): string
+    {
+        $description = trim($description);
+        if ($description === '') {
+            return '';
+        }
+
+        if (! preg_match('/<[^>]+>/', $description)) {
+            return DescriptionWithImagesFormatter::buildHtmlWithImages($description, $identifier, $skuHint, 'Product Image', 12)['html'];
+        }
+
+        $html = $description;
+        if (preg_match('/<body\b[^>]*>(.*)<\/body>/is', $html, $m)) {
+            $html = trim($m[1]);
+        }
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html) ?? $html;
+        $html = preg_replace('/<iframe\b[^>]*>.*?<\/iframe>/is', '', $html) ?? $html;
+        $html = trim($html);
+
+        if (! preg_match('/<img\b/i', $html)) {
+            $images = DescriptionWithImagesFormatter::resolveImageUrls($identifier, $skuHint, 12);
+            if ($images !== []) {
+                $parts = [];
+                foreach ($images as $idx => $url) {
+                    $parts[] = '<img src="'.htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'" alt="Product Image '.($idx + 1).'" style="max-width:40%; height:auto; display:inline-block; margin:5px;">';
+                }
+                $html .= '<div class="product-images" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">'.implode("\n", $parts).'</div>';
+            }
+        }
+
+        if (! preg_match('/\A<div\b[^>]*\bclass\s*=\s*["\'][^"\']*\bproduct-description\b/i', $html)) {
+            $html = '<div class="product-description">'.$html.'</div>';
+        }
+
+        return $html;
+    }
+
+    /**
      * Upload a single image to eBay's EPS (Electronic Photo Service) and return the hosted URL.
      * eBay requires images to be on their CDN before they can be used in listings.
      *
@@ -605,6 +646,7 @@ final class EbayTradingReviseItem
         array $getItemResponse,
         string $sku,
         array $imageUrls,
+        bool $replaceSet = false,
     ): array {
         $plan = self::variationPicturePlan($getItemResponse, $sku, $imageUrls);
         if (! ($plan['ok'] ?? false)) {
@@ -632,7 +674,15 @@ final class EbayTradingReviseItem
             return ['success' => false, 'message' => 'All image uploads to eBay EPS failed. '.implode(' | ', $epsErrors)];
         }
 
-        $sets = self::mergeVariationPictureSets($plan['sets'], $plan['variation_value'], $epsUrls);
+        $sets = $plan['sets'];
+        if ($replaceSet) {
+            foreach ($sets as $i => $set) {
+                if (strcasecmp(trim((string) ($set['value'] ?? '')), $plan['variation_value']) === 0) {
+                    $sets[$i]['urls'] = [];
+                }
+            }
+        }
+        $sets = self::mergeVariationPictureSets($sets, $plan['variation_value'], $epsUrls);
         $xmlBody = self::buildReviseVariationPicturesRequestXml(
             $authToken,
             $plan['item_id'],

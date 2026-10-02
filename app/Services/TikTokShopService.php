@@ -2070,6 +2070,13 @@ class TikTokShopService
                         if ($this->isMissingRequiredAttributeError($lastError) && count($bodies) <= 2) {
                             $attrs = $this->productAttributesForTitleUpdate($productId, $lastError);
                             if ($attrs !== []) {
+                                // Attributes being written (e.g. highlights) win over the refilled live set.
+                                $sending = is_array($fields['product_attributes'] ?? null) ? $fields['product_attributes'] : [];
+                                $sendingIds = array_map(static fn ($a) => trim((string) ($a['id'] ?? '')), $sending);
+                                $attrs = array_merge($sending, array_values(array_filter(
+                                    $attrs,
+                                    static fn ($a) => ! in_array(trim((string) ($a['id'] ?? '')), $sendingIds, true)
+                                )));
                                 $attrBody = array_merge($fields, ['product_attributes' => $attrs]);
                                 $bodies[] = $this->withPreservedSellerSkus($productId, $attrBody);
                                 if (($bodies[array_key_last($bodies)]['skus'] ?? []) !== []) {
@@ -2114,8 +2121,8 @@ class TikTokShopService
     }
 
     /**
-     * TikTok Shop has no bullet-point field, so bullets live as a marked list at the top of the
-     * description. Replace an earlier list (same marker) instead of stacking them.
+     * Marker on the bullet list that older pushes placed at the top of the description.
+     * Bullets now go to Product highlights; description updates strip this legacy list.
      */
     public const BULLETS_MARKER_CLASS = 'lm-bullets';
 
@@ -2189,24 +2196,153 @@ class TikTokShopService
         }
     }
 
+    /**
+     * Bullets go to the "Product highlights" section only; the description is never touched.
+     * TikTok exposes highlights either as a product-level field (when the product payload carries
+     * one) or as a category attribute named like "Product highlights" / "Key product features".
+     *
+     * @return array{success: bool, message: string}
+     */
     public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $bulletPoints) ?: [])));
+        $lines = array_values(array_filter(array_map(
+            static fn ($l) => trim((string) preg_replace('/^\s*(?:[-*•▪●]|\d+[.)])\s*/u', '', (string) $l)),
+            preg_split('/\r\n|\r|\n/', $bulletPoints) ?: []
+        ), static fn ($l) => $l !== ''));
         if ($lines === []) {
             return ['success' => false, 'message' => 'No bullet points to send.'];
+        }
+        if (! $this->accessToken) {
+            return ['success' => false, 'message' => 'TikTok Shop access token not available.'];
         }
         $productId = $this->findTikTokProductIdBySku(trim($identifier));
         if (! $productId) {
             return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id. Sync TikTok listings first.'];
         }
-        $merged = self::tiktokDescriptionHtml(self::mergeBulletsIntoDescription($this->liveProductDescription($productId), $lines));
 
-        $result = $this->updateTikTokProductFields($identifier, ['description' => $merged]);
+        $this->client->setAccessToken($this->accessToken);
+        $this->ensureShopCipher();
+        if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+            $this->client->setShopCipher($this->shopCipher);
+        }
+
+        $data = [];
+        try {
+            $data = $this->fetchProductData($productId);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok highlights: product detail fetch failed', ['product_id' => $productId, 'error' => $e->getMessage()]);
+        }
+        if ($data === []) {
+            return ['success' => false, 'message' => 'Could not load the TikTok product to find its Product highlights field; bullets not pushed (description unchanged).'];
+        }
+
+        $directField = $this->tiktokHighlightsFieldFromProduct($data);
+        if ($directField !== null) {
+            $value = is_string($data[$directField] ?? null) ? implode("\n", $lines) : $lines;
+            $result = $this->updateTikTokProductFields($identifier, [$directField => $value]);
+            if ($result['success'] ?? false) {
+                $result['message'] = 'TikTok Product highlights updated ('.count($lines).' bullets via "'.$directField.'"); description unchanged.';
+            }
+
+            return $result;
+        }
+
+        $categoryId = $this->tiktokCategoryIdFromProduct($data);
+        if ($categoryId === '') {
+            return ['success' => false, 'message' => 'TikTok product has no category id, so the Product highlights attribute could not be resolved; bullets not pushed (description unchanged).'];
+        }
+
+        $attr = $this->tiktokHighlightsCategoryAttribute($categoryId);
+        if ($attr === null) {
+            return ['success' => false, 'message' => 'TikTok category '.$categoryId.' does not expose a Product highlights field through the API; bullets not pushed (description unchanged). Add highlights in Seller Center.'];
+        }
+
+        $values = $attr['multiple']
+            ? array_map(static fn ($l) => ['name' => $l], $lines)
+            : [['name' => implode("\n", $lines)]];
+        $attrs = array_values(array_filter(
+            $this->sanitizeProductAttributes(is_array($data['product_attributes'] ?? null) ? $data['product_attributes'] : []),
+            static fn ($a) => trim((string) ($a['id'] ?? '')) !== $attr['id']
+        ));
+        $attrs[] = ['id' => $attr['id'], 'values' => $values];
+
+        $result = $this->updateTikTokProductFields($identifier, ['product_attributes' => $attrs]);
         if ($result['success'] ?? false) {
-            $result['message'] = 'TikTok Shop description updated with the bullet list (TikTok has no separate bullet field).';
+            $result['message'] = 'TikTok Product highlights updated ('.count($lines).' bullets, attribute "'.$attr['name'].'"); description unchanged.';
+        } else {
+            $result['message'] = 'TikTok Product highlights update failed: '.($result['message'] ?? 'unknown error').' (description unchanged).';
         }
 
         return $result;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function tiktokHighlightsFieldFromProduct(array $data): ?string
+    {
+        foreach (['product_highlights', 'highlights', 'key_product_features'] as $key) {
+            if (array_key_exists($key, $data) && (is_string($data[$key]) || is_array($data[$key]) || $data[$key] === null)) {
+                return $key;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Category attribute that backs "Product highlights", cached per category (positive and negative).
+     *
+     * @return array{id: string, name: string, multiple: bool}|null
+     */
+    protected function tiktokHighlightsCategoryAttribute(string $categoryId): ?array
+    {
+        $cacheKey = $this->cachePrefix.'_highlights_attr_'.$categoryId;
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return ($cached['id'] ?? '') !== '' ? $cached : null;
+        }
+
+        $list = null;
+        foreach (['202309', '202509'] as $version) {
+            try {
+                $data = $this->tiktokOpenApi('GET', "/product/{$version}/categories/{$categoryId}/attributes", ['locale' => 'en-US']);
+                $list = $data['attributes'] ?? $data['category_attributes'] ?? null;
+                if (is_array($list)) {
+                    break;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TikTok highlights: category attributes fetch failed', [
+                    'category_id' => $categoryId,
+                    'version' => $version,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+        if (! is_array($list)) {
+            return null;
+        }
+
+        $found = ['id' => '', 'name' => '', 'multiple' => false];
+        foreach ($list as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $name = trim((string) ($attr['name'] ?? $attr['attribute_name'] ?? ''));
+            $id = trim((string) ($attr['id'] ?? $attr['attribute_id'] ?? ''));
+            if ($id === '' || ! preg_match('/highlight|key\s*(product\s*)?features?|selling\s*points?/i', $name)) {
+                continue;
+            }
+            $found = [
+                'id' => $id,
+                'name' => $name,
+                'multiple' => (bool) ($attr['is_multiple_selection'] ?? $attr['is_multiple_selected'] ?? true),
+            ];
+            break;
+        }
+        Cache::put($cacheKey, $found, now()->addHours(24));
+
+        return $found['id'] !== '' ? $found : null;
     }
 
     public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
@@ -2215,11 +2351,8 @@ class TikTokShopService
         if (! $productId) {
             return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id. Sync TikTok listings first.'];
         }
-        // Keep a bullet list that an earlier push placed at the top of the live description.
-        $existingBullets = self::bulletsFromDescription($this->liveProductDescription($productId));
-        $body = $existingBullets !== [] && self::bulletsFromDescription($description) === []
-            ? self::mergeBulletsIntoDescription($description, $existingBullets)
-            : $description;
+        // Drop any legacy bullet list an earlier push put in the description; bullets now live in Product highlights.
+        $body = self::mergeBulletsIntoDescription($description, []);
 
         $result = $this->updateTikTokProductFields($identifier, ['description' => self::tiktokDescriptionHtml($body)]);
         if ($result['success'] ?? false) {

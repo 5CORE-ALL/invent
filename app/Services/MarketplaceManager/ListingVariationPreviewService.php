@@ -130,6 +130,9 @@ class ListingVariationPreviewService
         if (in_array($channel, ['topdawg', 'top-dawg', 'top_dawg'], true)) {
             return $this->topdawg->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName, $overrides);
         }
+        if (DirectStoreListingPublishService::channelFor($channel) !== null) {
+            return app(DirectStoreListingPublishService::class)->publishSkus($channel, $skus, $overrides);
+        }
         if ($this->isMiraklChannel($channel)) {
             $code = trim((string) ($categoryUuid ?? ''))
                 ?: trim((string) ($categoryName ?? ''))

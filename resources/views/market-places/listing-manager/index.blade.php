@@ -1386,7 +1386,7 @@
                     <input class="form-check-input" type="checkbox" id="lm-include-siblings">
                     <label class="form-check-label" for="lm-include-siblings">Also add sibling SKUs from the same parent</label>
                 </div>
-                <div class="lm-info-box mx-0">Every marketplace with a listing API is shown: Amazon, eBay 1/2/3, Temu 1/2, TikTok 1/2, Reverb, Faire, Wayfair, AliExpress, Shein, Newegg, TopDawg, Macy's, Best Buy, and Purchasing Power. Select the ones you want. Products go to <strong>Drafts</strong>. Then open Channel Listings and Save &amp; Publish.</div>
+                <div class="lm-info-box mx-0">Every marketplace with a listing API is shown: Amazon, eBay 1/2/3, Temu 1/2, TikTok 1/2, Reverb, Faire, Wayfair, AliExpress, Shein, Newegg, TopDawg, Macy's, Best Buy, Purchasing Power, PLS, Business 5 Core (B2B), and Doba (update only). Select the ones you want. Products go to <strong>Drafts</strong>. Then open Channel Listings and Save &amp; Publish.</div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-lc btn-lc-ghost" data-bs-dismiss="modal">Cancel</button>

@@ -224,7 +224,7 @@ class ShopifyPLSApiService
      *
      * @return array{product_id: int, variant_id: string}|null
      */
-    private function findProductBySkuViaGraphQL(string $domain, string $token, string $sku): ?array
+    public function findProductBySkuViaGraphQL(string $domain, string $token, string $sku): ?array
     {
         $graphqlUrl = "https://{$domain}/admin/api/2024-01/graphql.json";
 

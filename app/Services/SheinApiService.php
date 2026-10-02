@@ -111,7 +111,7 @@ class SheinApiService
 
         // /openapi-business-backend/product/update is rejected with openapi00007.
         // Edits go through publishOrEdit (edit_type=1) with the live SPU.
-        return $this->editListedProduct($sku, ['title' => $normalized]);
+        return $this->editListedProduct($sku, ['title' => $normalized] + $this->freshMasterContentForPush($sku));
     }
 
     /**
@@ -124,18 +124,159 @@ class SheinApiService
     private function editListedProduct(string $sku, array $changes): array
     {
         $sku = trim($sku);
-        $key = 'shein.lm.edit.'.md5(mb_strtolower($sku));
+        $hash = md5(mb_strtolower($sku));
+        $key = 'shein.lm.edit.'.$hash;
+        $batchKey = 'shein.lm.batch.'.$hash;
+
+        // Shein locks the SPU while an edit is in review, so a second publishOrEdit in the
+        // same push (bullets → description → images) is rejected. Parts already carried by
+        // the edit sent moments ago are reported as included instead of being re-sent.
+        $batch = Cache::get($batchKey);
+        $batchChanges = is_array($batch) && is_array($batch['changes'] ?? null) ? $batch['changes'] : [];
+        if ($batchChanges !== [] && self::sheinChangesCovered($changes, $batchChanges)) {
+            $spu = trim((string) ($batch['spu'] ?? ''));
+
+            return [
+                'success' => true,
+                'message' => 'Included in the same Shein edit'.($spu !== '' ? ' for SPU '.$spu : '')
+                    .' that was just sent in this push. Shein reviews edits before they show on the listing.',
+            ];
+        }
+
         $pending = Cache::get($key);
-        $merged = array_merge(is_array($pending) ? $pending : [], $changes);
+        $merged = array_merge($batchChanges, is_array($pending) ? $pending : [], $changes);
         Cache::put($key, $merged, now()->addMinutes(5));
 
         $result = app(\App\Services\MarketplaceManager\SheinListingPublishService::class)
             ->editListedSku($sku, $merged);
+        $success = (bool) ($result['success'] ?? false);
+        $message = (string) ($result['message'] ?? 'Shein update failed.');
 
-        return [
-            'success' => (bool) ($result['success'] ?? false),
-            'message' => (string) ($result['message'] ?? 'Shein update failed.'),
-        ];
+        if ($success) {
+            Cache::forget($key);
+            Cache::put($batchKey, [
+                'changes' => $merged,
+                'spu' => (string) ($result['spu_name'] ?? ''),
+            ], now()->addSeconds(self::SHEIN_PUSH_BATCH_TTL_SECONDS));
+        } elseif (self::sheinEditUnderReview($message)) {
+            Log::info('Shein edit skipped: SPU still under review', ['sku' => $sku, 'changes' => array_keys($changes), 'shein' => $message]);
+            $message = 'Shein is still reviewing a previous edit for this SPU; this change was not sent — push again after Shein finishes review.';
+        }
+
+        return ['success' => $success, 'message' => $message];
+    }
+
+    private const SHEIN_PUSH_BATCH_TTL_SECONDS = 120;
+
+    private static function sheinEditUnderReview(string $message): bool
+    {
+        $m = mb_strtolower($message);
+
+        return str_contains($m, 'under review')
+            || str_contains($m, 'cannot be published')
+            || str_contains($m, 'in review')
+            || str_contains($m, '审核');
+    }
+
+    /**
+     * True when every requested part is already present, with the same value, in the edit
+     * that was just submitted for this SKU.
+     *
+     * @param  array<string, mixed>  $changes
+     * @param  array<string, mixed>  $sent
+     */
+    private static function sheinChangesCovered(array $changes, array $sent): bool
+    {
+        if ($changes === []) {
+            return false;
+        }
+        foreach ($changes as $part => $value) {
+            if (! array_key_exists($part, $sent)) {
+                return false;
+            }
+            if (self::sheinComparableValue((string) $part, $value) !== self::sheinComparableValue((string) $part, $sent[$part])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static function sheinComparableValue(string $part, mixed $value): string
+    {
+        if (is_array($value)) {
+            $lines = array_values(array_filter(array_map(static fn ($v) => trim((string) $v), $value), static fn ($v) => $v !== ''));
+
+            return mb_strtolower(implode("\n", $lines));
+        }
+        $text = (string) $value;
+        if ($part === 'description') {
+            $text = \App\Services\MarketplaceManager\SheinListingPublishService::sheinDescriptionText($text);
+        }
+
+        return mb_strtolower(trim(preg_replace('/\s+/u', ' ', $text) ?? $text));
+    }
+
+    /**
+     * Bullets / description this push just saved to Product Master (Listing Manager saves
+     * before it pushes). Shein stores both in one text field and locks the SPU after an
+     * edit, so the first edit of a push carries them together.
+     *
+     * @return array{bullets?: list<string>, description?: string}
+     */
+    private function freshMasterContentForPush(string ...$skus): array
+    {
+        try {
+            if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'updated_at')) {
+                return [];
+            }
+            $descColumns = array_values(array_filter(
+                ['description_html', 'product_description', 'description_1500'],
+                static fn ($c) => Schema::hasColumn('product_master', $c)
+            ));
+            $bulletColumns = array_values(array_filter(
+                ['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'],
+                static fn ($c) => Schema::hasColumn('product_master', $c)
+            ));
+            if ($descColumns === [] && $bulletColumns === []) {
+                return [];
+            }
+            foreach (array_unique(array_filter(array_map('trim', $skus))) as $sku) {
+                $row = DB::table('product_master')
+                    ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])
+                    ->first(array_merge($descColumns, $bulletColumns, ['updated_at']));
+                if (! $row || empty($row->updated_at)) {
+                    continue;
+                }
+                if (Carbon::parse($row->updated_at)->lt(now()->subSeconds(self::SHEIN_PUSH_BATCH_TTL_SECONDS))) {
+                    return [];
+                }
+                $out = [];
+                foreach ($descColumns as $col) {
+                    $html = trim((string) ($row->{$col} ?? ''));
+                    if ($html !== '') {
+                        $out['description'] = $html;
+                        break;
+                    }
+                }
+                $bullets = [];
+                foreach ($bulletColumns as $col) {
+                    $line = trim((string) ($row->{$col} ?? ''));
+                    if ($line !== '') {
+                        $bullets[] = $line;
+                    }
+                }
+                if ($bullets !== []) {
+                    $out['bullets'] = $bullets;
+                }
+
+                return $out;
+            }
+        } catch (\Throwable $e) {
+            Log::debug('Shein fresh master content lookup failed', ['error' => $e->getMessage()]);
+        }
+
+        return [];
     }
 
     /**
@@ -1804,7 +1945,13 @@ class SheinApiService
             preg_split('/\r\n|\r|\n/', $bulletPoints) ?: []
         ), static fn ($line) => $line !== ''));
 
-        return $this->editListedProduct($sku, ['bullets' => $lines]);
+        $fresh = $this->freshMasterContentForPush($identifier, $sku);
+        $changes = ['bullets' => $lines];
+        if (isset($fresh['description'])) {
+            $changes['description'] = $fresh['description'];
+        }
+
+        return $this->editListedProduct($sku, $changes);
     }
 
     /**

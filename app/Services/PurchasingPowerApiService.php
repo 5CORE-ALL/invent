@@ -33,6 +33,84 @@ class PurchasingPowerApiService extends BestBuyApiService
     }
 
     /**
+     * Purchasing Power rejects every P41 row that does not carry its full attr-* set
+     * (error 1000 "The attribute 'attr-…' is required"), even for a bullets-only update.
+     *
+     * @return array<string, string>
+     */
+    protected function miraklMcmP41AttributeSemanticMap(): array
+    {
+        return [
+            'attr-cbe' => 'battery_flag',
+            'attr-suppliernumber' => 'sku',
+            'attr-webname' => 'title',
+            'attr-brand' => 'brand',
+            'attr-upc' => 'upc',
+            'attr-mfgnumber' => 'mpn',
+            'attr-longdescription' => 'description',
+        ];
+    }
+
+    /** Best Buy microphone fallbacks do not apply to the Purchasing Power catalog. */
+    protected function miraklMcmP41ExtraAttributeValues(string $sku, ?string $hierarchy, array $offer, mixed $priceRow): array
+    {
+        return [];
+    }
+
+    /**
+     * Purchasing Power live listing content is MCM P41 only (no Best Buy Connect catalog call).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateTitle(string $sku, string $title): array
+    {
+        $title = mb_substr(trim($title), 0, 150);
+        if (trim($sku) === '' || $title === '') {
+            return ['success' => false, 'message' => 'SKU and title are required.'];
+        }
+        if (! filter_var($this->miraklMcmConfig('mcm_title_push', true), FILTER_VALIDATE_BOOL)) {
+            return ['success' => false, 'message' => 'Purchasing Power MCM P41 title push is disabled.'];
+        }
+
+        return $this->pushTitleViaMiraklMcm(trim($sku), $title);
+    }
+
+    /**
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
+    {
+        $sku = trim($identifier);
+        $description = trim($description);
+        if ($sku === '' || $description === '') {
+            return ['success' => false, 'message' => 'SKU and description are required.'];
+        }
+
+        return $this->pushDescriptionViaMiraklMcm($this->resolveMiraklMcmLiveShopSku($sku), $description);
+    }
+
+    /**
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateListingImages(string $sku, array $imageUrls): array
+    {
+        $sku = $this->resolveMiraklMcmLiveShopSku(trim($sku));
+        $urls = array_slice(array_values(array_unique(array_filter(array_map('trim', $imageUrls), fn ($url) => $url !== ''))), 0, 11);
+        if ($sku === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU and at least one image URL are required.'];
+        }
+
+        $result = $this->pushImagesViaMiraklMcm($sku, $urls);
+        if ($result['success'] ?? false) {
+            $result['normalized_urls'] = $urls;
+        }
+
+        return $result;
+    }
+
+    /**
      * OR11 — list Purchasing Power MCM orders (paginated).
      *
      * @return array{orders: list<array<string, mixed>>, total_count: int}

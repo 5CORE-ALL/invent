@@ -1249,9 +1249,9 @@ class EbayThreeApiService
      * @param  list<string>  $imageUrls
      * @return array{success: bool, message: string}
      */
-    public function updateListingImages(string $identifier, array $imageUrls): array
+    public function updateListingImages(string $identifier, array $imageUrls, string $mode = 'replace'): array
     {
-        return $this->updateImages($identifier, $imageUrls);
+        return $this->updateImages($identifier, $imageUrls, $mode);
     }
 
     /**
@@ -1260,7 +1260,7 @@ class EbayThreeApiService
      * @param  list<string>  $images
      * @return array{success: bool, message: string}
      */
-    public function updateImages(string $identifier, array $images): array
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
     {
         if (trim($identifier) === '') {
             return ['success' => false, 'message' => 'SKU (or item_id) is required.'];
@@ -1291,6 +1291,19 @@ class EbayThreeApiService
 
         if (! $itemId) {
             return ['success' => false, 'message' => 'No eBay3 listing found for this SKU or item_id (check ebay_3_metrics or Inventory / GetSellerList).'];
+        }
+
+        $variationRes = $this->reviseVariationImagesIfChild((string) $itemId, $token, trim((string) ($row->sku ?? $identifier)), $images, $mode);
+        if ($variationRes !== null) {
+            if ($variationRes['success'] ?? false) {
+                $urls = array_values($variationRes['normalized_urls'] ?? $images);
+                if (! $this->saveImageUrlsToMetrics('ebay_3_metrics', $identifier, $row, $urls)) {
+                    $variationRes['message'] = ($variationRes['message'] ?? 'eBay3 variation images updated.').' Metrics save failed.';
+                }
+                $variationRes['normalized_urls'] = $urls;
+            }
+
+            return $variationRes;
         }
 
         $res = EbayTradingReviseItem::reviseItemImages(
@@ -1398,6 +1411,52 @@ class EbayThreeApiService
         }
 
         $res['normalized_urls'] = $urlsForMetrics;
+
+        return $res;
+    }
+
+    /**
+     * Multi-variation listing + SKU is a child variation: update only that variation's
+     * VariationSpecificPictureSet (sibling sets re-sent unchanged). Null = use item-level PictureDetails.
+     *
+     * @param  list<string>  $images
+     * @return array<string, mixed>|null
+     */
+    private function reviseVariationImagesIfChild(string $itemId, string $token, string $sku, array $images, string $mode): ?array
+    {
+        if ($sku === '') {
+            return null;
+        }
+
+        $getItem = $this->getItem($itemId);
+        if (! is_array($getItem) || ! EbayTradingReviseItem::listingHasVariations($getItem)) {
+            return null;
+        }
+        if (EbayTradingReviseItem::findVariationForSku($getItem, $sku) === null) {
+            return null;
+        }
+
+        $res = EbayTradingReviseItem::reviseVariationSpecificPictures(
+            $this->endpoint,
+            $this->compatLevel,
+            $this->devId,
+            $this->appId,
+            $this->certId,
+            $this->siteId,
+            $token,
+            $getItem,
+            $sku,
+            $images,
+            strtolower($mode) !== 'append'
+        );
+
+        Log::info('eBay3 variation image push', [
+            'sku' => $sku,
+            'item_id' => $itemId,
+            'variation_value' => $res['variation_value'] ?? null,
+            'success' => (bool) ($res['success'] ?? false),
+            'message' => $res['message'] ?? null,
+        ]);
 
         return $res;
     }
@@ -1592,15 +1651,11 @@ class EbayThreeApiService
             return ['success' => false, 'message' => 'No eBay3 listing found for this SKU or item_id.'];
         }
 
-        $html = '<div class="product-description">'.
-            DescriptionWithImagesFormatter::buildHtmlWithImages(
-                $description,
-                (string) $identifier,
-                isset($row->sku) ? (string) $row->sku : (string) $identifier,
-                'Product Image',
-                12
-            )['html'].
-            '</div>';
+        $html = EbayTradingReviseItem::buildListingDescriptionHtml(
+            $description,
+            (string) $identifier,
+            isset($row->sku) ? (string) $row->sku : (string) $identifier
+        );
 
         return EbayTradingReviseItem::reviseItemDescription(
             $this->endpoint,
