@@ -147,6 +147,14 @@ class EbayThreeApiService
         }
     }
 
+    /**
+     * Drop a rejected access token so the next call mints a new one from the refresh token.
+     */
+    public function forgetBearerToken(): void
+    {
+        $clientId = (string) config('services.ebay3.app_id', env('EBAY_3_APP_ID'));
+        Cache::forget('ebay3_bearer_token_'.md5($clientId));
+    }
 
     public function getItem($itemId)
     {

@@ -182,6 +182,21 @@ class Ebay2ApiService
     }
 
     /**
+     * Drop a rejected access token so the next call mints a new one from the refresh token.
+     */
+    public function forgetBearerToken(): void
+    {
+        $clientId = (string) config('services.ebay2.app_id');
+        $cacheKey = 'ebay2_bearer_token_'.md5($clientId);
+        Cache::forget($cacheKey);
+        self::$bearerMemo[$cacheKey] = null;
+        $path = $this->durableBearerTokenPath();
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+
+    /**
      * Survives artisan cache:clear / deploy so we do not mint a new eBay access token every wipe.
      *
      * @return array{token: string, expires_at: int}|null

@@ -118,6 +118,11 @@ let currentDilSbidCvr = Object.assign({}, DIL_SBID_CVR_DEFAULTS);
 var dilSbidEnabled = false;
 let dilSbidSaveTimer = null;
 
+function dilSbidRefreshGrid() {
+    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+    if (typeof ebayPaintForcePush === 'function') ebayPaintForcePush();
+}
+
 function campaignSbid(row) {
     return dilSbidOfRow(row);
 }
@@ -417,7 +422,7 @@ function dilSbidSave(thenApply) {
             const before = currentDilSbidSlabs.length;
             if (resp && Array.isArray(resp.slabs) && resp.slabs.length) currentDilSbidSlabs = resp.slabs;
             if (currentDilSbidSlabs.length !== before) renderDilSbidTable();
-            if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+            dilSbidRefreshGrid();
             dilSbidPaintCounts();
             if (thenApply) dilSbidApply();
             else if (statusEl) statusEl.textContent = 'Saved';
@@ -501,12 +506,12 @@ $.get(DIL_SBID_GET_URL, function(data) {
     dilSbidPaintCvr();
     dilSbidPaintMode();
     renderDilSbidTable();
-    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+    dilSbidRefreshGrid();
 });
 document.getElementById('dil-sbid-enabled').addEventListener('change', function() {
     dilSbidEnabled = !!this.checked;
     dilSbidPaintMode();
-    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+    dilSbidRefreshGrid();
     clearTimeout(dilSbidSaveTimer);
     dilSbidSave(false);
 });
@@ -516,7 +521,7 @@ document.getElementById('dilSbidRuleModal').addEventListener('show.bs.modal', fu
 document.getElementById('dil-sbid-tbody').addEventListener('input', function() {
     dilSbidRead();
     dilSbidPaintCounts();
-    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+    dilSbidRefreshGrid();
     dilSbidScheduleSave();
 });
 document.getElementById('dil-sbid-tbody').addEventListener('click', function(ev) {
@@ -526,7 +531,7 @@ document.getElementById('dil-sbid-tbody').addEventListener('click', function(ev)
     if (currentDilSbidSlabs.length <= 1) return;
     currentDilSbidSlabs.splice(parseInt(btn.getAttribute('data-idx'), 10), 1);
     renderDilSbidTable();
-    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+    dilSbidRefreshGrid();
     dilSbidScheduleSave();
 });
 document.getElementById('dil-sbid-add-btn').addEventListener('click', function() {
@@ -548,7 +553,7 @@ document.getElementById('dil-sbid-apply-btn').addEventListener('click', function
 document.getElementById('dil-sbid-cvr-table').addEventListener('input', function() {
     dilSbidCvrNow();
     dilSbidPaintCounts();
-    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+    dilSbidRefreshGrid();
     dilSbidScheduleSave();
 });
 @endif
