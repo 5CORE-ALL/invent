@@ -13,9 +13,11 @@ use App\Models\ShopifySku;
 use App\Models\JungleScoutProductData;
 use App\Models\LqsHistory;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonProductReview;
 use App\Models\LqsAmzHistory;
 use App\Models\LqsAmzAction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 
 class LqsMasterController extends Controller
@@ -33,6 +35,35 @@ class LqsMasterController extends Controller
     public function refreshJungleScoutData()
     {
         try {
+            $probe = Http::withOptions(['verify' => false, 'timeout' => 25])
+                ->withHeaders([
+                    'Authorization' => (string) config('services.junglescout.key_with_title'),
+                    'Content-Type' => 'application/vnd.api+json',
+                    'Accept' => 'application/vnd.junglescout.v1+json',
+                    'X-API-Type' => 'junglescout',
+                ])
+                ->post('https://developer.junglescout.com/api/product_database_query?marketplace=us&page[size]=1', [
+                    'data' => [
+                        'type' => 'product_database_query',
+                        'attributes' => [
+                            'include_keywords' => ['B0HDGCNXMK'],
+                        ],
+                    ],
+                ]);
+
+            if ($probe->status() === 401 || $probe->status() === 403) {
+                $detail = (string) ($probe->json('errors.0.detail') ?? '');
+                $quota = str_contains(strtolower($detail), 'overage') || str_contains(strtolower($detail), 'quota');
+                \Log::warning('JungleScout refresh blocked', ['status' => $probe->status(), 'detail' => $detail]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $quota
+                        ? 'Jungle Scout API quota is used up, so new LQS scores cannot be pulled. Rating and reviews still load from Amazon reviews already saved in the app.'
+                        : 'Jungle Scout refused the request ('.$probe->status().'). LQS was not refreshed.',
+                ], 429);
+            }
+
             $php     = PHP_BINARY;
             $artisan = base_path('artisan');
             $cmd     = escapeshellarg($php) . ' ' . escapeshellarg($artisan) . ' app:process-jungle-scout-sheet-data';
@@ -47,12 +78,46 @@ class LqsMasterController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Jungle Scout refresh started in the background. LQS data will update shortly.',
+                'message' => 'Jungle Scout refresh is running. Missing ASINs are pulled first. Reload this page in a few minutes for new LQS scores.',
             ]);
         } catch (\Exception $e) {
             \Log::error('JungleScout refresh dispatch error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Amazon ratings already collected into amazon_product_reviews.
+     * Keyed by uppercase ASIN and by uppercase SKU.
+     *
+     * @return array{0: array<string, AmazonProductReview>, 1: array<string, AmazonProductReview>}
+     */
+    private function amazonReviewIndexes(): array
+    {
+        $byAsin = [];
+        $bySku = [];
+        if (! Schema::hasTable('amazon_product_reviews')) {
+            return [$byAsin, $bySku];
+        }
+
+        $rows = AmazonProductReview::query()
+            ->where(function ($q) {
+                $q->where('channel', 'Amazon')->orWhereNull('channel')->orWhere('channel', '');
+            })
+            ->get(['sku', 'asin', 'product_rating', 'review_count']);
+
+        foreach ($rows as $row) {
+            $asin = strtoupper(trim((string) ($row->asin ?? '')));
+            if ($asin !== '') {
+                $byAsin[$asin] = $row;
+            }
+            $sku = strtoupper(str_replace("\u{00a0}", ' ', trim((string) ($row->sku ?? ''))));
+            if ($sku !== '') {
+                $bySku[$sku] = $row;
+            }
+        }
+
+        return [$byAsin, $bySku];
     }
 
     /**
@@ -609,6 +674,7 @@ class LqsMasterController extends Controller
      *   - AmazonDatasheet      → ASIN, price, units_ordered_l30, sessions_l30
      *   - ShopifySku           → inventory (inv), image_src
      *   - JungleScoutProductData → LQS, rating, reviews (matched by ASIN first, then SKU)
+     *   - AmazonProductReview → rating and review count when Jungle Scout has none
      */
     public function getLqsAmzData(Request $request)
     {
@@ -675,6 +741,8 @@ class LqsMasterController extends Controller
                 }
             }
 
+            [$reviewsByAsin, $reviewsBySku] = $this->amazonReviewIndexes();
+
             $rows = [];
             foreach ($productMastersBySku->keys() as $normalizedSku) {
                 $productMaster = $productMastersBySku->get($normalizedSku);
@@ -716,8 +784,14 @@ class LqsMasterController extends Controller
                 }
                 foreach ($jsBuckets as $bucket) {
                     foreach ($bucket as $jsRow) {
-                        if (is_array($jsRow->data)) {
-                            $jsEntries[] = $jsRow->data;
+                        if (! is_array($jsRow->data)) {
+                            continue;
+                        }
+                        $payload = array_is_list($jsRow->data) ? $jsRow->data : [$jsRow->data];
+                        foreach ($payload as $entry) {
+                            if (is_array($entry)) {
+                                $jsEntries[] = $entry;
+                            }
                         }
                     }
                 }
@@ -738,6 +812,21 @@ class LqsMasterController extends Controller
                             $lqs = (float) $entry['listing_quality_score'];
                             break;
                         }
+                    }
+                }
+
+                $savedReview = ($asin !== '' ? ($reviewsByAsin[$asin] ?? null) : null)
+                    ?? ($reviewsBySku[$normalizedSku] ?? null);
+                if ($savedReview) {
+                    $savedRating = is_numeric($savedReview->product_rating) ? (float) $savedReview->product_rating : 0.0;
+                    $savedCount = (int) ($savedReview->review_count ?? 0);
+                    if (($rating === null || $rating <= 0) && $savedRating > 0) {
+                        $rating = $savedRating;
+                        if ($reviews === null || ($reviews === 0 && $savedCount > 0)) {
+                            $reviews = $savedCount;
+                        }
+                    } elseif (($reviews === null || $reviews === 0) && $savedCount > 0) {
+                        $reviews = $savedCount;
                     }
                 }
 

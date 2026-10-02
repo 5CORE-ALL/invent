@@ -16104,6 +16104,10 @@ class ChannelMasterController extends Controller
             'facebookmarketplace', 'fbmarketplace' => 'fbmarketplace',
             'temu3', 'temuthree' => 'temu3',
             'temu2', 'temutwo' => 'temu2',
+            // Parentheses stay in the raw key ("Business 5 Core (B2B)") but the
+            // Active Channel page strips them, so dots and charts must share
+            // business5coreb2b or the row stays gray with an empty graph.
+            'business5core(b2b)', 'business5coreb2b', 'b5cb2b' => 'business5coreb2b',
             default => $key,
         };
     }
@@ -16135,6 +16139,16 @@ class ChannelMasterController extends Controller
             'temu3' => ['temu3', 'temuthree', 'Temu 3', 'Temu3'],
             'temu2' => ['temu2', 'temutwo', 'Temu 2', 'Temu2'],
             'temu' => ['temu', 'Temu'],
+            'business5coreb2b' => [
+                'business5coreb2b',
+                'business5core(b2b)',
+                'b5cb2b',
+                'Business 5 Core (B2B)',
+                'Business 5 Core B2B',
+                'shopifyb2b',
+                'Shopify B2B',
+                'ShopifyB2B',
+            ],
         ];
 
         return array_values(array_unique($aliases[$canonical] ?? [$canonical]));
@@ -17456,7 +17470,7 @@ class ChannelMasterController extends Controller
                 $canonical = $this->allMarketplaceSnapshotKey((string) $rows->first()->channel);
 
                 return $rows->first(function ($row) use ($canonical) {
-                    return strtolower(str_replace([' ', '-', '&', '/'], '', (string) $row->channel)) === $canonical;
+                    return $this->allMarketplaceSnapshotKey((string) $row->channel) === $canonical;
                 }) ?? $rows->first();
             })->values();
 
@@ -17464,6 +17478,20 @@ class ChannelMasterController extends Controller
                 $seeded = $this->seedTemuViewsChartIfEmpty($channel, $metric, $isAll, []);
                 if ($seeded !== null) {
                     return response()->json(['success' => true, 'data' => $seeded]);
+                }
+
+                $liveSales = $this->business5CoreB2bL30SalesChartIfNeeded(
+                    $channel,
+                    $metric,
+                    $days,
+                    $isAll,
+                    $useDailyWindow,
+                    $useL7Window,
+                    $request->input('badge_value'),
+                    []
+                );
+                if ($liveSales !== null) {
+                    return response()->json(['success' => true, 'data' => $liveSales]);
                 }
 
                 return response()->json(['success' => true, 'data' => []]);
@@ -17787,8 +17815,11 @@ class ChannelMasterController extends Controller
                         $value = round($totalVal, 2);
                     }
                 } else {
-                    // Single channel
-                    $row = $rows->first();
+                    // Single channel. Prefer this channel's own snapshot when a
+                    // legacy alias (Shopify B2B) is also in the same day.
+                    $row = $rows->first(function ($row) use ($channel) {
+                        return $this->allMarketplaceSnapshotKey((string) $row->channel) === $channel;
+                    }) ?? $rows->first();
                     $summaryData = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
                     if (! $useDailyWindow && ! $this->temuViewsSkipStabilize($channel)) {
                         $cvrM = ChannelMasterViewsGuard::metricsFromSummary($summaryData);
@@ -18041,6 +18072,20 @@ class ChannelMasterController extends Controller
             // Interpolation would replace same-value points (e.g. 88630, 88630) with smoothed
             // values and make the graph show incorrect numbers vs table.
 
+            $liveSales = $this->business5CoreB2bL30SalesChartIfNeeded(
+                $channel,
+                $metric,
+                $days,
+                $isAll,
+                $useDailyWindow,
+                $useL7Window,
+                $request->input('badge_value'),
+                $chartData
+            );
+            if ($liveSales !== null) {
+                $chartData = $liveSales;
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => $chartData,
@@ -18225,6 +18270,9 @@ class ChannelMasterController extends Controller
             $requestedWindow = intval($request->input('window', 0));
             // Serve the warmed cache only. Computing here blocks /all-marketplace-master.
             $all = $this->rememberChannelMetricDotTrends($requestedWindow, false);
+            if ($requestedWindow === 0) {
+                $this->overlayBusiness5CoreB2bLiveSalesDot($all);
+            }
             $filtered = $this->filterCachedDotTrends($all, $channelKeys);
 
             return response()->json(['success' => true, 'channels' => $filtered === [] ? (object) [] : $filtered]);
@@ -18478,13 +18526,20 @@ class ChannelMasterController extends Controller
                     $out[$channel][$metric] = [null, null];
                 }
 
-                $cmsRows = ($cmsByChannel->get($channel) ?? collect())
+                $cmsRows = $cmsByChannel->get($channel) ?? collect();
+                if ($this->isBusiness5CoreB2bSnapshotKey($channel)) {
+                    $legacy = $cmsByChannel->get('shopifyb2b') ?? collect();
+                    if ($legacy->isNotEmpty()) {
+                        $cmsRows = $cmsRows->concat($legacy);
+                    }
+                }
+                $cmsRows = $cmsRows
                     ->groupBy(function ($row) {
                         return $this->snapshotDateYmd($row);
                     })
                     ->map(function ($rows) use ($channel) {
                         return $rows->first(function ($row) use ($channel) {
-                            return strtolower(str_replace([' ', '-', '&', '/'], '', (string) $row->channel)) === $channel;
+                            return $this->allMarketplaceSnapshotKey((string) $row->channel) === $channel;
                         }) ?? $rows->first();
                     })
                     ->sortByDesc(function ($row) {
@@ -18551,6 +18606,7 @@ class ChannelMasterController extends Controller
                 $this->pinLiveDotTrendsFromCalculatedData($out);
                 $this->pinAllDotTrendsFromChannelPairs($out);
                 $this->alignYesterdayProfitDotsWithYSales($out);
+                $this->overlayBusiness5CoreB2bLiveSalesDot($out);
             }
 
             return $out;
@@ -21777,6 +21833,143 @@ class ChannelMasterController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Business 5 Core (B2B) Sales is live shopify_b2b_daily_data. Saved
+     * snapshots were stored under a different spelling, so the Active Channel
+     * graph came back empty and the dot stayed gray. Use a rolling L30 of
+     * those orders when the snapshot series has no sales.
+     *
+     * @return list<array{date: string, value: float}>|null
+     */
+    private function business5CoreB2bL30SalesChartIfNeeded(
+        string $channel,
+        string $metric,
+        int $days,
+        bool $isAll,
+        bool $useDailyWindow,
+        bool $useL7Window,
+        mixed $badgeValue,
+        array $chartData
+    ): ?array {
+        if ($isAll || $useDailyWindow || $useL7Window || $metric !== 'l30_sales') {
+            return null;
+        }
+        if (! $this->isBusiness5CoreB2bSnapshotKey($channel)) {
+            return null;
+        }
+        foreach ($chartData as $pt) {
+            if (abs((float) ($pt['value'] ?? 0)) > 0.01) {
+                return null;
+            }
+        }
+
+        $live = $this->buildBusiness5CoreB2bLiveRollingSalesChart($days > 0 ? $days : 32, 30);
+        $hasValue = false;
+        foreach ($live as $pt) {
+            if (abs((float) ($pt['value'] ?? 0)) > 0.01) {
+                $hasValue = true;
+                break;
+            }
+        }
+        if (! $hasValue) {
+            return null;
+        }
+
+        return $this->pinChartSeriesLastToTable($live, $channel, $metric, $badgeValue, false);
+    }
+
+    /**
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildBusiness5CoreB2bLiveRollingSalesChart(int $days, int $windowDays): array
+    {
+        if (! Schema::hasTable('shopify_b2b_daily_data')) {
+            return [];
+        }
+
+        $end = now('America/Los_Angeles')->subDay();
+        $chartStart = $end->copy()->subDays(max(1, $days) - 1);
+        $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
+        $byDay = [];
+        try {
+            $rows = DB::table('shopify_b2b_daily_data')
+                ->where('order_date', '>=', $dataStart->copy()->startOfDay())
+                ->where('order_date', '<=', $end->copy()->endOfDay())
+                ->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])
+                ->get(['order_date', 'total_amount']);
+        } catch (\Throwable $e) {
+            Log::warning('Business 5 Core B2B rolling sales chart failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        foreach ($rows as $row) {
+            try {
+                $ymd = Carbon::parse($row->order_date)->timezone('America/Los_Angeles')->toDateString();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            $byDay[$ymd] = ($byDay[$ymd] ?? 0) + (float) ($row->total_amount ?? 0);
+        }
+
+        $out = [];
+        $cursor = $chartStart->copy();
+        while ($cursor->lte($end)) {
+            $sum = 0.0;
+            for ($i = 0; $i < $windowDays; $i++) {
+                $sum += (float) ($byDay[$cursor->copy()->subDays($i)->toDateString()] ?? 0);
+            }
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round($sum, 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Paint the Sales dot from the same rolling orders as the graph when the
+     * saved pair is missing or flat.
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
+     */
+    private function overlayBusiness5CoreB2bLiveSalesDot(array &$out): void
+    {
+        $key = 'business5coreb2b';
+        if (! isset($out[$key]) && isset($out['business5core(b2b)']) && is_array($out['business5core(b2b)'])) {
+            $out[$key] = $out['business5core(b2b)'];
+        }
+        if (! isset($out[$key]) || ! is_array($out[$key])) {
+            $out[$key] = [];
+        }
+
+        $pair = $out[$key]['l30_sales'] ?? [null, null];
+        $v1 = isset($pair[0]) && is_numeric($pair[0]) ? (float) $pair[0] : null;
+        $v2 = isset($pair[1]) && is_numeric($pair[1]) ? (float) $pair[1] : null;
+        if ($v1 !== null && $v2 !== null && abs($v2 - $v1) > $this->metricDotEpsilon('l30_sales')) {
+            return;
+        }
+
+        $chart = $this->buildBusiness5CoreB2bLiveRollingSalesChart(8, 30);
+        if (count($chart) < 2) {
+            return;
+        }
+        $last = $chart[array_key_last($chart)];
+        $prev = $chart[array_key_last($chart) - 1];
+        $c1 = isset($prev['value']) ? (float) $prev['value'] : null;
+        $c2 = isset($last['value']) ? (float) $last['value'] : null;
+        if ($c1 === null || $c2 === null) {
+            return;
+        }
+        if (abs($c2 - $c1) <= $this->metricDotEpsilon('l30_sales')) {
+            return;
+        }
+
+        $out[$key]['l30_sales'] = [$c1, $c2];
     }
 
     private function buildTemu2LiveRollingSalesChart(int $days, int $windowDays): array
