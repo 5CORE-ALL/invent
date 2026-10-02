@@ -2756,7 +2756,7 @@
                     seen[gid] = true;
                     items.push({
                         goods_id: gid,
-                        roas: createRoasForGoods(gid, 8),
+                        roas: roasFromRow(row, 8),
                     });
                 });
                 return { items: items, usingSelection: usingSelection };
@@ -3431,8 +3431,15 @@
                 return null;
             }
 
+            function roasFromRow(row, fallbackRoas) {
+                const fromRule = Number(targetRoasValue(row || {}));
+                if (isFinite(fromRule) && fromRule >= 0.1 && fromRule <= 12) return fromRule;
+                const fb = Number(fallbackRoas);
+                return (isFinite(fb) && fb >= 0.1) ? fb : 4;
+            }
+
             function createRoasForGoods(goodsId, fallbackRoas) {
-                return (isFinite(Number(fallbackRoas)) && Number(fallbackRoas) >= 0.1) ? Number(fallbackRoas) : 4;
+                return roasFromRow(rowByGoodsId(goodsId), fallbackRoas);
             }
 
             function escapeAttr(s) {
