@@ -1535,7 +1535,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 1 ads on /all-marketplace-master — same Spend badge as /temu/ads (latest window, including paused).
+     * Temu 1 ads on /all-marketplace-master — same Seller Center store Spend as /temu/ads.
      *
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
@@ -2237,6 +2237,7 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
+            $rows = $this->overlayLiveTemu1AdsOnChannelRows($rows);
             $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
             $rows = $this->overlayLiveTemuViewsOnChannelRows($rows);
         } catch (\Throwable $e) {
@@ -8766,6 +8767,7 @@ class ChannelMasterController extends Controller
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
         $finalData = $this->overlayLiveAlibabaMetricsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveTemu1AdsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemu2AdsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemuViewsOnChannelRows($finalData);
 
