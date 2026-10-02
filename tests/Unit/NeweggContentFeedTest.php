@@ -43,6 +43,17 @@ class NeweggContentFeedTest extends TestCase
         $this->assertNotFalse(simplexml_load_string($xml));
     }
 
+    public function test_content_feed_includes_subcategory_summary(): void
+    {
+        $xml = NeweggApiService::buildItemContentFeedXml('ND 235X', [
+            'WebsiteShortTitle' => 'Dynamic Mic',
+            'SubCategoryID' => '336',
+        ]);
+
+        $this->assertStringContainsString('<SummaryInfo><SubCategoryID>336</SubCategoryID></SummaryInfo>', $xml);
+        $this->assertNotFalse(simplexml_load_string($xml));
+    }
+
     public function test_images_only_feed_has_single_replace_image_row(): void
     {
         $xml = NeweggApiService::buildItemContentFeedXml('SKU1', [

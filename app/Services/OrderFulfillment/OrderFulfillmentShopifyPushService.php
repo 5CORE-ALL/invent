@@ -86,7 +86,8 @@ class OrderFulfillmentShopifyPushService
                 'failed' => $stats['channel_failed']++,
                 default => $stats['channel_skipped']++,
             };
-            usleep(120000);
+            // The Shopify REST bucket is shared with every other sync job; pace to avoid 429 retry loops.
+            usleep(700000);
         }
 
         // Rows already on Shopify whose marketplace push did not succeed yet.
@@ -128,9 +129,9 @@ class OrderFulfillmentShopifyPushService
             });
         $this->applyTargetFilters($query, $onlySlug, $onlyOrderId);
 
+        // Newest orders first so today's / yesterday's orders are not stuck behind old retries.
         return $query->orderByRaw('shopify_push_checked_at IS NULL DESC')
-            ->orderBy('shopify_push_checked_at')
-            ->orderBy('id')
+            ->orderByDesc('id')
             ->limit(max(1, $limit))
             ->get();
     }
@@ -242,7 +243,9 @@ class OrderFulfillmentShopifyPushService
         $message = (string) ($result['message'] ?? '');
         if (! in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
             // Permanent mismatches (wrong order id / SKU on the Shopify copy) are not retried.
-            $permanent = in_array($action, ['order_id_mismatch', 'sku_mismatch', 'order_id_required', 'sku_required', 'not_linked'], true);
+            // "No open fulfillment orders" = already fulfilled / cancelled on Shopify; retrying cannot help.
+            $permanent = in_array($action, ['order_id_mismatch', 'sku_mismatch', 'order_id_required', 'sku_required', 'not_linked'], true)
+                || str_contains(strtolower($message), 'no open fulfillment orders');
             $this->markShopifyFailure($row, $action.': '.$message, $permanent, $dryRun);
             $out['message'] = $action.': '.$message;
 

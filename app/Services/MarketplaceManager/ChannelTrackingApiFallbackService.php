@@ -14,6 +14,8 @@ use App\Models\ReverbOrderMetric;
 use App\Models\SheinOrderMetric;
 use App\Models\TopDawgOrderMetric;
 use App\Models\WayfairDailyData;
+use App\Services\OrderFulfillment\ChannelBatchTrackingLookup;
+use App\Support\TrackingPayloadExtractor;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -412,6 +414,15 @@ class ChannelTrackingApiFallbackService
 
         $tn = $this->extractTrackingFromPayload($raw);
         $carrier = $this->extractCarrierFromPayload($raw);
+        // Shein order-detail keeps the waybill under its own field names (packageWaybillList …).
+        if ($tn === '' && $slug === 'shein') {
+            $order = is_array($raw['order'] ?? null) ? $raw['order'] : $raw;
+            $hit = TrackingPayloadExtractor::find($order, ChannelBatchTrackingLookup::sheinNonTrackingIds($order));
+            if ($hit !== null) {
+                $tn = $hit['tracking'];
+                $carrier = $carrier !== '' ? $carrier : $hit['carrier'];
+            }
+        }
 
         return [
             'tracking_number' => $tn,

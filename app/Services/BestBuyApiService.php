@@ -14,6 +14,7 @@ use App\Services\Support\Concerns\MiraklConnectProductUpsert;
 use App\Services\Support\Concerns\MiraklMcmBulletImport;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
+use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 
 class BestBuyApiService
@@ -180,6 +181,140 @@ class BestBuyApiService
     protected function miraklMcmHierarchyTable(): ?string
     {
         return 'bestbuy_price_data';
+    }
+
+    /**
+     * Best Buy Microphones (and similar) P41 imports fail while SENT until these attributes are on the row.
+     *
+     * @param  array<string, mixed>  $offer
+     * @return array<string, string>
+     */
+    protected function miraklMcmP41ExtraAttributeValues(string $sku, ?string $hierarchy, array $offer, mixed $priceRow): array
+    {
+        $fallbacks = $this->bestBuyP41AttributeFallbacks($sku);
+        $required = $this->resolveMiraklMcmPm11RequiredAttributeCodes($hierarchy);
+        if ($required === []) {
+            $label = strtolower(trim((string) $hierarchy));
+            if (! str_contains($label, 'microphone')) {
+                return [];
+            }
+
+            return $fallbacks;
+        }
+
+        $out = [];
+        foreach ($required as $code) {
+            $value = $this->bestBuyFallbackForAttributeCode($code, $fallbacks);
+            if ($value !== '') {
+                $out[$code] = $value;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function bestBuyP41AttributeFallbacks(string $sku): array
+    {
+        $defaults = (array) $this->miraklMcmConfig('mcm_p41_defaults', []);
+        $dims = $this->bestBuyPackageInches($sku);
+        $values = [
+            'modelNumber' => $sku,
+            'productLength' => $dims['length'],
+            'productWidth' => $dims['width'],
+            'productHeight' => $dims['height'],
+            'microphoneType' => 'Dynamic',
+            'wireless' => 'No',
+            'lightingType' => 'None',
+            'warrantyParts' => '1 Year',
+            'warrantyLabor' => '1 Year',
+            'unitOfMeasure' => 'IN',
+        ];
+        foreach ($values as $code => $value) {
+            $configured = trim((string) ($defaults[$code] ?? ''));
+            if ($configured !== '' && ! in_array($code, ['productLength', 'productWidth', 'productHeight', 'modelNumber'], true)) {
+                $values[$code] = $configured;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param  array<string, string>  $fallbacks
+     */
+    private function bestBuyFallbackForAttributeCode(string $code, array $fallbacks): string
+    {
+        if (isset($fallbacks[$code]) && trim($fallbacks[$code]) !== '') {
+            return trim($fallbacks[$code]);
+        }
+        $leaf = str_contains($code, '.') ? substr($code, (int) strrpos($code, '.') + 1) : $code;
+        if (isset($fallbacks[$leaf]) && trim($fallbacks[$leaf]) !== '') {
+            return trim($fallbacks[$leaf]);
+        }
+        $lower = strtolower($code);
+        if (str_ends_with($lower, 'dimensions.length')) {
+            return $fallbacks['productLength'];
+        }
+        if (str_ends_with($lower, 'dimensions.width')) {
+            return $fallbacks['productWidth'];
+        }
+        if (str_ends_with($lower, 'dimensions.height')) {
+            return $fallbacks['productHeight'];
+        }
+        if (str_contains($lower, 'unitofmeasur')) {
+            return $fallbacks['unitOfMeasure'];
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array{length: string, width: string, height: string}
+     */
+    private function bestBuyPackageInches(string $sku): array
+    {
+        $length = 8.0;
+        $width = 3.0;
+        $height = 3.0;
+        try {
+            if (Schema::hasTable('product_master')) {
+                $row = ProductMaster::query()->where('sku', $sku)->first();
+                if ($row) {
+                    $values = $row->toArray();
+                    foreach (['l', 'length'] as $key) {
+                        if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
+                            $length = (float) $values[$key];
+                            break;
+                        }
+                    }
+                    foreach (['w', 'width'] as $key) {
+                        if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
+                            $width = (float) $values[$key];
+                            break;
+                        }
+                    }
+                    foreach (['h', 'height'] as $key) {
+                        if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
+                            $height = (float) $values[$key];
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // keep handheld-mic defaults
+        }
+
+        $format = static fn (float $n): string => rtrim(rtrim(number_format($n, 2, '.', ''), '0'), '.');
+
+        return [
+            'length' => $format($length),
+            'width' => $format($width),
+            'height' => $format($height),
+        ];
     }
 
     /**
