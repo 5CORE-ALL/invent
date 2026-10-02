@@ -698,6 +698,7 @@ class EbayTwoController extends Controller
                         't.promote_with_ad',
                         't.campaign_id',
                         't.campaign_status',
+                        't.funding_strategy',
                         'x.ads_running'
                     )
                     ->get()
@@ -853,7 +854,9 @@ class EbayTwoController extends Controller
                 $row['S Link'] = '';
             }
 
-            // eBay2 Metrics
+            // eBay2 Metrics. S Bid uses these metric totals, same as /ebay2/campaign-ads.
+            $row['metric_ebay_l30'] = (float) ($ebayMetric->ebay_l30 ?? 0);
+            $row['metric_ebay_l60'] = (float) ($ebayMetric->ebay_l60 ?? 0);
             $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;
             $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
@@ -1177,7 +1180,9 @@ class EbayTwoController extends Controller
                 $row['B Link'] = '';
                 $row['S Link'] = '';
                 
-                // eBay2 Metrics from ebay_2_metrics
+                // eBay2 Metrics from ebay_2_metrics. S Bid uses these metric totals.
+                $row['metric_ebay_l30'] = (float) ($metric->ebay_l30 ?? 0);
+                $row['metric_ebay_l60'] = (float) ($metric->ebay_l60 ?? 0);
                 $row["eBay L30"] = $metric->ebay_l30 ?? 0;
                 $row["eBay L60"] = $metric->ebay_l60 ?? 0;
                 $row["eBay Price"] = $metric->ebay_price ?? 0;
@@ -1545,6 +1550,7 @@ class EbayTwoController extends Controller
                 'ca_promote_with_ad' => $picked['ca_promote_with_ad'] ?? null,
                 'ca_campaign_id' => $picked['ca_campaign_id'] ?? null,
                 'ca_campaign_status' => $picked['ca_campaign_status'] ?? null,
+                'ca_funding_strategy' => $picked['ca_funding_strategy'] ?? null,
                 'ca_ads_running' => $picked['ca_ads_running'] ?? 0,
                 'ca_has_ad_row' => $picked['ca_has_ad_row'] ?? 0,
             ];
@@ -1652,6 +1658,7 @@ class EbayTwoController extends Controller
                     'ca_promote_with_ad' => null,
                     'ca_campaign_id' => null,
                     'ca_campaign_status' => null,
+                    'ca_funding_strategy' => null,
                     'ca_ads_running' => 0,
                     'ca_has_ad_row' => 0,
                     'pmt_clicks_l30' => 0,
@@ -1712,7 +1719,7 @@ class EbayTwoController extends Controller
     }
 
     /**
-     * @return array{ca_bid_percentage: mixed, ca_suggested_bid: mixed, ca_promote_with_ad: mixed, ca_campaign_id: mixed, ca_campaign_status: mixed, ca_ads_running: int, ca_has_ad_row: int}
+     * @return array{ca_bid_percentage: mixed, ca_suggested_bid: mixed, ca_promote_with_ad: mixed, ca_campaign_id: mixed, ca_campaign_status: mixed, ca_funding_strategy: mixed, ca_ads_running: int, ca_has_ad_row: int}
      */
     private function ebay2CampaignAdsFields(?object $caRow): array
     {
@@ -1723,6 +1730,7 @@ class EbayTwoController extends Controller
                 'ca_promote_with_ad' => null,
                 'ca_campaign_id' => null,
                 'ca_campaign_status' => null,
+                'ca_funding_strategy' => null,
                 'ca_ads_running' => 0,
                 'ca_has_ad_row' => 0,
             ];
@@ -1734,6 +1742,7 @@ class EbayTwoController extends Controller
             'ca_promote_with_ad' => $caRow->promote_with_ad ?? $caRow->ca_promote_with_ad ?? null,
             'ca_campaign_id' => $caRow->campaign_id ?? $caRow->ca_campaign_id ?? null,
             'ca_campaign_status' => $caRow->campaign_status ?? $caRow->ca_campaign_status ?? null,
+            'ca_funding_strategy' => $caRow->funding_strategy ?? $caRow->ca_funding_strategy ?? null,
             'ca_ads_running' => (int) ($caRow->ads_running ?? $caRow->ca_ads_running ?? 0),
             'ca_has_ad_row' => 1,
         ];

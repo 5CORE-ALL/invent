@@ -639,6 +639,14 @@
             max-width: 100%;
         }
 
+        .eca-sync-cell { display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+        .eca-sync-dot {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+        }
+        .eca-sync-dot.is-green { background: #16a34a; }
+        .eca-sync-dot.is-yellow { background: #f59e0b; }
+        .eca-sync-dot.is-red { background: #dc2626; }
         .eca-push-alert {
             display: inline-flex;
             align-items: center;
@@ -2460,16 +2468,25 @@
             return res;
         }
 
-        /** Same alert as /ebay/campaign-ads: shown when C Bid does not match S Bid. */
-        function ebayTabBidAlertText(row) {
+        /** Green when C Bid matches S Bid, yellow when it is still waiting. Null outside that rule. */
+        function ebayTabBidSync(row) {
             const res = ebayTabSbidResult(row);
-            if (!res) return '';
+            if (!res) return null;
             const live = parseFloat(row.ca_bid_percentage);
             const liveOk = isFinite(live) && live > 0;
-            if (liveOk && Math.abs(ebayTabRound2(live) - ebayTabRound2(res.bid)) < 0.009) return '';
             const want = Number(res.bid).toFixed(1);
             const liveText = liveOk ? live.toFixed(1) + '%' : 'empty';
-            return 'S Bid: Pending — S Bid ' + want + '% does not match C Bid ' + liveText;
+            if (liveOk && Math.abs(ebayTabRound2(live) - ebayTabRound2(res.bid)) < 0.009) {
+                return { color: 'green', tip: 'Updated — C Bid matches S Bid ' + want + '%' };
+            }
+            return { color: 'yellow', tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText };
+        }
+
+        /** Same alert as /ebay/campaign-ads: shown when C Bid does not match S Bid. */
+        function ebayTabBidAlertText(row) {
+            const sync = ebayTabBidSync(row);
+            if (!sync || sync.color === 'green') return '';
+            return 'S Bid: ' + sync.tip;
         }
 
         // Play / Pause parent navigation (same as product-master)
@@ -5176,12 +5193,19 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,
-                        headerTooltip: "Red if C BID > Ads% badge, otherwise green.",
+                        headerTooltip: "Live eBay bid, shown just before Alert. Green = C Bid matches S Bid. Yellow = still waiting to push.",
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
                             const v = parseFloat(cell.getValue());
-                            if (isNaN(v)) return '<span class="text-muted">—</span>';
-                            const color = v > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
-                            return `<span style="color:${color}; font-weight:600;">${Math.round(v)}%</span>`;
+                            let valueHtml = '<span class="text-muted">—</span>';
+                            if (!isNaN(v)) {
+                                const color = v > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
+                                valueHtml = '<span style="color:' + color + '; font-weight:600;">' + Math.round(v) + '%</span>';
+                            }
+                            const sync = ebayTabBidSync(row);
+                            if (!sync) return valueHtml;
+                            const safe = (typeof escapeHtmlAttr === 'function') ? escapeHtmlAttr(sync.tip) : sync.tip;
+                            return '<span class="eca-sync-cell"><span class="eca-sync-dot is-' + sync.color + '" title="' + safe + '"></span>' + valueHtml + '</span>';
                         }
                     },
                     {
@@ -6363,6 +6387,10 @@
                                 if (!def.field || isEbay1RemovedRuleColumn(def.field, def.title)) return;
                                 if (def.field === 'eBay Stock') {
                                     col.hide();
+                                    return;
+                                }
+                                if (def.field === 'ca_bid_percentage' || def.field === '_bid_alert') {
+                                    col.show();
                                     return;
                                 }
                                 if (savedVisibility.hasOwnProperty(def.field)) {
