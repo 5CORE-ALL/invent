@@ -2225,11 +2225,15 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(18)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\FetchMarketplaceShopifyTrackingJob(2000, true, true))
-            ->everyThirtyMinutes()
+        // Auto-fulfill open Shopify copies (all marketplaces except Doba) from Veeqo/GOFO/SOF tracking.
+        // Own process with a time budget so every run finishes, and the shared
+        // mm-tracking queue worker stays free for the per-channel tracking jobs.
+        $schedule->command('marketplace:fetch-shopify-tracking --limit=1200 --budget=720 --no-progress --push-channels')
+            ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('marketplace-fetch-shopify-tracking')
-            ->withoutOverlapping(40)
+            ->withoutOverlapping(30)
+            ->runInBackground()
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncAmazonAddressJob(true, 40))

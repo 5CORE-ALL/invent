@@ -46,7 +46,8 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
     public function handle(VeeqoShopifyFulfillmentService $sync): void
     {
         try {
-            $result = $sync->syncPendingUnfulfilled($this->limit, $this->fresh, $this->all);
+            // Below the database queue's retry_after (2100s) so the job is never re-released mid-run.
+            $result = $sync->withTimeBudget(1500)->syncPendingUnfulfilled($this->limit, $this->fresh, $this->all);
             \App\Services\MarketplaceManager\MarketplaceChannelFulfillmentHub::dispatchAllTrackingJobs(40);
             Log::info('FetchMarketplaceShopifyTrackingJob: completed', $result);
         } catch (\Throwable $e) {

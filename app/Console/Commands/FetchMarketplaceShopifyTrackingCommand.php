@@ -2,9 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Services\MarketplaceManager\MarketplaceChannelFulfillmentHub;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\Console\Helper\ProgressBar;
 
 class FetchMarketplaceShopifyTrackingCommand extends Command
@@ -16,7 +18,10 @@ class FetchMarketplaceShopifyTrackingCommand extends Command
                             {--amazon= : Fulfill one Shopify copy by Amazon order id}
                             {--name= : Shopify order number, e.g. 331615}
                             {--ids= : Comma-separated marketplace order ids to fulfill now}
-                            {--marketplace=bestbuy : Channel slug for --ids}';
+                            {--marketplace=bestbuy : Channel slug for --ids}
+                            {--budget=0 : Stop picking new orders after this many seconds (0 = no limit)}
+                            {--no-progress : Plain summary output (cron logs)}
+                            {--push-channels : Afterwards queue tracking pushes to every marketplace}';
 
     protected $description = 'Fetch Veeqo / GOFO tracking onto unfulfilled Shopify copies for every marketplace.';
 
@@ -65,6 +70,44 @@ class FetchMarketplaceShopifyTrackingCommand extends Command
         $limit = max(1, (int) $this->option('limit'));
         $fresh = (bool) $this->option('fresh');
         $all = (bool) $this->option('all');
+        $budget = max(0, (int) $this->option('budget'));
+
+        // Scheduled sweeps (15-min, half-hourly, daily) must not hit the same
+        // Shopify store in parallel and race on the same orders.
+        $lock = Cache::lock('mm:shopify-fulfill-sweep', $budget > 0 ? $budget + 600 : 7200);
+        if (! $lock->get()) {
+            $this->info('Another Shopify fulfill sweep is still running — skipping this run.');
+
+            return self::SUCCESS;
+        }
+
+        try {
+            return $this->runSweep($sync, $limit, $fresh, $all, $budget);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    protected function runSweep(VeeqoShopifyFulfillmentService $sync, int $limit, bool $fresh, bool $all, int $budget): int
+    {
+        $sync->withTimeBudget($budget > 0 ? $budget : null);
+        $started = microtime(true);
+
+        if ($this->option('no-progress')) {
+            $result = $sync->syncPendingUnfulfilled($limit, $fresh, $all);
+            $sync->withTimeBudget(null);
+            $this->pushChannelsIfRequested();
+            $this->info(($result['message'] ?? 'Done.').' ('.(int) round(microtime(true) - $started).'s)');
+            $reasons = is_array($result['skip_reasons'] ?? null) ? $result['skip_reasons'] : [];
+            if ($reasons !== []) {
+                arsort($reasons);
+                $this->line('Skip reasons: '.json_encode($reasons));
+            }
+            Log::info('marketplace:fetch-shopify-tracking completed', $result + ['seconds' => (int) round(microtime(true) - $started)]);
+
+            return self::SUCCESS;
+        }
+
         $this->info('Checking every marketplace: Veeqo and GOFO (4Seller) labels → Shopify fulfill.');
         $this->info('Tracking is attached only after the full marketplace order id and SKU match the Shopify copy.');
         if ($fresh) {
@@ -149,6 +192,8 @@ class FetchMarketplaceShopifyTrackingCommand extends Command
 
         $result = $sync->syncPendingUnfulfilled($limit, $fresh, $all);
         $sync->setProgressReporter(null);
+        $sync->withTimeBudget(null);
+        $this->pushChannelsIfRequested();
         $bar->finish();
         $this->newLine(2);
         $this->info($result['message'] ?? 'Done.');
@@ -177,5 +222,17 @@ class FetchMarketplaceShopifyTrackingCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    protected function pushChannelsIfRequested(): void
+    {
+        if (! $this->option('push-channels')) {
+            return;
+        }
+        try {
+            MarketplaceChannelFulfillmentHub::dispatchAllTrackingJobs(40);
+        } catch (\Throwable $e) {
+            Log::warning('marketplace:fetch-shopify-tracking channel push dispatch failed', ['error' => $e->getMessage()]);
+        }
     }
 }

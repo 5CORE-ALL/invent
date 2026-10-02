@@ -76,12 +76,31 @@ class VeeqoShopifyFulfillmentService
     /** @var array<string, bool> marketplace slug → auto-fulfill allowed (per instance) */
     protected array $autoFulfillAllowed = [];
 
+    /** microtime() after which sweeps stop picking new orders (null = no budget). */
+    protected ?float $sweepDeadline = null;
+
     public function __construct(
         protected VeeqoApiService $veeqo,
         protected GofoExpressService $gofo,
         protected FourSellerApiService $fourSeller,
         protected ShopifyStoreSelector $stores,
     ) {}
+
+    /**
+     * Stop sweeps cleanly after $seconds so a run always finishes (and the next
+     * one starts) instead of being killed by the queue/scheduler mid-way.
+     */
+    public function withTimeBudget(?int $seconds): static
+    {
+        $this->sweepDeadline = ($seconds !== null && $seconds > 0) ? microtime(true) + $seconds : null;
+
+        return $this;
+    }
+
+    protected function sweepOutOfTime(): bool
+    {
+        return $this->sweepDeadline !== null && microtime(true) >= $this->sweepDeadline;
+    }
 
     /**
      * @param  (callable(array<string, mixed>): void)|null  $reporter
@@ -1084,20 +1103,25 @@ class VeeqoShopifyFulfillmentService
             'failed' => 0,
         ]);
 
-        $localSweep = $this->syncLocalTrackedLinkedOrders(min(800, max(150, (int) ceil($limit * 0.55))));
-        $checked += (int) ($localSweep['checked'] ?? 0);
-        $fulfilled += (int) ($localSweep['fulfilled'] ?? 0);
-        $skipped += (int) ($localSweep['skipped'] ?? 0);
-        $failed += (int) ($localSweep['failed'] ?? 0);
-        $shopifyScanLimit = max(20, $limit - $checked);
-
-        $shopifyScan = $this->syncUnfulfilledShopifyCopies($shopifyScanLimit, $fresh, $all);
+        // Open Shopify copies first: that is the list staff look at, and the scan
+        // already uses SOF / marketplace-row tracking. The linked-order sweeps only
+        // get whatever time is left, so they can no longer starve it.
+        $shopifyScan = $this->syncUnfulfilledShopifyCopies($limit, $fresh, $all);
         $checked += (int) ($shopifyScan['checked'] ?? 0);
         $fulfilled += (int) ($shopifyScan['fulfilled'] ?? 0);
         $skipped += (int) ($shopifyScan['skipped'] ?? 0);
         $failed += (int) ($shopifyScan['failed'] ?? 0);
 
-        $remaining = max(0, $limit - $checked);
+        $localSweep = ['checked' => 0, 'fulfilled' => 0, 'skipped' => 0, 'failed' => 0];
+        if (! $this->sweepOutOfTime()) {
+            $localSweep = $this->syncLocalTrackedLinkedOrders(min(800, max(150, $limit - $checked)));
+        }
+        $checked += (int) ($localSweep['checked'] ?? 0);
+        $fulfilled += (int) ($localSweep['fulfilled'] ?? 0);
+        $skipped += (int) ($localSweep['skipped'] ?? 0);
+        $failed += (int) ($localSweep['failed'] ?? 0);
+
+        $remaining = $this->sweepOutOfTime() ? 0 : max(0, $limit - $checked);
         $queues = [];
         if ($remaining > 0 && $marketplaces !== []) {
             $perMarket = max(3, (int) ceil($remaining / count($marketplaces)));
@@ -1113,10 +1137,10 @@ class VeeqoShopifyFulfillmentService
         }
 
         $progress = true;
-        while ($checked < $limit && $progress && $queues !== []) {
+        while ($checked < $limit && $progress && $queues !== [] && ! $this->sweepOutOfTime()) {
             $progress = false;
             foreach (array_keys($queues) as $slug) {
-                if ($checked >= $limit) {
+                if ($checked >= $limit || $this->sweepOutOfTime()) {
                     break;
                 }
                 if (($queues[$slug] ?? []) === []) {
@@ -1278,7 +1302,7 @@ class VeeqoShopifyFulfillmentService
             }
             $rows = $query->orderByDesc('id')->limit(max(80, $perMarket * 6))->get();
             foreach ($rows as $row) {
-                if ($checked >= $limit) {
+                if ($checked >= $limit || $this->sweepOutOfTime()) {
                     break 2;
                 }
                 $shopifyId = (string) ($row->shopify_order_id ?? '');
@@ -1333,7 +1357,7 @@ class VeeqoShopifyFulfillmentService
         $failed = 0;
 
         foreach ($this->uniqueShopifyConfigs() as $config) {
-            if ($checked >= $limit) {
+            if ($checked >= $limit || $this->sweepOutOfTime()) {
                 break;
             }
             $storeUrl = trim((string) ($config['store_url'] ?? ''));
@@ -1353,7 +1377,7 @@ class VeeqoShopifyFulfillmentService
                 ? $this->interleaveNewestAndOldest($listed, $remaining * 3)
                 : $listed;
             foreach ($orders as $order) {
-                if ($checked >= $limit) {
+                if ($checked >= $limit || $this->sweepOutOfTime()) {
                     break;
                 }
                 $shopifyId = (string) ($order['id'] ?? '');
@@ -2279,7 +2303,10 @@ class VeeqoShopifyFulfillmentService
         $maxPages = max(1, (int) ($range['max_pages'] ?? 80));
         $createdMin = (string) ($range['created_at_min'] ?? now()->subDays((int) ($range['days'] ?? 400))->toIso8601String());
         $createdMax = isset($range['created_at_max']) ? (string) $range['created_at_max'] : '';
+        // Each status gets its own $limit: thousands of Unfulfilled rows used to fill
+        // the quota first, so Partially fulfilled copies were never fetched.
         foreach (['unfulfilled', 'partial'] as $fulfillmentStatus) {
+        $statusCount = 0;
         $path = 'orders.json';
         $payload = [
             'status' => 'open',
@@ -2292,7 +2319,7 @@ class VeeqoShopifyFulfillmentService
             if ($createdMax !== '') {
                 $payload['created_at_max'] = $createdMax;
             }
-            for ($page = 0; $page < $maxPages && count($out) < $limit; $page++) {
+            for ($page = 0; $page < $maxPages && $statusCount < $limit; $page++) {
             try {
                 $res = $this->shopifyApi($storeUrl, $token, 'GET', $path, $payload);
             } catch (\Throwable $e) {
@@ -2317,7 +2344,8 @@ class VeeqoShopifyFulfillmentService
                         $seen[$id] = true;
                 }
                 $out[] = $order;
-                if (count($out) >= $limit) {
+                $statusCount++;
+                if ($statusCount >= $limit) {
                     break;
                 }
             }
@@ -2329,6 +2357,8 @@ class VeeqoShopifyFulfillmentService
             $payload = $next['query'];
             }
         }
+
+        usort($out, static fn ($a, $b) => strcmp((string) ($b['created_at'] ?? ''), (string) ($a['created_at'] ?? '')));
 
         return $out;
     }

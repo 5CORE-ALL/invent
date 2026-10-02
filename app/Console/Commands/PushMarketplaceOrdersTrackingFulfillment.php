@@ -70,6 +70,8 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
             '--limit' => 2000,
             '--all' => true,
             '--fresh' => true,
+            '--budget' => $skipFetch ? 900 : 2400,
+            '--no-progress' => true,
         ], $failed, 'shopify-fulfill');
 
         $this->info('4/4 Push tracking to each marketplace…');
