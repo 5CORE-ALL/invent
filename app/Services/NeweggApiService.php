@@ -1615,6 +1615,16 @@ class NeweggApiService
             return ['success' => false, 'message' => 'Newegg API credentials are not configured.'];
         }
 
+        if (trim((string) ($itemFields['SubCategoryID'] ?? $itemFields['subcategory_id'] ?? '')) === '') {
+            $itemFields['SubCategoryID'] = $this->lookupItemSubcategoryId($sku, $platform);
+        }
+        if (! preg_match('/^\d+$/', trim((string) ($itemFields['SubCategoryID'] ?? '')))) {
+            return [
+                'success' => false,
+                'message' => 'Newegg content updates require the item SubCategoryID (the feed is rejected with "Subcategory is missing" without it). '
+                    .'Set NEWEGG_DEFAULT_SUBCATEGORY_ID to this SKU\'s Newegg subcategory, then push again.',
+            ];
+        }
         $xml = self::buildItemContentFeedXml($this->neweggSkuCandidates($sku)[0] ?? $sku, $itemFields);
         if ($xml === '') {
             return ['success' => false, 'message' => 'No Newegg title, description, bullet or image fields to submit.'];
@@ -1644,6 +1654,11 @@ class NeweggApiService
     {
         $sellerPart = '<SellerPartNumber>'.htmlspecialchars($sellerPartNumber, ENT_XML1 | ENT_COMPAT, 'UTF-8').'</SellerPartNumber>';
         $cdata = static fn (string $text): string => '<![CDATA['.str_replace(']]>', ']] >', $text).']]>';
+
+        $subcategoryId = trim((string) ($itemFields['SubCategoryID'] ?? $itemFields['subcategory_id'] ?? ''));
+        $summary = ($subcategoryId !== '' && preg_match('/^\d+$/', $subcategoryId))
+            ? '<SummaryInfo><SubCategoryID>'.htmlspecialchars($subcategoryId, ENT_XML1 | ENT_COMPAT, 'UTF-8').'</SubCategoryID></SummaryInfo>'
+            : '';
 
         $basic = '';
         $title = trim((string) ($itemFields['WebsiteShortTitle'] ?? $itemFields['Title'] ?? ''));
@@ -1679,7 +1694,7 @@ class NeweggApiService
             .'<NeweggEnvelope>'
             .'<Header><DocumentVersion>1.0</DocumentVersion></Header>'
             .'<MessageType>BatchItemCreation</MessageType>'
-            .'<Message><Itemfeed>'.$items.'</Itemfeed></Message>'
+            .'<Message><Itemfeed>'.$summary.$items.'</Itemfeed></Message>'
             .'</NeweggEnvelope>';
     }
 
@@ -1945,6 +1960,77 @@ class NeweggApiService
         }
 
         return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * Content feeds are rejected with "Subcategory is missing" unless Itemfeed has SummaryInfo/SubCategoryID.
+     */
+    protected function lookupItemSubcategoryId(string $sku, string $platform = 'b2c'): string
+    {
+        $sku = trim($sku);
+        $configured = trim((string) config('services.newegg.default_subcategory_id', ''));
+        if ($sku === '') {
+            return $configured;
+        }
+
+        $cacheKey = 'newegg.item.subcategory.v1.'.$platform.'.'.md5(strtoupper($sku));
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && preg_match('/^\d+$/', $cached)) {
+            return $cached;
+        }
+
+        $found = '';
+        foreach ($this->neweggSkuCandidates($sku) as $candidate) {
+            $inv = $this->getItemInventory($candidate, 1);
+            $found = $this->neweggSubcategoryIdFromPayload($inv['json'] ?? null);
+            if ($found !== '') {
+                break;
+            }
+            $path = $platform === 'b2b'
+                ? '/marketplace/b2b/contentmgmt/item/lookup'
+                : '/marketplace/contentmgmt/item/lookup';
+            $lookup = $this->request('POST', $path, [], [
+                'Type' => '1',
+                'Value' => $candidate,
+            ]);
+            $found = $this->neweggSubcategoryIdFromPayload($lookup['json'] ?? null);
+            if ($found !== '') {
+                break;
+            }
+        }
+
+        if ($found === '') {
+            $found = $configured;
+        }
+        if (preg_match('/^\d+$/', $found)) {
+            Cache::put($cacheKey, $found, now()->addHours(12));
+        }
+
+        return $found;
+    }
+
+    private function neweggSubcategoryIdFromPayload(mixed $payload): string
+    {
+        if (! is_array($payload)) {
+            return '';
+        }
+        foreach (['SubCategoryID', 'SubcategoryID', 'subcategory_id', 'SubCategoryId'] as $key) {
+            $direct = trim((string) data_get($payload, $key, ''));
+            if ($direct !== '' && $direct !== '0' && preg_match('/^\d+$/', $direct)) {
+                return $direct;
+            }
+        }
+        foreach ($payload as $value) {
+            if (! is_array($value)) {
+                continue;
+            }
+            $nested = $this->neweggSubcategoryIdFromPayload($value);
+            if ($nested !== '') {
+                return $nested;
+            }
+        }
+
+        return '';
     }
 
     /**

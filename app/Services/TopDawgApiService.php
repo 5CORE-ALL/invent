@@ -691,6 +691,16 @@ class TopDawgApiService
                 ];
             }
 
+            $acceptedMessage = trim((string) ($pushed['message'] ?? ''));
+            if ($this->topDawgReviewQueued($acceptedMessage)) {
+                $live = ($after !== null && $after !== '') ? ' Current live title: '.mb_substr($after, 0, 80).'.' : '';
+
+                return [
+                    'success' => true,
+                    'message' => $acceptedMessage.$live.' TopDawg applies the new title after review, the same way it does for description and images.',
+                ];
+            }
+
             $lastMessage = 'TopDawg accepted the update but listing title did not change.';
             if ($after !== null && $after !== '') {
                 $lastMessage .= ' Live title remains: '.mb_substr($after, 0, 80);
@@ -698,6 +708,11 @@ class TopDawgApiService
         }
 
         return ['success' => false, 'message' => $lastMessage];
+    }
+
+    protected function topDawgReviewQueued(string $message): bool
+    {
+        return str_contains(strtolower($message), 'submitted successfully for review');
     }
 
     /**

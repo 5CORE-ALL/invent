@@ -349,6 +349,17 @@ return [
         'mcm_image_push' => filter_var(env('BESTBUY_MCM_IMAGE_PUSH', true), FILTER_VALIDATE_BOOL),
         'mcm_image_allow_locked_override' => filter_var(env('BESTBUY_MCM_IMAGE_ALLOW_LOCKED_OVERRIDE', true), FILTER_VALIDATE_BOOL),
         'mcm_p41_enriched_row' => filter_var(env('BESTBUY_MCM_P41_ENRICHED_ROW', true), FILTER_VALIDATE_BOOL),
+        /** Filled onto P41 rows when PM11 marks the attribute required and the live product has no value. */
+        'mcm_p41_defaults' => [
+            'microphoneType' => env('BESTBUY_MCM_DEFAULT_MICROPHONE_TYPE', 'Dynamic'),
+            'wireless' => env('BESTBUY_MCM_DEFAULT_WIRELESS', 'No'),
+            'lightingType' => env('BESTBUY_MCM_DEFAULT_LIGHTING_TYPE', 'None'),
+            'warrantyParts' => env('BESTBUY_MCM_DEFAULT_WARRANTY_PARTS', '1 Year'),
+            'warrantyLabor' => env('BESTBUY_MCM_DEFAULT_WARRANTY_LABOR', '1 Year'),
+            'productLength' => env('BESTBUY_MCM_DEFAULT_LENGTH', '8'),
+            'productWidth' => env('BESTBUY_MCM_DEFAULT_WIDTH', '3'),
+            'productHeight' => env('BESTBUY_MCM_DEFAULT_HEIGHT', '3'),
+        ],
         /** OF01 offer import (Listing Manager publish): empty state = copy from an existing live offer, else "11". */
         'mcm_offer_state_code' => env('BESTBUY_MCM_OFFER_STATE_CODE', ''),
         'mcm_offer_product_id_type' => env('BESTBUY_MCM_OFFER_PRODUCT_ID_TYPE', 'SHOP_SKU'),

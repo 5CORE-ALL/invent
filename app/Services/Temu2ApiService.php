@@ -346,6 +346,23 @@ class Temu2ApiService extends TemuApiService
         ];
 
         $lastError = 'Temu 2 title update failed.';
+        $attemptGoodsId = (string) $goodsId;
+        for ($pass = 0; $pass < 2; $pass++) {
+            if ($pass === 1) {
+                if (! $this->temuMallGoodsMismatch($lastError)) {
+                    break;
+                }
+                $freshGoodsId = $this->replaceGoodsIdAfterMallMismatch($sku, $attemptGoodsId);
+                if ($freshGoodsId === null || $freshGoodsId === '' || $freshGoodsId === $attemptGoodsId) {
+                    $lastError .= ' Stored goods id '.$attemptGoodsId.' is not in this Temu 2 mall. Re-sync Temu 2 listings.';
+                    break;
+                }
+                $attemptGoodsId = $freshGoodsId;
+                foreach ($attempts as &$attemptBody) {
+                    $attemptBody['goodsId'] = (int) $freshGoodsId;
+                }
+                unset($attemptBody);
+            }
         foreach ($attempts as $i => $requestBody) {
             try {
                 $data = $this->postTemuRequest($requestBody);
@@ -368,10 +385,11 @@ class Temu2ApiService extends TemuApiService
             $lastError = (string) ($data['errorMsg'] ?? $data['message'] ?? json_encode($data) ?: 'Temu 2 title update failed.');
             Log::warning('Temu2 updateTitle rejected', [
                 'sku' => $sku,
-                'goodsId' => $goodsId,
+                'goodsId' => $attemptGoodsId,
                 'attempt' => $i + 1,
                 'error' => $lastError,
             ]);
+        }
         }
 
         return ['success' => false, 'message' => $lastError];
@@ -704,6 +722,42 @@ class Temu2ApiService extends TemuApiService
     public function persistNewListing(string $sku, string $goodsId, ?string $skuId = null): void
     {
         $this->persistTemuMapping($sku, $goodsId, $skuId);
+    }
+
+    protected function replaceGoodsIdAfterMallMismatch(string $sku, string $rejectedGoodsId): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        try {
+            Temu2Metric::query()
+                ->where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->update(['goods_id' => null, 'sku_id' => null]);
+            if (Schema::hasTable('temu2_pricing')) {
+                Temu2Pricing::query()
+                    ->where('sku', $sku)
+                    ->orWhere('sku', strtoupper($sku))
+                    ->orWhere('sku', strtolower($sku))
+                    ->update(['goods_id' => null, 'sku_id' => null]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Temu2 could not clear a mismatched goods id', [
+                'sku' => $sku,
+                'goods_id' => $rejectedGoodsId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $fresh = $this->findTemuGoodsIdBySkuViaApi($sku);
+        if ($fresh === null || $fresh === '' || $fresh === $rejectedGoodsId) {
+            return null;
+        }
+
+        return $fresh;
     }
 
     /**

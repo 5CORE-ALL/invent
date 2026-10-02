@@ -2245,10 +2245,10 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         $skuInfo = $this->getSkuInfoForGoodsAndSku($goodsId, $sku);
-        $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
-        $url = 'https://openapi-b-us.temu.com/openapi/router';
-        $skuListField = config('services.temu.update_sku_list_field', 'skuList');
-        $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
+        $apiType = $this->temuCfg('goods_update_type', 'bg.local.goods.partial.update');
+        $url = $this->openApiRouterUrl();
+        $skuListField = $this->temuCfg('update_sku_list_field', 'skuList');
+        $goodsBasicField = $this->temuCfg('goods_basic_field', 'goodsBasic');
 
         $requestBody = [
             'type' => $apiType,
@@ -2259,7 +2259,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         ];
 
         // Preserve current goodsDesc when updating goodsSummary to avoid accidental description loss.
-        $goodsDescField = (string) config('services.temu.goods_desc_field', 'goodsDesc');
+        $goodsDescField = (string) $this->temuCfg('goods_desc_field', 'goodsDesc');
         if ($preserveGoodsDesc && $basicFieldKey !== $goodsDescField) {
             $currentDesc = $preservedGoodsDesc !== null
                 ? trim($preservedGoodsDesc)
@@ -2318,6 +2318,14 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 $lastBody = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body());
                 if ($response->successful() && ($data['success'] ?? false)) {
                     return ['success' => true, 'message' => $successMessage];
+                }
+                if ($attempt === 1 && $this->temuMallGoodsMismatch($lastBody)) {
+                    $freshGoodsId = $this->replaceGoodsIdAfterMallMismatch($sku, (string) $goodsId);
+                    if ($freshGoodsId !== null && $freshGoodsId !== '' && (string) $freshGoodsId !== (string) $goodsId) {
+                        $goodsId = $freshGoodsId;
+                        $requestBody['goodsId'] = (int) $freshGoodsId;
+                        $signedRequest = $this->generateSignValue($requestBody);
+                    }
                 }
                 if ($attempt < 2) {
                     usleep(500000);
@@ -3060,7 +3068,22 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 return ['success' => true, 'message' => 'Temu listing images updated.'];
             }
 
-            return ['success' => false, 'message' => $this->formatTemuApiErrorMessage((string) ($data['errorMsg'] ?? $data['message'] ?? $response->body()))];
+            $imageError = $this->formatTemuApiErrorMessage((string) ($data['errorMsg'] ?? $data['message'] ?? $response->body()));
+            if ($this->temuMallGoodsMismatch($imageError)) {
+                $freshGoodsId = $this->replaceGoodsIdAfterMallMismatch($sku, (string) $goodsId);
+                if ($freshGoodsId !== null && $freshGoodsId !== '' && (string) $freshGoodsId !== (string) $goodsId) {
+                    $requestBody['goodsId'] = (int) $freshGoodsId;
+                    $signedRetry = $this->generateSignValue($requestBody);
+                    $retry = $request->post($url, $signedRetry);
+                    $retryData = $retry->json();
+                    if ($retry->successful() && ($retryData['success'] ?? false)) {
+                        return ['success' => true, 'message' => 'Temu listing images updated.'];
+                    }
+                    $imageError = $this->formatTemuApiErrorMessage((string) ($retryData['errorMsg'] ?? $retryData['message'] ?? $retry->body()));
+                }
+            }
+
+            return ['success' => false, 'message' => $imageError];
         } catch (\Throwable $e) {
             Log::error('Temu updateListingImages', ['sku' => $sku, 'error' => $e->getMessage()]);
 
@@ -3445,6 +3468,19 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     protected function temuCfg(string $key, mixed $default = null): mixed
     {
         return config('services.'.$this->temuServiceConfigKey().'.'.$key, $default);
+    }
+
+    protected function temuMallGoodsMismatch(string $message): bool
+    {
+        return str_contains(strtolower($message), 'mall and goods');
+    }
+
+    /**
+     * Drop a goods id that belongs to another mall and return the id from this token's catalog.
+     */
+    protected function replaceGoodsIdAfterMallMismatch(string $sku, string $rejectedGoodsId): ?string
+    {
+        return null;
     }
 
     protected function imageMetricsTable(): string

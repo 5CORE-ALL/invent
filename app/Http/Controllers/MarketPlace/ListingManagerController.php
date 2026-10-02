@@ -844,7 +844,7 @@ class ListingManagerController extends Controller
             // for a background run and polls pushJobStatus() for the per-channel outcome.
             if ($request->boolean('background') && DetachedArtisan::available()) {
                 $token = (string) \Illuminate\Support\Str::uuid();
-                Cache::put(self::pushJobCacheKey($token), [
+                self::writePushJob($token, [
                     'status' => 'queued',
                     'sku' => $sku,
                     'channel_ids' => array_values($validated['channel_ids']),
@@ -854,7 +854,7 @@ class ListingManagerController extends Controller
                     'saved' => $saved,
                     'created_at' => now()->toDateTimeString(),
                     'results' => [],
-                ], now()->addHours(2));
+                ]);
                 if (DetachedArtisan::spawn('listing-manager:push-channels', [$token])) {
                     return response()->json([
                         'success' => true,
@@ -865,7 +865,7 @@ class ListingManagerController extends Controller
                         'results' => [],
                     ], 202);
                 }
-                Cache::forget(self::pushJobCacheKey($token));
+                self::forgetPushJob($token);
             }
 
             $rows = $publisher->pushSelectedChannels(
@@ -897,6 +897,58 @@ class ListingManagerController extends Controller
     public static function pushJobCacheKey(string $token): string
     {
         return 'lm.push-job.'.preg_replace('/[^A-Za-z0-9\-]/', '', $token);
+    }
+
+    /**
+     * File copy survives php artisan cache:clear, which otherwise drops an in-flight push
+     * and the modal reports that the update is no longer tracked.
+     */
+    public static function pushJobFilePath(string $token): string
+    {
+        $safe = preg_replace('/[^A-Za-z0-9\-]/', '', $token) ?: 'job';
+
+        return storage_path('app/listing-manager-push/'.$safe.'.json');
+    }
+
+    /**
+     * @param  array<string, mixed>  $job
+     */
+    public static function writePushJob(string $token, array $job): void
+    {
+        Cache::put(self::pushJobCacheKey($token), $job, now()->addHours(2));
+        $path = self::pushJobFilePath($token);
+        $dir = dirname($path);
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        @file_put_contents($path, json_encode($job, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function readPushJob(string $token): ?array
+    {
+        $job = Cache::get(self::pushJobCacheKey($token));
+        if (is_array($job)) {
+            return $job;
+        }
+        $path = self::pushJobFilePath($token);
+        if (! is_file($path)) {
+            return null;
+        }
+        $decoded = json_decode((string) file_get_contents($path), true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    public static function forgetPushJob(string $token): void
+    {
+        Cache::forget(self::pushJobCacheKey($token));
+        $path = self::pushJobFilePath($token);
+        if (is_file($path)) {
+            @unlink($path);
+        }
     }
 
     /**
@@ -959,14 +1011,13 @@ class ListingManagerController extends Controller
      */
     public function runPushJob(string $token): array
     {
-        $key = self::pushJobCacheKey($token);
-        $job = Cache::get($key);
+        $job = self::readPushJob($token);
         if (! is_array($job)) {
             return ['status' => 'missing', 'message' => 'Push job not found (expired or never created).'];
         }
         $job['status'] = 'running';
         $job['started_at'] = now()->toDateTimeString();
-        Cache::put($key, $job, now()->addHours(2));
+        self::writePushJob($token, $job);
 
         $sku = (string) ($job['sku'] ?? '');
         try {
@@ -994,7 +1045,7 @@ class ListingManagerController extends Controller
             $job['finished_at'] = now()->toDateTimeString();
         }
         unset($job['fields']);
-        Cache::put($key, $job, now()->addHours(2));
+        self::writePushJob($token, $job);
 
         return $job;
     }
@@ -1004,19 +1055,18 @@ class ListingManagerController extends Controller
      */
     public static function failPushJob(string $token, string $reason): void
     {
-        $key = self::pushJobCacheKey($token);
-        $job = Cache::get($key);
+        $job = self::readPushJob($token);
         if (! is_array($job) || in_array($job['status'] ?? '', ['done', 'failed'], true)) {
             return;
         }
         unset($job['fields']);
-        Cache::put($key, array_merge($job, [
+        self::writePushJob($token, array_merge($job, [
             'status' => 'failed',
             'success' => false,
             'message' => $reason,
             'results' => [],
             'finished_at' => now()->toDateTimeString(),
-        ]), now()->addHours(2));
+        ]));
     }
 
     /**
@@ -1024,7 +1074,7 @@ class ListingManagerController extends Controller
      */
     public function pushJobStatus(string $token)
     {
-        $job = Cache::get(self::pushJobCacheKey($token));
+        $job = self::readPushJob($token);
         if (! is_array($job)) {
             return response()->json([
                 'status' => 'missing',
@@ -1039,7 +1089,7 @@ class ListingManagerController extends Controller
             try {
                 if (Carbon::parse($job['created_at'])->lt(now()->subMinutes(3))) {
                     self::failPushJob($token, 'The background worker never started. Check storage/logs/detached-artisan.log on the server.');
-                    $job = Cache::get(self::pushJobCacheKey($token)) ?: $job;
+                    $job = self::readPushJob($token) ?: $job;
                     $status = 'failed';
                 }
             } catch (\Throwable) {

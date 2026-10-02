@@ -3499,15 +3499,15 @@ class AliExpressApiService
         $height = $this->aliexpressPositiveNumber(
             $data['package_height'] ?? $data['packageHeight'] ?? data_get($data, 'logistics_size.package_height')
         );
+        $weightLb = $this->aliexpressPackageWeightPounds($data['usLogisticsWeight'] ?? null)
+            ?? $this->aliexpressPackageWeightPounds($data['aeLogisticsWeight'] ?? null)
+            ?? $this->aliexpressPackageWeightPounds(data_get($data, 'logistics_size.usLogisticsWeight'));
         $weight = $this->aliexpressPositiveNumber(
-            $data['usLogisticsWeight']
-                ?? $data['us_logistics_weight']
+            $data['gross_weight']
+                ?? $data['grossWeight']
                 ?? $data['package_weight']
                 ?? $data['packageWeight']
-                ?? $data['gross_weight']
-                ?? $data['grossWeight']
                 ?? data_get($data, 'logistics_size.gross_weight')
-                ?? data_get($data, 'logistics_size.usLogisticsWeight')
         );
 
         if ($length === null) {
@@ -3519,7 +3519,7 @@ class AliExpressApiService
         if ($height === null) {
             $height = 10;
         }
-        if ($weight === null) {
+        if ($weight === null && $weightLb === null) {
             $weight = 0.5;
         }
 
@@ -3527,10 +3527,29 @@ class AliExpressApiService
             'package_length' => $length,
             'package_width' => $width,
             'package_height' => $height,
-            'weight' => $weight,
-            'gross_weight' => $weight,
-            'usLogisticsWeight' => $weight,
+            'weight' => $weight ?? 0.5,
+            'weight_lb' => $weightLb,
+            'gross_weight' => $weight ?? ($weightLb !== null ? round($weightLb * 0.45359237, 3) : 0.5),
+            'usLogisticsWeight' => $weightLb ?? $weight ?? 0.5,
         ];
+    }
+
+    /**
+     * US Pop Choice stores package weight as {"Package weight":"1.10"} (pounds), sometimes as a JSON string.
+     */
+    private function aliexpressPackageWeightPounds(mixed $value): ?float
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (is_array($decoded)) {
+                $value = $decoded;
+            }
+        }
+        if (is_array($value)) {
+            $value = $value['Package weight'] ?? $value['package_weight'] ?? $value['weight'] ?? null;
+        }
+
+        return $this->aliexpressPositiveNumber($value);
     }
 
     private function aliexpressPositiveNumber(mixed $value): ?float
@@ -4654,24 +4673,30 @@ class AliExpressApiService
             }
         }
 
-        $edit = array_merge([
-            'product_id' => (string) $productId,
-            'multi_language_description_list' => [[
-                'language' => 'en',
-                'mobile_detail' => $html,
-                'web_detail' => $html,
-            ]],
-        ], $this->aliexpressPackageEditFields($productId));
-        $encoded = $this->encodeRequestPayload($edit);
-        $res = $this->callRestGateway('aliexpress.solution.product.edit', ['edit_product_request' => $encoded]);
-        if (! empty($res['success'])) {
-            return [
-                'success' => true,
-                'message' => $okMessage,
-                'data' => $res['data'] ?? $res['result'] ?? null,
-            ];
+        foreach (['json', 'object'] as $weightKind) {
+            $edit = array_merge([
+                'product_id' => (string) $productId,
+                'multi_language_description_list' => [[
+                    'language' => 'en',
+                    'mobile_detail' => $html,
+                    'web_detail' => $html,
+                ]],
+            ], $this->aliexpressPackageEditFields($productId, $weightKind));
+            $encoded = $this->encodeRequestPayload($edit);
+            $res = $this->callRestGateway('aliexpress.solution.product.edit', ['edit_product_request' => $encoded]);
+            if (! empty($res['success'])) {
+                return [
+                    'success' => true,
+                    'message' => $okMessage,
+                    'data' => $res['data'] ?? $res['result'] ?? null,
+                ];
+            }
+            $last = $this->preferAliExpressError($last, $res);
+            $editMessage = (string) ($res['message'] ?? '');
+            if (! str_contains($editMessage, 'CHK_BASIC_REQUIRED')) {
+                break;
+            }
         }
-        $last = $this->preferAliExpressError($last, $res);
 
         return [
             'success' => false,
@@ -4706,16 +4731,22 @@ class AliExpressApiService
 
     /**
      * solution.product.edit rejects image and description edits that omit package size.
+     * US Pop Choice requires usLogisticsWeight as {"Package weight":"<pounds>"}, not a bare number.
      *
      * @return array<string, mixed>
      */
-    private function aliexpressPackageEditFields(string $productId): array
+    private function aliexpressPackageEditFields(string $productId, string $weightKind = 'json'): array
     {
         $pkg = $this->aliexpressPackageSizeFields($productId);
         $length = max(1, (int) round((float) $pkg['package_length']));
         $width = max(1, (int) round((float) $pkg['package_width']));
         $height = max(1, (int) round((float) $pkg['package_height']));
-        $weight = (string) $pkg['weight'];
+        $lb = (float) ($pkg['weight_lb'] ?? 0);
+        $kg = $lb > 0 ? 0.0 : (float) $pkg['weight'];
+        $weight = (string) ($lb > 0 ? $pkg['gross_weight'] : $pkg['weight']);
+        $usWeight = $weightKind === 'object'
+            ? $this->usPackageWeightObject($kg, $lb)
+            : $this->usPackageWeightJson($kg, $lb);
 
         return [
             'package_length' => $length,
@@ -4724,7 +4755,8 @@ class AliExpressApiService
             'weight' => $weight,
             'gross_weight' => $weight,
             'package_weight' => $weight,
-            'usLogisticsWeight' => $weight,
+            'usLogisticsWeight' => $usWeight,
+            'aeLogisticsWeight' => $usWeight,
             'logistics_size' => [
                 'package_length' => $length,
                 'package_width' => $width,
@@ -4734,6 +4766,7 @@ class AliExpressApiService
                 'height' => $height,
                 'gross_weight' => $weight,
                 'weight' => $weight,
+                'usLogisticsWeight' => $usWeight,
             ],
         ];
     }
@@ -6528,27 +6561,35 @@ class AliExpressApiService
             }
         }
 
-        $package = $this->aliexpressPackageEditFields($productId);
-        $attempts = [
-            array_merge(['product_id' => $productId, 'image_u_r_ls' => $joined, 'main_image_url' => $primary], $package),
-            array_merge(['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary], $package),
-            array_merge([
-                'product_id' => $productId,
-                'aeop_a_e_product_s_k_us' => ['sku_code' => $skuCode, 'sku_image' => $primary],
-            ], $package),
-        ];
-
         $lastMessage = $this->channelLabel.' image update failed.';
-        foreach ($attempts as $editRequest) {
-            $encoded = $this->encodeRequestPayload($editRequest);
-            $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
-                'rest' => ['edit_product_request' => $encoded],
-                'sync' => ['edit_product_request' => $encoded],
-            ]);
-            if (! empty($res['success'])) {
-                return $this->finishChannelImageUpdate($row, $trim, $images, $res);
+        foreach (['json', 'object'] as $weightKind) {
+            $package = $this->aliexpressPackageEditFields($productId, $weightKind);
+            $attempts = [
+                array_merge(['product_id' => $productId, 'image_u_r_ls' => $joined, 'main_image_url' => $primary], $package),
+                array_merge(['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary], $package),
+                array_merge([
+                    'product_id' => $productId,
+                    'aeop_a_e_product_s_k_us' => ['sku_code' => $skuCode, 'sku_image' => $primary],
+                ], $package),
+            ];
+            $sawWeightRequired = false;
+            foreach ($attempts as $editRequest) {
+                $encoded = $this->encodeRequestPayload($editRequest);
+                $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
+                    'rest' => ['edit_product_request' => $encoded],
+                    'sync' => ['edit_product_request' => $encoded],
+                ]);
+                if (! empty($res['success'])) {
+                    return $this->finishChannelImageUpdate($row, $trim, $images, $res);
+                }
+                $lastMessage = (string) ($res['message'] ?? $lastMessage);
+                if (str_contains($lastMessage, 'CHK_BASIC_REQUIRED')) {
+                    $sawWeightRequired = true;
+                }
             }
-            $lastMessage = (string) ($res['message'] ?? $lastMessage);
+            if (! $sawWeightRequired) {
+                break;
+            }
         }
 
         return ['success' => false, 'message' => $lastMessage];

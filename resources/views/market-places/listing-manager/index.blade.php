@@ -5017,7 +5017,11 @@
                     misses = 0;
                 } catch (xhr) {
                     if (xhr && xhr.status === 404) {
-                        return { success: false, message: (xhr.responseJSON && xhr.responseJSON.message) || 'The background update is no longer tracked.', results: [] };
+                        // A single miss happens when cache:clear races the first poll. Keep watching briefly.
+                        if (++misses >= 8) {
+                            return { success: false, message: (xhr.responseJSON && xhr.responseJSON.message) || 'The background update is no longer tracked.', results: [] };
+                        }
+                        continue;
                     }
                     // transient network/gateway hiccup: keep polling unless it persists
                     if (++misses >= 10) {
