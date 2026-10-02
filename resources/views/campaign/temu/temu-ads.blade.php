@@ -2750,7 +2750,9 @@
                 });
                 const items = [];
                 const seen = {};
-                rows.forEach(function (row) {
+                rows.slice().sort(function (a, b) {
+                    return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0);
+                }).forEach(function (row) {
                     const gid = rowGoodsId(row);
                     if (!gid || seen[gid]) return;
                     seen[gid] = true;
@@ -3433,7 +3435,7 @@
 
             function roasFromRow(row, fallbackRoas) {
                 const fromRule = Number(targetRoasValue(row || {}));
-                if (isFinite(fromRule) && fromRule >= 0.1 && fromRule <= 12) return fromRule;
+                if (isFinite(fromRule) && fromRule >= 0 && fromRule <= 12) return fromRule;
                 const fb = Number(fallbackRoas);
                 return (isFinite(fb) && fb >= 0.1) ? fb : 4;
             }

@@ -453,7 +453,7 @@ class TemuAdsController extends Controller
         $request->validate([
             'items' => 'required|array|min:1|max:50',
             'items.*.goods_id' => 'required|string|max:64',
-            'items.*.roas' => 'required|numeric|min:0.1|max:1000',
+            'items.*.roas' => 'required|numeric|min:0|max:12',
             'roas_rule_slabs' => 'nullable|array',
             'roas_rule_slabs.*.clicks_min' => 'nullable|numeric|min:0|max:1000000',
             'roas_rule_slabs.*.clicks_max' => 'nullable|numeric|min:0|max:1000000',
@@ -481,7 +481,7 @@ class TemuAdsController extends Controller
         foreach ($request->input('items', []) as $i => $item) {
             $goodsId = trim((string) ($item['goods_id'] ?? ''));
             $roas = round((float) ($item['roas'] ?? 0), 1);
-            if ($goodsId === '' || $roas < 0.1 || isset($seen[$goodsId])) {
+            if ($goodsId === '' || $roas < 0 || isset($seen[$goodsId])) {
                 continue;
             }
             $seen[$goodsId] = true;
@@ -489,7 +489,9 @@ class TemuAdsController extends Controller
                 usleep(200000);
             }
 
-            $result = $temuApi->modifyAdRoas($goodsId, $roas);
+            $result = $roas <= 0
+                ? $temuApi->pauseAd($goodsId)
+                : $temuApi->modifyAdRoas($goodsId, $roas);
             if ($result['ok'] ?? false) {
                 $updated[] = [
                     'goods_id' => $goodsId,
