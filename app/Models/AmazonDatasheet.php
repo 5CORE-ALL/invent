@@ -162,6 +162,30 @@ class AmazonDatasheet extends Model
     }
 
     /**
+     * One ASIN can sit on two sheet rows ("DP 200 1PCS" and "DP 200 1 Pcs").
+     * The push must use the row that matches the SKU on the page.
+     *
+     * @param  Collection<int, self>|iterable<int, self>|null  $rows
+     */
+    public static function sellerSkuFromAsinRows($rows, ?string $preferredSku = null): ?string
+    {
+        $rows = collect($rows)->filter(function ($row) {
+            return trim((string) ($row->sku ?? '')) !== '';
+        })->values();
+        if ($rows->isEmpty()) {
+            return null;
+        }
+
+        $preferred = trim(str_replace("\xc2\xa0", ' ', (string) $preferredSku));
+        $picked = $preferred !== ''
+            ? self::pickBestForProductSku($preferred, $rows)
+            : $rows->sortBy(fn ($row) => (int) ($row->id ?? 0))->first();
+        $sku = trim((string) ($picked->sku ?? ''));
+
+        return $sku !== '' ? $sku : null;
+    }
+
+    /**
      * Sales & Traffic buyBoxPercentage is usually 0–100. Some payloads send 0–1.
      */
     public static function normalizeBuyBoxPercentage(mixed $raw): ?float

@@ -14,6 +14,17 @@ class AmazonPushPrcJobStore
 {
     private const MAX_MESSAGES = 200;
 
+    /** Test hook. Production uses storage/app/amazon-push-prc/job.json. */
+    private ?string $filePath = null;
+
+    public static function atPath(string $path): self
+    {
+        $store = new self;
+        $store->filePath = $path;
+
+        return $store;
+    }
+
     public function load(): array
     {
         $path = $this->path();
@@ -37,6 +48,9 @@ class AmazonPushPrcJobStore
         $normalized = $this->uniqueTasksBySku(
             $this->dropBlockedTasks($this->normalizeTasks($tasks), $failedBlock)
         );
+        if ($normalized === []) {
+            return $this->releaseEmptyQueue($previous, $failedBlock);
+        }
         $queueMsg = 'Push Prc queued ('.count($normalized).' SKU(s)).';
 
         $state = array_merge($this->defaultState(), [
@@ -85,10 +99,15 @@ class AmazonPushPrcJobStore
             $added = 0;
             $updated = 0;
             $skipped = 0;
+            $block = is_array($state['failed_block'] ?? null) ? $state['failed_block'] : [];
             foreach ($normalized as $task) {
                 $skuKey = strtoupper((string) ($task['sku'] ?? ''));
                 $idx = $this->indexOfSku($state['tasks'], $skuKey);
                 if ($idx === null) {
+                    if ($this->blockStops($block, $skuKey, $task['effective'] ?? null)) {
+                        $skipped++;
+                        continue;
+                    }
                     $state['tasks'][] = $task;
                     $added++;
                     continue;
@@ -109,8 +128,7 @@ class AmazonPushPrcJobStore
                     $skipped++;
                     continue;
                 }
-                $block = $state['failed_block'][$skuKey] ?? null;
-                if (is_array($block) && $this->sameMoney($block['effective'] ?? null, $task['effective'] ?? null)) {
+                if ($this->blockStops($block, $skuKey, $task['effective'] ?? null)) {
                     $skipped++;
                     continue;
                 }
@@ -309,7 +327,14 @@ class AmazonPushPrcJobStore
 
     public function isActive(array $state): bool
     {
-        return in_array($state['status'] ?? 'idle', ['running'], true);
+        if (($state['status'] ?? 'idle') !== 'running') {
+            return false;
+        }
+        $tasks = $state['tasks'] ?? [];
+
+        // A cancel that queued nothing used to leave status=running with zero
+        // tasks. The next click appended into that ghost and never pushed.
+        return is_array($tasks) && $tasks !== [];
     }
 
     public function isStale(array $state, int $seconds = 180): bool
@@ -637,6 +662,11 @@ class AmazonPushPrcJobStore
     public function mergeFailedBlock(array $state): array
     {
         $block = is_array($state['failed_block'] ?? null) ? $state['failed_block'] : [];
+        foreach ($block as $key => $hit) {
+            if (is_array($hit) && $this->isUserCancel((string) ($hit['error'] ?? ''))) {
+                unset($block[$key]);
+            }
+        }
         foreach ($state['tasks'] ?? [] as $task) {
             if (! is_array($task) || (string) ($task['status'] ?? '') !== 'failed') {
                 continue;
@@ -645,9 +675,16 @@ class AmazonPushPrcJobStore
             if ($key === '') {
                 continue;
             }
+            $error = (string) ($task['error'] ?? $task['message'] ?? 'Push failed');
+            // Cancel stops this run only. It must not block the same S PRC next time.
+            if ($this->isUserCancel($error)) {
+                unset($block[$key]);
+
+                continue;
+            }
             $block[$key] = [
                 'effective' => $task['effective'] ?? null,
-                'error' => $task['error'] ?? $task['message'] ?? 'Push failed',
+                'error' => $error,
             ];
         }
 
@@ -667,8 +704,7 @@ class AmazonPushPrcJobStore
         $out = [];
         foreach ($tasks as $task) {
             $key = strtoupper(trim((string) ($task['sku'] ?? '')));
-            $hit = $block[$key] ?? null;
-            if (is_array($hit) && $this->sameMoney($hit['effective'] ?? null, $task['effective'] ?? null)) {
+            if ($this->blockStops($block, $key, $task['effective'] ?? null)) {
                 continue;
             }
             $out[] = $task;
@@ -700,14 +736,77 @@ class AmazonPushPrcJobStore
                 unset($block[$key]);
             }
             $state['failed_block'] = $block;
+            // Remove the failed row too. create() merges failed tasks back onto
+            // the block, which used to undo this retry on the same request.
+            $tasks = [];
+            foreach ($state['tasks'] ?? [] as $task) {
+                if (! is_array($task)) {
+                    continue;
+                }
+                $key = strtoupper(trim((string) ($task['sku'] ?? '')));
+                $status = (string) ($task['status'] ?? '');
+                if ($key !== '' && isset($keys[$key]) && $status === 'failed') {
+                    continue;
+                }
+                $tasks[] = $task;
+            }
+            $state['tasks'] = $tasks;
 
-            return $state;
+            return $this->recount($state);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $previous
+     * @param  array<string, array<string, mixed>>  $failedBlock
+     * @return array<string, mixed>
+     */
+    private function releaseEmptyQueue(array $previous, array $failedBlock): array
+    {
+        $previous['failed_block'] = $failedBlock;
+        $previous['updated_at'] = now()->toDateTimeString();
+        if (($previous['status'] ?? '') === 'running') {
+            $tasks = $previous['tasks'] ?? [];
+            if (! is_array($tasks) || $tasks === []) {
+                $previous['status'] = 'idle';
+                $previous['tasks'] = [];
+                $previous['total'] = 0;
+                $previous['current_sku'] = null;
+                $previous['current_index'] = 0;
+                $previous['last_message'] = 'Ready';
+                $previous['finished_at'] = now()->toDateTimeString();
+            }
+        }
+        $this->save($previous);
+        $previous['tasks'] = [];
+        $previous['total'] = 0;
+
+        return $previous;
+    }
+
+    /**
+     * @param  array<string, mixed>  $block
+     */
+    private function blockStops(array $block, string $skuKey, mixed $effective): bool
+    {
+        $hit = $block[$skuKey] ?? null;
+        if (! is_array($hit) || $this->isUserCancel((string) ($hit['error'] ?? ''))) {
+            return false;
+        }
+
+        return $this->sameMoney($hit['effective'] ?? null, $effective);
+    }
+
+    private function isUserCancel(string $error): bool
+    {
+        $error = strtolower(trim($error));
+
+        return str_contains($error, 'cancelled by user') || str_contains($error, 'stopped by user');
     }
 
     private function path(): string
     {
-        return storage_path('app/amazon-push-prc/job.json');
+        return $this->filePath ?? storage_path('app/amazon-push-prc/job.json');
     }
 
     private function ensureDirectory(): void
