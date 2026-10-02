@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\TemuAdsApiReportService;
+use App\Services\TemuAdsAutoPauseService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -81,6 +82,12 @@ class FetchTemuAdsData extends Command
 
             $this->info('✅ Temu Ads Data Fetch completed successfully');
             Log::info('Temu Ads Data Fetch completed successfully', $stats);
+
+            if ($period === 'L30' && $specificGoodsId === null && ($stats['ok'] ?? 0) > 0) {
+                $push = app(TemuAdsAutoPauseService::class)->pushTargetRoas();
+                $this->info("Target ROAS: pushed {$push['pushed']}, paused {$push['paused']}, already {$push['already']}, failed {$push['failed']}");
+                Log::info('temu:fetch-ads-data target roas', $push);
+            }
         } catch (\Exception $e) {
             $this->error('Error fetching Temu ads data: ' . $e->getMessage());
             Log::error('Error fetching Temu ads data', [

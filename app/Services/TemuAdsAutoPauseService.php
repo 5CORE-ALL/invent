@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -512,5 +513,259 @@ class TemuAdsAutoPauseService
         ]);
 
         return $stats;
+    }
+
+    /**
+     * Ads whose Temu target differs from the T ROAS click slab.
+     * Target 0 pauses an Active ad. Others get temu.searchrec.ad.modify status 5.
+     *
+     * @return array{
+     *   checked: int,
+     *   matched: int,
+     *   pushed: int,
+     *   paused: int,
+     *   already: int,
+     *   failed: int,
+     *   dry_run: bool,
+     *   skipped_lock: bool,
+     *   pushed_goods: array<int, array<string, mixed>>,
+     *   paused_goods: array<int, array<string, mixed>>,
+     *   failed_goods: array<int, array<string, mixed>>
+     * }
+     */
+    public function pushTargetRoas(bool $dryRun = false, ?callable $onEach = null, ?array $onlyGoodsIds = null): array
+    {
+        $empty = [
+            'checked' => 0,
+            'matched' => 0,
+            'pushed' => 0,
+            'paused' => 0,
+            'already' => 0,
+            'failed' => 0,
+            'dry_run' => $dryRun,
+            'skipped_lock' => false,
+            'pushed_goods' => [],
+            'paused_goods' => [],
+            'failed_goods' => [],
+        ];
+
+        $lockKey = 'temu_push_target_roas_lock';
+        if (! $dryRun && ! Cache::add($lockKey, 1, 1800)) {
+            $empty['skipped_lock'] = true;
+            Log::info('TemuAdsAutoPauseService::pushTargetRoas skipped — already running');
+
+            return $empty;
+        }
+
+        try {
+            return $this->pushTargetRoasUnlocked($dryRun, $onEach, $onlyGoodsIds);
+        } finally {
+            if (! $dryRun) {
+                Cache::forget($lockKey);
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, string>|null  $onlyGoodsIds
+     * @return array{
+     *   checked: int,
+     *   matched: int,
+     *   pushed: int,
+     *   paused: int,
+     *   already: int,
+     *   failed: int,
+     *   dry_run: bool,
+     *   skipped_lock: bool,
+     *   pushed_goods: array<int, array<string, mixed>>,
+     *   paused_goods: array<int, array<string, mixed>>,
+     *   failed_goods: array<int, array<string, mixed>>
+     * }
+     */
+    private function pushTargetRoasUnlocked(bool $dryRun, ?callable $onEach, ?array $onlyGoodsIds): array
+    {
+        $want = null;
+        if ($onlyGoodsIds !== null && $onlyGoodsIds !== []) {
+            $want = array_fill_keys(array_map('strval', $onlyGoodsIds), true);
+        }
+
+        $rows = TemuAdsApiReport::query()
+            ->inLatestWindow('L30')
+            ->whereIn('ad_status', ['Active', 'Inactive'])
+            ->whereNotNull('goods_id')
+            ->where('goods_id', '!=', '')
+            ->orderBy('id')
+            ->get(['id', 'goods_id', 'sku', 'clicks', 'ad_status', 'raw_response']);
+
+        $byGoods = [];
+        foreach ($rows as $row) {
+            $gid = (string) $row->goods_id;
+            if ($want !== null && ! isset($want[$gid])) {
+                continue;
+            }
+            if (! isset($byGoods[$gid])) {
+                $byGoods[$gid] = $row;
+            }
+        }
+
+        $pending = [];
+        $already = 0;
+        foreach ($byGoods as $gid => $row) {
+            $clicks = (int) ($row->clicks ?? 0);
+            $target = round($this->targetRoasForClicks($clicks), 2);
+            $stored = $this->storedTargetRoas($row);
+            $status = (string) $row->ad_status;
+            $action = $this->targetRoasAction($target, $stored, $status);
+            if ($action === null) {
+                $already++;
+                continue;
+            }
+            $pending[] = [
+                'goods_id' => $gid,
+                'sku' => $row->sku,
+                'clicks' => $clicks,
+                'target_roas' => $action === 'pause' ? 0.0 : min(12.0, $target),
+                'stored_roas' => $stored,
+                'status' => $status,
+                'action' => $action,
+            ];
+        }
+
+        $pushed = [];
+        $paused = [];
+        $failed = [];
+        $total = count($pending);
+
+        foreach ($pending as $index => $item) {
+            if ($dryRun) {
+                if ($item['action'] === 'pause') {
+                    $paused[] = $item;
+                } else {
+                    $pushed[] = $item;
+                }
+                if ($onEach) {
+                    $onEach($index + 1, $total, $item, ['ok' => true]);
+                }
+                continue;
+            }
+
+            if ($index > 0) {
+                usleep(200000);
+            }
+
+            if ($item['action'] === 'pause') {
+                $result = $this->temuApi->pauseAd($item['goods_id']);
+                $ok = (bool) ($result['ok'] ?? false);
+                if ($ok) {
+                    TemuAdsApiReport::where('goods_id', $item['goods_id'])
+                        ->update(['ad_status' => 'Inactive']);
+                    $paused[] = $item;
+                } else {
+                    $failed[] = array_merge($item, [
+                        'error' => (string) ($result['error_msg'] ?? 'Pause failed'),
+                    ]);
+                }
+            } else {
+                $result = $this->temuApi->modifyAdRoas($item['goods_id'], (float) $item['target_roas']);
+                $ok = (bool) ($result['ok'] ?? false);
+                if ($ok) {
+                    $this->rememberPushedTarget($item['goods_id'], (float) $item['target_roas']);
+                    $pushed[] = $item;
+                } else {
+                    $failed[] = array_merge($item, [
+                        'error' => (string) ($result['error_msg'] ?? 'ROAS update failed'),
+                    ]);
+                }
+            }
+
+            if ($onEach) {
+                $onEach($index + 1, $total, $item, $result);
+            }
+        }
+
+        $stats = [
+            'checked' => count($byGoods),
+            'matched' => $total,
+            'pushed' => count($pushed),
+            'paused' => count($paused),
+            'already' => $already,
+            'failed' => count($failed),
+            'dry_run' => $dryRun,
+            'skipped_lock' => false,
+            'pushed_goods' => $dryRun ? $pushed : [],
+            'paused_goods' => $dryRun ? $paused : [],
+            'failed_goods' => $failed,
+        ];
+
+        Log::info('TemuAdsAutoPauseService::pushTargetRoas', [
+            'checked' => $stats['checked'],
+            'matched' => $stats['matched'],
+            'pushed' => $stats['pushed'],
+            'paused' => $stats['paused'],
+            'already' => $stats['already'],
+            'failed' => $stats['failed'],
+            'dry_run' => $dryRun,
+        ]);
+
+        return $stats;
+    }
+
+    private function targetRoasAction(float $target, ?float $stored, string $status): ?string
+    {
+        if ($target <= 0) {
+            return $status === 'Active' ? 'pause' : null;
+        }
+        $target = min(12.0, $target);
+        if ($target < 0.1) {
+            return null;
+        }
+        if ($stored !== null && abs($stored - $target) < 0.05) {
+            return null;
+        }
+
+        return 'roas';
+    }
+
+    private function storedTargetRoas(TemuAdsApiReport $row): ?float
+    {
+        $raw = $row->raw_response;
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true);
+        }
+        if (! is_array($raw)) {
+            return null;
+        }
+        $ad = $raw['adDetail'] ?? ($raw['result']['adDetail'] ?? null);
+        if (! is_array($ad) || ! isset($ad['roas']) || ! is_numeric($ad['roas'])) {
+            return null;
+        }
+
+        return round(((float) $ad['roas']) / 10000, 2);
+    }
+
+    private function rememberPushedTarget(string $goodsId, float $target): void
+    {
+        $api = (int) round($target * 10000);
+        $rows = TemuAdsApiReport::query()
+            ->inLatestWindow('L30')
+            ->where('goods_id', $goodsId)
+            ->get(['id', 'raw_response']);
+
+        foreach ($rows as $row) {
+            $raw = $row->raw_response;
+            if (is_string($raw)) {
+                $raw = json_decode($raw, true);
+            }
+            if (! is_array($raw)) {
+                continue;
+            }
+            if (! isset($raw['adDetail']) || ! is_array($raw['adDetail'])) {
+                $raw['adDetail'] = [];
+            }
+            $raw['adDetail']['roas'] = $api;
+            TemuAdsApiReport::where('id', $row->id)->update([
+                'raw_response' => json_encode($raw),
+            ]);
+        }
     }
 }

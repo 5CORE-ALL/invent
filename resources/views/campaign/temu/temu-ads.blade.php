@@ -732,8 +732,9 @@
                     <p class="small text-muted mb-2">
                         <strong>Clicks</strong> uses the Clicks from/to columns (period clicks).
                         <strong>Target ROAS</strong> fills the T ROAS column from the matching clicks slab.
-                        <strong>Target ROAS 0</strong> pauses that ad on the daily auto-pause.
-                        <strong>Push ROAS</strong> sends that T ROAS to Temu for existing ads via <code>temu.searchrec.ad.modify</code> (status 5).
+                        <strong>Target ROAS 0</strong> pauses that ad.
+                        The daily job sends each row's T ROAS to Temu after the L30 ads fetch.
+                        <strong>Push ROAS</strong> sends it now via <code>temu.searchrec.ad.modify</code> (status 5).
                         Leave To empty for that value and above. First matching range wins.
                     </p>
                     <div class="table-responsive">
