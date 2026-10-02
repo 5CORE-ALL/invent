@@ -35,7 +35,8 @@ class InvDaysController extends Controller
             $baseData = $baseResponse->getData(true);
             $products = $baseData['data'] ?? [];
 
-            $ageBySku = $this->shopifyPushAgeDaysBySku();
+            $pushAtBySku = $this->latestShopifyPushAtBySku();
+            $lastSaleBySku = $this->lastSaleDateBySku();
             $ovl30BySku = $this->ovl30BySku();
             $amazonSheets = $this->amazonSheetsByLookupKey();
             $clearanceBySku = $this->clearanceBySku();
@@ -52,7 +53,12 @@ class InvDaysController extends Controller
                 $inv = (float) ($product['shopify_inv'] ?? 0);
                 $ovl30 = $this->ovl30ForSku($sku, $ovl30BySku, $product);
                 $salePrice = $this->amazonSalePrice($sku, $amazonSheets);
-                $clearance = $clearanceBySku[$this->skuKey($sku)] ?? null;
+                $skuKey = $this->skuKey($sku);
+                $clearance = $clearanceBySku[$skuKey] ?? null;
+                $pushAt = $pushAtBySku[$skuKey] ?? null;
+                $ageEnd = $inv <= 0
+                    ? ($lastSaleBySku[$skuKey] ?? null)
+                    : Carbon::now('America/New_York')->toDateTimeString();
 
                 $rows[] = [
                     'id' => $product['id'] ?? null,
@@ -63,8 +69,10 @@ class InvDaysController extends Controller
                     'inv_value' => $salePrice !== null ? (int) round($salePrice * $inv) : null,
                     'ovl30' => $ovl30,
                     'dil' => InvUnder30DaysController::dilPercent($inv, $ovl30),
-                    'age_days' => $ageBySku[$this->skuKey($sku)] ?? null,
-                    'days_exp' => InvUnder30DaysController::daysExp($inv, $ovl30) ?? 99999,
+                    'age_days' => $this->wholeDaysBetween($pushAt, $ageEnd),
+                    'days_exp' => ($inv <= 0 && $ovl30 <= 0)
+                        ? null
+                        : (InvUnder30DaysController::daysExp($inv, $ovl30) ?? 99999),
                     'clearance' => $clearance['value'] ?? 'NO',
                     'clearance_has_history' => $clearance !== null,
                     'msl' => $mslBySku[$this->forecastSkuKey($sku)] ?? 0,
@@ -662,13 +670,11 @@ class InvDaysController extends Controller
     }
 
     /**
-     * Whole days from the latest date a transit-container row for this SKU
-     * was pushed into Shopify (inventory_warehouse.push_status = success).
-     * SKUs that were never pushed stay blank.
+     * Latest successful Shopify push time per SKU (inventory_warehouse.push_status = success).
      *
-     * @return array<string, int>
+     * @return array<string, string>
      */
-    private function shopifyPushAgeDaysBySku(): array
+    private function latestShopifyPushAtBySku(): array
     {
         $dates = [];
 
@@ -686,22 +692,70 @@ class InvDaysController extends Controller
             $this->keepLatestDate($dates, (string) $row->our_sku, $row->updated_at ?: $row->created_at);
         }
 
-        $today = Carbon::now('America/New_York')->startOfDay();
-        $map = [];
+        return $dates;
+    }
 
-        foreach ($dates as $key => $incomingAt) {
-            try {
-                $start = Carbon::parse($incomingAt)->timezone('America/New_York')->startOfDay();
-            } catch (\Throwable $e) {
+    /**
+     * Last paid Shopify sale date per SKU. This is when on-hand stock finished
+     * for a SKU whose INV is now 0.
+     *
+     * @return array<string, string>
+     */
+    private function lastSaleDateBySku(): array
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return [];
+        }
+
+        $rows = DB::table('shopify_raw_orders')
+            ->whereNotNull('order_date')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($query) {
+                $query->whereNull('financial_status')
+                    ->orWhereNotIn('financial_status', ['refunded', 'voided']);
+            })
+            ->groupBy('sku')
+            ->selectRaw('sku, MAX(order_date) as last_sale')
+            ->get();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $key = $this->skuKey((string) $row->sku);
+            $date = (string) $row->last_sale;
+            if ($key === '' || $date === '') {
                 continue;
             }
-
-            $map[$key] = $start->greaterThan($today)
-                ? 0
-                : (int) abs($start->diffInDays($today));
+            if (! isset($map[$key]) || $date > $map[$key]) {
+                $map[$key] = $date;
+            }
         }
 
         return $map;
+    }
+
+    /**
+     * Whole days from the latest Shopify push to $endAt.
+     * Blank when either date is missing, or the end is before the push.
+     */
+    private function wholeDaysBetween(mixed $startAt, mixed $endAt): ?int
+    {
+        if ($startAt === null || $startAt === '' || $endAt === null || $endAt === '') {
+            return null;
+        }
+
+        try {
+            $start = Carbon::parse($startAt)->timezone('America/New_York')->startOfDay();
+            $end = Carbon::parse($endAt)->timezone('America/New_York')->startOfDay();
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        if ($start->greaterThan($end)) {
+            return null;
+        }
+
+        return (int) abs($start->diffInDays($end));
     }
 
     private function skuKey(string $sku): string

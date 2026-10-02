@@ -76,6 +76,89 @@
         .ab-stat-badge--soh { background: #7c3aed; }
         .ab-stat-badge--inv { background: #0d9488; }
         .ab-stat-badge--ovl30 { background: #0369a1; }
+        #ab-column-dropdown-menu.show {
+            min-width: min(92vw, 560px);
+            max-width: min(96vw, 640px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+        #ab-column-dropdown-menu > li.col-vis-full {
+            list-style: none;
+        }
+        #ab-column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #ab-column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #ab-column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #ab-column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #ab-column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #ab-column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #ab-column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            margin: 0;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        #ab-column-dropdown-menu .col-vis-item > label:hover {
+            background: #e9ecef;
+        }
+        #ab-column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+        }
+        @media (max-width: 576px) {
+            #ab-column-dropdown-menu .col-vis-groups {
+                grid-template-columns: 1fr;
+            }
+        }
         .card-loader-overlay {
             position: absolute;
             inset: 0;
@@ -172,6 +255,14 @@
                             <option value="Offline">Offline</option>
                         </select>
                         <input type="text" id="ab-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search Parent or SKU...">
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                id="ab-column-visibility" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" title="Show or hide columns">
+                                <i class="fas fa-eye"></i> Columns
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" id="ab-column-dropdown-menu"></ul>
+                        </div>
                         <button type="button" class="btn btn-sm btn-primary" id="ab-sync-btn">
                             <i class="fas fa-sync"></i> Sync from API
                         </button>
@@ -323,6 +414,174 @@
             if (soldF === 'zero') document.getElementById('ab-zero-badge').classList.add('active-filter');
         }
 
+        const AB_COL_GROUPS = ['basic', 'price', 'other'];
+        const AB_COL_LABELS = { basic: 'Basic', price: 'Price', other: 'Other' };
+
+        function abColumnShown(value) {
+            return value === true || value === 1 || value === '1' || value === 'true';
+        }
+
+        function abClassifyColumn(field) {
+            if (/^(price|groi|gpft|profit|sales)$/i.test(field)) return 'price';
+            if (/^(product_id|status)$/i.test(field)) return 'other';
+            return 'basic';
+        }
+
+        function abSyncGroupHeader(groupEl) {
+            if (!groupEl) return;
+            const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+            const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+            if (!headerCb || !itemCbs.length) return;
+            let checked = 0;
+            itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+            headerCb.checked = checked === itemCbs.length;
+            headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+        }
+
+        function abBuildColumnMenu() {
+            const menu = document.getElementById('ab-column-dropdown-menu');
+            if (!menu || !abTable) return;
+            menu.innerHTML = '';
+
+            const showAllLi = document.createElement('li');
+            showAllLi.className = 'dropdown-item col-vis-full';
+            showAllLi.innerHTML = '<a class="fw-bold" href="#" data-ab-col-vis="show-all" style="text-decoration:none;">Show All Columns</a>';
+            menu.appendChild(showAllLi);
+
+            const showDefaultLi = document.createElement('li');
+            showDefaultLi.className = 'dropdown-item col-vis-full';
+            showDefaultLi.innerHTML = '<a class="fw-bold" href="#" data-ab-col-vis="show-default" style="text-decoration:none;">Show Default Columns</a>';
+            menu.appendChild(showDefaultLi);
+
+            const divider = document.createElement('li');
+            divider.className = 'col-vis-full';
+            divider.innerHTML = '<hr class="dropdown-divider">';
+            menu.appendChild(divider);
+
+            const groupsLi = document.createElement('li');
+            groupsLi.className = 'col-vis-full';
+            const groupsWrap = document.createElement('div');
+            groupsWrap.className = 'col-vis-groups';
+            const lists = {};
+            const groupEls = {};
+
+            AB_COL_GROUPS.forEach(function (cat) {
+                const group = document.createElement('div');
+                group.className = 'col-vis-group';
+                group.dataset.category = cat;
+                const titleEl = document.createElement('label');
+                titleEl.className = 'col-vis-group-title';
+                const groupCb = document.createElement('input');
+                groupCb.type = 'checkbox';
+                groupCb.className = 'col-vis-group-toggle';
+                groupCb.dataset.group = cat;
+                groupCb.title = 'Select / deselect all in ' + AB_COL_LABELS[cat];
+                titleEl.appendChild(groupCb);
+                titleEl.appendChild(document.createTextNode(AB_COL_LABELS[cat]));
+                group.appendChild(titleEl);
+                const list = document.createElement('ul');
+                list.className = 'col-vis-group-list';
+                group.appendChild(list);
+                groupsWrap.appendChild(group);
+                lists[cat] = list;
+                groupEls[cat] = group;
+            });
+
+            abTable.getColumns().forEach(function (col) {
+                const field = col.getField();
+                const title = col.getDefinition().title;
+                if (!field || !title) return;
+                const cat = abClassifyColumn(field);
+                const li = document.createElement('li');
+                li.className = 'col-vis-item';
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'col-vis-field-toggle';
+                checkbox.setAttribute('data-field', field);
+                checkbox.checked = col.isVisible();
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(' ' + String(title).replace(/<[^>]*>/g, '').trim()));
+                li.appendChild(label);
+                lists[cat].appendChild(li);
+            });
+
+            AB_COL_GROUPS.forEach(function (cat) { abSyncGroupHeader(groupEls[cat]); });
+            groupsLi.appendChild(groupsWrap);
+            menu.appendChild(groupsLi);
+        }
+
+        function abSaveColumnVisibility() {
+            if (!abTable) return;
+            const visibility = {};
+            abTable.getColumns().forEach(function (col) {
+                const field = col.getField();
+                if (field) visibility[field] = col.isVisible();
+            });
+            fetch("{{ route('alibaba.analytics.column.set') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({ visibility: visibility })
+            });
+        }
+
+        function abApplyColumnVisibility() {
+            fetch("{{ route('alibaba.analytics.column.get') }}", { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (visibility) {
+                    if (!abTable || !visibility || !Object.keys(visibility).length) return;
+                    Object.keys(visibility).forEach(function (field) {
+                        const col = abTable.getColumn(field);
+                        if (!col) return;
+                        abColumnShown(visibility[field]) ? col.show() : col.hide();
+                    });
+                })
+                .finally(function () { abBuildColumnMenu(); });
+        }
+
+        document.getElementById('ab-column-dropdown-menu').addEventListener('change', function (e) {
+            if (!abTable) return;
+            if (e.target.classList.contains('col-vis-group-toggle')) {
+                const checked = e.target.checked;
+                const groupEl = e.target.closest('.col-vis-group');
+                if (!groupEl) return;
+                groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]').forEach(function (cb) {
+                    cb.checked = checked;
+                    const col = abTable.getColumn(cb.getAttribute('data-field'));
+                    if (col) checked ? col.show() : col.hide();
+                });
+                e.target.indeterminate = false;
+                abSaveColumnVisibility();
+                return;
+            }
+            if (!e.target.classList.contains('col-vis-field-toggle')) return;
+            const col = abTable.getColumn(e.target.getAttribute('data-field'));
+            if (!col) return;
+            e.target.checked ? col.show() : col.hide();
+            abSyncGroupHeader(e.target.closest('.col-vis-group'));
+            abSaveColumnVisibility();
+        });
+        document.getElementById('ab-column-dropdown-menu').addEventListener('click', function (e) {
+            const actionEl = e.target.closest('[data-ab-col-vis]');
+            if (!actionEl || !abTable) return;
+            e.preventDefault();
+            const action = actionEl.getAttribute('data-ab-col-vis');
+            abTable.getColumns().forEach(function (col) {
+                if (action === 'show-all') {
+                    col.show();
+                    return;
+                }
+                const designedOn = col.getDefinition().visible !== false;
+                designedOn ? col.show() : col.hide();
+            });
+            abBuildColumnMenu();
+            abSaveColumnVisibility();
+        });
+
         function applyFilters() {
             if (!abTable) return;
             const filtered = (abAllRows || []).filter(abRowMatches);
@@ -374,6 +633,16 @@
                             }
                         },
                         { title: 'SKU', field: 'sku', hozAlign: 'left', minWidth: 160, frozen: true, cssClass: 'fw-bold' },
+                        {
+                            title: 'Link', field: 'product_url', headerSort: false, hozAlign: 'center', width: 64,
+                            headerTooltip: 'Open the Alibaba product page',
+                            formatter: function (cell) {
+                                if (isAbParentRow(cell.getRow().getData())) return '';
+                                const url = cell.getValue();
+                                if (!url) return '<span style="color:#6c757d;">–</span>';
+                                return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">Link</a>';
+                            }
+                        },
                         { title: 'INV', field: 'INV', hozAlign: 'center', width: 55, sorter: 'number' },
                         { title: 'OV L30', field: 'L30', hozAlign: 'center', width: 60, sorter: 'number' },
                         {
@@ -434,11 +703,12 @@
                             headerTooltip: 'Line sales from /alibaba/daily-sales (unit price × qty), last 30 Pacific days',
                             formatter: function (cell) { return abMoney(cell.getValue()); }
                         },
-                        { title: 'Product Id', field: 'product_id', hozAlign: 'left', minWidth: 130 },
-                        { title: 'Status', field: 'status', hozAlign: 'center', width: 80 },
-                        { title: 'SOH', field: 'soh', hozAlign: 'center', width: 55, sorter: 'number' },
+                        { title: 'Product Id', field: 'product_id', hozAlign: 'left', minWidth: 130, visible: false },
+                        { title: 'Status', field: 'status', hozAlign: 'center', width: 80, visible: false },
+                        { title: 'AL INV', field: 'soh', hozAlign: 'center', width: 55, sorter: 'number', headerTooltip: 'Alibaba inventory' },
                     ],
                 });
+                abApplyColumnVisibility();
                 updateSummary((abAllRows || []).filter(abRowMatches));
             })
             .finally(() => { loader.style.display = 'none'; });

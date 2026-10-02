@@ -334,6 +334,43 @@ class EbayRuleSpriceApplyService
         return $price > 0 ? $price : null;
     }
 
+    /**
+     * S GPFT / S GROI / SNROI / SNPFT the tabulator paints from the visible S PRC.
+     * Same formulas as ebayComputeSgpftFromSprice / ebayComputeSgroiFromSprice / ebayComputeNetRoi.
+     *
+     * @param  array<string, mixed>  $item
+     * @return array{sgpft: ?float, sgroi: ?float, snroi: ?float, snpft: ?float}
+     */
+    public function paintedPercentsFromSprice(array $item, float $sprice, float $adsPct): array
+    {
+        $empty = ['sgpft' => null, 'sgroi' => null, 'snroi' => null, 'snpft' => null];
+        if (! empty($item['is_parent_summary']) || ! ($sprice > 0)) {
+            return $empty;
+        }
+
+        $margin = (float) ($item['percentage'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0)) {
+            $margin = $this->takeHome();
+        }
+
+        $lp = (float) ($item['LP_productmaster'] ?? $item['lp'] ?? 0);
+        $ship = (float) ($item['Ship_productmaster'] ?? $item['ship'] ?? 0);
+        $sgpft = (($sprice * $margin - $ship - $lp) / $sprice) * 100;
+        $gross = ($sprice * $margin) - $ship - $lp;
+        $sgroi = $lp > 0 ? ($gross / $lp) * 100 : null;
+        $snroi = $lp > 0 ? (($gross - ($sprice * ($adsPct / 100))) / $lp) * 100 : null;
+
+        return [
+            'sgpft' => $sgpft,
+            'sgroi' => $sgroi,
+            'snroi' => $snroi,
+            'snpft' => $sgpft - $adsPct,
+        ];
+    }
+
     public function targetsNroi(): bool
     {
         return in_array($this->channel, ['ebay1', 'ebay2', 'ebay3'], true);

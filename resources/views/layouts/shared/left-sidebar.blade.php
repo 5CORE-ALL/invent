@@ -297,9 +297,7 @@
                     @php
                         $lmpMissingSidebarCount = \App\Support\Marketplace\LmpMissingChannelCounts::cachedTotalOrZero();
                     @endphp
-                    @if($lmpMissingSidebarCount > 0)
-                        <span class="badge rounded-pill ms-auto lmp-missing-sidebar-badge" title="LMP M. total from analytics pages">{{ number_format($lmpMissingSidebarCount) }}</span>
-                    @endif
+                    <span class="badge rounded-pill ms-auto lmp-missing-sidebar-badge" title="LMP M. total from analytics pages. NR channels are left out." @if($lmpMissingSidebarCount <= 0) style="display:none" @endif>{{ number_format($lmpMissingSidebarCount) }}</span>
                 </a>
             </li>
 

@@ -1719,7 +1719,7 @@
                             else if (n < 20) color = '#3591dc';
                             else if (n < 30) color = '#ffc107';
                             else if (n < 50) color = '#28a745';
-                            return `<span style="color:${color};font-weight:bold;">${n.toFixed(1)}%</span>`;
+                            return `<span style="color:${color};font-weight:bold;">${Math.round(n)}%</span>`;
                         }
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),

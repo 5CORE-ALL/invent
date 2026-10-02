@@ -378,8 +378,6 @@
     let dpUniqueParents = [];
     let isDpPlayActive = false;
     let currentDpParentIndex = -1;
-    let dpApplyingFilters = false;
-    let dpFilterSeq = 0;
 
     function showToast(message, type) {
         type = type || 'info';
@@ -649,35 +647,24 @@
         $('#play-forward').prop('disabled', !isDpPlayActive || currentDpParentIndex >= dpUniqueParents.length - 1);
     }
     function applyDepopFilters() {
-        if (!table || dpApplyingFilters) return;
+        if (!table || typeof table.setFilter !== 'function') return;
         if (window.ParentExpand && ParentExpand.isExpanded()) {
             ParentExpand.beforeFilters(function() { applyDepopFilters(); });
             return;
         }
 
-        const source = (Array.isArray(allTableData) && allTableData.length)
-            ? allTableData
-            : ((typeof table.getData === 'function' ? table.getData('all') : []) || []);
-        if (!source.length) return;
+        table.setFilter(dpRowMatchesFilters);
+        try { table.setPage(1); } catch (e) { /* ignore */ }
 
-        const filtered = source.filter(dpRowMatchesFilters);
         const soldF = $('#dp-sold-filter').val();
         $('.dp-filter-badge').removeClass('active-filter');
         if (soldF === 'more') $('#dp-sold-pct-badge').addClass('active-filter');
         if (soldF === 'zero') $('#dp-zero-sold-badge').addClass('active-filter');
 
-        const seq = ++dpFilterSeq;
-        dpApplyingFilters = true;
-        Promise.resolve(table.setData(filtered)).then(function() {
-            if (seq !== dpFilterSeq) return;
-            try { table.clearFilter(true); } catch (e) { /* ignore */ }
-            try { table.setPage(1); } catch (e) { /* ignore */ }
-            updateSummary(filtered);
-        }).catch(function() {
-            /* keep last good view */
-        }).then(function() {
-            if (seq === dpFilterSeq) dpApplyingFilters = false;
-        });
+        try {
+            const active = (typeof table.getData === 'function') ? (table.getData('active') || []) : [];
+            updateSummary(active);
+        } catch (e) { /* ignore */ }
     }
     function updateSummary(rowsInput) {
         let rows = Array.isArray(rowsInput) ? rowsInput.slice() : [];
@@ -737,6 +724,7 @@
 
         table = new Tabulator("#depop-pricing-table", {
             ajaxURL: "{{ route('depop.pricing.data') }}",
+            initialFilter: dpRowMatchesFilters,
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
                 allTableData = data;
@@ -1012,7 +1000,6 @@
                 },
             ],
             dataLoaded: function() {
-                if (dpApplyingFilters) return;
                 if (window.ParentExpand && ParentExpand.isExpanded()) return;
                 if (typeof ebayScheduleSprcDilAutoApply === 'function') ebayScheduleSprcDilAutoApply();
                 setTimeout(function() {
@@ -1043,7 +1030,7 @@
 
         table.on('tableBuilt', function() {
             setTimeout(function() {
-                if (!dpApplyingFilters && allTableData.length) applyDepopFilters();
+                if (allTableData.length) applyDepopFilters();
             }, 100);
         });
 

@@ -1680,22 +1680,29 @@
             }
 
             function resolveItemDimFreight(item) {
+                const combo = resolveComboComponentFreight(item);
+                if (combo) return combo;
                 const own = itemCbmFromDims(item);
                 if (own != null) {
                     return { cbm: own, frght: own * 200, fromCombo: false };
                 }
-                return resolveComboComponentFreight(item);
+                return null;
             }
 
             function hydrateComboFreightOnTableData() {
                 (tableData || []).forEach(item => {
                     const resolved = resolveComboComponentFreight(item);
-                    if (!resolved || itemCbmFromDims(item) != null) return;
+                    if (!resolved) return;
+                    const own = itemCbmFromDims(item);
                     item.cbm = parseFloat(resolved.cbm.toFixed(4));
                     item.frght = parseFloat(resolved.frght.toFixed(2));
                     const cp = parseFloat(item.cp);
                     const storedLp = parseFloat(item.lp);
-                    if (Number.isFinite(cp) && (!Number.isFinite(storedLp) || Math.abs(storedLp - cp) < 0.009)) {
+                    const ownFrght = own != null ? own * 200 : null;
+                    const looksAuto = !Number.isFinite(storedLp) || storedLp <= 0
+                        || (Number.isFinite(cp) && Math.abs(storedLp - cp) < 0.009)
+                        || (ownFrght != null && Number.isFinite(cp) && Math.abs(storedLp - (cp + ownFrght)) < 0.05);
+                    if (Number.isFinite(cp) && cp > 0 && looksAuto) {
                         item.lp = parseFloat((cp + resolved.frght).toFixed(2));
                     }
                 });
@@ -2270,7 +2277,7 @@
                         row.appendChild(checkboxCell);
                     }
 
-                    // Calculate CBM and FRGHT: own L/W/H, or sum of combo component packages
+                    // CBM and FRGHT: combo rows sum component packages; otherwise own L/W/H
                     const resolvedFreight = resolveItemDimFreight(item);
                     let cbm = '';
                     let frght = '';

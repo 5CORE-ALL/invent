@@ -23,7 +23,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class VintedController extends Controller
 {
     private const CSV_HEADERS = ['parent', 'sku', 'price', 'l30'];
-    private const DEFAULT_MARGIN_PCT = 87;
+    private const DEFAULT_MARGIN_PCT = 95;
 
     public function pricingView()
     {

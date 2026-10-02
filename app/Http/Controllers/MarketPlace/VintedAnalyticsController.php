@@ -8,6 +8,7 @@ use App\Models\VintedPricing;
 use App\Models\VintedSalesData;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -41,7 +42,7 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
 
     protected static function defaultMarginPercent(): float
     {
-        return 87.0;
+        return 95.0;
     }
 
     protected static function channelLogName(): string
@@ -60,6 +61,27 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
             'marginPercent' => static::marginPercent(),
             'sopSheetUrl' => $this->loadSopSheetUrl(),
         ]);
+    }
+
+    public function getColumnVisibility(Request $request)
+    {
+        return response()->json(Cache::get($this->columnVisibilityCacheKey(), []));
+    }
+
+    public function setColumnVisibility(Request $request)
+    {
+        $visibility = $request->input('visibility', []);
+        if (! is_array($visibility)) {
+            $visibility = [];
+        }
+        Cache::put($this->columnVisibilityCacheKey(), $visibility, now()->addDays(365));
+
+        return response()->json(['success' => true]);
+    }
+
+    private function columnVisibilityCacheKey(): string
+    {
+        return 'vinted_analytics_tabulator_column_visibility_' . (auth()->id() ?? 'guest');
     }
 
     public function getPricingData(Request $request)

@@ -256,25 +256,26 @@
         .task-summary-col-atc.is-atc-over {
             color: #dc2626 !important;
         }
-        /* DAR (days/25) — last 30 days.
-             > 90%  → pink
-             80–90% → green
-             else   → red */
+        /* DAR (days/25) — last 30 days. Text stays black.
+             > 90%   → green background
+             80–90%  → yellow background
+             < 80%   → red background */
         .task-summary-col-dar {
             font-weight: 700;
             font-variant-numeric: tabular-nums;
+            color: #000 !important;
         }
         .task-summary-col-dar.is-dar-high {
-            background-color: #fce7f3 !important;
-            color: #831843 !important;
+            background-color: #22c55e !important;
+            color: #000 !important;
         }
         .task-summary-col-dar.is-dar-mid {
-            background-color: #dcfce7 !important;
-            color: #166534 !important;
+            background-color: #facc15 !important;
+            color: #000 !important;
         }
         .task-summary-col-dar.is-dar-low {
-            background-color: #fee2e2 !important;
-            color: #991b1b !important;
+            background-color: #ef4444 !important;
+            color: #000 !important;
         }
         /* ATT (hours/200) — last 30 days.
              > 90%  → green text
@@ -1389,6 +1390,9 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="task" data-sort-type="number" title="Sort by assignee task count" role="button" tabindex="0">
                                         Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Overdue — number of overdue tasks (sortable)" role="button" tabindex="0">
+                                        O-Due <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
                                     <th scope="col" title="TM — open Task Manager for this member as assignee (new tab)">
                                         TM
                                     </th>
@@ -1408,20 +1412,20 @@
                                         <span class="summary-trend-dot none task-summary-col-history" data-ts-metric="y_done" title="Y Done history" role="button" tabindex="0" aria-label="Y Done history"></span>
                                         Y Done <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Overdue — number of overdue tasks (sortable)" role="button" tabindex="0">
-                                        O-Due <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
-                                    </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="dar_l30" data-sort-type="number" title="DAR — unique daily reports submitted in the last 30 days, as a % of the 25-day target" role="button" tabindex="0">
                                         DAR <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="tat_l30" data-sort-type="float" title="TAT — average Turn-Around Time in days (task start → completion) over the last 30 days" role="button" tabindex="0">
                                         TAT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="atc_l30" data-sort-type="number" title="ATC — actual time to complete (hours) for work closed in the last 30 days" role="button" tabindex="0">
-                                        ATC <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="etc_pending" data-sort-type="number" title="ETC P — pending estimated hours for open assignee tasks (not Done or Archived)" role="button" tabindex="0">
+                                        ETC P <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="etc_l30" data-sort-type="number" title="ETC — estimated time to complete (hours) for work closed in the last 30 days" role="button" tabindex="0">
                                         ETC <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="atc_l30" data-sort-type="number" title="ATC — actual time to complete (hours) for work closed in the last 30 days" role="button" tabindex="0">
+                                        ATC <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="missed_p30" data-sort-type="number" title="Miss — days 31–60 only. Deleted unfinished tasks in that window count as missed." role="button" tabindex="0">
                                         Miss <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
@@ -1476,6 +1480,7 @@
                                         data-sort-overdue="{{ (int) ($row['overdue'] ?? 0) }}"
                                         data-sort-dar_l30="{{ (int) ($row['dar_l30_pct'] ?? 0) }}"
                                         data-sort-tat_l30="{{ $row['tat_l30_days'] !== null ? (float) $row['tat_l30_days'] : -1 }}"
+                                        data-sort-etc_pending="{{ (int) ($row['etc_pending_h'] ?? 0) }}"
                                         data-sort-atc_l30="{{ (int) ($row['atc_l30_h'] ?? 0) }}"
                                         data-sort-etc_l30="{{ (int) ($row['etc_l30_h'] ?? 0) }}"
                                         data-sort-missed_p30="{{ (int) ($row['missed_p30'] ?? 0) }}"
@@ -1709,6 +1714,7 @@
                                             </button>
                                         </td>
                                         <td class="task-summary-num">{{ $row['task'] }}</td>
+                                        <td class="task-summary-num task-summary-col-overdue">{{ $row['overdue'] }}</td>
                                         <td class="task-summary-col-tm text-center">
                                             <a href="{{ route('tasks.index', array_filter(['assignee' => $row['team_member'], 'user_id' => (int) ($row['user_id'] ?? 0)])) }}"
                                                target="_blank"
@@ -1748,7 +1754,6 @@
                                                class="task-summary-ydone-badge{{ $yDone > 0 ? ' has-count' : '' }}"
                                                title="{{ $yDone }} task{{ $yDone === 1 ? '' : 's' }} done yesterday by {{ e($row['team_member']) }}">{{ $yDone }}</a>
                                         </td>
-                                        <td class="task-summary-num task-summary-col-overdue">{{ $row['overdue'] }}</td>
                                         @php
                                             $darCount = (int) ($row['dar_l30_count'] ?? 0);
                                             $darTarget = (int) ($row['dar_l30_target'] ?? 25);
@@ -1788,17 +1793,23 @@
                                         @php
                                             $atcL30h = (int) ($row['atc_l30_h'] ?? 0);
                                             $etcL30h = (int) ($row['etc_l30_h'] ?? 0);
+                                            $etcPendingH = (int) ($row['etc_pending_h'] ?? 0);
                                             $atcL30min = (int) ($row['atc_l30_min'] ?? 0);
                                             $etcL30min = (int) ($row['etc_l30_min'] ?? 0);
+                                            $etcPendingMin = (int) ($row['etc_pending_min'] ?? 0);
                                             $atcOverClass = ($atcL30h > $etcL30h && $etcL30h > 0) ? 'is-atc-over' : '';
                                         @endphp
-                                        <td class="task-summary-num task-summary-col-atc {{ $atcOverClass }}"
-                                            title="ATC last 30 days · {{ $atcL30min }} min · {{ $atcL30h }}h">
-                                            {{ $atcL30h }}h
+                                        <td class="task-summary-num task-summary-col-etc"
+                                            title="ETC pending · open tasks · {{ $etcPendingMin }} min · {{ $etcPendingH }}h">
+                                            {{ $etcPendingH }}h
                                         </td>
                                         <td class="task-summary-num task-summary-col-etc"
                                             title="ETC last 30 days · {{ $etcL30min }} min · {{ $etcL30h }}h">
                                             {{ $etcL30h }}h
+                                        </td>
+                                        <td class="task-summary-num task-summary-col-atc {{ $atcOverClass }}"
+                                            title="ATC last 30 days · {{ $atcL30min }} min · {{ $atcL30h }}h">
+                                            {{ $atcL30h }}h
                                         </td>
                                         @php
                                             $missP30 = (int) ($row['missed_p30'] ?? 0);
@@ -1921,7 +1932,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="30" class="text-center text-muted py-4">
+                                        <td colspan="31" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1932,7 +1943,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="30" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="31" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -7217,8 +7228,9 @@
                     + renderMetricTile('Done', m.done || 0, 'is-done')
                     + renderMetricTile('O-Due', m.overdue || 0, 'is-overdue')
                     + renderMetricTile('TAT', tat)
-                    + renderMetricTile('ATC', (m.atc_l30_h || 0) + 'h')
+                    + renderMetricTile('ETC P', (m.etc_pending_h || 0) + 'h')
                     + renderMetricTile('ETC', (m.etc_l30_h || 0) + 'h')
+                    + renderMetricTile('ATC', (m.atc_l30_h || 0) + 'h')
                     + renderMetricTile('Miss', (m.missed_p30 || 0), 'is-overdue');
                 return html;
             }
@@ -7816,8 +7828,9 @@
                     + renderTile('Done', m.done || 0, 'is-done')
                     + renderTile('O-Due', m.overdue || 0, 'is-overdue')
                     + renderTile('TAT', tat)
-                    + renderTile('ATC', (m.atc_l30_h || 0) + 'h')
+                    + renderTile('ETC P', (m.etc_pending_h || 0) + 'h')
                     + renderTile('ETC', (m.etc_l30_h || 0) + 'h')
+                    + renderTile('ATC', (m.atc_l30_h || 0) + 'h')
                     + renderTile('Miss', (m.missed_p30 || 0), 'is-overdue');
             }
 

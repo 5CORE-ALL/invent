@@ -30,6 +30,37 @@ class AlibabaAnalyticsController extends Controller
         ]);
     }
 
+    public function getColumnVisibility(): JsonResponse
+    {
+        $saved = Cache::get($this->columnVisibilityCacheKey(), []);
+
+        return response()->json(is_array($saved) ? $saved : []);
+    }
+
+    public function setColumnVisibility(Request $request): JsonResponse
+    {
+        $visibility = $request->input('visibility', []);
+        if (! is_array($visibility)) {
+            $visibility = [];
+        }
+        $clean = [];
+        foreach ($visibility as $field => $shown) {
+            $key = trim((string) $field);
+            if ($key === '' || strlen($key) > 80) {
+                continue;
+            }
+            $clean[$key] = filter_var($shown, FILTER_VALIDATE_BOOLEAN);
+        }
+        Cache::put($this->columnVisibilityCacheKey(), $clean, now()->addDays(365));
+
+        return response()->json(['success' => true]);
+    }
+
+    private function columnVisibilityCacheKey(): string
+    {
+        return 'alibaba_analytics_column_visibility_'.(auth()->id() ?? 'guest');
+    }
+
     public function data(): JsonResponse
     {
         $sheetRows = AlibabaSheetPrice::query()
@@ -89,6 +120,7 @@ class AlibabaAnalyticsController extends Controller
                 'image_path' => $image,
                 'image' => $image,
                 'product_id' => $productId,
+                'product_url' => $this->productPageUrl($productId),
                 'status' => $row->status,
                 'sku_price' => $row->sku_price !== null ? (float) $row->sku_price : null,
                 'soh' => $row->soh !== null ? (int) $row->soh : null,
@@ -284,6 +316,16 @@ class AlibabaAnalyticsController extends Controller
         return $names;
     }
 
+    protected function productPageUrl(string $productId): ?string
+    {
+        $productId = trim($productId);
+        if ($productId === '' || preg_match('/^\d+$/', $productId) !== 1) {
+            return null;
+        }
+
+        return 'https://www.alibaba.com/product-detail/x_'.$productId.'.html';
+    }
+
     protected function skuWithPieceCount(string $sku, string $hint): string
     {
         $sku = trim($sku);
@@ -456,6 +498,7 @@ class AlibabaAnalyticsController extends Controller
             'image_path' => null,
             'image' => null,
             'product_id' => '',
+            'product_url' => null,
             'status' => '',
             'sku_price' => null,
             'soh' => $sumSoh,

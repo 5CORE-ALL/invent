@@ -169,15 +169,19 @@ class AmazonPushPrcRunner
                     if ($target > 0 && ($sale === null || abs($sale - $target) > 0.009)) {
                         $sale = $target;
                     }
+                    $sprc = ($sale !== null && $sale > 0) ? $sale : $target;
+                    $offer = $sprc > 0
+                        ? AmazonSpApiService::computeSaleBusinessMin($sprc)
+                        : null;
                     $applyData = [
                         'sku' => $sku,
                         'price' => $std > 0 ? $std : $target,
                         'asin' => $task['asin'] ?? null,
                         'push_shopify' => false,
                         'update_amazon_min_price' => true,
-                        'min_price' => $sale ?? ($task['min'] ?? null),
+                        'min_price' => is_array($offer) ? $offer['min_price'] : ($task['min'] ?? null),
                         'max_price' => $task['max'] ?? null,
-                        'business_price' => $sale ?? ($task['business'] ?? null),
+                        'business_price' => is_array($offer) ? $offer['business_price'] : ($task['business'] ?? null),
                     ];
                     if ($sale !== null && $sale > 0) {
                         $applyData['sale_price'] = $sale;

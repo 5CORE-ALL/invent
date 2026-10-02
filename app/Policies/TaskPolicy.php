@@ -57,14 +57,16 @@ class TaskPolicy
     }
 
     /**
-     * Only the president may delete tasks assigned by someone else, including corrective-action tasks.
-     * Seniors keep full edit access, but delete stays with the assignor (or the president).
+     * May delete tasks assigned by someone else, including corrective-action tasks.
+     * Other seniors keep full edit access, but delete stays with the assignor.
      *
      * @var list<string>
      */
     private const DELETE_ANY_TASK_EMAILS = [
         'president@5core.com',
-        'presiden@5core.com', // Known typo login used by President
+        'presiden@5core.com',       // Known typo login used by President
+        'inventory@5core.com',      // Ritu
+        'ritu.kaur013@gmail.com',   // Ritu
     ];
 
     public static function userCanDeleteAnyTask(?User $user): bool
@@ -177,7 +179,7 @@ class TaskPolicy
 
     /**
      * Single source of truth for delete (row + bulk).
-     * president@5core.com can delete any task (including CA); everyone else can delete only their own non-CA tasks.
+     * president@5core.com and Ritu can delete any task (including CA); everyone else can delete only their own non-CA tasks.
      */
     public static function userCanDeleteTask(User $user, Task $task): bool
     {

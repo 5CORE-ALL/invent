@@ -183,6 +183,7 @@ class ChannelTodaySalesService
         $this->copyAliases($out, 'tiktokshop', ['tiktok']);
         $this->copyAliases($out, 'tiktok2', ['tiktokshop2']);
         $this->copyAliases($out, 'temu3', ['temuthree']);
+        $this->copyAliases($out, 'shopifyb2b', ['business5coreb2b', 'business5core(b2b)', 'b5cb2b']);
         // Shopify B2C daily table lags; if that compute was skipped, use /shopify raw.
         if (! array_key_exists('shopifyb2c', $out) && array_key_exists('shopify', $out)) {
             $this->copyAliases($out, 'shopify', ['shopifyb2c']);

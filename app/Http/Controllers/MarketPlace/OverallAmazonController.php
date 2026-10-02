@@ -1643,7 +1643,7 @@ class OverallAmazonController extends Controller
 
         try {
             $service = new AmazonSpApiService();
-            // Sale = Business = Min (same value).
+            // Sale = S PRC. Business and Min = S PRC × 0.95.
             if (isset($extras['sale_price'])) {
                 $fromSale = $service->saleBusinessMinFromSalePrice((float) $extras['sale_price']);
             } else {

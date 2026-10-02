@@ -57,7 +57,7 @@ return [
     'auto_close_minutes' => 30,
 
     /*
-    | Only track internal team members (@5core.com or show_in_salary users).
+    | Track internal team members (@5core.com, show_in_salary users, and directors).
     */
     'internal_email_domain' => '@5core.com',
 

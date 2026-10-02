@@ -27,6 +27,8 @@
     .invdays-toolbar .invdays-search { width: 180px; flex: 0 0 180px; }
     .invdays-toolbar .invdays-inv-filter { width: 120px; flex: 0 0 120px; }
     .invdays-toolbar .invdays-band-filter { width: 168px; flex: 0 0 168px; }
+    #invdays-table .tabulator-cell.invdays-band--magenta { background: #d946ef !important; color: #fff; }
+    #invdays-table .tabulator-cell.invdays-band--green { background: #22c55e !important; color: #fff; }
     #invdays-table .tabulator-cell.invdays-band--yellow { background: #fde047 !important; }
     #invdays-table .tabulator-cell.invdays-band--red { background: #f87171 !important; color: #fff; }
     #invdays-table.tabulator { width: 100%; }
@@ -155,6 +157,8 @@
                     </select>
                     <select id="invdaysAgeFilter" class="form-select form-select-sm invdays-band-filter" aria-label="Age Days">
                         <option value="all">All Age</option>
+                        <option value="magenta">Age Magenta (&lt;60)</option>
+                        <option value="green">Age Green (60–120)</option>
                         <option value="yellow">Age Yellow (&gt;120 &lt;180)</option>
                         <option value="red">Age Red (≥180)</option>
                     </select>
@@ -228,7 +232,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function daysExpValue(v) {
         const n = Number(v);
-        if (v === null || v === undefined || v === '' || !Number.isFinite(n)) return 99999;
+        if (v === null || v === undefined || v === '' || !Number.isFinite(n)) return -1;
         return n;
     }
 
@@ -248,7 +252,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const invN = Number.isFinite(inv) ? inv : 0;
         if (invMode === 'zero' && invN !== 0) return false;
         if (invMode === 'gt' && !(invN > 0)) return false;
-        if (!bandMatches(document.getElementById('invdaysAgeFilter').value, data.age_days)) return false;
+        if (!bandMatches(document.getElementById('invdaysAgeFilter').value, data.age_days, ageBand)) return false;
         if (!bandMatches(document.getElementById('invdaysExpFilter').value, data.days_exp)) return false;
         return true;
     }
@@ -261,18 +265,36 @@ document.addEventListener('DOMContentLoaded', function () {
         return 'none';
     }
 
-    function bandMatches(mode, v) {
+    function ageBand(v) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 'none';
+        if (n < 60) return 'magenta';
+        if (n <= 120) return 'green';
+        return dayBand(v);
+    }
+
+    function bandMatches(mode, v, bandFn) {
         if (!mode || mode === 'all') return true;
-        return dayBand(v) === mode;
+        return (bandFn || dayBand)(v) === mode;
+    }
+
+    function paintBandCell(cell, bandFn) {
+        const el = cell.getElement();
+        el.classList.remove('invdays-band--magenta', 'invdays-band--green', 'invdays-band--yellow', 'invdays-band--red');
+        const band = bandFn(cell.getValue());
+        if (band === 'magenta' || band === 'green' || band === 'yellow' || band === 'red') {
+            el.classList.add('invdays-band--' + band);
+        }
+        const v = cell.getValue();
+        return (v === null || v === undefined || v === '') ? '—' : String(Math.round(Number(v)));
     }
 
     function paintDayCell(cell) {
-        const el = cell.getElement();
-        el.classList.remove('invdays-band--yellow', 'invdays-band--red');
-        const band = dayBand(cell.getValue());
-        if (band === 'yellow' || band === 'red') el.classList.add('invdays-band--' + band);
-        const v = cell.getValue();
-        return (v === null || v === undefined || v === '') ? '—' : String(Math.round(Number(v)));
+        return paintBandCell(cell, dayBand);
+    }
+
+    function paintAgeCell(cell) {
+        return paintBandCell(cell, ageBand);
     }
 
     function finiteNum(v) {
@@ -461,7 +483,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: missingLastSorter,
-                formatter: paintDayCell,
+                formatter: paintAgeCell,
             },
             {
                 title: 'Days Exp',
@@ -470,16 +492,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: daysExpSorter,
-                formatter: function (cell) {
-                    const raw = cell.getValue();
-                    if (raw === null || raw === undefined || raw === '') {
-                        const el = cell.getElement();
-                        el.classList.remove('invdays-band--yellow');
-                        el.classList.add('invdays-band--red');
-                        return '99999';
-                    }
-                    return paintDayCell(cell);
-                },
+                formatter: paintDayCell,
             },
             {
                 title: 'MSL',

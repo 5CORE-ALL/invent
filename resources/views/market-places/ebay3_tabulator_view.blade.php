@@ -3621,6 +3621,42 @@
             return cols;
         }
 
+        function ebay3ExportDisplayValue(row, field) {
+            if (!row) return '';
+            if (field === 'E Dil%') {
+                var inv = parseFloat(row.INV) || 0;
+                var ov = parseFloat(row.L30) || 0;
+                return inv > 0 ? Math.round((ov / inv) * 100) : 0;
+            }
+            if (field === 'growth_percent') {
+                var l30 = parseFloat(row['eBay L30']) || 0;
+                var l60 = parseFloat(row['eBay L60']) || 0;
+                if (l60 > 0) return Math.round(((l30 - l60) / l60) * 100);
+                return l30 > 0 ? 100 : 0;
+            }
+            if (field === 'SPRICE') {
+                var shown = (typeof ebay3SpriceAmount === 'function') ? ebay3SpriceAmount(row) : 0;
+                return shown > 0 ? Number(shown).toFixed(2) : '';
+            }
+            if (field === 'SGROI' && typeof ebay3ComputeGrossRoi === 'function') {
+                var sgroi = ebay3ComputeGrossRoi(row, 'SPRICE');
+                return (sgroi == null || !isFinite(sgroi)) ? '' : Math.round(sgroi);
+            }
+            if (field === 'SGPFT' && typeof ebay3ComputeSgpftFromSprice === 'function') {
+                var sgpft = ebay3ComputeSgpftFromSprice(row);
+                return (sgpft == null || !isFinite(sgpft)) ? '' : Math.round(sgpft);
+            }
+            if (field === 'SCVR' || field === 'CVR_45' || field === 'CVR_60') {
+                var cvr = parseFloat(row[field]);
+                return isFinite(cvr) ? Number(cvr).toFixed(1) : '';
+            }
+            if (field === 'ROI%' || field === 'GPFT%' || field === 'PFT %' || field === 'AD%') {
+                var stored = parseFloat(row[field]);
+                return isFinite(stored) ? Math.round(stored) : '';
+            }
+            return row[field];
+        }
+
         function ebay3DownloadManualCsv(filename, rows, cols) {
             var lines = [];
             lines.push(cols.map(function(c) {
@@ -3628,7 +3664,7 @@
             }).join(','));
             rows.forEach(function(row) {
                 lines.push(cols.map(function(c) {
-                    return ebay3CsvEscapeCell(row[c.field]);
+                    return ebay3CsvEscapeCell(ebay3ExportDisplayValue(row, c.field));
                 }).join(','));
             });
             var blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });

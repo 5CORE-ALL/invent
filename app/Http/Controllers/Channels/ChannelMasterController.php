@@ -2368,6 +2368,9 @@ class ChannelMasterController extends Controller
             'shopify' => fn () => $this->computeShopifyDirectYSalesLikeAmazon(),
             'shopifyb2c' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(false),
             'shopifyb2b' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(true),
+            'business5core(b2b)' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(true),
+            'business5coreb2b' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(true),
+            'b5cb2b' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(true),
             'fbmarketplace' => fn () => $this->computeFbMarketplaceYSalesLikeAmazon(),
             'tiktokshop' => fn () => $this->computeTiktokShopYSalesFromOrders(),
             'tiktok2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
@@ -4320,7 +4323,10 @@ class ChannelMasterController extends Controller
 
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($this->allMarketplaceSnapshotKey($name) !== 'shopifyb2b') {
+            $key = $this->allMarketplaceSnapshotKey($name);
+            // "Business 5 Core (B2B)" is the active channel for these orders.
+            // There is no separate active "Shopify B2B" row.
+            if ($key !== 'shopifyb2b' && ! $this->isBusiness5CoreB2bSnapshotKey($key)) {
                 continue;
             }
 
@@ -8252,6 +8258,12 @@ class ChannelMasterController extends Controller
             }
         }
 
+        if (array_key_exists('shopifyb2b', $yesterdaySummaries)) {
+            foreach (['business5core(b2b)', 'business5coreb2b', 'b5cb2b'] as $alias) {
+                $yesterdaySummaries[$alias] = $yesterdaySummaries['shopifyb2b'];
+            }
+        }
+
         // TikTok 2: API row uses "TikTok 2" → tiktok2; channel_master slug may be tiktokshop2
         try {
             $tiktok2Y = $this->computeTiktokTwoYSalesLikeAmazon();
@@ -8407,6 +8419,12 @@ class ChannelMasterController extends Controller
             }
         }
 
+        if (array_key_exists('shopifyb2b', $l7Summaries)) {
+            foreach (['business5core(b2b)', 'business5coreb2b', 'b5cb2b'] as $alias) {
+                $l7Summaries[$alias] = $l7Summaries['shopifyb2b'];
+            }
+        }
+
         try {
             $tiktok2L7 = $this->computeTiktokTwoL7SalesLikeAmazon();
             if ($tiktok2L7 !== null) {
@@ -8516,6 +8534,9 @@ class ChannelMasterController extends Controller
             'fbmarketplace' => 'getFbMarketplaceChannelData',
             'fbshop'    => 'getFbShopChannelData',
             'business5core'    => 'getBusiness5CoreChannelData',
+            'business5core(b2b)' => 'getBusiness5CoreB2bChannelData',
+            'business5coreb2b' => 'getBusiness5CoreB2bChannelData',
+            'b5cb2b' => 'getBusiness5CoreB2bChannelData',
             'topdawg'    => 'getTopDawgChannelData',
             'shopifyb2c' => 'getShopifyB2CChannelData',
             'shopifyb2b' => 'getShopifyB2BChannelData',
@@ -9855,6 +9876,9 @@ class ChannelMasterController extends Controller
         'fbmarketplace' => 'getFbMarketplaceChannelData',
         'fbshop'    => 'getFbShopChannelData',
         'business5core'    => 'getBusiness5CoreChannelData',
+        'business5core(b2b)' => 'getBusiness5CoreB2bChannelData',
+        'business5coreb2b' => 'getBusiness5CoreB2bChannelData',
+        'b5cb2b' => 'getBusiness5CoreB2bChannelData',
         'topdawg'    => 'getTopDawgChannelData',
         'shopifyb2c' => 'getShopifyB2CChannelData',
         'shopifyb2b' => 'getShopifyB2BChannelData',
@@ -15497,6 +15521,73 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Business 5 Core (B2B) L30 from shopify_b2b_daily_data
+     * (business5core.com orders, same source as /shopify-b2b/daily-sales).
+     */
+    public function getBusiness5CoreB2bChannelData(Request $request)
+    {
+        $live = [];
+        try {
+            $live = app(\App\Http\Controllers\MarketPlace\Shopifyb2bController::class)->l30SnapshotForMaster();
+        } catch (\Throwable $e) {
+            Log::warning('Business 5 Core B2B live snapshot failed: '.$e->getMessage());
+        }
+
+        $l30Sales = (float) ($live['l30_sales'] ?? 0);
+        $l30Orders = (int) ($live['l30_orders'] ?? 0);
+        $totalQuantity = (int) ($live['qty'] ?? 0);
+        $totalProfit = (float) ($live['total_pft'] ?? 0);
+        $totalCogs = (float) ($live['total_cogs'] ?? 0);
+        $gProfitPct = (float) ($live['gpft_pct'] ?? 0);
+        $gRoi = (float) ($live['groi_pct'] ?? 0);
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        $l7Sales = $this->computeShopifyB2xL7SalesLikeAmazon(true);
+        $ySales = $this->computeShopifyB2xYSalesLikeAmazon(true);
+
+        $row = [
+            'Channel ' => 'Business 5 Core (B2B)',
+            'L-60 Sales' => 0,
+            'L30 Sales' => (int) round($l30Sales),
+            'Growth' => '0%',
+            'L60 Orders' => 0,
+            'L30 Orders' => $l30Orders,
+            'Qty' => $totalQuantity,
+            'Gprofit%' => round($gProfitPct, 1).'%',
+            'gprofitL60' => '0%',
+            'G Roi' => round($gRoi, 1),
+            'G RoiL60' => 0,
+            'Total PFT' => round($totalProfit, 2),
+            'N PFT' => round($nPft, 1).'%',
+            'N ROI' => round($gRoi, 1),
+            'KW Spent' => 0,
+            'PT Spent' => 0,
+            'HL Spent' => 0,
+            'PMT Spent' => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
+            'Ads%' => '0%',
+            'TACOS %' => '0%',
+            'cogs' => round($totalCogs, 2),
+            'missing_link' => '/shopify-b2b/daily-sales',
+            ...$this->getChannelHealthAndReviewsStub(),
+        ];
+        if ($l7Sales !== null) {
+            $row['L7 Sales'] = round((float) $l7Sales, 2);
+            $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales']);
+        }
+        if ($ySales !== null) {
+            $row['Y Sales'] = round((float) $ySales, 2);
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Business 5 Core (B2B) channel data fetched successfully',
+            'data' => [$row],
+        ]);
+    }
+
+    /**
      * TopDawg from marketplace_daily_metrics + topdawg_order_metrics L60. No sheet fallback.
      */
     public function getTopDawgChannelData(Request $request)
@@ -16015,6 +16106,14 @@ class ChannelMasterController extends Controller
             'temu2', 'temutwo' => 'temu2',
             default => $key,
         };
+    }
+
+    /**
+     * Active Channel name "Business 5 Core (B2B)" (parentheses stay in the key).
+     */
+    private function isBusiness5CoreB2bSnapshotKey(string $key): bool
+    {
+        return in_array($key, ['business5core(b2b)', 'business5coreb2b', 'b5cb2b'], true);
     }
 
     /**

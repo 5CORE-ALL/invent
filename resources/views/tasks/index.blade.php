@@ -2787,7 +2787,7 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
                         <strong>Delete Selected Tasks</strong>
-                        <small class="d-block text-muted">{{ !empty($canDeleteOthersTasks) ? 'You can delete any selected task' : 'You can only delete tasks you assigned' }}{{ empty($canDeleteCorrectiveTasks) ? '. CA tasks can only be deleted by president@5core.com' : '' }}</small>
+                        <small class="d-block text-muted">{{ !empty($canDeleteOthersTasks) ? 'You can delete any selected task' : 'You can only delete tasks you assigned' }}{{ empty($canDeleteCorrectiveTasks) ? '. CA tasks can only be deleted by president@5core.com or inventory@5core.com' : '' }}</small>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assign-assignee-btn">
                         <i class="mdi mdi-account-plus text-success me-2"></i>
@@ -3136,12 +3136,18 @@
 
             <div class="mb-2">
                 <label for="tf_assignee_id" class="form-label fw-bold" style="font-size: 12px;">Assignee <span class="text-danger">*</span></label>
-                <select class="form-select form-select-sm tf-lockable tf-select2" id="tf_assignee_id" name="assignee_id">
-                    <option value="">Please Select</option>
+                <select class="form-select form-select-sm tf-lockable tf-select2" id="tf_assignee_id" name="assignee_ids[]" multiple>
                     @foreach($users as $user)
                         <option value="{{ $user->id }}">{{ $user->name }}</option>
                     @endforeach
                 </select>
+            </div>
+            <div class="mb-2" id="tf-split-wrap">
+                <label for="tf_split_tasks" class="d-flex align-items-center gap-2 mb-0 border rounded px-2 tf-lockable" style="min-height: 31px; cursor: pointer;">
+                    <input type="checkbox" class="form-check-input m-0 tf-lockable" id="tf_split_tasks" name="split_tasks" value="1">
+                    <span style="font-size: 12px;">Split task</span>
+                </label>
+                <div class="form-text mb-0" style="font-size:10px;">Select more than one person. Each one gets their own copy of this task.</div>
             </div>
             <div class="mb-2">
                 <label for="tf_etc_minutes" class="form-label fw-bold" style="font-size: 12px;">ETC (Min) <span class="text-danger">*</span></label>
@@ -3589,6 +3595,59 @@
                 return taskBusinessToday > addDaysYmd(bd, 1);
             }
 
+            // Missed applies to every task, not only rows already stamped status "Missed".
+            // Weekly/monthly automated tasks: created date + 6 days.
+            // Daily automated and normal tasks: the TID day has passed.
+            function taskCountsAsMissed(rowData) {
+                if (!rowData) {
+                    return false;
+                }
+                var status = String(rowData.status || '').trim();
+                if (status === 'Done' || status === 'Archived') {
+                    return false;
+                }
+                if (status === 'Missed') {
+                    return true;
+                }
+                var missedFlag = rowData.is_missed;
+                if (missedFlag == 1 || missedFlag === true) {
+                    return true;
+                }
+                if (isWeeklyOrMonthlyAutoTask(rowData)) {
+                    return isOverdueByBusinessTid(rowData);
+                }
+                if (!taskBusinessToday) {
+                    return false;
+                }
+                var bd = rowData.tid_business_date;
+                if (!bd && rowData.start_date) {
+                    var sliced = String(rowData.start_date).slice(0, 10);
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(sliced)) {
+                        bd = sliced;
+                    }
+                }
+                if (!bd) {
+                    return false;
+                }
+                return taskBusinessToday > bd;
+            }
+
+            function rowMatchesMissedFilter(data) {
+                if (taskCountsAsMissed(data)) {
+                    return true;
+                }
+                var kids = data && data._children;
+                if (!kids || !kids.length) {
+                    return false;
+                }
+                for (var i = 0; i < kids.length; i++) {
+                    if (rowMatchesMissedFilter(kids[i])) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             function formatTidFromBusinessDate(ymd) {
                 if (!ymd) {
                     return null;
@@ -3751,6 +3810,9 @@
                             break;
                         case 'Cancelled':
                             statusBadge = 'bg-dark text-white';
+                            break;
+                        case 'Missed':
+                            statusBadge = 'bg-danger text-white';
                             break;
                         case 'Archived':
                             statusBadge = 'bg-secondary text-white';
@@ -4479,7 +4541,8 @@
                                 'Approved': {bg: '#20c997', text: '#000'},
                                 'Hold': {bg: '#495057', text: '#fff'},
                                 'Monitor': {bg: '#0f766e', text: '#fff'},
-                                'Rework': {bg: '#f5576c', text: '#fff'}
+                                'Rework': {bg: '#f5576c', text: '#fff'},
+                                'Missed': {bg: '#dc3545', text: '#fff'}
                             };
                             var currentStatus = statuses[value] || {bg: '#6c757d', text: '#fff'};
                             
@@ -4503,6 +4566,7 @@
                                     <option value="Hold" ${value === 'Hold' ? 'selected' : ''}>Hold</option>
                                     <option value="Monitor" ${value === 'Monitor' ? 'selected' : ''}>Monitor</option>
                                     <option value="Rework" ${value === 'Rework' ? 'selected' : ''}>Rework</option>
+                                    ${value === 'Missed' ? '<option value="Missed" selected>Missed</option>' : ''}
                                 </select>
                             `;
                         }
@@ -4622,7 +4686,7 @@
                             var st = rowData.status || '';
                             
                             // Full edit (title, group, date, assignee, etc): assignor + senior override.
-                            // Delete of someone else's task: president@5core.com only.
+                            // Delete of someone else's task: president@5core.com or Ritu only.
                             // Assignees get an "Add Links" mode of the same edit page so they can attach
                             // proof / SOP / reference links to make review easier.
                             var isAssignor = currentUserIsAssignorOnTask(rowData);
@@ -4659,7 +4723,7 @@
                                 `;
                             } else if (wouldDeleteWithoutCa && taskIsCorrectiveAction(rowData)) {
                                 buttons += `
-                                    <button type="button" class="action-btn-icon action-btn-delete-disabled" disabled title="Corrective action tasks can only be deleted by president@5core.com">
+                                    <button type="button" class="action-btn-icon action-btn-delete-disabled" disabled title="Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com">
                                         <i class="mdi mdi-lock-outline"></i>
                                     </button>
                                 `;
@@ -4813,28 +4877,18 @@
                     ? Math.round((tatValues.reduce((a, b) => a + b, 0) / tatValues.length) * 10) / 10
                     : null;
                 
-                // MISSED calculation: Count of tasks with start_date in last 30 days that are not Done/Archived
-                // Matches server logic: start_date >= 30 days ago AND status NOT IN ('Done', 'Archived')
-                var missedTasks = filteredData.filter(function(t) {
-                    if (!t.start_date) return false;
-                    
-                    var startDate = new Date(t.start_date);
-                    if (isNaN(startDate.getTime())) return false;
-                    startDate.setHours(0, 0, 0, 0);
-                    
-                    // Must have start_date in last 30 days
-                    if (startDate < thirtyDaysAgo) return false;
-                    
-                    // Status must NOT be Done or Archived
-                    if (['Done', 'Archived'].includes(t.status)) {
-                        return false;
-                    }
-                    
-                    // Not Done/Archived and in last 30 days - count as missed
-                    return true;
-                });
-                
-                stats.missed_count_30 = missedTasks.length;
+                var missedCount = 0;
+                (function countMissed(rows) {
+                    (rows || []).forEach(function (t) {
+                        if (taskCountsAsMissed(t)) {
+                            missedCount += 1;
+                        }
+                        if (t._children && t._children.length) {
+                            countMissed(t._children);
+                        }
+                    });
+                })(filteredData);
+                stats.missed_count_30 = missedCount;
                 
                 // Update stat cards (find by stat-value divs in each card)
                 $('.stat-card').each(function() {
@@ -5212,7 +5266,9 @@
                 appendOverdueFilter(filters);
 
                 var statusValue = $('#filter-status').val();
-                if (statusValue) {
+                if (statusValue === 'Missed') {
+                    filters.push(rowMatchesMissedFilter);
+                } else if (statusValue) {
                     filters.push({field:"status", type:"like", value:statusValue});
                 }
 
@@ -7064,6 +7120,8 @@
                     theme: 'bootstrap-5',
                     placeholder: 'Please Select',
                     allowClear: true,
+                    closeOnSelect: false,
+                    width: '100%',
                     dropdownParent: $('#taskFormOffcanvas')
                 });
                 if ($('#tf_assignor_id').is('select')) {
@@ -7213,7 +7271,8 @@
 
                     tfSetVal('tf_group', '');
                     tfSetVal('tf_title', '');
-                    $('#tf_assignee_id').val('').trigger('change');
+                    $('#tf_assignee_id').val(null).trigger('change');
+                    $('#tf_split_tasks').prop('checked', false);
                     tfSetVal('tf_etc_minutes', 10);
                     $('#tf_is_corrective_action').prop('checked', false);
                     $('#tf_priority').val('normal');
@@ -7237,7 +7296,14 @@
 
                     tfSetVal('tf_group', rowData.group);
                     tfSetVal('tf_title', rowData.title);
-                    $('#tf_assignee_id').val(rowData.assignee_id ? String(rowData.assignee_id) : '').trigger('change');
+                    var assigneeIds = [];
+                    if (rowData.assignee_ids && rowData.assignee_ids.length) {
+                        assigneeIds = rowData.assignee_ids.map(function(id) { return String(id); });
+                    } else if (rowData.assignee_id) {
+                        assigneeIds = [String(rowData.assignee_id)];
+                    }
+                    $('#tf_assignee_id').val(assigneeIds.length ? assigneeIds : null).trigger('change');
+                    $('#tf_split_tasks').prop('checked', rowData.split_tasks === true || rowData.split_tasks === 1 || rowData.split_tasks === '1');
                     tfSetVal('tf_etc_minutes', rowData.eta_time || rowData.etc_minutes || 10);
                     $('#tf_is_corrective_action').prop('checked', !!(rowData.is_corrective_action === true || rowData.is_corrective_action === 1 || rowData.is_corrective_action === '1'));
                     $('#tf_priority').val(rowData.priority || 'normal');
@@ -7271,6 +7337,7 @@
                 // Lock non-link fields for assignee-only edit; unlock otherwise.
                 $('.tf-lockable').prop('disabled', lock);
                 $('#tf_assignee_id').prop('disabled', lock).trigger('change.select2');
+                $('#tf-split-wrap').toggle(!lock);
                 $('.tf-image-wrap').toggle(!lock); // assignees can't change the image
 
                 if (taskFormOffcanvas) taskFormOffcanvas.show();
@@ -7335,8 +7402,18 @@
                 var url = isEdit ? ('/tasks/' + taskId) : '{{ route('tasks.store') }}';
                 var fieldsLocked = $('#tf_assignee_id').prop('disabled');
                 if (!fieldsLocked) {
-                    if (!$('#tf_assignee_id').val()) {
+                    var selectedAssignees = $('#tf_assignee_id').val() || [];
+                    if (!Array.isArray(selectedAssignees)) {
+                        selectedAssignees = selectedAssignees ? [selectedAssignees] : [];
+                    }
+                    selectedAssignees = selectedAssignees.filter(Boolean);
+                    if (!selectedAssignees.length) {
                         alert('Please select an assignee.');
+                        $('#tf_assignee_id').select2('open');
+                        return;
+                    }
+                    if ($('#tf_split_tasks').is(':checked') && selectedAssignees.length < 2) {
+                        alert('Select at least two assignees to split this task.');
                         $('#tf_assignee_id').select2('open');
                         return;
                     }
@@ -7406,7 +7483,7 @@
                 var rowData = null;
                 try { rowData = table.getRow(taskId) ? table.getRow(taskId).getData() : null; } catch (e) { rowData = null; }
                 if (rowData && !userCanDeleteTaskRow(rowData)) {
-                    alert('Corrective action tasks can only be deleted by president@5core.com.');
+                    alert('Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com.');
                     return;
                 }
                 if (!confirm('Delete this task? This action cannot be undone.')) return;
@@ -7450,7 +7527,7 @@
                 var rowData = null;
                 try { rowData = table.getRow(taskId) ? table.getRow(taskId).getData() : null; } catch (e) { rowData = null; }
                 if (rowData && !userCanDeleteTaskRow(rowData) && !(selectedTasks.length > 1)) {
-                    alert('Corrective action tasks can only be deleted by president@5core.com.');
+                    alert('Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com.');
                     return;
                 }
                 var selectedIdSet = new Set((selectedTasks || []).map(function(sid) { return String(sid); }));

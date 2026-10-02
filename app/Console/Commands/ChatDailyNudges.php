@@ -11,7 +11,7 @@ class ChatDailyNudges extends Command
 {
     protected $signature = 'chat:daily-nudges';
 
-    protected $description = 'Send once-a-day DAR and overdue 5 Core Bot DMs';
+    protected $description = 'Send once-a-day DAR, overdue, and yesterday-missed 5 Core Bot DMs';
 
     public function handle(): int
     {
@@ -36,6 +36,7 @@ class ChatDailyNudges extends Command
 
         $darSent = 0;
         $overdueSent = 0;
+        $missedSent = 0;
 
         foreach ($users as $user) {
             $inbox = ChatWorkspace::botInboxFor($user);
@@ -53,9 +54,16 @@ class ChatDailyNudges extends Command
                 ChatWorkspace::forgetUnreadCache((int) $user->id);
                 $overdueSent++;
             }
+
+            $missedBody = InventChatBot::dailyMissedYesterdayBody($user);
+            if ($missedBody && ! InventChatBot::alreadyNudgedToday($inbox, 'daily_missed_yesterday')) {
+                InventChatBot::postBot($inbox, $missedBody, 'daily_missed_yesterday');
+                ChatWorkspace::forgetUnreadCache((int) $user->id);
+                $missedSent++;
+            }
         }
 
-        $this->info("DAR nudges: {$darSent}. Overdue nudges: {$overdueSent}.");
+        $this->info("DAR nudges: {$darSent}. Overdue nudges: {$overdueSent}. Yesterday missed: {$missedSent}.");
 
         return self::SUCCESS;
     }

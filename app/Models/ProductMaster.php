@@ -281,7 +281,9 @@ class ProductMaster extends Model
 
     /**
      * Recalculate LP, CBM and FRGHT for a given Values array.
-     * Uses own L/W/H when present; combo SKUs fall back to component package dims.
+     * Combo SKUs use the sum of component package volumes. A combo's own L/W/H
+     * is one box and understates freight, so it is only a fallback when
+     * component dimensions cannot be resolved.
      * Parent SKUs (containing "PARENT") are returned unchanged.
      */
     public static function recalcDerivedValues(array $values, string $sku = ''): array
@@ -300,12 +302,10 @@ class ProductMaster extends Model
 
         $cbm = null;
         $frght = null;
-        if ($l > 0 && $w > 0 && $h > 0) {
-            $cbm = ($l * 2.54) * ($w * 2.54) * ($h * 2.54) / 1000000;
-            $frght = $cbm * 200;
-        } elseif ($sku !== '' && self::isComboSku($sku, (string) ($values['Parent'] ?? $values['parent'] ?? ''))) {
+        $parent = (string) ($values['Parent'] ?? $values['parent'] ?? '');
+        if ($sku !== '' && self::isComboSku($sku, $parent)) {
             try {
-                $combo = self::lookupComboFreightFromDatabase($sku, (string) ($values['Parent'] ?? $values['parent'] ?? ''));
+                $combo = self::lookupComboFreightFromDatabase($sku, $parent);
             } catch (\Throwable $e) {
                 $combo = null;
             }
@@ -313,6 +313,10 @@ class ProductMaster extends Model
                 $cbm = $combo['cbm'];
                 $frght = $combo['frght'];
             }
+        }
+        if ($cbm === null && $l > 0 && $w > 0 && $h > 0) {
+            $cbm = ($l * 2.54) * ($w * 2.54) * ($h * 2.54) / 1000000;
+            $frght = $cbm * 200;
         }
 
         if ($cbm !== null) {
@@ -394,7 +398,9 @@ class ProductMaster extends Model
     }
 
     /**
-     * Sum CBM/FRGHT from combo component rows when the combo itself has no L/W/H.
+     * Sum CBM/FRGHT from combo component packages.
+     * The combo row's own L/W/H is ignored when components resolve, because that
+     * single box is what made combo freight too low.
      *
      * @param  callable(string): (?array)  $findComponent
      */
@@ -403,9 +409,6 @@ class ProductMaster extends Model
         $sku = (string) ($row['SKU'] ?? $row['sku'] ?? '');
         $parent = (string) ($row['Parent'] ?? $row['parent'] ?? '');
         if ($sku === '' || stripos($sku, 'PARENT') !== false) {
-            return $row;
-        }
-        if (self::cbmFromRowDims($row) !== null) {
             return $row;
         }
         if (! self::isComboSku($sku, $parent)) {
@@ -446,7 +449,13 @@ class ProductMaster extends Model
         } else {
             $cp = self::numericFromValues($row, 'cp');
             $storedLp = self::numericFromValues($row, 'lp');
-            if ($cp > 0 && ($storedLp <= 0 || abs($storedLp - $cp) < 0.009)) {
+            $ownCbm = self::cbmFromRowDims($row);
+            $ownFrght = $ownCbm !== null ? $ownCbm * 200 : null;
+            $looksAuto = $storedLp <= 0
+                || abs($storedLp - $cp) < 0.009
+                || ($ownFrght !== null && abs($storedLp - ($cp + $ownFrght)) < 0.05)
+                || abs($storedLp - ($cp + $frght)) < 0.05;
+            if ($cp > 0 && $looksAuto) {
                 $row['lp'] = round($cp + $frght, 2);
             }
         }

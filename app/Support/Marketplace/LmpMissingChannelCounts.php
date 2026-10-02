@@ -3,6 +3,7 @@
 namespace App\Support\Marketplace;
 
 use App\Models\ChannelMaster;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,17 +12,23 @@ use Illuminate\Support\Facades\Schema;
 /**
  * LMP Missing counts for /lmp-missing-data.
  *
- * Rows are analytics pages. Count = SKUs on that page with no LMP data
- * (same meaning as the LMP M. badge). Live page visits can overwrite the
- * computed count via storeReported().
+ * Rows are analytics pages. Count = in-stock child SKUs with no LMP,
+ * the same rule as the LMP M. badge. Live page visits can overwrite the
+ * computed count via storeReported(). Channels marked NR are stored and
+ * left out of the LMP M. total.
  */
 class LmpMissingChannelCounts
 {
-    public const TOTAL_CACHE_KEY = 'lmp_missing_total_v1';
+    public const TOTAL_CACHE_KEY = 'lmp_missing_total_v2';
 
-    public const ROWS_CACHE_KEY = 'lmp_missing_rows_v1';
+    public const ROWS_CACHE_KEY = 'lmp_missing_rows_v2';
 
-    public const REPORTED_CACHE_PREFIX = 'lmp_missing_reported_v1:';
+    public const REPORTED_CACHE_PREFIX = 'lmp_missing_reported_v2:';
+
+    public const NR_TABLE = 'lmp_missing_channel_nr';
+
+    /** @var array<string, array<string, true>> */
+    private static array $skuSetMemo = [];
 
     /**
      * Analytics pages shown on /lmp-missing-data.
@@ -305,7 +312,7 @@ class LmpMissingChannelCounts
         $rows = self::computeMasterRows();
         try {
             Cache::put(self::ROWS_CACHE_KEY, $rows, now()->addMinutes(10));
-            Cache::put(self::TOTAL_CACHE_KEY, (int) collect($rows)->sum('lmp_missing'), now()->addMinutes(10));
+            Cache::put(self::TOTAL_CACHE_KEY, self::sumCounted($rows), now()->addMinutes(10));
         } catch (\Throwable $e) {
             // ignore
         }
@@ -326,7 +333,122 @@ class LmpMissingChannelCounts
             }
         }
 
-        return (int) collect(self::masterRows($useCache))->sum('lmp_missing');
+        return self::sumCounted(self::masterRows($useCache));
+    }
+
+    /**
+     * LMP M. total. Channels marked NR are left out.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    public static function sumCounted(array $rows): int
+    {
+        $sum = 0;
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! empty($row['nr'])) {
+                continue;
+            }
+            $sum += max(0, (int) ($row['lmp_missing'] ?? 0));
+        }
+
+        return $sum;
+    }
+
+    public static function setNr(string $channel, bool $nr): void
+    {
+        $key = self::resolveKey($channel);
+        if ($key === null) {
+            return;
+        }
+
+        self::ensureNrTable();
+        $now = now();
+        $existing = DB::table(self::NR_TABLE)->where('channel_key', $key)->exists();
+        if ($existing) {
+            DB::table(self::NR_TABLE)->where('channel_key', $key)->update([
+                'nr' => $nr,
+                'updated_at' => $now,
+            ]);
+        } else {
+            DB::table(self::NR_TABLE)->insert([
+                'channel_key' => $key,
+                'nr' => $nr,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        self::refreshCachedNr($key, $nr);
+    }
+
+    private static function refreshCachedNr(string $key, bool $nr): void
+    {
+        try {
+            $cached = Cache::get(self::ROWS_CACHE_KEY);
+            if (! is_array($cached)) {
+                Cache::forget(self::TOTAL_CACHE_KEY);
+
+                return;
+            }
+
+            foreach ($cached as $i => $row) {
+                if (is_array($row) && ($row['key'] ?? null) === $key) {
+                    $cached[$i]['nr'] = $nr;
+                }
+            }
+
+            Cache::put(self::ROWS_CACHE_KEY, $cached, now()->addMinutes(10));
+            Cache::put(self::TOTAL_CACHE_KEY, self::sumCounted($cached), now()->addMinutes(30));
+        } catch (\Throwable $e) {
+            Log::warning('LmpMissingChannelCounts setNr cache failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Rebuild every channel from inventory + LMP tables and store those counts.
+     * Page-reported numbers are replaced. NR channels stay out of the total.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function syncRealCounts(): array
+    {
+        @ini_set('memory_limit', '1024M');
+        @set_time_limit(0);
+
+        self::$skuSetMemo = [];
+        $masters = self::channelMasterByAlias();
+        $nrKeys = self::nrKeys();
+        $counts = LmpMissingPageCounts::all();
+        $rows = [];
+
+        foreach (self::$analytics as $key => $meta) {
+            $count = (int) ($counts[$key] ?? 0);
+            $master = self::matchMaster($masters, $meta['aliases'] ?? [], $meta['label'] ?? $key);
+            $rows[] = [
+                'id' => $master['id'] ?? $key,
+                'key' => $key,
+                'image' => $master['logo'] ?? null,
+                'channel' => $meta['label'],
+                'analytics_url' => url($meta['url']),
+                'lmp_missing' => $count,
+                'nr' => isset($nrKeys[$key]),
+                'count_source' => 'sync',
+            ];
+            try {
+                Cache::put(self::REPORTED_CACHE_PREFIX.$key, $count, now()->addDay());
+            } catch (\Throwable $e) {
+                Log::warning('LmpMissingChannelCounts sync report failed ('.$key.'): '.$e->getMessage());
+            }
+        }
+
+        try {
+            Cache::put(self::ROWS_CACHE_KEY, $rows, now()->addMinutes(10));
+            Cache::put(self::TOTAL_CACHE_KEY, self::sumCounted($rows), now()->addMinutes(30));
+        } catch (\Throwable $e) {
+            Log::warning('LmpMissingChannelCounts sync cache failed: '.$e->getMessage());
+        }
+
+        return $rows;
     }
 
     public static function storeReported(string $channel, int $count): void
@@ -366,12 +488,14 @@ class LmpMissingChannelCounts
     private static function computeMasterRows(): array
     {
         $masters = self::channelMasterByAlias();
+        $nrKeys = self::nrKeys();
+        $counts = LmpMissingPageCounts::all();
         $rows = [];
 
         foreach (self::$analytics as $key => $meta) {
             $master = self::matchMaster($masters, $meta['aliases'] ?? [], $meta['label'] ?? $key);
             $reported = self::reportedCount($key);
-            $count = $reported !== null ? $reported : self::computeMissing($meta);
+            $count = $reported !== null ? $reported : (int) ($counts[$key] ?? 0);
 
             $rows[] = [
                 'id' => $master['id'] ?? $key,
@@ -380,6 +504,7 @@ class LmpMissingChannelCounts
                 'channel' => $meta['label'],
                 'analytics_url' => url($meta['url']),
                 'lmp_missing' => $count,
+                'nr' => isset($nrKeys[$key]),
                 'count_source' => $reported !== null ? 'page' : 'computed',
             ];
         }
@@ -412,26 +537,32 @@ class LmpMissingChannelCounts
             return 0;
         }
 
-        try {
-            $skuQuery = DB::table($skuTable)->whereNotNull($skuCol)->where($skuCol, '!=', '');
-            if ($skuTable === 'product_master' && Schema::hasColumn($skuTable, 'deleted_at')) {
-                $skuQuery->whereNull('deleted_at');
-            }
-            $skus = $skuQuery->pluck($skuCol);
-        } catch (\Throwable $e) {
-            Log::warning('LmpMissingChannelCounts sku pluck failed ('.$skuTable.'): '.$e->getMessage());
+        $memoKey = $skuTable.'|'.$skuCol;
+        if (! isset(self::$skuSetMemo[$memoKey])) {
+            try {
+                $skuQuery = DB::table($skuTable)->whereNotNull($skuCol)->where($skuCol, '!=', '');
+                if ($skuTable === 'product_master' && Schema::hasColumn($skuTable, 'deleted_at')) {
+                    $skuQuery->whereNull('deleted_at');
+                }
+                $skus = $skuQuery->pluck($skuCol);
+            } catch (\Throwable $e) {
+                Log::warning('LmpMissingChannelCounts sku pluck failed ('.$skuTable.'): '.$e->getMessage());
 
-            return 0;
+                return 0;
+            }
+
+            $normalized = [];
+            foreach ($skus as $raw) {
+                $n = self::normSku((string) $raw);
+                if ($n === '' || str_starts_with($n, 'PARENT')) {
+                    continue;
+                }
+                $normalized[$n] = true;
+            }
+            self::$skuSetMemo[$memoKey] = $normalized;
         }
 
-        $normalized = [];
-        foreach ($skus as $raw) {
-            $n = self::normSku((string) $raw);
-            if ($n === '' || str_starts_with($n, 'PARENT')) {
-                continue;
-            }
-            $normalized[$n] = true;
-        }
+        $normalized = self::$skuSetMemo[$memoKey];
         if (! empty($meta['require_inv'])) {
             $normalized = self::keepShopifyInStockSkus($normalized);
         }
@@ -541,6 +672,50 @@ class LmpMissingChannelCounts
         }
 
         return $kept;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private static function nrKeys(): array
+    {
+        if (! Schema::hasTable(self::NR_TABLE)) {
+            return [];
+        }
+
+        try {
+            $set = [];
+            $keys = DB::table(self::NR_TABLE)->where('nr', true)->pluck('channel_key');
+            foreach ($keys as $key) {
+                $set[(string) $key] = true;
+            }
+
+            return $set;
+        } catch (\Throwable $e) {
+            Log::warning('LmpMissingChannelCounts nr lookup failed: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    private static function ensureNrTable(): void
+    {
+        if (Schema::hasTable(self::NR_TABLE)) {
+            return;
+        }
+
+        try {
+            Schema::create(self::NR_TABLE, function (Blueprint $table) {
+                $table->id();
+                $table->string('channel_key', 64)->unique();
+                $table->boolean('nr')->default(false);
+                $table->timestamps();
+            });
+        } catch (\Throwable $e) {
+            if (! Schema::hasTable(self::NR_TABLE)) {
+                throw $e;
+            }
+        }
     }
 
     /**
