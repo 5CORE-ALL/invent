@@ -51,6 +51,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
@@ -3360,6 +3361,32 @@ class TaskController extends Controller
     }
 
     /**
+     * Open (or create) the task's discussion chat between the opener and the task's assignor/assignee(s).
+     */
+    public function openChat($id): JsonResponse
+    {
+        $task = Task::findOrFail($id);
+        $user = Auth::user();
+        abort_unless($user, 403);
+
+        $people = \App\Support\ChatWorkspace::taskPeopleIds($task);
+        if (! in_array((int) $user->id, $people, true) && ! Gate::forUser($user)->allows('view', $task)) {
+            return response()->json(['success' => false, 'message' => 'You can only open chats for tasks you assigned or are assigned to.'], 403);
+        }
+        if ($people === [] || $people === [(int) $user->id]) {
+            return response()->json(['success' => false, 'message' => 'This task has no other assignor or assignee to chat with.'], 422);
+        }
+
+        $channel = \App\Support\ChatWorkspace::taskChannel($task, $user);
+
+        return response()->json([
+            'success' => true,
+            'channel_id' => (int) $channel->id,
+            'url' => url('/chat?channel='.(int) $channel->id),
+        ]);
+    }
+
+    /**
      * Checklist form linked to a task via automate_task_id (for Mark as Done modal).
      */
     public function doneChecklist($id): JsonResponse
@@ -4221,6 +4248,11 @@ class TaskController extends Controller
                         }
 
                         Task::whereIn('id', $tasksToDelete->pluck('id'))->delete();
+                        try {
+                            \App\Support\ChatWorkspace::deleteTaskChats($tasksToDelete->pluck('id'));
+                        } catch (\Throwable $e) {
+                            \Log::warning('Bulk delete: task chat cleanup failed', ['error' => $e->getMessage()]);
+                        }
 
                         if ($imagesDeleted > 0) {
                             \Log::info("🗑️ Bulk delete: $imagesDeleted image(s) deleted");
@@ -5170,7 +5202,13 @@ class TaskController extends Controller
         \DB::table('automate_tasks')->whereIn('id', $allTemplateIds)->delete();
 
         // Also delete any executed instances from tasks table
+        $instanceIds = \DB::table('tasks')->whereIn('automate_task_id', $allTemplateIds)->pluck('id')->all();
         \DB::table('tasks')->whereIn('automate_task_id', $allTemplateIds)->delete();
+        try {
+            \App\Support\ChatWorkspace::deleteTaskChats($instanceIds);
+        } catch (\Throwable $e) {
+            \Log::warning('Automated task delete: task chat cleanup failed', ['error' => $e->getMessage()]);
+        }
 
         $extra = count($childIds) > 0 ? ' (including ' . count($childIds) . ' subtask template(s))' : '';
 

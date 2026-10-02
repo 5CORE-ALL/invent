@@ -7407,6 +7407,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'destroy'])->name('tasks.destroy');
     Route::get('/tasks/{id}/done-checklist', [\App\Http\Controllers\TaskController::class, 'doneChecklist'])->name('tasks.doneChecklist');
     Route::post('/tasks/{id}/complete', [\App\Http\Controllers\TaskController::class, 'complete'])->name('tasks.complete');
+    Route::post('/tasks/{id}/chat', [\App\Http\Controllers\TaskController::class, 'openChat'])->whereNumber('id')->name('tasks.chat');
     Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');
 
     // Resources Master (R&R / training / checklists / media / links)

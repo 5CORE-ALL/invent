@@ -93,6 +93,17 @@ class Task extends Model
         'screenshots' => 'array',
     ];
 
+    protected static function booted(): void
+    {
+        static::deleted(function (Task $task) {
+            try {
+                \App\Support\ChatWorkspace::deleteTaskChats([$task->id]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Task chat cleanup failed', ['task_id' => $task->id, 'error' => $e->getMessage()]);
+            }
+        });
+    }
+
     // Helper methods to maintain compatibility with new code
     public function getAssignorAttribute($value)
     {

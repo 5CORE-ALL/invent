@@ -17,12 +17,15 @@ class ChatChannel extends Model
 
     public const TYPE_BOT = 'bot';
 
+    public const TYPE_TASK = 'task';
+
     protected $fillable = [
         'type',
         'name',
         'slug',
         'topic',
         'dm_key',
+        'task_id',
         'created_by',
         'is_archived',
     ];
@@ -54,5 +57,10 @@ class ChatChannel extends Model
     public function isGroup(): bool
     {
         return $this->type === self::TYPE_GROUP;
+    }
+
+    public function isTask(): bool
+    {
+        return $this->type === self::TYPE_TASK;
     }
 }

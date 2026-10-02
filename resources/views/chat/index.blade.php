@@ -389,6 +389,11 @@
                     <button type="button" id="slackNewGroupBtn" title="New group">+</button>
                 </div>
                 <div id="slackGroupList"></div>
+                <div class="slack-sec" id="slackTaskSec">
+                    <span>Task chats</span>
+                    <a href="{{ url('/tasks') }}" title="Open Tasks to start a task chat" style="color:inherit;text-decoration:none;font-size:15px;line-height:1;">+</a>
+                </div>
+                <div id="slackTaskList"></div>
                 <div class="slack-sec">
                     <span>Direct messages</span>
                     <button type="button" id="slackNewDmBtn" title="New message">+</button>
@@ -660,6 +665,7 @@
         bot: document.getElementById('slackBotList'),
         channel: document.getElementById('slackChannelList'),
         group: document.getElementById('slackGroupList'),
+        task: document.getElementById('slackTaskList'),
         dm: document.getElementById('slackDmList'),
     };
     const feed = document.getElementById('slackFeed');
@@ -777,12 +783,13 @@
         if (ch.type === 'bot') return 'bot';
         if (ch.type === 'dm') return 'dm';
         if (ch.type === 'group') return 'group';
+        if (ch.type === 'task') return 'task';
         return 'channel';
     }
 
     function renderNav() {
         Object.keys(lists).forEach(function (k) { lists[k].innerHTML = ''; });
-        const sectionOrder = { bot: 0, channel: 1, group: 2, dm: 3 };
+        const sectionOrder = { bot: 0, channel: 1, group: 2, task: 3, dm: 4 };
         const ordered = channels.slice().sort(function (a, b) {
             const section = (sectionOrder[bucket(a)] || 9) - (sectionOrder[bucket(b)] || 9);
             if (section !== 0) return section;
@@ -796,7 +803,7 @@
             const prefix = (ch.type === 'public' || ch.type === 'private') ? '<span class="slack-item__hash">#</span>' : '';
             const avatar = ch.avatar
                 ? '<img class="' + (ch.type === 'bot' ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
-                : (ch.type === 'bot' ? '<i class="ri-robot-2-line"></i>' : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : ''));
+                : (ch.type === 'bot' ? '<i class="ri-robot-2-line"></i>' : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : (ch.type === 'task' ? '<i class="ri-task-line"></i>' : '')));
             const dot = (ch.type === 'dm') ? '<span class="' + presenceDotClass('slack-dot', ch) + '" title="' + esc(presenceTitle(ch)) + '"></span>' : '';
             const badge = ch.unread > 0 ? '<span class="slack-item__badge">' + ch.unread + '</span>' : '';
             const pinMark = ch.pinned ? '<i class="ri-pushpin-fill slack-pin-mark" title="Pinned"></i>' : '';
@@ -1060,7 +1067,7 @@
         document.getElementById('slackRoomName').textContent = name;
         const src = detail || ch || {};
         let sub = 'Message';
-        const rosterTypes = { group: 1, public: 1, private: 1 };
+        const rosterTypes = { group: 1, public: 1, private: 1, task: 1 };
         if (src.member_names && src.member_names.length && ch && rosterTypes[ch.type]) {
             sub = src.member_names.join(', ');
         } else if (src.last_seen_label && !(ch && rosterTypes[ch.type])) {
@@ -1087,7 +1094,7 @@
         if (addBtn) addBtn.hidden = !canAdd;
         if (delBtn) {
             delBtn.hidden = !canDel;
-            delBtn.textContent = (ch && ch.type === 'group') ? 'Delete group' : ((ch && ch.type === 'dm') ? 'Delete chat' : 'Delete channel');
+            delBtn.textContent = (ch && ch.type === 'group') ? 'Delete group' : ((ch && (ch.type === 'dm' || ch.type === 'task')) ? 'Delete chat' : 'Delete channel');
         }
         const pinRoomBtn = document.getElementById('slackPinRoomBtn');
         if (pinRoomBtn) {
@@ -1753,7 +1760,7 @@
     document.getElementById('slackDeleteRoomBtn').addEventListener('click', async function () {
         const ch = channels.find(function (c) { return c.id === activeId; });
         if (!ch) return;
-        const kind = ch.type === 'group' ? 'group' : (ch.type === 'dm' ? 'chat' : 'channel');
+        const kind = ch.type === 'group' ? 'group' : (ch.type === 'dm' || ch.type === 'task' ? 'chat' : 'channel');
         if (!confirm('Delete this ' + kind + '? It will disappear for everyone.')) return;
         try {
             await api('/chat/channels/' + ch.id + '/delete', {

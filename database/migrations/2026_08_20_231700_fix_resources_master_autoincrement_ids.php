@@ -32,7 +32,9 @@ return new class extends Migration
                 continue;
             }
 
-            DB::statement("ALTER TABLE `{$table}` MODIFY `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT");
+            // Imported dumps can lose the primary key, and MySQL only allows AUTO_INCREMENT on a key.
+            $hasKey = collect(DB::select("SHOW INDEX FROM `{$table}` WHERE Column_name = 'id'"))->isNotEmpty();
+            DB::statement("ALTER TABLE `{$table}` MODIFY `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT".($hasKey ? '' : ', ADD PRIMARY KEY (`id`)'));
         }
     }
 

@@ -7,9 +7,11 @@ use App\Models\ChatChannelMember;
 use App\Models\ChatMessage;
 use App\Models\ChatMessageArchive;
 use App\Models\ChatNotificationPref;
+use App\Models\Task;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -300,6 +302,133 @@ class ChatWorkspace
         return $channel;
     }
 
+    public static function taskChatsReady(): bool
+    {
+        return self::tablesReady() && Schema::hasColumn('chat_channels', 'task_id');
+    }
+
+    /**
+     * One discussion channel per task: the opener plus the task's assignor and assignee(s).
+     * Membership is re-synced on every open so reassigned people get access.
+     */
+    public static function taskChannel(Task $task, User $opener): ChatChannel
+    {
+        abort_unless(self::taskChatsReady(), 503, 'Task chat is not set up yet. Run the migrations.');
+
+        $title = trim((string) $task->title) ?: 'Task';
+        $name = Str::limit('#'.$task->id.' '.$title, 120, '…');
+
+        $channel = ChatChannel::query()->where('task_id', $task->id)->first();
+        $created = false;
+        if (! $channel) {
+            $channel = ChatChannel::query()->create([
+                'type' => ChatChannel::TYPE_TASK,
+                'name' => $name,
+                'topic' => Str::limit($title, 250, '…'),
+                'task_id' => $task->id,
+                'created_by' => $opener->id,
+            ]);
+            $created = true;
+        } elseif ($channel->name !== $name || $channel->is_archived) {
+            $channel->name = $name;
+            $channel->is_archived = false;
+            $channel->save();
+        }
+
+        $ids = array_values(array_unique(array_merge([(int) $opener->id], self::taskPeopleIds($task))));
+        foreach ($ids as $id) {
+            self::ensureMember($channel, $id);
+        }
+
+        if ($created) {
+            $people = self::formatNameList(
+                User::query()->whereIn('id', array_values(array_diff($ids, [(int) $opener->id])))->orderBy('name')->pluck('name')->all()
+            );
+            self::postSystemNotice(
+                $channel,
+                $opener->name.' started the discussion for task #'.$task->id.($people !== '' ? ' with '.$people : ''),
+                'task'
+            );
+        }
+
+        return $channel;
+    }
+
+    /**
+     * Task assignor / assign_to hold emails (comma-separated for multi-assign); older rows hold names.
+     *
+     * @return list<int>
+     */
+    public static function taskPeopleIds(Task $task): array
+    {
+        $tokens = [];
+        foreach ([(string) ($task->getAttributes()['assignor'] ?? ''), (string) ($task->assign_to ?? '')] as $raw) {
+            foreach (preg_split('/\s*,\s*/', trim($raw)) ?: [] as $token) {
+                if (trim($token) !== '') {
+                    $tokens[] = trim($token);
+                }
+            }
+        }
+        if ($tokens === []) {
+            return [];
+        }
+
+        $emails = array_values(array_filter($tokens, static fn ($t) => str_contains($t, '@')));
+        $names = array_values(array_diff($tokens, $emails));
+
+        $ids = [];
+        if ($emails !== []) {
+            $ids = User::query()->whereIn('email', $emails)->pluck('id')->all();
+        }
+        if ($names !== []) {
+            $ids = array_merge($ids, User::query()->whereIn('name', $names)->pluck('id')->all());
+        }
+
+        return array_values(array_unique(array_map('intval', $ids)));
+    }
+
+    /**
+     * Deleting a task removes its discussion entirely (channel, members, messages and per-message rows).
+     *
+     * @param  iterable<int|string>  $taskIds
+     */
+    public static function deleteTaskChats(iterable $taskIds): void
+    {
+        $ids = [];
+        foreach ($taskIds as $id) {
+            if ((int) $id > 0) {
+                $ids[] = (int) $id;
+            }
+        }
+        if ($ids === [] || ! self::taskChatsReady()) {
+            return;
+        }
+
+        $channelIds = ChatChannel::query()->whereIn('task_id', $ids)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($channelIds === []) {
+            return;
+        }
+
+        $memberUserIds = ChatChannelMember::query()->whereIn('channel_id', $channelIds)->pluck('user_id')->unique()->all();
+        DB::transaction(function () use ($channelIds) {
+            $messageIds = ChatMessage::withoutGlobalScopes()->whereIn('channel_id', $channelIds)->pluck('id')->all();
+            foreach (array_chunk($messageIds, 1000) as $chunk) {
+                foreach (['chat_reactions', 'chat_bookmarks', 'chat_message_archives'] as $table) {
+                    if (Schema::hasTable($table)) {
+                        DB::table($table)->whereIn('message_id', $chunk)->delete();
+                    }
+                }
+            }
+            DB::table('chat_messages')->whereIn('channel_id', $channelIds)->delete();
+            ChatChannelMember::query()->whereIn('channel_id', $channelIds)->delete();
+            ChatChannel::query()->whereIn('id', $channelIds)->delete();
+        });
+
+        foreach ($memberUserIds as $userId) {
+            self::forgetUnreadCache((int) $userId);
+        }
+    }
+
     /**
      * @param  list<string|null>  $names
      */
@@ -480,7 +609,7 @@ class ChatWorkspace
         $channels = ChatChannel::query()
             ->whereIn('id', $memberChannelIds)
             ->where('is_archived', false)
-            ->orderByRaw("FIELD(type, 'bot', 'public', 'private', 'group', 'dm')")
+            ->orderByRaw("FIELD(type, 'bot', 'public', 'private', 'group', 'task', 'dm')")
             ->orderBy('name')
             ->get();
 
@@ -568,11 +697,13 @@ class ChatWorkspace
                 'can_manage_members' => self::canManageMembers($user, $channel),
                 'can_delete' => self::canDeleteChannel($user, $channel),
                 'pinned' => isset($pinnedLookup[(int) $channel->id]),
+                'task_id' => $channel->isTask() ? (int) $channel->task_id : null,
+                'task_url' => $channel->isTask() && $channel->task_id ? url('/tasks?highlight='.(int) $channel->task_id) : null,
             ];
         }
 
         usort($out, function (array $a, array $b) {
-            $rank = ['bot' => 0, 'public' => 1, 'private' => 2, 'group' => 3, 'dm' => 4];
+            $rank = ['bot' => 0, 'public' => 1, 'private' => 2, 'group' => 3, 'task' => 4, 'dm' => 5];
             $ra = $rank[$a['type']] ?? 9;
             $rb = $rank[$b['type']] ?? 9;
             if ($ra !== $rb) {
@@ -963,7 +1094,7 @@ class ChatWorkspace
         if ((int) $channel->created_by === (int) $user->id) {
             return true;
         }
-        if (! ($channel->isGroup() || $channel->type === ChatChannel::TYPE_PRIVATE || $channel->type === ChatChannel::TYPE_PUBLIC)) {
+        if (! ($channel->isGroup() || $channel->isTask() || $channel->type === ChatChannel::TYPE_PRIVATE || $channel->type === ChatChannel::TYPE_PUBLIC)) {
             return false;
         }
 
@@ -1076,7 +1207,7 @@ class ChatWorkspace
         $preview = Str::limit(trim((string) ($message->body ?: $message->attachment_name ?: 'New message')), 120);
         $title = $isDm
             ? ($actor->name ?: 'Direct message')
-            : (($channel->isGroup() ? '' : '#').($channel->name ?: 'Chat'));
+            : (($channel->isGroup() || $channel->isTask() ? '' : '#').($channel->name ?: 'Chat'));
 
         $members = ChatChannelMember::query()
             ->where('channel_id', $channel->id)

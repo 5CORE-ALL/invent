@@ -4297,6 +4297,30 @@
                                    '</div>';
                         }
                     });
+
+                    // CHAT (task discussion with the assignor / assignee)
+                    var taskChatIcon = function(size) {
+                        return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true" style="display:block;">' +
+                            '<circle cx="12" cy="12" r="12" fill="#12806a"/>' +
+                            '<path d="M12 6.3c-3.2 0-5.8 2.3-5.8 5.1 0 1.2.4 2.2 1.1 3.1l-.6 2.6 2.7-1.1c.8.4 1.7.6 2.6.6 3.2 0 5.8-2.3 5.8-5.2S15.2 6.3 12 6.3z" fill="#fff"/>' +
+                            '</svg>';
+                    };
+                    cols.push({
+                        title: '<span title="Task chat" style="display:inline-flex;justify-content:center;width:100%;">' + taskChatIcon(20) + '</span>',
+                        field: "task_chat",
+                        width: 52,
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var id = cell.getRow().getData().id;
+                            return '<button type="button" class="btn btn-link p-0 task-chat-btn" data-id="' + id + '" title="Open task chat" style="line-height:0;">' + taskChatIcon(20) + '</button>';
+                        },
+                        cellClick: function(e, cell) {
+                            e.stopPropagation();
+                            window.openTaskChat(cell.getRow().getData().id);
+                        }
+                    });
                     
                     // ASSIGNOR (avatar + first name)
                     cols.push({
@@ -7517,6 +7541,30 @@
             $(document).on('click', '.tf-add-task-btn', function() {
                 openTaskPanel('add', {});
             });
+
+            // Task chat: open the window synchronously so the browser does not block it as a popup.
+            window.openTaskChat = function(taskId) {
+                var chatWin = window.open('about:blank', 'task-chat-' + taskId);
+                $.ajax({
+                    url: '/tasks/' + taskId + '/chat',
+                    type: 'POST',
+                    data: { _token: '{{ csrf_token() }}' },
+                    success: function(response) {
+                        var url = response.url || ('/chat?channel=' + response.channel_id);
+                        if (chatWin && !chatWin.closed) {
+                            chatWin.location.href = url;
+                        } else {
+                            window.location.href = url;
+                        }
+                    },
+                    error: function(xhr) {
+                        if (chatWin && !chatWin.closed) {
+                            chatWin.close();
+                        }
+                        alert((xhr.responseJSON && xhr.responseJSON.message) || 'Could not open the task chat.');
+                    }
+                });
+            };
 
             // ACTION column delete: single row, or all selected if this row is among a multi-selection.
             $(document).on('click', '.delete-task', function(e) {
