@@ -1133,25 +1133,22 @@
                       .css({ opacity: '0.7', cursor: 'not-allowed' });
                 $icon.addClass('fa-spin');
 
-                amzNotify('Jungle Scout refresh started. LQS data will update in the background.', 'success');
-
                 $.ajax({
                     url: '{{ route("lqs.amz.refresh.js") }}',
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                     success: function(res) {
                         if (res.success) {
-                            // Auto-reload the table after a short delay to pick up new data
-                            setTimeout(function() {
-                                amzTable.setData('{{ route("lqs.amz.data") }}');
-                                amzNotify('LQS data refreshed from Jungle Scout!', 'success');
-                            }, 3000);
+                            amzNotify(res.message || 'Jungle Scout refresh is running. Reload in a few minutes.', 'success');
                         } else {
                             amzNotify(res.message || 'Refresh failed.', 'error');
                         }
                     },
-                    error: function() {
-                        amzNotify('Failed to trigger refresh. Please try again.', 'error');
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Failed to trigger refresh. Please try again.';
+                        amzNotify(msg, 'error');
                     },
                     complete: function() {
                         setTimeout(function() {

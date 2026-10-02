@@ -2061,12 +2061,13 @@
                 if (!channels) return;
                 Object.keys(channels).forEach(function(channel) {
                     var metrics = channels[channel] || {};
+                    var norm = snapshotChannelKey(channel);
                     Object.keys(metrics).forEach(function(metric) {
                         var pair = metrics[metric];
                         var v1 = pair && pair[0] != null ? parseFloat(pair[0]) : null;
                         var v2 = pair && pair[1] != null ? parseFloat(pair[1]) : null;
-                        lastDotPairByKey[channel + '_' + metric] = [v1, v2];
-                        lastDotColorByKey[channel + '_' + metric] = colorFromDotPair(v1, v2, metric);
+                        lastDotPairByKey[norm + '_' + metric] = [v1, v2];
+                        lastDotColorByKey[norm + '_' + metric] = colorFromDotPair(v1, v2, metric);
                     });
                 });
             }

@@ -14,6 +14,7 @@ use App\Services\AlibabaApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -81,6 +82,7 @@ class AlibabaAnalyticsController extends Controller
         $pmByNorm = $this->productMasterByNormalizedSku($skus);
         $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
         $l30 = app(AlibabaSalesController::class)->l30SkuTotals();
+        $spriceBySku = $this->spriceBySku();
         $salesUsed = [];
 
         $children = [];
@@ -109,6 +111,11 @@ class AlibabaAnalyticsController extends Controller
                 $sales = round((float) ($bucket['sales'] ?? 0), 2);
             }
             $metrics = $this->priceMetrics($price, $lp, $margin);
+            $sprice = (float) ($spriceBySku[$skuKey] ?? $spriceBySku[strtoupper($storedSku)] ?? 0);
+            if ($sprice <= 0) {
+                $sprice = 0.0;
+            }
+            $sMetrics = $sprice > 0 ? $this->priceMetrics($sprice, $lp, $margin) : ['gpft' => 0.0, 'roi' => 0.0];
             $cvr = $ovL30 > 0 ? round(($abL30 / $ovL30) * 100, 2) : 0.0;
             $image = $this->productImage($pm, $shopify);
 
@@ -140,6 +147,19 @@ class AlibabaAnalyticsController extends Controller
                 'profit' => $metrics['profit_each'],
                 'sales' => $sales,
                 'lp' => round($lp, 2),
+                'sprice' => $sprice > 0 ? round($sprice, 2) : null,
+                'SPRICE' => $sprice > 0 ? round($sprice, 2) : null,
+                'sgpft' => $sMetrics['gpft'],
+                'sgroi' => $sMetrics['roi'],
+                'sroi' => $sMetrics['roi'],
+                'snroi' => $sMetrics['roi'],
+                'sngpft' => $sMetrics['gpft'],
+                'SGPFT' => $sMetrics['gpft'],
+                'SGROI' => $sMetrics['roi'],
+                'SROI' => $sMetrics['roi'],
+                'SNROI' => $sMetrics['roi'],
+                'SNGPFT' => $sMetrics['gpft'],
+                'has_custom_sprice' => $sprice > 0,
                 'cvr' => $cvr,
                 '_margin' => $margin,
                 'is_parent' => false,
@@ -182,6 +202,233 @@ class AlibabaAnalyticsController extends Controller
             ],
             'status' => 200,
         ]);
+    }
+
+    public function saveSprice(Request $request): JsonResponse
+    {
+        if (! Schema::hasTable('alibaba_pricing_prices') || ! Schema::hasColumn('alibaba_pricing_prices', 'sprice')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'S PRC column is missing. Run the Alibaba sprice migration.',
+            ], 500);
+        }
+
+        if ($request->filled('sku') && ! $request->has('updates')) {
+            $request->merge([
+                'updates' => [[
+                    'sku' => $request->input('sku'),
+                    'sprice' => $request->input('sprice'),
+                ]],
+            ]);
+        }
+
+        $validated = $request->validate([
+            'updates' => 'required|array|min:1',
+            'updates.*.sku' => 'required|string|max:255',
+            'updates.*.sprice' => 'nullable|numeric',
+        ]);
+
+        $saved = 0;
+        DB::transaction(function () use ($validated, &$saved): void {
+            foreach ($validated['updates'] as $update) {
+                $sku = trim((string) ($update['sku'] ?? ''));
+                if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                    continue;
+                }
+                $raw = $update['sprice'] ?? null;
+                $sprice = ($raw === null || $raw === '') ? null : round((float) $raw, 2);
+                if ($sprice !== null && $sprice <= 0) {
+                    $sprice = null;
+                }
+                AlibabaPricingPrice::updateOrCreate(
+                    ['sku' => $sku],
+                    ['sprice' => $sprice]
+                );
+                $saved++;
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'updated' => $saved,
+            'message' => "Saved S PRC for {$saved} SKU(s)",
+        ]);
+    }
+
+    public function pushPrice(Request $request, AlibabaApiService $api): JsonResponse
+    {
+        if (empty(config('services.alibaba.access_token'))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'ALIBABA_ACCESS_TOKEN is missing in .env.',
+            ], 422);
+        }
+
+        $updates = $request->input('updates');
+        if (! is_array($updates) || $updates === []) {
+            $updates = [[
+                'sku' => $request->input('sku'),
+                'price' => $request->input('price', $request->input('sprice')),
+            ]];
+        }
+
+        @set_time_limit(180);
+
+        $pushed = 0;
+        $failed = 0;
+        $results = [];
+        $lastPrice = null;
+        $lastSku = '';
+
+        foreach ($updates as $update) {
+            if (! is_array($update)) {
+                continue;
+            }
+            $sku = trim((string) ($update['sku'] ?? ''));
+            $price = round((float) ($update['price'] ?? $update['sprice'] ?? 0), 2);
+            if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                $failed++;
+                $results[] = ['sku' => $sku, 'success' => false, 'message' => 'SKU is required.'];
+                continue;
+            }
+            if ($price < 0.01) {
+                $failed++;
+                $results[] = ['sku' => $sku, 'success' => false, 'message' => 'Price must be greater than 0.'];
+                continue;
+            }
+
+            $sheet = $this->sheetRowForPushSku($sku);
+            $productId = $sheet ? trim((string) $sheet->product_id) : '';
+            if ($productId === '' && Schema::hasTable('alibaba_metrics')) {
+                $productId = trim((string) AlibabaMetric::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->value('product_id'));
+            }
+            if ($productId === '') {
+                $failed++;
+                $results[] = ['sku' => $sku, 'success' => false, 'message' => 'No Alibaba product id for this SKU.'];
+                continue;
+            }
+
+            $result = $api->pushListedPrice($productId, $price, $sku);
+            if (empty($result['success'])) {
+                $failed++;
+                $results[] = [
+                    'sku' => $sku,
+                    'success' => false,
+                    'product_id' => $productId,
+                    'message' => (string) ($result['message'] ?? 'Alibaba price update failed.'),
+                ];
+                continue;
+            }
+
+            $this->storePushedPrice($sheet, $productId, $sku, $price);
+            $pushed++;
+            $lastPrice = $price;
+            $lastSku = $sku;
+            $results[] = [
+                'sku' => $sku,
+                'success' => true,
+                'product_id' => $productId,
+                'price' => $price,
+            ];
+        }
+
+        if ($pushed === 0) {
+            $message = (string) ($results[0]['message'] ?? 'No Alibaba prices were pushed.');
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'pushed' => 0,
+                'failed' => $failed,
+                'results' => $results,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => $failed === 0,
+            'message' => $failed === 0
+                ? 'Pushed $'.number_format((float) $lastPrice, 2).' to Alibaba for '.$lastSku.'.'
+                : "Pushed {$pushed} Alibaba price(s); {$failed} failed.",
+            'sku' => $lastSku,
+            'price' => $lastPrice,
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'results' => $results,
+        ], $failed === 0 ? 200 : 422);
+    }
+
+    protected function sheetRowForPushSku(string $sku): ?AlibabaSheetPrice
+    {
+        $want = strtoupper(trim($sku));
+        $stripped = strtoupper(trim((string) preg_replace('/\s+\d+\s*PCS$/i', '', $want)));
+        $rows = AlibabaSheetPrice::query()
+            ->where(function ($query) use ($want, $stripped): void {
+                $query->whereRaw('UPPER(TRIM(sku)) = ?', [$want]);
+                if ($stripped !== '' && $stripped !== $want) {
+                    $query->orWhereRaw('UPPER(TRIM(sku)) = ?', [$stripped]);
+                }
+            })
+            ->get();
+        if ($rows->count() === 1) {
+            return $rows->first();
+        }
+
+        $exact = $rows->filter(fn (AlibabaSheetPrice $row): bool => strtoupper(trim((string) $row->sku)) === $want)->values();
+
+        return $exact->count() === 1 ? $exact->first() : null;
+    }
+
+    protected function storePushedPrice(?AlibabaSheetPrice $sheet, string $productId, string $sku, float $price): void
+    {
+        if ($sheet) {
+            $sheet->sku_price = $price;
+            $sheet->save();
+        } elseif ($productId !== '') {
+            AlibabaSheetPrice::query()->where('product_id', $productId)->update(['sku_price' => $price]);
+        }
+
+        if (Schema::hasTable('alibaba_metrics')) {
+            AlibabaMetric::query()->where('product_id', $productId)->update(['price' => $price]);
+        }
+
+        if (! Schema::hasTable('alibaba_pricing_prices')) {
+            return;
+        }
+
+        $keys = array_values(array_unique(array_filter([
+            strtoupper(trim($sku)),
+            strtoupper(trim((string) preg_replace('/\s+\d+\s*PCS$/i', '', $sku))),
+            $sheet ? strtoupper(trim((string) $sheet->sku)) : '',
+        ])));
+        foreach ($keys as $key) {
+            AlibabaPricingPrice::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
+                ->update(['price' => $price]);
+        }
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    protected function spriceBySku(): array
+    {
+        if (! Schema::hasTable('alibaba_pricing_prices') || ! Schema::hasColumn('alibaba_pricing_prices', 'sprice')) {
+            return [];
+        }
+
+        $map = [];
+        foreach (AlibabaPricingPrice::query()->whereNotNull('sprice')->get(['sku', 'sprice']) as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            $value = (float) $row->sprice;
+            if ($key === '' || $value <= 0) {
+                continue;
+            }
+            $map[$key] = $value;
+        }
+
+        return $map;
     }
 
     public function sync(Request $request, AlibabaApiService $api): JsonResponse
@@ -518,6 +765,13 @@ class AlibabaAnalyticsController extends Controller
             'profit' => null,
             'sales' => round($sumSales, 2),
             'lp' => null,
+            'sprice' => null,
+            'SPRICE' => null,
+            'sgpft' => null,
+            'sgroi' => null,
+            'sroi' => null,
+            'snroi' => null,
+            'sngpft' => null,
             'cvr' => 0,
             'is_parent' => true,
             'is_parent_summary' => true,

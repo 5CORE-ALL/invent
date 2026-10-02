@@ -2,6 +2,7 @@
 
 namespace App\Services\Support;
 
+use App\Http\Controllers\MarketPlace\AlibabaAnalyticsController;
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\MarketPlace\NeweggPricingController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\TemuController;
 use App\Http\Controllers\MarketPlace\Temu3Controller;
+use App\Services\AlibabaApiService;
 use App\Services\AliExpressApiService;
 use App\Services\SheinApiService;
 use App\Services\ChannelLivePriceSync;
@@ -464,6 +466,16 @@ class ChannelPushSpriceRunner
     private function pushPrice(string $sku, float $price)
     {
         $pushPrice = $price;
+        if ($this->channel === 'alibaba') {
+            $alibabaReq = Request::create('/alibaba-analytics/push-price', 'POST', [
+                'sku' => $sku,
+                'price' => $pushPrice,
+            ]);
+            $alibabaReq->headers->set('Accept', 'application/json');
+
+            return app(AlibabaAnalyticsController::class)->pushPrice($alibabaReq, app(AlibabaApiService::class));
+        }
+
         if ($this->channel === 'aliexpress') {
             $aeReq = Request::create('/aliexpress/pricing-push-price', 'POST', [
                 'updates' => [

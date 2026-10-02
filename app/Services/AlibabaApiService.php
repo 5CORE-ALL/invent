@@ -1354,6 +1354,275 @@ class AlibabaApiService extends AliExpressApiService
         return $pool[0]['price'];
     }
 
+    /**
+     * Incremental schema XML that sets the buyer-facing unit price.
+     * FOB listings set the single-piece min and max. Ladder listings change only the MOQ tier.
+     *
+     * @param  array<string, mixed>  $product
+     */
+    public function listedPriceUpdateXml(array $product, float $price, ?string $sku = null): string
+    {
+        $price = round($price, 2);
+        if ($price < 0.01 || $price > 9999999) {
+            throw new \InvalidArgumentException('Alibaba price must be between 0.01 and 9999999.00.');
+        }
+
+        $type = strtolower(trim((string) ($product['priceType'] ?? $product['price_type'] ?? '')));
+        $amount = number_format($price, 2, '.', '');
+
+        if ($type === 'sku_price' || $type === 'sku') {
+            throw new \InvalidArgumentException('This Alibaba listing uses SKU prices. Price push updates FOB and ladder listings.');
+        }
+
+        if ($type === 'ladder_price' || $type === 'ladder') {
+            return $this->ladderPriceXml($product, $amount, $sku);
+        }
+
+        return $this->fobPriceXml($product, $amount);
+    }
+
+    /**
+     * Push the listing unit price through /icbu/product/schema/update.
+     *
+     * @return array{success: bool, message?: string, price?: float, product_id?: string}
+     */
+    public function pushListedPrice(string $productId, float $price, ?string $sku = null): array
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return ['success' => false, 'message' => 'Alibaba product id is missing.'];
+        }
+
+        $info = $this->getProductInfo($productId);
+        if (empty($info['success'])) {
+            return ['success' => false, 'message' => (string) ($info['message'] ?? 'Alibaba product lookup failed.')];
+        }
+
+        $product = is_array($info['data'] ?? null) ? $info['data'] : [];
+        $catId = $product['categoryId'] ?? $product['category_id'] ?? $product['catId'] ?? null;
+        if ($catId === null || $catId === '') {
+            return ['success' => false, 'message' => 'Alibaba category id is missing for this listing.'];
+        }
+
+        try {
+            $xml = $this->listedPriceUpdateXml($product, $price, $sku);
+        } catch (\InvalidArgumentException $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $this->useIcbuRest();
+        $raw = $this->callRestGateway('/icbu/product/schema/update', [
+            'xml' => $xml,
+            'product_id' => $productId,
+            'cat_id' => (string) $catId,
+            'language' => 'en_US',
+        ]);
+        if (empty($raw['success'])) {
+            return ['success' => false, 'message' => $this->icbuErrorMessage($raw)];
+        }
+
+        return [
+            'success' => true,
+            'product_id' => $productId,
+            'price' => round($price, 2),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    protected function fobPriceXml(array $product, string $amount): string
+    {
+        $sourcing = $product['sourcingTrade'] ?? $product['sourcing_trade'] ?? [];
+        if (! is_array($sourcing)) {
+            $sourcing = [];
+        }
+        $currency = strtoupper(trim((string) ($sourcing['fobCurrency'] ?? $sourcing['fob_currency'] ?? 'USD')));
+        if ($currency === '') {
+            $currency = 'USD';
+        }
+        $unit = [
+            'USD' => '1',
+            'RMB' => '2',
+            'CNY' => '2',
+            'EUR' => '3',
+            'GBP' => '5',
+            'JPY' => '6',
+            'NTD' => '11',
+            'HKD' => '12',
+            'NZD' => '13',
+            'SGD' => '14',
+        ][$currency] ?? null;
+        if ($unit === null) {
+            throw new \InvalidArgumentException('Alibaba FOB currency '.$currency.' cannot be pushed.');
+        }
+
+        $moqXml = '';
+        $moqRaw = $sourcing['minOrderQuantity'] ?? $sourcing['min_order_quantity'] ?? null;
+        if (is_numeric($moqRaw) && (float) $moqRaw > 0) {
+            $moq = rtrim(rtrim(number_format((float) $moqRaw, 2, '.', ''), '0'), '.');
+            $moqXml = '<field id="minOrderQuantity" type="input"><value>'.$moq.'</value></field>';
+        }
+
+        return '<itemSchema>'
+            .'<field id="scPrice" type="singleCheck"><value>2</value></field>'
+            .'<field id="fob" type="complex"><complex-value>'
+            .'<field id="range_min" type="input"><value>'.$amount.'</value></field>'
+            .'<field id="range_max" type="input"><value>'.$amount.'</value></field>'
+            .'<field id="unit_type" type="singleCheck"><value>'.$unit.'</value></field>'
+            .'</complex-value></field>'
+            .$moqXml
+            .'</itemSchema>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    protected function ladderPriceXml(array $product, string $amount, ?string $sku): string
+    {
+        $tiers = $this->ladderTiers($product, $sku);
+        if ($tiers === []) {
+            throw new \InvalidArgumentException('Alibaba ladder prices could not be read for this listing.');
+        }
+
+        usort($tiers, static fn (array $a, array $b): int => $a['qty'] <=> $b['qty']);
+        $tiers[0]['price'] = $amount;
+
+        $productType = strtolower(trim((string) ($product['productType'] ?? $product['product_type'] ?? '')));
+        $typeField = $productType !== '' && $productType !== 'sourcing' ? 'marketPrice' : 'scPrice';
+        $steps = '';
+        foreach (array_values($tiers) as $index => $tier) {
+            if ($index > 3) {
+                break;
+            }
+            $steps .= '<field id="ladderPrice_'.$index.'" type="complex"><complex-value>'
+                .'<field id="quantity" type="input"><value>'.$tier['qty'].'</value></field>'
+                .'<field id="price" type="input"><value>'.$tier['price'].'</value></field>'
+                .'</complex-value></field>';
+        }
+
+        return '<itemSchema>'
+            .'<field id="'.$typeField.'" type="singleCheck"><value>1</value></field>'
+            .'<field id="ladderPrice" type="complex"><complex-value>'.$steps.'</complex-value></field>'
+            .'</itemSchema>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     * @return list<array{qty: int, price: string}>
+     */
+    protected function ladderTiers(array $product, ?string $sku): array
+    {
+        $want = strtoupper(trim((string) $sku));
+        $bags = [];
+        foreach (['wholesaleTrade', 'wholesale_trade'] as $key) {
+            $trade = $product[$key] ?? null;
+            if (is_array($trade)) {
+                foreach (['ladderPrice', 'ladder_price', 'bulkDiscountPrices', 'bulk_discount_prices'] as $priceKey) {
+                    if (isset($trade[$priceKey])) {
+                        $bags[] = $trade[$priceKey];
+                    }
+                }
+            }
+        }
+        foreach (['bulkDiscountPrices', 'bulk_discount_prices'] as $priceKey) {
+            if (isset($product[$priceKey])) {
+                $bags[] = $product[$priceKey];
+            }
+        }
+
+        $skuBag = $product['productSku']['skus'] ?? $product['product_sku']['skus'] ?? [];
+        if (isset($skuBag['skuDefinition']) && is_array($skuBag['skuDefinition'])) {
+            $skuBag = $skuBag['skuDefinition'];
+        } elseif (isset($skuBag['sku_definition']) && is_array($skuBag['sku_definition'])) {
+            $skuBag = $skuBag['sku_definition'];
+        }
+        if (is_array($skuBag) && $skuBag !== [] && ! array_is_list($skuBag)) {
+            $skuBag = [$skuBag];
+        }
+        $matched = [];
+        $fallback = [];
+        if (is_array($skuBag)) {
+            foreach ($skuBag as $node) {
+                if (! is_array($node)) {
+                    continue;
+                }
+                $discounts = $node['bulkDiscountPrices'] ?? $node['bulk_discount_prices'] ?? null;
+                if (! is_array($discounts)) {
+                    continue;
+                }
+                $code = strtoupper(trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? '')));
+                if ($want !== '' && $code === $want) {
+                    $matched[] = $discounts;
+                } else {
+                    $fallback[] = $discounts;
+                }
+            }
+        }
+        foreach ($want !== '' && $matched !== [] ? $matched : array_merge($bags, $fallback) as $bag) {
+            $tiers = $this->normalizeLadderTiers($bag);
+            if ($tiers !== []) {
+                return $tiers;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @return list<array{qty: int, price: string}>
+     */
+    protected function normalizeLadderTiers(mixed $discounts): array
+    {
+        if (! is_array($discounts)) {
+            return [];
+        }
+        if (isset($discounts['bulk_discount_price']) && is_array($discounts['bulk_discount_price'])) {
+            $discounts = $discounts['bulk_discount_price'];
+        }
+        if (isset($discounts['price']) && ! array_is_list($discounts)) {
+            $discounts = [$discounts];
+        }
+
+        $rows = [];
+        foreach ($discounts as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $amount = $this->icbuMoney($row['price'] ?? null);
+            $qty = $row['startQuantity'] ?? $row['start_quantity'] ?? $row['quantity'] ?? null;
+            if ($amount <= 0 || ! is_numeric($qty) || (int) $qty < 1) {
+                continue;
+            }
+            $rows[] = [
+                'qty' => (int) $qty,
+                'price' => number_format($amount, 2, '.', ''),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     */
+    protected function icbuErrorMessage(array $raw): string
+    {
+        $candidates = [
+            $raw['response']['result']['message_info'] ?? null,
+            $raw['data']['result']['message_info'] ?? null,
+            $raw['response']['result']['message'] ?? null,
+            $raw['message'] ?? null,
+        ];
+        foreach ($candidates as $message) {
+            if (is_string($message) && trim($message) !== '') {
+                return trim($message);
+            }
+        }
+
+        return 'Alibaba price update failed.';
+    }
+
     protected function useIcbuRest(): void
     {
         if (! str_contains($this->restBase, 'openapi-api.alibaba.com')) {

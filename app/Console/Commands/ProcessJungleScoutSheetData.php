@@ -49,14 +49,57 @@ class ProcessJungleScoutSheetData extends Command
 
         $saved = 0;
         $skipped = 0;
+        $alreadyFresh = 0;
+
+        $byAsin = [];
+        foreach ($data as $row) {
+            $asinKey = strtoupper(trim((string) ($row['ASIN'] ?? '')));
+            if ($asinKey === '' || isset($byAsin[$asinKey])) {
+                continue;
+            }
+            $byAsin[$asinKey] = $row;
+        }
+
+        $freshCutoff = now()->subDays(30);
+        $priority = [];
+        foreach (JungleScoutProductData::query()->get(['asin', 'updated_at', 'data']) as $existing) {
+            $asinKey = strtoupper(trim((string) $existing->asin));
+            if ($asinKey === '' || isset($priority[$asinKey])) {
+                continue;
+            }
+            $payload = is_array($existing->data) ? $existing->data : [];
+            $lqs = $payload['listing_quality_score'] ?? null;
+            $hasLqs = is_numeric($lqs) && (string) $lqs !== '';
+            $isFresh = $existing->updated_at && $existing->updated_at->gte($freshCutoff);
+            if ($hasLqs && $isFresh) {
+                $priority[$asinKey] = 2;
+            } elseif ($hasLqs) {
+                $priority[$asinKey] = 1;
+            } else {
+                $priority[$asinKey] = 0;
+            }
+        }
+
+        $queue = array_values($byAsin);
+        usort($queue, function (array $a, array $b) use ($priority): int {
+            $aKey = strtoupper(trim((string) ($a['ASIN'] ?? '')));
+            $bKey = strtoupper(trim((string) ($b['ASIN'] ?? '')));
+
+            return ($priority[$aKey] ?? 0) <=> ($priority[$bKey] ?? 0);
+        });
+
+        $this->info('Unique ASINs: ' . count($queue) . '. Missing and unscored ASINs are fetched first.');
 
         try {
             // Query one ASIN at a time so JungleScout returns the exact product.
-            // The old approach sent 100 ASINs as include_keywords (a text search) and
-            // only received ~10 results (the API default page size), leaving ~90% of
-            // products un-synced on every run.
-            foreach ($data as $inputRow) {
-                $asin = $inputRow['ASIN'];
+            // page[size]=1 often returned a different keyword hit and the ASIN was
+            // skipped forever. Ask for a few rows and keep only the exact ASIN.
+            foreach ($queue as $inputRow) {
+                $asin = strtoupper(trim((string) $inputRow['ASIN']));
+                if (($priority[$asin] ?? 0) === 2) {
+                    $alreadyFresh++;
+                    continue;
+                }
 
                 try {
                     $apiResponse = Http::withOptions(['verify' => false])
@@ -66,7 +109,8 @@ class ProcessJungleScoutSheetData extends Command
                             'Accept'        => 'application/vnd.junglescout.v1+json',
                             'X-API-Type'    => 'junglescout',
                         ])
-                        ->post('https://developer.junglescout.com/api/product_database_query?marketplace=us&page[size]=1', [
+                        ->timeout(40)
+                        ->post('https://developer.junglescout.com/api/product_database_query?marketplace=us&page[size]=10', [
                             'data' => [
                                 'type' => 'product_database_query',
                                 'attributes' => [
@@ -75,15 +119,22 @@ class ProcessJungleScoutSheetData extends Command
                             ],
                         ]);
 
+                    if ($apiResponse->status() === 401 || $apiResponse->status() === 403) {
+                        $detail = (string) ($apiResponse->json('errors.0.detail') ?? $apiResponse->body());
+                        Log::error("JungleScout API stopped at ASIN {$asin}: " . $apiResponse->status() . ' ' . $detail);
+                        $this->error('Jungle Scout stopped the pull (' . $apiResponse->status() . '). ' . $detail);
+                        break;
+                    }
+
                     if (!$apiResponse->ok()) {
                         Log::warning("JungleScout API failed for ASIN {$asin}: " . $apiResponse->status());
                         $skipped++;
-                        // Brief pause before next request on error
                         usleep(500000);
                         continue;
                     }
 
                     $products = $apiResponse->json()['data'] ?? [];
+                    $matchedProduct = false;
 
                     foreach ($products as $product) {
                         $asinId = $product['id'] ?? null;
@@ -133,10 +184,11 @@ class ProcessJungleScoutSheetData extends Command
                         );
 
                         $saved++;
+                        $matchedProduct = true;
                         break; // Only need the matched product
                     }
 
-                    if (empty($products)) {
+                    if (! $matchedProduct) {
                         $skipped++;
                     }
 
@@ -149,7 +201,7 @@ class ProcessJungleScoutSheetData extends Command
                 usleep(200000);
             }
 
-            $this->info("ASIN processing completed. Saved: {$saved}, Skipped/Not found: {$skipped}.");
+            $this->info("ASIN processing completed. Saved: {$saved}, Skipped/Not found: {$skipped}, Already fresh: {$alreadyFresh}.");
         } catch (\Exception $e) {
             Log::error('ASIN processing error: ' . $e->getMessage());
 
