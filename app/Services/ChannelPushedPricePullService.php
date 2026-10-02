@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\AlibabaMetric;
+use App\Models\AlibabaPricingPrice;
+use App\Models\AlibabaSheetPrice;
 use App\Models\DobaMetric;
 use App\Models\NeweggPricing;
 use App\Models\ShopifySku;
@@ -83,6 +86,10 @@ class ChannelPushedPricePullService
 
         if ($channel === 'topdawg') {
             return $this->pullTopDawg($skus, $expected);
+        }
+
+        if ($channel === 'alibaba') {
+            return $this->pullAlibaba($skus, $expected);
         }
 
         return array_map(static fn ($sku) => [
@@ -320,6 +327,119 @@ class ChannelPushedPricePullService
 
             if ($i < count($skus) - 1) {
                 usleep(150000);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Live Alibaba unit price for the SKUs that were just pushed.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
+     */
+    private function pullAlibaba(array $skus, array $expectedBySku = []): array
+    {
+        $api = app(AlibabaApiService::class);
+        $out = [];
+        foreach ($skus as $sku) {
+            try {
+                $sheet = AlibabaSheetPrice::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                    ->first();
+                $productId = $sheet ? trim((string) $sheet->product_id) : '';
+                if ($productId === '' && \Illuminate\Support\Facades\Schema::hasTable('alibaba_metrics')) {
+                    $productId = trim((string) AlibabaMetric::query()
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                        ->value('product_id'));
+                }
+                if ($productId === '') {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => 'alibaba',
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => 'No Alibaba product id for this SKU.',
+                    ];
+                    continue;
+                }
+
+                $info = $api->getProductInfo($productId);
+                if (empty($info['success'])) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => 'alibaba',
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => (string) ($info['message'] ?? 'Alibaba product lookup failed.'),
+                    ];
+                    continue;
+                }
+
+                $product = is_array($info['data'] ?? null) ? $info['data'] : [];
+                $rows = $api->extractSkuRowsFromProductInfo($product, $productId);
+                $want = strtoupper(trim($sku));
+                $live = 0.0;
+                foreach ($rows as $row) {
+                    if (strtoupper(trim((string) ($row['sku'] ?? ''))) === $want) {
+                        $live = (float) ($row['price'] ?? 0);
+                        break;
+                    }
+                }
+                if (! ($live > 0) && count($rows) === 1) {
+                    $live = (float) ($rows[0]['price'] ?? 0);
+                }
+                if (! ($live > 0)) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => 'alibaba',
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => 'Alibaba listing price was not returned.',
+                    ];
+                    continue;
+                }
+
+                $price = $this->listingPriceToStore('alibaba', $sku, $live, $expectedBySku);
+                if ($sheet) {
+                    $sheet->sku_price = $price;
+                    $sheet->save();
+                }
+                if (\Illuminate\Support\Facades\Schema::hasTable('alibaba_metrics')) {
+                    AlibabaMetric::query()->where('product_id', $productId)->update(['price' => $price]);
+                }
+                if (\Illuminate\Support\Facades\Schema::hasTable('alibaba_pricing_prices')) {
+                    AlibabaPricingPrice::query()
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$want])
+                        ->update(['price' => $price]);
+                }
+
+                $out[] = [
+                    'success' => true,
+                    'sku' => $sku,
+                    'marketplace' => 'alibaba',
+                    'price' => $price,
+                    'sprice' => null,
+                    'message' => 'Pulled Alibaba Price $'.number_format($price, 2),
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price Alibaba pull failed', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+                $out[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => 'alibaba',
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => $e->getMessage(),
+                ];
             }
         }
 

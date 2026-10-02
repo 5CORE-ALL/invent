@@ -1371,7 +1371,7 @@ class AlibabaApiService extends AliExpressApiService
         $amount = number_format($price, 2, '.', '');
 
         if ($type === 'sku_price' || $type === 'sku') {
-            throw new \InvalidArgumentException('This Alibaba listing uses SKU prices. Price push updates FOB and ladder listings.');
+            return $this->skuPriceXml($product, $amount, $sku);
         }
 
         if ($type === 'ladder_price' || $type === 'ladder') {
@@ -1473,6 +1473,87 @@ class AlibabaApiService extends AliExpressApiService
             .'</complex-value></field>'
             .$moqXml
             .'</itemSchema>';
+    }
+
+    /**
+     * Wholesale SKU price. Every SKU id is sent so a sibling price is kept.
+     * The matching SKU, or the only SKU on the listing, receives the new price.
+     *
+     * @param  array<string, mixed>  $product
+     */
+    protected function skuPriceXml(array $product, string $amount, ?string $sku): string
+    {
+        $nodes = $this->skuDefinitionNodes($product);
+        if ($nodes === []) {
+            throw new \InvalidArgumentException('Alibaba SKU prices could not be read for this listing.');
+        }
+
+        $want = strtoupper(trim((string) $sku));
+        $only = count($nodes) === 1;
+        $values = '';
+        $changed = false;
+        foreach ($nodes as $node) {
+            $code = strtoupper(trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? '')));
+            $skuId = trim((string) ($node['skuId'] ?? $node['sku_id'] ?? ''));
+            if ($skuId === '' || preg_match('/^\d+$/', $skuId) !== 1) {
+                throw new \InvalidArgumentException('Alibaba SKU id is missing, so this SKU price was not pushed.');
+            }
+            $isTarget = $only || ($want !== '' && $code === $want);
+            if ($isTarget) {
+                $nodePrice = $amount;
+                $changed = true;
+            } else {
+                $kept = $this->listedSkuPrice($node);
+                if (! ($kept > 0)) {
+                    throw new \InvalidArgumentException('Another SKU on this Alibaba listing has no price, so the update was not sent.');
+                }
+                $nodePrice = number_format($kept, 2, '.', '');
+            }
+            $values .= '<complex-values>'
+                .'<field id="skuId" type="input"><value>'.$skuId.'</value></field>'
+                .'<field id="price" type="input"><value>'.$nodePrice.'</value></field>'
+                .'</complex-values>';
+        }
+        if (! $changed) {
+            throw new \InvalidArgumentException('This SKU was not found on the Alibaba listing, so its price was not pushed.');
+        }
+
+        $productType = strtolower(trim((string) ($product['productType'] ?? $product['product_type'] ?? '')));
+        $typeField = $productType !== '' && $productType !== 'sourcing' ? 'marketPrice' : 'scPrice';
+
+        return '<itemSchema>'
+            .'<field id="'.$typeField.'" type="singleCheck"><value>3</value></field>'
+            .'<field id="sku" type="multiComplex">'.$values.'</field>'
+            .'</itemSchema>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     * @return list<array<string, mixed>>
+     */
+    protected function skuDefinitionNodes(array $product): array
+    {
+        $skuBag = $product['productSku']['skus'] ?? $product['product_sku']['skus'] ?? [];
+        if (isset($skuBag['skuDefinition']) && is_array($skuBag['skuDefinition'])) {
+            $skuBag = $skuBag['skuDefinition'];
+        } elseif (isset($skuBag['sku_definition']) && is_array($skuBag['sku_definition'])) {
+            $skuBag = $skuBag['sku_definition'];
+        }
+        if (is_array($skuBag) && $skuBag !== [] && ! array_is_list($skuBag)) {
+            $skuBag = [$skuBag];
+        }
+        if (! is_array($skuBag)) {
+            return [];
+        }
+
+        $nodes = [];
+        foreach ($skuBag as $node) {
+            if (is_array($node)) {
+                $nodes[] = $node;
+            }
+        }
+
+        return $nodes;
     }
 
     /**

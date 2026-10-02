@@ -84,7 +84,7 @@
                 tiktok: 1, tiktok2: 1, topdawg: 1, purchasing_power: 1,
                 faire: 1, pls: 1, newegg: 1, wayfair: 1, aliexpress: 1, shein: 1, alibaba: 1,
             })[CH_PUSH_SPRICE_CHANNEL] === 1;
-            const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|topdawg)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|topdawg|alibaba)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_TIKTOK = /^(tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_MACYS = /^(macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_BESTBUY = CH_PUSH_SPRICE_CHANNEL === 'bestbuy';
@@ -340,7 +340,7 @@
             }
             function chPushPaintRowColumns(row) {
                 if (!row || typeof row.getCell !== 'function') return;
-                ['push_price', 'push_status', 'SPRICE'].forEach(function(field) {
+                ['push_price', 'push_status', 'push_prc', 'SPRICE', 'price', 'groi', 'gpft', 'profit'].forEach(function(field) {
                     let cell;
                     try { cell = row.getCell(field); } catch (e) { return; }
                     if (!cell || typeof cell.getElement !== 'function' || typeof cell.getColumn !== 'function') return;
@@ -377,6 +377,8 @@
                     if (st === 'ok') {
                         if (d.SPRICE_STATUS !== 'pushed') patch.SPRICE_STATUS = 'pushed';
                         if (d.push_status !== 'pushed') patch.push_status = 'pushed';
+                        if (d.PUSH_PRC_STATUS !== 'pushed') patch.PUSH_PRC_STATUS = 'pushed';
+                        if (d.push_prc !== 'pushed') patch.push_prc = 'pushed';
                         if (pushedMark > 0 && !chPushSpriceNearlyEqual(d.SPRICE_PUSHED_VALUE, pushedMark)) {
                             patch.SPRICE_PUSHED_VALUE = pushedMark;
                         }
@@ -400,9 +402,20 @@
                                 priceChanged = true;
                             }
                         }
+                        if (CH_PUSH_SPRICE_CHANNEL === 'alibaba' && live > 0) {
+                            patch.sku_price = live;
+                            if (t.price_pulling === false) {
+                                if (d._price_pulling) patch._price_pulling = false;
+                            } else if (CH_PUSH_SPRICE_CAN_PULL && !d._price_pulling) {
+                                patch._price_pulling = true;
+                            }
+                        }
                     } else if (st === 'failed') {
                         if (d.SPRICE_STATUS !== 'error') patch.SPRICE_STATUS = 'error';
                         if (d.push_status !== 'error') patch.push_status = 'error';
+                        if (d.PUSH_PRC_STATUS !== 'error') patch.PUSH_PRC_STATUS = 'error';
+                        if (d.push_prc !== 'error') patch.push_prc = 'error';
+                        if (d._price_pulling) patch._price_pulling = false;
                         const err = String(t.error || t.message || '').toLowerCase();
                         if (err.indexOf('291') !== -1 || err.indexOf('ended listing') !== -1) {
                             if (d.listing_status !== 'ENDED') patch.listing_status = 'ENDED';
@@ -450,6 +463,9 @@
                                 const livePrice = Number((result.patch && (result.patch['BB Price'] || result.patch.price))
                                     || t.price) || 0;
                                 if (livePrice > 0) global.bestbuyApplyLivePriceToRow(row, livePrice);
+                            }
+                            if (CH_PUSH_SPRICE_CHANNEL === 'alibaba' && typeof window.abApplyPushPatch === 'function') {
+                                window.abApplyPushPatch(t.sku, result.patch);
                             }
                             chPushPaintRowColumns(row);
                         }
@@ -499,7 +515,7 @@
                         stale.push(r.sku);
                         if (!CH_PUSH_SPRICE_IS_TIKTOK) return;
                     }
-                    tasks.push({ sku: r.sku, status: 'ok', ebay_price: live, price: live });
+                    tasks.push({ sku: r.sku, status: 'ok', ebay_price: live, price: live, price_pulling: false });
                 });
                 if (tasks.length) {
                     applyChannelPushSpriceTasks(tasks);
@@ -552,6 +568,20 @@
                 const n = skus.length;
                 const expectedBySku = chPushSpriceExpectedBySku(skus);
                 const retryMs = [0, 2000, 4000];
+                function finishPulling(list) {
+                    (list || []).forEach(function(sku) {
+                        const row = typeof chPushSpriceFindRowBySku === 'function'
+                            ? chPushSpriceFindRowBySku(sku)
+                            : null;
+                        if (row) {
+                            chPushSafeRowUpdate(row, { _price_pulling: false });
+                            chPushPaintRowColumns(row);
+                        }
+                        if (CH_PUSH_SPRICE_CHANNEL === 'alibaba' && typeof window.abApplyPushPatch === 'function') {
+                            window.abApplyPushPatch(sku, { _price_pulling: false });
+                        }
+                    });
+                }
                 function runPull(attempt, pending) {
                     if (!pending || !pending.length) return;
                     $.ajax({
@@ -592,6 +622,7 @@
                             }, retryMs[attempt + 1]);
                             return;
                         }
+                        finishPulling(pending);
                         if (pulled > 0 && !retry.length) {
                             chPushSpriceToast('success', 'Pulled live Price for ' + pulled + ' SKU(s)');
                         } else if (retry.length) {
@@ -606,6 +637,7 @@
                             }, retryMs[attempt + 1]);
                             return;
                         }
+                        finishPulling(pending);
                         chPushSpriceToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Live Price pull failed');
                     });
                 }
@@ -884,6 +916,10 @@
                         if (CH_PUSH_SPRICE_PRICE_FIELD !== 'price') patch.price = live;
                         patch.PUSH_PRC_VALUE = live;
                         patch.SPRICE_PUSHED_VALUE = live;
+                        if (CH_PUSH_SPRICE_CHANNEL === 'alibaba') {
+                            patch.sku_price = live;
+                            patch._price_pulling = !!CH_PUSH_SPRICE_CAN_PULL;
+                        }
                     }
                 } else {
                     patch.SPRICE_STATUS = 'error';
@@ -913,7 +949,11 @@
                 } else if (d) {
                     Object.assign(d, patch);
                 }
+                if (CH_PUSH_SPRICE_CHANNEL === 'alibaba' && typeof window.abApplyPushPatch === 'function') {
+                    window.abApplyPushPatch(item.sku, patch);
+                }
                 chPushClientPatchDatasets(item.sku, patch);
+                chPushPaintRowColumns(row);
                 if (typeof updateSummary === 'function') {
                     clearTimeout(chPushClientApplyResult._sumTimer);
                     chPushClientApplyResult._sumTimer = setTimeout(function() {
@@ -1171,6 +1211,7 @@
                     temu2: 'temuHasBlueTriangle',
                     temu3: 'temu2HasBlueTriangle',
                     aliexpress: 'aeHasBlueTriangle',
+                    alibaba: 'abHasBlueTriangle',
                     vinted: 'dpHasBlueTriangle',
                     instagram: 'dpHasBlueTriangle',
                     wayfair: 'wayfairHasBlueTriangle',
