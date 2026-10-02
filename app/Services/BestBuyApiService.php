@@ -183,6 +183,11 @@ class BestBuyApiService
         return 'bestbuy_price_data';
     }
 
+    protected function miraklMcmFillRequiredFromMasters(): bool
+    {
+        return true;
+    }
+
     /**
      * Best Buy Microphones (and similar) P41 imports fail while SENT until these attributes are on the row.
      *
@@ -343,9 +348,10 @@ class BestBuyApiService
         }
 
         $sku = trim($identifier);
+        $label = $this->miraklMcmMarketplaceLabel();
         $token = $this->getAccessToken();
         if (! $token) {
-            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.'];
+            return ['success' => false, 'message' => "{$label} / Mirakl access token not available."];
         }
 
         $descriptionWithImages = DescriptionWithImagesFormatter::buildHtmlWithImages(
@@ -381,14 +387,52 @@ class BestBuyApiService
                 $response = $request->put("https://miraklconnect.com/api/products/{$sku}", $productPayload);
             }
 
-            if (! $response->successful()) {
-                return ['success' => false, 'message' => 'Best Buy description update failed: '.$response->body()];
+            $connect = $response->successful()
+                ? ['success' => true, 'message' => "{$label} Connect catalog accepted the description."]
+                : ['success' => false, 'message' => "{$label} Connect description update failed: ".mb_substr($response->body(), 0, 500)];
+        } catch (\Throwable $e) {
+            $connect = ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        return $this->completeMiraklDescriptionPushWithMcm($sku, $description, $connect);
+    }
+
+    /**
+     * Connect catalog alone does not change the live MCM listing; follow with P41 productLongDescription.
+     *
+     * @param  array{success?: bool, message?: string}  $connect
+     * @return array{success: bool, message: string, mcm_integration_pending?: bool}
+     */
+    protected function completeMiraklDescriptionPushWithMcm(string $sku, string $description, array $connect): array
+    {
+        $label = $this->miraklMcmMarketplaceLabel();
+        if ($this->miraklMcmApiKey() === null) {
+            if ($connect['success'] ?? false) {
+                $connect['message'] = trim(($connect['message'] ?? '')
+                    ." {$label} MCM P41 skipped — set {$this->miraklMcmApiKeyEnvName()} for seller portal sync.");
             }
 
-            return ['success' => true, 'message' => 'Best Buy product description updated.'];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            return $connect;
         }
+
+        $mcm = $this->pushDescriptionViaMiraklMcm($this->resolveMiraklMcmLiveShopSku($sku), $description);
+        if ($mcm['success'] ?? false) {
+            if ($connect['success'] ?? false) {
+                $mcm['message'] = trim(($mcm['message'] ?? '').' Mirakl Connect upsert also accepted.');
+            }
+
+            return $mcm;
+        }
+
+        if ($connect['success'] ?? false) {
+            $connect['message'] = trim(($connect['message'] ?? '')
+                .' Live listing not updated — MCM P41 description issue: '.($mcm['message'] ?? 'unknown error'));
+            $connect['success'] = false;
+
+            return $connect;
+        }
+
+        return $mcm;
     }
 
     /**
@@ -483,7 +527,7 @@ class BestBuyApiService
 
         $token = $this->getAccessToken();
         if (! $token) {
-            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.'];
+            return ['success' => false, 'message' => $this->miraklMcmMarketplaceLabel().' / Mirakl access token not available.'];
         }
 
         $baseUrl = 'https://miraklconnect.com/api/products';
@@ -503,7 +547,8 @@ class BestBuyApiService
             'channel_id' => $this->miraklChannelCode(),
         ];
 
-        $connect = ['success' => false, 'message' => 'Best Buy Connect image update failed.'];
+        $label = $this->miraklMcmMarketplaceLabel();
+        $connect = ['success' => false, 'message' => "{$label} Connect image update failed."];
         try {
             $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
             $response = $request->post($baseUrl, ['products' => [$productPayload]]);
@@ -515,9 +560,9 @@ class BestBuyApiService
             }
 
             if ($response->successful()) {
-                $connect = ['success' => true, 'message' => 'Best Buy Connect catalog accepted the images.'];
+                $connect = ['success' => true, 'message' => "{$label} Connect catalog accepted the images."];
             } else {
-                $connect = ['success' => false, 'message' => 'Best Buy image update failed: '.$response->body()];
+                $connect = ['success' => false, 'message' => "{$label} Connect image update failed: ".mb_substr($response->body(), 0, 500)];
             }
         } catch (\Throwable $e) {
             $connect = ['success' => false, 'message' => $e->getMessage()];
@@ -527,7 +572,7 @@ class BestBuyApiService
             if ($connect['success'] ?? false) {
                 $this->saveImageUrlsToBestBuyMetrics($sku, $urls);
                 $connect['message'] = trim(($connect['message'] ?? '')
-                    .' Best Buy MCM (mainImage) skipped — set BESTBUY_MCM_API_KEY for seller portal sync.');
+                    ." {$label} MCM (mainImage) skipped — set {$this->miraklMcmApiKeyEnvName()} for seller portal sync.");
                 $connect['normalized_urls'] = $urls;
             }
 
@@ -538,7 +583,7 @@ class BestBuyApiService
             if ($connect['success'] ?? false) {
                 $this->saveImageUrlsToBestBuyMetrics($sku, $urls);
                 $connect['message'] = trim(($connect['message'] ?? '')
-                    .' MCM P41 image push disabled (BESTBUY_MCM_IMAGE_PUSH=false). Connect catalog only.');
+                    .' MCM P41 image push disabled (mcm_image_push=false). Connect catalog only.');
                 $connect['normalized_urls'] = $urls;
             }
 
@@ -558,11 +603,9 @@ class BestBuyApiService
 
         if ($connect['success'] ?? false) {
             $this->saveImageUrlsToBestBuyMetrics($sku, $urls);
-            $suffix = ($mcm['mcm_integration_pending'] ?? false)
-                ? ' Connect OK. MCM P41 image import queued (SENT) — seller portal may not update until integration completes.'
-                : ' Connect OK. MCM P41 image issue: '.($mcm['message'] ?? 'unknown error');
-            $connect['message'] = trim(($connect['message'] ?? '').$suffix);
-            $connect['mcm_integration_pending'] = $mcm['mcm_integration_pending'] ?? false;
+            $connect['success'] = false;
+            $connect['message'] = trim(($connect['message'] ?? '')
+                .' Live listing not updated — MCM P41 image issue: '.($mcm['message'] ?? 'unknown error'));
             $connect['normalized_urls'] = $urls;
 
             return $connect;
@@ -596,7 +639,7 @@ class BestBuyApiService
 
         $token = $this->getAccessToken();
         if (! $token) {
-            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.'];
+            return ['success' => false, 'message' => $this->miraklMcmMarketplaceLabel().' / Mirakl access token not available.'];
         }
 
         $baseUrl = 'https://miraklconnect.com/api/products';
@@ -627,11 +670,11 @@ class BestBuyApiService
             }
 
             if (! $response->successful()) {
-                return ['success' => false, 'message' => 'Best Buy video update failed: '.$response->body()];
+                return ['success' => false, 'message' => $this->miraklMcmMarketplaceLabel().' video update failed: '.$response->body()];
             }
 
             $saved = $this->saveVideoUrlsToMetricsRow('bestbuy_metrics', $sku, $urls);
-            $message = 'Best Buy product videos updated.';
+            $message = $this->miraklMcmMarketplaceLabel().' product videos updated.';
             if (! $saved) {
                 $message .= ' Metrics save failed.';
             }

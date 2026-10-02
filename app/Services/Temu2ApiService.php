@@ -376,13 +376,14 @@ class Temu2ApiService extends TemuApiService
                 continue;
             }
 
-            if ($data['success'] ?? false) {
-                Log::info('Temu2 title updated', ['sku' => $sku, 'goodsId' => $goodsId, 'attempt' => $i + 1]);
+            $outcome = $this->temuWriteOutcome($data, "Temu 2 title updated for SKU: {$sku}.");
+            if ($outcome['success']) {
+                Log::info('Temu2 title updated', ['sku' => $sku, 'goodsId' => $attemptGoodsId, 'attempt' => $i + 1, 'review' => $outcome['review']]);
 
-                return ['success' => true, 'message' => 'Title updated successfully.'];
+                return ['success' => true, 'message' => $outcome['message']];
             }
 
-            $lastError = (string) ($data['errorMsg'] ?? $data['message'] ?? json_encode($data) ?: 'Temu 2 title update failed.');
+            $lastError = $outcome['message'];
             Log::warning('Temu2 updateTitle rejected', [
                 'sku' => $sku,
                 'goodsId' => $attemptGoodsId,

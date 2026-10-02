@@ -2277,15 +2277,11 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             return ['success' => false, 'message' => $e->getMessage()];
         }
 
-        $html = '<div class="product-description">'.
-            DescriptionWithImagesFormatter::buildHtmlWithImages(
-                $description,
-                (string) $identifier,
-                isset($row->sku) ? (string) $row->sku : (string) $identifier,
-                'Product Image',
-                12
-            )['html'].
-            '</div>';
+        $html = EbayTradingReviseItem::buildListingDescriptionHtml(
+            $description,
+            (string) $identifier,
+            isset($row->sku) ? (string) $row->sku : (string) $identifier
+        );
 
         return EbayTradingReviseItem::reviseItemDescription(
             $this->endpoint,

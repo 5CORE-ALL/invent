@@ -119,6 +119,20 @@ class ListingManagerPublishDispatcher
                     'relist' => true,
                 ];
             }
+            if (DirectStoreListingPublishService::channelFor($key) !== null) {
+                $images = is_array($details['images'] ?? null) ? $details['images'] : [];
+                $overrides = [
+                    'sku' => $sku,
+                    'title' => trim((string) $draft->title),
+                    'description' => trim((string) ($details['description'] ?? '')),
+                    'price' => $draft->price !== null ? (float) $draft->price : null,
+                    'quantity' => $draft->quantity !== null ? (int) $draft->quantity : null,
+                    'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
+                    'upc' => trim((string) ($details['upc'] ?? '')),
+                    'package_weight_lb' => $details['package_weight_lb'] ?? '',
+                    'package_weight_oz' => $details['package_weight_oz'] ?? '',
+                ];
+            }
             if ($key === 'wayfair') {
                 $images = is_array($details['images'] ?? null) ? $details['images'] : [];
                 $overrides = [
@@ -217,6 +231,9 @@ class ListingManagerPublishDispatcher
             'macys', 'macy',
             'bestbuy', 'bestbuyusa',
             'purchasingpower',
+            'pls', 'prolightsounds',
+            'doba',
+            'b5cb2b', 'business5coreb2b', 'business5core(b2b)',
         ];
     }
 

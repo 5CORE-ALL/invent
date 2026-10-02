@@ -1896,22 +1896,24 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 'body' => $response->body(),
             ]);
 
-            if ($response->successful() && ($data['success'] ?? false)) {
+            $outcome = $this->temuWriteOutcome(
+                is_array($data) ? $data : null,
+                "Price updated on Temu for SKU: {$sku} → {$amount} {$currency}.",
+                $response->status()
+            );
+            if ($outcome['success']) {
                 return [
                     'success' => true,
-                    'message' => "Price updated on Temu for SKU: {$sku} → {$amount} {$currency}.",
+                    'message' => $outcome['message'],
                     'goods_id' => (string) $goodsId,
                     'sku_id' => (string) $skuId,
                     'response' => $data['result'] ?? $data,
                 ];
             }
 
-            $errorCode = $data['errorCode'] ?? $response->status();
-            $errorMsg = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body() ?: 'Unknown error');
-
             return [
                 'success' => false,
-                'message' => trim("[{$errorCode}] {$errorMsg}"),
+                'message' => $outcome['message'],
                 'goods_id' => (string) $goodsId,
                 'sku_id' => (string) $skuId,
                 'response' => $data,
@@ -2117,10 +2119,12 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 Log::warning('Temu updateTitle request failed', ['sku' => $sku, 'error' => $lastError]);
                 continue;
             }
-            if ($response->successful() && ($data['success'] ?? false)) {
-                return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
+            $outcome = $this->temuWriteOutcome($data, "Temu title updated for SKU: {$sku}.", $response->status());
+            if ($outcome['success']) {
+                return ['success' => true, 'message' => $outcome['message']];
             }
-            $lastError = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body());
+            $lastError = $outcome['message'];
+            Log::warning('Temu updateTitle rejected', ['sku' => $sku, 'goodsId' => $goodsId, 'error' => $lastError]);
         }
 
         return ['success' => false, 'message' => $lastError !== '' ? $lastError : 'Temu title update failed.'];
@@ -2315,10 +2319,12 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             for ($attempt = 1; $attempt <= 2; $attempt++) {
                 $response = $request->post($url, $signedRequest);
                 $data = $response->json();
-                $lastBody = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body());
-                if ($response->successful() && ($data['success'] ?? false)) {
-                    return ['success' => true, 'message' => $successMessage];
+                $outcome = $this->temuWriteOutcome(is_array($data) ? $data : null, $successMessage, $response->status());
+                if ($outcome['success']) {
+                    return ['success' => true, 'message' => $outcome['message']];
                 }
+                $lastBody = $outcome['message'];
+                Log::warning($logContext.' rejected', ['sku' => $sku, 'goodsId' => $goodsId, 'attempt' => $attempt, 'error' => $lastBody]);
                 if ($attempt === 1 && $this->temuMallGoodsMismatch($lastBody)) {
                     $freshGoodsId = $this->replaceGoodsIdAfterMallMismatch($sku, (string) $goodsId);
                     if ($freshGoodsId !== null && $freshGoodsId !== '' && (string) $freshGoodsId !== (string) $goodsId) {
@@ -3064,11 +3070,12 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             }
             $response = $request->post($url, $signedRequest);
             $data = $response->json();
-            if ($response->successful() && ($data['success'] ?? false)) {
-                return ['success' => true, 'message' => 'Temu listing images updated.'];
+            $outcome = $this->temuWriteOutcome(is_array($data) ? $data : null, 'Temu listing images updated.', $response->status());
+            if ($outcome['success']) {
+                return ['success' => true, 'message' => $outcome['message']];
             }
 
-            $imageError = $this->formatTemuApiErrorMessage((string) ($data['errorMsg'] ?? $data['message'] ?? $response->body()));
+            $imageError = $outcome['message'];
             if ($this->temuMallGoodsMismatch($imageError)) {
                 $freshGoodsId = $this->replaceGoodsIdAfterMallMismatch($sku, (string) $goodsId);
                 if ($freshGoodsId !== null && $freshGoodsId !== '' && (string) $freshGoodsId !== (string) $goodsId) {
@@ -3076,12 +3083,14 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                     $signedRetry = $this->generateSignValue($requestBody);
                     $retry = $request->post($url, $signedRetry);
                     $retryData = $retry->json();
-                    if ($retry->successful() && ($retryData['success'] ?? false)) {
-                        return ['success' => true, 'message' => 'Temu listing images updated.'];
+                    $retryOutcome = $this->temuWriteOutcome(is_array($retryData) ? $retryData : null, 'Temu listing images updated.', $retry->status());
+                    if ($retryOutcome['success']) {
+                        return ['success' => true, 'message' => $retryOutcome['message']];
                     }
-                    $imageError = $this->formatTemuApiErrorMessage((string) ($retryData['errorMsg'] ?? $retryData['message'] ?? $retry->body()));
+                    $imageError = $retryOutcome['message'];
                 }
             }
+            Log::warning('Temu updateListingImages rejected', ['sku' => $sku, 'goodsId' => $goodsId, 'error' => $imageError]);
 
             return ['success' => false, 'message' => $imageError];
         } catch (\Throwable $e) {
@@ -3473,6 +3482,112 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     protected function temuMallGoodsMismatch(string $message): bool
     {
         return str_contains(strtolower($message), 'mall and goods');
+    }
+
+    /**
+     * Temu answers HTTP 200 for most rejections, so only `success === true` with no real errorCode
+     * (1000000 is Temu's OK code) and no failure inside `result` counts as an applied write.
+     *
+     * @param  array<string, mixed>|null  $data
+     * @return array{success: bool, message: string, review: bool}
+     */
+    protected function temuWriteOutcome(?array $data, string $successMessage, ?int $httpStatus = null): array
+    {
+        $data = is_array($data) ? $data : [];
+        $error = $this->temuResponseError($data);
+        if ($error === null && $httpStatus !== null && ($httpStatus < 200 || $httpStatus >= 300)) {
+            $error = 'Temu HTTP '.$httpStatus.'.';
+        }
+        if ($error !== null) {
+            return ['success' => false, 'message' => $this->formatTemuApiErrorMessage($error), 'review' => false];
+        }
+
+        $review = $this->temuResultMentionsReview($data['result'] ?? null);
+
+        return [
+            'success' => true,
+            'message' => $review
+                ? rtrim($successMessage, '. ').' — submitted for Temu review; not live until Temu approves it.'
+                : $successMessage,
+            'review' => $review,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function temuResponseError(array $data): ?string
+    {
+        if ($data === []) {
+            return 'Empty or non-JSON response from Temu.';
+        }
+
+        $flag = $data['success'] ?? null;
+        $ok = $flag === true || $flag === 1 || $flag === '1' || (is_string($flag) && strtolower($flag) === 'true');
+        $code = $data['errorCode'] ?? $data['error_code'] ?? null;
+        $badCode = $code !== null && $code !== '' && ! in_array((string) $code, ['0', '1000000'], true);
+        $msg = trim((string) ($data['errorMsg'] ?? $data['error_msg'] ?? $data['message'] ?? ''));
+
+        if (! $ok || $badCode) {
+            $prefix = $badCode ? '['.$code.'] ' : '';
+
+            return $prefix.($msg !== '' ? $msg : 'Temu rejected the update (success=false).');
+        }
+
+        $result = $data['result'] ?? null;
+        if (! is_array($result)) {
+            return null;
+        }
+        if (array_key_exists('success', $result)) {
+            $inner = $result['success'];
+            if ($inner === false || $inner === 0 || $inner === '0' || (is_string($inner) && strtolower($inner) === 'false')) {
+                $innerMsg = trim((string) ($result['errorMsg'] ?? $result['failReason'] ?? $result['message'] ?? ''));
+
+                return $innerMsg !== '' ? $innerMsg : 'Temu rejected the update (result.success=false).';
+            }
+        }
+        foreach (['failReason', 'errorMsg', 'errMsg', 'failMsg'] as $key) {
+            $text = $result[$key] ?? null;
+            if (is_string($text) && trim($text) !== '') {
+                return trim($text);
+            }
+        }
+        foreach (['failList', 'failedList', 'failSkuList', 'failedSkuList', 'errorList'] as $key) {
+            if (! empty($result[$key]) && is_array($result[$key])) {
+                return 'Temu rejected part of the update: '.mb_substr((string) json_encode($result[$key], JSON_UNESCAPED_UNICODE), 0, 400);
+            }
+        }
+
+        return null;
+    }
+
+    protected function temuResultMentionsReview(mixed $node, int $depth = 0): bool
+    {
+        if ($depth > 3) {
+            return false;
+        }
+        if (is_string($node)) {
+            return (bool) preg_match('/\b(under|pending|submitted for|in|awaiting|wait(ing)? for)\s+(review|audit|approval)\b/i', $node);
+        }
+        if (! is_array($node)) {
+            return false;
+        }
+        foreach ($node as $key => $value) {
+            $k = is_string($key) ? $key : '';
+            if ($k !== '' && preg_match('/^(need|is|in)_?(audit|review)/i', $k)
+                && ($value === true || $value === 1 || $value === '1' || (is_string($value) && strtolower($value) === 'true'))) {
+                return true;
+            }
+            if ($k !== '' && preg_match('/(audit|review)_?status$/i', $k)
+                && is_string($value) && preg_match('/review|audit|pending|wait/i', $value)) {
+                return true;
+            }
+            if ($this->temuResultMentionsReview($value, $depth + 1)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

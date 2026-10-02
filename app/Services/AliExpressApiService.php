@@ -3399,27 +3399,14 @@ class AliExpressApiService
 
         $last = ['success' => false, 'message' => 'AliExpress title update failed.'];
 
-        // Single-field subject edit avoids US Pop Choice package-weight schema checks.
-        foreach ([
-            'aliexpress.postproduct.redefining.editsinglefiled',
-            'aliexpress.postproduct.redefining.editSingleFiled',
-        ] as $method) {
-            foreach ([
-                ['product_id' => $resolved, 'fied_name' => 'subject', 'fiedvalue' => $title],
-                ['productId' => $resolved, 'fiedName' => 'subject', 'fiedValue' => $title],
-            ] as $params) {
-                $single = $this->callApiFlexible($method, [
-                    'rest' => $params,
-                    'sync' => $params,
-                ]);
-                if (! empty($single['success'])) {
-                    return $single;
-                }
-                $last = $single;
-            }
+        $sku = $resolved !== trim($productId) ? trim($productId) : '';
+        $single = $this->editSimpleProductFieldCompletingPackage($resolved, 'subject', $title, $sku);
+        if (! empty($single['success'])) {
+            return $single;
         }
+        $last = $single;
 
-        $pkg = $this->aliexpressPackageSizeFields($resolved);
+        $pkg = $this->aliexpressPackageSizeFields($resolved, $sku);
         $weight = (string) ($pkg['weight'] ?? '0.5');
         $length = (string) ($pkg['package_length'] ?? '10');
         $width = (string) ($pkg['package_width'] ?? '10');
@@ -3486,10 +3473,17 @@ class AliExpressApiService
     /**
      * @return array<string, mixed>
      */
-    private function aliexpressPackageSizeFields(string $productId): array
+    private function aliexpressPackageSizeFields(string $productId, string $sku = ''): array
     {
         $info = $this->getProductInfo($productId);
         $data = is_array($info['data'] ?? null) ? $info['data'] : [];
+        if ($sku === '') {
+            $sku = (string) (data_get($data, 'aeop_ae_product_s_k_us.global_aeop_ae_product_sku.0.sku_code')
+                ?? data_get($data, 'aeop_ae_product_s_k_us.aeop_ae_product_sku.0.sku_code')
+                ?? data_get($data, 'sku_info_list.0.sku_code')
+                ?? '');
+        }
+        $source = 'aliexpress';
         $length = $this->aliexpressPositiveNumber(
             $data['package_length'] ?? $data['packageLength'] ?? data_get($data, 'logistics_size.package_length')
         );
@@ -3509,6 +3503,21 @@ class AliExpressApiService
                 ?? $data['packageWeight']
                 ?? data_get($data, 'logistics_size.gross_weight')
         );
+
+        $master = $this->aliexpressMasterPackage($sku);
+        if ($master !== null) {
+            if ($master['length'] > 0 && $master['width'] > 0 && $master['height'] > 0) {
+                $length = $master['length'];
+                $width = $master['width'];
+                $height = $master['height'];
+                $source = 'dim_wt_master';
+            }
+            if ($master['lb'] > 0) {
+                $weightLb = $master['lb'];
+                $weight = max(0.001, $master['kg']);
+                $source = 'dim_wt_master';
+            }
+        }
 
         if ($length === null) {
             $length = 10;
@@ -3531,6 +3540,7 @@ class AliExpressApiService
             'weight_lb' => $weightLb,
             'gross_weight' => $weight ?? ($weightLb !== null ? round($weightLb * 0.45359237, 3) : 0.5),
             'usLogisticsWeight' => $weightLb ?? $weight ?? 0.5,
+            'source' => $source,
         ];
     }
 
@@ -4608,7 +4618,7 @@ class AliExpressApiService
         }
         $html .= '</ul>';
 
-        return $this->editAliExpressHtml($productId, $html, 'AliExpress product detail updated.');
+        return $this->editAliExpressHtml($productId, $html, 'AliExpress product detail updated.', $row && $row->sku ? (string) $row->sku : $trim);
     }
 
     /**
@@ -4636,7 +4646,7 @@ class AliExpressApiService
 
         $html = '<div class="product-description">'.nl2br(htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
 
-        return $this->editAliExpressHtml($productId, $html, 'AliExpress product description updated.');
+        return $this->editAliExpressHtml($productId, $html, 'AliExpress product description updated.', $row && $row->sku ? (string) $row->sku : $trim);
     }
 
     /**
@@ -4645,33 +4655,17 @@ class AliExpressApiService
      *
      * @return array{success: bool, message: string, data?: mixed, response?: mixed}
      */
-    private function editAliExpressHtml(string $productId, string $html, string $okMessage): array
+    private function editAliExpressHtml(string $productId, string $html, string $okMessage, string $sku = ''): array
     {
-        $last = ['success' => false, 'message' => 'AliExpress product edit failed.'];
-        foreach ([
-            'aliexpress.postproduct.redefining.editsinglefiled',
-            'aliexpress.postproduct.redefining.editSingleFiled',
-        ] as $method) {
-            foreach (['detail', 'description'] as $field) {
-                foreach ([
-                    ['product_id' => $productId, 'fied_name' => $field, 'fiedvalue' => $html],
-                    ['productId' => $productId, 'fiedName' => $field, 'fiedValue' => $html],
-                ] as $params) {
-                    $single = $this->callApiFlexible($method, [
-                        'rest' => $params,
-                        'sync' => $params,
-                    ]);
-                    if (! empty($single['success'])) {
-                        return [
-                            'success' => true,
-                            'message' => $okMessage,
-                            'data' => $single['data'] ?? $single['result'] ?? null,
-                        ];
-                    }
-                    $last = $this->preferAliExpressError($last, $single);
-                }
-            }
+        $single = $this->editSimpleProductFieldCompletingPackage($productId, 'detail', $html, $sku);
+        if (! empty($single['success'])) {
+            return [
+                'success' => true,
+                'message' => $okMessage,
+                'data' => $single['data'] ?? $single['result'] ?? null,
+            ];
         }
+        $last = $this->preferAliExpressError(['success' => false, 'message' => 'AliExpress product edit failed.'], $single);
 
         foreach (['json', 'object'] as $weightKind) {
             $edit = array_merge([
@@ -4681,7 +4675,7 @@ class AliExpressApiService
                     'mobile_detail' => $html,
                     'web_detail' => $html,
                 ]],
-            ], $this->aliexpressPackageEditFields($productId, $weightKind));
+            ], $this->aliexpressPackageEditFields($productId, $weightKind, $sku));
             $encoded = $this->encodeRequestPayload($edit);
             $res = $this->callRestGateway('aliexpress.solution.product.edit', ['edit_product_request' => $encoded]);
             if (! empty($res['success'])) {
@@ -4703,6 +4697,130 @@ class AliExpressApiService
             'message' => (string) ($last['message'] ?? 'AliExpress product edit failed.'),
             'response' => $last['response'] ?? $last,
         ];
+    }
+
+    /**
+     * aliexpress.postproduct.redefining.editsimpleproductfiled updates one field without
+     * resubmitting the product, so solution.product.edit's full re-validation
+     * (usLogisticsWeight:Package weight:CHK_BASIC_REQUIRED) does not run.
+     * Fields: subject, detail, mobileDetail, imageURLs (";"-joined), grossWeight (kg),
+     * packageLength / packageWidth / packageHeight (cm), deliveryTime, reduceStrategy.
+     *
+     * @return array<string, mixed>
+     */
+    private function editSimpleProductField(string $productId, string $field, string $value): array
+    {
+        $params = ['product_id' => $productId, 'fied_name' => $field, 'fiedvalue' => $value];
+        $res = $this->callApiFlexible('aliexpress.postproduct.redefining.editsimpleproductfiled', [
+            'rest' => $params,
+            'sync' => $params,
+        ]);
+        if (! empty($res['success'])) {
+            return $res;
+        }
+
+        $result = data_get($res, 'response.result');
+        if (is_array($result)) {
+            $ok = $result['success'] ?? null;
+            if ($ok === true || $ok === 'true' || (int) ($result['modify_count'] ?? 0) > 0) {
+                return ['success' => true, 'data' => $res['response'] ?? null, 'result' => $result];
+            }
+        }
+
+        return $res;
+    }
+
+    /**
+     * Single-field edit; when AliExpress says the listing is missing package weight/size,
+     * fill grossWeight + package L/W/H from Dim/Wt master and retry once.
+     *
+     * @return array<string, mixed>
+     */
+    private function editSimpleProductFieldCompletingPackage(string $productId, string $field, string $value, string $sku = ''): array
+    {
+        $res = $this->editSimpleProductField($productId, $field, $value);
+        if (! empty($res['success']) || ! $this->isAliExpressPackageSizeRequired((string) ($res['message'] ?? ''))) {
+            return $res;
+        }
+
+        $filled = $this->completeAliExpressPackageFields($productId, $sku);
+        $retry = $this->editSimpleProductField($productId, $field, $value);
+        if (empty($retry['success']) && $filled !== []) {
+            $retry['message'] = trim((string) ($retry['message'] ?? 'AliExpress edit failed.'))
+                .' (filled from '.($filled['source'] ?? 'masters').': '
+                .implode(', ', array_map(
+                    fn ($k, $v) => $k.'='.$v,
+                    array_keys($filled['values'] ?? []),
+                    array_values($filled['values'] ?? [])
+                )).')';
+        }
+
+        return $retry;
+    }
+
+    /**
+     * Push grossWeight (kg) and package L/W/H (cm) one field at a time.
+     *
+     * @return array{source?: string, values?: array<string, string>, results?: array<string, string>}
+     */
+    private function completeAliExpressPackageFields(string $productId, string $sku = ''): array
+    {
+        $pkg = $this->aliexpressPackageSizeFields($productId, $sku);
+        $values = [
+            'grossWeight' => number_format(max(0.001, (float) $pkg['gross_weight']), 3, '.', ''),
+            'packageLength' => (string) max(1, (int) round((float) $pkg['package_length'])),
+            'packageWidth' => (string) max(1, (int) round((float) $pkg['package_width'])),
+            'packageHeight' => (string) max(1, (int) round((float) $pkg['package_height'])),
+        ];
+        $results = [];
+        foreach ($values as $field => $value) {
+            $r = $this->editSimpleProductField($productId, $field, $value);
+            $results[$field] = ! empty($r['success']) ? 'ok' : (string) ($r['message'] ?? 'failed');
+        }
+
+        Log::info('AliExpress package fields completed for edit', [
+            'product_id' => $productId,
+            'sku' => $sku,
+            'source' => $pkg['source'] ?? null,
+            'values' => $values,
+            'results' => $results,
+        ]);
+
+        return ['source' => (string) ($pkg['source'] ?? 'aliexpress'), 'values' => $values, 'results' => $results];
+    }
+
+    /**
+     * Dim/Wt master (inches, lb + oz) converted to AliExpress cm / kg.
+     *
+     * @return array{length: float, width: float, height: float, lb: float, kg: float}|null
+     */
+    private function aliexpressMasterPackage(string $sku): ?array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || preg_match('/^\d{10,}$/', $sku)) {
+            return null;
+        }
+        try {
+            $dim = \App\Support\Marketplace\ListingManagerAmazonHydrator::dimWtPackage($sku);
+        } catch (\Throwable $e) {
+            Log::warning('AliExpress: Dim/Wt master lookup failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+        $lb = (float) ($dim['weight_lb'] ?? 0) + ((float) ($dim['weight_oz'] ?? 0) / 16);
+        $in = fn (string $k) => max(0.0, (float) ($dim[$k] ?? 0));
+        $out = [
+            'length' => round($in('length') * 2.54, 1),
+            'width' => round($in('width') * 2.54, 1),
+            'height' => round($in('height') * 2.54, 1),
+            'lb' => round($lb, 2),
+            'kg' => round($lb * 0.45359237, 3),
+        ];
+        if ($out['lb'] <= 0 && ($out['length'] <= 0 || $out['width'] <= 0 || $out['height'] <= 0)) {
+            return null;
+        }
+
+        return $out;
     }
 
     /**
@@ -4735,9 +4853,9 @@ class AliExpressApiService
      *
      * @return array<string, mixed>
      */
-    private function aliexpressPackageEditFields(string $productId, string $weightKind = 'json'): array
+    private function aliexpressPackageEditFields(string $productId, string $weightKind = 'json', string $sku = ''): array
     {
-        $pkg = $this->aliexpressPackageSizeFields($productId);
+        $pkg = $this->aliexpressPackageSizeFields($productId, $sku);
         $length = max(1, (int) round((float) $pkg['package_length']));
         $width = max(1, (int) round((float) $pkg['package_width']));
         $height = max(1, (int) round((float) $pkg['package_height']));
@@ -6542,29 +6660,19 @@ class AliExpressApiService
         $joined = implode(';', $images);
         $skuCode = $row && $row->sku ? (string) $row->sku : $trim;
 
-        foreach ([
-            ['product_id' => $productId, 'fied_name' => 'image_u_r_ls', 'fiedvalue' => $joined],
-            ['productId' => $productId, 'fiedName' => 'image_u_r_ls', 'fiedValue' => $joined],
-            ['product_id' => $productId, 'fied_name' => 'imageURLs', 'fiedvalue' => $joined],
-        ] as $params) {
-            foreach ([
-                'aliexpress.postproduct.redefining.editsinglefiled',
-                'aliexpress.postproduct.redefining.editSingleFiled',
-            ] as $method) {
-                $single = $this->callApiFlexible($method, [
-                    'rest' => $params,
-                    'sync' => $params,
-                ]);
-                if (! empty($single['success'])) {
-                    return $this->finishChannelImageUpdate($row, $trim, $images, $single);
-                }
-            }
+        $single = $this->editSimpleProductFieldCompletingPackage($productId, 'imageURLs', $joined, $skuCode);
+        if (! empty($single['success'])) {
+            return $this->finishChannelImageUpdate($row, $trim, $images, $single);
         }
+        $singleMessage = (string) ($single['message'] ?? '');
 
-        $lastMessage = $this->channelLabel.' image update failed.';
+        $lastMessage = $singleMessage !== '' && ! $this->isSignatureError($single)
+            ? $singleMessage
+            : $this->channelLabel.' image update failed.';
         foreach (['json', 'object'] as $weightKind) {
-            $package = $this->aliexpressPackageEditFields($productId, $weightKind);
+            $package = $this->aliexpressPackageEditFields($productId, $weightKind, $skuCode);
             $attempts = [
+                array_merge(['product_id' => $productId, 'main_image_urls_list' => $images], $package),
                 array_merge(['product_id' => $productId, 'image_u_r_ls' => $joined, 'main_image_url' => $primary], $package),
                 array_merge(['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary], $package),
                 array_merge([

@@ -49,7 +49,6 @@ class ListingManagerPublishDispatcherTest extends TestCase
     public function test_rejects_sheet_or_order_only_marketplaces(): void
     {
         $unsupported = [
-            'Doba',
             'Walmart',
             'Shopify',
             'FB Marketplace',

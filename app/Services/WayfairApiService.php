@@ -503,8 +503,9 @@ XML;
     /**
      * Step 2: Poll statusOfUpdateRequest until COMPLETED or max attempts; return success/failure with message.
      */
-    private function pollUpdateStatus(string $token, string $requestId, string $sku, int $maxAttempts = 10): array
+    private function pollUpdateStatus(string $token, string $requestId, string $sku, int $maxAttempts = 10, string $successMessage = ''): array
     {
+        $successMessage = $successMessage !== '' ? $successMessage : "Title updated for SKU: {$sku}.";
         $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
         $query = <<<'GRAPHQL'
         query StatusOfUpdateRequest($input: StatusOfUpdateRequestInput!) {
@@ -517,6 +518,7 @@ XML;
               detail
               catalogEntityIdentifier
               catalogEntityProperty
+              inputValue
             }
             successfulUpdates {
               entityIdentifier
@@ -533,7 +535,7 @@ XML;
                 ->post($url, [
                     'query' => $query,
                     'variables' => [
-                        'input' => ['requestId' => $requestId],
+                        'input' => ['requestId' => $requestId, 'supplierId' => (string) $this->liveSupplierId()],
                     ],
                 ]);
 
@@ -541,7 +543,7 @@ XML;
             $errors = $data['errors'] ?? null;
             if ($errors) {
                 Log::warning('Wayfair - GraphQL errors on status poll', ['requestId' => $requestId, 'errors' => $errors]);
-                return ['success' => false, 'message' => 'Wayfair: status check failed. ' . json_encode($errors)];
+                return ['success' => false, 'message' => 'Wayfair: status check failed: ' . $this->formatWayfairGraphqlErrors(is_array($errors) ? $errors : [])];
             }
 
             $statusPayload = $data['data']['statusOfUpdateRequest'] ?? null;
@@ -556,15 +558,15 @@ XML;
 
             if (strtoupper($status) === 'COMPLETED') {
                 if (empty($problems)) {
-                    Log::info('Wayfair title updated successfully', ['sku' => $sku, 'requestId' => $requestId]);
-                    return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
+                    Log::info('Wayfair catalog update completed', ['sku' => $sku, 'requestId' => $requestId]);
+                    return ['success' => true, 'message' => $successMessage];
                 }
                 $msg = $this->formatProblemsMessage($problems);
                 Log::warning('Wayfair - Update completed with problems', ['sku' => $sku, 'problems' => $problems]);
                 return ['success' => false, 'message' => 'Wayfair: ' . $msg];
             }
 
-            if (strtoupper($status) === 'FAILED') {
+            if (in_array(strtoupper($status), ['FAILED', 'BLOCKED'], true)) {
                 $msg = $this->formatProblemsMessage($problems);
                 Log::warning('Wayfair - Update failed', ['sku' => $sku, 'problems' => $problems]);
                 return ['success' => false, 'message' => 'Wayfair: ' . $msg];
@@ -584,13 +586,16 @@ XML;
         $parts = [];
         foreach ($problems as $p) {
             $detail = $p['detail'] ?? $p['title'] ?? $p['code'] ?? json_encode($p);
+            if (! empty($p['catalogEntityProperty'])) {
+                $detail = $p['catalogEntityProperty'].': '.$detail;
+            }
             $parts[] = $detail;
         }
         return implode('; ', $parts) ?: 'Update had errors.';
     }
 
     /**
-     * Push bullet lines as catalog key features (GraphQL). No truncation.
+     * Push bullet lines as the item group's feature bullets. No truncation.
      *
      * @return array{success: bool, message: string}
      */
@@ -606,6 +611,416 @@ XML;
             return ['success' => false, 'message' => 'No bullet lines found.'];
         }
 
+        return $this->updateItemGroupContent($identifier, ['featureBullets' => $lines], 'Bullet points');
+    }
+
+    /**
+     * Push the description as the item group's marketing copy.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductDescription(string $identifier, string $description, array $imageUrls = []): array
+    {
+        $description = trim($description);
+        if (trim($identifier) === '' || $description === '') {
+            return ['success' => false, 'message' => 'SKU and description are required.'];
+        }
+
+        $copy = self::marketingCopyText($description);
+        if ($copy === '') {
+            return ['success' => false, 'message' => 'No description content found.'];
+        }
+
+        return $this->updateItemGroupContent($identifier, ['marketingCopy' => $copy], 'Description');
+    }
+
+    /**
+     * Feature bullets and marketing copy live on the item group, not the item
+     * (UpdateCatalogItemInput only accepts itemName / attributes). Uses
+     * updateMarketSpecificCatalogItemGroups when the SKU's listing id is known, else the
+     * SKU-keyed product description update.
+     *
+     * @param  array{featureBullets?: list<string>, marketingCopy?: string}  $content
+     * @return array{success: bool, message: string}
+     */
+    private function updateItemGroupContent(string $identifier, array $content, string $label): array
+    {
+        $sku = $this->resolveWayfairMetricSku($identifier);
+
+        try {
+            $token = $this->getTokenForCatalog();
+            if (! $token) {
+                return ['success' => false, 'message' => 'Wayfair authentication failed.'];
+            }
+
+            $result = $this->sendItemGroupContent($token, $sku, $content, $label);
+            if (! $result['success']) {
+                $filled = $this->fillRequiredGroupContentFromMaster($result['message'], $content, [$identifier, $sku]);
+                if ($filled !== $content) {
+                    Log::info('Wayfair content retry with Product Master fields', ['sku' => $sku, 'added' => array_keys(array_diff_key($filled, $content))]);
+                    $retry = $this->sendItemGroupContent($token, $sku, $filled, $label);
+                    if ($retry['success']) {
+                        $retry['message'] .= ' Missing required '.implode(' / ', array_keys(array_diff_key($filled, $content))).' filled from Product Master.';
+                    }
+                    $result = $retry;
+                }
+            }
+
+            if ($result['success']) {
+                $this->saveGroupContentToWayfairMetrics($sku, $content);
+            }
+
+            return $result;
+        } catch (\Throwable $e) {
+            Log::error('Wayfair '.$label.' update', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => 'Wayfair: '.$e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  array{featureBullets?: list<string>, marketingCopy?: string}  $content
+     * @return array{success: bool, message: string}
+     */
+    private function sendItemGroupContent(string $token, string $sku, array $content, string $label): array
+    {
+        $messages = [];
+        $done = $label.' updated on Wayfair for SKU '.$sku.'.';
+
+        $groupId = $this->wayfairItemGroupId($sku);
+        if ($groupId !== '') {
+            $submitted = $this->submitCatalogUpdate(
+                $token,
+                'updateMarketSpecificCatalogItemGroups',
+                'UpdateMarketSpecificCatalogItemGroupsInput',
+                [
+                    'supplierId' => (string) $this->liveSupplierId(),
+                    'marketContext' => $this->wayfairMarketContext(),
+                    'catalogItemGroupsToUpdate' => [array_merge(['itemGroupId' => $groupId], $content)],
+                    'validateOnly' => false,
+                ],
+                $sku
+            );
+            if ($submitted['request_id'] !== null) {
+                $polled = $this->pollUpdateStatus($token, $submitted['request_id'], $sku, 10, $done);
+                if ($polled['success']) {
+                    return $polled;
+                }
+                $messages[] = $polled['message'];
+            } else {
+                $messages[] = $submitted['message'];
+            }
+        } else {
+            $messages[] = 'Wayfair: no listing / item group id found for SKU '.$sku.'.';
+        }
+
+        $fallback = $this->submitProductDescriptionUpdate($token, $sku, $content, $done);
+        if ($fallback['success']) {
+            return $fallback;
+        }
+        $messages[] = $fallback['message'];
+
+        return ['success' => false, 'message' => implode(' ', array_unique(array_filter($messages)))];
+    }
+
+    /**
+     * SKU-keyed product description mutation (featureBullets / marketingCopy by supplier part number).
+     *
+     * @param  array{featureBullets?: list<string>, marketingCopy?: string}  $content
+     * @return array{success: bool, message: string}
+     */
+    private function submitProductDescriptionUpdate(string $token, string $sku, array $content, string $done): array
+    {
+        $url = (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        $mutation = <<<'GRAPHQL'
+        mutation UpdateProductDescription($input: UpdateProductDescriptionInput!) {
+          update(input: $input) {
+            transactionId
+            success
+            errors { index code message }
+          }
+        }
+        GRAPHQL;
+
+        $json = $this->postCatalogGraphql($token, $url, $mutation, [
+            'input' => [
+                'supplierId' => $this->liveSupplierId(),
+                'marketContext' => $this->wayfairMarketContext(),
+                'updates' => [array_merge(['supplierPartNumbers' => [$sku]], $content)],
+            ],
+        ]);
+        if (! empty($json['errors'])) {
+            Log::warning('Wayfair product description update GraphQL errors', ['sku' => $sku, 'errors' => $json['errors']]);
+
+            return ['success' => false, 'message' => 'Wayfair description API: '.$this->wayfairErrorText($json['errors'])];
+        }
+
+        $payload = is_array($json['data']['update'] ?? null) ? $json['data']['update'] : [];
+        $errors = is_array($payload['errors'] ?? null) ? $payload['errors'] : [];
+        $transactionId = trim((string) ($payload['transactionId'] ?? ''));
+        if ($errors !== [] || empty($payload['success']) || $transactionId === '') {
+            Log::warning('Wayfair product description update rejected', ['sku' => $sku, 'response' => $payload]);
+
+            return [
+                'success' => false,
+                'message' => 'Wayfair description API: '.($errors !== [] ? $this->formatGraphqlErrors($errors) : 'rejected without a transaction id.'),
+            ];
+        }
+
+        $query = <<<'GRAPHQL'
+        query UpdateStatus($request: UpdateProductDescriptionStatusRequest!) {
+          updateStatus(request: $request) {
+            transactionId
+            status
+            errors { code message }
+            updatedGroups { sku supplierPartNumbers result errors { code message } }
+          }
+        }
+        GRAPHQL;
+
+        for ($i = 0; $i < 8; $i++) {
+            if ($i > 0) {
+                sleep(2);
+            }
+            $status = $this->postCatalogGraphql($token, $url, $query, [
+                'request' => ['supplierId' => $this->liveSupplierId(), 'transactionId' => $transactionId],
+            ]);
+            if (! empty($status['errors'])) {
+                return ['success' => false, 'message' => 'Wayfair description status: '.$this->wayfairErrorText($status['errors'])];
+            }
+            $row = is_array($status['data']['updateStatus'] ?? null) ? $status['data']['updateStatus'] : [];
+            $state = strtoupper((string) ($row['status'] ?? ''));
+            $problems = [];
+            foreach (array_merge([$row], is_array($row['updatedGroups'] ?? null) ? $row['updatedGroups'] : []) as $part) {
+                foreach (is_array($part['errors'] ?? null) ? $part['errors'] : [] as $err) {
+                    $problems[] = trim((string) ($err['message'] ?? $err['code'] ?? ''));
+                }
+                if (strtoupper((string) ($part['result'] ?? '')) === 'FAILED' && empty($part['errors'])) {
+                    $problems[] = 'item group '.($part['sku'] ?? '').' failed';
+                }
+            }
+            $problems = array_values(array_filter($problems));
+
+            if ($state === 'PROCESSED') {
+                return $problems === []
+                    ? ['success' => true, 'message' => $done]
+                    : ['success' => false, 'message' => 'Wayfair: '.implode('; ', $problems)];
+            }
+            if ($state === 'REJECTED') {
+                Log::warning('Wayfair product description update rejected', ['sku' => $sku, 'status' => $row]);
+
+                return ['success' => false, 'message' => 'Wayfair rejected the update: '.($problems !== [] ? implode('; ', $problems) : 'no reason given.')];
+            }
+        }
+
+        return ['success' => true, 'message' => 'Wayfair accepted the update for SKU '.$sku.' (transaction '.$transactionId.'); it is still processing.'];
+    }
+
+    /**
+     * When Wayfair rejects a content update because the other item group field is missing,
+     * add it from Product Master and retry once.
+     *
+     * @param  array{featureBullets?: list<string>, marketingCopy?: string}  $content
+     * @param  list<string>  $skus
+     * @return array{featureBullets?: list<string>, marketingCopy?: string}
+     */
+    private function fillRequiredGroupContentFromMaster(string $message, array $content, array $skus): array
+    {
+        $m = mb_strtolower($message);
+        if (! preg_match('/required|missing|must|incomplete|empty|at least/', $m)) {
+            return $content;
+        }
+        $needsCopy = ! isset($content['marketingCopy']) && preg_match('/marketing|description|copy/', $m);
+        $needsBullets = ! isset($content['featureBullets']) && preg_match('/bullet|feature/', $m);
+        if (! $needsCopy && ! $needsBullets) {
+            return $content;
+        }
+
+        foreach (array_unique(array_filter(array_map('trim', $skus))) as $sku) {
+            try {
+                $hydrated = \App\Support\Marketplace\ListingManagerAmazonHydrator::hydrate($sku, false);
+            } catch (\Throwable) {
+                continue;
+            }
+            if ($needsCopy) {
+                $copy = self::marketingCopyText((string) ($hydrated['description'] ?? ''));
+                if ($copy !== '') {
+                    $content['marketingCopy'] = $copy;
+                    $needsCopy = false;
+                }
+            }
+            if ($needsBullets) {
+                $bullets = array_values(array_filter(array_map(
+                    static fn ($b) => trim((string) $b),
+                    is_array($hydrated['bullets'] ?? null) ? $hydrated['bullets'] : []
+                )));
+                if ($bullets !== []) {
+                    $content['featureBullets'] = $bullets;
+                    $needsBullets = false;
+                }
+            }
+            if (! $needsCopy && ! $needsBullets) {
+                break;
+            }
+        }
+
+        return $content;
+    }
+
+    /**
+     * Wayfair item group id (= listing id) for a supplier part number, via supplierCatalogItems.
+     */
+    private function wayfairItemGroupId(string $sku): string
+    {
+        $cacheKey = 'wayfair.item_group_id.'.md5(mb_strtolower($sku));
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $query = <<<'GRAPHQL'
+        query ($input: SupplierCatalogItemsInput!) {
+          supplierCatalogItems(input: $input) {
+            ... on SupplierCatalogItems {
+              catalogItems {
+                supplierPartNumber
+                listings { listingId isLive }
+              }
+            }
+            ... on SupplierCatalogItemsError {
+              httpError { code message }
+              internalError { code message }
+            }
+          }
+        }
+        GRAPHQL;
+
+        $candidates = $this->wayfairSkuCandidates($sku);
+        $json = $this->catalogGraphqlRequest(
+            (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql'),
+            $query,
+            [
+                'input' => [
+                    'filter' => ['supplierPartNumbers' => array_slice($candidates, 0, 25)],
+                    'paginationOptions' => ['page' => 1, 'pageSize' => 25],
+                ],
+            ]
+        );
+        if (! empty($json['errors'])) {
+            Log::info('Wayfair item group lookup failed', ['sku' => $sku, 'errors' => $this->formatGraphqlErrors($json['errors'])]);
+
+            return '';
+        }
+
+        $want = array_map(fn ($c) => $this->normalizePartNumber((string) $c), $candidates);
+        $items = $json['data']['supplierCatalogItems']['catalogItems'] ?? [];
+        foreach (is_array($items) ? $items : [] as $item) {
+            if (! in_array($this->normalizePartNumber((string) ($item['supplierPartNumber'] ?? '')), $want, true)) {
+                continue;
+            }
+            $listings = is_array($item['listings'] ?? null) ? $item['listings'] : [];
+            usort($listings, fn ($a, $b) => (int) ! empty($b['isLive']) <=> (int) ! empty($a['isLive']));
+            foreach ($listings as $listing) {
+                $id = trim((string) ($listing['listingId'] ?? ''));
+                if ($id !== '') {
+                    Cache::put($cacheKey, $id, now()->addDay());
+
+                    return $id;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Submit an updateCatalogEntitiesMutations mutation; returns requestId or Wayfair's error text.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array{request_id: ?string, message: string}
+     */
+    private function submitCatalogUpdate(string $token, string $field, string $inputType, array $input, string $sku): array
+    {
+        $url = (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        $mutation = 'mutation ($input: '.$inputType.'!) { updateCatalogEntitiesMutations { '.$field.'(input: $input) { requestId } } }';
+
+        $json = $this->postCatalogGraphql($token, $url, $mutation, ['input' => $input]);
+        if (! empty($json['errors'])) {
+            Log::warning('Wayfair '.$field.' GraphQL errors', ['sku' => $sku, 'errors' => $json['errors']]);
+
+            return ['request_id' => null, 'message' => 'Wayfair ('.$field.'): '.$this->wayfairErrorText($json['errors'])];
+        }
+
+        $requestId = $json['data']['updateCatalogEntitiesMutations'][$field]['requestId'] ?? null;
+        if ($requestId === null || $requestId === '') {
+            Log::warning('Wayfair '.$field.' returned no requestId', ['sku' => $sku, 'response' => $json]);
+
+            return ['request_id' => null, 'message' => 'Wayfair ('.$field.'): no requestId returned. '.mb_substr((string) json_encode($json), 0, 300)];
+        }
+
+        return ['request_id' => (string) $requestId, 'message' => ''];
+    }
+
+    /**
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>
+     */
+    private function postCatalogGraphql(string $token, string $url, string $query, array $variables): array
+    {
+        $response = $this->apiHttpClient()
+            ->withToken($token)
+            ->withHeaders([
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+                'X-SELECTED-SUPPLIER-ID' => (string) $this->liveSupplierId(),
+            ])
+            ->post($url, ['query' => $query, 'variables' => $variables]);
+
+        $json = $response->json();
+        if (! is_array($json)) {
+            return ['errors' => [['message' => 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 300)]]];
+        }
+
+        return $json;
+    }
+
+    /**
+     * Wayfair GraphQL error text with a hint for permission errors.
+     *
+     * @param  array<int|string, mixed>  $errors
+     */
+    private function wayfairErrorText(array $errors): string
+    {
+        $text = $this->formatWayfairGraphqlErrors($errors);
+        $denied = false;
+        foreach ($errors as $error) {
+            if (is_array($error) && strtoupper((string) ($error['extensions']['errorType'] ?? '')) === 'PERMISSION_DENIED') {
+                $denied = true;
+            }
+        }
+        if ($denied || stripos($text, 'access denied') !== false) {
+            $text .= ' — the Wayfair API app (WAYFAIR_CLIENT_ID) is not authorized for catalog updates for supplier '
+                .$this->liveSupplierId().'. Enable Product Catalog write access for this app in Wayfair Partner Home, or set WAYFAIR_CATALOG_SCOPE.';
+        }
+
+        return $text;
+    }
+
+    /**
+     * @return array{locale: string, country: string, brand: string}
+     */
+    private function wayfairMarketContext(): array
+    {
+        return [
+            'locale' => (string) config('services.wayfair.locale', 'en-US'),
+            'country' => (string) config('services.wayfair.country', 'UNITED_STATES'),
+            'brand' => (string) config('services.wayfair.brand', 'WAYFAIR'),
+        ];
+    }
+
+    private function resolveWayfairMetricSku(string $identifier): string
+    {
         $sku = trim($identifier);
         if (Schema::hasTable('wayfair_metrics')) {
             $row = $this->findMetricRowBySkuOrAlternateIds('wayfair_metrics', $identifier, [
@@ -618,44 +1033,44 @@ XML;
             }
         }
 
-        try {
-            $token = $this->getTokenForCatalog();
-            if (! $token) {
-                return ['success' => false, 'message' => 'Wayfair authentication failed.'];
-            }
+        return $sku;
+    }
 
-            $requestId = $this->submitKeyFeaturesUpdate($token, $sku, $lines);
-            if ($requestId === null) {
-                return ['success' => false, 'message' => 'Wayfair: failed to submit bullet/key feature update.'];
-            }
+    /** Wayfair marketing copy is plain text; keep paragraph / list breaks from editor HTML. */
+    private static function marketingCopyText(string $html): string
+    {
+        $text = preg_replace('#<br\s*/?>#i', "\n", $html) ?? $html;
+        $text = preg_replace('#</(p|div|li|h[1-6]|tr)>#i', "\n", $text) ?? $text;
+        $text = preg_replace('#<li[^>]*>#i', '• ', $text) ?? $text;
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/[ \t]+/u', ' ', $text) ?? $text;
+        $text = preg_replace('/\s*\n\s*/u', "\n", $text) ?? $text;
 
-            return $this->pollUpdateStatus($token, $requestId, $sku);
-        } catch (\Throwable $e) {
-            Log::error('Wayfair updateBulletPoints', ['sku' => $sku, 'error' => $e->getMessage()]);
-
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
+        return trim(preg_replace('/\n{3,}/', "\n\n", $text) ?? $text);
     }
 
     /**
-     * Uses the same key-features update path; HTML descriptions are split into formatted feature lines.
-     *
-     * @param  list<string>  $imageUrls
-     * @return array{success: bool, message: string}
+     * @param  array{featureBullets?: list<string>, marketingCopy?: string}  $content
      */
-    public function updateProductDescription(string $identifier, string $description, array $imageUrls = []): array
+    private function saveGroupContentToWayfairMetrics(string $sku, array $content): void
     {
-        $description = trim($description);
-        if ($description === '') {
-            return ['success' => false, 'message' => 'Description is required.'];
+        try {
+            if ($sku === '' || ! Schema::hasTable('wayfair_metrics')) {
+                return;
+            }
+            $update = [];
+            if (isset($content['featureBullets']) && Schema::hasColumn('wayfair_metrics', 'bullet_points')) {
+                $update['bullet_points'] = implode("\n", $content['featureBullets']);
+            }
+            if (isset($content['marketingCopy']) && Schema::hasColumn('wayfair_metrics', 'description_master')) {
+                $update['description_master'] = $content['marketingCopy'];
+            }
+            if ($update !== []) {
+                DB::table('wayfair_metrics')->where('sku', $sku)->update($update);
+            }
+        } catch (\Throwable $e) {
+            Log::debug('Wayfair metrics content save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
         }
-
-        $lines = \App\Services\Support\DescriptionWithImagesFormatter::htmlToFeatureLines($description);
-        if ($lines === []) {
-            return ['success' => false, 'message' => 'No description content found.'];
-        }
-
-        return $this->updateBulletPoints($identifier, implode("\n", $lines));
     }
 
     /**
@@ -732,12 +1147,12 @@ XML;
                 return ['success' => false, 'message' => 'Wayfair authentication failed.'];
             }
 
-            $requestId = $this->submitImageUrlsUpdate($token, $sku, $urls);
-            if ($requestId === null) {
-                return ['success' => false, 'message' => 'Wayfair: failed to submit image update.'];
+            $submitted = $this->submitMediaUpdate($token, $sku, $urls, 'IMAGE');
+            if ($submitted['request_id'] === null) {
+                return ['success' => false, 'message' => $submitted['message']];
             }
 
-            $result = $this->pollUpdateStatus($token, $requestId, $sku);
+            $result = $this->pollUpdateStatus($token, $submitted['request_id'], $sku, 10, count($urls).' image(s) sent to Wayfair for SKU '.$sku.' (first image set as lead).');
             if (! ($result['success'] ?? false)) {
                 return $result;
             }
@@ -796,12 +1211,12 @@ XML;
                 return ['success' => false, 'message' => 'Wayfair authentication failed.'];
             }
 
-            $requestId = $this->submitVideoUrlsUpdate($token, $sku, $urls);
-            if ($requestId === null) {
-                return ['success' => false, 'message' => 'Wayfair: failed to submit video update.'];
+            $submitted = $this->submitMediaUpdate($token, $sku, $urls, 'VIDEO');
+            if ($submitted['request_id'] === null) {
+                return ['success' => false, 'message' => $submitted['message']];
             }
 
-            $result = $this->pollUpdateStatus($token, $requestId, $sku);
+            $result = $this->pollUpdateStatus($token, $submitted['request_id'], $sku, 10, count($urls).' video(s) sent to Wayfair for SKU '.$sku.'.');
             if (! ($result['success'] ?? false)) {
                 return $result;
             }
@@ -830,174 +1245,38 @@ XML;
     }
 
     /**
-     * @param  list<string>  $features
-     */
-    private function submitKeyFeaturesUpdate(string $token, string $sku, array $features): ?string
-    {
-        $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
-        $supplierId = (string) config('services.wayfair.supplier_id', '2603');
-        $brand = config('services.wayfair.brand', 'WAYFAIR');
-        $country = config('services.wayfair.country', 'UNITED_STATES');
-        $locale = config('services.wayfair.locale', 'en-US');
-
-        $mutation = <<<'GRAPHQL'
-        mutation UpdateMarketSpecificCatalogItems($input: UpdateMarketSpecificCatalogItemsInput!) {
-          updateCatalogEntitiesMutations {
-            updateMarketSpecificCatalogItems(input: $input) {
-              requestId
-            }
-          }
-        }
-        GRAPHQL;
-
-        $variables = [
-            'input' => [
-                'marketContext' => [
-                    'locale' => $locale,
-                    'country' => $country,
-                    'brand' => $brand,
-                ],
-                'supplierId' => $supplierId,
-                'catalogItemsToUpdate' => [
-                    [
-                        'supplierPartNumber' => $sku,
-                        'keyFeatures' => $features,
-                    ],
-                ],
-                'validateOnly' => false,
-            ],
-        ];
-
-        $response = Http::withoutVerifying()
-            ->withToken($token)
-            ->withHeaders(['Content-Type' => 'application/json'])
-            ->post($url, [
-                'query' => $mutation,
-                'variables' => $variables,
-            ]);
-
-        $data = $response->json();
-        if (! empty($data['errors'])) {
-            Log::warning('Wayfair keyFeatures GraphQL errors', ['sku' => $sku, 'errors' => $data['errors']]);
-
-            return null;
-        }
-
-        return $data['data']['updateCatalogEntitiesMutations']['updateMarketSpecificCatalogItems']['requestId'] ?? null;
-    }
-
-    /**
+     * Media is not part of UpdateCatalogItemInput; it goes through updateCatalogItemsMedia
+     * (one row per URL, applies to every market context). First image becomes the lead.
+     *
      * @param  list<string>  $urls
+     * @return array{request_id: ?string, message: string}
      */
-    private function submitImageUrlsUpdate(string $token, string $sku, array $urls): ?string
+    private function submitMediaUpdate(string $token, string $sku, array $urls, string $mediaType): array
     {
-        $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
-        $supplierId = (string) config('services.wayfair.supplier_id', '2603');
-        $brand = config('services.wayfair.brand', 'WAYFAIR');
-        $country = config('services.wayfair.country', 'UNITED_STATES');
-        $locale = config('services.wayfair.locale', 'en-US');
-
-        $mutation = <<<'GRAPHQL'
-        mutation UpdateMarketSpecificCatalogItems($input: UpdateMarketSpecificCatalogItemsInput!) {
-          updateCatalogEntitiesMutations {
-            updateMarketSpecificCatalogItems(input: $input) {
-              requestId
+        $rows = [];
+        foreach (array_values($urls) as $i => $mediaUrl) {
+            $row = [
+                'supplierPartNumber' => $sku,
+                'mediaUrl' => $mediaUrl,
+                'mediaType' => $mediaType,
+            ];
+            if ($mediaType === 'IMAGE') {
+                $row['leadImageOverride'] = $i === 0;
             }
-          }
+            $rows[] = $row;
         }
-        GRAPHQL;
 
-        $variables = [
-            'input' => [
-                'marketContext' => [
-                    'locale' => $locale,
-                    'country' => $country,
-                    'brand' => $brand,
-                ],
-                'supplierId' => $supplierId,
-                'catalogItemsToUpdate' => [
-                    [
-                        'supplierPartNumber' => $sku,
-                        'images' => $urls,
-                    ],
-                ],
+        return $this->submitCatalogUpdate(
+            $token,
+            'updateCatalogItemsMedia',
+            'UpdateCatalogItemsMediaInput',
+            [
+                'supplierId' => (string) $this->liveSupplierId(),
+                'catalogItemsToUpdate' => $rows,
                 'validateOnly' => false,
             ],
-        ];
-
-        $response = Http::withoutVerifying()
-            ->withToken($token)
-            ->withHeaders(['Content-Type' => 'application/json'])
-            ->post($url, [
-                'query' => $mutation,
-                'variables' => $variables,
-            ]);
-
-        $data = $response->json();
-        if (! empty($data['errors'])) {
-            Log::warning('Wayfair image GraphQL errors', ['sku' => $sku, 'errors' => $data['errors']]);
-
-            return null;
-        }
-
-        return $data['data']['updateCatalogEntitiesMutations']['updateMarketSpecificCatalogItems']['requestId'] ?? null;
-    }
-
-    /**
-     * @param  list<string>  $urls
-     */
-    private function submitVideoUrlsUpdate(string $token, string $sku, array $urls): ?string
-    {
-        $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
-        $supplierId = (string) config('services.wayfair.supplier_id', '2603');
-        $brand = config('services.wayfair.brand', 'WAYFAIR');
-        $country = config('services.wayfair.country', 'UNITED_STATES');
-        $locale = config('services.wayfair.locale', 'en-US');
-
-        $mutation = <<<'GRAPHQL'
-        mutation UpdateMarketSpecificCatalogItems($input: UpdateMarketSpecificCatalogItemsInput!) {
-          updateCatalogEntitiesMutations {
-            updateMarketSpecificCatalogItems(input: $input) {
-              requestId
-            }
-          }
-        }
-        GRAPHQL;
-
-        $variables = [
-            'input' => [
-                'marketContext' => [
-                    'locale' => $locale,
-                    'country' => $country,
-                    'brand' => $brand,
-                ],
-                'supplierId' => $supplierId,
-                'catalogItemsToUpdate' => [
-                    [
-                        'supplierPartNumber' => $sku,
-                        'videos' => $urls,
-                    ],
-                ],
-                'validateOnly' => false,
-            ],
-        ];
-
-        $response = Http::withoutVerifying()
-            ->withToken($token)
-            ->withHeaders(['Content-Type' => 'application/json'])
-            ->post($url, [
-                'query' => $mutation,
-                'variables' => $variables,
-            ]);
-
-        $data = $response->json();
-        if (! empty($data['errors'])) {
-            Log::warning('Wayfair video GraphQL errors', ['sku' => $sku, 'errors' => $data['errors']]);
-
-            return null;
-        }
-
-        return $data['data']['updateCatalogEntitiesMutations']['updateMarketSpecificCatalogItems']['requestId'] ?? null;
+            $sku
+        );
     }
 
     /**
