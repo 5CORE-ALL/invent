@@ -2340,7 +2340,7 @@ class TikTokShopService
             ];
             break;
         }
-        Cache::put($cacheKey, $found, now()->addHours(24));
+        Cache::put($cacheKey, $found, $found['id'] !== '' ? now()->addHours(24) : now()->addMinutes(30));
 
         return $found['id'] !== '' ? $found : null;
     }
