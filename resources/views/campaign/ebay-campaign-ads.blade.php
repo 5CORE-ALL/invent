@@ -534,7 +534,7 @@ $(document).ready(function () {
                 width: 56,
                 hozAlign: 'center',
                 headerSort: false,
-                headerTooltip: 'Shown when the S Bid push failed. A pending C Bid gap stays a yellow dot on C Bid.',
+                headerTooltip: 'Shown when C Bid does not match S Bid. Hover the mark for the reason. A failed push includes the eBay error.',
                 formatter: function(cell) {
                     const tip = ebayBidAlertText(cell.getRow().getData());
                     if (!tip) return '';
@@ -711,10 +711,10 @@ function ebayBidSync(row) {
     };
 }
 
-/** Red alert text. Empty unless the S Bid push failed. A pending gap stays yellow. */
+/** Red alert when C Bid does not match S Bid, including a failed push. */
 function ebayBidAlertText(row) {
     const sync = ebayBidSync(row);
-    if (!sync || sync.color !== 'red') return '';
+    if (!sync || sync.color === 'green') return '';
     return 'S Bid: ' + sync.tip;
 }
 
