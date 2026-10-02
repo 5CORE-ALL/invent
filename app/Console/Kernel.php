@@ -1356,6 +1356,19 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Missing Mapping (/map-issues): push every listed SKU's Shopify qty, retry leftovers.
+        // In-process (not queued) so it still runs when an mm-* worker is down. 14:00 clears
+        // the count before the 15:00 task is assigned.
+        foreach ([['08:00', 'morning'], ['14:00', 'afternoon']] as [$at, $tag]) {
+            $schedule->command('inventory:push-missing-mapping')
+                ->dailyAt($at)
+                ->timezone('Asia/Kolkata')
+                ->name('push-missing-mapping-inventory-'.$tag)
+                ->withoutOverlapping(300)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
         // Missing Mapping (/map-issues) — daily badge count task → tech-support@5core.com
         $ist($schedule->command('tasks:assign-missing-mapping-daily')
             ->dailyAt('15:00')
