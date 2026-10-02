@@ -40,6 +40,7 @@ class InvDaysController extends Controller
             $amazonSheets = $this->amazonSheetsByLookupKey();
             $clearanceBySku = $this->clearanceBySku();
             $nrpBySku = $this->forecastNrpBySku();
+            $mslBySku = $this->forecastMslBySku();
 
             $rows = [];
             foreach ($products as $product) {
@@ -66,6 +67,7 @@ class InvDaysController extends Controller
                     'days_exp' => InvUnder30DaysController::daysExp($inv, $ovl30) ?? 99999,
                     'clearance' => $clearance['value'] ?? 'NO',
                     'clearance_has_history' => $clearance !== null,
+                    'msl' => $mslBySku[$this->forecastSkuKey($sku)] ?? 0,
                     'nr' => $nrpBySku[$this->forecastSkuKey($sku)] ?? 'REQ',
                 ];
             }
@@ -473,6 +475,37 @@ class InvDaysController extends Controller
     }
 
     /**
+     * MSL from the same Forecast Analysis row builder (/forecast.analysis).
+     *
+     * @return array<string, int>
+     */
+    private function forecastMslBySku(): array
+    {
+        try {
+            $rows = app(ForecastAnalysisController::class)->getForecastAnalysisSnapshotRows();
+        } catch (\Throwable $e) {
+            Log::warning('Inv Days MSL from forecast analysis failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $item) {
+            if ($item->is_parent ?? false) {
+                continue;
+            }
+            $key = $this->forecastSkuKey((string) ($item->SKU ?? ''));
+            if ($key === '') {
+                continue;
+            }
+            $msl = $item->msl ?? 0;
+            $map[$key] = is_numeric($msl) ? (int) round((float) $msl) : 0;
+        }
+
+        return $map;
+    }
+
+    /**
      * NRP from forecast_analysis.nr, matched the same way as /forecast.analysis.
      * REQ = green, NR (2BDC) = red, LATER = yellow. Missing rows display as REQ.
      *
@@ -629,7 +662,7 @@ class InvDaysController extends Controller
     }
 
     /**
-     * Whole days from the earliest date a transit-container row for this SKU
+     * Whole days from the latest date a transit-container row for this SKU
      * was pushed into Shopify (inventory_warehouse.push_status = success).
      * SKUs that were never pushed stay blank.
      *
@@ -650,7 +683,7 @@ class InvDaysController extends Controller
             ->get(['our_sku', 'updated_at', 'created_at']);
 
         foreach ($pushes as $row) {
-            $this->keepEarliestDate($dates, (string) $row->our_sku, $row->updated_at ?: $row->created_at);
+            $this->keepLatestDate($dates, (string) $row->our_sku, $row->updated_at ?: $row->created_at);
         }
 
         $today = Carbon::now('America/New_York')->startOfDay();
@@ -682,7 +715,7 @@ class InvDaysController extends Controller
     /**
      * @param  array<string, string>  $dates
      */
-    private function keepEarliestDate(array &$dates, string $sku, mixed $at): void
+    private function keepLatestDate(array &$dates, string $sku, mixed $at): void
     {
         $key = $this->skuKey($sku);
         if ($key === '' || $at === null || $at === '') {
@@ -690,7 +723,7 @@ class InvDaysController extends Controller
         }
 
         $at = (string) $at;
-        if (! isset($dates[$key]) || $at < $dates[$key]) {
+        if (! isset($dates[$key]) || $at > $dates[$key]) {
             $dates[$key] = $at;
         }
     }
