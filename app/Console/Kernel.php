@@ -1331,6 +1331,14 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         
+        $schedule->command('tasks:purge-archived', ['--days' => 90])
+            ->dailyAt('03:30')
+            ->timezone($taskTz)
+            ->name('purge-archived-tasks')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('tasks:automated-health-alert')
             ->everyThirtyMinutes()
             ->timezone($taskTz)

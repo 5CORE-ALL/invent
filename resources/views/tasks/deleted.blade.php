@@ -392,6 +392,9 @@
                             </span>
                         @endif
                     </h4>
+                    <div class="text-muted" style="font-size: 12px; margin-top: -6px;">
+                        <i class="mdi mdi-information-outline me-1"></i>Archived tasks are permanently deleted after 90 days.
+                    </div>
                 </div>
             </div>
         </div>
