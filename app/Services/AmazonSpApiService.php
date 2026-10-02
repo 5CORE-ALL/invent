@@ -1248,32 +1248,55 @@ class AmazonSpApiService
             return null;
         };
 
-        $offers = $data['offers'] ?? [];
-        if (isset($offers[0]) && is_array($offers[0])) {
-            $p = $fromOffer($offers[0]);
-            if ($p !== null) {
+        $groups = [];
+        $purchasable = $data['attributes']['purchasable_offer'] ?? null;
+        if (is_array($purchasable)) {
+            $groups[] = $purchasable;
+        }
+        if (is_array($data['offers'] ?? null)) {
+            $groups[] = $data['offers'];
+        }
+        if (isset($data['summaries'][0]['offers']) && is_array($data['summaries'][0]['offers'])) {
+            $groups[] = $data['summaries'][0]['offers'];
+        }
+
+        foreach ($groups as $rows) {
+            $customer = $this->customerListingOffer($rows);
+            if ($customer !== null && ($p = $fromOffer($customer)) !== null) {
                 return $p;
             }
         }
 
-        if (isset($data['summaries'][0]['offers']) && is_array($data['summaries'][0]['offers'])) {
-            foreach ($data['summaries'][0]['offers'] as $offer) {
-                if (is_array($offer) && ($p = $fromOffer($offer)) !== null) {
-                    return $p;
-                }
-            }
-        }
+        return null;
+    }
 
-        $attrs = $data['attributes'] ?? [];
-        $purchasable = $attrs['purchasable_offer'] ?? null;
-        if (is_array($purchasable) && isset($purchasable[0]) && is_array($purchasable[0])) {
-            $po = $purchasable[0];
-            if (isset($po['our_price'])) {
-                $p = $fromSchedule($po['our_price']);
-                if ($p !== null) {
-                    return $p;
-                }
+    private function amazonAudienceIsBusiness(mixed $audience): bool
+    {
+        if (is_array($audience)) {
+            $audience = $audience['value'] ?? $audience['displayName'] ?? '';
+        }
+        $audience = strtoupper(trim((string) $audience));
+
+        return $audience === 'B2B' || str_contains($audience, 'BUSINESS');
+    }
+
+    /**
+     * Customer offer (Sell on Amazon). Business is listed first and is 5% under Your Price.
+     *
+     * @param  list<mixed>  $offers
+     * @return array<string, mixed>|null
+     */
+    private function customerListingOffer(array $offers): ?array
+    {
+        foreach ($offers as $offer) {
+            if (! is_array($offer)) {
+                continue;
             }
+            if ($this->amazonAudienceIsBusiness($offer['audience'] ?? null)) {
+                continue;
+            }
+
+            return $offer;
         }
 
         return null;
@@ -3008,44 +3031,32 @@ class AmazonSpApiService
                 return $getPriceFromSchedule($v);
             };
 
-            // Path 1: offers[0] or summaries[0].offers[0]
-            $offer = $offers[0] ?? ($summaries[0]['offers'][0] ?? []);
-            if (($p = $getPriceFromOffer($offer, 'ourPrice')) !== null) {
+            // Customer offer only. purchasable_offer[0] is often the B2B price, 5% under Your Price.
+            $purchasable = is_array($attrs['purchasable_offer'] ?? null) ? $attrs['purchasable_offer'] : [];
+            $offer = $this->customerListingOffer($purchasable)
+                ?? $this->customerListingOffer(is_array($offers) ? $offers : [])
+                ?? $this->customerListingOffer($summaries[0]['offers'] ?? []);
+            $offer = is_array($offer) ? $offer : [];
+            if (($p = $getPriceFromOffer($offer, 'ourPrice')) !== null
+                || ($p = $getPriceFromOffer($offer, 'our_price')) !== null) {
                 $out['your_price'] = $p;
             }
             if (($p = $getPriceFromOffer($offer, 'discountedPrice')) !== null
                 || ($p = $getPriceFromOffer($offer, 'discounted_price')) !== null) {
                 $out['sale_price'] = $p;
             }
-            if (($p = $getPriceFromOffer($offer, 'minimumSellerAllowedPrice')) !== null) {
+            if (($p = $getPriceFromOffer($offer, 'minimumSellerAllowedPrice')) !== null
+                || ($p = $getPriceFromOffer($offer, 'minimum_seller_allowed_price')) !== null) {
                 $out['minimum_advertised_price'] = $p;
             }
-            if (($p = $getPriceFromOffer($offer, 'listPrice')) !== null) {
+            if (($p = $getPriceFromOffer($offer, 'listPrice')) !== null
+                || ($p = $getPriceFromOffer($offer, 'list_price')) !== null) {
                 $out['list_price'] = $p;
             }
 
-            // Path 2: attributes.purchasable_offer[0].our_price / list_price / minimum_advertised_price
-            $purchasable = $attrs['purchasable_offer'] ?? null;
-            if (is_array($purchasable) && isset($purchasable[0])) {
-                $po = $purchasable[0];
-                if ($out['your_price'] === null && ($p = $getPriceFromSchedule($po['our_price'] ?? null)) !== null) {
-                    $out['your_price'] = $p;
-                }
-                if ($out['sale_price'] === null && ($p = $getPriceFromSchedule($po['discounted_price'] ?? $po['discountedPrice'] ?? null)) !== null) {
-                    $out['sale_price'] = $p;
-                }
-                if ($out['list_price'] === null && ($p = $getPriceFromSchedule($po['list_price'] ?? null)) !== null) {
-                    $out['list_price'] = $p;
-                }
-                if ($out['minimum_advertised_price'] === null && ($p = $getPriceFromSchedule($po['minimum_advertised_price'] ?? $po['minimumSellerAllowedPrice'] ?? null)) !== null) {
-                    $out['minimum_advertised_price'] = $p;
-                }
-            }
-
-            // Path 3: summaries[0].offers[0].ourPrice (already tried above; try summaries.ourPrice directly)
-            if ($out['your_price'] === null && ! empty($summaries[0]['offers'][0]['ourPrice'])) {
-                $p = $getPriceFromSchedule($summaries[0]['offers'][0]['ourPrice']);
-                if ($p !== null) {
+            if ($out['your_price'] === null) {
+                $summaryOffer = $this->customerListingOffer($summaries[0]['offers'] ?? []);
+                if (is_array($summaryOffer) && ($p = $getPriceFromSchedule($summaryOffer['ourPrice'] ?? $summaryOffer['our_price'] ?? null)) !== null) {
                     $out['your_price'] = $p;
                 }
             }

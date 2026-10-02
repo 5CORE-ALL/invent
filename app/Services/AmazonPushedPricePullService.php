@@ -521,13 +521,15 @@ class AmazonPushedPricePullService
 
     private function currentListingPrice(array $details): ?float
     {
-        $sale = isset($details['sale_price']) ? (float) $details['sale_price'] : 0;
+        // Your Price is the customer listing price. The sale a few cents under it
+        // is a leftover schedule, and the Business offer is 5% under.
         $your = isset($details['your_price']) ? (float) $details['your_price'] : 0;
-        if ($sale > 0) {
-            return round($sale, 2);
-        }
         if ($your > 0) {
             return round($your, 2);
+        }
+        $sale = isset($details['sale_price']) ? (float) $details['sale_price'] : 0;
+        if ($sale > 0) {
+            return round($sale, 2);
         }
 
         return null;
