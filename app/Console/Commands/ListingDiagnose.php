@@ -127,6 +127,23 @@ class ListingDiagnose extends Command
         $this->section('product_attributes on the listing', $data['product_attributes'] ?? []);
         $this->section('search_terms on the listing', $data['search_terms'] ?? null);
 
+        foreach (['202509', '202309'] as $version) {
+            try {
+                $raw = $this->invoke($svc, 'tiktokOpenApi', 'GET', "/product/{$version}/products/{$productId}", ['return_under_review_version' => 'true']);
+                $raw = is_array($raw) ? $raw : [];
+                $this->info("GET {$version} (incl. under review) top-level keys: ".implode(', ', array_keys($raw)));
+                $this->section("GET {$version} non-standard fields", array_diff_key($raw, array_flip([
+                    'id', 'title', 'description', 'category_chains', 'brand', 'main_images', 'skus', 'package_weight',
+                    'package_dimensions', 'product_attributes', 'status', 'create_time', 'update_time', 'video',
+                    'size_chart', 'certifications', 'audit', 'audit_failed_reasons', 'integrated_platform_statuses',
+                    'delivery_options', 'external_product_id', 'is_cod_allowed', 'is_not_for_sale',
+                    'is_pre_owned', 'manufacturer', 'manufacturer_ids', 'responsible_person_ids',
+                ])));
+            } catch (\Throwable $e) {
+                $this->warn("GET {$version} failed: ".$e->getMessage());
+            }
+        }
+
         foreach (['v2' => ['locale' => 'en-US', 'category_version' => 'v2'], 'v1' => ['locale' => 'en-US']] as $label => $query) {
             try {
                 $attrs = $this->invoke($svc, 'tiktokOpenApi', 'GET', "/product/202309/categories/{$categoryId}/attributes", $query);
