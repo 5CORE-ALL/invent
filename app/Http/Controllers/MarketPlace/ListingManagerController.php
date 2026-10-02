@@ -1734,42 +1734,19 @@ class ListingManagerController extends Controller
     public function channels(Request $request)
     {
         $allActive = ChannelMaster::query()
-            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
             ->whereNotNull('channel')
             ->where('channel', '!=', '')
-            ->orderBy('channel')
-            ->get(['id', 'channel', 'logo'])
+            ->get(['id', 'channel', 'logo', 'status'])
             ->filter(function ($c) {
                 return ListingManagerPublishDispatcher::supportsListingApi((string) $c->channel);
             })
+            ->sortBy(fn ($c) => strtolower(trim((string) $c->status)) === 'active' ? 0 : 1)
+            ->unique(fn ($c) => ListingChannelCounts::normalize((string) $c->channel))
+            ->sortBy(fn ($c) => strtolower((string) $c->channel))
             ->values();
 
-        $enabledIds = Schema::hasTable('listing_manager_enabled_channels')
-            ? ListingManagerEnabledChannel::query()
-                ->where('is_enabled', true)
-                ->orderBy('sort_order')
-                ->pluck('channel_id')
-                ->all()
-            : [];
-
-        $availableIds = $allActive->pluck('id')->map(fn ($id) => (int) $id)->all();
-        $enabledIds = array_values(array_intersect(array_map('intval', $enabledIds), $availableIds));
-
-        if ($enabledIds === []) {
-            $enabledIds = $availableIds;
-        } else {
-            foreach ($allActive as $c) {
-                $key = ListingChannelCounts::normalize((string) $c->channel);
-                if (in_array($key, [
-                    'amazon', 'amazonfba', 'amz', 'amzfbm',
-                    'macys', 'macy', 'bestbuy', 'bestbuyusa', 'purchasingpower',
-                ], true)) {
-                    $enabledIds[] = (int) $c->id;
-                }
-            }
-            $enabledIds = array_values(array_unique(array_map('intval', $enabledIds)));
-            $enabledIds = array_values(array_intersect($enabledIds, $availableIds));
-        }
+        // Every active channel with a listing API is offered; an older saved subset hid some of them.
+        $enabledIds = $allActive->pluck('id')->map(fn ($id) => (int) $id)->all();
 
         $enabledSet = array_fill_keys(array_map('intval', $enabledIds), true);
 

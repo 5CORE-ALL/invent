@@ -44,7 +44,6 @@ final class MarketplaceMismatchInventoryPass
             return $empty;
         }
 
-        $settings = MarketplaceSyncSettings::getFor($channel);
         if ($channel === 'amazon') {
             $zeros = app(AmazonInventorySyncService::class)->syncConfirmedZerosFromShopify(250);
             if ((int) ($zeros['updated'] ?? 0) > 0) {
@@ -54,12 +53,12 @@ final class MarketplaceMismatchInventoryPass
                 $empty['message'] = (string) ($zeros['message'] ?? 'Pushed Shopify-zero SKUs to Amazon.');
             }
         }
-        if (! ($settings['inventory']['inventory_sync'] ?? false)) {
+        if (! self::syncEnabled($channel)) {
             if ($channel === 'amazon' && (int) ($empty['updated'] ?? 0) > 0) {
                 return $empty;
             }
 
-            return array_merge($empty, ['message' => 'Mismatch pass skipped (inventory sync off).']);
+            return array_merge($empty, ['message' => 'Mismatch pass skipped (inventory and price sync off).']);
         }
 
         $linked = $this->linkedSkus($channel);
@@ -76,7 +75,8 @@ final class MarketplaceMismatchInventoryPass
         $classified = $catalog->classifyLinkedInventoryMatch($linked, $mpStock, marketplace: $channel);
         $mismatch = array_values(array_unique(array_merge(
             $classified['mismatch'] ?? [],
-            $classified['linked_mismatch'] ?? []
+            $classified['linked_mismatch'] ?? [],
+            $this->pageMismatchSkus($channel)
         )));
 
         if ($mismatch === []) {
@@ -103,31 +103,7 @@ final class MarketplaceMismatchInventoryPass
             'remaining' => $remaining,
         ]);
 
-        $result = match ($channel) {
-            'newegg' => app(NeweggInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'pls' => app(PlsInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'b5cb2b' => app(B5cB2bInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'macy' => app(MacyInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'doba' => app(DobaInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'ebay1' => app(Ebay1InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'ebay2' => app(Ebay2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'aliexpress' => app(AliexpressInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'amazon' => app(AmazonInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'tiktok' => app(TikTokInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'tiktok2' => app(TikTok2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            default => $empty,
-        };
+        $result = $this->pushSkus($channel, $mismatch);
 
         $updated = (int) ($result['updated'] ?? 0);
         $failed = (int) ($result['failed'] ?? 0);
@@ -156,6 +132,77 @@ final class MarketplaceMismatchInventoryPass
             'rate_limited' => ! empty($result['rate_limited']),
             'message' => $message,
         ];
+    }
+
+    /**
+     * SKUs /map-issues counts for this channel. The pass's own classification can miss them
+     * (different stock source), which left those SKUs for a manual push every day.
+     *
+     * @return list<string>
+     */
+    public function pageMismatchSkus(string $channel): array
+    {
+        try {
+            return app(MarketplaceListingQtyMatchService::class)->activeMismatchSkus($channel, false);
+        } catch (\Throwable $e) {
+            Log::warning('MarketplaceMismatchInventoryPass: page mismatch list failed', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Manual "Sync mismatch" buttons run when inventory OR price sync is on; automatic runs follow the same rule.
+     */
+    public static function syncEnabled(string $channel): bool
+    {
+        $settings = MarketplaceSyncSettings::getFor(strtolower(trim($channel)));
+
+        return (bool) ($settings['inventory']['inventory_sync'] ?? false)
+            || (bool) ($settings['pricing']['price_sync'] ?? false);
+    }
+
+    /**
+     * Push Shopify qty for the given SKUs with the channel's inventory sync service.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, mixed>
+     */
+    public function pushSkus(string $channel, array $skus): array
+    {
+        $channel = strtolower(trim($channel));
+        if ($skus === []) {
+            return ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'No SKUs to push.'];
+        }
+
+        return match ($channel) {
+            'newegg' => app(NeweggInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'pls' => app(PlsInventorySyncService::class)->syncSkusFromShopify($skus),
+            'b5cb2b' => app(B5cB2bInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'macy' => app(MacyInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'doba' => app(DobaInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'ebay1' => app(Ebay1InventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'ebay2' => app(Ebay2InventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'aliexpress' => app(AliexpressInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'amazon' => app(AmazonInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'tiktok' => app(TikTokInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'tiktok2' => app(TikTok2InventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            default => ['updated' => 0, 'failed' => 0, 'skipped' => count($skus), 'message' => 'Channel not supported.'],
+        };
     }
 
     /**
