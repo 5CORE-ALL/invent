@@ -1097,6 +1097,10 @@ class EbayController extends Controller
                 ? (float) ($orderL30ByItem[$itemId] ?? 0)
                 : 0.0;
             $metricL30 = (float) ($ebayMetric?->ebay_l30 ?? 0);
+            // S Bid uses these metric totals, same as /ebay/campaign-ads. The eBay L30
+            // column below can still prefer live orders.
+            $row['metric_ebay_l30'] = $metricL30;
+            $row['metric_ebay_l60'] = (float) ($ebayMetric?->ebay_l60 ?? 0);
             $row["eBay L30"] = $orderSkuL30 > 0
                 ? $orderSkuL30
                 : ($orderItemL30 > 0 ? $orderItemL30 : $metricL30);
