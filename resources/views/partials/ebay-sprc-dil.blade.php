@@ -37,14 +37,14 @@
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
-        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop'], true);
+        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy', 'newegg'], true);
-    $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'instagram', 'mercari_wship', 'mercari_woship'], true);
-    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop', 'instagram'], true);
+    $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'instagram', 'alibaba', 'mercari_wship', 'mercari_woship'], true);
+    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop', 'instagram', 'alibaba'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
         'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3' => 'Temu L30',
         'macys', 'macy' => 'MC L30',
@@ -65,6 +65,7 @@
         'depop' => 'D L30',
         'vinted' => 'V L30',
         'instagram' => 'I L30',
+        'alibaba' => 'AB L30',
         'mercari_wship', 'mercari_woship' => 'L30',
         default => 'E L30',
     };
@@ -98,6 +99,7 @@
         'depop' => 'Depop',
         'vinted' => 'Vinted',
         'instagram' => 'Instagram Shop',
+        'alibaba' => 'Alibaba',
         'mercari_wship' => 'Mercari w Ship',
         'mercari_woship' => 'Mercari Pickup',
         'ebay2op' => 'eBay 2 OP',
@@ -117,7 +119,7 @@
         }
     } else {
         $ebaySprcDilBtnTitle .= ' Every INV > 0 SKU uses the Dil-matching slab.';
-        if (in_array($ebaySprcDilChannel, ['vinted', 'instagram', 'depop'], true)) {
+        if (in_array($ebaySprcDilChannel, ['vinted', 'instagram', 'depop', 'alibaba'], true)) {
             $ebaySprcDilBtnTitle .= ' Dil = OV L30 ÷ INV, including when '.$ebaySprcDilSoldLabel.' = 0. Dil = 0 uses the 0–0 slab.';
         } elseif (in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein'], true)) {
             $ebaySprcDilBtnTitle .= ' Dil = 0 uses the 0–0 slab.';
@@ -353,13 +355,13 @@
                         </li>
                         @endif
 @else
-                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu3', 'vinted', 'instagram', 'depop'], true))
+                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true))
                         <li>
                             <strong>When</strong> Dil = 0 (INV &gt; 0):
                             use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
                         </li>
                         @endif
-                        @if(in_array($ebaySprcDilChannel, ['vinted', 'instagram', 'depop'], true))
+                        @if(in_array($ebaySprcDilChannel, ['vinted', 'instagram', 'depop', 'alibaba'], true))
                         <li>
                             <strong>When</strong> {{ $ebaySprcDilSoldLabel }} = 0 (0 Sold) and INV &gt; 0:
                             use the <strong>OV Dil %</strong> slab (OV L30 ÷ INV).
@@ -475,8 +477,8 @@
                             Dil = OV L30 ÷ INV. 0 Sold is BB L30 = 0. If S PRC < A Price, use A Price, then cap at LMP. If LMP is below A Price, keep A Price.
                             @elseif($ebaySprcDilChannel === 'newegg')
                             Dil = OV L30 ÷ INV. 0 Sold is L30 = 0. If S PRC < A Price, use A Price.
-                            @elseif(in_array($ebaySprcDilChannel, ['vinted', 'instagram', 'depop'], true))
-                            Dil = OV L30 ÷ INV. {{ $ebaySprcDilSoldLabel }} = 0 still uses that Dil slab.
+                            @elseif(in_array($ebaySprcDilChannel, ['vinted', 'instagram', 'depop', 'alibaba'], true))
+                            Dil = OV L30 ÷ INV. {{ $ebaySprcDilSoldLabel }} = 0 still uses that Dil slab. Ship is not used.
                             @endif
                         </li>
                     </ul>
@@ -681,6 +683,7 @@
                 || EBAY_DIL_GROI_CHANNEL === 'depop'
                 || EBAY_DIL_GROI_CHANNEL === 'vinted'
                 || EBAY_DIL_GROI_CHANNEL === 'instagram'
+                || EBAY_DIL_GROI_CHANNEL === 'alibaba'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
         }
@@ -693,7 +696,8 @@
                 || EBAY_DIL_GROI_CHANNEL === 'shopify_b2b'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship'
                 || EBAY_DIL_GROI_CHANNEL === 'depop'
-                || EBAY_DIL_GROI_CHANNEL === 'instagram';
+                || EBAY_DIL_GROI_CHANNEL === 'instagram'
+                || EBAY_DIL_GROI_CHANNEL === 'alibaba';
         }
         function ebayDgRulesUrl() {
             return '/channel-promo-pricing/' + encodeURIComponent(EBAY_DIL_GROI_CHANNEL) + '/dil-groi';
@@ -1045,7 +1049,8 @@
         function ebayDgPricesByOvDilNotZeroSold() {
             return EBAY_DIL_GROI_CHANNEL === 'vinted'
                 || EBAY_DIL_GROI_CHANNEL === 'instagram'
-                || EBAY_DIL_GROI_CHANNEL === 'depop';
+                || EBAY_DIL_GROI_CHANNEL === 'depop'
+                || EBAY_DIL_GROI_CHANNEL === 'alibaba';
         }
         function ebayDgIsZeroSold(d) {
             if (ebayDgPricesByOvDilNotZeroSold()) return false;

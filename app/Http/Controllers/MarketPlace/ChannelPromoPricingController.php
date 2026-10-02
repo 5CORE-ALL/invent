@@ -2485,7 +2485,7 @@ class ChannelPromoPricingController extends Controller
         if ($this->promo->isSupported($channel)) {
             return $channel;
         }
-        if (in_array($channel, ['amazon', 'pef', 'vinted', 'instagram', 'depop', 'macy', 'newtemuone', 'newtemutwo'], true)) {
+        if (in_array($channel, ['amazon', 'pef', 'vinted', 'instagram', 'depop', 'alibaba', 'macy', 'newtemuone', 'newtemutwo'], true)) {
             return $channel;
         }
 

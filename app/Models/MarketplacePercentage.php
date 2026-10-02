@@ -75,6 +75,7 @@ class MarketplacePercentage extends Model
             'vinted' => ['Vinted'],
             'depop' => ['Depop'],
             'instagram' => ['Instagram Shop', 'InstagramShop', 'Instagram'],
+            'alibaba' => ['Alibaba'],
             default => [],
         };
     }

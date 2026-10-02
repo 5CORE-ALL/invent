@@ -159,6 +159,8 @@
                 grid-template-columns: 1fr;
             }
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'alibaba'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'alibaba'])
         .card-loader-overlay {
             position: absolute;
             inset: 0;
@@ -263,6 +265,8 @@
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end" id="ab-column-dropdown-menu"></ul>
                         </div>
+                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'alibaba'])
+                        @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'alibaba'])
                         <button type="button" class="btn btn-sm btn-primary" id="ab-sync-btn">
                             <i class="fas fa-sync"></i> Sync from API
                         </button>
@@ -282,16 +286,20 @@
             </div>
         </div>
     </div>
-
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'alibaba'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'alibaba'])
 @endsection
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'alibaba'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'alibaba'])
         document.body.style.zoom = "90%";
 
         const AB_MARGIN = {{ (float) ($marginPercent ?? 95) }} / 100;
         let abTable = null;
+        let table = null;
         let abAllRows = [];
 
         function isAbParentRow(data) {
@@ -422,7 +430,7 @@
         }
 
         function abClassifyColumn(field) {
-            if (/^(price|groi|gpft|profit|sales)$/i.test(field)) return 'price';
+            if (/^(price|groi|gpft|profit|sales|sprice|sgpft|sgroi|sroi|snroi|sngpft|snpft|sprc_dil)$/i.test(field)) return 'price';
             if (/^(product_id|status)$/i.test(field)) return 'other';
             return 'basic';
         }
@@ -610,6 +618,9 @@
                     paginationSize: 50,
                     paginationSizeSelector: [25, 50, 100, 250],
                     initialSort: [{ column: 'al30', dir: 'desc' }],
+                    dataLoaded: function () {
+                        if (typeof ebayScheduleSprcDilAutoApply === 'function') ebayScheduleSprcDilAutoApply();
+                    },
                     rowFormatter: function (row) {
                         if (isAbParentRow(row.getData())) {
                             row.getElement().style.backgroundColor = '#fffef2';
@@ -663,6 +674,86 @@
                             headerTooltip: 'Units from /alibaba/daily-sales, last 30 Pacific days'
                         },
                         {
+                            title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: 'number',
+                            headerTooltip: 'Suggested price from the Sprc Dil rule. SGROI matches the Dil slab. Ship is not used.',
+                            formatter: function (cell) {
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
+                                const value = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
+                                const live = parseFloat(row.price) || 0;
+                                const differ = live > 0 && Math.round(value * 100) !== Math.round(live * 100);
+                                const tri = differ
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $' + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                    : '';
+                                return '<span style="font-weight:600;">$' + value.toFixed(2) + '</span>' + tri;
+                            }
+                        },
+                        {
+                            title: 'SGROI', field: 'sgroi', hozAlign: 'center', width: 55, sorter: 'number',
+                            headerTooltip: 'SGROI = ((S PRC × margin) − LP) ÷ LP. Ship is not subtracted.',
+                            formatter: function (cell) {
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
+                                const sprice = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                const lp = parseFloat(row.lp) || 0;
+                                if (!(sprice > 0) || !(lp > 0)) return '<span style="color:#6c757d;">–</span>';
+                                const profit = (sprice * AB_MARGIN) - lp;
+                                return abPct((profit / lp) * 100, 'roi');
+                            }
+                        },
+                        {
+                            title: 'SGPFT', field: 'sgpft', hozAlign: 'center', width: 55, sorter: 'number',
+                            headerTooltip: 'SGPFT = ((S PRC × margin) − LP) ÷ S PRC. Ship is not subtracted.',
+                            formatter: function (cell) {
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
+                                const sprice = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                if (!(sprice > 0)) return '<span style="color:#6c757d;">–</span>';
+                                const lp = parseFloat(row.lp) || 0;
+                                const profit = (sprice * AB_MARGIN) - lp;
+                                return abPct((profit / sprice) * 100, 'gpft');
+                            }
+                        },
+                        {
+                            title: 'SNROI', field: 'snroi', hozAlign: 'center', width: 55, sorter: 'number',
+                            headerTooltip: 'Alibaba has no ads. SNROI = SGROI.',
+                            formatter: function (cell) {
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
+                                const sprice = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                const lp = parseFloat(row.lp) || 0;
+                                if (!(sprice > 0) || !(lp > 0)) return '<span style="color:#6c757d;">–</span>';
+                                const profit = (sprice * AB_MARGIN) - lp;
+                                return abPct((profit / lp) * 100, 'roi');
+                            }
+                        },
+                        {
+                            title: 'SNGPFT', field: 'sngpft', hozAlign: 'center', width: 60, sorter: 'number',
+                            headerTooltip: 'Alibaba has no ads. SNGPFT = SGPFT.',
+                            formatter: function (cell) {
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
+                                const sprice = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                if (!(sprice > 0)) return '<span style="color:#6c757d;">–</span>';
+                                const lp = parseFloat(row.lp) || 0;
+                                const profit = (sprice * AB_MARGIN) - lp;
+                                return abPct((profit / sprice) * 100, 'gpft');
+                            }
+                        },
+                        {
+                            title: 'Sprc Dil', field: 'SPRC_DIL', hozAlign: 'center', width: 70, headerSort: false,
+                            headerTooltip: 'S PRC from Dil → Target SGROI. Dil = OV L30 ÷ INV, including when AB L30 = 0. Dil = 0 uses the 0–0 slab.',
+                            formatter: function (cell) {
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row) || typeof ebayDilGroiMetaForRow !== 'function') return '';
+                                const meta = ebayDilGroiMetaForRow(row);
+                                if (!meta || !(meta.sprc > 0)) return '<span style="color:#adb5bd;">–</span>';
+                                const tip = (typeof ebayDilGroiTipText === 'function') ? ebayDilGroiTipText(meta) : '';
+                                return '<span style="font-weight:600;color:#6f42c1;" title="' + tip.replace(/"/g, '&quot;') + '">$' + meta.sprc.toFixed(2) + '</span>';
+                            }
+                        },
+                        {
                             title: 'Price', field: 'price', hozAlign: 'center', width: 80, sorter: 'number',
                             headerTooltip: 'Alibaba API SKU price',
                             formatter: function (cell) {
@@ -708,6 +799,7 @@
                         { title: 'AL INV', field: 'soh', hozAlign: 'center', width: 55, sorter: 'number', headerTooltip: 'Alibaba inventory' },
                     ],
                 });
+                table = abTable;
                 abApplyColumnVisibility();
                 updateSummary((abAllRows || []).filter(abRowMatches));
             })

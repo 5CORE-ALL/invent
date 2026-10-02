@@ -14,6 +14,7 @@ use App\Services\AlibabaApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -81,6 +82,7 @@ class AlibabaAnalyticsController extends Controller
         $pmByNorm = $this->productMasterByNormalizedSku($skus);
         $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
         $l30 = app(AlibabaSalesController::class)->l30SkuTotals();
+        $spriceBySku = $this->spriceBySku();
         $salesUsed = [];
 
         $children = [];
@@ -109,6 +111,11 @@ class AlibabaAnalyticsController extends Controller
                 $sales = round((float) ($bucket['sales'] ?? 0), 2);
             }
             $metrics = $this->priceMetrics($price, $lp, $margin);
+            $sprice = (float) ($spriceBySku[$skuKey] ?? $spriceBySku[strtoupper($storedSku)] ?? 0);
+            if ($sprice <= 0) {
+                $sprice = 0.0;
+            }
+            $sMetrics = $sprice > 0 ? $this->priceMetrics($sprice, $lp, $margin) : ['gpft' => 0.0, 'roi' => 0.0];
             $cvr = $ovL30 > 0 ? round(($abL30 / $ovL30) * 100, 2) : 0.0;
             $image = $this->productImage($pm, $shopify);
 
@@ -140,6 +147,19 @@ class AlibabaAnalyticsController extends Controller
                 'profit' => $metrics['profit_each'],
                 'sales' => $sales,
                 'lp' => round($lp, 2),
+                'sprice' => $sprice > 0 ? round($sprice, 2) : null,
+                'SPRICE' => $sprice > 0 ? round($sprice, 2) : null,
+                'sgpft' => $sMetrics['gpft'],
+                'sgroi' => $sMetrics['roi'],
+                'sroi' => $sMetrics['roi'],
+                'snroi' => $sMetrics['roi'],
+                'sngpft' => $sMetrics['gpft'],
+                'SGPFT' => $sMetrics['gpft'],
+                'SGROI' => $sMetrics['roi'],
+                'SROI' => $sMetrics['roi'],
+                'SNROI' => $sMetrics['roi'],
+                'SNGPFT' => $sMetrics['gpft'],
+                'has_custom_sprice' => $sprice > 0,
                 'cvr' => $cvr,
                 '_margin' => $margin,
                 'is_parent' => false,
@@ -182,6 +202,79 @@ class AlibabaAnalyticsController extends Controller
             ],
             'status' => 200,
         ]);
+    }
+
+    public function saveSprice(Request $request): JsonResponse
+    {
+        if (! Schema::hasTable('alibaba_pricing_prices') || ! Schema::hasColumn('alibaba_pricing_prices', 'sprice')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'S PRC column is missing. Run the Alibaba sprice migration.',
+            ], 500);
+        }
+
+        if ($request->filled('sku') && ! $request->has('updates')) {
+            $request->merge([
+                'updates' => [[
+                    'sku' => $request->input('sku'),
+                    'sprice' => $request->input('sprice'),
+                ]],
+            ]);
+        }
+
+        $validated = $request->validate([
+            'updates' => 'required|array|min:1',
+            'updates.*.sku' => 'required|string|max:255',
+            'updates.*.sprice' => 'nullable|numeric',
+        ]);
+
+        $saved = 0;
+        DB::transaction(function () use ($validated, &$saved): void {
+            foreach ($validated['updates'] as $update) {
+                $sku = trim((string) ($update['sku'] ?? ''));
+                if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                    continue;
+                }
+                $raw = $update['sprice'] ?? null;
+                $sprice = ($raw === null || $raw === '') ? null : round((float) $raw, 2);
+                if ($sprice !== null && $sprice <= 0) {
+                    $sprice = null;
+                }
+                AlibabaPricingPrice::updateOrCreate(
+                    ['sku' => $sku],
+                    ['sprice' => $sprice]
+                );
+                $saved++;
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'updated' => $saved,
+            'message' => "Saved S PRC for {$saved} SKU(s)",
+        ]);
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    protected function spriceBySku(): array
+    {
+        if (! Schema::hasTable('alibaba_pricing_prices') || ! Schema::hasColumn('alibaba_pricing_prices', 'sprice')) {
+            return [];
+        }
+
+        $map = [];
+        foreach (AlibabaPricingPrice::query()->whereNotNull('sprice')->get(['sku', 'sprice']) as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            $value = (float) $row->sprice;
+            if ($key === '' || $value <= 0) {
+                continue;
+            }
+            $map[$key] = $value;
+        }
+
+        return $map;
     }
 
     public function sync(Request $request, AlibabaApiService $api): JsonResponse
@@ -518,6 +611,13 @@ class AlibabaAnalyticsController extends Controller
             'profit' => null,
             'sales' => round($sumSales, 2),
             'lp' => null,
+            'sprice' => null,
+            'SPRICE' => null,
+            'sgpft' => null,
+            'sgroi' => null,
+            'sroi' => null,
+            'snroi' => null,
+            'sngpft' => null,
             'cvr' => 0,
             'is_parent' => true,
             'is_parent_summary' => true,

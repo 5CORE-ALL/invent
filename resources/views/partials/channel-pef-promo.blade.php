@@ -13,13 +13,13 @@
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'mercari_wship', 'mercari_woship', 'depop', 'vinted', 'instagram'], true);
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'mercari_wship', 'mercari_woship', 'depop', 'vinted', 'instagram', 'alibaba'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
     $channelPromoZeroSoldMinRoi = $channelPromoChannel === 'shopify_b2c';
     $channelPromoZeroSoldSoldLabel = $channelPromoChannel === 'shopify_b2c' ? 'B2C L30' : 'L30';
-    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'depop', 'vinted', 'instagram'], true);
+    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'depop', 'vinted', 'instagram', 'alibaba'], true);
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'fb_marketplace'], true);
     $channelPromoUsesAmazonCvrDisc = false;
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
@@ -1656,6 +1656,20 @@
                 skuField: 'sku',
                 soldField: 'al30',
                 soldFieldLabel: 'D L30',
+                saveSpriceMode: 'updates',
+            },
+            alibaba: {
+                label: 'Alibaba',
+                saveSpriceUrl: '/alibaba-analytics/save-sprice',
+                saveSpriceBatchUrl: '/alibaba-analytics/save-sprice',
+                pushPriceUrl: null,
+                priceField: 'price',
+                cvrField: 'cvr',
+                dilField: 'dil_percent',
+                invField: 'INV',
+                skuField: 'sku',
+                soldField: 'al30',
+                soldFieldLabel: 'AB L30',
                 saveSpriceMode: 'updates',
             },
         };
