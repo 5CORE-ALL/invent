@@ -17521,6 +17521,11 @@ class ChannelMasterController extends Controller
                 } catch (\Throwable $e) {
                     \Log::warning('All Marketplace Amazon spend overlay failed: '.$e->getMessage());
                 }
+                try {
+                    $this->overlayTemuRollingL30SpendOnChannelSummaries($history);
+                } catch (\Throwable $e) {
+                    \Log::warning('All Marketplace Temu spend overlay failed: '.$e->getMessage());
+                }
             }
 
             // Group by marketplace as-of date (snapshot_date − 1 Pacific day).
@@ -18100,6 +18105,53 @@ class ChannelMasterController extends Controller
         } catch (\Exception $e) {
             \Log::error('getChannelMetricChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
+    /**
+     * Replace saved Temu L30 spend with Seller Center rolling store spend.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\ChannelMasterSummary>  $history
+     */
+    private function overlayTemuRollingL30SpendOnChannelSummaries($history): void
+    {
+        $temuRows = [];
+        foreach ($history as $row) {
+            if ($this->allMarketplaceSnapshotKey((string) $row->channel) === 'temu') {
+                $temuRows[] = $row;
+            }
+        }
+        if ($temuRows === []) {
+            return;
+        }
+
+        $asOfDates = [];
+        foreach ($temuRows as $row) {
+            $snap = $row->snapshot_date instanceof Carbon
+                ? $row->snapshot_date->toDateString()
+                : (string) $row->snapshot_date;
+            $asOfDates[] = AmazonAdsAdvertisementMasterHistory::channelMasterAsOfDate($snap);
+        }
+
+        $rolling = app(\App\Services\TemuAdsApiReportService::class)->rollingStoreL30SpendByAsOf(
+            min($asOfDates),
+            max($asOfDates)
+        );
+        if ($rolling === []) {
+            return;
+        }
+
+        foreach ($temuRows as $row) {
+            $snap = $row->snapshot_date instanceof Carbon
+                ? $row->snapshot_date->toDateString()
+                : (string) $row->snapshot_date;
+            $asOf = AmazonAdsAdvertisementMasterHistory::channelMasterAsOfDate($snap);
+            if (! isset($rolling[$asOf])) {
+                continue;
+            }
+            $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            $sd['total_ad_spend'] = $rolling[$asOf];
+            $row->summary_data = $sd;
         }
     }
 

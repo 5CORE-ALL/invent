@@ -525,6 +525,135 @@ class TemuAdsApiReportService
     }
 
     /**
+     * Seller Center rolling Last-30 store spend for each Pacific as-of date.
+     * Daily mall rows are cents. A day with no row counts as zero.
+     *
+     * @return array<string, float> Y-m-d => dollars
+     */
+    public function rollingStoreL30SpendByAsOf(string $from, string $to): array
+    {
+        $fromDate = Carbon::parse($from, 'America/Los_Angeles')->startOfDay();
+        $toDate = Carbon::parse($to, 'America/Los_Angeles')->startOfDay();
+        if ($fromDate->gt($toDate) || ! $this->temuApiService->isConfigured()) {
+            return [];
+        }
+
+        $cacheKey = 'temu_ads_mall_roll_l30_v1_'.$fromDate->toDateString().'_'.$toDate->toDateString();
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $daily = $this->storeDailySpendDollars(
+            $fromDate->copy()->subDays(29)->toDateString(),
+            $toDate->toDateString()
+        );
+        if ($daily === []) {
+            return [];
+        }
+
+        $rolled = $this->rollStoreDailySpendToL30($daily, $fromDate->toDateString(), $toDate->toDateString());
+        Cache::put($cacheKey, $rolled, 900);
+
+        return $rolled;
+    }
+
+    /**
+     * @param  array<string, float>  $dailyDollars
+     * @return array<string, float>
+     */
+    public function rollStoreDailySpendToL30(array $dailyDollars, string $from, string $to): array
+    {
+        if ($dailyDollars === []) {
+            return [];
+        }
+        ksort($dailyDollars);
+        $earliest = (string) array_key_first($dailyDollars);
+        $out = [];
+        $cursor = Carbon::parse($from, 'America/Los_Angeles')->startOfDay();
+        $end = Carbon::parse($to, 'America/Los_Angeles')->startOfDay();
+        while ($cursor->lte($end)) {
+            $windowStart = $cursor->copy()->subDays(29);
+            if ($windowStart->toDateString() < $earliest) {
+                $cursor->addDay();
+
+                continue;
+            }
+            $sum = 0.0;
+            $day = $windowStart->copy();
+            while ($day->lte($cursor)) {
+                $sum += (float) ($dailyDollars[$day->toDateString()] ?? 0);
+                $day->addDay();
+            }
+            $out[$cursor->toDateString()] = round($sum, 2);
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, float> Y-m-d => dollars
+     */
+    private function storeDailySpendDollars(string $from, string $to): array
+    {
+        $fromDate = Carbon::parse($from, 'America/Los_Angeles')->startOfDay();
+        $toDate = Carbon::parse($to, 'America/Los_Angeles')->startOfDay();
+        $daily = [];
+        $cursor = $fromDate->copy();
+        while ($cursor->lte($toDate)) {
+            $chunkEnd = $cursor->copy()->addDays(54);
+            if ($chunkEnd->gt($toDate)) {
+                $chunkEnd = $toDate->copy();
+            }
+            $resp = $this->temuApiService->fetchMallAdsReport(
+                $cursor->copy()->startOfDay()->timestamp * 1000,
+                $chunkEnd->copy()->endOfDay()->timestamp * 1000
+            );
+            if (! ($resp['ok'] ?? false) || ! is_array($resp['result'] ?? null)) {
+                Log::warning('Temu mall daily spend failed', [
+                    'from' => $cursor->toDateString(),
+                    'to' => $chunkEnd->toDateString(),
+                    'error' => $resp['error_msg'] ?? null,
+                ]);
+
+                return [];
+            }
+            foreach ($this->dailyStoreSpendDollarsFromMallResult($resp['result']) as $ymd => $dollars) {
+                $daily[$ymd] = ($daily[$ymd] ?? 0.0) + $dollars;
+            }
+            $cursor = $chunkEnd->copy()->addDay();
+        }
+
+        ksort($daily);
+
+        return $daily;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    public function dailyStoreSpendDollarsFromMallResult(array $result): array
+    {
+        $items = is_array($result['reportsItemList'] ?? null) ? $result['reportsItemList'] : [];
+        $out = [];
+        foreach ($items as $item) {
+            if (! is_array($item) || ! isset($item['ts'])) {
+                continue;
+            }
+            $cents = $this->nestedVal($item, ['adSpend'])
+                ?? $this->nestedVal($item, ['spend']);
+            if ($cents === null || ! is_numeric($cents)) {
+                continue;
+            }
+            $ymd = Carbon::createFromTimestampMs((int) $item['ts'], 'America/Los_Angeles')->toDateString();
+            $out[$ymd] = ($out[$ymd] ?? 0.0) + round(((float) $cents) / 100, 4);
+        }
+
+        return $out;
+    }
+
+    /**
      * Rolling Last-30 spend by Pacific as-of date, from daily report rows.
      * Same matrix as /temu/ads (all statuses in the stored windows).
      *

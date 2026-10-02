@@ -63,6 +63,24 @@ class TemuAdsLastDaySpendTest extends TestCase
         $this->assertSame(28971.75, $metrics['sales']);
     }
 
+    public function test_rolling_store_l30_sums_thirty_daily_dollars(): void
+    {
+        $service = new TemuAdsApiReportService(new TemuApiService());
+        $daily = [];
+        $cursor = Carbon::parse('2026-08-03', 'America/Los_Angeles');
+        $end = Carbon::parse('2026-10-01', 'America/Los_Angeles');
+        while ($cursor->lte($end)) {
+            $daily[$cursor->toDateString()] = 10.0;
+            $cursor->addDay();
+        }
+
+        $rolled = $service->rollStoreDailySpendToL30($daily, '2026-09-02', '2026-10-01');
+
+        $this->assertSame(300.0, $rolled['2026-10-01']);
+        $this->assertSame(300.0, $rolled['2026-09-02']);
+        $this->assertArrayNotHasKey('2026-08-03', $rolled);
+    }
+
     public function test_seller_center_l30_ends_yesterday(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-02 13:16:00', 'America/Los_Angeles'));
