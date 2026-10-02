@@ -592,6 +592,56 @@ public function adsPeriodRanges(): array
 }
 
 /**
+ * Ads dashboard presets (America/Los_Angeles), ending yesterday.
+ * Last 30 days on 2026-10-02 is 2026-09-02 through 2026-10-01.
+ * L60 is the previous 30-day comparison window.
+ *
+ * @return array{startTs: int, endTs: int}|null
+ */
+public function sellerCenterPeriodRange(string $period): ?array
+{
+    $period = strtoupper($period);
+    $offsets = [
+        'L7' => [7, 1],
+        'L30' => [30, 1],
+        'L60' => [60, 31],
+    ];
+    if (! isset($offsets[$period])) {
+        return null;
+    }
+
+    [$startDays, $endDays] = $offsets[$period];
+    $today = Carbon::now('America/Los_Angeles');
+
+    return [
+        'startTs' => $today->copy()->subDays($startDays)->startOfDay()->timestamp * 1000,
+        'endTs' => $today->copy()->subDays($endDays)->endOfDay()->timestamp * 1000,
+    ];
+}
+
+/**
+ * Store-level ads report (temu.searchrec.ad.reports.mall.query).
+ * summary.spend.total is the Seller Center Spend card.
+ *
+ * @return array{ok: bool, result: ?array, error_msg: ?string}
+ */
+public function fetchMallAdsReport(int $startTs, int $endTs): array
+{
+    $resp = $this->callOpenApi('temu.searchrec.ad.reports.mall.query', [
+        'startTs' => $startTs,
+        'endTs' => $endTs,
+    ], 60);
+
+    return [
+        'ok' => (bool) ($resp['success'] ?? false),
+        'result' => is_array($resp['result'] ?? null) ? $resp['result'] : null,
+        'error_msg' => isset($resp['errorMsg']) || isset($resp['message'])
+            ? (string) ($resp['errorMsg'] ?? $resp['message'])
+            : null,
+    ];
+}
+
+/**
  * Same as fetchAdsData but returns error details for storage/UI.
  *
  * @return array{ok: bool, result: ?array, error_code: mixed, error_msg: ?string, http_status: ?int}

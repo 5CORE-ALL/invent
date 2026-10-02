@@ -457,6 +457,74 @@ class TemuAdsApiReportService
     }
 
     /**
+     * Seller Center store totals for L7 / L30 / L60.
+     * Per-goods rows in temu_ads_api_reports only cover the temu_metrics catalog
+     * and under-count the ads dashboard Spend card.
+     *
+     * @return array{spend: float, impressions: int, clicks: int, sold: int, sales: float}|null
+     */
+    public function mallPeriodMetrics(string $period): ?array
+    {
+        $period = strtoupper($period);
+        if (! in_array($period, ['L7', 'L30', 'L60'], true)) {
+            $period = 'L30';
+        }
+        if (! $this->temuApiService->isConfigured()) {
+            return null;
+        }
+
+        $range = $this->temuApiService->sellerCenterPeriodRange($period);
+        if ($range === null) {
+            return null;
+        }
+
+        $cacheKey = 'temu_ads_mall_v1_'.$period.'_'.$range['startTs'].'_'.$range['endTs'];
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached) && isset($cached['spend'])) {
+            return $cached;
+        }
+
+        $resp = $this->temuApiService->fetchMallAdsReport($range['startTs'], $range['endTs']);
+        if (! ($resp['ok'] ?? false) || ! is_array($resp['result'] ?? null)) {
+            Log::warning('Temu mall ads report failed', [
+                'period' => $period,
+                'error' => $resp['error_msg'] ?? null,
+            ]);
+
+            return null;
+        }
+
+        $metrics = $this->metricsFromMallResult($resp['result']);
+        if ($metrics === null) {
+            return null;
+        }
+
+        Cache::put($cacheKey, $metrics, 600);
+
+        return $metrics;
+    }
+
+    /**
+     * @return array{spend: float, impressions: int, clicks: int, sold: int, sales: float}|null
+     */
+    public function metricsFromMallResult(array $result): ?array
+    {
+        $summary = is_array($result['summary'] ?? null) ? $result['summary'] : [];
+        $spend = $this->centsToDollars($this->nestedVal($summary, ['spend', 'total']));
+        if ($spend === null) {
+            return null;
+        }
+
+        return [
+            'spend' => $spend,
+            'impressions' => (int) ($this->nestedVal($summary, ['imprCnt', 'total']) ?? 0),
+            'clicks' => (int) ($this->nestedVal($summary, ['clkCnt', 'total']) ?? 0),
+            'sold' => (int) ($this->nestedVal($summary, ['orderPayCnt', 'total']) ?? 0),
+            'sales' => round((float) ($this->centsToDollars($this->nestedVal($summary, ['orderPayAmt', 'total'])) ?? 0), 2),
+        ];
+    }
+
+    /**
      * Rolling Last-30 spend by Pacific as-of date, from daily report rows.
      * Same matrix as /temu/ads (all statuses in the stored windows).
      *
