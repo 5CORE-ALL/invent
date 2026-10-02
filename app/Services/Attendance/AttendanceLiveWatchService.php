@@ -14,14 +14,19 @@ use Illuminate\Support\Facades\Storage;
 
 class AttendanceLiveWatchService
 {
-    public function commandForUser(User $employee): array
+    /**
+     * @param  bool  $onDuty  false when the calling machine has no active (clocked-in) session;
+     *                        the agent is then told not to stream even if a viewer is waiting.
+     */
+    public function commandForUser(User $employee, bool $onDuty = true): array
     {
         $this->expireStaleForUser($employee->id);
 
-        $requested = $this->isWatchRequested($employee->id);
+        $requested = $onDuty && $this->isWatchRequested($employee->id);
 
         return [
             'requested' => $requested,
+            'on_duty' => $onDuty,
             'fps' => max(1, (int) config('attendance.live_fps', 5)),
             'quality' => max(30, min(80, (int) config('attendance.live_quality', 55))),
             'force_logout' => AttendanceForceLogout::isFlagged($employee)

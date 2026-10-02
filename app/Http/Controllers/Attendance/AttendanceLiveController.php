@@ -89,10 +89,23 @@ class AttendanceLiveController extends Controller
 
         $source = (string) $request->input('source', 'watch');
 
+        // Monitoring only happens on the clock: no live video (and no frames from the agent)
+        // when the employee is not clocked in or is on a break.
+        $attendanceSession = $this->attendanceService->activeSession($user);
+        if (! $attendanceSession || $attendanceSession->status !== 'active') {
+            $state = $attendanceSession ? 'on a break' : 'not clocked in';
+
+            return response()->json([
+                'ok' => false,
+                'off_duty' => true,
+                'message' => $user->name.' is '.$state.'. Live video is only available while they are on duty.',
+            ], 422);
+        }
+
         $session = $this->liveWatchService->start(
             $user,
             $request->user(),
-            $this->attendanceService->activeSession($user),
+            $attendanceSession,
             $source
         );
         $this->liveWatchService->seedStillFrame($user, true);

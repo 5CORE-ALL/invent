@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Socialite\Facades\Socialite;
@@ -246,7 +247,22 @@ class AttendanceAgentController extends Controller
 
         $device = $this->deviceService->registerOrUpdate($user, $validated);
 
-        $user->tokens()->where('name', 'like', 'attendance-agent-%')->where('created_at', '<', now()->subDays(90))->delete();
+        // One live token per machine, and no token at all for machines that are no longer active
+        // (a login on the new hire's PC must not let a forgotten agent elsewhere keep uploading).
+        $activeMachineIds = AttendanceDevice::query()
+            ->where('user_id', $user->id)
+            ->where('is_active', true)
+            ->pluck('machine_id')
+            ->map(fn ($id) => 'attendance-agent-'.$id)
+            ->all();
+        $user->tokens()
+            ->where('name', 'like', 'attendance-agent-%')
+            ->where(function ($q) use ($activeMachineIds, $device) {
+                $q->whereNotIn('name', $activeMachineIds)
+                    ->orWhere('name', 'attendance-agent-'.$device->machine_id)
+                    ->orWhere('created_at', '<', now()->subDays(90));
+            })
+            ->delete();
 
         $token = $user->createToken('attendance-agent-'.$device->machine_id, ['attendance:agent'])->plainTextToken;
         AttendanceForceLogout::clear($user);
@@ -279,7 +295,7 @@ class AttendanceAgentController extends Controller
             'agent_update' => $this->attendanceService->agentUpdatePayload(
                 is_string($installedVersion) ? $installedVersion : null
             ),
-        ], $user));
+        ], $user, $device));
     }
 
     public function status(Request $request): JsonResponse
@@ -292,11 +308,20 @@ class AttendanceAgentController extends Controller
             $this->deviceService->touch($device, $request->input('agent_version'));
         }
 
+        // A session clocked in from another machine is not reported as this machine's session,
+        // otherwise the agent here would start capturing the screen of whoever is at this PC.
+        $boundDeviceId = (int) ($session?->attendance_device_id ?? 0);
+        $sessionElsewhere = $session && $boundDeviceId > 0 && $boundDeviceId !== (int) ($device?->id ?? 0);
+        if ($sessionElsewhere) {
+            $session = null;
+        }
+
         $installedVersion = $request->input('agent_version') ?: $device?->agent_version;
 
         return response()->json($this->withLiveWatch([
             'ok' => true,
             'has_session' => (bool) $session,
+            'session_on_other_device' => (bool) $sessionElsewhere,
             'session' => $session ? [
                 'id' => $session->id,
                 'status' => $session->status,
@@ -311,7 +336,7 @@ class AttendanceAgentController extends Controller
             'agent_update' => $this->attendanceService->agentUpdatePayload(
                 is_string($installedVersion) ? $installedVersion : null
             ),
-        ], $user));
+        ], $user, $device));
     }
 
     public function clockIn(Request $request): JsonResponse
@@ -353,7 +378,7 @@ class AttendanceAgentController extends Controller
 
     public function clockOut(Request $request): JsonResponse
     {
-        $session = $this->attendanceService->clockOut($request->user());
+        $session = $this->attendanceService->clockOut($request->user(), $this->reportedTotals($request));
 
         return response()->json([
             'ok' => (bool) $session,
@@ -365,9 +390,31 @@ class AttendanceAgentController extends Controller
         ]);
     }
 
+    /**
+     * Session totals as counted by the agent's own ticker (absent for agents older than 1.4.7).
+     *
+     * @return array{active_total_seconds?: int, idle_total_seconds?: int}
+     */
+    private function reportedTotals(Request $request): array
+    {
+        $validated = $request->validate([
+            'active_total_seconds' => 'nullable|integer|min:0',
+            'idle_total_seconds' => 'nullable|integer|min:0',
+        ]);
+
+        $totals = [];
+        foreach (['active_total_seconds', 'idle_total_seconds'] as $key) {
+            if (array_key_exists($key, $validated) && $validated[$key] !== null) {
+                $totals[$key] = (int) $validated[$key];
+            }
+        }
+
+        return $totals;
+    }
+
     public function pause(Request $request): JsonResponse
     {
-        $session = $this->attendanceService->pause($request->user());
+        $session = $this->attendanceService->pause($request->user(), $this->reportedTotals($request));
 
         return response()->json([
             'ok' => (bool) $session,
@@ -417,6 +464,8 @@ class AttendanceAgentController extends Controller
             'activity_state' => 'nullable|in:working,idle,break',
             'idle_seconds' => 'nullable|integer|min:0|max:86400',
             'elapsed_seconds' => 'nullable|integer|min:1|max:120',
+            'active_total_seconds' => 'nullable|integer|min:0',
+            'idle_total_seconds' => 'nullable|integer|min:0',
             'window_title' => 'nullable|string|max:500',
             'page_url' => 'nullable|string|max:1000',
             'app_name' => 'nullable|string|max:200',
@@ -433,7 +482,7 @@ class AttendanceAgentController extends Controller
         ]));
 
         $result['config'] = $this->agentConfig($request->user());
-        $payload = $this->withLiveWatch($result, $request->user());
+        $payload = $this->withLiveWatch($result, $request->user(), $device);
         $forcedOut = ! empty($payload['force_logout']);
         $this->forgetAgentTokensAfterForceLogout($request->user(), $payload);
 
@@ -453,7 +502,7 @@ class AttendanceAgentController extends Controller
         $payload = $this->withLiveWatch([
             'ok' => true,
             'config' => $this->agentConfig(),
-        ], $request->user());
+        ], $request->user(), $device);
 
         $this->forgetAgentTokensAfterForceLogout($request->user(), $payload);
 
@@ -463,7 +512,20 @@ class AttendanceAgentController extends Controller
     public function liveFrame(Request $request): JsonResponse
     {
         $user = $request->user();
+        $device = $this->resolveDevice($request);
         $maxKb = max(512, (int) config('attendance.screenshot_max_kb', 5120));
+
+        // Live video is part of monitoring, so it follows the same rule as screenshots: only
+        // while this machine is clocked in. Off duty the frame is discarded unread and the agent
+        // is told to stop streaming (requested=false).
+        if (! $this->attendanceService->onDutySession($user, $device)) {
+            return response()->json([
+                'ok' => false,
+                'accepted' => false,
+                'message' => 'Not clocked in on this device; live video is only available during working hours.',
+                'live_watch' => $this->liveWatchService->commandForUser($user, false),
+            ]);
+        }
 
         $request->validate([
             'frame' => 'nullable|file|max:'.$maxKb,
@@ -489,7 +551,7 @@ class AttendanceAgentController extends Controller
         return response()->json([
             'ok' => true,
             'accepted' => $accepted,
-            'live_watch' => $this->liveWatchService->commandForUser($user),
+            'live_watch' => $this->liveWatchService->commandForUser($user, true),
         ]);
     }
 
@@ -497,10 +559,13 @@ class AttendanceAgentController extends Controller
     {
         $user = $request->user();
         $device = $this->resolveDevice($request);
-        $session = $this->attendanceService->activeSession($user);
+        $session = $this->attendanceService->onDutySession($user, $device);
 
-        if (! $session || $session->status !== 'active') {
-            return response()->json(['ok' => false, 'message' => 'No active session'], 422);
+        if (! $session) {
+            return response()->json($this->withLiveWatch([
+                'ok' => false,
+                'message' => 'No active session on this device',
+            ], $user, $device), 422);
         }
 
         $request->validate([
@@ -526,7 +591,7 @@ class AttendanceAgentController extends Controller
                     'ok' => true,
                     'live' => true,
                     'captured_at' => now()->toIso8601String(),
-                ], $user));
+                ], $user, $device));
             }
         }
 
@@ -546,7 +611,7 @@ class AttendanceAgentController extends Controller
             'ok' => true,
             'screenshot_id' => $shot->id,
             'captured_at' => $shot->captured_at->toIso8601String(),
-        ], $user));
+        ], $user, $device));
     }
 
     public function showScreenshot(Request $request, AttendanceScreenshot $screenshot)
@@ -574,11 +639,34 @@ class AttendanceAgentController extends Controller
             ->where('machine_id', $machineId)
             ->first();
 
-        if ($required && ! $device) {
-            abort(422, 'Device not registered. Login again.');
+        // The device row is removed when the account is handed to a new holder and deactivated
+        // when the account is revoked. A token from such a machine is dead: revoke it and answer
+        // 401 so the agent signs itself out instead of uploading under the reused id.
+        if (! $device || ! $device->is_active) {
+            $this->revokeCurrentAgentToken($request, $device ? 'device deactivated' : 'device not registered');
+            abort(401, 'This device is no longer registered for the account. Sign in again.');
         }
 
         return $device;
+    }
+
+    private function revokeCurrentAgentToken(Request $request, string $reason): void
+    {
+        try {
+            $token = $request->user()?->currentAccessToken();
+            if ($token instanceof \Laravel\Sanctum\PersonalAccessToken) {
+                Log::info('Attendance agent token revoked', [
+                    'user_id' => $request->user()->id,
+                    'token' => $token->name,
+                    'machine_id' => $request->header('X-Machine-Id') ?: $request->input('machine_id'),
+                    'ip' => $request->ip(),
+                    'reason' => $reason,
+                ]);
+                $token->delete();
+            }
+        } catch (\Throwable) {
+            // best effort
+        }
     }
 
     /**
@@ -631,9 +719,10 @@ class AttendanceAgentController extends Controller
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    private function withLiveWatch(array $payload, User $user): array
+    private function withLiveWatch(array $payload, User $user, ?AttendanceDevice $device = null): array
     {
-        $payload['live_watch'] = $this->liveWatchService->commandForUser($user);
+        $onDuty = $this->attendanceService->onDutySession($user, $device) !== null;
+        $payload['live_watch'] = $this->liveWatchService->commandForUser($user, $onDuty);
         $payload['force_logout'] = AttendanceForceLogout::isFlagged($user)
             || UserAccountStatus::for($user) === UserAccountStatus::INACTIVE;
         if ($payload['force_logout']) {

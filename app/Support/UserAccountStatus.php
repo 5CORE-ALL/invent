@@ -67,13 +67,19 @@ class UserAccountStatus
     public static function apply(User $user, string $status): void
     {
         if ($status === self::ACTIVE) {
+            $wasActive = self::for($user) === self::ACTIVE;
             if ($user->trashed()) {
                 $user->restore();
             }
             $user->is_active = true;
             $user->deactivated_at = null;
             $user->save();
-            UserAccessControl::restore($user);
+            if (! $wasActive) {
+                // Ids get reused for new hires: nothing of the previous holder may survive.
+                UserAccessControl::resetForNewHolder($user);
+            } else {
+                AttendanceForceLogout::clear($user);
+            }
 
             return;
         }

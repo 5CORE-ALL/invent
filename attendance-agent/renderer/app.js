@@ -24,13 +24,29 @@ function showView(name) {
     }
 }
 
-function setLoginPill(on, label) {
+// tone: 'working' (green), 'idle' (amber), anything else (red: break / off duty / logged off)
+function setLoginPill(on, label, tone) {
     const pill = $('loginPill');
     const text = $('loginPillText');
     if (!pill || !text) return;
-    pill.classList.toggle('logged-in', !!on);
-    pill.classList.toggle('logged-off', !on);
-    text.textContent = label || (on ? 'Clocked in' : 'Logged off');
+    const resolvedTone = tone || (on ? 'working' : 'off');
+    pill.classList.toggle('logged-in', resolvedTone === 'working');
+    pill.classList.toggle('logged-idle', resolvedTone === 'idle');
+    pill.classList.toggle('logged-off', resolvedTone !== 'working' && resolvedTone !== 'idle');
+    text.textContent = label || (on ? 'Working' : 'Logged off');
+}
+
+// Same rule as the tray icon in main.js: green only while actively working.
+function presenceForState() {
+    if (!state.session) return { on: false, tone: 'off', label: 'Off duty' };
+    if (state.session.status === 'paused' || state.activityState === 'break') {
+        return { on: false, tone: 'off', label: 'On break' };
+    }
+    if (state.session.status === 'active') {
+        if (state.activityState === 'idle') return { on: true, tone: 'idle', label: 'Idle' };
+        return { on: true, tone: 'working', label: 'Working' };
+    }
+    return { on: false, tone: 'off', label: 'Off duty' };
 }
 
 function showError(el, msg) {
@@ -174,7 +190,8 @@ function applyUi(live) {
     $('breakStatBox')?.classList.toggle('stat-live', onBreak);
 
     const clockedIn = state.session && (state.session.status === 'active' || state.session.status === 'paused');
-    setLoginPill(!!clockedIn, clockedIn ? 'Clocked in' : 'Off duty');
+    const presence = presenceForState();
+    setLoginPill(presence.on, presence.label, presence.tone);
     $('actionsZone')?.classList.toggle('actions-bottom', clockedIn);
     $('clockInWrap').style.display = clockedIn ? 'none' : 'flex';
     $('activeActions').style.display = clockedIn ? 'flex' : 'none';
@@ -331,7 +348,7 @@ async function init() {
 
     if (typeof window.agent.onLoginStatus === 'function') {
         window.agent.onLoginStatus((payload) => {
-            setLoginPill(!!payload?.clockOn, payload?.label);
+            setLoginPill(!!payload?.clockOn, payload?.label, payload?.tone);
         });
     }
 

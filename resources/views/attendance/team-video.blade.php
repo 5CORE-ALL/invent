@@ -237,7 +237,11 @@
                     headers: Object.assign(headers(true), { 'Content-Type': 'application/x-www-form-urlencoded' }),
                     body: body.toString(),
                 });
-                if (!r.ok) throw new Error('start failed');
+                if (!r.ok) {
+                    let message = 'start failed';
+                    try { message = (await r.json()).message || message; } catch (_) {}
+                    throw new Error(message);
+                }
                 const data = await r.json();
                 tile.urls = data.urls;
             }
@@ -299,10 +303,12 @@
                     stopPoll();
                     tile.pollTimer = setInterval(pullFrame, 400);
                     pullFrame();
-                } catch (_) {
+                } catch (err) {
                     tile.playing = false;
                     playBtn.classList.remove('is-on');
-                    wait.querySelector('p').textContent = 'Could not start live view';
+                    wait.querySelector('p').textContent = (err && err.message && err.message !== 'start failed')
+                        ? err.message
+                        : 'Could not start live view';
                 }
                 layout();
             }
