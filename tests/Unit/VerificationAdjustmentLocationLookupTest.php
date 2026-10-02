@@ -33,12 +33,37 @@ class VerificationAdjustmentLocationLookupTest extends TestCase
                         ['id' => 4242, 'name' => 'Ohio Warehouse'],
                     ],
                 ], 200),
+            'https://example.myshopify.com/admin/api/2025-01/graphql.json' => Http::response(['errors' => [['message' => 'unavailable']]], 503),
         ]);
 
         $this->assertSame('4242', ShopifyOhioLocationResolver::preferredLocationId());
         $this->assertSame('4242', ShopifyOhioLocationResolver::preferredLocationId());
 
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
+    }
+
+    public function test_rate_limited_locations_json_uses_graphql_main_warehouse(): void
+    {
+        Http::fake([
+            'https://example.myshopify.com/admin/api/2025-01/locations.json' => Http::response(['errors' => 'Exceeded'], 429, ['Retry-After' => '0']),
+            'https://example.myshopify.com/admin/api/2025-01/graphql.json' => Http::response([
+                'data' => [
+                    'locations' => [
+                        'nodes' => [
+                            ['id' => 'gid://shopify/Location/10', 'name' => 'Ohio Warehouse', 'isActive' => true],
+                            ['id' => 'gid://shopify/Location/77', 'name' => 'Main Warehouse', 'isActive' => true],
+                            ['id' => 'gid://shopify/Location/88', 'name' => 'Newegg', 'isActive' => true],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $this->assertSame('77', ShopifyOhioLocationResolver::mainWarehouseLocationId());
+        $this->assertSame('77', ShopifyOhioLocationResolver::mainWarehouseLocationId());
+        $this->assertSame('10', ShopifyOhioLocationResolver::preferredLocationId());
+
+        Http::assertSentCount(4);
     }
 
     public function test_main_warehouse_is_used_when_ohio_is_absent(): void

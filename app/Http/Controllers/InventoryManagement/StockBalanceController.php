@@ -8,6 +8,7 @@ use App\Models\ProductMaster;
 use App\Models\Warehouse;
 use App\Models\Inventory;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -18,7 +19,9 @@ use App\Http\Controllers\ShopifyApiInventoryController;
 use App\Models\ShopifySku;
 use App\Models\SkuRelationship;
 use Illuminate\Support\Facades\DB;
+use App\Services\ShopifyAdminCallGate;
 use App\Services\ShopifyOhioLocationResolver;
+use App\Services\ShopifyStockTransferGraphql;
 
 
 class StockBalanceController extends Controller
@@ -40,27 +43,45 @@ class StockBalanceController extends Controller
 
 
     /**
-     * Make Shopify API call with automatic retry on rate limit (429).
-     * Uses Retry-After header when present, otherwise exponential backoff.
+     * Make Shopify REST call, sharing the app-wide leaky-bucket gate.
+     * Retries 429 and 5xx. Wait grows even when Retry-After is only 2s,
+     * because other workers keep refilling the same bucket.
      */
-    private function shopifyApiCall($method, $url, $data = [], $maxRetries = 5)
+    private function shopifyApiCall($method, $url, $data = [], $maxRetries = 6)
     {
         $attempt = 0;
         $response = null;
 
         while ($attempt < $maxRetries) {
             $attempt++;
+            ShopifyAdminCallGate::acquire();
 
-            $request = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                ->timeout(30);
+            try {
+                $request = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                    ->timeout(30);
 
-            if ($method === 'GET') {
-                $response = $request->get($url, $data);
-            } else {
-                $response = $request->post($url, $data);
+                if ($method === 'GET') {
+                    $response = $request->get($url, $data);
+                } else {
+                    $response = $request->post($url, $data);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Shopify REST call failed, will retry', [
+                    'attempt' => $attempt,
+                    'url' => $url,
+                    'error' => $e->getMessage(),
+                ]);
+                if ($attempt >= $maxRetries) {
+                    throw $e;
+                }
+                sleep(min(2 ** $attempt, 8));
+                continue;
             }
 
-            if ($response->status() !== 429) {
+            ShopifyAdminCallGate::record($response);
+
+            $retryable = ShopifyAdminCallGate::isRateLimited($response) || $response->status() >= 500;
+            if (! $retryable) {
                 return $response;
             }
 
@@ -68,22 +89,361 @@ class StockBalanceController extends Controller
                 break;
             }
 
-            // Prefer Shopify's Retry-After (seconds), otherwise exponential backoff
             $retryAfter = $response->header('Retry-After');
-            $waitTime = is_numeric($retryAfter) ? (int) $retryAfter : min(2 ** $attempt, 60);
-            if ($waitTime < 2) {
-                $waitTime = 2;
-            }
+            $headerWait = is_numeric($retryAfter) ? (float) $retryAfter : 0;
+            $waitTime = (int) ceil(max($headerWait, min(2 ** $attempt, 8), 2));
 
-            Log::info('Shopify rate limit (429), waiting before retry', [
+            Log::info('Shopify rate limit, waiting before retry', [
                 'attempt' => $attempt,
                 'wait_seconds' => $waitTime,
+                'status' => $response->status(),
                 'url' => $url,
             ]);
             sleep($waitTime);
         }
 
         return $response;
+    }
+
+    /**
+     * Admin GraphQL. Uses the cost bucket, not the REST 2-calls/second limit.
+     *
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>|null
+     */
+    private function shopifyGraphql(string $query, array $variables = [], int $maxAttempts = 6): ?array
+    {
+        $token = $this->shopifyPassword ?: config('services.shopify.access_token');
+        $url = "https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json";
+        $delay = 2;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                $response = Http::withHeaders([
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $token,
+                ])->timeout(30)->post($url, [
+                    'query' => $query,
+                    'variables' => $variables,
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('Stock balance Shopify GraphQL exception', [
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
+                ]);
+                if ($attempt === $maxAttempts) {
+                    return null;
+                }
+                sleep(min($delay, 8));
+                $delay = min($delay * 2, 8);
+                continue;
+            }
+
+            $json = $response->json();
+            if (! is_array($json)) {
+                $json = [];
+            }
+
+            $throttled = $response->status() === 429 || ShopifyStockTransferGraphql::isThrottled($json);
+            if ($throttled || $response->status() >= 500) {
+                if ($attempt === $maxAttempts) {
+                    Log::warning('Stock balance Shopify GraphQL exhausted retries', [
+                        'status' => $response->status(),
+                    ]);
+
+                    return null;
+                }
+                $wait = ShopifyStockTransferGraphql::throttleWaitSeconds($response->header('Retry-After'), $json, $delay);
+                Log::info('Stock balance Shopify GraphQL backing off', [
+                    'attempt' => $attempt,
+                    'wait_seconds' => $wait,
+                    'status' => $response->status(),
+                ]);
+                sleep($wait);
+                $delay = min($delay * 2, 8);
+                continue;
+            }
+
+            if (! $response->successful()) {
+                Log::error('Stock balance Shopify GraphQL HTTP error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+
+                return null;
+            }
+
+            if (! empty($json['errors']) && ! isset($json['data'])) {
+                Log::error('Stock balance Shopify GraphQL errors', ['errors' => $json['errors']]);
+
+                return null;
+            }
+
+            return $json;
+        }
+
+        return null;
+    }
+
+    private function ohioLocationId(): ?string
+    {
+        $configured = config('services.shopify.inventory_location_id');
+        if (! empty($configured)) {
+            return (string) $configured;
+        }
+
+        $cached = Cache::get('shopify_ohio_preferred_location_id');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $fromGraphql = ShopifyStockTransferGraphql::parseOhioLocationId(
+            $this->shopifyGraphql(ShopifyStockTransferGraphql::LOCATIONS_QUERY)
+        );
+        if ($fromGraphql !== null) {
+            Cache::put('shopify_ohio_preferred_location_id', $fromGraphql, 3600);
+
+            return $fromGraphql;
+        }
+
+        return ShopifyOhioLocationResolver::preferredLocationId();
+    }
+
+    /**
+     * Inventory item, Ohio location, and live available qty for a transfer SKU.
+     *
+     * @return array<string, mixed>
+     */
+    private function inventoryInfoForSku(string $sku): array
+    {
+        $shopifySku = ShopifySku::where('sku', $sku)->first();
+
+        if (! $shopifySku || ! $shopifySku->variant_id) {
+            Log::error('SKU not found in shopify_skus table', [
+                'sku' => $sku,
+                'found_in_db' => $shopifySku ? 'yes' : 'no',
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'SKU not found in Shopify inventory',
+                'details' => "The SKU '{$sku}' was not found in your local Shopify inventory table. Please sync your Shopify data first.",
+            ];
+        }
+
+        $variantId = (string) $shopifySku->variant_id;
+        $graph = $this->inventoryInfoViaGraphQl($variantId, $sku);
+        if ($graph !== null) {
+            return $graph;
+        }
+
+        $variantResponse = $this->shopifyApiCall(
+            'GET',
+            "https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$variantId}.json"
+        );
+
+        if (! $variantResponse->successful()) {
+            $isRateLimit = ShopifyAdminCallGate::isRateLimited($variantResponse);
+            Log::error('Failed to fetch variant for SKU', [
+                'sku' => $sku,
+                'variant_id' => $variantId,
+                'status' => $variantResponse->status(),
+                'body' => $variantResponse->body(),
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $isRateLimit ? 'Shopify rate limit' : 'Failed to fetch product from Shopify',
+                'details' => $isRateLimit
+                    ? "Too many requests to Shopify. Please wait a minute and try again (SKU: {$sku})."
+                    : 'Error '.$variantResponse->status()." - Could not retrieve product details for SKU: {$sku}",
+                'is_rate_limit' => $isRateLimit,
+            ];
+        }
+
+        $inventoryItemId = $variantResponse->json('variant.inventory_item_id');
+        if (! $inventoryItemId) {
+            return [
+                'success' => false,
+                'error' => 'Invalid product data',
+                'details' => "Could not find inventory item ID for SKU: {$sku}",
+            ];
+        }
+
+        return $this->inventoryInfoFromRestLevels((string) $inventoryItemId, $sku);
+    }
+
+    /**
+     * @return array<string, mixed>|null null when GraphQL could not be used and REST should run
+     */
+    private function inventoryInfoViaGraphQl(string $variantId, string $sku): ?array
+    {
+        $locationId = $this->ohioLocationId();
+        if ($locationId === null || $locationId === '') {
+            return null;
+        }
+
+        $json = $this->shopifyGraphql(ShopifyStockTransferGraphql::VARIANT_INVENTORY_QUERY, [
+            'id' => 'gid://shopify/ProductVariant/'.$variantId,
+            'locationId' => 'gid://shopify/Location/'.$locationId,
+        ]);
+        $parsed = ShopifyStockTransferGraphql::parseVariantInventory($json);
+        if ($parsed['status'] === 'failed') {
+            return null;
+        }
+        if ($parsed['status'] === 'missing') {
+            return [
+                'success' => false,
+                'error' => 'Failed to fetch product from Shopify',
+                'details' => "Could not retrieve product details for SKU: {$sku}",
+            ];
+        }
+
+        $inventoryItemId = (string) $parsed['inventory_item_id'];
+        if ($parsed['available'] === null) {
+            $levels = $this->inventoryInfoFromRestLevels($inventoryItemId, $sku);
+            if (! ($levels['success'] ?? false)) {
+                return $levels;
+            }
+
+            return [
+                'success' => true,
+                'inventory_item_id' => $inventoryItemId,
+                'location_id' => $levels['location_id'],
+                'available' => $levels['available'],
+            ];
+        }
+
+        Log::info('Got inventory info for SKU via GraphQL', [
+            'sku' => $sku,
+            'variant_id' => $variantId,
+            'inventory_item_id' => $inventoryItemId,
+            'location_id' => $locationId,
+            'available_qty' => $parsed['available'],
+        ]);
+
+        return [
+            'success' => true,
+            'inventory_item_id' => $inventoryItemId,
+            'location_id' => (string) $locationId,
+            'available' => (int) $parsed['available'],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function inventoryInfoFromRestLevels(string $inventoryItemId, string $sku): array
+    {
+        $levelsResponse = $this->shopifyApiCall(
+            'GET',
+            "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json",
+            ['inventory_item_ids' => $inventoryItemId]
+        );
+
+        if (! $levelsResponse->successful()) {
+            $status = $levelsResponse->status();
+            $isRateLimit = ShopifyAdminCallGate::isRateLimited($levelsResponse);
+            Log::error('Failed to fetch inventory levels for SKU', [
+                'sku' => $sku,
+                'inventory_item_id' => $inventoryItemId,
+                'status' => $status,
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $isRateLimit ? 'Shopify rate limit' : 'Failed to get current inventory level',
+                'details' => $isRateLimit
+                    ? "Too many requests to Shopify. Please wait a minute and try again (SKU: {$sku})."
+                    : "Error {$status} - Could not fetch inventory levels for SKU: {$sku}",
+                'is_rate_limit' => $isRateLimit,
+                'status' => $status,
+            ];
+        }
+
+        $levels = $levelsResponse->json('inventory_levels') ?? [];
+        $ohioLevel = ShopifyOhioLocationResolver::levelFromLevels($levels);
+        $locationId = $ohioLevel['location_id'];
+        $availableQty = $ohioLevel['available'];
+
+        if (! $locationId) {
+            return [
+                'success' => false,
+                'error' => 'Shopify location not found',
+                'details' => "Could not determine location for SKU: {$sku}",
+            ];
+        }
+
+        Log::info('Got inventory info for SKU', [
+            'sku' => $sku,
+            'inventory_item_id' => $inventoryItemId,
+            'location_id' => $locationId,
+            'available_qty' => $availableQty,
+        ]);
+
+        return [
+            'success' => true,
+            'inventory_item_id' => $inventoryItemId,
+            'location_id' => $locationId,
+            'available' => $availableQty,
+        ];
+    }
+
+    /**
+     * Adjust available qty. GraphQL first, REST adjust.json if GraphQL is unavailable.
+     *
+     * @return array{success: bool, error?: string, is_rate_limit?: bool, response?: mixed}
+     */
+    private function adjustShopifyAvailable(string $inventoryItemId, string $locationId, int $delta): array
+    {
+        $json = $this->shopifyGraphql(ShopifyStockTransferGraphql::ADJUST_MUTATION, [
+            'input' => [
+                'reason' => 'correction',
+                'name' => 'available',
+                'changes' => [[
+                    'delta' => $delta,
+                    'inventoryItemId' => 'gid://shopify/InventoryItem/'.$inventoryItemId,
+                    'locationId' => 'gid://shopify/Location/'.$locationId,
+                ]],
+            ],
+        ]);
+
+        if ($json !== null && ! ShopifyStockTransferGraphql::isThrottled($json)) {
+            $parsed = ShopifyStockTransferGraphql::parseAdjust($json);
+            if ($parsed['success']) {
+                return ['success' => true, 'response' => $json];
+            }
+
+            $error = $parsed['error'] ?? 'Shopify rejected the inventory adjustment';
+            if (! str_contains(strtolower($error), 'shopify request failed') && ! str_contains(strtolower($error), 'did not adjust')) {
+                return ['success' => false, 'error' => $error, 'response' => $json];
+            }
+        }
+
+        $response = $this->shopifyApiCall(
+            'POST',
+            "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
+            [
+                'inventory_item_id' => $inventoryItemId,
+                'location_id' => $locationId,
+                'available_adjustment' => $delta,
+            ]
+        );
+
+        if ($response->successful()) {
+            return ['success' => true, 'response' => $response->json()];
+        }
+
+        $body = $response->json();
+        $shopifyError = $body['errors'] ?? $response->body();
+        $isRateLimit = ShopifyAdminCallGate::isRateLimited($response);
+
+        return [
+            'success' => false,
+            'error' => is_string($shopifyError) ? $shopifyError : json_encode($shopifyError),
+            'is_rate_limit' => $isRateLimit,
+            'response' => $body,
+        ];
     }
 
     /**
@@ -245,129 +605,8 @@ class StockBalanceController extends Controller
                 ], 422);
             }
 
-            // Helper function to get inventory_item_id and location_id using ShopifySku table
             $getInventoryInfo = function ($sku) {
-                // Step 1: Get variant_id from local shopify_skus table
-                $shopifySku = ShopifySku::where('sku', $sku)->first();
-                
-                if (!$shopifySku || !$shopifySku->variant_id) {
-                    Log::error("SKU not found in shopify_skus table", [
-                        'sku' => $sku,
-                        'found_in_db' => $shopifySku ? 'yes' : 'no'
-                    ]);
-                    
-                    return [
-                        'success' => false,
-                        'error' => 'SKU not found in Shopify inventory',
-                        'details' => "The SKU '{$sku}' was not found in your local Shopify inventory table. Please sync your Shopify data first."
-                    ];
-                }
-
-                $variantId = $shopifySku->variant_id;
-
-                // Step 2: Get inventory_item_id from variant
-                usleep(500000); // Rate limit protection - 0.5s delay (allows 2 calls/second)
-                $variantResponse = $this->shopifyApiCall(
-                    'GET',
-                    "https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$variantId}.json"
-                );
-
-                if (!$variantResponse->successful()) {
-                    Log::error("Failed to fetch variant for SKU", [
-                        'sku' => $sku,
-                        'variant_id' => $variantId,
-                        'status' => $variantResponse->status(),
-                        'body' => $variantResponse->body()
-                    ]);
-                    
-                    return [
-                        'success' => false,
-                        'error' => 'Failed to fetch product from Shopify',
-                        'details' => "Error " . $variantResponse->status() . " - Could not retrieve product details for SKU: {$sku}"
-                    ];
-                }
-
-                $variant = $variantResponse->json('variant');
-                $inventoryItemId = $variant['inventory_item_id'] ?? null;
-                
-                if (!$inventoryItemId) {
-                    return [
-                        'success' => false,
-                        'error' => 'Invalid product data',
-                        'details' => "Could not find inventory item ID for SKU: {$sku}"
-                    ];
-                }
-
-                // Step 3: Get location_id from inventory levels
-                usleep(500000); // Rate limit protection - 0.5s delay (allows 2 calls/second)
-                $levelsResponse = $this->shopifyApiCall(
-                    'GET',
-                    "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json",
-                    ['inventory_item_ids' => $inventoryItemId]
-                );
-
-                if (!$levelsResponse->successful()) {
-                    $status = $levelsResponse->status();
-                    Log::error("Failed to fetch inventory levels for SKU", [
-                        'sku' => $sku,
-                        'inventory_item_id' => $inventoryItemId,
-                        'status' => $status,
-                    ]);
-
-                    $isRateLimit = ($status === 429);
-                    $errorTitle = $isRateLimit
-                        ? 'Shopify rate limit'
-                        : 'Failed to get current inventory level';
-                    $errorDetails = $isRateLimit
-                        ? "Too many requests to Shopify. Please wait a minute and try again (SKU: {$sku})."
-                        : "Error {$status} - Could not fetch inventory levels for SKU: {$sku}";
-
-                    return [
-                        'success' => false,
-                        'error' => $errorTitle,
-                        'details' => $errorDetails,
-                        'is_rate_limit' => $isRateLimit,
-                        'status' => $status,
-                    ];
-                }
-
-                $levels = $levelsResponse->json('inventory_levels') ?? [];
-
-                // Always use Ohio (SHOPIFY_INVENTORY_LOCATION_ID / name "Ohio")
-                $ohioLevel = ShopifyOhioLocationResolver::levelFromLevels($levels);
-                $locationId = $ohioLevel['location_id'];
-                $availableQty = $ohioLevel['available'];
-
-                if ($locationId) {
-                    Log::info('Using Ohio Shopify location for stock balance', [
-                        'sku' => $sku,
-                        'location_id' => $locationId,
-                        'available' => $availableQty,
-                    ]);
-                }
-
-                if (!$locationId) {
-                    return [
-                        'success' => false,
-                        'error' => 'Shopify location not found',
-                        'details' => "Could not determine location for SKU: {$sku}"
-                    ];
-                }
-
-                Log::info("Got inventory info for SKU", [
-                    'sku' => $sku,
-                    'variant_id' => $variantId,
-                    'inventory_item_id' => $inventoryItemId,
-                    'location_id' => $locationId,
-                    'available_qty' => $availableQty
-                ]);
-
-                return [
-                    'success' => true,
-                    'inventory_item_id' => $inventoryItemId,
-                    'location_id' => $locationId,
-                    'available' => $availableQty,
-                ];
+                return $this->inventoryInfoForSku($sku);
             };
 
             // Step 1: Get inventory info and decrease from 'from_sku'
@@ -403,46 +642,39 @@ class StockBalanceController extends Controller
                 ], 400);
             }
 
-            usleep(500000); // Rate limit protection - 0.5s delay (allows 2 calls/second)
-            $decrease = $this->shopifyApiCall(
-                'POST',
-                "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
-                [
-                    'inventory_item_id' => $fromInfo['inventory_item_id'],
-                    'location_id' => $fromInfo['location_id'],
-                    'available_adjustment' => -$fromQty,
-                ]
+            $decrease = $this->adjustShopifyAvailable(
+                (string) $fromInfo['inventory_item_id'],
+                (string) $fromInfo['location_id'],
+                -$fromQty
             );
 
-            if (!$decrease->successful()) {
-                $responseBody = $decrease->json();
-                $shopifyError = $responseBody['errors'] ?? $decrease->body();
+            if (!$decrease['success']) {
+                $shopifyError = $decrease['error'] ?? 'Unknown Shopify error';
                 
                 Log::error("Failed to deduct inventory for SKU", [
                     'sku' => $fromSku,
-                    'status' => $decrease->status(),
-                    'response' => $decrease->body(),
+                    'response' => $decrease['response'] ?? null,
                     'requested_qty' => $fromQty,
                     'available_before_attempt' => $currentAvailable
                 ]);
                 
                 return response()->json([
-                    'error' => 'Failed to deduct inventory from Shopify',
+                    'error' => ($decrease['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to deduct inventory from Shopify',
                     'details' => "Could not decrease stock for SKU: {$fromSku}<br><br>" .
                                 "<strong>Available Quantity:</strong> {$currentAvailable} units<br>" .
                                 "<strong>Attempted Deduction:</strong> {$fromQty} units<br><br>" .
-                                "<strong>Shopify Error:</strong> " . (is_string($shopifyError) ? $shopifyError : json_encode($shopifyError))
-                ], 500);
+                                "<strong>Shopify Error:</strong> " . $shopifyError,
+                    'is_rate_limit' => $decrease['is_rate_limit'] ?? false,
+                ], ($decrease['is_rate_limit'] ?? false) ? 429 : 500);
             }
 
             Log::info("Successfully decreased inventory", [
                 'sku' => $fromSku,
                 'adjustment' => -$fromQty,
-                'response' => $decrease->json()
+                'response' => $decrease['response'] ?? null
             ]);
 
             // Step 2: Get inventory info and increase to 'to_sku'
-            usleep(500000); // Rate limit protection - 0.5s delay before processing second SKU
             $toInfo = $getInventoryInfo($toSku);
             
             if (!$toInfo['success']) {
@@ -453,22 +685,16 @@ class StockBalanceController extends Controller
                 ], $toInfo['is_rate_limit'] ?? false ? 429 : 404);
             }
 
-            usleep(500000); // Rate limit protection - 0.5s delay (allows 2 calls/second)
-            $increase = $this->shopifyApiCall(
-                'POST',
-                "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
-                [
-                    'inventory_item_id' => $toInfo['inventory_item_id'],
-                    'location_id' => $toInfo['location_id'],
-                    'available_adjustment' => $toQty,
-                ]
+            $increase = $this->adjustShopifyAvailable(
+                (string) $toInfo['inventory_item_id'],
+                (string) $toInfo['location_id'],
+                $toQty
             );
 
-            if (!$increase->successful()) {
+            if (!$increase['success']) {
                 Log::error("Failed to increase inventory for SKU", [
                     'sku' => $toSku,
-                    'status' => $increase->status(),
-                    'response' => $increase->body()
+                    'response' => $increase['response'] ?? $increase['error'] ?? null
                 ]);
                 
                 // Try to rollback the first adjustment
@@ -477,27 +703,23 @@ class StockBalanceController extends Controller
                     'rollback_qty' => $fromQty
                 ]);
                 
-                usleep(500000); // 0.5s delay for rollback
-                $rollback = $this->shopifyApiCall(
-                    'POST',
-                    "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
-                    [
-                        'inventory_item_id' => $fromInfo['inventory_item_id'],
-                        'location_id' => $fromInfo['location_id'],
-                        'available_adjustment' => $fromQty, // Add back
-                    ]
+                $rollback = $this->adjustShopifyAvailable(
+                    (string) $fromInfo['inventory_item_id'],
+                    (string) $fromInfo['location_id'],
+                    $fromQty
                 );
                 
-                if ($rollback->successful()) {
+                if ($rollback['success']) {
                     Log::info("Successfully rolled back first adjustment", ['sku' => $fromSku]);
                     return response()->json([
-                        'error' => 'Failed to increase inventory in Shopify',
-                        'details' => "Could not increase stock for SKU: $toSku. Previous deduction has been rolled back."
-                    ], 500);
+                        'error' => ($increase['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to increase inventory in Shopify',
+                        'details' => "Could not increase stock for SKU: $toSku. Previous deduction has been rolled back.",
+                        'is_rate_limit' => $increase['is_rate_limit'] ?? false,
+                    ], ($increase['is_rate_limit'] ?? false) ? 429 : 500);
                 } else {
                     Log::error("Failed to rollback first adjustment", [
                         'sku' => $fromSku,
-                        'status' => $rollback->status()
+                        'error' => $rollback['error'] ?? null
                     ]);
                     return response()->json([
                         'error' => 'Failed to increase inventory in Shopify',
@@ -509,7 +731,7 @@ class StockBalanceController extends Controller
             Log::info("Successfully increased inventory", [
                 'sku' => $toSku,
                 'adjustment' => $toQty,
-                'response' => $increase->json()
+                'response' => $increase['response'] ?? null
             ]);
 
             // Step 3: Only save to database after both Shopify updates succeed
@@ -660,32 +882,7 @@ class StockBalanceController extends Controller
         };
 
         $getInventoryInfo = function ($sku) {
-            $shopifySku = ShopifySku::where('sku', $sku)->first();
-            if (!$shopifySku || !$shopifySku->variant_id) {
-                return ['success' => false, 'error' => 'SKU not found in Shopify inventory', 'details' => "The SKU '{$sku}' was not found."];
-            }
-            usleep(500000);
-            $variantResponse = $this->shopifyApiCall('GET', "https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$shopifySku->variant_id}.json");
-            if (!$variantResponse->successful()) {
-                return ['success' => false, 'error' => 'Failed to fetch product', 'details' => "Error for SKU: {$sku}"];
-            }
-            $inventoryItemId = $variantResponse->json('variant.inventory_item_id');
-            if (!$inventoryItemId) {
-                return ['success' => false, 'error' => 'Invalid product data', 'details' => "No inventory item ID for SKU: {$sku}"];
-            }
-            usleep(500000);
-            $levelsResponse = $this->shopifyApiCall('GET', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", ['inventory_item_ids' => $inventoryItemId]);
-            if (!$levelsResponse->successful()) {
-                return ['success' => false, 'error' => 'Failed to get inventory level', 'details' => "Error for SKU: {$sku}"];
-            }
-            $levels = $levelsResponse->json('inventory_levels') ?? [];
-            $ohioLevel = ShopifyOhioLocationResolver::levelFromLevels($levels);
-            $locationId = $ohioLevel['location_id'];
-            $available = $ohioLevel['available'];
-            if (!$locationId) {
-                return ['success' => false, 'error' => 'Shopify Ohio location not found', 'details' => "Could not determine Ohio location for SKU: {$sku}"];
-            }
-            return ['success' => true, 'inventory_item_id' => $inventoryItemId, 'location_id' => $locationId, 'available' => $available];
+            return $this->inventoryInfoForSku($sku);
         };
 
         foreach ($fromItems as $item) {
@@ -702,7 +899,11 @@ class StockBalanceController extends Controller
             $adjQty = (int) $item['adjust_qty'];
             $info = $getInventoryInfo($sku);
             if (!$info['success']) {
-                return response()->json(['error' => $info['error'], 'details' => $info['details']], 404);
+                return response()->json([
+                    'error' => $info['error'],
+                    'details' => $info['details'],
+                    'is_rate_limit' => $info['is_rate_limit'] ?? false,
+                ], ($info['is_rate_limit'] ?? false) ? 429 : 404);
             }
             if (($info['available'] ?? 0) < $adjQty) {
                 return response()->json([
@@ -723,25 +924,24 @@ class StockBalanceController extends Controller
 
         $deducted = [];
         foreach ($fromInfos as $from) {
-            usleep(500000);
-            $decrease = $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
-                'inventory_item_id' => $from['inventory_item_id'],
-                'location_id' => $from['location_id'],
-                'available_adjustment' => -$from['adjust_qty'],
-            ]);
-            if (!$decrease->successful()) {
+            $decrease = $this->adjustShopifyAvailable(
+                (string) $from['inventory_item_id'],
+                (string) $from['location_id'],
+                -$from['adjust_qty']
+            );
+            if (!$decrease['success']) {
                 foreach ($deducted as $rollback) {
-                    usleep(500000);
-                    $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
-                        'inventory_item_id' => $rollback['inventory_item_id'],
-                        'location_id' => $rollback['location_id'],
-                        'available_adjustment' => $rollback['adjust_qty'],
-                    ]);
+                    $this->adjustShopifyAvailable(
+                        (string) $rollback['inventory_item_id'],
+                        (string) $rollback['location_id'],
+                        $rollback['adjust_qty']
+                    );
                 }
                 return response()->json([
-                    'error' => 'Failed to deduct inventory from Shopify',
-                    'details' => 'Could not decrease stock for SKU: ' . $from['sku']
-                ], 500);
+                    'error' => ($decrease['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to deduct inventory from Shopify',
+                    'details' => 'Could not decrease stock for SKU: ' . $from['sku'],
+                    'is_rate_limit' => $decrease['is_rate_limit'] ?? false,
+                ], ($decrease['is_rate_limit'] ?? false) ? 429 : 500);
             }
             $deducted[] = $from;
         }
@@ -749,36 +949,38 @@ class StockBalanceController extends Controller
         $toInfo = $getInventoryInfo($toSku);
         if (!$toInfo['success']) {
             foreach ($deducted as $rollback) {
-                usleep(500000);
-                $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
-                    'inventory_item_id' => $rollback['inventory_item_id'],
-                    'location_id' => $rollback['location_id'],
-                    'available_adjustment' => $rollback['adjust_qty'],
-                ]);
-            }
-            return response()->json(['error' => $toInfo['error'], 'details' => $toInfo['details']], 404);
-        }
-
-        usleep(500000);
-        $increase = $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
-            'inventory_item_id' => $toInfo['inventory_item_id'],
-            'location_id' => $toInfo['location_id'],
-            'available_adjustment' => $toQty,
-        ]);
-
-        if (!$increase->successful()) {
-            foreach ($deducted as $rollback) {
-                usleep(500000);
-                $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
-                    'inventory_item_id' => $rollback['inventory_item_id'],
-                    'location_id' => $rollback['location_id'],
-                    'available_adjustment' => $rollback['adjust_qty'],
-                ]);
+                $this->adjustShopifyAvailable(
+                    (string) $rollback['inventory_item_id'],
+                    (string) $rollback['location_id'],
+                    $rollback['adjust_qty']
+                );
             }
             return response()->json([
-                'error' => 'Failed to increase inventory in Shopify',
-                'details' => 'Could not increase stock for TO SKU: ' . $toSku
-            ], 500);
+                'error' => $toInfo['error'],
+                'details' => $toInfo['details'],
+                'is_rate_limit' => $toInfo['is_rate_limit'] ?? false,
+            ], ($toInfo['is_rate_limit'] ?? false) ? 429 : 404);
+        }
+
+        $increase = $this->adjustShopifyAvailable(
+            (string) $toInfo['inventory_item_id'],
+            (string) $toInfo['location_id'],
+            $toQty
+        );
+
+        if (!$increase['success']) {
+            foreach ($deducted as $rollback) {
+                $this->adjustShopifyAvailable(
+                    (string) $rollback['inventory_item_id'],
+                    (string) $rollback['location_id'],
+                    $rollback['adjust_qty']
+                );
+            }
+            return response()->json([
+                'error' => ($increase['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to increase inventory in Shopify',
+                'details' => 'Could not increase stock for TO SKU: ' . $toSku,
+                'is_rate_limit' => $increase['is_rate_limit'] ?? false,
+            ], ($increase['is_rate_limit'] ?? false) ? 429 : 500);
         }
 
         try {

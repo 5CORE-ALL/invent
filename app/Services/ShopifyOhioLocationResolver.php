@@ -47,6 +47,8 @@ class ShopifyOhioLocationResolver
 
         $locations = self::fetchLocations();
         if ($locations === null) {
+            Log::warning('ShopifyOhioLocationResolver: Main Warehouse lookup failed before Shopify returned a location list');
+
             return null;
         }
 
@@ -63,6 +65,10 @@ class ShopifyOhioLocationResolver
 
             return $id;
         }
+
+        Log::warning('ShopifyOhioLocationResolver: no location named Main Warehouse', [
+            'names' => array_map(fn ($loc) => is_array($loc) ? (string) ($loc['name'] ?? '') : '', $locations),
+        ]);
 
         return null;
     }
@@ -92,6 +98,7 @@ class ShopifyOhioLocationResolver
         }
 
         $maxAttempts = 3;
+        $graphqlTried = false;
         for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
             try {
                 ShopifyAdminCallPacer::wait();
@@ -104,7 +111,21 @@ class ShopifyOhioLocationResolver
                     'error' => $e->getMessage(),
                 ]);
 
-                return null;
+                return self::fetchLocationsGraphql($domain, $token);
+            }
+
+            if ($response->successful()) {
+                return $response->json('locations') ?? [];
+            }
+
+            if ($response->status() === 429 && ! $graphqlTried) {
+                // GraphQL has its own cost bucket, so a locations lookup can still
+                // succeed while locations.json is stuck at 2 calls/second.
+                $graphqlTried = true;
+                $fromGraphql = self::fetchLocationsGraphql($domain, $token);
+                if (is_array($fromGraphql) && $fromGraphql !== []) {
+                    return $fromGraphql;
+                }
             }
 
             if ($response->status() === 429 && $attempt < $maxAttempts - 1) {
@@ -123,18 +144,95 @@ class ShopifyOhioLocationResolver
                 continue;
             }
 
-            if (! $response->successful()) {
-                Log::warning('ShopifyOhioLocationResolver: locations.json failed', [
-                    'status' => $response->status(),
-                ]);
+            Log::warning('ShopifyOhioLocationResolver: locations.json failed', [
+                'status' => $response->status(),
+            ]);
 
-                return null;
-            }
-
-            return $response->json('locations') ?? [];
+            return $graphqlTried ? null : self::fetchLocationsGraphql($domain, $token);
         }
 
         return null;
+    }
+
+    /**
+     * Same location list as locations.json, from the GraphQL cost bucket.
+     *
+     * @return array<int, array<string, mixed>>|null null when the request failed
+     */
+    private static function fetchLocationsGraphql(string $domain, string $token): ?array
+    {
+        $query = <<<'GQL'
+query VerificationLocations {
+  locations(first: 50) {
+    nodes {
+      id
+      name
+      isActive
+    }
+  }
+}
+GQL;
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->post("https://{$domain}/admin/api/2025-01/graphql.json", [
+                'query' => $query,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyOhioLocationResolver: graphql locations failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            Log::warning('ShopifyOhioLocationResolver: graphql locations failed', [
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        $json = $response->json();
+        if (! is_array($json)) {
+            return null;
+        }
+
+        foreach ($json['errors'] ?? [] as $error) {
+            if (! is_array($error)) {
+                continue;
+            }
+            $code = strtoupper((string) ($error['extensions']['code'] ?? ''));
+            if ($code === 'THROTTLED') {
+                return null;
+            }
+        }
+
+        $nodes = $json['data']['locations']['nodes'] ?? null;
+        if (! is_array($nodes)) {
+            return null;
+        }
+
+        $locations = [];
+        foreach ($nodes as $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+            $gid = (string) ($node['id'] ?? '');
+            if (! preg_match('#Location/(\d+)#', $gid, $matches)) {
+                continue;
+            }
+            $locations[] = [
+                'id' => $matches[1],
+                'name' => (string) ($node['name'] ?? ''),
+                'active' => ($node['isActive'] ?? true) !== false,
+            ];
+        }
+
+        return $locations;
     }
 
     /**
