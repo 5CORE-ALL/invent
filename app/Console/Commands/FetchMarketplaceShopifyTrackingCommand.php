@@ -28,7 +28,7 @@ class FetchMarketplaceShopifyTrackingCommand extends Command
             $marketplace = strtolower(trim((string) $this->option('marketplace'))) ?: 'bestbuy';
             $this->info('Fulfilling Shopify copies for '.$marketplace.' order ids: '.implode(', ', $ids));
             Cache::forget('mm.label_ssl_broken');
-            $rows = $sync->fulfillShopifyCopiesByOrderRefs($ids, $marketplace);
+            $rows = $sync->asManualAction()->fulfillShopifyCopiesByOrderRefs($ids, $marketplace);
             $failed = 0;
             foreach ($rows as $row) {
                 $ok = ! empty($row['success']);

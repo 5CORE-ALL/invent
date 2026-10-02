@@ -397,7 +397,7 @@ class MarketplaceController extends Controller
         $marketplace = strtolower($marketplace);
         if ($marketplace !== 'amazon') {
             try {
-                app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder($marketplace, $order);
+                app(VeeqoShopifyFulfillmentService::class)->asManualAction()->fulfillMarketplaceOrder($marketplace, $order);
             } catch (\Throwable $e) {
                 // Channel push still runs — Veeqo is only the Shopify fill step.
             }
@@ -468,7 +468,7 @@ class MarketplaceController extends Controller
 
     public function fetchTracking(string $marketplace, int $order): JsonResponse
     {
-        $result = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder($marketplace, $order);
+        $result = app(VeeqoShopifyFulfillmentService::class)->asManualAction()->fulfillMarketplaceOrder($marketplace, $order);
 
         if (strtolower($marketplace) === 'amazon') {
             $amazonOrder = AmazonOrder::query()->find($order);

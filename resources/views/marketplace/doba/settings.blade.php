@@ -98,6 +98,13 @@
                         </label>
                         <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments (after you print/download a label) and ships the order on Doba — no manual push needed. You can still push per order from the order detail page.</div>
                     </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[auto_fulfill_shopify]" value="1" {{ ($settings['order']['auto_fulfill_shopify'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Automatically fulfill Doba orders on Shopify (write label tracking onto the Shopify copy)</span>
+                        </label>
+                        <div class="form-text ms-4">OFF by default. When off, background jobs and SOF sweeps never mark Doba orders fulfilled on Shopify — you fulfill them in Shopify yourself. The per-order <em>Fetch tracking</em> button still works. Other marketplaces are not affected.</div>
+                    </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>
                         <select class="form-select form-select-sm" name="order[shopify_store]" style="max-width: 400px;">

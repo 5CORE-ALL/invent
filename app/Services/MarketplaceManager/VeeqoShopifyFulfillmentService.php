@@ -70,6 +70,12 @@ class VeeqoShopifyFulfillmentService
     /** Current Shopify REST order id so 13-digit TikTok/Doba ids are not dropped. */
     protected string $shopifyOrderRestId = '';
 
+    /** Explicit per-order button / CLI run — bypasses the per-marketplace auto-fulfill switch. */
+    protected bool $manualAction = false;
+
+    /** @var array<string, bool> marketplace slug → auto-fulfill allowed (per instance) */
+    protected array $autoFulfillAllowed = [];
+
     public function __construct(
         protected VeeqoApiService $veeqo,
         protected GofoExpressService $gofo,
@@ -85,6 +91,56 @@ class VeeqoShopifyFulfillmentService
         $this->progressReporter = $reporter;
 
         return $this;
+    }
+
+    /**
+     * Mark this run as an explicit user/CLI action so marketplaces whose
+     * automatic Shopify fulfillment is switched off (Doba) still fulfill.
+     */
+    public function asManualAction(bool $manual = true): static
+    {
+        $this->manualAction = $manual;
+
+        return $this;
+    }
+
+    /**
+     * True when this (automatic) run must not write tracking onto the
+     * marketplace's Shopify copies. Always false for manual actions.
+     */
+    public function autoFulfillBlocked(string $marketplace): bool
+    {
+        if ($this->manualAction) {
+            return false;
+        }
+        $marketplace = strtolower(trim($marketplace));
+        if ($marketplace === '') {
+            return false;
+        }
+        if (! array_key_exists($marketplace, $this->autoFulfillAllowed)) {
+            try {
+                $this->autoFulfillAllowed[$marketplace] = MarketplaceSyncSettings::canAutoFulfillShopify($marketplace);
+            } catch (\Throwable) {
+                $this->autoFulfillAllowed[$marketplace] = $marketplace !== 'doba';
+            }
+        }
+
+        return ! $this->autoFulfillAllowed[$marketplace];
+    }
+
+    /**
+     * @return array{success: bool, skipped: bool, action: string, message: string}
+     */
+    protected function autoFulfillBlockedResult(string $marketplace): array
+    {
+        $label = $marketplace === 'doba' ? 'Doba' : ucfirst($marketplace);
+
+        return [
+            'success' => false,
+            'skipped' => true,
+            'action' => 'auto_fulfill_off',
+            'message' => 'Automatic Shopify fulfillment is turned off for '.$label.' — fulfill the Shopify order manually (or use the per-order Fetch tracking button).',
+        ];
     }
 
     /**
@@ -142,6 +198,9 @@ class VeeqoShopifyFulfillmentService
                 'action' => 'nested',
                 'message' => 'Shopify label copy already in progress.',
             ];
+        }
+        if ($this->autoFulfillBlocked($marketplace)) {
+            return $this->autoFulfillBlockedResult(strtolower(trim($marketplace)));
         }
         $this->fulfillNest++;
         try {
@@ -218,11 +277,11 @@ class VeeqoShopifyFulfillmentService
             (string) $ctx['shopify_order_id'],
             (array) $ctx['shopify_config'],
             (array) $ctx['refs'],
-                is_array($ctx['local_tracking'] ?? null) ? $ctx['local_tracking'] : null,
+            is_array($ctx['local_tracking'] ?? null) ? $ctx['local_tracking'] : null,
                 $sku,
-                is_array($ctx['marketplace_order_ids'] ?? null) ? $ctx['marketplace_order_ids'] : [],
-                $marketplace
-            );
+            is_array($ctx['marketplace_order_ids'] ?? null) ? $ctx['marketplace_order_ids'] : [],
+            $marketplace
+        );
             foreach ($bundle['results'] as $result) {
                 $last = $result;
                 $action = (string) ($result['action'] ?? '');
@@ -240,7 +299,7 @@ class VeeqoShopifyFulfillmentService
                     $pushed[$tn] = true;
                 }
                 if ($tn !== '' && in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
-                    $this->pushChannelTrackingAfterShopify($marketplace, $orderId, $result);
+            $this->pushChannelTrackingAfterShopify($marketplace, $orderId, $result);
                 }
                 if (! empty($result['success']) || $action === 'shopify_fulfilled') {
                     $ok = $result;
@@ -330,6 +389,9 @@ class VeeqoShopifyFulfillmentService
                 'message' => 'Order is not linked to a Shopify order yet. Import/push to Shopify first.',
             ];
         }
+        if ($this->autoFulfillBlocked($marketplace)) {
+            return $this->autoFulfillBlockedResult(strtolower(trim($marketplace)));
+        }
 
         $strict = $this->isStrictTrackingMarketplace($marketplace);
         $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
@@ -341,8 +403,8 @@ class VeeqoShopifyFulfillmentService
         );
         $marketplace = strtolower(trim($marketplace));
         if ($marketplace !== '') {
-            $marketplaceOrderIds = array_values(array_filter(
-                $marketplaceOrderIds,
+        $marketplaceOrderIds = array_values(array_filter(
+            $marketplaceOrderIds,
                 static function ($id) use ($matcher, $marketplace) {
                     return $matcher->slugsCompatible(
                         $matcher->slugFromOrderId((string) $id),
@@ -807,14 +869,14 @@ class VeeqoShopifyFulfillmentService
             $veeqo = $veeqoRefs === []
                 ? null
                 : $this->findVeeqoShipment($veeqoRefs, $fast, $sku, $excludeTrackings);
-            if ($veeqo !== null && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
-                return [
-                    'tracking' => (string) $veeqo['tracking'],
-                    'carrier' => (string) ($veeqo['carrier'] ?? 'Veeqo'),
-                    'source' => 'veeqo',
-                ];
+                if ($veeqo !== null && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
+                    return [
+                        'tracking' => (string) $veeqo['tracking'],
+                        'carrier' => (string) ($veeqo['carrier'] ?? 'Veeqo'),
+                        'source' => 'veeqo',
+                    ];
+                }
             }
-        }
 
         return $localHit;
     }
@@ -1040,6 +1102,9 @@ class VeeqoShopifyFulfillmentService
         if ($remaining > 0 && $marketplaces !== []) {
             $perMarket = max(3, (int) ceil($remaining / count($marketplaces)));
             foreach ($marketplaces as $slug) {
+                if ($this->autoFulfillBlocked((string) $slug)) {
+                    continue;
+                }
                 $ids = $this->pendingLinkedOrderIds($slug, $perMarket);
                 if ($ids !== []) {
                     $queues[$slug] = $ids;
@@ -1132,6 +1197,15 @@ class VeeqoShopifyFulfillmentService
     {
         $marketplace = strtolower(trim($marketplace));
         $limit = max(1, min(400, $limit));
+        if ($this->autoFulfillBlocked($marketplace)) {
+            return [
+                'checked' => 0,
+                'fulfilled' => 0,
+                'skipped' => 0,
+                'failed' => 0,
+                'message' => "Fetch tracking ({$marketplace}): automatic Shopify fulfillment is turned off for this marketplace.",
+            ];
+        }
         $ids = $this->pendingLinkedOrderIds($marketplace, $limit);
         $checked = 0;
         $fulfilled = 0;
@@ -1183,6 +1257,9 @@ class VeeqoShopifyFulfillmentService
         $perMarket = max(40, (int) ceil($limit / max(1, count($map))));
 
         foreach ($map as $slug => [$class, $dateCol]) {
+            if ($this->autoFulfillBlocked((string) $slug)) {
+                continue;
+            }
             $table = (new $class)->getTable();
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_order_id')) {
                 continue;
@@ -1290,6 +1367,15 @@ class VeeqoShopifyFulfillmentService
                 }
                 $marketplace = $identity['slug'];
                 $marketplaceOrderIds = $identity['ids'];
+                if ($this->autoFulfillBlocked((string) $marketplace)) {
+                    $skipped++;
+                    $this->bumpProgress('skipped', [
+                        'label' => trim((string) ($order['name'] ?? $shopifyId)).' '.$marketplace,
+                        'marketplace' => $marketplace,
+                        'reason' => 'auto_fulfill_off',
+                    ]);
+                    continue;
+                }
                 $skus = $this->skusFromShopifyOrder($order);
                 if ($marketplace === 'amazon') {
                     foreach ($this->amazonSkusForOrderIds($marketplaceOrderIds) as $amazonSku) {
@@ -1329,16 +1415,16 @@ class VeeqoShopifyFulfillmentService
                     );
                     $lastResult = $bundle['last'];
                     foreach ($bundle['results'] as $pass) {
-                        $action = (string) ($pass['action'] ?? '');
-                        if (! empty($pass['success']) && in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
-                            if ($action === 'shopify_fulfilled') {
-                                $anyFulfilled = true;
-                            }
-                            $this->pushChannelTrackingForShopifyOrder($order, $shopifyId, $pass);
-
-                            continue;
+                    $action = (string) ($pass['action'] ?? '');
+                    if (! empty($pass['success']) && in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
+                        if ($action === 'shopify_fulfilled') {
+                            $anyFulfilled = true;
                         }
-                        $allMatched = false;
+                        $this->pushChannelTrackingForShopifyOrder($order, $shopifyId, $pass);
+
+                        continue;
+                    }
+                    $allMatched = false;
                     }
                 }
                 $action = (string) ($lastResult['action'] ?? '');
@@ -1638,7 +1724,7 @@ class VeeqoShopifyFulfillmentService
                 $identity = $this->marketplaceIdentityFromShopifyOrder($order);
                 $marketplace = (string) ($identity['slug'] ?? '');
                 $ids = is_array($identity['ids'] ?? null) ? $identity['ids'] : [];
-                if ($marketplace === '' || $ids === []) {
+                if ($marketplace === '' || $ids === [] || $this->autoFulfillBlocked($marketplace)) {
                     continue;
                 }
                 $ready = self::sofLocalTrackingIfReady(
@@ -1808,7 +1894,7 @@ class VeeqoShopifyFulfillmentService
             $tracking = (string) ($row['tracking'] ?? '');
             $carrier = (string) ($row['carrier'] ?? 'Other');
             $storedId = (string) ($row['shopify_order_id'] ?? '');
-            if ($marketplace === '' || $tracking === '' || $storedId === '') {
+            if ($marketplace === '' || $tracking === '' || $storedId === '' || $this->autoFulfillBlocked($marketplace)) {
                 continue;
             }
             $config = $this->shopifyConfigFor($marketplace);
@@ -1923,6 +2009,9 @@ class VeeqoShopifyFulfillmentService
         $perMarket = max(30, (int) ceil($limit / max(1, count($map))));
 
         foreach ($map as $slug => [$class, $dateCol]) {
+            if ($this->autoFulfillBlocked((string) $slug)) {
+                continue;
+            }
             $table = (new $class)->getTable();
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_order_id')) {
                 continue;
@@ -2004,6 +2093,9 @@ class VeeqoShopifyFulfillmentService
                 'action' => 'not_linked',
                 'message' => 'Order is not linked to a Shopify order yet.',
             ];
+        }
+        if ($this->autoFulfillBlocked($marketplace)) {
+            return $this->autoFulfillBlockedResult(strtolower(trim($marketplace)));
         }
 
         $config = $this->shopifyConfigFor($marketplace);
@@ -2223,7 +2315,7 @@ class VeeqoShopifyFulfillmentService
                     }
                     if ($id !== '') {
                         $seen[$id] = true;
-                    }
+                }
                 $out[] = $order;
                 if (count($out) >= $limit) {
                     break;
@@ -2631,8 +2723,8 @@ class VeeqoShopifyFulfillmentService
             $client = app(AmazonSpOrdersClient::class);
             foreach ($ids as $id) {
                 if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $id) !== 1) {
-                    continue;
-                }
+                continue;
+            }
                 try {
                     $fromPackages = $client->getMerchantPackageTracking($id);
                 } catch (\Throwable $e) {
@@ -2738,13 +2830,13 @@ class VeeqoShopifyFulfillmentService
         if ($marketplace === 'faire') {
             foreach ($ids as $id) {
                 if (strlen($id) < 6 || $this->isShopifyInternalIdRef($id)) {
-                    continue;
-                }
+                continue;
+            }
                 try {
                     $res = app(\App\Services\FaireApiService::class)->getOrder($id);
                 } catch (\Throwable $e) {
-                    continue;
-                }
+                continue;
+            }
                 $json = is_array($res['json'] ?? null) ? $res['json'] : (is_array($res) ? $res : null);
                 if (! is_array($json)) {
                     continue;
@@ -3120,7 +3212,7 @@ class VeeqoShopifyFulfillmentService
         if ($shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual') && ! $strict) {
             // Shopify Admin id only — never the short #334042 display name.
             if (! $this->isCollisionProneOrderRef($shopifyOrderId)) {
-            $refs[] = $shopifyOrderId;
+                $refs[] = $shopifyOrderId;
             }
         }
 
@@ -3349,7 +3441,7 @@ class VeeqoShopifyFulfillmentService
     {
         $clean = [];
         if ($maxLookups > 0) {
-            foreach ($refs as $ref) {
+        foreach ($refs as $ref) {
                 $ref = trim((string) $ref);
                 if (strlen($ref) < 6 || in_array($ref, $clean, true)) {
                     continue;
@@ -3536,8 +3628,8 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-            return false;
-        }
+        return false;
+    }
 
     /**
      * Order-id fields only — not tracking numbers, phones, addresses, or SKUs.
@@ -3639,8 +3731,8 @@ class VeeqoShopifyFulfillmentService
             return false;
         }
         if ($a === $b) {
-                return true;
-            }
+            return true;
+        }
         $aDash = str_replace('-', '', $a);
         $bDash = str_replace('-', '', $b);
         if ($aDash === $bDash && (str_contains($a, '-') || str_contains($b, '-'))) {
@@ -3659,7 +3751,7 @@ class VeeqoShopifyFulfillmentService
         $shorter = strlen($aDash) <= strlen($bDash) ? $aDash : $bDash;
         $longer = strlen($aDash) <= strlen($bDash) ? $bDash : $aDash;
         if (strlen($shorter) >= 6 && str_contains($longer, $shorter) && $shorter !== $longer) {
-        return false;
+            return false;
         }
 
         return false;
@@ -3944,7 +4036,7 @@ class VeeqoShopifyFulfillmentService
                 static fn ($tn) => VeeqoAllocationTracking::normalizeTracking((string) $tn),
                 $excludeTrackings
             ), true))) {
-                $want = app(ShopifyFulfillmentTrackingMatcher::class)->normalizeSku($sku);
+        $want = app(ShopifyFulfillmentTrackingMatcher::class)->normalizeSku($sku);
                 $skuMiss = $want !== '' && $this->payloadHasSkuFields($order) && ! $this->payloadContainsSku($order, $want);
                 if (! $skuMiss) {
             return ['tracking' => $direct, 'carrier' => $this->carrierFrom($order, [], $direct)];
@@ -4143,8 +4235,16 @@ class VeeqoShopifyFulfillmentService
                     $token,
                     'GET',
                     "orders/{$shopifyOrderId}.json",
-                    ['fields' => 'id,fulfillments,fulfillment_status,line_items']
+                    ['fields' => 'id,fulfillments,fulfillment_status,line_items,tags,source_name,note_attributes']
                 );
+
+            // Last gate for every automatic path: callers do not always know the marketplace
+            // (e.g. fulfillShopifyFromVeeqo), so decide from the Shopify order itself.
+            if ($orderRes->successful()
+                && $this->shopifyOrderIsDoba((array) ($orderRes->json('order') ?? []))
+                && $this->autoFulfillBlocked('doba')) {
+                return $this->autoFulfillBlockedResult('doba');
+            }
 
             $openQty = 0;
             if ($orderRes->successful()) {
@@ -4197,9 +4297,9 @@ class VeeqoShopifyFulfillmentService
             $lineItems = $prepared['line_items'] ?? [];
             if ($lineItems === []) {
                 if (trim($sku) === '') {
-                    $updated = $this->updateExistingShopifyFulfillmentTracking($storeUrl, $token, $shopifyOrderId, $tracking, $carrier);
-                    if (! empty($updated['success'])) {
-                        return $updated;
+                $updated = $this->updateExistingShopifyFulfillmentTracking($storeUrl, $token, $shopifyOrderId, $tracking, $carrier);
+                if (! empty($updated['success'])) {
+                    return $updated;
                     }
                 }
 
@@ -4258,6 +4358,36 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * Doba copies are tagged "Doba" (our import and Doba's own Shopify app), use a doba source
+     * (145019994113 = "For Doba Supplier Integration") or carry doba note attributes.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    protected function shopifyOrderIsDoba(array $order): bool
+    {
+        $tags = array_map(
+            static fn ($t) => strtolower(trim((string) $t)),
+            is_array($order['tags'] ?? null) ? $order['tags'] : explode(',', (string) ($order['tags'] ?? ''))
+        );
+        if (in_array('doba', $tags, true)) {
+            return true;
+        }
+
+        $source = strtolower(trim((string) ($order['source_name'] ?? '')));
+        if ($source === '145019994113' || str_contains($source, 'doba')) {
+            return true;
+        }
+
+        foreach ((array) ($order['note_attributes'] ?? []) as $attr) {
+            if (is_array($attr) && str_contains(strtolower((string) ($attr['name'] ?? '')), 'doba')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Fix an existing Doba Shopify order whose fulfillment / notes still have (UPS).
      *
      * @return array{success: bool, updated: bool, tracking?: string, message: string}
@@ -4281,12 +4411,12 @@ class VeeqoShopifyFulfillmentService
         $carrier = 'UPS';
         foreach ($order['fulfillments'] ?? [] as $fulfillment) {
             if (! is_array($fulfillment)) {
-                    continue;
-                }
+                continue;
+            }
             $status = strtolower((string) ($fulfillment['status'] ?? ''));
             if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
-                    continue;
-                }
+                continue;
+            }
             $number = '';
             if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
                 $number = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
@@ -4464,28 +4594,28 @@ class VeeqoShopifyFulfillmentService
             }
 
             $post = $this->shopifyApi(
-                    $storeUrl,
-                    $token,
-                    'POST',
+                $storeUrl,
+                $token,
+                'POST',
                 'fulfillments/'.((int) $fulfillment['id']).'/update_tracking.json',
-                    [
-                        'fulfillment' => [
+                [
+                    'fulfillment' => [
                         'notify_customer' => false,
-                            'tracking_info' => [
-                                'number' => $tracking,
-                                'company' => mb_substr($carrier, 0, 100),
-                            ],
+                        'tracking_info' => [
+                            'number' => $tracking,
+                            'company' => mb_substr($carrier, 0, 100),
                         ],
-                    ]
-                );
+                    ],
+                ]
+            );
             if ($post->successful()) {
                 return ['success' => true, 'message' => 'Shopify fulfillment tracking updated.'];
             }
 
             Log::warning('VeeqoShopifyFulfillmentService: update_tracking failed', [
-                    'shopify_order_id' => $shopifyOrderId,
+                'shopify_order_id' => $shopifyOrderId,
                 'fulfillment_id' => $fulfillment['id'],
-                    'status' => $post->status(),
+                'status' => $post->status(),
                 'body' => mb_substr((string) $post->body(), 0, 300),
             ]);
         }
@@ -4746,11 +4876,11 @@ class VeeqoShopifyFulfillmentService
                 if (array_key_exists('fulfillable_quantity', $li)) {
                     $qty = (int) $li['fulfillable_quantity'];
                 } else {
-                    $qty = (int) ($li['quantity'] ?? 0) - (int) ($li['fulfilled_quantity'] ?? 0);
-                }
-                if ($qty < 1) {
-                    continue;
-                }
+                $qty = (int) ($li['quantity'] ?? 0) - (int) ($li['fulfilled_quantity'] ?? 0);
+            }
+            if ($qty < 1) {
+                continue;
+            }
                 if ($maxQuantity > 0) {
                     $qty = min($qty, $maxQuantity);
                 }
@@ -6116,8 +6246,8 @@ GQL;
         $token = trim((string) ($config['token'] ?? ''));
         $shopifyOrderId = trim($shopifyOrderId);
         if ($storeUrl === '' || $token === '' || $shopifyOrderId === '') {
-            return null;
-        }
+                return null;
+            }
 
         $url = "https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json";
         for ($attempt = 0; $attempt < 4; $attempt++) {
@@ -6126,18 +6256,18 @@ GQL;
                     'X-Shopify-Access-Token' => $token,
                 ])->timeout(30)->get($url);
                 if ($response->successful()) {
-                    $order = $response->json('order');
+            $order = $response->json('order');
 
-                    return is_array($order) ? $order : null;
+            return is_array($order) ? $order : null;
                 }
                 if ($response->status() === 429) {
                     $wait = (int) ($response->header('Retry-After') ?: (2 * ($attempt + 1)));
                     sleep(max(2, min(15, $wait)));
                     continue;
                 }
-            } catch (\Throwable) {
+        } catch (\Throwable) {
                 // retry
-            }
+        }
             usleep(350000 * ($attempt + 1));
         }
 
@@ -6286,8 +6416,8 @@ GQL;
                         $placeholder = $sku === '' || in_array(strtolower($sku), ['__order__', '__unknown__'], true);
                         if ($placeholder) {
                             if (isset($seen[$key]) || isset($seen[$key.'|__order__'])) {
-                                continue;
-                            }
+                            continue;
+                        }
                             $seen[$key.'|__order__'] = true;
                             $ids[] = (int) $row->id;
 

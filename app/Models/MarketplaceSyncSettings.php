@@ -99,6 +99,23 @@ class MarketplaceSyncSettings extends Model
             .ucfirst($marketplace).'\'s own Shopify app already creates them (otherwise inventory is deducted twice).';
     }
 
+    /**
+     * May background jobs / page sweeps write label tracking onto this
+     * marketplace's Shopify copies (auto-fulfill)? Doba is OFF by default:
+     * its Shopify orders are fulfilled by hand. Per-order buttons and CLI
+     * `--ids` runs are explicit actions and ignore this switch.
+     */
+    public static function canAutoFulfillShopify(string $marketplace, ?array $settings = null): bool
+    {
+        $marketplace = strtolower(trim($marketplace));
+        if ($marketplace === '') {
+            return true;
+        }
+        $settings ??= self::getFor($marketplace);
+
+        return (bool) ($settings['order']['auto_fulfill_shopify'] ?? ($marketplace !== 'doba'));
+    }
+
     public static function importPaidOrdersOnly(string $marketplace, ?array $settings = null): bool
     {
         $settings ??= self::getFor($marketplace);
@@ -238,6 +255,8 @@ class MarketplaceSyncSettings extends Model
                 ], true),
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
+                // Label tracking → Shopify copy by cron/sweeps. Doba copies are fulfilled by hand.
+                'auto_fulfill_shopify' => ! $isDoba,
                 // Shopify label/tracking → declare shipment (ON by default per channel).
                 'push_tracking_to_aliexpress' => $marketplace === 'aliexpress',
                 'push_tracking_to_alibaba' => $isAlibaba,

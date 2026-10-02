@@ -1116,6 +1116,9 @@ class SalesOrderFulfillmentController extends Controller
     protected function fulfillOpenDobaPrepaidOnShopify(array $rows): void
     {
         $labels = app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class);
+        if ($labels->autoFulfillBlocked('doba')) {
+            return;
+        }
         $deadline = microtime(true) + 35.0;
         foreach ($rows as $row) {
             if (microtime(true) >= $deadline) {

@@ -193,6 +193,19 @@ class OrderFulfillmentShopifyPushService
             return $out;
         }
 
+        if ($this->labels->autoFulfillBlocked($slug)) {
+            // Cooldown only (no attempt burned): re-enabling the switch lets the row fulfill later.
+            if (! $dryRun) {
+                $row->shopify_push_checked_at = now();
+                $row->shopify_push_message = mb_substr('Automatic Shopify fulfillment is turned off for '.$slug.'.', 0, 255);
+                $row->save();
+            }
+            $out['shopify'] = 'skipped';
+            $out['message'] = 'auto-fulfill off for '.$slug;
+
+            return $out;
+        }
+
         try {
             $ctx = $this->labels->contextForMarketplaceOrder($slug, $localId);
         } catch (\Throwable $e) {
