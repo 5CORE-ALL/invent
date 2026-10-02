@@ -456,6 +456,11 @@ class InventChatBot
             .'Open Tasks: '.url('/tasks');
     }
 
+    public static function dailyMissedYesterdayBody(User $user): ?string
+    {
+        return UserMissedYesterday::messageFor($user);
+    }
+
     public static function alreadyNudgedToday(ChatChannel $channel, string $command): bool
     {
         $start = TaskBusinessTime::todayStart()->timezone(config('app.timezone'))->toDateTimeString();

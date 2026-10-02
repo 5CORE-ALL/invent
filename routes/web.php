@@ -4169,6 +4169,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/vinted/analytics/save-sprice', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'saveSprice'])->name('vinted.analytics.save.sprice');
     Route::post('/vinted/analytics/save-op-sprice', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'saveOpSprice'])->name('vinted.analytics.save.op');
     Route::post('/vinted/analytics/sop-sheet', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'saveSopSheet'])->name('vinted.analytics.sop-sheet');
+    Route::get('/vinted/analytics/column-visibility', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'getColumnVisibility'])->name('vinted.analytics.column.get');
+    Route::post('/vinted/analytics/column-visibility', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'setColumnVisibility'])->name('vinted.analytics.column.set');
 
     // Instagram Shop Analytics — Depop-style Tabulator + CSV template (parent, sku, price, l30)
     Route::get('/instagram/analytics', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'pricingView'])->name('instagram.analytics');
@@ -4198,6 +4200,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/lmp-missing-data', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'index'])->name('lmp.missing');
     Route::get('/lmp-missing-data/data', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'getData'])->name('lmp.missing.data');
     Route::post('/lmp-missing-data/report', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'report'])->name('lmp.missing.report');
+    Route::post('/lmp-missing-data/nr', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'updateNr'])->name('lmp.missing.nr');
 
     // price >lmp — analytics channels + red-triangle (Price > LMP) counts
     Route::get('/price-gt-lmp', [\App\Http\Controllers\MarketPlace\PriceGtLmpController::class, 'index'])->name('price.gt.lmp');
@@ -6232,6 +6235,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Offerup
     Route::get('/offerup/analytics', [OfferUpAnalyticsController::class, 'index'])->name('offerup.analytics');
+    Route::get('/offerup/analytics/data', [OfferUpAnalyticsController::class, 'data'])->name('offerup.analytics.data');
     Route::get('/zero-offerup', [OfferupZeroController::class, 'offerupZeroview'])->name('zero.offerup');
     Route::get('/zero_offerup/view-data', [OfferupZeroController::class, 'getViewOfferupZeroData']);
     Route::post('/zero_offerup/reason-action/update-data', [OfferupZeroController::class, 'updateReasonAction']);
@@ -6298,6 +6302,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // DH Gate
     Route::get('/dhgate/analytics', [DHGateAnalyticsController::class, 'index'])->name('dhgate.analytics');
+    Route::get('/dhgate/analytics/data', [DHGateAnalyticsController::class, 'data'])->name('dhgate.analytics.data');
 
     // listing DHGate
     // listing Walmart Canada

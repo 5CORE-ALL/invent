@@ -21,7 +21,7 @@ class LmpMissingController extends Controller
     {
         try {
             $data = collect(LmpMissingChannelCounts::masterRows(false))->values();
-            $total = (int) $data->sum('lmp_missing');
+            $total = LmpMissingChannelCounts::sumCounted($data->all());
 
             return response()->json([
                 'success' => true,
@@ -50,5 +50,25 @@ class LmpMissingController extends Controller
         LmpMissingChannelCounts::storeReported($channel, $count);
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Red NR leaves that channel out of the LMP M. total.
+     */
+    public function updateNr(Request $request)
+    {
+        $channel = (string) $request->input('channel', '');
+        if (LmpMissingChannelCounts::resolveKey($channel) === null) {
+            return response()->json(['success' => false, 'message' => 'Unknown channel'], 422);
+        }
+
+        $nr = $request->boolean('nr');
+        LmpMissingChannelCounts::setNr($channel, $nr);
+
+        return response()->json([
+            'success' => true,
+            'nr' => $nr,
+            'total_lmp_missing' => LmpMissingChannelCounts::totalMissing(true),
+        ]);
     }
 }

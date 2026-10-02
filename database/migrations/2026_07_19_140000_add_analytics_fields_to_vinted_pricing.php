@@ -31,7 +31,7 @@ return new class extends Migration
                 $now = now();
                 DB::table('marketplace_percentages')->insert([
                     'marketplace' => 'Vinted',
-                    'percentage' => 87,
+                    'percentage' => 95,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);

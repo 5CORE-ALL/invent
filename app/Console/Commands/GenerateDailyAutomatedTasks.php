@@ -6,6 +6,8 @@ use App\Models\Task;
 use App\Services\TaskWhatsAppNotificationService;
 use App\Support\AutomatedTaskChecklistIds;
 use App\Support\AutomatedTaskSubtaskFirer;
+use App\Support\LmpMissingDailyAutomatedTask;
+use App\Support\MissingListingDailyAutomatedTask;
 use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -42,6 +44,8 @@ class GenerateDailyAutomatedTasks extends Command
         
         try {
             TaskBusinessTime::applyDatabaseSession();
+            MissingListingDailyAutomatedTask::ensureTemplate();
+            LmpMissingDailyAutomatedTask::ensureTemplate();
             $now = TaskBusinessTime::now();
             $today = $now->toDateString();
             $generateAt = TaskBusinessTime::dailyGenerateAt($now);
@@ -137,13 +141,26 @@ class GenerateDailyAutomatedTasks extends Command
                                 }
                             }
 
+                            $title = $autoTask->title . ' [Auto: ' . $now->format('d-M-y') . ']';
+                            $description = $autoTask->description;
+                            if (MissingListingDailyAutomatedTask::isTemplate($autoTask)) {
+                                $copy = MissingListingDailyAutomatedTask::instanceCopy($now);
+                                $title = $copy['title'];
+                                $description = $copy['description'];
+                            }
+                            if (LmpMissingDailyAutomatedTask::isTemplate($autoTask)) {
+                                $copy = LmpMissingDailyAutomatedTask::instanceCopy($now);
+                                $title = $copy['title'];
+                                $description = $copy['description'];
+                            }
+
                             // Prepare task data
                             $taskData = [
                                 'task_id' => null,
-                                'title' => $autoTask->title . ' [Auto: ' . $now->format('d-M-y') . ']',
+                                'title' => $title,
                                 'group' => $autoTask->group,
                                 'priority' => $autoTask->priority,
-                                'description' => $autoTask->description,
+                                'description' => $description,
                                 'eta_time' => $autoTask->eta_time ?? 0,
                                 'etc_done' => 0,
                                 'is_missed' => 0,
@@ -163,7 +180,7 @@ class GenerateDailyAutomatedTasks extends Command
                                 'link5' => $autoTask->link5 ?? null,
                                 'link6' => $autoTask->link6 ?? null,
                                 'link7' => $autoTask->link7 ?? null,
-                                'link8' => null,
+                                'link8' => $autoTask->link8 ?? null,
                                 'link9' => null,
                                 'image' => null,
                                 'automate_task_id' => $autoTask->id,

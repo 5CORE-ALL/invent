@@ -82,7 +82,7 @@ class TaskPolicyDeletePermissionTest extends TestCase
         foreach ($emails as $email) {
             $user = $this->user($email, 'Other Name');
             $this->assertTrue(TaskPolicy::userHasSpecialTaskPermission($user), $email);
-            if ($email === 'president@5core.com') {
+            if (in_array($email, ['president@5core.com', 'inventory@5core.com', 'ritu.kaur013@gmail.com'], true)) {
                 $this->assertTrue(TaskPolicy::userCanDeleteAnyTask($user), $email);
                 $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com')), $email);
                 $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com', true)), $email);
@@ -102,7 +102,6 @@ class TaskPolicyDeletePermissionTest extends TestCase
 
         $seniors = [
             'sr.manager@5core.com',
-            'inventory@5core.com',
             'sjoy7486@gmail.com',
             'ineetkalra@5core.com',
             'priyanka@5core.com',

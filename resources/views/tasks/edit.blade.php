@@ -253,7 +253,7 @@
                                         </button>
                                     @else
                                         <button type="button" class="btn btn-sm btn-outline-secondary w-100" disabled
-                                                title="Corrective action tasks can only be deleted by president@5core.com">
+                                                title="Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com">
                                             <i class="mdi mdi-lock-outline me-1"></i> Delete locked (CA)
                                         </button>
                                     @endif

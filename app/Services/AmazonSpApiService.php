@@ -262,24 +262,44 @@ class AmazonSpApiService
     }
 
     /**
-     * Sale / Business / Min from the calculated Sale Price.
-     * Sale = Business = Min (same value).
+     * Sale / Business / Min from the calculated S PRC (Sale).
+     * Sale stays at S PRC. Business and Min are 5% below S PRC.
      *
      * @return array{sale_price: float, business_price: float, min_price: float}
      */
     public static function computeSaleBusinessMin(float $salePrice): array
     {
         $sale = round($salePrice, 2);
+        $below = round($sale * 0.95, 2);
+        if ($below < 0.01) {
+            $below = 0.01;
+        }
+        if ($below > $sale) {
+            $below = $sale;
+        }
 
         return [
             'sale_price' => $sale,
-            'business_price' => $sale,
-            'min_price' => $sale,
+            'business_price' => $below,
+            'min_price' => $below,
         ];
     }
 
     /**
-     * Business Price = Sale Price (same value).
+     * Price Amazon shows on the listing. S PRC wins over the old Your Price.
+     */
+    public static function listingPriceForSite(float $yourPrice, float $sprc): float
+    {
+        $sale = round($sprc, 2);
+        if ($sale < 0.01) {
+            return round($yourPrice, 2);
+        }
+
+        return $sale;
+    }
+
+    /**
+     * Business Price = S PRC × 0.95.
      */
     public function businessPriceFromSalePrice(float $salePrice): float
     {
@@ -287,7 +307,7 @@ class AmazonSpApiService
     }
 
     /**
-     * Min Price = Sale Price (same value).
+     * Min Price = S PRC × 0.95.
      */
     public function minPriceFromSalePrice(float $salePrice): float
     {
@@ -466,7 +486,8 @@ class AmazonSpApiService
      * @param  float|int|string  $price  Your Price (our_price)
      * @param  int  $maxRetries
      * @param  array|null  $extras  Optional:
-     *   - sale_price (float): calculated Sale Price. Sale = Business = Min.
+     *   - sale_price (float): calculated S PRC. The listing price on Amazon (our_price) is S PRC.
+     *     Business and Min = S PRC × 0.95. A sale schedule is sent only when it is strictly below Your Price.
      *   - min_price / business_price: ignored — always derived from Sale.
      *   - max_price (float): maximum_seller_allowed_price (defaults to our_price × 1.10)
      *   - push_reason (string): optional log reason
@@ -510,6 +531,10 @@ class AmazonSpApiService
         $salePrice = $fromSale['sale_price'];
         $businessPrice = $fromSale['business_price'];
         $minPrice = $fromSale['min_price'];
+        // Amazon.com shows our_price. Writing S PRC only as discounted_price left the
+        // site on the old Your Price: Amazon drops a sale that is not strictly lower,
+        // and a date-only sale schedule is often ignored. The listing price is S PRC.
+        $price = self::listingPriceForSite($price, $salePrice);
         $pushReason = trim((string) ($extras['push_reason'] ?? 'price push'));
         if ($pushReason === '') {
             $pushReason = 'price push';
@@ -642,7 +667,9 @@ class AmazonSpApiService
                 $encodedSku = rawurlencode($amazonSku);
                 $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
 
-                // Your Price + Sale + Min/Max seller floors + Business (B2B our_price).
+                // Listing price on the site is S PRC. Min is 5% below. Business is a separate B2B offer.
+                // Sale schedule only when it is strictly below Your Price — an equal sale is rejected
+                // and that rejection keeps S PRC off the listing.
                 $priceSchedule = [
                     [
                         "schedule" => [
@@ -688,10 +715,11 @@ class AmazonSpApiService
                     "minimum_seller_allowed_price" => $minPriceSchedule,
                     "maximum_seller_allowed_price" => $maxPriceSchedule,
                 ];
-                // Part 2: Amazon Sale Price = Std − Promotion % (temporary discounted_price)
-                if ($salePrice !== null) {
-                    $startAt = now('America/Los_Angeles')->format('Y-m-d');
-                    $endAt = now('America/Los_Angeles')->addYear()->format('Y-m-d');
+                // Optional sale. Amazon requires a full timestamp and a price strictly below Your Price.
+                $sendDiscounted = (int) round($salePrice * 100) < (int) round($price * 100);
+                if ($sendDiscounted) {
+                    $startAt = now('UTC')->subDay()->startOfDay()->format('Y-m-d\TH:i:s\Z');
+                    $endAt = now('UTC')->addYear()->startOfDay()->format('Y-m-d\TH:i:s\Z');
                     $offerValue['discounted_price'] = [
                         [
                             "schedule" => [

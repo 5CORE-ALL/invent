@@ -2951,8 +2951,15 @@
          * Push Prc plan per SKU:
          *  Sprc Dil (Dil in slab, including 0 Sold) → Sale = Dil→NROI target, then CVR Down < 7% -10 / Up > 10% +10 (does not stack discounts)
          *  Other  → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
-         *  Your = Std; Sale = Business = Min
+         *  Site / Your Price = S PRC; Min and Business = S PRC × 0.95
          */
+        function amzMinBusinessFromSprc(sprc) {
+            const base = amzPefRound2(sprc);
+            if (!(base > 0)) return 0;
+            let below = amzPefRound2(Math.max(0.01, base * 0.95));
+            if (below > base) below = base;
+            return below;
+        }
         function computeAmzTDiscountsPct(d) {
             const stack = computeAmzRuleStack(d);
             if (stack.dilGroi) return 0;
@@ -2980,8 +2987,8 @@
                 std: std > 0 ? amzPefRound2(std) : saleBase,
                 sale: sale,
                 max: max,
-                min: saleBase,
-                business: saleBase,
+                min: amzMinBusinessFromSprc(saleBase),
+                business: amzMinBusinessFromSprc(saleBase),
                 prmt: stack.prmt,
                 cvrDisc: stack.cvrDisc,
                 reviewDisc: stack.reviewDisc,
@@ -3021,8 +3028,8 @@
                 plan.sale = capped;
             }
             const saleBase = plan.sale != null ? plan.sale : capped;
-            plan.min = saleBase;
-            plan.business = saleBase;
+            plan.min = amzMinBusinessFromSprc(saleBase);
+            plan.business = amzMinBusinessFromSprc(saleBase);
             plan.lmpCapped = (origEffective - capped) > 0.009;
             return plan;
         }

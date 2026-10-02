@@ -136,7 +136,7 @@
                                 <i class="fas fa-exclamation-triangle"></i> 0</span>
                             <span class="badge bg-secondary fs-6 p-2"
                                 title="marketplace_percentages.percentage (marketplace = Vinted). Ship is not used.">
-                                Margin: {{ number_format((float) ($marginPercent ?? 87), 2) }}%
+                                Margin: {{ number_format((float) ($marginPercent ?? 95), 2) }}%
                             </span>
                         </div>
                     </div>
@@ -196,6 +196,15 @@
                         <button type="button" id="refresh-pricing-table" class="btn btn-sm btn-outline-primary" title="Refresh">
                             <i class="fa fa-refresh"></i>
                         </button>
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" aria-controls="column-dropdown-menu"
+                                title="Show or hide columns" aria-label="Columns">
+                                <i class="fa fa-eye"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" id="column-dropdown-menu"></ul>
+                        </div>
                         <a href="{{ route('vinted.analytics.export') }}" class="btn btn-sm btn-success" id="export-btn">
                             <i class="fa fa-file-csv"></i>
                         </a>
@@ -367,7 +376,7 @@
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'vinted'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'vinted'])
 
-    const DP_MARGIN = {{ (float) ($marginPercent ?? 87) }} / 100;
+    const DP_MARGIN = {{ (float) ($marginPercent ?? 95) }} / 100;
     let table = null;
     let allTableData = [];
     let decreaseModeActive = false;
@@ -1106,10 +1115,79 @@
             ParentExpand.bind();
         }
 
+        function buildColumnDropdown() {
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable: function() { return table; },
+                    menuId: 'column-dropdown-menu',
+                    storageKey: 'vinted_analytics_col_cats_v1',
+                    skipFields: ['_select', '_parent_expand'],
+                    onSave: function() { saveColumnVisibilityToServer(); }
+                });
+                window.AnalyticsColVis.rebuild();
+                return;
+            }
+            let html = '';
+            table.getColumns().forEach(function(col) {
+                const field = col.getField();
+                const title = col.getDefinition().title;
+                if (!field || field === '_select' || field === '_parent_expand' || !title) return;
+                const label = String(title).replace(/<[^>]*>/g, '').trim();
+                html += '<li class="dropdown-item"><label style="cursor:pointer;display:flex;align-items:center;gap:8px;">'
+                    + '<input type="checkbox" class="column-toggle" data-field="' + field + '" '
+                    + (col.isVisible() ? 'checked' : '') + '> ' + label + '</label></li>';
+            });
+            $('#column-dropdown-menu').html(html);
+        }
+
+        function saveColumnVisibilityToServer() {
+            if (!table) return;
+            const visibility = {};
+            table.getColumns().forEach(function(col) {
+                const field = col.getField();
+                if (field && field !== '_select' && field !== '_parent_expand') visibility[field] = col.isVisible();
+            });
+            $.ajax({
+                url: '{{ route("vinted.analytics.column.set") }}',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ visibility: visibility })
+            });
+        }
+
+        function columnIsShown(value) {
+            return value === true || value === 1 || value === '1' || value === 'true';
+        }
+
+        function applyColumnVisibilityFromServer() {
+            $.ajax({
+                url: '{{ route("vinted.analytics.column.get") }}',
+                method: 'GET',
+                success: function(visibility) {
+                    if (!table || !visibility || !Object.keys(visibility).length) return;
+                    Object.keys(visibility).forEach(function(field) {
+                        const col = table.getColumn(field);
+                        if (col) columnIsShown(visibility[field]) ? col.show() : col.hide();
+                    });
+                    buildColumnDropdown();
+                }
+            });
+        }
+
         table.on('tableBuilt', function() {
+            buildColumnDropdown();
+            applyColumnVisibilityFromServer();
             setTimeout(function() {
                 if (!dpApplyingFilters && allTableData.length) applyDepopFilters();
             }, 100);
+        });
+
+        document.getElementById('column-dropdown-menu').addEventListener('change', function(e) {
+            if (!e.target.classList.contains('column-toggle')) return;
+            const col = table.getColumn(e.target.dataset.field);
+            if (!col) return;
+            e.target.checked ? col.show() : col.hide();
+            saveColumnVisibilityToServer();
         });
 
         $('#dp-inv-filter, #dp-sold-filter, #dp-gpft-filter, #dp-cvr-filter, #dp-roi-filter').on('change', applyDepopFilters);

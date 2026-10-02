@@ -1199,26 +1199,28 @@
             });
 
             // Update PFT% and ROI% calc values
+            function ebayPricingIsParentRow(row) {
+                if (!row || row.is_parent_summary) return true;
+                const parent = String(row.Parent || '');
+                const sku = String(row['(Child) sku'] || '');
+                return parent.toUpperCase().startsWith('PARENT') || sku.toUpperCase().startsWith('PARENT');
+            }
+
             function updateCalcValues() {
                 const data = table.getData("active");
                 let totalSales = 0;
                 let totalProfit = 0;
-                let sumLp = 0;
+                let totalCogs = 0;
                 
                 data.forEach(row => {
-                    const profit = parseFloat(row['Total_pft']) || 0;
-                    const salesL30 = parseFloat(row['T_Sale_l30']) || 0;
-                    // Only add if both values are > 0 (matching inc/dec page logic)
-                    if (profit > 0 && salesL30 > 0) {
-                        totalProfit += profit;
-                        totalSales += salesL30;
-                    }
-                    sumLp += parseFloat(row['LP_productmaster']) || 0;
+                    if (ebayPricingIsParentRow(row)) return;
+                    totalProfit += parseFloat(row['Total_pft']) || 0;
+                    totalSales += parseFloat(row['T_Sale_l30']) || 0;
+                    totalCogs += (parseFloat(row['LP_productmaster']) || 0) * (parseFloat(row['eBay L30']) || 0);
                 });
                 
                 const avgPft = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
-                // ROI% = (total profit / sum of LP) * 100
-                const avgRoi = sumLp > 0 ? (totalProfit / sumLp) * 100 : 0;
+                const avgRoi = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
                 
                 $('#pft-calc').text(avgPft.toFixed(2) + '%');
                 $('#roi-calc').text(avgRoi.toFixed(2) + '%');
@@ -1234,13 +1236,14 @@
                 let totalLpAmt = 0;
                 let totalFbaInv = 0;
                 let totalFbaL30 = 0;
-                let totalDilPercent = 0;
-                let dilCount = 0;
+                let totalOvL30 = 0;
+                let totalDilInv = 0;
                 let zeroSoldCount = 0;
                 let missingCount = 0;
                 let mapCount = 0;
                 let notMapCount = 0;
                 data.forEach(row => {
+                    if (ebayPricingIsParentRow(row)) return;
                     totalTcos += parseFloat(row['AD%'] || 0);
                     totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
                     totalPftAmt += parseFloat(row['Total_pft'] || 0);
@@ -1248,12 +1251,8 @@
                     totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
                     totalFbaInv += parseFloat(row.INV || 0);
                     totalFbaL30 += parseFloat(row['eBay L30'] || 0);
-                    
-                    const dil = parseFloat(row['E Dil%'] || 0);
-                    if (!isNaN(dil)) {
-                        totalDilPercent += dil;
-                        dilCount++;
-                    }
+                    totalOvL30 += parseFloat(row.L30 || 0);
+                    totalDilInv += parseFloat(row.INV || 0);
                     
                     // Count 0 Sold (only INV > 0)
                     const ebayL30 = parseFloat(row['eBay L30'] || 0);
@@ -1287,6 +1286,7 @@
                 let totalWeightedPrice = 0;
                 let totalL30 = 0;
                 data.forEach(row => {
+                    if (ebayPricingIsParentRow(row)) return;
                     const price = parseFloat(row['eBay Price'] || 0);
                     const l30 = parseFloat(row['eBay L30'] || 0);
                     totalWeightedPrice += price * l30;
@@ -1297,6 +1297,7 @@
 
                 let totalViews = 0;
                 data.forEach(row => {
+                    if (ebayPricingIsParentRow(row)) return;
                     totalViews += parseFloat(row.views || 0);
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
@@ -1305,7 +1306,7 @@
                 $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 
 
-                const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
+                const avgDilPercent = totalDilInv > 0 ? (totalOvL30 / totalDilInv) * 100 : 0;
                 const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
                 const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
                 

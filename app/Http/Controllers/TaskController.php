@@ -494,7 +494,7 @@ class TaskController extends Controller
             'need_approval' => 0, 'assignor_task' => 0, 'done' => 0,
             'tat_sum_days' => 0.0, 'tat_count' => 0,
             'missed_l30' => 0, 'missed_p30' => 0,
-            'etc_l30' => 0.0, 'atc_l30' => 0.0,
+            'etc_l30' => 0.0, 'atc_l30' => 0.0, 'etc_pending' => 0.0,
         ];
 
         $now = \Carbon\Carbon::now();
@@ -555,6 +555,9 @@ class TaskController extends Controller
                 }
                 if (!empty($task->is_automate_task)) {
                     $byEmail[$email]['a_task_h'] += (float) ($task->eta_time ?? 0);
+                }
+                if (! in_array((string) ($task->status ?? ''), ['Done', 'Archived'], true)) {
+                    $byEmail[$email]['etc_pending'] += (float) ($task->eta_time ?? 0);
                 }
 
                 // L30 TAT: tasks the assignee completed (Done) in the last 30
@@ -772,6 +775,8 @@ class TaskController extends Controller
                 'etc_l30_min' => (int) round($counts['etc_l30']),
                 'atc_l30_h' => (int) round($counts['atc_l30'] / 60),
                 'etc_l30_h' => (int) round($counts['etc_l30'] / 60),
+                'etc_pending_min' => (int) round($counts['etc_pending']),
+                'etc_pending_h' => (int) round($counts['etc_pending'] / 60),
                 'missed_l30' => (int) $counts['missed_l30'],
                 'missed_p30' => (int) $counts['missed_p30'],
                 'score_clrr' => (int) ($scoresByUser[$member->id]['clrr'] ?? 0),
@@ -2733,28 +2738,67 @@ class TaskController extends Controller
             $taskData['screenshots'] = $screenshotNames;
         }
 
-        $task = Task::create($taskData);
-        $this->linkChatMessageToTask($request, $task);
-
         $flash = 'success';
         $message = 'Task created successfully!';
+        $splitIntoCopies = $request->boolean('split_tasks') && count($assigneeIds) > 1;
 
-        if ($assigneeEmail) {
-            try {
-                $status = $this->taskWhatsApp->notifyNewTaskAssigned($task);
-                if ($status === 'skipped_no_phone') {
-                    $message .= ' WhatsApp not sent: assignee has no phone. Add "phone" (digits + country code) in user profile for delivery.';
-                    $flash = 'warning';
-                } elseif ($status === 'skipped_no_user') {
-                    $message .= ' WhatsApp not sent: assignee user not found.';
-                    $flash = 'warning';
-                } elseif ($status === 'sent') {
-                    $message .= ' WhatsApp notification sent to assignee.';
+        if ($splitIntoCopies) {
+            $byId = User::whereIn('id', $assigneeIds)->get()->keyBy('id');
+            $created = [];
+            $linkedChat = false;
+            foreach ($assigneeIds as $assigneeId) {
+                $person = $byId->get((int) $assigneeId);
+                if (! $person || ! $person->email) {
+                    continue;
                 }
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify new assigned failed: ' . $e->getMessage());
-                $message .= ' WhatsApp send failed. Check logs.';
-                $flash = 'warning';
+                $copy = $taskData;
+                $copy['assign_to'] = $person->email;
+                $copy['split_tasks'] = 1;
+                $createdTask = Task::create($copy);
+                if (! $linkedChat) {
+                    $this->linkChatMessageToTask($request, $createdTask);
+                    $linkedChat = true;
+                }
+                $created[] = $createdTask;
+            }
+
+            $message = 'Split into '.count($created).' tasks. Each assignee has their own copy.';
+            $sent = 0;
+            foreach ($created as $createdTask) {
+                try {
+                    if ($this->taskWhatsApp->notifyNewTaskAssigned($createdTask) === 'sent') {
+                        $sent++;
+                    }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify new assigned failed: '.$e->getMessage());
+                    $message .= ' WhatsApp send failed. Check logs.';
+                    $flash = 'warning';
+                }
+            }
+            if ($sent > 0) {
+                $message .= ' WhatsApp notification sent to '.$sent.' assignee'.($sent === 1 ? '' : 's').'.';
+            }
+        } else {
+            $task = Task::create($taskData);
+            $this->linkChatMessageToTask($request, $task);
+
+            if ($assigneeEmail) {
+                try {
+                    $status = $this->taskWhatsApp->notifyNewTaskAssigned($task);
+                    if ($status === 'skipped_no_phone') {
+                        $message .= ' WhatsApp not sent: assignee has no phone. Add "phone" (digits + country code) in user profile for delivery.';
+                        $flash = 'warning';
+                    } elseif ($status === 'skipped_no_user') {
+                        $message .= ' WhatsApp not sent: assignee user not found.';
+                        $flash = 'warning';
+                    } elseif ($status === 'sent') {
+                        $message .= ' WhatsApp notification sent to assignee.';
+                    }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify new assigned failed: '.$e->getMessage());
+                    $message .= ' WhatsApp send failed. Check logs.';
+                    $flash = 'warning';
+                }
             }
         }
 
@@ -3056,7 +3100,9 @@ class TaskController extends Controller
                 'group' => 'nullable|string|max:255',
                 'priority' => 'required|in:low,normal,high',
                 'assignor_id' => 'required|exists:users,id',
-                'assignee_id' => 'required|exists:users,id',
+                'assignee_id' => 'required_without:assignee_ids|nullable|exists:users,id',
+                'assignee_ids' => 'required_without:assignee_id|nullable|array|min:1',
+                'assignee_ids.*' => 'exists:users,id',
                 'split_tasks' => 'nullable|boolean',
                 'flag_raise' => 'nullable|boolean',
                 'is_corrective_action' => 'nullable|boolean',
@@ -3078,7 +3124,9 @@ class TaskController extends Controller
                 'existing_screenshots.*' => 'nullable|string|max:255',
             ], [
                 'assignor_id.required' => 'Please select an assignor.',
-                'assignee_id.required' => 'Please select an assignee.',
+                'assignee_id.required_without' => 'Please select at least one assignee.',
+                'assignee_ids.required_without' => 'Please select at least one assignee.',
+                'assignee_ids.min' => 'Please select at least one assignee.',
             ]);
         } else {
             // Assignee-only: links are the only thing they can change.
@@ -3096,6 +3144,10 @@ class TaskController extends Controller
         }
 
         $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
+        $splitIntoCopies = false;
+        $assigneeIds = [];
+        $assigneesById = collect();
+        $keepAssigneeId = null;
 
         if ($canEditAll) {
             // Get assignor email
@@ -3106,15 +3158,41 @@ class TaskController extends Controller
                 $assignorEmail = $task->assignor;
             }
 
-            // Get assignee email
+            // Get assignee email. Split keeps this task on one person and copies it for the rest.
+            $assigneeIds = array_values(array_unique(array_map('intval', (array) $request->input('assignee_ids', []))));
+            $assigneeIds = array_values(array_filter($assigneeIds));
+            if ($assigneeIds === [] && ! empty($validated['assignee_id'])) {
+                $assigneeIds = [(int) $validated['assignee_id']];
+            }
+            $assigneesById = $assigneeIds === []
+                ? collect()
+                : User::whereIn('id', $assigneeIds)->get()->keyBy('id');
+            $splitIntoCopies = $request->boolean('split_tasks') && count($assigneeIds) > 1;
+            $keepAssigneeId = $assigneeIds[0] ?? null;
+
             $assigneeEmail = $task->assign_to;
-            if ($request->has('assignee_id')) {
-                if ($validated['assignee_id']) {
-                    $assigneeUser = User::find($validated['assignee_id']);
-                    $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
-                } else {
-                    $assigneeEmail = null;
+            if ($splitIntoCopies) {
+                $currentEmails = array_map(
+                    fn ($email) => strtolower(trim((string) $email)),
+                    explode(',', (string) $task->assign_to)
+                );
+                foreach ($assigneeIds as $assigneeId) {
+                    $person = $assigneesById->get($assigneeId);
+                    if ($person && in_array(strtolower((string) $person->email), $currentEmails, true)) {
+                        $keepAssigneeId = $assigneeId;
+                        break;
+                    }
                 }
+                $keepPerson = $assigneesById->get($keepAssigneeId);
+                $assigneeEmail = $keepPerson ? $keepPerson->email : null;
+            } elseif ($assigneesById->isNotEmpty()) {
+                $assigneeEmail = $assigneesById
+                    ->sortBy(fn ($person) => array_search((int) $person->id, $assigneeIds, true))
+                    ->pluck('email')
+                    ->filter()
+                    ->implode(', ');
+            } elseif ($request->has('assignee_id')) {
+                $assigneeEmail = null;
             }
 
             $screenshotNames = $this->mergeTaskScreenshotsFromRequest($task, $request);
@@ -3180,15 +3258,53 @@ class TaskController extends Controller
             }
         }
 
+        $splitCount = 1;
+        if ($canEditAll && $splitIntoCopies) {
+            foreach ($assigneeIds as $assigneeId) {
+                if ((int) $assigneeId === (int) $keepAssigneeId) {
+                    continue;
+                }
+                $person = $assigneesById->get((int) $assigneeId);
+                if (! $person || ! $person->email) {
+                    continue;
+                }
+                $clone = $task->fresh()->replicate();
+                $clone->assign_to = $person->email;
+                $clone->status = 'Todo';
+                $clone->etc_done = 0;
+                $clone->is_missed = 0;
+                $clone->is_missed_track = 0;
+                $clone->split_tasks = 1;
+                $clone->is_automate_task = 0;
+                $clone->task_type = 'manual';
+                $clone->automate_task_id = null;
+                $clone->report = '';
+                $clone->rework_reason = '';
+                $clone->save();
+                $splitCount++;
+                try {
+                    $this->taskWhatsApp->notifyNewTaskAssigned($clone);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify split copy failed: '.$e->getMessage());
+                }
+            }
+        }
+
+        $savedMessage = ! $canEditAll
+            ? 'Links saved successfully!'
+            : ($splitCount > 1
+                ? 'Split into '.$splitCount.' tasks. Each assignee has their own copy.'
+                : 'Task updated successfully!');
+
         // AJAX (shared Add/Edit side panel on the task list) expects JSON.
         if ($request->expectsJson()) {
             return response()->json([
                 'success' => true,
-                'message' => $canEditAll ? 'Task updated successfully!' : 'Links saved successfully!',
+                'message' => $savedMessage,
             ]);
         }
 
-        return redirect()->route('tasks.index')->with('success', 'Task updated successfully!');
+        return redirect()->route('tasks.index')->with('success', $savedMessage);
     }
 
     public function destroy($id)
@@ -3199,7 +3315,7 @@ class TaskController extends Controller
         // Checked before authorize() so Gate::before cannot restore delete-any for seniors or super-admins.
         if (! TaskPolicy::userCanDeleteTask($user, $task)) {
             $message = TaskPolicy::taskIsCorrectiveAction($task)
-                ? 'Corrective action tasks can only be deleted by president@5core.com.'
+                ? 'Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com.'
                 : 'You can only delete tasks you assigned.';
 
             return response()->json([
@@ -3237,7 +3353,7 @@ class TaskController extends Controller
             $message = 'Task and ' . $deletedSubtasks . ' subtask(s) deleted successfully!';
         }
         if ($skippedCaSubtasks > 0) {
-            $message .= ' '.$skippedCaSubtasks.' corrective action subtask(s) were left — only president@5core.com can delete those.';
+            $message .= ' '.$skippedCaSubtasks.' corrective action subtask(s) were left — only president@5core.com or inventory@5core.com can delete those.';
         }
 
         return response()->json(['success' => true, 'message' => $message]);
@@ -4069,7 +4185,7 @@ class TaskController extends Controller
 
                         if ($deletedCount === 0) {
                             $message = $skippedCa > 0
-                                ? 'Corrective action tasks can only be deleted by president@5core.com.'
+                                ? 'Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com.'
                                 : 'You can only delete tasks you assigned. None of the selected tasks belong to you.';
 
                             return response()->json([
@@ -4119,7 +4235,7 @@ class TaskController extends Controller
                                 $skipReasons[] = $otherSkipped.' task(s) skipped — you can only delete tasks you assigned';
                             }
                             if ($skippedCa > 0) {
-                                $skipReasons[] = $skippedCa.' corrective action task(s) skipped — only president@5core.com can delete those';
+                                $skipReasons[] = $skippedCa.' corrective action task(s) skipped — only president@5core.com or inventory@5core.com can delete those';
                             }
                             if ($skipReasons !== []) {
                                 $message .= ' ('.implode('; ', $skipReasons).')';
@@ -8941,6 +9057,7 @@ class TaskController extends Controller
                 'tat_l30_count' => (int) ($row['tat_l30_count'] ?? 0),
                 'atc_l30_h' => (int) ($row['atc_l30_h'] ?? 0),
                 'etc_l30_h' => (int) ($row['etc_l30_h'] ?? 0),
+                'etc_pending_h' => (int) ($row['etc_pending_h'] ?? 0),
                 'missed_l30' => (int) ($row['missed_l30'] ?? 0),
                 'missed_p30' => (int) ($row['missed_p30'] ?? 0),
                 'a_task' => (int) ($row['a_task'] ?? 0),
@@ -8949,7 +9066,7 @@ class TaskController extends Controller
             ] : [
                 'task' => 0, 'l30_hrs' => 0, 'att_l30_pct' => 0, 'att_l30_target' => 200, 'assignor_task' => 0,
                 'done' => 0, 'overdue' => 0, 'tat_l30_days' => null, 'tat_l30_count' => 0,
-                'atc_l30_h' => 0, 'etc_l30_h' => 0,
+                'atc_l30_h' => 0, 'etc_l30_h' => 0, 'etc_pending_h' => 0,
                 'missed_l30' => 0, 'missed_p30' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0,
             ],
             'scores' => [

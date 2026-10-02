@@ -20,7 +20,8 @@ class AttendanceAccess
     }
 
     /**
-     * Directors are omitted from /attendance/summary (table, badges, export).
+     * Director by org level, role, or a designation that contains the word director.
+     * Directors sign in to attendance the same way other employees do.
      */
     public static function isDirector(?User $user): bool
     {
@@ -55,6 +56,10 @@ class AttendanceAccess
         $user ??= auth()->user();
         if (! $user || ! ($user->is_active ?? true)) {
             return false;
+        }
+
+        if (self::isDirector($user)) {
+            return true;
         }
 
         if (! self::restrictionsEnabled()) {

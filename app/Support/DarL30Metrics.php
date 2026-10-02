@@ -21,7 +21,7 @@ class DarL30Metrics
 
     /**
      * Colour band for the Task Summary DAR cell.
-     * >90% pink, 80–90% green, otherwise red.
+     * Above 90% green, 80–90% yellow, below 80% red. Text stays black.
      */
     public static function band(int $percent): string
     {

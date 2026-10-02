@@ -1365,21 +1365,28 @@ GQL;
                         ]);
                     }
 
+                    $attributes = [
+                        'sku' => $sku,
+                        'variant_id' => $item['variant_id'],
+                        'price' => $item['price'],
+                        'b2b_price' => $item['b2b_price'] ?? null,
+                        'b2c_price' => $item['b2c_price'] ?? null,
+                        'image_src' => $item['image_src'],
+                        'product_title' => $item['product_title'] ?? null,
+                        'variant_title' => $item['variant_title'] ?? null,
+                        'product_link' => $item['product_link'] ?? null,
+                        'updated_at' => now(),
+                    ];
+                    // Every SKU starts this run at 0. Writing that 0 is what wiped a real
+                    // OV L30 when the order pages or the SKU match never arrived.
+                    $sold = (int) ($item['quantity'] ?? 0);
+                    if ($sold > 0) {
+                        $attributes['quantity'] = $sold;
+                    }
+
                     ShopifySku::updateOrCreate(
                         ['sku' => $sku],
-                        [
-                            'sku' => $sku,
-                            'quantity' => $item['quantity'],
-                            'variant_id' => $item['variant_id'],
-                            'price' => $item['price'],
-                            'b2b_price' => $item['b2b_price'] ?? null,
-                            'b2c_price' => $item['b2c_price'] ?? null,
-                            'image_src' => $item['image_src'],
-                            'product_title' => $item['product_title'] ?? null,
-                            'variant_title' => $item['variant_title'] ?? null,
-                            'product_link' => $item['product_link'] ?? null,
-                            'updated_at' => now()
-                        ]
+                        $attributes
                     );
                     $updateCount++;
                 }

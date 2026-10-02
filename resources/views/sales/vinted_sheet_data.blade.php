@@ -25,13 +25,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Vinted Sales Data',
-        'sub_title' => 'Upload Vinted sales export (TSV/Excel). Margin ' . number_format($vintedPercentage ?? 87, 0) . '%.',
+        'sub_title' => 'Upload Vinted sales export (TSV/Excel). Margin ' . number_format($vintedPercentage ?? 95, 0) . '%.',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Vinted Sales Data — Margin {{ number_format($vintedPercentage ?? 87, 0) }}%</h4>
+                <h4>Vinted Sales Data — Margin {{ number_format($vintedPercentage ?? 95, 0) }}%</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <a href="{{ route('vinted.pricing') }}" class="btn btn-sm btn-outline-primary">
                         <i class="fa fa-tags"></i> Analytics / Pricing

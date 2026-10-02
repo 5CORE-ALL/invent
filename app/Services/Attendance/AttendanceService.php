@@ -404,7 +404,10 @@ class AttendanceService
             ->where(function ($q) {
                 $domain = config('attendance.internal_email_domain', '@5core.com');
                 $q->where('email', 'like', '%'.$domain)
-                    ->orWhere('show_in_salary', true);
+                    ->orWhere('show_in_salary', true)
+                    ->orWhereRaw('LOWER(org_level) = ?', ['director'])
+                    ->orWhereRaw('LOWER(role) = ?', ['director'])
+                    ->orWhereRaw("LOWER(designation) REGEXP ?", ['(^|[^a-z])director([^a-z]|$)']);
             });
 
         if ($userIds !== null) {

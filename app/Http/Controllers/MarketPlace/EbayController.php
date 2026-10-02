@@ -2497,7 +2497,26 @@ class EbayController extends Controller
             $data = json_decode($response->getContent(), true);
             $ebayData = $data['data'] ?? [];
             // S PRC column paints Dil → NROI (then saved SPRICE only when Dil has no price).
-            $cellSpriceBySku = EbayRuleSpriceApplyService::for('ebay1')->cellSpriceMapForExport($ebayData);
+            // S GPFT / S GROI / SNROI / SNPFT use that same price, matching the tabulator cells.
+            $spriceService = EbayRuleSpriceApplyService::for('ebay1');
+            $cellSpriceBySku = $spriceService->cellSpriceMapForExport($ebayData);
+            $channelAdsPct = $spriceService->channelAdsPercent();
+            $paintedSprice = function (array $item) use ($cellSpriceBySku): float {
+                if (! empty($item['is_parent_summary'])) {
+                    return 0.0;
+                }
+                $sku = strtoupper(trim((string) ($item['(Child) sku'] ?? '')));
+                $price = $cellSpriceBySku[$sku] ?? null;
+                if (! ($price > 0)) {
+                    $saved = $item['SPRICE'] ?? null;
+                    $price = is_numeric($saved) ? (float) $saved : 0;
+                }
+
+                return ($price > 0) ? (float) $price : 0.0;
+            };
+            $fmtPct = function ($value): string {
+                return ($value === null || $value === '') ? '' : number_format((float) $value, 0);
+            };
 
             // Get selected columns from request
             $selectedColumns = [];
@@ -2522,32 +2541,47 @@ class EbayController extends Controller
                 'AD_Spend_L30' => ['AD Spend L30', function($item) { return number_format($item['AD_Spend_L30'] ?? 0, 2); }],
                 'AD_Sales_L30' => ['AD Sales L30', function($item) { return number_format($item['AD_Sales_L30'] ?? 0, 2); }],
                 'AD_Units_L30' => ['AD Units L30', function($item) { return $item['AD_Units_L30'] ?? 0; }],
-                'AD%' => ['AD%', function($item) { return number_format(($item['AD%'] ?? 0) * 100, 2); }],
+                // AD% is already a percent (channel Ads%). TacosL30 is still a ratio.
+                'AD%' => ['AD%', function($item) { return number_format((float) ($item['AD%'] ?? 0), 2); }],
                 'TacosL30' => ['TACOS L30', function($item) { return number_format(($item['TacosL30'] ?? 0) * 100, 2); }],
                 'T_Sale_l30' => ['Total Sales L30', function($item) { return number_format($item['T_Sale_l30'] ?? 0, 2); }],
                 'Total_pft' => ['Total Profit', function($item) { return number_format($item['Total_pft'] ?? 0, 2); }],
-                'PFT %' => ['PFT %', function($item) { return number_format($item['PFT %'] ?? 0, 0); }],
-                'ROI%' => ['ROI%', function($item) { return number_format($item['ROI%'] ?? 0, 0); }],
+                'PFT %' => ['NPFT%', function($item) { return number_format($item['PFT %'] ?? 0, 0); }],
+                'ROI%' => ['GROI%', function($item) { return number_format($item['ROI%'] ?? 0, 0); }],
                 'GPFT%' => ['GPFT%', function($item) { return number_format($item['GPFT%'] ?? 0, 0); }],
                 'views' => ['Views', function($item) { return $item['views'] ?? 0; }],
                 'nr_req' => ['NR/REQ', function($item) { return $item['nr_req'] ?? ''; }],
-                'SPRICE' => ['SPRICE', function ($item) use ($cellSpriceBySku) {
-                    if (! empty($item['is_parent_summary'])) {
-                        return '';
-                    }
-                    $sku = strtoupper(trim((string) ($item['(Child) sku'] ?? '')));
-                    $price = $cellSpriceBySku[$sku] ?? null;
-                    if (! ($price > 0)) {
-                        $saved = $item['SPRICE'] ?? null;
-                        $price = is_numeric($saved) ? (float) $saved : 0;
-                    }
+                'SPRICE' => ['SPRICE', function ($item) use ($paintedSprice) {
+                    $price = $paintedSprice($item);
 
-                    return ($price > 0) ? number_format((float) $price, 2) : '';
+                    return ($price > 0) ? number_format($price, 2) : '';
                 }],
-                'SPFT' => ['SPFT', function($item) { return $item['SPFT'] ? number_format($item['SPFT'], 0) : ''; }],
-                'SROI' => ['SROI', function($item) { return $item['SROI'] ? number_format($item['SROI'], 0) : ''; }],
-                'SGROI' => ['SGROI', function($item) { return $item['SGROI'] ? number_format($item['SGROI'], 0) : ''; }],
-                'SGPFT' => ['SGPFT', function($item) { return $item['SGPFT'] ? number_format($item['SGPFT'], 0) : ''; }],
+                'NROI' => ['NROI%', function ($item) use ($spriceService, $channelAdsPct, $fmtPct) {
+                    $price = (float) ($item['eBay Price'] ?? 0);
+                    $pcts = $spriceService->paintedPercentsFromSprice($item, $price, $channelAdsPct);
+
+                    return $fmtPct($pcts['snroi']);
+                }],
+                'SPFT' => ['SNPFT%', function ($item) use ($spriceService, $channelAdsPct, $paintedSprice, $fmtPct) {
+                    $pcts = $spriceService->paintedPercentsFromSprice($item, $paintedSprice($item), $channelAdsPct);
+
+                    return $fmtPct($pcts['snpft']);
+                }],
+                'SROI' => ['SNROI%', function ($item) use ($spriceService, $channelAdsPct, $paintedSprice, $fmtPct) {
+                    $pcts = $spriceService->paintedPercentsFromSprice($item, $paintedSprice($item), $channelAdsPct);
+
+                    return $fmtPct($pcts['snroi']);
+                }],
+                'SGROI' => ['SGROI%', function ($item) use ($spriceService, $channelAdsPct, $paintedSprice, $fmtPct) {
+                    $pcts = $spriceService->paintedPercentsFromSprice($item, $paintedSprice($item), $channelAdsPct);
+
+                    return $fmtPct($pcts['sgroi']);
+                }],
+                'SGPFT' => ['SGPFT%', function ($item) use ($spriceService, $channelAdsPct, $paintedSprice, $fmtPct) {
+                    $pcts = $spriceService->paintedPercentsFromSprice($item, $paintedSprice($item), $channelAdsPct);
+
+                    return $fmtPct($pcts['sgpft']);
+                }],
                 'SCVR' => ['SCVR', function($item) { return number_format($item['SCVR'] ?? 0, 1); }],
                 'kw_spend_L30' => ['KW Spend L30', function($item) { return number_format($item['kw_spend_L30'] ?? 0, 2); }],
                 'pmt_spend_L30' => ['PMT Spend L30', function($item) { return number_format($item['pmt_spend_L30'] ?? 0, 2); }],
