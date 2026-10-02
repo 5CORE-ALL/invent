@@ -4692,9 +4692,15 @@ class AliExpressApiService
             }
         }
 
+        $message = (string) ($last['message'] ?? 'AliExpress product edit failed.');
+        $singleMessage = trim((string) ($single['message'] ?? ''));
+        if ($singleMessage !== '' && $singleMessage !== $message) {
+            $message = 'Single-field edit: '.$singleMessage.' | Full edit: '.$message;
+        }
+
         return [
             'success' => false,
-            'message' => (string) ($last['message'] ?? 'AliExpress product edit failed.'),
+            'message' => $message,
             'response' => $last['response'] ?? $last,
         ];
     }
@@ -6698,6 +6704,10 @@ class AliExpressApiService
             if (! $sawWeightRequired) {
                 break;
             }
+        }
+
+        if ($singleMessage !== '' && $singleMessage !== $lastMessage) {
+            $lastMessage = 'Single-field edit: '.$singleMessage.' | Full edit: '.$lastMessage;
         }
 
         return ['success' => false, 'message' => $lastMessage];

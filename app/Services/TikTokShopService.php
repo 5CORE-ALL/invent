@@ -2295,18 +2295,24 @@ class TikTokShopService
      *
      * @return array{id: string, name: string, multiple: bool}|null
      */
+    protected function highlightsCacheKey(string $categoryId): string
+    {
+        return $this->cachePrefix.'_highlights_attr_v2_'.$categoryId;
+    }
+
     protected function tiktokHighlightsCategoryAttribute(string $categoryId): ?array
     {
-        $cacheKey = $this->cachePrefix.'_highlights_attr_'.$categoryId;
+        $cacheKey = $this->highlightsCacheKey($categoryId);
         $cached = Cache::get($cacheKey);
         if (is_array($cached)) {
             return ($cached['id'] ?? '') !== '' ? $cached : null;
         }
 
         $list = null;
-        foreach (['202309', '202509'] as $version) {
+        // All-region (global) shops reject V1 category ids with 12052217, so try V2 first.
+        foreach ([['locale' => 'en-US', 'category_version' => 'v2'], ['locale' => 'en-US']] as $query) {
             try {
-                $data = $this->tiktokOpenApi('GET', "/product/{$version}/categories/{$categoryId}/attributes", ['locale' => 'en-US']);
+                $data = $this->tiktokOpenApi('GET', "/product/202309/categories/{$categoryId}/attributes", $query);
                 $list = $data['attributes'] ?? $data['category_attributes'] ?? null;
                 if (is_array($list)) {
                     break;
@@ -2314,7 +2320,7 @@ class TikTokShopService
             } catch (\Throwable $e) {
                 Log::warning('TikTok highlights: category attributes fetch failed', [
                     'category_id' => $categoryId,
-                    'version' => $version,
+                    'query' => $query,
                     'error' => $e->getMessage(),
                 ]);
             }
@@ -5246,11 +5252,22 @@ class TikTokShopService
         }
 
         $lastError = null;
+        $refreshed = false;
         foreach ($this->productDetailApiVersions() as $version) {
             try {
-                $response = $this->client->Product->useVersion($version)->getProduct($productId, [
-                    'return_under_review_version' => false,
-                ]);
+                try {
+                    $response = $this->client->Product->useVersion($version)->getProduct($productId, [
+                        'return_under_review_version' => false,
+                    ]);
+                } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+                    if ($refreshed || ! $this->isExpiredAccessTokenMessage(0, $e->getMessage()) || ! $this->refreshAccessToken()) {
+                        throw $e;
+                    }
+                    $refreshed = true;
+                    $response = $this->client->Product->useVersion($version)->getProduct($productId, [
+                        'return_under_review_version' => false,
+                    ]);
+                }
             } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
                 if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
                     $lastError = $e;

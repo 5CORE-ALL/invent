@@ -2611,6 +2611,26 @@ trait MiraklMcmBulletImport
      * @param  array<string, mixed>  $master
      * @param  array<string, mixed>  $context
      */
+    /**
+     * Free-text "Type" fields want a short noun phrase ("Dynamic Microphone"), not the full title.
+     */
+    protected function miraklMcmShortProductType(string $title, string $brand = ''): string
+    {
+        $t = trim($title);
+        if ($brand !== '') {
+            $t = trim((string) preg_replace('/^'.preg_quote($brand, '/').'\b\s*/i', '', $t));
+        }
+        $t = trim((string) preg_replace('/^5\s*core\b\s*/i', '', $t));
+        $t = trim((string) preg_split('/\s*(?:,|\||\s-\s|\bw\/|\bw\b|\bwith\b|\bfor\b)\s*/i', $t)[0]);
+        $nouns = 'microphones?|mics?|speakers?|stands?|cables?|mixers?|amplifiers?|amps?|headphones?|headsets?|lights?|'
+            .'monitors?|subwoofers?|receivers?|cases?|bags?|mounts?|adapters?|chargers?|batter(?:y|ies)|tripods?|holders?|systems?';
+        if (preg_match('/^((?:\S+\s+){0,2}?(?:'.$nouns.'))\b/i', $t, $m) === 1) {
+            return mb_substr(trim($m[1]), 0, 60);
+        }
+
+        return mb_substr(implode(' ', array_slice(preg_split('/\s+/', $t) ?: [], 0, 3)), 0, 60);
+    }
+
     protected function miraklMcmGuessHaystack(array $master, array $context): string
     {
         $bullets = (array) (! empty($context['bullets']) ? $context['bullets'] : ($master['bullets'] ?? []));
@@ -2717,7 +2737,14 @@ trait MiraklMcmBulletImport
             case 'size':
                 return 'One Size';
             case 'list_guess':
-                return $str($master['product_type'] ?? null) ?: $title;
+                if ($str($master['product_type'] ?? null) !== '') {
+                    return $str($master['product_type']);
+                }
+                if (str_starts_with(strtoupper((string) ($attr['type'] ?? '')), 'LIST')) {
+                    return $title;
+                }
+
+                return $this->miraklMcmShortProductType($title, $str($master['brand'] ?? null));
         }
 
         return '';
@@ -2788,17 +2815,19 @@ trait MiraklMcmBulletImport
         $best = '';
         $bestLen = 0;
         foreach ($values as $code => $label) {
-            $l = $norm($label);
-            if (strlen($l) >= 3 && strlen($l) > $bestLen && str_contains($text, $l)) {
-                $best = (string) $code;
-                $bestLen = strlen($l);
+            // "Dynamic microphones" must match a title that says "Dynamic Microphone".
+            foreach (array_unique([$norm($label), (string) preg_replace('/s$/', '', $norm($label))]) as $l) {
+                if (strlen($l) >= 3 && strlen($l) > $bestLen && str_contains($text, $l)) {
+                    $best = (string) $code;
+                    $bestLen = strlen($l);
+                }
             }
         }
         if ($best !== '') {
             return $best;
         }
 
-        if ($semantic === 'size') {
+        if ($semantic === 'size' || $semantic === 'list_guess') {
             foreach (['onesize', 'na', 'notapplicable', 'standard', 'universal', 'none'] as $generic) {
                 foreach ($values as $code => $label) {
                     if ($norm($label) === $generic || $norm((string) $code) === $generic) {

@@ -8,14 +8,15 @@ use Illuminate\Console\Command;
 /**
  * Dumps what a marketplace actually expects for one SKU (live product payload, category
  * schema / attributes, required Mirakl attributes with their value lists) so listing-update
- * failures can be fixed against real data. Read-only: nothing is written to the marketplace.
+ * failures can be fixed against real data. Read-only unless --probe is passed.
  */
 class ListingDiagnose extends Command
 {
     protected $signature = 'listing:diagnose
         {channel : aliexpress | tiktok | tiktok2 | bestbuy | purchasingpower | wayfair}
         {sku : Our SKU}
-        {--full : Print complete JSON instead of trimmed output}';
+        {--full : Print complete JSON instead of trimmed output}
+        {--probe : AliExpress only: re-send the current subject/detail/images/weight unchanged and print the raw replies}';
 
     protected $description = 'Read-only dump of marketplace listing data/schema for one SKU (for debugging Push Updates)';
 
@@ -76,6 +77,23 @@ class ListingDiagnose extends Command
             }
         }
 
+        if ($this->option('probe')) {
+            // Re-sends the listing's own current values, so nothing changes on AliExpress; only the raw replies are shown.
+            foreach ([
+                'subject' => (string) ($data['subject'] ?? ''),
+                'detail' => (string) ($data['detail'] ?? ''),
+                'imageURLs' => (string) ($data['image_u_r_ls'] ?? ''),
+                'grossWeight' => (string) ($data['gross_weight'] ?? ''),
+            ] as $field => $value) {
+                if ($value === '') {
+                    $this->warn("probe {$field}: no current value, skipped");
+
+                    continue;
+                }
+                $this->section("probe editsimpleproductfiled {$field} (same value)", $this->invoke($svc, 'editSimpleProductField', $productId, $field, $value));
+            }
+        }
+
         return self::SUCCESS;
     }
 
@@ -106,11 +124,14 @@ class ListingDiagnose extends Command
             return self::SUCCESS;
         }
 
-        foreach (['202309', '202407', '202509'] as $version) {
+        $this->section('product_attributes on the listing', $data['product_attributes'] ?? []);
+        $this->section('search_terms on the listing', $data['search_terms'] ?? null);
+
+        foreach (['v2' => ['locale' => 'en-US', 'category_version' => 'v2'], 'v1' => ['locale' => 'en-US']] as $label => $query) {
             try {
-                $attrs = $this->invoke($svc, 'tiktokOpenApi', 'GET', "/product/{$version}/categories/{$categoryId}/attributes", ['locale' => 'en-US']);
+                $attrs = $this->invoke($svc, 'tiktokOpenApi', 'GET', "/product/202309/categories/{$categoryId}/attributes", $query);
                 $list = $attrs['attributes'] ?? $attrs['category_attributes'] ?? [];
-                $this->info("Category attributes ({$version}): ".count((array) $list));
+                $this->info("Category attributes ({$label}): ".count((array) $list));
                 $rows = [];
                 foreach ((array) $list as $a) {
                     if (is_array($a)) {
@@ -125,19 +146,23 @@ class ListingDiagnose extends Command
                     }
                 }
                 $this->table(['id', 'name', 'type', 'required', 'multiple', 'custom'], $rows);
+                if ($list !== []) {
+                    break;
+                }
             } catch (\Throwable $e) {
-                $this->warn("Category attributes ({$version}) failed: ".$e->getMessage());
+                $this->warn("Category attributes ({$label}) failed: ".$e->getMessage());
             }
         }
 
-        foreach (['202309', '202509'] as $version) {
-            try {
-                $rules = $this->invoke($svc, 'tiktokOpenApi', 'GET', "/product/{$version}/categories/{$categoryId}/rules", ['locale' => 'en-US']);
-                $this->section("Category rules ({$version})", $rules);
-            } catch (\Throwable $e) {
-                $this->warn("Category rules ({$version}) failed: ".$e->getMessage());
-            }
+        try {
+            $rules = $this->invoke($svc, 'tiktokOpenApi', 'GET', "/product/202309/categories/{$categoryId}/rules", ['locale' => 'en-US', 'category_version' => 'v2']);
+            $this->section('Category rules (v2)', $rules);
+        } catch (\Throwable $e) {
+            $this->warn('Category rules (v2) failed: '.$e->getMessage());
         }
+
+        \Illuminate\Support\Facades\Cache::forget($this->invoke($svc, 'highlightsCacheKey', $categoryId));
+        $this->section('Highlights attribute the push will use', $this->invoke($svc, 'tiktokHighlightsCategoryAttribute', $categoryId) ?? '(none found)');
 
         return self::SUCCESS;
     }
