@@ -18,6 +18,10 @@
             <button class="btn btn-sm btn-success d-none" id="push-selected-btn">
                 <i class="fas fa-cloud-upload-alt me-1"></i>Push Selected (<span id="selected-count">0</span>)
             </button>
+            <button class="btn btn-sm btn-danger" id="force-push-btn" type="button" disabled
+                    title="Push S Bid where C Bid does not match. A pending gap is the yellow dot. The red alert is a failed push.">
+                <i class="fas fa-exclamation-circle me-1"></i>Force Push (<span id="force-push-count">0</span>)
+            </button>
             <button class="btn btn-sm btn-info text-white d-none" id="enroll-selected-btn" data-bs-toggle="modal" data-bs-target="#enrollModal">
                 <i class="fas fa-plus-circle me-1"></i>Enroll in Campaign (<span id="enroll-count">0</span>)
             </button>
@@ -195,6 +199,28 @@
     .badge-run  { background: #198754; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
     .badge-paus { background: #ffc107; color:#000; padding:2px 7px; border-radius:4px; font-size:11px; }
     .badge-end  { background: #dc3545; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
+    .eca-sync-cell { display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+    .eca-sync-dot {
+        width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+    }
+    .eca-sync-dot.is-green { background: #16a34a; }
+    .eca-sync-dot.is-yellow { background: #f59e0b; }
+    .eca-sync-dot.is-red { background: #dc2626; }
+    .eca-push-alert {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #dc2626;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: help;
+    }
 </style>
 @endsection
 
@@ -501,11 +527,31 @@ $(document).ready(function () {
             {
                 title: 'C Bid', field: 'bid_percentage', width: 110, hozAlign: 'center',
                 sorter: 'number',
+                headerTooltip: 'Live eBay bid vs S Bid. Green = they match. Yellow = still waiting to push. Red = the last push failed.',
                 formatter: function(cell) {
+                    const row = cell.getRow().getData();
                     const v = parseFloat(cell.getValue());
-                    if (isNaN(v)) return '—';
-                    const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
-                    return `<span style="color:${color}; font-weight:600;">${v.toFixed(1)}%</span>`;
+                    let valueHtml = '—';
+                    if (!isNaN(v)) {
+                        const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
+                        valueHtml = '<span style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
+                    }
+                    const sync = ebayBidSync(row);
+                    if (!sync) return valueHtml;
+                    return '<span class="eca-sync-cell"><span class="eca-sync-dot is-' + sync.color + '" title="' + ebayEsc(sync.tip) + '"></span>' + valueHtml + '</span>';
+                }
+            },
+            {
+                title: 'Alert',
+                field: '_bid_alert',
+                width: 56,
+                hozAlign: 'center',
+                headerSort: false,
+                headerTooltip: 'Shown when C Bid does not match S Bid. Hover the mark for the reason. A failed push includes the eBay error.',
+                formatter: function(cell) {
+                    const tip = ebayBidAlertText(cell.getRow().getData());
+                    if (!tip) return '';
+                    return '<span class="eca-push-alert" title="' + ebayEsc(tip) + '" aria-label="' + ebayEsc(tip) + '">!</span>';
                 }
             },
             {
@@ -619,6 +665,174 @@ $(document).ready(function () {
     loadData();
 });
 
+function ebayEsc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Last failed S Bid push, keyed by listing id. A later match clears it. */
+const ebayPushFailed = {};
+
+function ebayRound2(n) {
+    return Math.round(Number(n) * 100) / 100;
+}
+
+/** Running promoted listing with Dil vs SBid on and a real S Bid. Otherwise null. */
+function ebaySbidResult(row) {
+    if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
+    if (String(row.funding_strategy || '') !== 'COST_PER_SALE') return null;
+    if (campaignStatusOf(row) !== 'RUNNING') return null;
+    if (typeof campaignSbid !== 'function') return null;
+    const res = campaignSbid(row);
+    if (!res || res.skip || res.off || !(res.bid > 0)) return null;
+    return res;
+}
+
+/** True when this row is not a push target, or C Bid already matches S Bid. */
+function ebayBidMatches(row) {
+    const res = ebaySbidResult(row);
+    if (!res) return true;
+    const live = parseFloat(row.bid_percentage);
+    if (!isFinite(live) || live <= 0) return false;
+    return Math.abs(ebayRound2(live) - ebayRound2(res.bid)) < 0.009;
+}
+
+function ebayBidSync(row) {
+    const res = ebaySbidResult(row);
+    if (!res) return null;
+    const id = String((row && row.listing_id) || '');
+    const want = Number(res.bid).toFixed(1);
+    const live = parseFloat(row.bid_percentage);
+    const liveText = (isFinite(live) && live > 0) ? live.toFixed(1) + '%' : 'empty';
+    if (ebayBidMatches(row)) {
+        if (id) delete ebayPushFailed[id];
+        return { color: 'green', reason: 'already_matched', tip: 'Updated — C Bid matches S Bid ' + want + '%' };
+    }
+    const fail = id ? ebayPushFailed[id] : '';
+    if (fail) {
+        return {
+            color: 'red',
+            reason: 'push_failed',
+            tip: 'S Bid push failed — C Bid ' + liveText + ', S Bid ' + want + '%. ' + fail
+        };
+    }
+    return {
+        color: 'yellow',
+        reason: 'sbid_differs',
+        tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText
+    };
+}
+
+function ebayBidAlertText(row) {
+    const sync = ebayBidSync(row);
+    if (!sync || sync.color === 'green') return '';
+    return 'S Bid: ' + sync.tip;
+}
+
+function ebayForcePushTargets() {
+    const all = (typeof table !== 'undefined' && table) ? (table.getData() || []) : [];
+    if (selectedIds.size > 0) {
+        return all.filter(function (r) {
+            return r && selectedIds.has(String(r.listing_id)) && !ebayBidMatches(r);
+        });
+    }
+    return all.filter(function (r) { return !ebayBidMatches(r); });
+}
+
+let ebayForcePushBusy = false;
+
+function ebayPaintForcePush() {
+    const btn = document.getElementById('force-push-btn');
+    const countEl = document.getElementById('force-push-count');
+    if (!btn || !countEl || ebayForcePushBusy) return;
+    const n = ebayForcePushTargets().length;
+    const ruleOn = typeof dilSbidEnabled !== 'undefined' && !!dilSbidEnabled;
+    countEl.textContent = String(n);
+    btn.disabled = !ruleOn || n === 0;
+    btn.title = ruleOn
+        ? 'Push S Bid for ' + n + ' listing(s) still pending or failed. Checked rows are used when any row is selected.'
+        : 'Dil vs SBid is off. Turn it on to force push.';
+}
+
+function ebayForcePush(listingIds) {
+    const ids = Array.from(new Set((listingIds || ebayForcePushTargets().map(function (r) { return r.listing_id; }))
+        .map(String)
+        .filter(function (id) { return id && id !== 'undefined' && id !== 'null'; })));
+    if (!ids.length) {
+        alert(selectedIds.size > 0
+            ? 'Selected listings already match S Bid.'
+            : 'No listings where C Bid differs from S Bid.');
+        return;
+    }
+    if (!confirm('Force push S Bid for ' + ids.length + ' listing(s) where C Bid does not match?')) return;
+
+    const btn = document.getElementById('force-push-btn');
+    const btnHtml = btn ? btn.innerHTML : '';
+    const chunkSize = 40;
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+    let success = 0, failed = 0, skipped = 0, done = 0;
+    const lines = [];
+    ebayForcePushBusy = true;
+    if (btn) btn.disabled = true;
+
+    function finish() {
+        ebayForcePushBusy = false;
+        if (btn) btn.innerHTML = btnHtml;
+        ebayPaintForcePush();
+        let msg = 'Force push finished\nPushed: ' + success + ' | Failed: ' + failed + ' | Skipped: ' + skipped;
+        if (lines.length) msg += '\n\n' + lines.slice(0, 40).join('\n');
+        alert(msg);
+        loadData();
+    }
+
+    function next(i) {
+        if (i >= chunks.length) {
+            finish();
+            return;
+        }
+        const chunk = chunks[i];
+        done += chunk.length;
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing ' + Math.min(done, ids.length) + '/' + ids.length + '…';
+        }
+        $.ajax({
+            url: '/ebay2/campaign-ads/push-selected',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+            contentType: 'application/json',
+            data: JSON.stringify({ listing_ids: chunk }),
+            timeout: 180000,
+            success: function(resp) {
+                success += Number(resp && resp.success) || 0;
+                failed += Number(resp && resp.failed) || 0;
+                skipped += Number(resp && resp.skipped) || 0;
+                (resp && resp.results || []).forEach(function (r) {
+                    if (!r) return;
+                    const id = String(r.listing_id || '');
+                    if (r.status === 'pushed') {
+                        if (id) delete ebayPushFailed[id];
+                        return;
+                    }
+                    if (r.status === 'failed' && id) {
+                        ebayPushFailed[id] = r.reason || 'Push failed';
+                        lines.push(id + ' → failed' + (r.reason ? ' (' + r.reason + ')' : ''));
+                    }
+                });
+                next(i + 1);
+            },
+            error: function(xhr) {
+                failed += chunk.length;
+                const reason = (xhr.responseJSON && xhr.responseJSON.error) || ('HTTP ' + xhr.status);
+                chunk.forEach(function (id) { ebayPushFailed[String(id)] = reason; });
+                lines.push('Chunk ' + (i + 1) + ': ' + reason);
+                next(i + 1);
+            }
+        });
+    }
+
+    next(0);
+}
+
 // ── Checkbox selection ─────────────────────────────
 function updateSelectedCount() {
     const count = selectedIds.size;
@@ -634,6 +848,7 @@ function updateSelectedCount() {
         $('#push-selected-btn').addClass('d-none');
         $('#enroll-selected-btn').addClass('d-none');
     }
+    ebayPaintForcePush();
 }
 
 // Load campaigns when enroll modal opens
@@ -763,6 +978,10 @@ document.getElementById('push-selected-btn').addEventListener('click', function(
             alert('Error: ' + (xhr.responseJSON?.error || xhr.responseText));
         }
     });
+});
+
+document.getElementById('force-push-btn').addEventListener('click', function() {
+    ebayForcePush(null);
 });
 
 function getCombinedSbid() {

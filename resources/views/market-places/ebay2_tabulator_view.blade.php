@@ -415,6 +415,20 @@
             max-width: 100%;
         }
 
+        .eca-push-alert {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #dc2626;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: help;
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay2'])
     </style>
@@ -1336,6 +1350,33 @@
             }
             if (typeof campaignSbid === 'function') return campaignSbid(row);
             return { bid: 0, color: '#6c757d', skip: true, title: 'No Dil vs SBid' };
+        }
+
+        function ebay2TabRound2(n) {
+            return Math.round(Number(n) * 100) / 100;
+        }
+
+        /** Running COST_PER_SALE row with Dil vs SBid on and a real S Bid. Otherwise null. */
+        function ebay2TabSbidResult(row) {
+            if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
+            if (typeof isEbay2TabulatorParentRow === 'function' && isEbay2TabulatorParentRow(row)) return null;
+            if (String(row.ca_funding_strategy || '') !== 'COST_PER_SALE') return null;
+            if (String(row.ca_campaign_status || '').trim().toUpperCase() !== 'RUNNING') return null;
+            const res = getCombinedSbid(row);
+            if (!res || res.skip || res.off || !(res.bid > 0)) return null;
+            return res;
+        }
+
+        /** Same alert as /ebay2/campaign-ads: shown when C Bid does not match S Bid. */
+        function ebay2TabBidAlertText(row) {
+            const res = ebay2TabSbidResult(row);
+            if (!res) return '';
+            const live = parseFloat(row.ca_bid_percentage);
+            const liveOk = isFinite(live) && live > 0;
+            if (liveOk && Math.abs(ebay2TabRound2(live) - ebay2TabRound2(res.bid)) < 0.009) return '';
+            const want = Number(res.bid).toFixed(1);
+            const liveText = liveOk ? live.toFixed(1) + '%' : 'empty';
+            return 'S Bid: Pending — S Bid ' + want + '% does not match C Bid ' + liveText;
         }
 
         // ── Sku Link LMP (mirrors /ebay-tabulator-view; shared sku.link.lmp.* routes) ──
@@ -3900,6 +3941,20 @@
                         }
                     },
                     {
+                        title: "Alert",
+                        field: "_bid_alert",
+                        width: 56,
+                        hozAlign: "center",
+                        headerSort: false,
+                        headerTooltip: "Shown when C Bid does not match S Bid. Hover the mark for both percents. A running promoted listing only.",
+                        formatter: function(cell) {
+                            const tip = ebay2TabBidAlertText(cell.getRow().getData());
+                            if (!tip) return '';
+                            const safe = (typeof escapeHtmlAttr === 'function') ? escapeHtmlAttr(tip) : tip;
+                            return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
+                        }
+                    },
+                    {
                         title: "S BID",
                         field: "s_bid",
                         hozAlign: "center",
@@ -4664,7 +4719,7 @@
                 const blob = fl + ' ' + tl;
 
                 if (
-                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|s_bid|ca_promote_with_ad)$/i.test(f) ||
+                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|s_bid|ca_promote_with_ad|_bid_alert)$/i.test(f) ||
                     /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
