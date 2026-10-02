@@ -134,6 +134,28 @@ class AlibabaApiService extends AliExpressApiService
     public function getProductInfo(string $productId): array
     {
         $productId = trim($productId);
+        $this->useIcbuRest();
+        $listed = $this->callRestGateway('/icbu/product/get', [
+            'product_get_request' => [
+                'productId' => $productId,
+                'language' => 'ENGLISH',
+            ],
+        ]);
+        if (! empty($listed['success'])) {
+            $payload = is_array($listed['data'] ?? null) ? $listed['data'] : [];
+            $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
+            if (isset($result['product']) && is_array($result['product'])) {
+                $result = $result['product'];
+            }
+
+            return [
+                'success' => true,
+                'status' => $listed['status'] ?? 200,
+                'data' => is_array($result) ? $result : [],
+                'request_id' => $listed['request_id'] ?? null,
+            ];
+        }
+
         $params = [
             'product_id' => $productId,
             'language' => 'ENGLISH',
@@ -886,14 +908,14 @@ class AlibabaApiService extends AliExpressApiService
         $rows = [];
 
         foreach ($this->icbuSkuNodes($info) as $node) {
-            $sku = trim((string) ($node['sku_code'] ?? $node['sku'] ?? $node['cargo_number'] ?? ''));
+            $sku = trim((string) ($node['sku_code'] ?? $node['skuCode'] ?? $node['sku'] ?? $node['cargo_number'] ?? ''));
             if ($sku === '' || strcasecmp($sku, $productId) === 0) {
                 continue;
             }
             $rows[] = [
                 'product_id' => $productId,
                 'sku' => $sku,
-                'price' => $this->icbuPrice($node),
+                'price' => $this->listedSkuPrice($node),
                 'stock' => $this->icbuStock($node),
                 'product_name' => $productName,
                 'status' => $status,
@@ -1189,6 +1211,7 @@ class AlibabaApiService extends AliExpressApiService
 
         $sku = '';
         $skuCodes = [];
+        $priceBySku = [];
         $price = 0.0;
         $soh = null;
         if (is_array($skuBag)) {
@@ -1203,9 +1226,9 @@ class AlibabaApiService extends AliExpressApiService
                 if ($sku === '' && $code !== '') {
                     $sku = $code;
                 }
-                $nodePrice = $this->firstBulkPrice($node['bulkDiscountPrices'] ?? $node['bulk_discount_prices'] ?? null);
-                if ($nodePrice <= 0) {
-                    $nodePrice = $this->icbuPrice($node);
+                $nodePrice = $this->listedSkuPrice($node);
+                if ($code !== '' && $nodePrice > 0) {
+                    $priceBySku[strtoupper($code)] = $nodePrice;
                 }
                 if ($price <= 0 && $nodePrice > 0) {
                     $price = $nodePrice;
@@ -1247,6 +1270,10 @@ class AlibabaApiService extends AliExpressApiService
             }
             if ($labeled !== null) {
                 $sku = $labeled;
+                $labeledPrice = $priceBySku[strtoupper($labeled)] ?? 0.0;
+                if ($labeledPrice > 0) {
+                    $price = $labeledPrice;
+                }
             } elseif ($sku !== '' && preg_match('/\b\d+\s*pcs?\b/i', $sku) !== 1) {
                 $sku = trim($sku.' '.$match[1].'PCS');
             }
@@ -1275,24 +1302,56 @@ class AlibabaApiService extends AliExpressApiService
         ];
     }
 
+    /**
+     * Unit price shown on the Alibaba listing.
+     * Ladder rows are often cheapest-first; the page lists the price at the smallest order quantity.
+     */
+    protected function listedSkuPrice(array $node): float
+    {
+        $fromTiers = $this->firstBulkPrice($node['bulkDiscountPrices'] ?? $node['bulk_discount_prices'] ?? null);
+        if ($fromTiers > 0) {
+            return $fromTiers;
+        }
+
+        return $this->icbuPrice($node);
+    }
+
     protected function firstBulkPrice(mixed $discounts): float
     {
         if (! is_array($discounts)) {
             return 0.0;
         }
-        if (isset($discounts['price'])) {
+        if (isset($discounts['price']) && ! array_is_list($discounts)) {
             return $this->icbuMoney($discounts['price']);
         }
-        foreach ($discounts as $row) {
-            if (is_array($row)) {
-                $amount = $this->icbuMoney($row['price'] ?? null);
-                if ($amount > 0) {
-                    return $amount;
-                }
-            }
+        if (isset($discounts['bulk_discount_price']) && is_array($discounts['bulk_discount_price'])) {
+            $discounts = $discounts['bulk_discount_price'];
         }
 
-        return 0.0;
+        $rows = [];
+        foreach ($discounts as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $amount = $this->icbuMoney($row['price'] ?? null);
+            if ($amount <= 0) {
+                continue;
+            }
+            $qty = $row['startQuantity'] ?? $row['start_quantity'] ?? -1;
+            $rows[] = [
+                'qty' => is_numeric($qty) ? (int) $qty : -1,
+                'price' => $amount,
+            ];
+        }
+        if ($rows === []) {
+            return 0.0;
+        }
+
+        $atMoq = array_values(array_filter($rows, static fn (array $row): bool => $row['qty'] >= 1));
+        $pool = $atMoq !== [] ? $atMoq : $rows;
+        usort($pool, static fn (array $a, array $b): int => $a['qty'] <=> $b['qty']);
+
+        return $pool[0]['price'];
     }
 
     protected function useIcbuRest(): void

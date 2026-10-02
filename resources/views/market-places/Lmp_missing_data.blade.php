@@ -67,6 +67,11 @@
         }
         .lmp-nr-dot:hover { transform: scale(1.25); }
         .lmp-nr-dot:disabled { cursor: wait; opacity: 0.6; }
+        .lmp-nr-dot-locked,
+        .lmp-nr-dot-locked:hover {
+            cursor: default;
+            transform: none;
+        }
     </style>
 @endsection
 
@@ -135,6 +140,8 @@
         }, 0);
     }
 
+    const canToggleNr = @json(strtolower(trim((string) (auth()->user()->email ?? ''))) === 'president@5core.com');
+
     $(document).ready(function() {
         const table = new Tabulator('#lmp-missing-table', {
             ajaxURL: "{{ route('lmp.missing.data') }}",
@@ -186,14 +193,22 @@
                     width: 70,
                     hozAlign: 'center',
                     headerSort: false,
-                    headerTooltip: 'Green = counted in LMP M. Click to mark red (NR) and leave this channel out of the total.',
+                    headerTooltip: canToggleNr
+                        ? 'Green = counted in LMP M. Click to mark red (NR) and leave this channel out of the total.'
+                        : 'Green = counted in LMP M. Red = NR, left out of the total. Only president@5core.com can change this.',
                     formatter: function(cell) {
                         const on = !!cell.getValue();
                         const color = on ? '#dc3545' : '#22c55e';
-                        const tip = on ? 'NR — not counted in LMP M. Click to count it again.' : 'Counted in LMP M. Click to mark NR.';
+                        const tip = canToggleNr
+                            ? (on ? 'NR — not counted in LMP M. Click to count it again.' : 'Counted in LMP M. Click to mark NR.')
+                            : (on ? 'NR — not counted in LMP M.' : 'Counted in LMP M.');
+                        if (!canToggleNr) {
+                            return `<span class="lmp-nr-dot lmp-nr-dot-locked" style="background-color:${color};" title="${tip}" aria-label="${tip}"></span>`;
+                        }
                         return `<button type="button" class="lmp-nr-dot" style="background-color:${color};" title="${tip}" aria-label="${tip}"></button>`;
                     },
                     cellClick: function(e, cell) {
+                        if (!canToggleNr) return;
                         if (!e.target.closest('.lmp-nr-dot')) return;
                         const row = cell.getRow();
                         const data = row.getData();

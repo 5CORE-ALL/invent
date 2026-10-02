@@ -751,15 +751,16 @@ class AlibabaSyncController extends Controller
                 === ShopifySku::normalizeSkuForShopifyLookup($sku);
         }) ?? ($rows[0] ?? null);
 
-        $metric->update([
+        $pulledPrice = is_numeric($matched['price'] ?? null) ? (float) $matched['price'] : 0.0;
+        $metric->update(array_filter([
             'product_name' => trim((string) (
                 $aeData['subject']
                 ?? $aeData['product_name']
                 ?? $metric->product_name
                 ?? ''
             )) ?: $metric->product_name,
-            'price' => $matched['price'] ?? $metric->price,
-        ]);
+            'price' => $pulledPrice > 0 ? round($pulledPrice, 2) : null,
+        ], static fn ($value) => $value !== null));
 
         return response()->json([
             'success' => true,

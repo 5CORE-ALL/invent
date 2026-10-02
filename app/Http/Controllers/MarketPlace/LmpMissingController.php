@@ -54,9 +54,17 @@ class LmpMissingController extends Controller
 
     /**
      * Red NR leaves that channel out of the LMP M. total.
+     * Only president@5core.com can change it.
      */
     public function updateNr(Request $request)
     {
+        if (! $this->canToggleNr()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only president@5core.com can change NR.',
+            ], 403);
+        }
+
         $channel = (string) $request->input('channel', '');
         if (LmpMissingChannelCounts::resolveKey($channel) === null) {
             return response()->json(['success' => false, 'message' => 'Unknown channel'], 422);
@@ -70,5 +78,10 @@ class LmpMissingController extends Controller
             'nr' => $nr,
             'total_lmp_missing' => LmpMissingChannelCounts::totalMissing(true),
         ]);
+    }
+
+    private function canToggleNr(): bool
+    {
+        return strtolower(trim((string) (auth()->user()->email ?? ''))) === 'president@5core.com';
     }
 }
