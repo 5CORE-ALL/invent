@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.4.6';
+const AGENT_VERSION = '1.4.8';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 let lastUpdatePayload = null;
@@ -100,6 +100,40 @@ function enqueueApi(fn) {
     const run = apiQueue.then(() => fn()).catch((e) => { throw e; });
     apiQueue = run.catch(() => {});
     return run;
+}
+
+// Clock in / out, break and resume must never wait behind queued heartbeats or a slow
+// screenshot upload (that is how Clock Out and Take a Break appeared to do nothing).
+// The server keeps max(stored, reported) totals, so overlapping a heartbeat is harmless.
+function controlApi(fn) {
+    return Promise.resolve().then(() => fn());
+}
+
+let heartbeatQueued = false;
+let screenshotInFlight = false;
+
+// Local ticker totals survive quitting / crashing the app: on restart the same session resumes
+// from max(saved, server) instead of the server total, which lags behind by any unsent time.
+const SAVED_TOTALS_KEY = 'sessionTotals';
+let lastTotalsSavedAt = 0;
+
+function saveSessionTotals(force = false) {
+    if (!lastSessionMeta?.id) return;
+    const now = Date.now();
+    if (!force && now - lastTotalsSavedAt < 10000) return;
+    lastTotalsSavedAt = now;
+    store.set(SAVED_TOTALS_KEY, {
+        session_id: lastSessionMeta.id,
+        active: Math.round(localStats.active),
+        idle: Math.round(localStats.idle),
+        break: Math.round(localStats.break),
+        saved_at: now,
+    });
+}
+
+function savedTotalsFor(sessionId) {
+    const saved = store.get(SAVED_TOTALS_KEY);
+    return saved && sessionId && saved.session_id === sessionId ? saved : null;
 }
 
 function jsonApi(timeoutMs = 15000) {
@@ -337,7 +371,9 @@ function applyLiveWatch(liveWatch) {
     if (liveWatch.quality) {
         config.live_quality = liveWatch.quality;
     }
-    const requested = !!liveWatch.requested;
+    // Monitoring only runs on the clock: never stream (or capture) while there is no active
+    // session on this machine, even if a viewer is asking for live video.
+    const requested = !!liveWatch.requested && isOnDuty();
     if (requested && !liveStreaming) {
         liveStreaming = true;
         sendLiveFrame().catch(() => {});
@@ -370,8 +406,16 @@ async function pollLiveCommand() {
     }
 }
 
+function isOnDuty() {
+    return !!(lastSessionMeta && lastSessionMeta.status === 'active');
+}
+
 async function sendLiveFrame() {
     if (!liveStreaming || liveStreamBusy || !store.get('token')) return;
+    if (!isOnDuty()) {
+        liveStreaming = false;
+        return;
+    }
     liveStreamBusy = true;
     try {
         const buf = await captureLiveFrame();
@@ -534,7 +578,19 @@ function tickLocalStats() {
         localStats.active += 1;
         dailyStats.active += 1;
     }
+    saveSessionTotals();
     pushStatsToUi();
+}
+
+// The session totals counted by the local one-second ticker. Sent with every heartbeat, pause and
+// clock-out; the server keeps max(stored, reported), so a failed, delayed or duplicated request can
+// neither lose nor double-count worked time and the stored total matches what the user saw.
+function sessionTotals() {
+    if (!lastSessionMeta) return {};
+    return {
+        active_total_seconds: Math.max(0, Math.round(localStats.active)),
+        idle_total_seconds: Math.max(0, Math.round(localStats.idle)),
+    };
 }
 
 function setActivityState(next) {
@@ -710,9 +766,14 @@ async function sendHeartbeat(force = false) {
     const now = Date.now();
     const elapsed = Math.max(1, Math.min(120, Math.round((now - lastHeartbeatSentAt) / 1000)));
     if (!force && elapsed < 5) return;
+    // One heartbeat waiting is enough: it reads the latest state and totals when it runs.
+    if (heartbeatQueued) return;
+    heartbeatQueued = true;
     lastHeartbeatSentAt = now;
 
     return enqueueApi(async () => {
+        heartbeatQueued = false;
+        if (!lastSessionMeta || lastSessionMeta.status !== 'active') return;
         try {
             await pollActiveWindow();
             const systemIdle = powerMonitor.getSystemIdleTime();
@@ -724,6 +785,7 @@ async function sendHeartbeat(force = false) {
                 activity_state: activityState,
                 idle_seconds: systemIdle,
                 elapsed_seconds: elapsed,
+                ...sessionTotals(),
                 window_title: lastLive.title,
                 app_name: lastLive.process,
                 process_name: lastLive.process,
@@ -734,6 +796,8 @@ async function sendHeartbeat(force = false) {
                 forceRemoteSignOut(data.message);
                 return;
             }
+            // Clocked out / paused while this heartbeat was in flight.
+            if (!lastSessionMeta || lastSessionMeta.status !== 'active') return;
 
             mergeServerStats(data);
             if (data.config) config = { ...config, ...data.config };
@@ -764,8 +828,11 @@ async function sendHeartbeat(force = false) {
 async function sendScreenshot() {
     if (!store.get('token') || !config.screenshots_enabled) return;
     if (!lastSessionMeta || lastSessionMeta.status !== 'active') return;
+    // Own lane: a slow upload must not hold up heartbeats or clock actions.
+    if (screenshotInFlight) return;
+    screenshotInFlight = true;
 
-    return enqueueApi(async () => {
+    return (async () => {
         try {
             await pollActiveWindow();
             const buf = await captureScreenshot();
@@ -780,8 +847,10 @@ async function sendScreenshot() {
             await uploadApi(120000).post('/screenshot', form, { headers: form.getHeaders() });
         } catch (e) {
             console.error('screenshot failed', e.message);
+        } finally {
+            screenshotInFlight = false;
         }
-    });
+    })();
 }
 
 async function refreshConfig() {
@@ -795,27 +864,53 @@ async function refreshConfig() {
 }
 
 function resetLocalStats(session, today) {
+    // Same session still running (window re-opened, resume, periodic refresh): the server total lags
+    // behind the local ticker by whatever is still pending, so never let it pull the timer backwards.
+    const sameSession = !!(session && lastSessionMeta && session.id && session.id === lastSessionMeta.id);
     lastSessionMeta = session;
     if (session?.started_at) {
         sessionStartedAtMs = new Date(session.started_at).getTime();
     }
-    localStats.active = session?.active_seconds || 0;
-    localStats.idle = session?.idle_seconds || 0;
-    localStats.break = session?.break_seconds || 0;
+    const keep = (local, server) => (sameSession ? Math.max(local, server) : server);
+    localStats.active = keep(localStats.active, session?.active_seconds || 0);
+    localStats.idle = keep(localStats.idle, session?.idle_seconds || 0);
+    localStats.break = keep(localStats.break, session?.break_seconds || 0);
+
+    // App was restarted mid-session: pick up the ticker totals saved before it quit.
+    const restored = { active: 0, idle: 0, break: 0 };
+    const saved = sameSession ? null : savedTotalsFor(session?.id);
+    if (saved) {
+        const wallSeconds = sessionStartedAtMs ? Math.max(0, (Date.now() - sessionStartedAtMs) / 1000) : Infinity;
+        for (const k of ['active', 'idle', 'break']) {
+            const value = Math.min(Number(saved[k]) || 0, wallSeconds);
+            if (value > localStats[k]) {
+                restored[k] = value - localStats[k];
+                localStats[k] = value;
+            }
+        }
+    } else if (!session?.id) {
+        store.delete(SAVED_TOTALS_KEY);
+    }
+
     if (today != null) {
+        const sameDay = sameSession && dailyStats.date && dailyStats.date === (today.date ?? '');
         dailyStats = {
-            active: today.active_seconds ?? 0,
-            idle: today.idle_seconds ?? 0,
-            break: today.break_seconds ?? 0,
+            active: sameDay ? Math.max(dailyStats.active, today.active_seconds ?? 0) : (today.active_seconds ?? 0) + restored.active,
+            idle: sameDay ? Math.max(dailyStats.idle, today.idle_seconds ?? 0) : (today.idle_seconds ?? 0) + restored.idle,
+            break: sameDay ? Math.max(dailyStats.break, today.break_seconds ?? 0) : (today.break_seconds ?? 0) + restored.break,
             date: today.date ?? '',
             date_label: today.date_label ?? '',
         };
     }
+    saveSessionTotals(true);
     if (!session) {
         activityState = 'off';
     } else {
         activityState = session.activity_state
             || (session.status === 'paused' ? 'break' : 'working');
+    }
+    if (!isOnDuty()) {
+        liveStreaming = false;
     }
     lastHeartbeatSentAt = Date.now();
 }
@@ -919,15 +1014,24 @@ function isClockOn() {
     return isLoggedIn() && (status === 'active' || status === 'paused');
 }
 
+// Green means "being tracked right now": only an active session that is not on break.
+// Break, clocked out and signed out are all red; idle-on-the-clock is amber.
 function statusPresence() {
     if (!isLoggedIn()) {
-        return { on: false, label: 'Logged off' };
+        return { on: false, tone: 'off', label: 'Logged off' };
     }
-    if (isClockOn()) {
-        return { on: true, label: 'Clocked in' };
+    const status = lastSessionMeta?.status;
+    if (status === 'paused' || (status === 'active' && activityState === 'break')) {
+        return { on: false, tone: 'off', label: 'On break' };
+    }
+    if (status === 'active') {
+        if (activityState === 'idle') {
+            return { on: true, tone: 'idle', label: 'Idle' };
+        }
+        return { on: true, tone: 'working', label: 'Working' };
     }
 
-    return { on: false, label: 'Off duty' };
+    return { on: false, tone: 'off', label: 'Off duty' };
 }
 
 function makeStatusCircleIcon(rgb, size) {
@@ -963,7 +1067,10 @@ function makeStatusCircleIcon(rgb, size) {
 }
 
 function statusIconColor() {
-    return statusPresence().on ? [34, 197, 94] : [239, 68, 68];
+    const tone = statusPresence().tone;
+    if (tone === 'working') return [34, 197, 94];
+    if (tone === 'idle') return [245, 158, 11];
+    return [239, 68, 68];
 }
 
 function applyLoginStatusVisuals() {
@@ -983,6 +1090,7 @@ function applyLoginStatusVisuals() {
         win.webContents.send('login-status', {
             loggedIn: isLoggedIn(),
             clockOn: presence.on,
+            tone: presence.tone,
             label: presence.label,
             user: store.get('user') || null,
         });
@@ -1025,13 +1133,14 @@ function buildTrayMenu() {
         {
             label: 'Clock Out',
             click: async () => {
-                await api().post('/clock-out');
+                await api().post('/clock-out', sessionTotals());
                 lastSessionMeta = null;
+                store.delete(SAVED_TOTALS_KEY);
                 stopTracking();
                 updateTray();
             },
         },
-        { label: 'Take a Break', click: async () => { await api().post('/pause'); activityState = 'break'; stopTracking(); updateTray(); } },
+        { label: 'Take a Break', click: async () => { await api().post('/pause', sessionTotals()); activityState = 'break'; stopTracking(); updateTray(); } },
         { label: 'Resume Work', click: async () => { await api().post('/resume'); activityState = 'working'; startTracking(); updateTray(); } },
         { type: 'separator' },
         { label: 'Open Web Portal', click: () => shell.openExternal(`${getApiBase()}/attendance`) },
@@ -1390,7 +1499,7 @@ ipcMain.handle('getState', async () => fetchSessionState());
 
 ipcMain.handle('clockIn', async (_e, { work_location } = {}) => {
     try {
-        const { data } = await enqueueApi(() =>
+        const { data } = await controlApi(() =>
             jsonApi(20000).post('/clock-in', { work_location: work_location || 'wfh' })
         );
         resetLocalStats(data.session, data.today);
@@ -1411,9 +1520,10 @@ ipcMain.handle('clockIn', async (_e, { work_location } = {}) => {
 
 ipcMain.handle('clockOut', async () => {
     try {
-        const { data } = await enqueueApi(() => jsonApi(20000).post('/clock-out'));
+        const { data } = await controlApi(() => jsonApi(20000).post('/clock-out', sessionTotals()));
         lastSessionMeta = null;
         localStats = { active: 0, idle: 0, break: 0 };
+        store.delete(SAVED_TOTALS_KEY);
         if (data?.today) {
             dailyStats = {
                 active: data.today.active_seconds ?? 0,
@@ -1435,7 +1545,7 @@ ipcMain.handle('clockOut', async () => {
 
 ipcMain.handle('pause', async () => {
     try {
-        await enqueueApi(() => jsonApi(15000).post('/pause'));
+        await controlApi(() => jsonApi(15000).post('/pause', sessionTotals()));
         activityState = 'break';
         if (lastSessionMeta) {
             lastSessionMeta = { ...lastSessionMeta, status: 'paused', activity_state: 'break' };
@@ -1452,7 +1562,7 @@ ipcMain.handle('pause', async () => {
 
 ipcMain.handle('resume', async () => {
     try {
-        const { data } = await enqueueApi(() => jsonApi(15000).post('/resume'));
+        const { data } = await controlApi(() => jsonApi(15000).post('/resume'));
         activityState = 'working';
         if (lastSessionMeta) {
             lastSessionMeta = { ...lastSessionMeta, status: 'active', activity_state: 'working' };

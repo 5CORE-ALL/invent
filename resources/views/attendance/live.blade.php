@@ -275,7 +275,14 @@
         async function start() {
             const r = await fetch(startUrl, { method: 'POST', headers: headers(true), credentials: 'same-origin' });
             if (!r.ok) {
-                setWait('Cannot start live video', 'You may not have access, or live watch is disabled.', true);
+                let message = 'You may not have access, or live watch is disabled.';
+                let title = 'Cannot start live video';
+                try {
+                    const err = await r.json();
+                    if (err && err.message) message = err.message;
+                    if (err && err.off_duty) title = 'Off duty';
+                } catch (_) {}
+                setWait(title, message, true);
                 return;
             }
             const data = await r.json();

@@ -44,7 +44,7 @@ class UserSettingsController extends Controller
         $user = $this->findUser($id);
         UserAccountStatus::apply($user, UserAccountStatus::ACTIVE);
 
-        return $this->ok($this->refreshUser($user), 'User activated. They can sign in and clock in; the timer will run as usual.');
+        return $this->ok($this->refreshUser($user), 'User activated as a fresh account: previous desktop-agent sign-ins, devices and browser sessions were revoked. They must sign in again to clock in.');
     }
 
     public function deactivate(int $id): JsonResponse

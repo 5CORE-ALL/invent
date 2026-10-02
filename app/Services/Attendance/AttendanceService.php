@@ -29,6 +29,27 @@ class AttendanceService
             ->first();
     }
 
+    /**
+     * The session that entitles a machine to capture the screen right now: the user must be
+     * clocked in (not paused), and when the session is bound to a device only that device
+     * qualifies. Off duty — or a second machine holding the same account — gets null, so no
+     * screenshot or live frame is ever taken outside working hours.
+     */
+    public function onDutySession(User $user, ?AttendanceDevice $device = null): ?AttendanceSession
+    {
+        $session = $this->activeSession($user);
+        if (! $session || $session->status !== 'active') {
+            return null;
+        }
+
+        $boundDeviceId = (int) ($session->attendance_device_id ?? 0);
+        if ($boundDeviceId > 0 && (int) ($device?->id ?? 0) !== $boundDeviceId) {
+            return null;
+        }
+
+        return $session;
+    }
+
     public function clockIn(User $user, string $workLocation = 'wfh', ?string $ip = null, ?string $userAgent = null, ?int $deviceId = null, string $clockSource = 'desktop'): AttendanceSession
     {
         if ($clockSource !== 'desktop') {
@@ -63,11 +84,49 @@ class AttendanceService
         ]);
     }
 
-    public function clockOut(User $user): ?AttendanceSession
+    /**
+     * @param  array{active_total_seconds?: int|string|null, idle_total_seconds?: int|string|null}  $reported  the agent's own session totals
+     */
+    public function clockOut(User $user, array $reported = []): ?AttendanceSession
     {
+        $this->reconcileReportedTotals($this->activeSession($user), $reported);
         $closed = $this->clockOutAll($user);
 
         return $closed[0] ?? null;
+    }
+
+    /**
+     * Agents (>= 1.4.7) send the active / idle totals their one-second ticker counted for the
+     * session. The server keeps max(stored, reported): the legacy per-heartbeat accounting lost
+     * every second in a failed or delayed heartbeat (capped at 120s each), which is why the timer
+     * jumped backwards on clock-out. max() is idempotent, so a request that timed out after the
+     * server applied it cannot double-count on retry, and the ticker cannot outrun wall-clock time.
+     *
+     * @param  array{active_total_seconds?: int|string|null, idle_total_seconds?: int|string|null}  $reported
+     */
+    public function reconcileReportedTotals(?AttendanceSession $session, array $reported): void
+    {
+        if (! $session || $session->status !== 'active') {
+            return;
+        }
+        if (! array_key_exists('active_total_seconds', $reported) && ! array_key_exists('idle_total_seconds', $reported)) {
+            return;
+        }
+
+        $wallClock = max(0, (int) $session->started_at->diffInSeconds(now())) + 300;
+        $active = min($wallClock, max(0, (int) ($reported['active_total_seconds'] ?? 0)));
+        $idle = min($wallClock, max(0, (int) ($reported['idle_total_seconds'] ?? 0)));
+
+        $updates = [];
+        if ($active > (int) $session->total_active_seconds) {
+            $updates['total_active_seconds'] = $active;
+        }
+        if ($idle > (int) $session->total_idle_seconds) {
+            $updates['total_idle_seconds'] = $idle;
+        }
+        if ($updates !== []) {
+            $session->update($updates);
+        }
     }
 
     /**
@@ -107,13 +166,17 @@ class AttendanceService
         return $closed;
     }
 
-    public function pause(User $user): ?AttendanceSession
+    /**
+     * @param  array{active_total_seconds?: int|string|null, idle_total_seconds?: int|string|null}  $reported
+     */
+    public function pause(User $user, array $reported = []): ?AttendanceSession
     {
         $session = $this->activeSession($user);
         if (! $session || $session->status === 'paused') {
             return $session;
         }
 
+        $this->reconcileReportedTotals($session, $reported);
         $session->update([
             'status' => 'paused',
             'paused_at' => now(),
@@ -205,7 +268,9 @@ class AttendanceService
 
         $interval = max(1, min(120, (int) ($payload['elapsed_seconds'] ?? config('attendance.heartbeat_interval_seconds', 15))));
 
-        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source, $activityState, $systemIdle) {
+        $reportsTotals = array_key_exists('active_total_seconds', $payload) || array_key_exists('idle_total_seconds', $payload);
+
+        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source, $activityState, $systemIdle, $reportsTotals) {
             AttendanceActivityLog::create([
                 'attendance_session_id' => $session->id,
                 'user_id' => $user->id,
@@ -224,7 +289,10 @@ class AttendanceService
             ]);
 
             $session->increment('heartbeat_count');
-            if ($isActive) {
+            if ($reportsTotals) {
+                // Newer agents: the ticker totals are authoritative (see reconcileReportedTotals).
+                $this->reconcileReportedTotals($session->fresh(), $payload);
+            } elseif ($isActive) {
                 $session->increment('total_active_seconds', $interval);
             } else {
                 $session->increment('total_idle_seconds', $interval);
