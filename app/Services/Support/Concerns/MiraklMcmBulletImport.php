@@ -2,6 +2,7 @@
 
 namespace App\Services\Support\Concerns;
 
+use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use Illuminate\Support\Facades\Cache;
@@ -2296,7 +2297,8 @@ trait MiraklMcmBulletImport
                 $value = $this->miraklMcmMasterValueForSemantic($semantic, $attr, $master, $sku, $context);
             }
             if ($value !== '') {
-                $value = $this->miraklMcmCoerceP41AttributeValue($attr, $value, $semantic);
+                $master ??= $this->miraklMcmMasterData($sku);
+                $value = $this->miraklMcmCoerceP41AttributeValue($attr, $value, $semantic, $this->miraklMcmGuessHaystack($master, $context));
             }
 
             if ($value !== '') {
@@ -2304,6 +2306,29 @@ trait MiraklMcmBulletImport
                 $filled[] = $code;
             } else {
                 $missing[] = $code;
+            }
+        }
+
+        // Values set earlier (config defaults, category fallbacks, live product) must also be a
+        // code from the operator values list, or Mirakl rejects them with error 2006.
+        foreach ($row as $code => $value) {
+            $attr = $byCode[$code] ?? null;
+            if (! is_array($attr) || trim((string) $value) === ''
+                || ! str_starts_with(strtoupper((string) ($attr['type'] ?? '')), 'LIST')) {
+                continue;
+            }
+            $master ??= $this->miraklMcmMasterData($sku);
+            $semantic = $explicit[$code] ?? $this->miraklMcmAttributeSemantic($attr);
+            $coerced = $this->miraklMcmCoerceP41AttributeValue($attr, (string) $value, $semantic, $this->miraklMcmGuessHaystack($master, $context));
+            if ($coerced === '' && $semantic !== '') {
+                $guess = $this->miraklMcmMasterValueForSemantic($semantic, $attr, $master, $sku, $context);
+                $coerced = $guess !== '' ? $this->miraklMcmCoerceP41AttributeValue($attr, $guess, $semantic, $this->miraklMcmGuessHaystack($master, $context)) : '';
+            }
+            if ($coerced !== '' && $coerced !== (string) $value) {
+                $row[$code] = $coerced;
+                $filled[] = $code.' (value list)';
+            } elseif ($coerced === '') {
+                $missing[] = $code.' (value "'.$value.'" not in list)';
             }
         }
 
@@ -2396,6 +2421,29 @@ trait MiraklMcmBulletImport
             return '';
         }
 
+        $fullCode = strtolower($code);
+        if (preg_match('/feature_?bullets?\W*\d+\W*title/', $fullCode) === 1) {
+            return 'feature_bullet_title';
+        }
+        if (preg_match('/feature_?bullets?\W*\d+\W*(desc|description|text|value|body)/', $fullCode) === 1) {
+            return 'feature_bullet_description';
+        }
+        $fullText = strtolower(preg_replace('/[-_.]+/', ' ', $code).' '.(string) ($attr['label'] ?? ''));
+        $early = [
+            'prop65' => '/prop(osition)? ?65|california/',
+            'pfas' => '/pfas|polyfluoro/',
+            'variant_flag' => '/isvariant|is this a variant|variant product/',
+            'box_count' => '/number ?of ?boxes|numberofboxes|boxes shipped|box(es)? ?count|package ?count|number of packages/',
+            'box_contents' => '/box ?contents|in the box|what.?s included|included (items|components)/',
+            'zoom_image' => '/zoom/',
+            'wireless' => '/\bwireless\b/',
+        ];
+        foreach ($early as $semantic => $pattern) {
+            if (preg_match($pattern, $fullText) === 1) {
+                return $semantic;
+            }
+        }
+
         $isDimension = (bool) preg_match('/length|width|height|depth|dimension/', $text);
         $rules = [
             'battery_flag' => '/battery.*(embedded|contain|include|covered|install|lithium)|(embedded|contain|include|covered|install|lithium).*battery|\bcbe\b/',
@@ -2418,6 +2466,8 @@ trait MiraklMcmBulletImport
             'country' => '/country|origin/',
             'msrp' => '/msrp|list ?price|retail ?price/',
             'condition' => '/condition/',
+            'size' => '/\bsize\b|globalsize/',
+            'list_guess' => '/\btype\b|globaltype|style|kind/',
         ];
         foreach ($rules as $semantic => $pattern) {
             if ($semantic === 'dimension_unit' && ! $isDimension && ! preg_match('/unitofmeasur|unit of measur|\buom\b/', $text)) {
@@ -2518,8 +2568,55 @@ trait MiraklMcmBulletImport
             } catch (\Throwable) {
             }
         }
+        if (empty($data['bullets'])) {
+            try {
+                $pm = ProductMaster::query()->whereNull('deleted_at')->where('sku', $sku)->first();
+                if ($pm) {
+                    $data['bullets'] = array_values(array_filter(array_map(
+                        static fn ($v) => trim((string) $v),
+                        [$pm->bullet1 ?? null, $pm->bullet2 ?? null, $pm->bullet3 ?? null, $pm->bullet4 ?? null, $pm->bullet5 ?? null]
+                    )));
+                }
+            } catch (\Throwable) {
+            }
+        }
+        if (empty($data['bullets'])) {
+            try {
+                $data['bullets'] = $this->resolveMiraklMcmBulletLinesForP41Row($sku, []);
+            } catch (\Throwable) {
+            }
+        }
 
         return $cache[$key] = $data;
+    }
+
+    /**
+     * "CLEAR VOCAL RESPONSE - 50-16000 Hz…" => ["CLEAR VOCAL RESPONSE", "50-16000 Hz…"].
+     *
+     * @return array{0: string, 1: string}
+     */
+    protected function miraklMcmSplitBullet(string $line): array
+    {
+        if (preg_match('/^(.{3,80}?)\s*(?:[-–—:]\s+)(.+)$/su', $line, $m) === 1) {
+            return [trim($m[1]), trim($m[2])];
+        }
+        $words = preg_split('/\s+/', $line) ?: [];
+
+        return [implode(' ', array_slice($words, 0, 6)), $line];
+    }
+
+    /**
+     * Text used to pick a values-list entry for type-like attributes (e.g. "Dynamic" microphone).
+     *
+     * @param  array<string, mixed>  $master
+     * @param  array<string, mixed>  $context
+     */
+    protected function miraklMcmGuessHaystack(array $master, array $context): string
+    {
+        $bullets = (array) (! empty($context['bullets']) ? $context['bullets'] : ($master['bullets'] ?? []));
+
+        return trim((string) ($context['title'] ?? '')).' '.trim((string) ($master['title'] ?? '')).' '
+            .trim((string) ($master['product_type'] ?? '')).' '.implode(' ', array_map('strval', $bullets));
     }
 
     /**
@@ -2591,6 +2688,36 @@ trait MiraklMcmBulletImport
                 $haystack = $title.' '.implode(' ', $bullets);
 
                 return preg_match('/\b(rechargeable|lithium|li-?ion|li-?po|built-?in battery)\b/i', $haystack) === 1 ? 'Yes' : 'No';
+            case 'feature_bullet_title':
+            case 'feature_bullet_description':
+                $slot = preg_match('/(\d+)/', (string) ($attr['code'] ?? ''), $m) === 1 ? max(1, (int) $m[1]) : 1;
+                $line = trim((string) ($bullets[$slot - 1] ?? ''));
+                if ($line === '') {
+                    return '';
+                }
+                [$head, $body] = $this->miraklMcmSplitBullet($line);
+
+                return $semantic === 'feature_bullet_title' ? mb_substr($head, 0, 60) : mb_substr($body, 0, 500);
+            case 'prop65':
+            case 'pfas':
+            case 'variant_flag':
+                return 'No';
+            case 'wireless':
+                return preg_match('/\bwireless\b|bluetooth|\buhf\b|\bvhf\b/i', $title) === 1 ? 'Yes' : 'No';
+            case 'box_count':
+                return '1';
+            case 'box_contents':
+                $name = trim((string) preg_replace('/\s*[-|,(].*$/', '', $title));
+
+                return mb_substr('1 x '.($name !== '' ? $name : $sku), 0, 100);
+            case 'zoom_image':
+                $images = array_values(array_filter(array_map('trim', (array) (! empty($context['images']) ? $context['images'] : ($master['images'] ?? [])))));
+
+                return $images[0] ?? '';
+            case 'size':
+                return 'One Size';
+            case 'list_guess':
+                return $str($master['product_type'] ?? null) ?: $title;
         }
 
         return '';
@@ -2601,7 +2728,7 @@ trait MiraklMcmBulletImport
      *
      * @param  array<string, mixed>  $attr
      */
-    protected function miraklMcmCoerceP41AttributeValue(array $attr, string $value, string $semantic): string
+    protected function miraklMcmCoerceP41AttributeValue(array $attr, string $value, string $semantic, string $haystack = ''): string
     {
         $type = strtoupper((string) ($attr['type'] ?? ''));
         if (! str_starts_with($type, 'LIST')) {
@@ -2630,6 +2757,11 @@ trait MiraklMcmBulletImport
         $booleanSynonyms = match ($target) {
             'no' => ['no', 'n', 'false', '0', 'none'],
             'yes' => ['yes', 'y', 'true', '1'],
+            'in', 'inch', 'inches' => ['in', 'inch', 'inches'],
+            'lb', 'lbs', 'pound', 'pounds' => ['lb', 'lbs', 'pound', 'pounds'],
+            'oz', 'ounce', 'ounces' => ['oz', 'ounce', 'ounces'],
+            'cm', 'centimeter', 'centimeters' => ['cm', 'centimeter', 'centimeters', 'centimetre', 'centimetres'],
+            'kg', 'kilogram', 'kilograms' => ['kg', 'kilogram', 'kilograms'],
             default => [],
         };
         foreach ($values as $code => $label) {
@@ -2646,8 +2778,40 @@ trait MiraklMcmBulletImport
         }
         foreach ($values as $code => $label) {
             $l = $norm($label);
-            if ($target !== '' && $l !== '' && (str_starts_with($l, $target) || str_starts_with($target, $l))) {
+            if ($target !== '' && strlen($l) >= 2 && (str_starts_with($l, $target) || str_starts_with($target, $l))) {
                 return (string) $code;
+            }
+        }
+
+        // Type-like lists (microphone type, product type): pick the longest label named in the title/bullets.
+        $text = $norm($value.' '.$haystack);
+        $best = '';
+        $bestLen = 0;
+        foreach ($values as $code => $label) {
+            $l = $norm($label);
+            if (strlen($l) >= 3 && strlen($l) > $bestLen && str_contains($text, $l)) {
+                $best = (string) $code;
+                $bestLen = strlen($l);
+            }
+        }
+        if ($best !== '') {
+            return $best;
+        }
+
+        if ($semantic === 'size') {
+            foreach (['onesize', 'na', 'notapplicable', 'standard', 'universal', 'none'] as $generic) {
+                foreach ($values as $code => $label) {
+                    if ($norm($label) === $generic || $norm((string) $code) === $generic) {
+                        return (string) $code;
+                    }
+                }
+            }
+        }
+        if (in_array($semantic, ['prop65', 'pfas', 'variant_flag'], true)) {
+            foreach ($values as $code => $label) {
+                if (preg_match('/^(no|none|not)/', $norm($label)) === 1) {
+                    return (string) $code;
+                }
             }
         }
 

@@ -48,6 +48,16 @@ class PurchasingPowerApiService extends BestBuyApiService
             'attr-upc' => 'upc',
             'attr-mfgnumber' => 'mpn',
             'attr-longdescription' => 'description',
+            'attr-features1' => 'bullets',
+            'attr-features2' => 'bullets',
+            'attr-features3' => 'bullets',
+            'attr-features4' => 'bullets',
+            'attr-features5' => 'bullets',
+            'attr-prop65' => 'prop65',
+            'attr-isvariant' => 'variant_flag',
+            'attr-numberofboxes' => 'box_count',
+            'attr-globaltype' => 'list_guess',
+            'attr-globalsize' => 'size',
         ];
     }
 
