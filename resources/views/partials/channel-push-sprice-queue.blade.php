@@ -37,6 +37,7 @@
                 vinted: '/vinted/analytics/save-sprice',
                 instagram: '/instagram/analytics/save-sprice',
                 depop: '/depop/pricing/save-sprice',
+                alibaba: '/alibaba-analytics/save-sprice',
                 mercari_wship: '/mercari-with-ship-tabulator/save-status',
                 mercari_woship: '/mercari-without-ship-tabulator/save-status',
             })[CH_PUSH_SPRICE_CHANNEL] || '';
@@ -73,6 +74,7 @@
                 vinted: 'price',
                 instagram: 'price',
                 depop: 'price',
+                alibaba: 'price',
             })[CH_PUSH_SPRICE_CHANNEL] || 'Price';
             const CH_PUSH_SPRICE_CAN_LIVE = ({
                 ebay1: 1, ebay2: 1, ebay2op: 1, ebay3: 1,
@@ -80,7 +82,7 @@
                 reverb: 1, macys: 1, macy: 1, bestbuy: 1, walmart: 1,
                 temu: 1, temu2: 1, temu3: 1, doba: 1, doba_withoutship: 1,
                 tiktok: 1, tiktok2: 1, topdawg: 1, purchasing_power: 1,
-                faire: 1, pls: 1, newegg: 1, wayfair: 1, aliexpress: 1, shein: 1,
+                faire: 1, pls: 1, newegg: 1, wayfair: 1, aliexpress: 1, shein: 1, alibaba: 1,
             })[CH_PUSH_SPRICE_CHANNEL] === 1;
             const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|topdawg)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_TIKTOK = /^(tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);

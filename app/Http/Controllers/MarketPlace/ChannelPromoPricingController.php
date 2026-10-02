@@ -60,7 +60,7 @@ class ChannelPromoPricingController extends Controller
         'tiktok', 'tiktok2', 'topdawg', 'purchasing_power',
         'aliexpress', 'shein', 'newegg', 'faire', 'pls',
         'mercari_wship', 'mercari_woship', 'fb_marketplace',
-        'vinted', 'instagram', 'depop',
+        'vinted', 'instagram', 'depop', 'alibaba',
     ];
 
     /** Push PRMT % sale-event queue retired — no channel creates markdown sales. */

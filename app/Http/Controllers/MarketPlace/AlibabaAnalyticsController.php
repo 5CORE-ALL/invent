@@ -255,6 +255,160 @@ class AlibabaAnalyticsController extends Controller
         ]);
     }
 
+    public function pushPrice(Request $request, AlibabaApiService $api): JsonResponse
+    {
+        if (empty(config('services.alibaba.access_token'))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'ALIBABA_ACCESS_TOKEN is missing in .env.',
+            ], 422);
+        }
+
+        $updates = $request->input('updates');
+        if (! is_array($updates) || $updates === []) {
+            $updates = [[
+                'sku' => $request->input('sku'),
+                'price' => $request->input('price', $request->input('sprice')),
+            ]];
+        }
+
+        @set_time_limit(180);
+
+        $pushed = 0;
+        $failed = 0;
+        $results = [];
+        $lastPrice = null;
+        $lastSku = '';
+
+        foreach ($updates as $update) {
+            if (! is_array($update)) {
+                continue;
+            }
+            $sku = trim((string) ($update['sku'] ?? ''));
+            $price = round((float) ($update['price'] ?? $update['sprice'] ?? 0), 2);
+            if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                $failed++;
+                $results[] = ['sku' => $sku, 'success' => false, 'message' => 'SKU is required.'];
+                continue;
+            }
+            if ($price < 0.01) {
+                $failed++;
+                $results[] = ['sku' => $sku, 'success' => false, 'message' => 'Price must be greater than 0.'];
+                continue;
+            }
+
+            $sheet = $this->sheetRowForPushSku($sku);
+            $productId = $sheet ? trim((string) $sheet->product_id) : '';
+            if ($productId === '' && Schema::hasTable('alibaba_metrics')) {
+                $productId = trim((string) AlibabaMetric::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->value('product_id'));
+            }
+            if ($productId === '') {
+                $failed++;
+                $results[] = ['sku' => $sku, 'success' => false, 'message' => 'No Alibaba product id for this SKU.'];
+                continue;
+            }
+
+            $result = $api->pushListedPrice($productId, $price, $sku);
+            if (empty($result['success'])) {
+                $failed++;
+                $results[] = [
+                    'sku' => $sku,
+                    'success' => false,
+                    'product_id' => $productId,
+                    'message' => (string) ($result['message'] ?? 'Alibaba price update failed.'),
+                ];
+                continue;
+            }
+
+            $this->storePushedPrice($sheet, $productId, $sku, $price);
+            $pushed++;
+            $lastPrice = $price;
+            $lastSku = $sku;
+            $results[] = [
+                'sku' => $sku,
+                'success' => true,
+                'product_id' => $productId,
+                'price' => $price,
+            ];
+        }
+
+        if ($pushed === 0) {
+            $message = (string) ($results[0]['message'] ?? 'No Alibaba prices were pushed.');
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'pushed' => 0,
+                'failed' => $failed,
+                'results' => $results,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => $failed === 0,
+            'message' => $failed === 0
+                ? 'Pushed $'.number_format((float) $lastPrice, 2).' to Alibaba for '.$lastSku.'.'
+                : "Pushed {$pushed} Alibaba price(s); {$failed} failed.",
+            'sku' => $lastSku,
+            'price' => $lastPrice,
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'results' => $results,
+        ], $failed === 0 ? 200 : 422);
+    }
+
+    protected function sheetRowForPushSku(string $sku): ?AlibabaSheetPrice
+    {
+        $want = strtoupper(trim($sku));
+        $stripped = strtoupper(trim((string) preg_replace('/\s+\d+\s*PCS$/i', '', $want)));
+        $rows = AlibabaSheetPrice::query()
+            ->where(function ($query) use ($want, $stripped): void {
+                $query->whereRaw('UPPER(TRIM(sku)) = ?', [$want]);
+                if ($stripped !== '' && $stripped !== $want) {
+                    $query->orWhereRaw('UPPER(TRIM(sku)) = ?', [$stripped]);
+                }
+            })
+            ->get();
+        if ($rows->count() === 1) {
+            return $rows->first();
+        }
+
+        $exact = $rows->filter(fn (AlibabaSheetPrice $row): bool => strtoupper(trim((string) $row->sku)) === $want)->values();
+
+        return $exact->count() === 1 ? $exact->first() : null;
+    }
+
+    protected function storePushedPrice(?AlibabaSheetPrice $sheet, string $productId, string $sku, float $price): void
+    {
+        if ($sheet) {
+            $sheet->sku_price = $price;
+            $sheet->save();
+        } elseif ($productId !== '') {
+            AlibabaSheetPrice::query()->where('product_id', $productId)->update(['sku_price' => $price]);
+        }
+
+        if (Schema::hasTable('alibaba_metrics')) {
+            AlibabaMetric::query()->where('product_id', $productId)->update(['price' => $price]);
+        }
+
+        if (! Schema::hasTable('alibaba_pricing_prices')) {
+            return;
+        }
+
+        $keys = array_values(array_unique(array_filter([
+            strtoupper(trim($sku)),
+            strtoupper(trim((string) preg_replace('/\s+\d+\s*PCS$/i', '', $sku))),
+            $sheet ? strtoupper(trim((string) $sheet->sku)) : '',
+        ])));
+        foreach ($keys as $key) {
+            AlibabaPricingPrice::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
+                ->update(['price' => $price]);
+        }
+    }
+
     /**
      * @return array<string, float>
      */

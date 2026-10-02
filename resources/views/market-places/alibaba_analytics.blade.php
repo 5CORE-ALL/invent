@@ -675,7 +675,7 @@
                         },
                         {
                             title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: 'number',
-                            headerTooltip: 'Suggested price from the Sprc Dil rule. SGROI matches the Dil slab. Ship is not used.',
+                            headerTooltip: 'Suggested price from the Sprc Dil rule. When S PRC differs from Price it is pushed to the Alibaba listing. Ship is not used.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';

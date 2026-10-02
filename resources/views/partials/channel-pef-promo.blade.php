@@ -1662,7 +1662,7 @@
                 label: 'Alibaba',
                 saveSpriceUrl: '/alibaba-analytics/save-sprice',
                 saveSpriceBatchUrl: '/alibaba-analytics/save-sprice',
-                pushPriceUrl: null,
+                pushPriceUrl: '/alibaba-analytics/push-price',
                 priceField: 'price',
                 cvrField: 'cvr',
                 dilField: 'dil_percent',
@@ -6628,6 +6628,10 @@
                             if (CHANNEL_PROMO_CHANNEL === 'aliexpress' && pushed > 0) {
                                 patch.price = pushed;
                                 patch.sprice = pushed;
+                            }
+                            if (CHANNEL_PROMO_CHANNEL === 'alibaba' && pushed > 0) {
+                                patch.price = pushed;
+                                patch.sku_price = pushed;
                             }
                             if (CHANNEL_PROMO_CHANNEL === 'shein' && pushed > 0) {
                                 patch.special_offer = pushed;
