@@ -2236,6 +2236,10 @@ class TikTokShopService
             return ['success' => false, 'message' => 'Could not load the TikTok product to find its Product highlights field; bullets not pushed (description unchanged).'];
         }
 
+        $lines = $this->tiktokHighlightLines($lines);
+        if ($lines === []) {
+            return ['success' => false, 'message' => 'No bullet points to push to TikTok Product highlights.'];
+        }
         $directField = $this->tiktokHighlightsFieldFromProduct($data);
         if ($directField !== null) {
             $value = is_string($data[$directField] ?? null) ? implode("\n", $lines) : $lines;
@@ -2286,7 +2290,6 @@ class TikTokShopService
      */
     protected function pushHighlightsViaProductField(string $identifier, string $productId, array $lines, string $categoryId): array
     {
-        $lines = array_values(array_slice(array_map(static fn ($l) => mb_substr($l, 0, 150), $lines), 0, 5));
         $knownKey = $this->cachePrefix.'_highlights_product_field';
         $known = Cache::get($knownKey);
         $candidates = ['key_product_features', 'product_highlights', 'highlights'];
@@ -2334,30 +2337,90 @@ class TikTokShopService
     protected function tiktokProductHasHighlights(string $productId, string $field, array $lines): bool
     {
         unset($this->productDetailCache[$productId]);
-        $data = [];
+        if ($lines === []) {
+            return false;
+        }
+        $needle = mb_strtolower(mb_substr($lines[0], 0, 40));
+
         try {
-            $data = $this->tiktokOpenApi('GET', "/product/202309/products/{$productId}", ['return_under_review_version' => 'true'], null, 30);
+            $detail = $this->fetchProductData($productId);
+            if (is_array($detail[$field] ?? null) && $detail[$field] !== []
+                && $this->findTextPath((array) $detail[$field], $needle) !== null) {
+                return true;
+            }
         } catch (\Throwable) {
-            try {
-                $data = $this->fetchProductData($productId);
-            } catch (\Throwable) {
-                return false;
+        }
+
+        // Highlights may only be echoed by the newer version, and under a different key than was sent,
+        // so look for the bullet text anywhere except the description.
+        foreach (['202509', '202309'] as $version) {
+            foreach ([['return_under_review_version' => 'true'], []] as $query) {
+                try {
+                    $data = $this->tiktokOpenApi('GET', "/product/{$version}/products/{$productId}", $query, null, 30);
+                } catch (\Throwable) {
+                    continue;
+                }
+                if (! is_array($data) || $data === []) {
+                    continue;
+                }
+                $path = $this->findTextPath(array_diff_key($data, ['description' => 1]), $needle);
+                if ($path !== null) {
+                    Log::info('TikTok highlights stored', ['product_id' => $productId, 'sent_as' => $field, 'found_at' => $version.':'.$path]);
+
+                    return true;
+                }
             }
         }
 
-        $stored = $data[$field] ?? null;
-        if (is_string($stored)) {
-            $stored = preg_split('/\r\n|\r|\n/', $stored) ?: [];
-        }
-        if (! is_array($stored) || $stored === []) {
-            return false;
-        }
-        $flat = mb_strtolower(implode(' ', array_map(
-            static fn ($v) => is_array($v) ? implode(' ', array_map('strval', array_filter($v, 'is_scalar'))) : (string) $v,
-            $stored
-        )));
+        return false;
+    }
 
-        return $lines !== [] && str_contains($flat, mb_strtolower(mb_substr($lines[0], 0, 40)));
+    /**
+     * TikTok shows 3-5 highlights; keep each within 150 chars, cut on a word boundary.
+     *
+     * @param  list<string>  $lines
+     * @return list<string>
+     */
+    protected function tiktokHighlightLines(array $lines): array
+    {
+        $out = [];
+        foreach ($lines as $line) {
+            $line = trim(preg_replace('/\s+/u', ' ', (string) $line) ?? '');
+            if ($line === '') {
+                continue;
+            }
+            if (mb_strlen($line) > 150) {
+                $cut = mb_substr($line, 0, 150);
+                $space = mb_strrpos($cut, ' ');
+                $line = rtrim($space !== false && $space > 100 ? mb_substr($cut, 0, $space) : $cut, " ,;:-–");
+            }
+            $out[] = $line;
+            if (count($out) === 5) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<mixed>  $data
+     */
+    private function findTextPath(array $data, string $needle, string $prefix = ''): ?string
+    {
+        foreach ($data as $k => $v) {
+            $path = $prefix === '' ? (string) $k : $prefix.'.'.$k;
+            if (is_array($v)) {
+                $hit = $this->findTextPath($v, $needle, $path);
+                if ($hit !== null) {
+                    return $hit;
+                }
+            } elseif (is_string($v) && str_contains(mb_strtolower($v), $needle)) {
+                return $path;
+            }
+        }
+
+        return null;
     }
 
     /**
