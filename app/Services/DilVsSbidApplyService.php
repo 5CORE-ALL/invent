@@ -36,14 +36,15 @@ class DilVsSbidApplyService
         $ads = DB::table($adsTable)
             ->whereIn('listing_id', $listingIds)
             ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
             ->where('funding_strategy', 'COST_PER_SALE')
             ->get()
-            ->keyBy(fn ($ad) => (string) $ad->listing_id);
+            ->groupBy(fn ($ad) => (string) $ad->listing_id);
 
         $skus = [];
         foreach ($listingIds as $lid) {
             $metric = $metrics->get($lid);
-            $ad = $ads->get($lid);
+            $ad = $ads->get($lid)?->first();
             $sku = (string) ($metric->sku ?? $ad->sku ?? '');
             if ($sku !== '') {
                 $skus[] = $sku;
@@ -68,75 +69,83 @@ class DilVsSbidApplyService
         $offsByCampaign = [];
 
         foreach ($listingIds as $lid) {
-            $ad = $ads->get($lid);
-            if (! $ad || ! $ad->campaign_id) {
+            $campaignAds = $ads->get($lid);
+            if ($campaignAds === null || $campaignAds->isEmpty()) {
                 $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Not in a COST_PER_SALE campaign'];
                 $skipped++;
                 continue;
             }
 
-            $metric = $metrics->get($lid);
-            $sku = (string) ($metric?->sku ?? $ad->sku ?? '');
-
-            if (! $useDil) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Dil vs SBid is off'];
-                $skipped++;
-                continue;
-            }
-
-            $shopify = $shopifyMap[trim($sku)] ?? null;
-            $dil = CpMasterDil::slabPercent($shopify->quantity ?? null, $shopify->inv ?? null);
-            if ($dil === null) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No CP Master Dil'];
-                $skipped++;
-                continue;
-            }
-            $esBid = (float) ($ad->suggested_bid ?? 0);
-            $decision = DilVsSbidRule::resolve((float) $dil, $esBid, $slabs);
-            if ($decision['bid'] > 0) {
-                $adjusted = DilVsSbidRule::applyCvr(
-                    (float) $decision['bid'],
-                    (float) ($metric?->views ?? 0),
-                    (float) ($metric?->ebay_l30 ?? 0),
-                    (float) ($metric?->ebay_l60 ?? 0),
-                    $cvr
-                );
-                $decision['bid'] = $adjusted['bid'];
-                if ($adjusted['why'] !== '') {
-                    $decision['label'] = trim($decision['label'].' '.$adjusted['why']);
-                }
-            }
-
-            if ($decision['off']) {
-                if (empty($ad->ad_id)) {
-                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Pause but no ad id'];
+            foreach ($campaignAds as $ad) {
+                if (! $ad->campaign_id) {
+                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Not in a COST_PER_SALE campaign'];
                     $skipped++;
                     continue;
                 }
-                $offsByCampaign[(string) $ad->campaign_id][] = [
+
+                $metric = $metrics->get($lid);
+                $sku = (string) ($metric?->sku ?? $ad->sku ?? '');
+
+                if (! $useDil) {
+                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Dil vs SBid is off'];
+                    $skipped++;
+                    continue;
+                }
+
+                $shopify = $shopifyMap[trim($sku)] ?? null;
+                $dil = CpMasterDil::slabPercent($shopify->quantity ?? null, $shopify->inv ?? null);
+                if ($dil === null) {
+                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No CP Master Dil'];
+                    $skipped++;
+                    continue;
+                }
+                $esBid = (float) ($ad->suggested_bid ?? 0);
+                $decision = DilVsSbidRule::resolve((float) $dil, $esBid, $slabs);
+                if ($decision['bid'] > 0) {
+                    $adjusted = DilVsSbidRule::applyCvr(
+                        (float) $decision['bid'],
+                        (float) ($metric?->views ?? 0),
+                        (float) ($metric?->ebay_l30 ?? 0),
+                        (float) ($metric?->ebay_l60 ?? 0),
+                        $cvr
+                    );
+                    $decision['bid'] = $adjusted['bid'];
+                    if ($adjusted['why'] !== '') {
+                        $decision['label'] = trim($decision['label'].' '.$adjusted['why']);
+                    }
+                }
+
+                if ($decision['off']) {
+                    if (empty($ad->ad_id)) {
+                        $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Pause but no ad id'];
+                        $skipped++;
+                        continue;
+                    }
+                    $offsByCampaign[(string) $ad->campaign_id][] = [
+                        'listingId' => $lid,
+                        'adId' => (string) $ad->ad_id,
+                    ];
+                    continue;
+                }
+
+                if ($decision['bid'] <= 0) {
+                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => $decision['label'] !== '' ? $decision['label'] : 'No S Bid for this Dil'];
+                    $skipped++;
+                    continue;
+                }
+
+                $nextBid = round((float) $decision['bid'], 2);
+                if ($onlyChanged && abs(round((float) ($ad->bid_percentage ?? 0), 2) - $nextBid) < 0.009) {
+                    $unchanged++;
+                    continue;
+                }
+
+                $bidsByCampaign[(string) $ad->campaign_id][] = [
                     'listingId' => $lid,
-                    'adId' => (string) $ad->ad_id,
+                    'adId' => $ad->ad_id ? (string) $ad->ad_id : null,
+                    'bidPercentage' => (string) $nextBid,
                 ];
-                continue;
             }
-
-            if ($decision['bid'] <= 0) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => $decision['label'] !== '' ? $decision['label'] : 'No S Bid for this Dil'];
-                $skipped++;
-                continue;
-            }
-
-            $nextBid = round((float) $decision['bid'], 2);
-            if ($onlyChanged && abs(round((float) ($ad->bid_percentage ?? 0), 2) - $nextBid) < 0.009) {
-                $unchanged++;
-                continue;
-            }
-
-            $bidsByCampaign[(string) $ad->campaign_id][] = [
-                'listingId' => $lid,
-                'adId' => $ad->ad_id ? (string) $ad->ad_id : null,
-                'bidPercentage' => (string) $nextBid,
-            ];
         }
 
         foreach ($bidsByCampaign as $campaignId => $requests) {
