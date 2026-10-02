@@ -194,15 +194,16 @@ class ListingManagerPublishDispatcher
 
     /**
      * Channels whose publish takes longer than the web gateway allows (Mirakl P41/P42 polling,
-     * Shein image uploads + category lookups, Newegg feed submission + result wait) and therefore
-     * runs as a background CLI process instead of inside the HTTP request.
+     * Shein image uploads + category lookups, Newegg feed submission + result wait, TopDawg's
+     * post-create live-catalog scan, Wayfair item submission) and therefore runs as a background
+     * CLI process instead of inside the HTTP request.
      */
     public static function publishesInBackground(string $channelName): bool
     {
         $key = ListingChannelCounts::normalize($channelName);
 
         return MiraklListingPublishService::isMiraklListingChannel($channelName)
-            || in_array($key, ['shein', 'newegg', 'neweggb2c', 'neweggb2b'], true);
+            || in_array($key, ['shein', 'newegg', 'neweggb2c', 'neweggb2b', 'topdawg', 'topdawginc', 'wayfair'], true);
     }
 
     /**
