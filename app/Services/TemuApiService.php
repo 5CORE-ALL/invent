@@ -1118,6 +1118,20 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 return $last;
             }
 
+            $floor = $this->dailyBudgetMinimumDollars((string) ($last['error_msg'] ?? ''));
+            if ($floor !== null) {
+                $dto['budget'] = $floor * 100;
+                $last = $this->postAdsRouter([
+                    'type' => 'temu.searchrec.ad.modify',
+                    'modifyAdDTO' => $dto,
+                    'status' => 5,
+                ], (string) $goodsId, 20);
+                $last = $this->applyModifyGoodsFailure($last);
+                if ($last['ok'] ?? false) {
+                    return $last;
+                }
+            }
+
             $code = (string) ($last['error_code'] ?? '');
             $msg = strtolower((string) ($last['error_msg'] ?? ''));
             $retryable = $code === '230012000'
@@ -1128,6 +1142,46 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         return $last;
+    }
+
+    /**
+     * Temu rejects a ROAS change when the current daily budget is below the product minimum.
+     * The message is in dollars, e.g. "between 11 and 999,999".
+     */
+    public function dailyBudgetMinimumDollars(string $message): ?int
+    {
+        if (! preg_match('/daily budget must be between\s+([0-9][0-9,]*)\s+and/i', $message, $match)) {
+            return null;
+        }
+        $dollars = (int) str_replace(',', '', $match[1]);
+
+        return $dollars >= 1 ? $dollars : null;
+    }
+
+    /**
+     * @param  array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}  $response
+     * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
+     */
+    private function applyModifyGoodsFailure(array $response): array
+    {
+        if (! ($response['ok'] ?? false)) {
+            return $response;
+        }
+        $list = is_array($response['result'] ?? null)
+            ? ($response['result']['modifyGoodsRespList'] ?? null)
+            : null;
+        if (! is_array($list)) {
+            return $response;
+        }
+        foreach ($list as $row) {
+            if (is_array($row) && array_key_exists('success', $row) && ! $row['success']) {
+                $response['ok'] = false;
+                $response['error_msg'] = (string) ($row['reason'] ?? 'Temu did not update ROAS');
+                break;
+            }
+        }
+
+        return $response;
     }
 
     /**
