@@ -18152,6 +18152,7 @@ class ChannelMasterController extends Controller
             }
             $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
             $sd['total_ad_spend'] = $rolling[$asOf];
+            
             $row->summary_data = $sd;
         }
     }
