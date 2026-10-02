@@ -422,6 +422,12 @@ class ListingManagerProductPublisher
             if ($key === '') {
                 continue;
             }
+            if ($key === 'b5cb2b') {
+                $results[$key] = $this->pushB2bStore($sku, $fields, $parts, $bullets, $images);
+
+                continue;
+            }
+
             $partResults = [];
             $ok = true;
             $messages = [];
@@ -473,6 +479,70 @@ class ListingManagerProductPublisher
     }
 
     /**
+     * Business 5 Core (B2B) is our own store: one upsert call carries every selected part.
+     *
+     * @param  list<string>  $parts
+     * @param  list<string>  $bullets
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string, parts: array<string, string>}
+     */
+    private function pushB2bStore(string $sku, array $fields, array $parts, array $bullets, array $images): array
+    {
+        $payload = [];
+        $sent = [];
+        if (in_array('title', $parts, true) && trim((string) ($fields['title'] ?? '')) !== '') {
+            $payload['name'] = trim((string) $fields['title']);
+            $sent['title'] = 'Title';
+        }
+        if (in_array('description', $parts, true) && trim((string) ($fields['description'] ?? '')) !== '') {
+            $payload['description'] = (string) $fields['description'];
+            $sent['description'] = 'Description';
+        }
+        if ($bullets !== []) {
+            $payload['bullet_points'] = $bullets;
+            $sent['bullets'] = 'Bullets';
+        }
+        if (in_array('price', $parts, true) && is_numeric($fields['price'] ?? null) && (float) $fields['price'] > 0) {
+            $payload['price'] = round((float) $fields['price'], 2);
+            $sent['price'] = 'Price';
+        }
+        if ($images !== []) {
+            $payload['image_urls'] = $images;
+            $sent['images'] = 'Images';
+        }
+        if ($payload === []) {
+            return ['success' => false, 'message' => 'Nothing to push for this marketplace.', 'parts' => []];
+        }
+
+        try {
+            $res = app(\App\Services\MarketplaceManager\DirectStoreListingPublishService::class)->updateB2bListing($sku, $payload);
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager B2B store push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            $res = ['success' => false, 'message' => $e->getMessage()];
+        }
+        $ok = (bool) ($res['success'] ?? false);
+        if (! $ok) {
+            $msg = trim((string) ($res['message'] ?? '')) ?: 'B2B store rejected the update.';
+
+            return ['success' => false, 'message' => $msg, 'parts' => array_map(static fn () => $msg, $sent)];
+        }
+
+        $partResults = [];
+        $messages = [];
+        $data = is_array($res['data'] ?? null) ? $res['data'] : [];
+        foreach ($sent as $part => $label) {
+            $note = 'updated.';
+            if ($part === 'bullets' && $data !== [] && ! array_intersect_key($data, array_flip(['bullet_points', 'bullets', 'features', 'highlights']))) {
+                $note = 'sent, but the B2B store does not show a bullets field.';
+            }
+            $partResults[$part] = $label.' '.$note;
+            $messages[] = $label.': '.$note;
+        }
+
+        return ['success' => true, 'message' => 'Business 5 Core (B2B) '.implode(' ', $messages), 'parts' => $partResults];
+    }
+
+    /**
      * Map a Channel Master name to a Product Master marketplace key.
      */
     public static function marketplaceKeyFromChannel(string $channelName): ?string
@@ -516,6 +586,9 @@ class ListingManagerProductPublisher
             'shopifypls' => 'shopify_pls',
             'shopifyb5c' => 'shopify_b5c',
             'purchasingpower' => 'purchasing_power',
+            'b5cb2b' => 'b5cb2b',
+            'business5coreb2b' => 'b5cb2b',
+            'business5core(b2b)' => 'b5cb2b',
         ];
 
         return $aliases[$n] ?? (isset(ProductMasterMarketplaceMaps::descriptionServiceMap()[$n]) ? $n : null);

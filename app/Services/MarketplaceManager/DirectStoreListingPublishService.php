@@ -470,6 +470,36 @@ class DirectStoreListingPublishService
             $payload['is_active'] = true;
         }
 
+        return $this->sendB2bListing($sku, $payload, $local);
+    }
+
+    /**
+     * Update fields of an existing Business 5 Core B2B listing (upsert by SKU) and refresh the local mirror.
+     *
+     * @param  array<string, mixed>  $fields  name|description|price|image_urls|bullet_points
+     * @return array{success: bool, message: string, id?: string, created?: bool, data?: array<string, mixed>}
+     */
+    public function updateB2bListing(string $sku, array $fields): array
+    {
+        $api = app(Business5CoreB2bApiService::class);
+        if (! $api->isConfigured()) {
+            return ['success' => false, 'message' => 'Set BUSINESS5CORE_B2B_API_URL and BUSINESS5CORE_B2B_API_KEY.'];
+        }
+        $sku = trim($sku);
+        $local = Schema::hasTable('b5c_b2b_products')
+            ? B5cB2bProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+            : null;
+
+        return $this->sendB2bListing($sku, ['sku' => $sku] + $fields, $local);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{success: bool, message: string, id?: string, created?: bool, data?: array<string, mixed>}
+     */
+    private function sendB2bListing(string $sku, array $payload, ?B5cB2bProduct $local): array
+    {
+        $api = app(Business5CoreB2bApiService::class);
         $res = $api->send('POST', '/api/listings', [], $payload);
         $status = (string) ($res['status'] ?? '');
         if (! in_array($status, ['created', 'updated'], true)) {
@@ -499,7 +529,7 @@ class DirectStoreListingPublishService
             }
         }
 
-        return ['success' => true, 'message' => ucfirst($status), 'id' => $id, 'created' => $status === 'created'];
+        return ['success' => true, 'message' => ucfirst($status), 'id' => $id, 'created' => $status === 'created', 'data' => $data];
     }
 
     // ---------------------------------------------------------------- Doba
