@@ -5,8 +5,8 @@ namespace App\Services;
 use App\Models\ShopifySku;
 use App\Support\CpMasterDil;
 use App\Support\DilVsSbidRule;
+use App\Support\EbayMarketingPushRetry;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -51,9 +51,10 @@ class DilVsSbidApplyService
         }
         $shopifyMap = $this->shopifyBySku($skus);
 
+        $service = new $apiServiceClass();
+        $http = new EbayMarketingPushRetry($service);
         try {
-            $service = new $apiServiceClass();
-            $token = $service->generateBearerToken();
+            $http->acquireToken();
         } catch (\Exception $e) {
             return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'results' => [], 'error' => 'Token error: '.$e->getMessage()];
         }
@@ -140,16 +141,16 @@ class DilVsSbidApplyService
 
         foreach ($bidsByCampaign as $campaignId => $requests) {
             if (! $onlyChanged) {
-                $this->resumeAds($token, $adsTable, $campaignId, $requests);
+                $this->resumeAds($http, $adsTable, $campaignId, $requests);
             }
             foreach (array_chunk($requests, 200) as $chunk) {
-                $this->pushBids($token, $adsTable, $campaignId, $chunk, $results, $success, $failed);
+                $this->pushBids($http, $adsTable, $campaignId, $chunk, $results, $success, $failed);
             }
         }
 
         foreach ($offsByCampaign as $campaignId => $requests) {
             foreach (array_chunk($requests, 200) as $chunk) {
-                $this->pauseAds($token, $adsTable, $campaignId, $chunk, $results, $success, $failed);
+                $this->pauseAds($http, $adsTable, $campaignId, $chunk, $results, $success, $failed);
             }
         }
 
@@ -188,103 +189,87 @@ class DilVsSbidApplyService
         return $this->apply($ruleKey, $adsTable, $metricClass, $apiServiceClass, $listingIds, true);
     }
 
-    private function pushBids(string $token, string $adsTable, string $campaignId, array $requests, array &$results, int &$success, int &$failed): void
+    private function pushBids(EbayMarketingPushRetry $http, string $adsTable, string $campaignId, array $requests, array &$results, int &$success, int &$failed): void
     {
         $payload = array_map(fn ($r) => [
             'listingId' => $r['listingId'],
             'bidPercentage' => $r['bidPercentage'],
         ], $requests);
 
-        try {
-            $response = Http::withToken($token)
-                ->withHeaders(['Content-Type' => 'application/json'])
-                ->timeout(60)
-                ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id", [
-                    'requests' => $payload,
-                ]);
+        $out = $http->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id", [
+            'requests' => $payload,
+        ]);
 
-            if ($response->successful()) {
-                foreach ($requests as $r) {
-                    DB::table($adsTable)
-                        ->where('listing_id', (string) $r['listingId'])
-                        ->where('campaign_id', $campaignId)
-                        ->update([
-                            'bid_percentage' => round((float) $r['bidPercentage'], 2),
-                            'campaign_status' => 'RUNNING',
-                            'updated_at' => now(),
-                        ]);
-                    $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => $r['bidPercentage'].'%'];
-                    $success++;
-                }
-
-                return;
-            }
-
-            $reason = $this->ebayReason($response->status(), $response->json());
-            $this->noteSellerPause($adsTable, $campaignId, $response->status(), $reason);
+        if ($out['ok'] && $out['response'] !== null) {
             foreach ($requests as $r) {
-                $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $reason];
-                $failed++;
+                DB::table($adsTable)
+                    ->where('listing_id', (string) $r['listingId'])
+                    ->where('campaign_id', $campaignId)
+                    ->update([
+                        'bid_percentage' => round((float) $r['bidPercentage'], 2),
+                        'campaign_status' => 'RUNNING',
+                        'updated_at' => now(),
+                    ]);
+                $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => $r['bidPercentage'].'%'];
+                $success++;
             }
-        } catch (\Exception $e) {
-            foreach ($requests as $r) {
-                $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $e->getMessage()];
-                $failed++;
-            }
+
+            return;
+        }
+
+        $reason = (string) ($out['error'] ?? 'Push failed');
+        $status = $out['response'] !== null ? $out['response']->status() : 0;
+        $this->noteSellerPause($adsTable, $campaignId, $status, $reason);
+        foreach ($requests as $r) {
+            $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $reason];
+            $failed++;
         }
     }
 
-    private function pauseAds(string $token, string $adsTable, string $campaignId, array $requests, array &$results, int &$success, int &$failed): void
+    private function pauseAds(EbayMarketingPushRetry $http, string $adsTable, string $campaignId, array $requests, array &$results, int &$success, int &$failed): void
     {
         $payload = array_map(fn ($r) => [
             'adId' => $r['adId'],
             'adStatus' => 'PAUSED',
         ], $requests);
 
-        try {
-            $response = Http::withToken($token)
-                ->withHeaders(['Content-Type' => 'application/json'])
-                ->timeout(60)
-                ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_status", [
-                    'requests' => $payload,
-                ]);
+        $out = $http->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_status", [
+            'requests' => $payload,
+        ]);
+        $response = $out['response'];
 
-            if ($response->successful() && $this->pauseChunkOk($response->json())) {
-                foreach ($requests as $r) {
-                    DB::table($adsTable)
-                        ->where('listing_id', (string) $r['listingId'])
-                        ->where('campaign_id', $campaignId)
-                        ->update([
-                            'campaign_status' => 'PAUSED',
-                            'updated_at' => now(),
-                        ]);
-                    $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => 'OFF'];
-                    $success++;
-                }
-
-                return;
-            }
-
-            $reason = $this->ebayReason($response->status(), $response->json());
-            Log::warning('Dil vs SBid pause failed', [
-                'campaign_id' => $campaignId,
-                'http' => $response->status(),
-                'reason' => $reason,
-            ]);
+        if ($out['ok'] && $response !== null && $this->pauseChunkOk($response->json())) {
             foreach ($requests as $r) {
-                $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => 'Pause: '.$reason];
-                $failed++;
+                DB::table($adsTable)
+                    ->where('listing_id', (string) $r['listingId'])
+                    ->where('campaign_id', $campaignId)
+                    ->update([
+                        'campaign_status' => 'PAUSED',
+                        'updated_at' => now(),
+                    ]);
+                $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => 'OFF'];
+                $success++;
             }
-        } catch (\Exception $e) {
-            foreach ($requests as $r) {
-                $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $e->getMessage()];
-                $failed++;
-            }
+
+            return;
+        }
+
+        $reason = $out['ok'] && $response !== null
+            ? $this->ebayReason($response->status(), $response->json())
+            : (string) ($out['error'] ?? 'Pause failed');
+        Log::warning('Dil vs SBid pause failed', [
+            'campaign_id' => $campaignId,
+            'http' => $response !== null ? $response->status() : 0,
+            'reason' => $reason,
+        ]);
+        foreach ($requests as $r) {
+            $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => 'Pause: '.$reason];
+            $failed++;
         }
     }
 
     /** Turn a previously paused ad back on before writing the new bid. Failures are logged; the bid push still runs. */
-    private function resumeAds(string $token, string $adsTable, string $campaignId, array $requests): void
+    private function resumeAds(EbayMarketingPushRetry $http, string $adsTable, string $campaignId, array $requests): void
     {
         $payload = [];
         foreach ($requests as $r) {
@@ -300,18 +285,16 @@ class DilVsSbidApplyService
             return;
         }
 
-        try {
-            $response = Http::withToken($token)
-                ->withHeaders(['Content-Type' => 'application/json'])
-                ->timeout(60)
-                ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_status", [
-                    'requests' => $payload,
-                ]);
-            if (! $response->successful()) {
-                $this->noteSellerPause($adsTable, $campaignId, $response->status(), $this->ebayReason($response->status(), $response->json()));
-            }
-        } catch (\Exception $e) {
-            Log::warning('Dil vs SBid resume failed', ['campaign_id' => $campaignId, 'error' => $e->getMessage()]);
+        $out = $http->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_status", [
+            'requests' => $payload,
+        ]);
+        if (! $out['ok']) {
+            $status = $out['response'] !== null ? $out['response']->status() : 0;
+            $this->noteSellerPause($adsTable, $campaignId, $status, (string) ($out['error'] ?? 'Resume failed'));
+            Log::warning('Dil vs SBid resume failed', [
+                'campaign_id' => $campaignId,
+                'error' => $out['error'] ?? 'Resume failed',
+            ]);
         }
     }
 
