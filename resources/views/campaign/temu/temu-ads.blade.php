@@ -1653,6 +1653,7 @@
             }
 
             let lastPaintedBadges = null;
+            let lastAdsDataResponse = null;
 
             function applyStoreBadge(m, response) {
                 const mall = response && response.mall;
@@ -1678,7 +1679,8 @@
                 const m = badgeCounts(rows);
                 const q = currentFilterQuery();
                 const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.alertOnly && q.rowType === 'all';
-                if (noLocalFilter && response) {
+                const hasStoreSpend = response && response.mall && response.mall.spend != null && isFinite(parseFloat(response.mall.spend));
+                if (hasStoreSpend || (noLocalFilter && response)) {
                     applyStoreBadge(m, response);
                 }
                 currentAvgCtr = Number(m.ctr) || 0;
@@ -1993,6 +1995,7 @@
             }
 
             function setBadges(rows, response) {
+                if (response) lastAdsDataResponse = response;
                 if (response && response.channel_sales != null) {
                     channelSales = parseFloat(response.channel_sales) || 0;
                 }
@@ -2006,7 +2009,7 @@
 
             function updateBadgesFromTable() {
                 if (!table) return;
-                paintMetricBadges(filteredFlatAdsRows());
+                paintMetricBadges(filteredFlatAdsRows(), lastAdsDataResponse);
                 updateFilterCounts(allAdsRows);
             }
 
