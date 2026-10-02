@@ -639,6 +639,20 @@
             max-width: 100%;
         }
 
+        .eca-push-alert {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #dc2626;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: help;
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay1'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css'])
     </style>
@@ -2429,6 +2443,33 @@
         function getCombinedSbid(row) {
             if (typeof campaignSbid === 'function') return campaignSbid(row);
             return { bid: 0, color: '#6c757d', skip: true, title: 'No Dil vs SBid' };
+        }
+
+        function ebayTabRound2(n) {
+            return Math.round(Number(n) * 100) / 100;
+        }
+
+        /** Running COST_PER_SALE row with Dil vs SBid on and a real S Bid. Otherwise null. */
+        function ebayTabSbidResult(row) {
+            if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
+            if (typeof ebayIsParentRowData === 'function' && ebayIsParentRowData(row)) return null;
+            if (String(row.ca_funding_strategy || '') !== 'COST_PER_SALE') return null;
+            if (String(row.ca_campaign_status || '').trim().toUpperCase() !== 'RUNNING') return null;
+            const res = getCombinedSbid(row);
+            if (!res || res.skip || res.off || !(res.bid > 0)) return null;
+            return res;
+        }
+
+        /** Same alert as /ebay/campaign-ads: shown when C Bid does not match S Bid. */
+        function ebayTabBidAlertText(row) {
+            const res = ebayTabSbidResult(row);
+            if (!res) return '';
+            const live = parseFloat(row.ca_bid_percentage);
+            const liveOk = isFinite(live) && live > 0;
+            if (liveOk && Math.abs(ebayTabRound2(live) - ebayTabRound2(res.bid)) < 0.009) return '';
+            const want = Number(res.bid).toFixed(1);
+            const liveText = liveOk ? live.toFixed(1) + '%' : 'empty';
+            return 'S Bid: Pending — S Bid ' + want + '% does not match C Bid ' + liveText;
         }
 
         // Play / Pause parent navigation (same as product-master)
@@ -5144,6 +5185,20 @@
                         }
                     },
                     {
+                        title: "Alert",
+                        field: "_bid_alert",
+                        width: 56,
+                        hozAlign: "center",
+                        headerSort: false,
+                        headerTooltip: "Shown when C Bid does not match S Bid. Hover the mark for both percents. A running promoted listing only.",
+                        formatter: function(cell) {
+                            const tip = ebayTabBidAlertText(cell.getRow().getData());
+                            if (!tip) return '';
+                            const safe = (typeof escapeHtmlAttr === 'function') ? escapeHtmlAttr(tip) : tip;
+                            return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
+                        }
+                    },
+                    {
                         title: "S BID",
                         field: "ca_suggested_bid",
                         hozAlign: "center",
@@ -6060,7 +6115,7 @@
 
                 // Advertisement first (views / bids / ads / promote)
                 if (
-                    /^(views|l7_views|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(f) ||
+                    /^(views|l7_views|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad|_bid_alert)$/i.test(f) ||
                     /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {

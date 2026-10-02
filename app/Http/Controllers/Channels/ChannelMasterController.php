@@ -18148,6 +18148,7 @@ class ChannelMasterController extends Controller
             $asOf = AmazonAdsAdvertisementMasterHistory::channelMasterAsOfDate($snap);
             if (! isset($rolling[$asOf])) {
                 continue;
+                
             }
             $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
             $sd['total_ad_spend'] = $rolling[$asOf];

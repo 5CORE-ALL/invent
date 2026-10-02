@@ -796,7 +796,7 @@ class EbayController extends Controller
                     function ($join) {
                         $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
                     })
-                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid', 't.promote_with_ad')
+                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid', 't.promote_with_ad', 't.funding_strategy', 't.campaign_status')
                 ->get()
                 ->keyBy('listing_id')
                 ->toArray();
@@ -1097,6 +1097,10 @@ class EbayController extends Controller
                 ? (float) ($orderL30ByItem[$itemId] ?? 0)
                 : 0.0;
             $metricL30 = (float) ($ebayMetric?->ebay_l30 ?? 0);
+            // S Bid uses these metric totals, same as /ebay/campaign-ads. The eBay L30
+            // column below can still prefer live orders.
+            $row['metric_ebay_l30'] = $metricL30;
+            $row['metric_ebay_l60'] = (float) ($ebayMetric?->ebay_l60 ?? 0);
             $row["eBay L30"] = $orderSkuL30 > 0
                 ? $orderSkuL30
                 : ($orderItemL30 > 0 ? $orderItemL30 : $metricL30);
@@ -1132,6 +1136,8 @@ class EbayController extends Controller
             $row['ca_bid_percentage'] = $caRow->bid_percentage ?? null;
             $row['ca_suggested_bid']  = $caRow->suggested_bid  ?? null;
             $row['ca_promote_with_ad'] = $caRow->promote_with_ad ?? null;
+            $row['ca_funding_strategy'] = $caRow->funding_strategy ?? null;
+            $row['ca_campaign_status'] = $caRow->campaign_status ?? null;
 
             // LMP data — merged across the Sku Link LMP group so linked SKUs share LMP.
             // Group members come from lmp_sku_links; competitor rows are matched with the

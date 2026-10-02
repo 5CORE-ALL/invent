@@ -198,7 +198,11 @@ function dilSbidMetric(row) {
         if (!(inv > 0)) return null;
         const ovl = chPromoOvL30(row);
         if (!(ovl > 0)) return 0;
-        return (ovl / inv) * 100;
+        // Same Dil as the raw campaign page: round(OV L30 / Inv × 100). A sale that
+        // rounds to 0% stays on the real ratio so it is not treated as 0 sold.
+        const rounded = Math.round((ovl / inv) * 100);
+        if (rounded === 0) return (ovl / inv) * 100;
+        return rounded;
     }
     return null;
 }
@@ -230,6 +234,13 @@ function dilSbidPaintCvr() {
 function dilSbidCvrParts(row) {
     const views = parseFloat(row && row.views) || 0;
     if (!(views > 0)) return null;
+    // Analytics rows carry an orders overlay on eBay L30. S Bid matches the raw
+    // campaign page, which uses ebay_metrics L30 and L60.
+    if (row && row.metric_ebay_l30 != null && row.metric_ebay_l30 !== '') {
+        const l30 = parseFloat(row.metric_ebay_l30) || 0;
+        const l60 = parseFloat(row.metric_ebay_l60 != null && row.metric_ebay_l60 !== '' ? row.metric_ebay_l60 : row.ebay_l60) || 0;
+        return { cvr: (l30 / views) * 100, cvr60: (l60 / views) * 100 };
+    }
     if (row && row['eBay L30'] != null) {
         const cvr = (row.SCVR != null && row.SCVR !== '') ? parseFloat(row.SCVR) : ((parseFloat(row['eBay L30']) || 0) / views) * 100;
         const cvr60 = (row.CVR_60 != null && row.CVR_60 !== '') ? parseFloat(row.CVR_60) : ((parseFloat(row['eBay L60']) || 0) / views) * 100;
