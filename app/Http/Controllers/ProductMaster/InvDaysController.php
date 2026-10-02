@@ -40,6 +40,7 @@ class InvDaysController extends Controller
             $amazonSheets = $this->amazonSheetsByLookupKey();
             $clearanceBySku = $this->clearanceBySku();
             $nrpBySku = $this->forecastNrpBySku();
+            $mslBySku = $this->forecastMslBySku();
 
             $rows = [];
             foreach ($products as $product) {
@@ -66,6 +67,7 @@ class InvDaysController extends Controller
                     'days_exp' => InvUnder30DaysController::daysExp($inv, $ovl30) ?? 99999,
                     'clearance' => $clearance['value'] ?? 'NO',
                     'clearance_has_history' => $clearance !== null,
+                    'msl' => $mslBySku[$this->forecastSkuKey($sku)] ?? 0,
                     'nr' => $nrpBySku[$this->forecastSkuKey($sku)] ?? 'REQ',
                 ];
             }
@@ -470,6 +472,37 @@ class InvDaysController extends Controller
         $nr = strtoupper(trim((string) ($picked->nr ?? '')));
 
         return in_array($nr, ['REQ', 'NR', 'LATER'], true) ? $nr : 'REQ';
+    }
+
+    /**
+     * MSL from the same Forecast Analysis row builder (/forecast.analysis).
+     *
+     * @return array<string, int>
+     */
+    private function forecastMslBySku(): array
+    {
+        try {
+            $rows = app(ForecastAnalysisController::class)->getForecastAnalysisSnapshotRows();
+        } catch (\Throwable $e) {
+            Log::warning('Inv Days MSL from forecast analysis failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $item) {
+            if ($item->is_parent ?? false) {
+                continue;
+            }
+            $key = $this->forecastSkuKey((string) ($item->SKU ?? ''));
+            if ($key === '') {
+                continue;
+            }
+            $msl = $item->msl ?? 0;
+            $map[$key] = is_numeric($msl) ? (int) round((float) $msl) : 0;
+        }
+
+        return $map;
     }
 
     /**

@@ -482,6 +482,19 @@ document.addEventListener('DOMContentLoaded', function () {
                 },
             },
             {
+                title: 'MSL',
+                field: 'msl',
+                width: 90,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: 'number',
+                formatter: function (cell) {
+                    const n = Number(cell.getValue());
+                    const v = Number.isFinite(n) ? Math.round(n) : 0;
+                    return `<span style="font-weight:700;">${v}</span>`;
+                },
+            },
+            {
                 title: 'Clearance',
                 field: 'clearance',
                 width: 140,
