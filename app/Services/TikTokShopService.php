@@ -2254,7 +2254,7 @@ class TikTokShopService
 
         $attr = $this->tiktokHighlightsCategoryAttribute($categoryId);
         if ($attr === null) {
-            return ['success' => false, 'message' => 'TikTok category '.$categoryId.' does not expose a Product highlights field through the API; bullets not pushed (description unchanged). Add highlights in Seller Center.'];
+            return $this->pushHighlightsViaProductField($identifier, $productId, $lines, $categoryId);
         }
 
         $values = $attr['multiple']
@@ -2274,6 +2274,90 @@ class TikTokShopService
         }
 
         return $result;
+    }
+
+    /**
+     * Seller Center's "Key Product Features" (shown to buyers as Product highlights) is a product-level
+     * field next to search_terms; the GET payload omits it while empty, so its name cannot be read back
+     * first. Send it under the known names and keep only the one TikTok actually stores.
+     *
+     * @param  list<string>  $lines
+     * @return array{success: bool, message: string}
+     */
+    protected function pushHighlightsViaProductField(string $identifier, string $productId, array $lines, string $categoryId): array
+    {
+        $lines = array_values(array_slice(array_map(static fn ($l) => mb_substr($l, 0, 150), $lines), 0, 5));
+        $knownKey = $this->cachePrefix.'_highlights_product_field';
+        $known = Cache::get($knownKey);
+        $candidates = ['key_product_features', 'product_highlights', 'highlights'];
+        if (is_string($known) && in_array($known, $candidates, true)) {
+            $candidates = array_values(array_unique(array_merge([$known], $candidates)));
+        }
+
+        $errors = [];
+        foreach ($candidates as $field) {
+            $result = $this->updateTikTokProductFields($identifier, [$field => $lines]);
+            if (! ($result['success'] ?? false)) {
+                $errors[] = $field.': '.($result['message'] ?? 'rejected');
+
+                continue;
+            }
+            if ($this->tiktokProductHasHighlights($productId, $field, $lines)) {
+                Cache::forever($knownKey, $field);
+
+                return [
+                    'success' => true,
+                    'message' => 'TikTok Product highlights updated ('.count($lines).' bullets via "'.$field.'"); description unchanged.',
+                ];
+            }
+            $errors[] = $field.': accepted but not stored';
+        }
+
+        Log::warning('TikTok highlights: no product field stored the bullets', [
+            'product_id' => $productId,
+            'category_id' => $categoryId,
+            'attempts' => $errors,
+        ]);
+
+        return [
+            'success' => false,
+            'message' => 'TikTok did not save Product highlights through the API for category '.$categoryId
+                .' ('.implode('; ', $errors).'); bullets not pushed (description unchanged). Add highlights in Seller Center.',
+        ];
+    }
+
+    /**
+     * Re-read the product (including any under-review version) and confirm the highlights landed.
+     *
+     * @param  list<string>  $lines
+     */
+    protected function tiktokProductHasHighlights(string $productId, string $field, array $lines): bool
+    {
+        unset($this->productDetailCache[$productId]);
+        $data = [];
+        try {
+            $data = $this->tiktokOpenApi('GET', "/product/202309/products/{$productId}", ['return_under_review_version' => 'true'], null, 30);
+        } catch (\Throwable) {
+            try {
+                $data = $this->fetchProductData($productId);
+            } catch (\Throwable) {
+                return false;
+            }
+        }
+
+        $stored = $data[$field] ?? null;
+        if (is_string($stored)) {
+            $stored = preg_split('/\r\n|\r|\n/', $stored) ?: [];
+        }
+        if (! is_array($stored) || $stored === []) {
+            return false;
+        }
+        $flat = mb_strtolower(implode(' ', array_map(
+            static fn ($v) => is_array($v) ? implode(' ', array_map('strval', array_filter($v, 'is_scalar'))) : (string) $v,
+            $stored
+        )));
+
+        return $lines !== [] && str_contains($flat, mb_strtolower(mb_substr($lines[0], 0, 40)));
     }
 
     /**
