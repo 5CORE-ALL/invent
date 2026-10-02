@@ -1797,7 +1797,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             if ($slug === '' || $orderId === '') {
                 continue;
             }
-            $missing[$slug.'|'.$orderId] ??= ['mm_slug' => $slug, 'order_id' => $orderId, 'rows' => []];
+            $missing[$slug.'|'.$orderId] ??= [
+                'mm_slug' => $slug,
+                'order_id' => $orderId,
+                'order_date' => (string) ($row['order_date'] ?? ''),
+                'rows' => [],
+            ];
             $missing[$slug.'|'.$orderId]['rows'][] = ['id' => (string) $row['id'], 'sku' => (string) ($row['sku'] ?? '')];
         }
         $sweepDeadline = min($deadline, $startedAt + max(20, $budgetSeconds * self::TRACKING_SWEEP_BUDGET_SHARE));
@@ -1885,10 +1890,13 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         if ($missing === []) {
             return [];
         }
+        // Newest orders first; Temu (one API call per order) after the batch channels.
+        uasort($missing, static fn (array $a, array $b): int => strcmp((string) ($b['order_date'] ?? ''), (string) ($a['order_date'] ?? '')));
         $bySlug = [];
         foreach ($missing as $key => $group) {
             $bySlug[$group['mm_slug']][$group['order_id']] = $key;
         }
+        uksort($bySlug, static fn ($a, $b): int => (int) in_array($a, ['temu', 'temu2'], true) <=> (int) in_array($b, ['temu', 'temu2'], true));
 
         $lookup = app(ChannelBatchTrackingLookup::class);
         $found = [];

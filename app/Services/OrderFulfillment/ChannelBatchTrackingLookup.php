@@ -5,9 +5,13 @@ namespace App\Services\OrderFulfillment;
 use App\Models\SheinOrderMetric;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Services\SheinApiService;
+use App\Services\Temu2ApiService;
+use App\Services\TemuApiService;
 use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
+use App\Support\TrackingCarrierGuesser;
 use App\Support\TrackingPayloadExtractor;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -66,6 +70,7 @@ class ChannelBatchTrackingLookup
         $fromApi = match ($slug) {
             'tiktok', 'tiktok2' => $this->tiktok($slug, $pending, $deadline),
             'shein' => $this->shein($pending, $deadline),
+            'temu', 'temu2' => $this->temu($slug, $pending, $deadline),
             default => [],
         };
         foreach ($fromApi as $id => $hit) {
@@ -164,6 +169,69 @@ class ChannelBatchTrackingLookup
                     $out[$orderNo] = $hit;
                 }
             }
+        }
+
+        return $out;
+    }
+
+    /** Temu has no batch endpoint: at most this many shipment lookups per sweep. */
+    public const TEMU_LOOKUPS_PER_RUN = 80;
+
+    /** A Temu order with no label yet is not asked again for this long. */
+    public const TEMU_MISS_COOLDOWN_MINUTES = 30;
+
+    /**
+     * Temu parent orders (PO-211-…) via bg.logistics shipment lookup, one per order.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, array{tracking: string, carrier: string}>
+     */
+    protected function temu(string $slug, array $ids, float $deadline): array
+    {
+        if (Cache::get('mm.temu.ip_blocked')) {
+            return [];
+        }
+        $api = $slug === 'temu2' ? app(Temu2ApiService::class) : app(TemuApiService::class);
+        if (! $api->isConfigured()) {
+            return [];
+        }
+
+        $out = [];
+        $lookups = 0;
+        foreach ($ids as $id) {
+            if ($lookups >= self::TEMU_LOOKUPS_PER_RUN || microtime(true) >= $deadline) {
+                break;
+            }
+            $plain = ltrim($id, '#');
+            if (preg_match('/^(PO-)?\d{3}-[\w-]+$/i', $plain) !== 1) {
+                continue;
+            }
+            $missKey = 'of.sweep.'.$slug.'.miss.'.$plain;
+            if (Cache::has($missKey)) {
+                continue;
+            }
+            $lookups++;
+            try {
+                $shipment = $api->getShipmentInfo($plain);
+            } catch (\Throwable $e) {
+                Log::info('ChannelBatchTrackingLookup: Temu shipment lookup failed', ['slug' => $slug, 'order' => $plain, 'error' => $e->getMessage()]);
+
+                continue;
+            }
+            if (str_contains(strtolower((string) ($shipment['message'] ?? '')), 'not_in_ip_white_list')) {
+                Cache::put('mm.temu.ip_blocked', 1, now()->addHours(6));
+                break;
+            }
+            $number = strtoupper((string) preg_replace('/\s+/', '', (string) ($shipment['tracking_number'] ?? '')));
+            if (! empty($shipment['success']) && TrackingPayloadExtractor::looksLikeTracking($number)) {
+                $out[$id] = [
+                    'tracking' => $number,
+                    'carrier' => trim((string) ($shipment['carrier'] ?? '')) ?: (TrackingCarrierGuesser::labelFromNumber($number) ?? 'Other'),
+                ];
+            } else {
+                Cache::put($missKey, 1, now()->addMinutes(self::TEMU_MISS_COOLDOWN_MINUTES));
+            }
+            usleep(150000);
         }
 
         return $out;
