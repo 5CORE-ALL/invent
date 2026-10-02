@@ -2095,7 +2095,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             isset($row->sku) ? (string) $row->sku : (string) $identifier
         );
 
-        return EbayTradingReviseItem::reviseItemDescription(
+        $res = EbayTradingReviseItem::reviseItemDescription(
             $this->endpoint,
             $this->compatLevel,
             $this->devId,
@@ -2105,6 +2105,14 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $token,
             (string) $itemId,
             $html
+        );
+
+        return EbayTradingReviseItem::verifyDescriptionApplied(
+            $res,
+            ($res['success'] ?? false) ? $this->getItem((string) $itemId) : null,
+            $html,
+            (string) $itemId,
+            'eBay2'
         );
     }
 

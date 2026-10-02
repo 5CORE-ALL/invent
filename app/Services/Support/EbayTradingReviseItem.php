@@ -42,6 +42,42 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * After ReviseItem acks, re-read the listing so a description eBay accepted but did not apply is
+     * reported instead of shown as "updated". GetItem failures keep the original result.
+     *
+     * @param  array{success?: bool, message?: string}  $result
+     * @param  array<string, mixed>|null  $getItem
+     * @return array{success: bool, message: string}
+     */
+    public static function verifyDescriptionApplied(array $result, ?array $getItem, string $sentHtml, string $itemId, string $label): array
+    {
+        if (! ($result['success'] ?? false)) {
+            return $result + ['success' => false, 'message' => 'Update failed.'];
+        }
+        $live = is_array($getItem) ? ($getItem['Item']['Description'] ?? null) : null;
+        if (! is_string($live) || trim($live) === '') {
+            return ['success' => true, 'message' => $label.' description updated on eBay item '.$itemId.'.'] + $result;
+        }
+
+        $plain = static fn (string $html): string => mb_strtolower(trim(preg_replace('/\s+/u', ' ',
+            html_entity_decode(strip_tags(preg_replace('/<(style|script)\b[^>]*>.*?<\/\1>/is', ' ', $html) ?? $html), ENT_QUOTES | ENT_HTML5, 'UTF-8')
+        ) ?? ''));
+        $sent = $plain($sentHtml);
+        $needle = mb_substr($sent, 0, 80);
+        if ($needle === '' || str_contains($plain($live), $needle)) {
+            return ['success' => true, 'message' => $label.' description updated on eBay item '.$itemId.'.'] + $result;
+        }
+
+        Log::warning('eBay description revise acked but listing unchanged', ['item_id' => $itemId, 'label' => $label, 'sent_start' => $needle]);
+
+        return [
+            'success' => false,
+            'message' => 'eBay accepted the description for item '.$itemId.' but the listing still shows a different description. '
+                .'Check that this SKU belongs to item '.$itemId.' in '.$label.'.',
+        ];
+    }
+
+    /**
      * Listing Description body for a push: the caller's full HTML is kept intact (only active content
      * eBay rejects is removed). Product images are appended only when the HTML has no <img> of its own.
      */
