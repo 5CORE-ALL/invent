@@ -1503,7 +1503,7 @@ class OverallAmazonController extends Controller
         $amazonSkuLockedFromAsin = false;
 
         if ($asinParam !== '') {
-            $resolved = $this->sellerSkuFromAmazonDatasheetByAsin($asinParam);
+            $resolved = $this->sellerSkuFromAmazonDatasheetByAsin($asinParam, $rawChildSkuOriginal);
             if ($resolved !== null && $resolved !== '') {
                 // Stale/wrong ASIN on the row must not override Seller Central MSKU for a different listing.
                 if ($rawChildSkuOriginal !== '' && ! $this->datasheetMskuMatchesChildSku($resolved, $rawChildSkuOriginal)) {
@@ -2359,27 +2359,21 @@ class OverallAmazonController extends Controller
     /**
      * Resolve seller SKU from `amazon_datsheets` using the ASIN column (case-insensitive, spaces stripped).
      */
-    private function sellerSkuFromAmazonDatasheetByAsin(string $asinLike): ?string
+    private function sellerSkuFromAmazonDatasheetByAsin(string $asinLike, ?string $preferredSku = null): ?string
     {
         $n = strtoupper(str_replace([' ', "\xc2\xa0"], '', trim($asinLike)));
         if ($n === '' || strlen($n) !== 10 || ! ctype_alnum($n)) {
             return null;
         }
 
-        $row = AmazonDatasheet::query()
+        $rows = AmazonDatasheet::query()
             ->whereRaw('UPPER(REPLACE(TRIM(COALESCE(asin, "")), " ", "")) = ?', [$n])
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->orderBy('id')
-            ->first();
+            ->get();
 
-        if (! $row) {
-            return null;
-        }
-
-        $sku = trim((string) ($row->sku ?? ''));
-
-        return $sku !== '' ? $sku : null;
+        return AmazonDatasheet::sellerSkuFromAsinRows($rows, $preferredSku);
     }
 
     /**
