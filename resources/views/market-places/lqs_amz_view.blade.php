@@ -806,8 +806,12 @@
                         formatter: function(cell) {
                             const d   = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const val = parseInt(cell.getValue(), 10) || 0;
-                            if (!val) return '<span style="color:#adb5bd;">–</span>';
+                            const raw = cell.getValue();
+                            if (raw === null || raw === undefined || raw === '') {
+                                return '<span style="color:#adb5bd;">–</span>';
+                            }
+                            const val = parseInt(raw, 10);
+                            if (isNaN(val)) return '<span style="color:#adb5bd;">–</span>';
                             return `<span style="font-weight:600;">${val.toLocaleString()}</span>`;
                         }
                     },
@@ -1138,6 +1142,7 @@
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                     success: function(res) {
+                        amzTable.setData('{{ route("lqs.amz.data") }}');
                         if (res.success) {
                             amzNotify(res.message || 'Jungle Scout refresh is running. Reload in a few minutes.', 'success');
                         } else {
@@ -1145,6 +1150,7 @@
                         }
                     },
                     error: function(xhr) {
+                        amzTable.setData('{{ route("lqs.amz.data") }}');
                         const msg = (xhr.responseJSON && xhr.responseJSON.message)
                             ? xhr.responseJSON.message
                             : 'Failed to trigger refresh. Please try again.';

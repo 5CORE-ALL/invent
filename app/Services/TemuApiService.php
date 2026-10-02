@@ -1120,7 +1120,19 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
             $floor = $this->dailyBudgetMinimumDollars((string) ($last['error_msg'] ?? ''));
             if ($floor !== null) {
-                $dto['budget'] = $floor * 100;
+                $budgeted = $this->postAdsRouter([
+                    'type' => 'temu.searchrec.ad.modify',
+                    'modifyAdDTO' => [
+                        'goodsId' => $goodsIdParam,
+                        'budget' => $floor * 100,
+                    ],
+                    'status' => 4,
+                ], (string) $goodsId, 20);
+                $budgeted = $this->applyModifyGoodsFailure($budgeted);
+                if (! ($budgeted['ok'] ?? false)) {
+                    return $budgeted;
+                }
+
                 $last = $this->postAdsRouter([
                     'type' => 'temu.searchrec.ad.modify',
                     'modifyAdDTO' => $dto,
