@@ -172,6 +172,15 @@
                             <option value="Offline">Offline</option>
                         </select>
                         <input type="text" id="ab-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search Parent or SKU...">
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                id="ab-column-visibility" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" title="Show or hide columns">
+                                <i class="fas fa-eye"></i> Columns
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" id="ab-column-dropdown-menu"
+                                style="max-height:70vh;overflow-y:auto;min-width:180px;"></ul>
+                        </div>
                         <button type="button" class="btn btn-sm btn-primary" id="ab-sync-btn">
                             <i class="fas fa-sync"></i> Sync from API
                         </button>
@@ -323,6 +332,74 @@
             if (soldF === 'zero') document.getElementById('ab-zero-badge').classList.add('active-filter');
         }
 
+        function abColumnShown(value) {
+            return value === true || value === 1 || value === '1' || value === 'true';
+        }
+
+        function abBuildColumnMenu() {
+            const menu = document.getElementById('ab-column-dropdown-menu');
+            if (!menu || !abTable) return;
+            let html = '<li class="dropdown-item"><button type="button" class="btn btn-link btn-sm p-0" id="ab-show-all-columns">Show all</button></li>'
+                + '<li><hr class="dropdown-divider"></li>';
+            abTable.getColumns().forEach(function (col) {
+                const field = col.getField();
+                const title = col.getDefinition().title;
+                if (!field || !title) return;
+                const label = String(title).replace(/<[^>]*>/g, '').trim();
+                html += '<li class="dropdown-item"><label style="cursor:pointer;display:flex;align-items:center;gap:8px;margin:0;">'
+                    + '<input type="checkbox" class="ab-column-toggle" data-field="' + field + '" '
+                    + (col.isVisible() ? 'checked' : '') + '> ' + label + '</label></li>';
+            });
+            menu.innerHTML = html;
+        }
+
+        function abSaveColumnVisibility() {
+            if (!abTable) return;
+            const visibility = {};
+            abTable.getColumns().forEach(function (col) {
+                const field = col.getField();
+                if (field) visibility[field] = col.isVisible();
+            });
+            fetch("{{ route('alibaba.analytics.column.set') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({ visibility: visibility })
+            });
+        }
+
+        function abApplyColumnVisibility() {
+            fetch("{{ route('alibaba.analytics.column.get') }}", { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (visibility) {
+                    if (!abTable || !visibility || !Object.keys(visibility).length) return;
+                    Object.keys(visibility).forEach(function (field) {
+                        const col = abTable.getColumn(field);
+                        if (!col) return;
+                        abColumnShown(visibility[field]) ? col.show() : col.hide();
+                    });
+                })
+                .finally(function () { abBuildColumnMenu(); });
+        }
+
+        document.getElementById('ab-column-dropdown-menu').addEventListener('change', function (e) {
+            if (!e.target.classList.contains('ab-column-toggle') || !abTable) return;
+            const col = abTable.getColumn(e.target.dataset.field);
+            if (!col) return;
+            e.target.checked ? col.show() : col.hide();
+            abSaveColumnVisibility();
+        });
+        document.getElementById('ab-column-dropdown-menu').addEventListener('click', function (e) {
+            if (e.target.id !== 'ab-show-all-columns' || !abTable) return;
+            e.preventDefault();
+            abTable.getColumns().forEach(function (col) { col.show(); });
+            abBuildColumnMenu();
+            abSaveColumnVisibility();
+        });
+
         function applyFilters() {
             if (!abTable) return;
             const filtered = (abAllRows || []).filter(abRowMatches);
@@ -444,11 +521,12 @@
                             headerTooltip: 'Line sales from /alibaba/daily-sales (unit price × qty), last 30 Pacific days',
                             formatter: function (cell) { return abMoney(cell.getValue()); }
                         },
-                        { title: 'Product Id', field: 'product_id', hozAlign: 'left', minWidth: 130 },
-                        { title: 'Status', field: 'status', hozAlign: 'center', width: 80 },
-                        { title: 'SOH', field: 'soh', hozAlign: 'center', width: 55, sorter: 'number' },
+                        { title: 'Product Id', field: 'product_id', hozAlign: 'left', minWidth: 130, visible: false },
+                        { title: 'Status', field: 'status', hozAlign: 'center', width: 80, visible: false },
+                        { title: 'AL INV', field: 'soh', hozAlign: 'center', width: 55, sorter: 'number', headerTooltip: 'Alibaba inventory' },
                     ],
                 });
+                abApplyColumnVisibility();
                 updateSummary((abAllRows || []).filter(abRowMatches));
             })
             .finally(() => { loader.style.display = 'none'; });

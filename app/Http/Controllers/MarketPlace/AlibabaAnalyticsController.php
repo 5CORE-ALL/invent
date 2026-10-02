@@ -30,6 +30,37 @@ class AlibabaAnalyticsController extends Controller
         ]);
     }
 
+    public function getColumnVisibility(): JsonResponse
+    {
+        $saved = Cache::get($this->columnVisibilityCacheKey(), []);
+
+        return response()->json(is_array($saved) ? $saved : []);
+    }
+
+    public function setColumnVisibility(Request $request): JsonResponse
+    {
+        $visibility = $request->input('visibility', []);
+        if (! is_array($visibility)) {
+            $visibility = [];
+        }
+        $clean = [];
+        foreach ($visibility as $field => $shown) {
+            $key = trim((string) $field);
+            if ($key === '' || strlen($key) > 80) {
+                continue;
+            }
+            $clean[$key] = filter_var($shown, FILTER_VALIDATE_BOOLEAN);
+        }
+        Cache::put($this->columnVisibilityCacheKey(), $clean, now()->addDays(365));
+
+        return response()->json(['success' => true]);
+    }
+
+    private function columnVisibilityCacheKey(): string
+    {
+        return 'alibaba_analytics_column_visibility_'.(auth()->id() ?? 'guest');
+    }
+
     public function data(): JsonResponse
     {
         $sheetRows = AlibabaSheetPrice::query()
