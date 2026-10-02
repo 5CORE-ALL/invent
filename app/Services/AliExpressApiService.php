@@ -4649,12 +4649,11 @@ class AliExpressApiService
                             'data' => $single['data'] ?? $single['result'] ?? null,
                         ];
                     }
-                    $last = $single;
+                    $last = $this->preferAliExpressError($last, $single);
                 }
             }
         }
 
-        $pkg = $this->aliexpressPackageSizeFields($productId);
         $edit = array_merge([
             'product_id' => (string) $productId,
             'multi_language_description_list' => [[
@@ -4662,31 +4661,80 @@ class AliExpressApiService
                 'mobile_detail' => $html,
                 'web_detail' => $html,
             ]],
-            'logistics_size' => [
-                'package_length' => $pkg['package_length'],
-                'package_width' => $pkg['package_width'],
-                'package_height' => $pkg['package_height'],
-            ],
-        ], $pkg);
+        ], $this->aliexpressPackageEditFields($productId));
         $encoded = $this->encodeRequestPayload($edit);
-        foreach (['rest', 'sync'] as $gateway) {
-            $res = $gateway === 'rest'
-                ? $this->callRestGateway('aliexpress.solution.product.edit', ['edit_product_request' => $encoded])
-                : $this->callSync('aliexpress.solution.product.edit', ['edit_product_request' => $encoded]);
-            if (! empty($res['success'])) {
-                return [
-                    'success' => true,
-                    'message' => $okMessage,
-                    'data' => $res['data'] ?? $res['result'] ?? null,
-                ];
-            }
-            $last = $res;
+        $res = $this->callRestGateway('aliexpress.solution.product.edit', ['edit_product_request' => $encoded]);
+        if (! empty($res['success'])) {
+            return [
+                'success' => true,
+                'message' => $okMessage,
+                'data' => $res['data'] ?? $res['result'] ?? null,
+            ];
         }
+        $last = $this->preferAliExpressError($last, $res);
 
         return [
             'success' => false,
             'message' => (string) ($last['message'] ?? 'AliExpress product edit failed.'),
             'response' => $last['response'] ?? $last,
+        ];
+    }
+
+    /**
+     * Keep a business-validation message ahead of a later signature failure.
+     *
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $next
+     * @return array<string, mixed>
+     */
+    private function preferAliExpressError(array $current, array $next): array
+    {
+        if (! empty($next['success'])) {
+            return $next;
+        }
+        $nextMessage = (string) ($next['message'] ?? '');
+        $currentMessage = (string) ($current['message'] ?? '');
+        if ($currentMessage === '' || $this->isSignatureError($current)) {
+            return $next;
+        }
+        if ($nextMessage !== '' && ! $this->isSignatureError($next)) {
+            return $next;
+        }
+
+        return $current;
+    }
+
+    /**
+     * solution.product.edit rejects image and description edits that omit package size.
+     *
+     * @return array<string, mixed>
+     */
+    private function aliexpressPackageEditFields(string $productId): array
+    {
+        $pkg = $this->aliexpressPackageSizeFields($productId);
+        $length = max(1, (int) round((float) $pkg['package_length']));
+        $width = max(1, (int) round((float) $pkg['package_width']));
+        $height = max(1, (int) round((float) $pkg['package_height']));
+        $weight = (string) $pkg['weight'];
+
+        return [
+            'package_length' => $length,
+            'package_width' => $width,
+            'package_height' => $height,
+            'weight' => $weight,
+            'gross_weight' => $weight,
+            'package_weight' => $weight,
+            'usLogisticsWeight' => $weight,
+            'logistics_size' => [
+                'package_length' => $length,
+                'package_width' => $width,
+                'package_height' => $height,
+                'length' => $length,
+                'width' => $width,
+                'height' => $height,
+                'gross_weight' => $weight,
+                'weight' => $weight,
+            ],
         ];
     }
 
@@ -6480,17 +6528,14 @@ class AliExpressApiService
             }
         }
 
-        $pkg = $this->aliexpressPackageSizeFields($productId);
+        $package = $this->aliexpressPackageEditFields($productId);
         $attempts = [
-            array_merge(['product_id' => $productId, 'image_u_r_ls' => $joined, 'main_image_url' => $primary], $pkg),
-            array_merge(['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary], $pkg, [
-                'logistics_size' => [
-                    'package_length' => $pkg['package_length'],
-                    'package_width' => $pkg['package_width'],
-                    'package_height' => $pkg['package_height'],
-                ],
-            ]),
-            ['product_id' => $productId, 'aeop_a_e_product_s_k_us' => ['sku_code' => $skuCode, 'sku_image' => $primary]],
+            array_merge(['product_id' => $productId, 'image_u_r_ls' => $joined, 'main_image_url' => $primary], $package),
+            array_merge(['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary], $package),
+            array_merge([
+                'product_id' => $productId,
+                'aeop_a_e_product_s_k_us' => ['sku_code' => $skuCode, 'sku_image' => $primary],
+            ], $package),
         ];
 
         $lastMessage = $this->channelLabel.' image update failed.';

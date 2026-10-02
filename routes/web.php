@@ -4216,6 +4216,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-manager/product', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'showProduct'])->name('listing.manager.product');
     Route::post('/listing-manager/product/save', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveProduct'])->name('listing.manager.product.save');
     Route::post('/listing-manager/product/push', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'pushProductToMarketplaces'])->name('listing.manager.product.push');
+    Route::get('/listing-manager/product/push/status/{token}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'pushJobStatus'])->name('listing.manager.product.push.status');
     Route::get('/listing-manager/product/from-master', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadProductFromMaster'])->name('listing.manager.product.from-master');
     Route::post('/listing-manager/product/master-field', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveMasterField'])->name('listing.manager.product.master-field');
     Route::post('/listing-manager/product/metafield', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveMetafield'])->name('listing.manager.product.metafield');

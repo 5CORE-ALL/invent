@@ -268,6 +268,8 @@ class FaireService
 
     public const FAIRE_SHORT_DESCRIPTION_MAX = 75;
 
+    public const FAIRE_DESCRIPTION_MAX = 3000;
+
     private const BULLETS_HEADER = 'Highlights:';
 
     /**
@@ -305,6 +307,22 @@ class FaireService
         }
 
         return $text;
+    }
+
+    /** Faire rejects description patches over 3000 characters. Keep the start (bullets live there). */
+    public static function capDescription(string $text): string
+    {
+        $max = self::FAIRE_DESCRIPTION_MAX;
+        if (mb_strlen($text) <= $max) {
+            return $text;
+        }
+        $cut = mb_substr($text, 0, $max - 1);
+        $break = mb_strrpos($cut, "\n");
+        if ($break !== false && $break > (int) ($max * 0.6)) {
+            $cut = mb_substr($cut, 0, $break);
+        }
+
+        return rtrim($cut);
     }
 
     /**
@@ -377,7 +395,7 @@ class FaireService
      */
     private function patchProductText(string $productId, string $token, string $description, ?string $shortDescription): array
     {
-        $payload = ['description' => $description];
+        $payload = ['description' => self::capDescription($description)];
         if ($shortDescription !== null && $shortDescription !== '') {
             $payload['short_description'] = self::shortDescription($shortDescription);
         }

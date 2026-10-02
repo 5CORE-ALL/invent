@@ -150,7 +150,7 @@ class SheinListingPublishService
         $currency = trim((string) config('services.shein.currency', 'USD')) ?: 'USD';
 
         $template = $this->api->listingAttributeTemplate((int) $category['product_type_id']);
-        $productAttrs = $this->productAttributePayload($template['product'] ?? []);
+        $productAttrs = $this->productAttributePayload($template['product'] ?? [], $primarySku);
         $skcList = $this->buildSkcList(
             $skuRows,
             $hostedImages,
@@ -461,7 +461,7 @@ class SheinListingPublishService
             ]],
             'skc_list' => [$skc],
         ];
-        $productAttrs = $this->productAttributePayload($template['product'] ?? []);
+        $productAttrs = $this->productAttributePayload($template['product'] ?? [], $supplierSku !== '' ? $supplierSku : $sku);
         if ($productAttrs !== []) {
             $payload['product_attribute_list'] = $productAttrs;
         }
@@ -1071,22 +1071,44 @@ class SheinListingPublishService
     }
 
     /**
+     * Required template attributes. Dropdowns send the first allowed value. Manual fields
+     * such as Product Model have no value id, so they go out as attribute_extra_value.
+     *
      * @param  list<array<string, mixed>>  $attrs
-     * @return list<array{attribute_id: int, attribute_value_id: int}>
+     * @return list<array{attribute_id: int, attribute_value_id?: int, attribute_extra_value?: string}>
      */
-    private function productAttributePayload(array $attrs): array
+    private function productAttributePayload(array $attrs, string $extraFallback = ''): array
     {
+        $extraFallback = trim($extraFallback);
+        if ($extraFallback === '') {
+            $extraFallback = 'Standard';
+        }
         $out = [];
         foreach ($attrs as $attr) {
-            $values = $this->attributeValues($attr);
+            if (! is_array($attr)) {
+                continue;
+            }
             $attrId = (int) ($attr['attribute_id'] ?? $attr['attributeId'] ?? 0);
+            if ($attrId <= 0) {
+                continue;
+            }
+            $name = mb_strtolower(trim((string) ($attr['attribute_name'] ?? $attr['attributeName'] ?? $attr['attribute_name_en'] ?? '')));
+            $values = $this->attributeValues($attr);
             $valueId = (int) ($values[0]['id'] ?? 0);
-            if ($attrId <= 0 || $valueId <= 0) {
+            if ($valueId > 0) {
+                $out[] = [
+                    'attribute_id' => $attrId,
+                    'attribute_value_id' => $valueId,
+                ];
+                continue;
+            }
+            $status = (int) ($attr['attribute_status'] ?? $attr['attributeStatus'] ?? 0);
+            if ($status !== 3 && ! str_contains($name, 'model')) {
                 continue;
             }
             $out[] = [
                 'attribute_id' => $attrId,
-                'attribute_value_id' => $valueId,
+                'attribute_extra_value' => mb_substr($extraFallback, 0, 100),
             ];
         }
 
