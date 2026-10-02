@@ -80,6 +80,18 @@ class TemuAdsController extends Controller
         $spendSum = round((float) $uniqueGoods->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
         $imprSum = (int) $uniqueGoods->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
         $clickSum = (int) $uniqueGoods->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
+        $mallPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
+        $mall = null;
+        try {
+            $mall = $service->mallPeriodMetrics($mallPeriod);
+        } catch (\Throwable $e) {
+            Log::warning('Temu ads mall spend lookup failed', ['error' => $e->getMessage()]);
+        }
+        if (is_array($mall) && isset($mall['spend'])) {
+            $spendSum = round((float) $mall['spend'], 2);
+            $imprSum = (int) ($mall['impressions'] ?? $imprSum);
+            $clickSum = (int) ($mall['clicks'] ?? $clickSum);
+        }
 
         $l7ClicksByGoods = TemuAdsApiReport::query()
             ->where('period', 'L7')
@@ -185,16 +197,18 @@ class TemuAdsController extends Controller
 
         $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
         $channelSales = $this->temuChannelSalesForPeriod($tacosPeriod);
-        $tacosSpend = $tacosPeriod === 'L30' && ! in_array($period, ['L7', 'L30', 'L60'], true)
-            ? round((float) TemuAdsApiReport::query()->inLatestWindow('L30')->sum('ad_spend'), 2)
-            : $spendSum;
-            
+        $tacosSpend = (is_array($mall) && isset($mall['spend']))
+            ? $spendSum
+            : ($tacosPeriod === 'L30' && ! in_array($period, ['L7', 'L30', 'L60'], true)
+                ? round((float) TemuAdsApiReport::query()->inLatestWindow('L30')->sum('ad_spend'), 2)
+                : $spendSum);
+
         $tacos = $channelSales > 0
             ? round(($tacosSpend / $channelSales) * 100, 2)
             : ($tacosSpend > 0 ? 100.0 : 0.0);
 
         try {
-            $this->snapshotBadgeMetricsFromRows($rows, $period ?: 'ALL', $channelSales, $tacos);
+            $this->snapshotBadgeMetricsFromRows($rows, $period ?: 'ALL', $channelSales, $tacos, is_array($mall) ? $mall : null);
         } catch (\Throwable $e) {
             Log::warning('TemuAdsController badge snapshot failed', ['error' => $e->getMessage()]);
         }
@@ -207,6 +221,7 @@ class TemuAdsController extends Controller
             'clicks_sum' => $clickSum,
             'channel_sales' => $channelSales,
             'tacos' => $tacos,
+            'mall' => $mall,
         ]);
     }
 
@@ -1075,7 +1090,7 @@ class TemuAdsController extends Controller
     /**
      * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
      */
-    private function snapshotBadgeMetricsFromRows($rows, string $period, float $channelSales = 0.0, ?float $tacos = null): void
+    private function snapshotBadgeMetricsFromRows($rows, string $period, float $channelSales = 0.0, ?float $tacos = null, ?array $mall = null): void
     {
         $createN = 0;
         $pauseN = 0;
@@ -1127,6 +1142,15 @@ class TemuAdsController extends Controller
                     $pauseN++;
                 }
             }
+        }
+
+        if (is_array($mall) && isset($mall['spend'])) {
+            $spend = (float) $mall['spend'];
+            $impr = (float) ($mall['impressions'] ?? $impr);
+            $clicks = (float) ($mall['clicks'] ?? $clicks);
+            $sold = (float) ($mall['sold'] ?? $sold);
+            $sales = (float) ($mall['sales'] ?? $sales);
+            $tacosSpend = $spend;
         }
 
         if ($tacos === null) {

@@ -92,7 +92,57 @@ class AlibabaListedPriceTest extends TestCase
         $this->assertStringContainsString('<field id="ladderPrice_1" type="complex"><complex-value><field id="quantity" type="input"><value>10</value></field><field id="price" type="input"><value>18.00</value></field>', $xml);
     }
 
-    public function test_sku_price_listings_are_not_rewritten(): void
+    public function test_sku_price_push_sets_the_single_sku_price(): void
+    {
+        $xml = app(AlibabaApiService::class)->listedPriceUpdateXml([
+            'priceType' => 'sku_price',
+            'productType' => 'wholesale',
+            'productSku' => [
+                'skus' => [[
+                    'skuCode' => 'CS 06 2W',
+                    'skuId' => 10001889397471,
+                    'bulkDiscountPrices' => [
+                        ['startQuantity' => -1, 'price' => '11.86'],
+                    ],
+                ]],
+            ],
+        ], 13.09, 'CS 06 2W');
+
+        $this->assertStringContainsString('<field id="marketPrice" type="singleCheck"><value>3</value></field>', $xml);
+        $this->assertStringContainsString('<field id="skuId" type="input"><value>10001889397471</value></field>', $xml);
+        $this->assertStringContainsString('<field id="price" type="input"><value>13.09</value></field>', $xml);
+    }
+
+    public function test_sku_price_push_keeps_the_other_sku_price(): void
+    {
+        $xml = app(AlibabaApiService::class)->listedPriceUpdateXml([
+            'priceType' => 'sku_price',
+            'productType' => 'wholesale',
+            'productSku' => [
+                'skus' => [
+                    [
+                        'skuCode' => 'CS 06 2W',
+                        'skuId' => 11,
+                        'bulkDiscountPrices' => [
+                            ['startQuantity' => -1, 'price' => '11.86'],
+                        ],
+                    ],
+                    [
+                        'skuCode' => 'CS 06 2W WoG',
+                        'skuId' => 22,
+                        'bulkDiscountPrices' => [
+                            ['startQuantity' => -1, 'price' => '10.55'],
+                        ],
+                    ],
+                ],
+            ],
+        ], 13.09, 'CS 06 2W');
+
+        $this->assertStringContainsString('<field id="skuId" type="input"><value>11</value></field><field id="price" type="input"><value>13.09</value></field>', $xml);
+        $this->assertStringContainsString('<field id="skuId" type="input"><value>22</value></field><field id="price" type="input"><value>10.55</value></field>', $xml);
+    }
+
+    public function test_sku_price_without_a_sku_id_is_not_sent(): void
     {
         $this->expectException(\InvalidArgumentException::class);
 

@@ -137,6 +137,23 @@ class TemuAdsApiReport extends Model
 
         $base = static::query()->inLatestWindow($period);
         $rowCount = (int) (clone $base)->count();
+
+        try {
+            $mall = app(\App\Services\TemuAdsApiReportService::class)->mallPeriodMetrics($period);
+        } catch (\Throwable $e) {
+            $mall = null;
+        }
+        if (is_array($mall) && isset($mall['spend'])) {
+            return [
+                'spend' => round((float) $mall['spend'], 2),
+                'clicks' => (int) ($mall['clicks'] ?? 0),
+                'impressions' => (int) ($mall['impressions'] ?? 0),
+                'sold' => (int) ($mall['sold'] ?? 0),
+                'sales' => round((float) ($mall['sales'] ?? 0), 2),
+                'rows' => $rowCount,
+            ];
+        }
+
         $firstIds = (clone $base)
             ->selectRaw('MIN(id) AS id')
             ->groupBy('goods_id');

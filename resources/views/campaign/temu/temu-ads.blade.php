@@ -572,7 +572,7 @@
                             <span class="badge fs-6 p-2 temu-ads-chart-badge" id="spend-sum"
                                 data-metric="spend" data-label="Spend"
                                 style="background-color: #6f42c1; color: white; font-weight: bold;"
-                                title="Temu Last 30 days spend in the current date window (Active + Paused + ended). Click for history">Spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
+                                title="Temu Seller Center store spend for the selected period (Last 7 / 30 / prior 30, ending yesterday). Click for history">Spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2 temu-ads-chart-badge" id="y-spend-sum"
                                 data-metric="y_spend" data-label="Y spend"
                                 style="background-color: #4c1d95; color: white; font-weight: bold;"
@@ -1652,20 +1652,37 @@
                 });
             }
 
+            let lastPaintedBadges = null;
+
+            function applyStoreBadge(m, response) {
+                const mall = response && response.mall;
+                if (mall && mall.spend != null && isFinite(parseFloat(mall.spend))) {
+                    m.spend = parseFloat(mall.spend);
+                    if (mall.impressions != null) m.impressions = parseFloat(mall.impressions);
+                    if (mall.clicks != null) m.clicks = parseFloat(mall.clicks);
+                    if (mall.sales != null) m.sales = parseFloat(mall.sales);
+                    if (mall.sold != null) m.sold = parseFloat(mall.sold);
+                } else if (response) {
+                    if (response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) m.spend = parseFloat(response.spend_sum);
+                    if (response.clicks_sum != null && isFinite(parseFloat(response.clicks_sum))) m.clicks = parseFloat(response.clicks_sum);
+                    if (response.impressions_sum != null && isFinite(parseFloat(response.impressions_sum))) m.impressions = parseFloat(response.impressions_sum);
+                }
+                m.roas = m.spend > 0 ? (m.sales / m.spend) : 0;
+                m.acos = m.sales > 0 ? (m.spend / m.sales) * 100 : (m.spend > 0 ? 100 : 0);
+                m.ctr = m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0;
+                m.cvr = m.clicks > 0 ? (m.sold / m.clicks) * 100 : 0;
+                return m;
+            }
+
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
                 const q = currentFilterQuery();
                 const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.alertOnly && q.rowType === 'all';
-                if (noLocalFilter && response && response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) {
-                    m.spend = parseFloat(response.spend_sum);
-                }
-                if (noLocalFilter && response && response.clicks_sum != null && isFinite(parseFloat(response.clicks_sum))) {
-                    m.clicks = parseFloat(response.clicks_sum);
-                }
-                if (noLocalFilter && response && response.impressions_sum != null && isFinite(parseFloat(response.impressions_sum))) {
-                    m.impressions = parseFloat(response.impressions_sum);
+                if (noLocalFilter && response) {
+                    applyStoreBadge(m, response);
                 }
                 currentAvgCtr = Number(m.ctr) || 0;
+                lastPaintedBadges = m;
                 setBadgeVal('row-count', Number(m.rows).toLocaleString());
                 setBadgeVal('impr-sum', Math.round(m.impressions).toLocaleString());
                 setBadgeVal('click-sum', Math.round(m.clicks).toLocaleString());
@@ -1687,7 +1704,7 @@
             let badgeSnapshotTimer = null;
             function snapshotBadgeHistory() {
                 if (!table) return;
-                const m = badgeCounts(filteredFlatAdsRows());
+                const m = lastPaintedBadges || badgeCounts(filteredFlatAdsRows());
                 clearTimeout(badgeSnapshotTimer);
                 badgeSnapshotTimer = setTimeout(function () {
                     fetch(@json(route('temu.ads.badge-snapshot')), {

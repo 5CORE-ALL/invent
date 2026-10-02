@@ -199,6 +199,11 @@
                                 title="AB L30 &gt; 0 and INV &gt; 0">Sold &gt;0: <span id="ab-more-sold">0</span></span>
                             <span class="badge bg-danger fs-6 p-2 ab-filter-badge" id="ab-zero-badge" data-filter="zero" style="cursor:pointer;"
                                 title="AB L30 = 0 and INV &gt; 0">0 Sold: <span id="ab-zero-sold">0</span></span>
+                            <span class="badge fs-6 p-2" id="ab-blue-alert-badge"
+                                style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Blue alert: INV &gt; 0 and Price ≠ S PRC (needs push). Click to show only those SKUs.">
+                                <i class="fas fa-exclamation-triangle"></i> 0
+                            </span>
                             <span class="badge bg-secondary fs-6 p-2"
                                 title="marketplace_percentages for Alibaba. Ship is not used.">Margin: {{ number_format((float) ($marginPercent ?? 95), 2) }}%</span>
                         </div>
@@ -301,10 +306,51 @@
         let abTable = null;
         let table = null;
         let abAllRows = [];
+        let abBlueAlertFilter = false;
 
         function isAbParentRow(data) {
             if (!data) return false;
             return !!(data.is_parent_summary || data.is_parent_row);
+        }
+
+        function abHasBlueAlert(data) {
+            if (!data || isAbParentRow(data)) return false;
+            const sku = String(data.sku || '').trim().toUpperCase();
+            if (!sku || sku.indexOf('PARENT') === 0) return false;
+            if (!(parseFloat(data.INV) > 0)) return false;
+            const sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+            const price = parseFloat(data.price) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        window.abHasBlueTriangle = abHasBlueAlert;
+
+        window.abApplyPushPatch = function (sku, patch) {
+            const key = String(sku || '').trim().toUpperCase();
+            if (!key || !patch) return;
+            (abAllRows || []).forEach(function (row) {
+                if (String(row.sku || '').trim().toUpperCase() !== key) return;
+                Object.assign(row, patch);
+                if (patch.price != null && patch.price !== '') {
+                    const price = parseFloat(patch.price) || 0;
+                    const lp = parseFloat(row.lp) || 0;
+                    const margin = parseFloat(row._margin) || AB_MARGIN;
+                    const profit = (price * margin) - lp;
+                    row.profit = profit;
+                    row.sku_price = price;
+                    if (lp > 0) row.groi = (profit / lp) * 100;
+                    if (price > 0) row.gpft = (profit / price) * 100;
+                }
+            });
+            if (typeof updateSummary === 'function') {
+                updateSummary((abAllRows || []).filter(abRowMatches));
+            }
+        };
+
+        function abSyncBlueAlertBadge() {
+            const el = document.getElementById('ab-blue-alert-badge');
+            if (!el) return;
+            el.style.outline = abBlueAlertFilter ? '3px solid #ffc107' : '';
+            el.style.outlineOffset = abBlueAlertFilter ? '2px' : '';
         }
 
         function abDilValue(data) {
@@ -333,6 +379,7 @@
         }
 
         function abRowMatches(data) {
+            if (abBlueAlertFilter) return abHasBlueAlert(data);
             const view = document.getElementById('ab-row-type').value;
             const parent = isAbParentRow(data);
             if (view === 'sku' && parent) return false;
@@ -390,6 +437,7 @@
         }
 
         function updateSummary(rows) {
+            if (!rows) rows = (abAllRows || []).filter(abRowMatches);
             let totalSales = 0, totalProfit = 0, totalCogs = 0, zeroSold = 0, moreSold = 0, visible = 0;
             (rows || []).forEach(function (row) {
                 if (isAbParentRow(row)) return;
@@ -416,6 +464,15 @@
             document.getElementById('ab-groi-badge').textContent = 'GROI: ' + groi + '%';
             document.getElementById('ab-more-sold').textContent = moreSold.toLocaleString();
             document.getElementById('ab-zero-sold').textContent = zeroSold.toLocaleString();
+            let blueAlert = 0;
+            (abAllRows || []).forEach(function (row) {
+                if (abHasBlueAlert(row)) blueAlert++;
+            });
+            const blueBadge = document.getElementById('ab-blue-alert-badge');
+            if (blueBadge) {
+                blueBadge.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' + blueAlert.toLocaleString();
+            }
+            abSyncBlueAlertBadge();
             document.querySelectorAll('.ab-filter-badge').forEach(function (el) { el.classList.remove('active-filter'); });
             const soldF = document.getElementById('ab-sold-filter').value;
             if (soldF === 'more') document.getElementById('ab-sold-badge').classList.add('active-filter');
@@ -678,7 +735,11 @@
                             title: 'Price', field: 'price', hozAlign: 'center', width: 80, sorter: 'number',
                             headerTooltip: 'Alibaba API SKU price',
                             formatter: function (cell) {
-                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
+                                if (row._price_pulling) {
+                                    return '<i class="fas fa-spinner fa-spin" style="color:#0d6efd;" title="Pulling live price"></i>';
+                                }
                                 const v = parseFloat(cell.getValue()) || 0;
                                 if (v === 0) return '<span style="color:#a00211;font-weight:600;">$0.00</span>';
                                 return '$' + v.toFixed(2);
@@ -705,7 +766,7 @@
                                 const value = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
                                 if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
                                 const live = parseFloat(row.price) || 0;
-                                const differ = live > 0 && Math.round(value * 100) !== Math.round(live * 100);
+                                const differ = abHasBlueAlert(row);
                                 const tri = differ
                                     ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $' + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                     : '';
@@ -815,16 +876,26 @@
             .finally(() => { loader.style.display = 'none'; });
         }
 
+        function abApplyFiltersClearingBlue() {
+            abBlueAlertFilter = false;
+            applyFilters();
+        }
         ['ab-row-type', 'ab-inventory-filter', 'ab-sold-filter', 'ab-gpft-filter', 'ab-cvr-filter', 'ab-roi-filter', 'ab-dil-filter', 'ab-status-filter'].forEach(function (id) {
-            document.getElementById(id).addEventListener('change', applyFilters);
+            document.getElementById(id).addEventListener('change', abApplyFiltersClearingBlue);
         });
-        document.getElementById('ab-search').addEventListener('input', applyFilters);
+        document.getElementById('ab-search').addEventListener('input', abApplyFiltersClearingBlue);
         document.getElementById('ab-sold-badge').addEventListener('click', function () {
+            abBlueAlertFilter = false;
             document.getElementById('ab-sold-filter').value = document.getElementById('ab-sold-filter').value === 'more' ? 'all' : 'more';
             applyFilters();
         });
         document.getElementById('ab-zero-badge').addEventListener('click', function () {
+            abBlueAlertFilter = false;
             document.getElementById('ab-sold-filter').value = document.getElementById('ab-sold-filter').value === 'zero' ? 'all' : 'zero';
+            applyFilters();
+        });
+        document.getElementById('ab-blue-alert-badge').addEventListener('click', function () {
+            abBlueAlertFilter = !abBlueAlertFilter;
             applyFilters();
         });
         document.getElementById('ab-sync-btn').addEventListener('click', function () {
