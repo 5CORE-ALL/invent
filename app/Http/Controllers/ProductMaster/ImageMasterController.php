@@ -78,9 +78,9 @@ class ImageMasterController extends Controller
                 $metricsByMarketplace[$marketplace] = $this->loadImageMetricsBySku($table);
             }
 
-            $mainBySku = $this->loadImageMainByMarketplaceForSkus(
-                array_map(fn ($row) => $this->normalizeSku($row['SKU'] ?? null), $products)
-            );
+            $skuList = array_map(fn ($row) => $this->normalizeSku($row['SKU'] ?? null), $products);
+            $mainBySku = $this->loadImageMainByMarketplaceForSkus($skuList);
+            $historyBySku = array_change_key_case(\App\Services\Support\ImageMasterPushHistory::summaryForSkus($skuList), CASE_UPPER);
 
             foreach ($products as &$row) {
                 $sku = $this->normalizeSku($row['SKU'] ?? null);
@@ -90,6 +90,7 @@ class ImageMasterController extends Controller
                 }
                 $row['image_master'] = $im;
                 $row['image_main_by_marketplace'] = $mainBySku[$sku] ?? [];
+                $row['push_history'] = $historyBySku[strtoupper($sku)] ?? null;
                 $row['preview_thumb'] = $this->firstPreviewUrl($row);
             }
 
@@ -323,7 +324,12 @@ class ImageMasterController extends Controller
             ];
         }
 
-        $job = $pushStore->create($sku, $mode, $tasks, $mainMap);
+        $user = $request->user();
+        $job = $pushStore->create($sku, $mode, $tasks, $mainMap, $user ? [
+            'id' => (int) $user->id,
+            'name' => (string) ($user->name ?? ''),
+            'email' => (string) ($user->email ?? ''),
+        ] : null);
         try {
             $this->dispatchImageMasterPushJob();
         } catch (\Throwable $e) {

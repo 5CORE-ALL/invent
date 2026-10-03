@@ -2198,6 +2198,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $requestBodies[] = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
+            'saveMode' => 1,
             $goodsBasicField => [
                 'goodsName' => $title,
             ],
@@ -2215,6 +2216,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             $requestBodies[] = [
                 'type' => $apiType,
                 'goodsId' => (int) $goodsId,
+                'saveMode' => 1,
                 $goodsBasicField => ['goodsName' => $title],
                 $skuListField => [$skuEntry],
             ];
@@ -2373,19 +2375,33 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $requestBody = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
-            $goodsBasicField => [
-                $basicFieldKey => $text,
-            ],
+            'saveMode' => 1,
         ];
 
-        // Preserve current goodsDesc when updating goodsSummary to avoid accidental description loss.
+        // bg.local.goods.partial.update takes bulletPoints (string[]) and goodsDesc (string) at the
+        // request root, beside goodsBasic. Nested inside goodsBasic they are silently ignored while
+        // Temu still answers success, so the listing never changes.
         $goodsDescField = (string) $this->temuCfg('goods_desc_field', 'goodsDesc');
-        if ($preserveGoodsDesc && $basicFieldKey !== $goodsDescField) {
-            $currentDesc = $preservedGoodsDesc !== null
-                ? trim($preservedGoodsDesc)
-                : $this->fetchCurrentTemuGoodsDesc((string) $goodsId, $sku);
-            if ($currentDesc !== '') {
-                $requestBody[$goodsBasicField][$goodsDescField] = $currentDesc;
+        $summaryField = (string) $this->temuCfg('goods_summary_field', 'goodsSummary');
+        $contentOnly = false;
+        if ($basicFieldKey === $goodsDescField || $basicFieldKey === 'goodsDesc') {
+            $requestBody['goodsDesc'] = is_array($text) ? implode("\n", $text) : $text;
+            $contentOnly = true;
+        } elseif ($basicFieldKey === $summaryField || in_array($basicFieldKey, ['goodsSummary', 'bulletPoints'], true)) {
+            $lines = is_array($text)
+                ? $text
+                : array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $text) ?: []), fn ($s) => $s !== ''));
+            $requestBody['bulletPoints'] = $lines;
+            $contentOnly = true;
+        } else {
+            $requestBody[$goodsBasicField] = [$basicFieldKey => $text];
+            if ($preserveGoodsDesc) {
+                $currentDesc = $preservedGoodsDesc !== null
+                    ? trim($preservedGoodsDesc)
+                    : $this->fetchCurrentTemuGoodsDesc((string) $goodsId, $sku);
+                if ($currentDesc !== '') {
+                    $requestBody['goodsDesc'] = $currentDesc;
+                }
             }
         }
 
@@ -2393,7 +2409,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $dimensions = $this->getProductDimensions($sku);
         $images = $this->getProductImages($sku);
 
-        if ($includeSkuList && $skuInfo !== null && isset($skuInfo['skuId'])) {
+        // Content-only edits must not carry skuList: it re-validates package units (Temu 2 rejects
+        // weightUnit "g") and can overwrite live price/images.
+        if (! $contentOnly && $includeSkuList && $skuInfo !== null && isset($skuInfo['skuId'])) {
             $skuIdField = config('services.temu.sku_id_field', 'skuId');
             $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
             $requestBody[$skuListField] = [[

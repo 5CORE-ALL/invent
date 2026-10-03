@@ -104,6 +104,17 @@ class ImageMasterPushRunner
                 ]);
             }
 
+            ImageMasterPushHistory::record(
+                $sku,
+                isset($state['id']) ? (string) $state['id'] : null,
+                is_array($state['user'] ?? null) ? $state['user'] : null,
+                $mp,
+                $ok,
+                $mode,
+                is_array($task['images'] ?? null) ? count($task['images']) : 0,
+                $message
+            );
+
             $metricsFailed = $ok && ! ($result['metrics_saved'] ?? false);
             $this->store->update(function (array $state) use ($index, $mp, $ok, $message, $result, $metricsFailed) {
                 $state['current_index'] = $index + 1;
