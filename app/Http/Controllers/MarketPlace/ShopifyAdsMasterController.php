@@ -311,19 +311,22 @@ class ShopifyAdsMasterController extends Controller
         // recursively so nested children get it too.
         $this->applyTcosToRows($rows, $netSales);
 
-        // Trend dots match the chart's last point. Google charts end on the
-        // completed California day, so a cell that still shows that day uses
-        // that day's move (2,158 vs the day before = red). Other channels
-        // include today, so those cells compare to yesterday. Read before
-        // today's snapshot write. ACOS / TCOS invert in the view.
+        // Trend dots match the chart's last real move. A cell that still
+        // shows the same number as the chart's last day uses that day's
+        // change (Facebook sold 79 vs 71 = green), not a flat gray.
+        // Google uses the completed California day. Other channels use
+        // yesterday. Read before today's snapshot write. ACOS / TCOS invert
+        // in the view.
         $completed = $this->completedCaliforniaChartEnd()->toDateString();
         $beforeCompleted = Carbon::parse($completed, self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
         $yesterday = Carbon::now(self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
+        $beforeYesterday = Carbon::parse($yesterday, self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
         $this->attachTrends(
             $rows,
             $this->snapshotByChannelOn($completed),
             $this->snapshotByChannelOn($beforeCompleted),
-            $this->snapshotByChannelOn($yesterday)
+            $this->snapshotByChannelOn($yesterday),
+            $this->snapshotByChannelOn($beforeYesterday)
         );
 
         // Persist today's snapshot so the badge trend chart has history. The
@@ -424,8 +427,9 @@ class ShopifyAdsMasterController extends Controller
      * @param  array<string, array<string, float>>  $endByChannel
      * @param  array<string, array<string, float>>  $priorByChannel
      * @param  array<string, array<string, float>>  $yesterdayByChannel
+     * @param  array<string, array<string, float>>  $beforeYesterdayByChannel
      */
-    private function attachTrends(array &$rows, array $endByChannel, array $priorByChannel, array $yesterdayByChannel): void
+    private function attachTrends(array &$rows, array $endByChannel, array $priorByChannel, array $yesterdayByChannel, array $beforeYesterdayByChannel): void
     {
         foreach ($rows as &$row) {
             $channel = (string) ($row['channel'] ?? '');
@@ -433,11 +437,11 @@ class ShopifyAdsMasterController extends Controller
             $row['trend'] = $this->computeTrend(
                 $row,
                 $googleChart ? ($endByChannel[$channel] ?? null) : ($yesterdayByChannel[$channel] ?? null),
-                $googleChart ? ($priorByChannel[$channel] ?? null) : null
+                $googleChart ? ($priorByChannel[$channel] ?? null) : ($beforeYesterdayByChannel[$channel] ?? null)
             );
 
             if (! empty($row['_children']) && is_array($row['_children'])) {
-                $this->attachTrends($row['_children'], $endByChannel, $priorByChannel, $yesterdayByChannel);
+                $this->attachTrends($row['_children'], $endByChannel, $priorByChannel, $yesterdayByChannel, $beforeYesterdayByChannel);
             }
         }
         unset($row);
