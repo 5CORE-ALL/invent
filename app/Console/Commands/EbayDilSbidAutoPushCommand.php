@@ -37,7 +37,7 @@ class EbayDilSbidAutoPushCommand extends Command
         if (! $lock->get()) {
             $this->warn('Already running — skip');
 
-            return self::SUCCESS;
+            return self::FAILURE;
         }
 
         try {

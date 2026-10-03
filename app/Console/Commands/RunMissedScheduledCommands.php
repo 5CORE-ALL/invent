@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -22,7 +23,8 @@ class RunMissedScheduledCommands extends Command
 {
     protected $signature = 'cron:run-missed
         {--dry-run : List missed jobs without running them}
-        {--limit=0 : Max jobs to run (0 = no limit)}';
+        {--limit=0 : Max jobs to run (0 = no limit)}
+        {--as-of= : IST time to treat as now, so a run after midnight can still recover that day}';
 
     protected $description = 'Run Kernel scheduled artisan jobs that were due today but never succeeded';
 
@@ -37,8 +39,19 @@ class RunMissedScheduledCommands extends Command
         $ok = 0;
         $skipped = 0;
 
-        $this->info('cron:run-missed '.now('Asia/Kolkata')->toDateTimeString().' IST'.($dry ? ' (dry-run)' : ''));
+        $lock = Cache::lock('cron-run-missed', 7200);
+        if (! $dry && ! $lock->get()) {
+            $this->warn('Already running — skip');
 
+            return self::SUCCESS;
+        }
+
+        $asOf = $this->option('as-of')
+            ? Carbon::parse((string) $this->option('as-of'), 'Asia/Kolkata')
+            : now('Asia/Kolkata');
+        $this->info('cron:run-missed '.$asOf->toDateTimeString().' IST'.($dry ? ' (dry-run)' : ''));
+
+        try {
         foreach ($schedule->events() as $event) {
             if (! $event instanceof Event || $event instanceof CallbackEvent) {
                 continue;
@@ -60,19 +73,22 @@ class RunMissedScheduledCommands extends Command
                 continue;
             }
 
-            $dedupe = $base;
+            // Each clock slot is its own job. ebay1 at 09:50 must not be
+            // collapsed into ebay2 at 09:55 just because the artisan name matches.
+            $dedupe = $full.'|'.trim((string) ($event->expression ?? ''));
             if (isset($seen[$dedupe])) {
                 continue;
             }
 
-            $dueAt = $this->lastDueAt($event);
+            $dueAt = $this->lastDueAt($event, $asOf);
             if (! $dueAt) {
                 continue;
             }
 
             $seen[$dedupe] = true;
+            $jobName = (string) ($event->description ?: $base);
 
-            if ($this->alreadySucceeded($base, $full, $dueAt)) {
+            if ($this->alreadySucceeded($base, $full, $jobName, $dueAt)) {
                 $ok++;
                 $this->line("OK    {$full}  (last due {$dueAt->toDateTimeString()})");
                 continue;
@@ -99,6 +115,11 @@ class RunMissedScheduledCommands extends Command
         $this->info("due-and-ok={$ok} missed={$missed} ran={$ran} skipped_hf={$skipped}");
 
         return self::SUCCESS;
+        } finally {
+            if (! $dry) {
+                $lock->release();
+            }
+        }
     }
 
     protected function artisanCommand(Event $event): ?string
@@ -150,7 +171,7 @@ class RunMissedScheduledCommands extends Command
         return str_contains($min, ',');
     }
 
-    protected function lastDueAt(Event $event): ?Carbon
+    protected function lastDueAt(Event $event, ?Carbon $asOf = null): ?Carbon
     {
         $tz = $event->timezone ?: config('app.timezone', 'UTC');
         $expression = (string) ($event->expression ?? '');
@@ -164,7 +185,7 @@ class RunMissedScheduledCommands extends Command
             return null;
         }
 
-        $end = Carbon::now($tz);
+        $end = ($asOf ?? Carbon::now($tz))->copy()->timezone($tz);
         $cursor = $end->copy()->startOfDay()->subSecond();
         $lastPass = null;
 
@@ -198,21 +219,29 @@ class RunMissedScheduledCommands extends Command
         return $lastPass;
     }
 
-    protected function alreadySucceeded(string $base, string $full, Carbon $dueAt): bool
+    /**
+     * A later slot of the same command must not count. Sibling pushes are
+     * five minutes apart, so only a start in the first four minutes counts.
+     */
+    protected function alreadySucceeded(string $base, string $full, string $jobName, Carbon $dueAt): bool
     {
         try {
             if (! Schema::hasTable('cron_execution_logs')) {
                 return false;
             }
 
+            $from = $dueAt->copy()->timezone(config('app.timezone'));
+            $until = $from->copy()->addMinutes(4);
+
             return DB::table('cron_execution_logs')
-                ->where(function ($q) use ($base, $full) {
+                ->where(function ($q) use ($base, $full, $jobName) {
                     $q->where('command', $full)
                         ->orWhere('command', $base)
                         ->orWhere('command', 'like', $base.' %')
-                        ->orWhere('job_name', $base);
+                        ->orWhere('job_name', $jobName);
                 })
-                ->where('started_at', '>=', $dueAt->copy()->timezone(config('app.timezone')))
+                ->where('started_at', '>=', $from)
+                ->where('started_at', '<', $until)
                 ->whereIn('status', ['success', 'recovered', 'partial_success', 'running'])
                 ->exists();
         } catch (Throwable) {

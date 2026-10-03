@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ShopifySku;
 use App\Support\CpMasterDil;
 use App\Support\DilVsSbidRule;
+use App\Support\EbayBidPercentage;
 use App\Support\EbayMarketingPushRetry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -128,14 +129,15 @@ class DilVsSbidApplyService
                     continue;
                 }
 
-                if ($decision['bid'] <= 0) {
+                $formatted = EbayBidPercentage::forPush((float) $decision['bid']);
+                if ($formatted === null) {
                     $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => $decision['label'] !== '' ? $decision['label'] : 'No S Bid for this Dil'];
                     $skipped++;
                     continue;
                 }
 
-                $nextBid = round((float) $decision['bid'], 2);
-                if ($onlyChanged && abs(round((float) ($ad->bid_percentage ?? 0), 2) - $nextBid) < 0.009) {
+                $nextBid = (float) $formatted;
+                if ($onlyChanged && abs(round((float) ($ad->bid_percentage ?? 0), 1) - $nextBid) < 0.009) {
                     $unchanged++;
                     continue;
                 }
@@ -143,7 +145,7 @@ class DilVsSbidApplyService
                 $bidsByCampaign[(string) $ad->campaign_id][] = [
                     'listingId' => $lid,
                     'adId' => $ad->ad_id ? (string) $ad->ad_id : null,
-                    'bidPercentage' => (string) $nextBid,
+                    'bidPercentage' => $formatted,
                 ];
             }
         }
@@ -198,7 +200,7 @@ class DilVsSbidApplyService
         return $this->apply($ruleKey, $adsTable, $metricClass, $apiServiceClass, $listingIds, true);
     }
 
-    private function pushBids(EbayMarketingPushRetry $http, string $adsTable, string $campaignId, array $requests, array &$results, int &$success, int &$failed): void
+    private function pushBids(EbayMarketingPushRetry $http, string $adsTable, string $campaignId, array $requests, array &$results, int &$success, int &$failed, int $depth = 0): void
     {
         $payload = array_map(fn ($r) => [
             'listingId' => $r['listingId'],
@@ -208,31 +210,104 @@ class DilVsSbidApplyService
         $out = $http->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id", [
             'requests' => $payload,
         ]);
+        $response = $out['response'];
+        $body = $response !== null ? $response->json() : null;
 
-        if ($out['ok'] && $out['response'] !== null) {
+        if ($out['ok'] && is_array($body) && isset($body['responses']) && is_array($body['responses'])) {
+            $byListing = [];
+            foreach ($body['responses'] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $id = (string) ($row['listingId'] ?? '');
+                if ($id !== '') {
+                    $byListing[$id] = $row;
+                }
+            }
+            $retryAtMax = [];
             foreach ($requests as $r) {
-                DB::table($adsTable)
-                    ->where('listing_id', (string) $r['listingId'])
-                    ->where('campaign_id', $campaignId)
-                    ->update([
-                        'bid_percentage' => round((float) $r['bidPercentage'], 2),
-                        'campaign_status' => 'RUNNING',
-                        'updated_at' => now(),
-                    ]);
-                $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => $r['bidPercentage'].'%'];
-                $success++;
+                $row = $byListing[(string) $r['listingId']] ?? null;
+                $code = is_array($row) ? (int) ($row['statusCode'] ?? 200) : 0;
+                $ok = is_array($row) && $code >= 200 && $code < 300 && empty($row['errors']);
+                if ($ok) {
+                    $this->markBidPushed($adsTable, $campaignId, $r, $results, $success);
+                    continue;
+                }
+                $max = EbayBidPercentage::maxFromError($row);
+                if ($max !== null && (float) $r['bidPercentage'] > $max && $depth < 2) {
+                    $r['bidPercentage'] = number_format($max, 1, '.', '');
+                    $retryAtMax[] = $r;
+                    continue;
+                }
+                $reason = is_array($row) ? ($row['errors'][0]['message'] ?? 'Push failed') : 'Push failed';
+                $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $reason];
+                $failed++;
+            }
+            if ($retryAtMax !== []) {
+                $this->pushBids($http, $adsTable, $campaignId, $retryAtMax, $results, $success, $failed, $depth + 1);
+            }
+
+            return;
+        }
+
+        if ($out['ok'] && $response !== null) {
+            foreach ($requests as $r) {
+                $this->markBidPushed($adsTable, $campaignId, $r, $results, $success);
             }
 
             return;
         }
 
         $reason = (string) ($out['error'] ?? 'Push failed');
-        $status = $out['response'] !== null ? $out['response']->status() : 0;
+        $status = $response !== null ? $response->status() : 0;
+        $max = EbayBidPercentage::maxFromError($body);
+        if ($max !== null && $depth < 2) {
+            $clamped = [];
+            $changed = false;
+            foreach ($requests as $r) {
+                if ((float) $r['bidPercentage'] > $max) {
+                    $r['bidPercentage'] = number_format($max, 1, '.', '');
+                    $changed = true;
+                }
+                $clamped[] = $r;
+            }
+            if ($changed) {
+                $this->pushBids($http, $adsTable, $campaignId, $clamped, $results, $success, $failed, $depth + 1);
+
+                return;
+            }
+        }
+
+        $bidRejected = $max !== null
+            || str_contains(strtolower($reason), 'bidpercentage')
+            || str_contains(strtolower($reason), 'bid percentage');
+        if ($bidRejected && count($requests) > 1 && $depth < 6) {
+            $mid = intdiv(count($requests), 2);
+            $this->pushBids($http, $adsTable, $campaignId, array_slice($requests, 0, $mid), $results, $success, $failed, $depth + 1);
+            $this->pushBids($http, $adsTable, $campaignId, array_slice($requests, $mid), $results, $success, $failed, $depth + 1);
+
+            return;
+        }
+
         $this->noteSellerPause($adsTable, $campaignId, $status, $reason);
         foreach ($requests as $r) {
             $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $reason];
             $failed++;
         }
+    }
+
+    private function markBidPushed(string $adsTable, string $campaignId, array $r, array &$results, int &$success): void
+    {
+        DB::table($adsTable)
+            ->where('listing_id', (string) $r['listingId'])
+            ->where('campaign_id', $campaignId)
+            ->update([
+                'bid_percentage' => round((float) $r['bidPercentage'], 1),
+                'campaign_status' => 'RUNNING',
+                'updated_at' => now(),
+            ]);
+        $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => $r['bidPercentage'].'%'];
+        $success++;
     }
 
     private function pauseAds(EbayMarketingPushRetry $http, string $adsTable, string $campaignId, array $requests, array &$results, int &$success, int &$failed): void

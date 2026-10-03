@@ -154,17 +154,30 @@ class Kernel extends ConsoleKernel
     /**
      * Restrict a scheduled event to India business hours (09:00–20:00 IST).
      *
-     * between() only skips firing outside the window — it never kills a process
-     * already running. Jobs started before 20:00 may finish after 20:00.
+     * The check runs when the event is filtered, against the clock at that
+     * moment (or Carbon::setTestNow). Laravel's between() freezes the clock
+     * at registration, so a catch-up later in the day could not see the slot.
+     * This does not kill a process already running.
      *
      * Do not wrap a job whose clock is outside this window (before 09:00 or
      * after 20:00 IST). The slot will never fire and cron-monitor will mark it missed.
      */
     protected function istBusinessWindow($event)
     {
+        $tz = self::IST_TZ;
+        [$startH, $startM] = array_map('intval', explode(':', self::IST_WINDOW_START));
+        [$endH, $endM] = array_map('intval', explode(':', self::IST_WINDOW_END));
+
         return $event
-            ->timezone(self::IST_TZ)
-            ->between(self::IST_WINDOW_START, self::IST_WINDOW_END);
+            ->timezone($tz)
+            ->when(function () use ($tz, $startH, $startM, $endH, $endM) {
+                $now = \Illuminate\Support\Carbon::now($tz);
+
+                return $now->between(
+                    $now->copy()->setTime($startH, $startM, 0),
+                    $now->copy()->setTime($endH, $endM, 0)
+                );
+            });
     }
 
     /**
@@ -3127,14 +3140,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Recover jobs that schedule:run skipped. Must NOT use $ist()
-        // (06:15 is before the window; 20:15 is after).
+        // Backup only. The reliable fire is /etc/cron.d/cron-run-missed,
+        // because this slot is itself skipped when schedule:run is late.
+        // Must NOT use $ist() (06:15 is before the window; 20:15 is after).
         foreach (['06:15', '12:15', '20:15'] as $slot) {
             $schedule->command('cron:run-missed')
                 ->dailyAt($slot)
                 ->timezone('Asia/Kolkata')
                 ->name('cron-run-missed-'.str_replace(':', '', $slot))
-                ->withoutOverlapping(360)
+                ->withoutOverlapping(90)
                 ->runInBackground()
                 ->appendOutputTo($log);
         }

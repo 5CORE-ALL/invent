@@ -36,7 +36,8 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertFalse($mid['off']);
 
         $above = DilVsSbidRule::resolve(10.01, 12.5, $slabs);
-        $this->assertSame('none', $above['mode']);
+        $this->assertSame('dynamic', $above['mode']);
+        $this->assertSame(8.0, $above['bid']);
         $this->assertFalse($above['off']);
     }
 

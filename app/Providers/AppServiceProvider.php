@@ -37,8 +37,40 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->pinScheduleRunClock();
         $this->app->singleton(FollowUpServiceInterface::class, FollowUpService::class);
         $this->app->singleton(ShopifyServiceInterface::class, ShopifyService::class);
+    }
+
+    /**
+     * Cron records the minute it fired. schedule:run often boots past that
+     * minute, and Laravel then treats the daily job as not due. Pin the clock
+     * for this process only. Child artisan commands do not use schedule:run
+     * on argv, so they keep real time.
+     */
+    protected function pinScheduleRunClock(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $argv = $_SERVER['argv'] ?? [];
+        if (! in_array('schedule:run', $argv, true)) {
+            return;
+        }
+
+        $at = getenv('SCHEDULE_RUN_AT');
+        if (! is_string($at) || trim($at) === '') {
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Carbon::setTestNow(
+                \Illuminate\Support\Carbon::parse(trim($at), 'Asia/Kolkata')
+            );
+        } catch (\Throwable) {
+            // A bad timestamp must not stop the scheduler.
+        }
     }
 
     /**

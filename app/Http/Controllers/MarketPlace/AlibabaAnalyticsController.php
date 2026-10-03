@@ -13,6 +13,7 @@ use App\Http\Controllers\Sales\AlibabaSalesController;
 use App\Services\AlibabaApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\StreamedResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -201,6 +202,57 @@ class AlibabaAnalyticsController extends Controller
                 'ov_l30' => (int) $childRows->sum(fn ($r) => (int) ($r['L30'] ?? 0)),
             ],
             'status' => 200,
+        ]);
+    }
+
+    public function exportCsv(): StreamedResponse
+    {
+        $payload = $this->data()->getData(true);
+        $rows = array_values(array_filter(
+            $payload['data'] ?? [],
+            fn ($row) => empty($row['is_parent_summary']) && empty($row['is_parent_row'])
+        ));
+
+        $filename = 'Alibaba_Analytics_'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Parent', 'SKU', 'Link', 'INV', 'AL INV', 'OV L30', 'Dil%', 'AB L30',
+                'Price', 'S PRC', 'GROI%', 'GPFT%', 'Profit', 'Sales',
+                'SGROI%', 'SGPFT%', 'SNROI%', 'SNGPFT%', 'Product Id', 'Status',
+            ]);
+
+            foreach ($rows as $row) {
+                $sprice = (float) ($row['SPRICE'] ?? $row['sprice'] ?? 0);
+                fputcsv($out, [
+                    $row['Parent'] ?? '',
+                    $row['sku'] ?? '',
+                    $row['product_url'] ?? '',
+                    (int) ($row['INV'] ?? 0),
+                    $row['soh'] === null || $row['soh'] === '' ? '' : (int) $row['soh'],
+                    (int) ($row['L30'] ?? 0),
+                    number_format((float) ($row['dil_percent'] ?? 0), 2, '.', ''),
+                    (int) ($row['al30'] ?? 0),
+                    number_format((float) ($row['price'] ?? 0), 2, '.', ''),
+                    $sprice > 0 ? number_format($sprice, 2, '.', '') : '',
+                    number_format((float) ($row['groi'] ?? 0), 2, '.', ''),
+                    number_format((float) ($row['gpft'] ?? 0), 2, '.', ''),
+                    number_format((float) ($row['profit'] ?? 0), 2, '.', ''),
+                    number_format((float) ($row['sales'] ?? 0), 2, '.', ''),
+                    $sprice > 0 ? number_format((float) ($row['sgroi'] ?? 0), 2, '.', '') : '',
+                    $sprice > 0 ? number_format((float) ($row['sgpft'] ?? 0), 2, '.', '') : '',
+                    $sprice > 0 ? number_format((float) ($row['snroi'] ?? 0), 2, '.', '') : '',
+                    $sprice > 0 ? number_format((float) ($row['sngpft'] ?? 0), 2, '.', '') : '',
+                    $row['product_id'] ?? '',
+                    $row['status'] ?? '',
+                ]);
+            }
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 

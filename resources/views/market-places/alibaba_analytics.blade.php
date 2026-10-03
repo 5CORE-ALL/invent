@@ -272,6 +272,9 @@
                         </div>
                         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'alibaba'])
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'alibaba'])
+                        <a href="{{ route('alibaba.analytics.export') }}" class="btn btn-sm btn-success" id="ab-export-btn">
+                            <i class="fas fa-file-export me-1"></i> Export
+                        </a>
                         <button type="button" class="btn btn-sm btn-primary" id="ab-sync-btn">
                             <i class="fas fa-sync"></i> Sync from API
                         </button>

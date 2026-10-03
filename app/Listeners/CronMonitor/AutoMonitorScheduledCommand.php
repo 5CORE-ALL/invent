@@ -44,7 +44,7 @@ class AutoMonitorScheduledCommand
         try {
             $ctx = $this->monitor->start(
                 $this->registry->jobNameFor($command),
-                $command
+                $this->commandLine($event, $command)
             );
             $ctx->mergeMeta([
                 'auto' => true,
@@ -74,7 +74,8 @@ class AutoMonitorScheduledCommand
         }
 
         $command = $this->commandName($event->command);
-        if ($command && $ctx->command && $command !== $ctx->command) {
+        $running = $this->commandName($ctx->command);
+        if ($command && $running && $command !== $running) {
             return;
         }
 
@@ -100,6 +101,22 @@ class AutoMonitorScheduledCommand
     {
         return config('cron-monitor.enabled', true)
             && config('cron-monitor.auto_monitor.enabled', true);
+    }
+
+    protected function commandLine(CommandStarting $event, string $command): string
+    {
+        $input = $event->input ?? null;
+        if ($input !== null && method_exists($input, '__toString')) {
+            $rest = trim((string) $input);
+            if ($rest !== '' && ! str_starts_with($rest, $command)) {
+                return trim($command.' '.$rest);
+            }
+            if ($rest !== '') {
+                return $rest;
+            }
+        }
+
+        return $command;
     }
 
     protected function commandName(?string $command): ?string

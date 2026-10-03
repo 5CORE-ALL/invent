@@ -744,8 +744,9 @@
                     on ACOS From, ACOS To, and Spend. Rows are checked
                     <strong>top to bottom</strong>; the first band whose three
                     comparisons all match the campaign gets its Sbgt.
-                    <strong>Sbgt 0</strong> pauses the campaign on Meta automatically
-                    and flashes <strong>AUDIT NOW</strong> in the Audit Req column.
+                    <strong>Sbgt 0</strong> pauses the campaign on Meta automatically.
+                    <strong>AUDIT NOW</strong> shows in Audit Req when Spend is above $15
+                    and ACOS is red (above 40%).
                     Use <code>9999</code> with <code>&lt;=</code> on ACOS <em>To</em> for a catch-all.
                 </p>
 
@@ -1774,14 +1775,9 @@
                         const row = cell.getRow().getData();
                         const cid = (row['CAMPAIGN ID'] ?? '').toString();
                         if (!cid || !/^\d{6,}$/.test(cid)) return '';
-                        const paused = !!(row._pause) || /paus/i.test(String(row.Status || ''));
-                        const highSpend = toNumber(row['SPEND']) > 30;
-                        if ((paused || highSpend) && !row._audit_at) {
-                            const why = highSpend
-                                ? 'Spend is above $30.'
-                                : 'This campaign is paused.';
+                        if (faasRowNeedsAudit(row) && !row._audit_at) {
                             return `<button type="button" class="faas-audit-now" data-audit-cid="${cid}"
-                                        title="${why} Record the audit — the date and time are saved automatically.">AUDIT NOW</button>`;
+                                        title="Spend is above $15 and ACOS is red (above 40%). Record the audit — the date and time are saved automatically.">AUDIT NOW</button>`;
                         }
                         if (row._audit_at) {
                             const when = faasAuditStamp(row._audit_at);
@@ -2153,6 +2149,13 @@
             if (typeof v === 'number') return isFinite(v) ? v : 0;
             const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
             return isFinite(n) ? n : 0;
+        }
+
+        // AUDIT NOW when Spend is above $15 and the Acos cell is red (> 40%).
+        function faasRowNeedsAudit(row) {
+            const spend = toNumber(row && row['SPEND']);
+            const acos  = parseAcosPct(row && row['Acos']);
+            return spend > 15 && acos !== null && acos > 40;
         }
 
         // Mirrors the controller's divPct(): (num / den) * 100, with the
@@ -4061,7 +4064,7 @@
         function faasExportCellValue(row, field) {
             if (field === 'Audit Req') {
                 if (row._audit_at) return faasAuditStamp(row._audit_at);
-                if (row._pause || /paus/i.test(String(row.Status || '')) || toNumber(row['SPEND']) > 30) return 'AUDIT NOW';
+                if (faasRowNeedsAudit(row)) return 'AUDIT NOW';
                 return '';
             }
             if (field === 'History') {

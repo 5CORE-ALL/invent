@@ -5937,6 +5937,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/alibaba-analytics', [AlibabaAnalyticsController::class, 'index'])->name('alibaba.analytics');
     Route::get('/alibaba-analytics/data', [AlibabaAnalyticsController::class, 'data'])->name('alibaba.analytics.data');
+    Route::get('/alibaba-analytics/export', [AlibabaAnalyticsController::class, 'exportCsv'])->name('alibaba.analytics.export');
     Route::get('/alibaba-analytics/column-visibility', [AlibabaAnalyticsController::class, 'getColumnVisibility'])->name('alibaba.analytics.column.get');
     Route::post('/alibaba-analytics/column-visibility', [AlibabaAnalyticsController::class, 'setColumnVisibility'])->name('alibaba.analytics.column.set');
     Route::post('/alibaba-analytics/save-sprice', [AlibabaAnalyticsController::class, 'saveSprice'])->name('alibaba.analytics.save.sprice');

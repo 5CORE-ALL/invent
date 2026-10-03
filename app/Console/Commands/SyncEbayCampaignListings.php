@@ -234,21 +234,7 @@ class SyncEbayCampaignListings extends Command
                                     continue;
                                 }
 
-                                $suggestedBid = null;
-                                foreach ($bidPercs as $b) {
-                                    if (($b['basis'] ?? '') === 'ITEM' && isset($b['value'])) {
-                                        $suggestedBid = (float) $b['value'];
-                                        break;
-                                    }
-                                }
-                                if ($suggestedBid === null) {
-                                    foreach ($bidPercs as $b) {
-                                        if (($b['basis'] ?? '') === 'TRENDING' && isset($b['value'])) {
-                                            $suggestedBid = (float) $b['value'];
-                                            break;
-                                        }
-                                    }
-                                }
+                                $suggestedBid = \App\Support\EbayBidPercentage::maximumSuggested($bidPercs);
 
                                 $metric = $chunk->first(fn ($m) => (string) $m->item_id === $lid);
                                 $sku = $metric ? $metric->sku : null;
@@ -339,25 +325,7 @@ class SyncEbayCampaignListings extends Command
                         $lid = $rec['listingId'] ?? null;
                         $promoteStatus = $rec['marketing']['ad']['promoteWithAd'] ?? null;
                         $bidPercs = $rec['marketing']['ad']['bidPercentages'] ?? [];
-                        $suggestedBid = null;
-
-                        foreach ($bidPercs as $b) {
-                            if (($b['basis'] ?? '') === 'ITEM' && isset($b['value'])) {
-                                $suggestedBid = (float) $b['value'];
-                                break;
-                            }
-                        }
-                        if ($suggestedBid === null) {
-                            foreach ($bidPercs as $b) {
-                                if (($b['basis'] ?? '') === 'TRENDING' && isset($b['value'])) {
-                                    $suggestedBid = (float) $b['value'];
-                                    break;
-                                }
-                            }
-                        }
-                        if ($suggestedBid === null && isset($bidPercs[0]['value'])) {
-                            $suggestedBid = (float) $bidPercs[0]['value'];
-                        }
+                        $suggestedBid = \App\Support\EbayBidPercentage::maximumSuggested($bidPercs);
 
                         if ($lid) {
                             $update = ['updated_at' => now()];

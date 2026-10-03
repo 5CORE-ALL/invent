@@ -649,6 +649,7 @@ function ebayEsc(s) {
 }
 const ebayPushFailed = {};
 function ebayRound2(n) { return Math.round(Number(n) * 100) / 100; }
+function ebayShownPercent(n) { return Math.round(Number(n) * 10) / 10; }
 function ebaySbidResult(row) {
     if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
     if (String(row.funding_strategy || '') !== 'COST_PER_SALE') return null;
@@ -663,7 +664,7 @@ function ebayBidMatches(row) {
     if (!res) return true;
     const live = parseFloat(row.bid_percentage);
     if (!isFinite(live) || live <= 0) return false;
-    return Math.abs(ebayRound2(live) - ebayRound2(res.bid)) < 0.009;
+    return ebayShownPercent(live) === ebayShownPercent(res.bid);
 }
 function ebayBidSync(row) {
     const res = ebaySbidResult(row);

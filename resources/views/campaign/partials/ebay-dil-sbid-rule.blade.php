@@ -149,9 +149,9 @@ function dilSbidMode(i) {
 function dilSbidRound(n) {
     return Math.round((Number(n) || 0) * 100) / 100;
 }
-function dilSbidContains(dil, slab, prevMax) {
+function dilSbidContains(dil, slab, prevMax, openTop) {
     const min = parseFloat(slab.min);
-    const max = parseFloat(slab.max);
+    const max = openTop ? Infinity : parseFloat(slab.max);
     if (!isFinite(min) || !isFinite(max)) return false;
     if (Math.abs(min) < 1e-7 && Math.abs(max) < 1e-7) return Math.abs(dil) < 1e-7;
     const sharesEdge = prevMax !== null && Math.abs(min - prevMax) < 0.0001;
@@ -272,6 +272,12 @@ function dilSbidApplyCvr(bid, row) {
     }
     let next = dilSbidRound(bid + adj);
     if (next < 0) next = 0;
+    // eBay accepts 2.0–100.0 in tenths. Above the maximum the whole push is rejected.
+    if (next > 0) {
+        next = Math.round(next * 10) / 10;
+        if (next < 2) next = 2;
+        if (next > 100) next = 100;
+    }
     return { bid: next, adj: adj, why: why };
 }
 function dilSbidOfRow(row) {
@@ -284,7 +290,8 @@ function dilSbidOfRow(row) {
     let prevMax = null;
     for (let i = 0; i < currentDilSbidSlabs.length; i++) {
         const slab = currentDilSbidSlabs[i];
-        if (dilSbidContains(dil, slab, prevMax)) {
+        const openTop = i === currentDilSbidSlabs.length - 1;
+        if (dilSbidContains(dil, slab, prevMax, openTop)) {
             const mode = dilSbidMode(i);
             let base = null;
             let title = '';
@@ -325,7 +332,7 @@ function dilSbidCounts() {
         seen[sku] = true;
         let prevMax = null;
         for (let i = 0; i < currentDilSbidSlabs.length; i++) {
-            if (dilSbidContains(dil, currentDilSbidSlabs[i], prevMax)) {
+            if (dilSbidContains(dil, currentDilSbidSlabs[i], prevMax, i === currentDilSbidSlabs.length - 1)) {
                 counts[i]++;
                 break;
             }

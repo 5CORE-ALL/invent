@@ -661,6 +661,11 @@ function ebayRound2(n) {
     return Math.round(Number(n) * 100) / 100;
 }
 
+/** Same tenth the C Bid and S Bid cells print. 10.04 and 10.0 both show 10.0%. */
+function ebayShownPercent(n) {
+    return Math.round(Number(n) * 10) / 10;
+}
+
 /** Running promoted listing with Dil vs SBid on and a real S Bid. Otherwise null. */
 function ebaySbidResult(row) {
     if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
@@ -678,7 +683,7 @@ function ebayBidMatches(row) {
     if (!res) return true;
     const live = parseFloat(row.bid_percentage);
     if (!isFinite(live) || live <= 0) return false;
-    return Math.abs(ebayRound2(live) - ebayRound2(res.bid)) < 0.009;
+    return ebayShownPercent(live) === ebayShownPercent(res.bid);
 }
 
 /**

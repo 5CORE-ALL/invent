@@ -191,6 +191,11 @@ final class DilVsSbidRule
             $prevMax = (float) $slab['max'];
         }
 
+        $last = $slabs[array_key_last($slabs)];
+        if ($dil > (float) $last['max']) {
+            return self::decision($last, $esBid);
+        }
+
         return ['mode' => 'none', 'bid' => 0.0, 'off' => false, 'label' => ''];
     }
 
