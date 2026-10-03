@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\B5cB2bProduct;
+use App\Models\ShopifyB2BDataView;
 use App\Services\Business5CoreB2bApiService;
 use App\Services\DobaApiService;
 use App\Services\ShopifyPLSApiService;
@@ -423,6 +424,25 @@ class DirectStoreListingPublishService
     // ---------------------------------------------------------------- Business 5 Core B2B
 
     /**
+     * S PRC saved on /shopify-b2b-pricing (shopifyb2b_data_view.value.SPRICE) — the B2B price of record.
+     */
+    private function b2bPricingSprice(string $sku): ?float
+    {
+        if (! Schema::hasTable('shopifyb2b_data_view')) {
+            return null;
+        }
+        $row = ShopifyB2BDataView::query()->where('sku', $sku)->first()
+            ?? ShopifyB2BDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+        if (! $row) {
+            return null;
+        }
+        $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+        $sprice = $value['SPRICE'] ?? null;
+
+        return is_numeric($sprice) && (float) $sprice > 0 ? round((float) $sprice, 2) : null;
+    }
+
+    /**
      * @param  array<string, mixed>  $item
      * @return array{success: bool, message: string, id?: string, created?: bool}
      */
@@ -445,7 +465,7 @@ class DirectStoreListingPublishService
         if ($item['description'] !== '') {
             $payload['description'] = $item['description'];
         }
-        $price = $local ? $item['price'] : $item['create_price'];
+        $price = $local ? $item['price'] : ($item['price'] ?? $this->b2bPricingSprice($sku) ?? $item['create_price']);
         if ($price !== null) {
             $payload['price'] = $price;
         }
@@ -464,7 +484,7 @@ class DirectStoreListingPublishService
                 return ['success' => false, 'message' => 'Title is required to create a B2B listing.'];
             }
             if ($price === null) {
-                return ['success' => false, 'message' => 'Price is required to create a B2B listing.'];
+                return ['success' => false, 'message' => 'No B2B price for '.$sku.'. Set S PRC on /shopify-b2b-pricing, then publish again.'];
             }
             $payload['brand'] = (string) (config('listing_manager.default_brand', '5 Core') ?: '5 Core');
             $payload['is_active'] = true;
