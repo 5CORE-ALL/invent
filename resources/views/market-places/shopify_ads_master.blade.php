@@ -711,6 +711,12 @@
                 // previous day, red = worse, grey = flat (including a day
                 // that only repeats the last snapshot). ACOS / TCOS invert.
                 const isInverted = (metric === 'acos' || metric === 'tcos');
+                const shown = (v) => {
+                    if (metric === 'acos' || metric === 'cvr' || metric === 'tcos') {
+                        return Math.round(v * 10) / 10;
+                    }
+                    return Math.round(v);
+                };
                 const prevValue = (i) => {
                     for (let j = i - 1; j >= 0; j--) {
                         if (values[j] !== null) return values[j];
@@ -720,8 +726,8 @@
                 const dotColors = values.map((v, i) => {
                     if (v === null) return refGray;
                     const prev = prevValue(i);
-                    if (prev === null || v === prev) return refGray;
-                    const improved = isInverted ? v < prev : v > prev;
+                    if (prev === null || shown(v) === shown(prev)) return refGray;
+                    const improved = isInverted ? shown(v) < shown(prev) : shown(v) > shown(prev);
                     return improved ? '#28a745' : '#dc3545';
                 });
 

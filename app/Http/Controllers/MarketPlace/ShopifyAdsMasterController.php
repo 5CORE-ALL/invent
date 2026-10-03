@@ -311,14 +311,20 @@ class ShopifyAdsMasterController extends Controller
         // recursively so nested children get it too.
         $this->applyTcosToRows($rows, $netSales);
 
-        // Trend dots: compare each metric against the previous Pacific-day
-        // snapshot (per channel) so the table can show a green (improved) /
-        // red (declined) dot. Read *before* today's snapshot write below so
-        // "previous" never means today. ACOS / TCOS are inverted downstream
-        // (a higher value is worse → red); spend increasing is green.
-        $pacificToday  = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
-        $prevByChannel = $this->previousSnapshotByChannel($pacificToday);
-        $this->attachTrends($rows, $prevByChannel);
+        // Trend dots are read before today's snapshot write so "previous"
+        // never means today. ACOS / TCOS are inverted in the view (higher is
+        // worse → red); spend increasing is green.
+        // Color each cell the same way the chart colors its latest point.
+        // The chart ends on the last completed California day, so a row whose
+        // number still matches that day uses that day's move (79 vs 71 = green),
+        // not a flat comparison against a same-day copy.
+        $chartEnd = $this->completedCaliforniaChartEnd()->toDateString();
+        $chartPrev = Carbon::parse($chartEnd, self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
+        $this->attachTrends(
+            $rows,
+            $this->snapshotByChannelOn($chartEnd),
+            $this->snapshotByChannelOn($chartPrev)
+        );
 
         // Persist today's snapshot so the badge trend chart has history. The
         // snapshot table is flat (one row per channel), so flatten the tree
@@ -384,17 +390,14 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * Most-recent snapshot strictly before $today (per channel), used to work
-     * out each metric's day-over-day direction for the trend dots. Rows are
-     * read ascending so the latest prior date wins per channel.
+     * Snapshot stored for one California day, per channel.
      *
-     * @return array<string, array{spend: float, clicks: float, sold: float, sales: float}>
+     * @return array<string, array{spend: float, clicks: float, sold: float, sales: float, active: float}>
      */
-    private function previousSnapshotByChannel(string $today): array
+    private function snapshotByChannelOn(string $date): array
     {
         $rows = DB::table('shopify_ads_master_metric_snapshots')
-            ->where('snapshot_date', '<', $today)
-            ->orderBy('snapshot_date')
+            ->whereDate('snapshot_date', $date)
             ->get(['channel', 'spend', 'clicks', 'sold', 'sales', 'active']);
 
         $map = [];
@@ -418,16 +421,21 @@ class ShopifyAdsMasterController extends Controller
      * snapshot get an empty map (no dot shown).
      *
      * @param  array<int, array<string, mixed>>  $rows
-     * @param  array<string, array<string, float>>  $prevByChannel
+     * @param  array<string, array<string, float>>  $endByChannel
+     * @param  array<string, array<string, float>>  $priorByChannel
      */
-    private function attachTrends(array &$rows, array $prevByChannel): void
+    private function attachTrends(array &$rows, array $endByChannel, array $priorByChannel): void
     {
         foreach ($rows as &$row) {
             $channel = (string) ($row['channel'] ?? '');
-            $row['trend'] = $this->computeTrend($row, $prevByChannel[$channel] ?? null);
+            $row['trend'] = $this->computeTrend(
+                $row,
+                $endByChannel[$channel] ?? null,
+                $priorByChannel[$channel] ?? null
+            );
 
             if (! empty($row['_children']) && is_array($row['_children'])) {
-                $this->attachTrends($row['_children'], $prevByChannel);
+                $this->attachTrends($row['_children'], $endByChannel, $priorByChannel);
             }
         }
         unset($row);
@@ -440,37 +448,81 @@ class ShopifyAdsMasterController extends Controller
      * is "good") is applied on the frontend, where ACOS / TCOS are inverted.
      *
      * @param  array<string, mixed>  $row
-     * @param  array<string, float>|null  $prev
+     * @param  array<string, float>|null  $end    last completed California day
+     * @param  array<string, float>|null  $prior  the day before that
      * @return array<string, string>
      */
-    private function computeTrend(array $row, ?array $prev): array
+    private function computeTrend(array $row, ?array $end, ?array $prior): array
     {
-        if ($prev === null) {
+        if ($end === null && $prior === null) {
             return [];
         }
 
-        $prevSpend  = (float) ($prev['spend'] ?? 0);
-        $prevClicks = (float) ($prev['clicks'] ?? 0);
-        $prevSold   = (float) ($prev['sold'] ?? 0);
-        $prevSales  = (float) ($prev['sales'] ?? 0);
-        $prevActive = (float) ($prev['active'] ?? 0);
-        $prevCvr    = $prevClicks > 0 ? ($prevSold / $prevClicks) * 100 : 0;
-        $prevAcos   = $prevSales > 0
-            ? ($prevSpend / $prevSales) * 100
-            : ($prevSpend > 0 ? 100 : 0);
+        $dir = static function (float $cur, float $was, int $precision = 0): string {
+            $cur = round($cur, $precision);
+            $was = round($was, $precision);
+            if ($cur === $was) {
+                return 'flat';
+            }
 
-        $dir = static fn (float $cur, float $was): string => $cur > $was
-            ? 'up'
-            : ($cur < $was ? 'down' : 'flat');
+            return $cur > $was ? 'up' : 'down';
+        };
+
+        $metric = function (string $key, int $precision = 0) use ($row, $end, $prior, $dir): string {
+            $cur = (float) ($row[$key] ?? 0);
+            $endVal = $end !== null ? (float) ($end[$key] ?? 0) : null;
+            $priorVal = $prior !== null ? (float) ($prior[$key] ?? 0) : null;
+
+            // Same number as the chart's last day: use that day's dot color.
+            if ($endVal !== null && $priorVal !== null && round($cur, $precision) === round($endVal, $precision)) {
+                return $dir($endVal, $priorVal, $precision);
+            }
+            if ($endVal !== null) {
+                return $dir($cur, $endVal, $precision);
+            }
+            if ($priorVal !== null) {
+                return $dir($cur, $priorVal, $precision);
+            }
+
+            return 'flat';
+        };
+
+        $endClicks = $end === null ? 0.0 : (float) ($end['clicks'] ?? 0);
+        $endSold = $end === null ? 0.0 : (float) ($end['sold'] ?? 0);
+        $endSpend = $end === null ? 0.0 : (float) ($end['spend'] ?? 0);
+        $endSales = $end === null ? 0.0 : (float) ($end['sales'] ?? 0);
+        $priorClicks = $prior === null ? 0.0 : (float) ($prior['clicks'] ?? 0);
+        $priorSold = $prior === null ? 0.0 : (float) ($prior['sold'] ?? 0);
+        $priorSpend = $prior === null ? 0.0 : (float) ($prior['spend'] ?? 0);
+        $priorSales = $prior === null ? 0.0 : (float) ($prior['sales'] ?? 0);
+        $endCvr = $endClicks > 0 ? ($endSold / $endClicks) * 100 : 0;
+        $priorCvr = $priorClicks > 0 ? ($priorSold / $priorClicks) * 100 : 0;
+        $endAcos = $endSales > 0 ? ($endSpend / $endSales) * 100 : ($endSpend > 0 ? 100 : 0);
+        $priorAcos = $priorSales > 0 ? ($priorSpend / $priorSales) * 100 : ($priorSpend > 0 ? 100 : 0);
+
+        $ratio = function (string $key, float $endRatio, float $priorRatio) use ($row, $end, $prior, $dir): string {
+            $cur = (float) ($row[$key] ?? 0);
+            if ($end !== null && $prior !== null && round($cur, 1) === round($endRatio, 1)) {
+                return $dir($endRatio, $priorRatio, 1);
+            }
+            if ($end !== null) {
+                return $dir($cur, $endRatio, 1);
+            }
+            if ($prior !== null) {
+                return $dir($cur, $priorRatio, 1);
+            }
+
+            return 'flat';
+        };
 
         return [
-            'spend'  => $dir((float) ($row['spend'] ?? 0),  $prevSpend),
-            'clicks' => $dir((float) ($row['clicks'] ?? 0), $prevClicks),
-            'sold'   => $dir((float) ($row['sold'] ?? 0),   $prevSold),
-            'sales'  => $dir((float) ($row['sales'] ?? 0),  $prevSales),
-            'active' => $dir((float) ($row['active'] ?? 0),  $prevActive),
-            'cvr'    => $dir((float) ($row['cvr'] ?? 0),     $prevCvr),
-            'acos'   => $dir((float) ($row['acos'] ?? 0),    $prevAcos),
+            'spend'  => $metric('spend'),
+            'clicks' => $metric('clicks'),
+            'sold'   => $metric('sold'),
+            'sales'  => $metric('sales'),
+            'active' => $metric('active'),
+            'cvr'    => $ratio('cvr', $endCvr, $priorCvr),
+            'acos'   => $ratio('acos', $endAcos, $priorAcos),
         ];
     }
 
@@ -1185,17 +1237,17 @@ class ShopifyAdsMasterController extends Controller
 
     /**
      * @param  array<string, array<string, array<string, float>>>  $byChannel
-     * @param  array<int, string>  $labels
+     * @param  array<int, string>  $labels  
      * @param  array<string, array{name: string, days: array<string, array<string, float>>}>  $byCampaign
      * @param  array<string, float>  $activeByDate
      * @param  array<string, array{spend: float, clicks: float, sold: float, sales: float}>  $pageSold
-     * @param  array<string, bool>  $refreshedSold
-     */
+     * @param  array<string, bool>  $refreshedSold 
+     */                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
     private function writeRollingYoutubeChannel(array &$byChannel, array $labels, array $byCampaign, array $activeByDate, array $pageSold, array &$refreshedSold): void
     {
         $channel = 'Youtube ads';
         foreach ($labels as $day) {
-            if (isset($pageSold[$day])) {
+            if (isset($pageSold[$day])) {                   
                 $measures = [
                     'spend'  => (float) $pageSold[$day]['spend'],
                     'clicks' => (float) $pageSold[$day]['clicks'],
