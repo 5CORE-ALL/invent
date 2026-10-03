@@ -280,8 +280,11 @@ class EbayApiService
     /**
      * Get item details from eBay
      */
+    public string $lastGetItemError = '';
+
     public function getItem($itemId)
     {
+        $this->lastGetItemError = '';
         try {
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
             $credentials = $xml->addChild('RequesterCredentials');
@@ -312,19 +315,36 @@ class EbayApiService
             
             if ($xmlResp === false) {
                 Log::warning('Failed to parse GetItem response', ['body' => $body]);
+                $this->lastGetItemError = 'eBay returned an unreadable response (HTTP '.$response->status().').';
                 return null;
             }
-            
+
             $responseArray = json_decode(json_encode($xmlResp), true);
             $ack = $responseArray['Ack'] ?? 'Failure';
-            
+
             if ($ack === 'Success' || $ack === 'Warning') {
                 return $responseArray;
             }
-            
+
+            $errors = $responseArray['Errors'] ?? [];
+            $errors = isset($errors['ShortMessage']) || isset($errors['LongMessage']) ? [$errors] : (array) $errors;
+            $parts = [];
+            foreach ($errors as $err) {
+                if (is_array($err)) {
+                    $msg = trim((string) ($err['LongMessage'] ?? $err['ShortMessage'] ?? ''));
+                    $code = trim((string) ($err['ErrorCode'] ?? ''));
+                    if ($msg !== '') {
+                        $parts[] = $msg.($code !== '' ? ' (code '.$code.')' : '');
+                    }
+                }
+            }
+            $this->lastGetItemError = implode('; ', $parts);
+            Log::warning('eBay GetItem failed', ['itemId' => $itemId, 'ack' => $ack, 'errors' => $errors]);
+
             return null;
         } catch (\Exception $e) {
             Log::warning('Error fetching item details', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+            $this->lastGetItemError = $e->getMessage();
             return null;
         }
     }

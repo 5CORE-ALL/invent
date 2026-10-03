@@ -58,10 +58,29 @@ class Hero2EbayImagePushService
             }
 
             $getItem = $svc->getItem($itemId);
+            $firstError = '';
             if (! is_array($getItem)) {
+                $firstError = trim((string) ($svc->lastGetItemError ?? ''));
+                // Stored metrics item ids go stale when a listing ends or is relisted; ask eBay for the live one.
+                $liveId = $this->resolveItemId($sku, $account, $svc, true);
+                if ($liveId && $liveId !== $itemId) {
+                    $retry = $svc->getItem($liveId);
+                    if (is_array($retry)) {
+                        Log::info('Hero Image 2: stale eBay item id replaced', ['sku' => $sku, 'account' => $account, 'old' => $itemId, 'new' => $liveId]);
+                        $this->rememberLiveItemId($account, $sku, $liveId);
+                        $itemId = $liveId;
+                        $getItem = $retry;
+                    }
+                }
+            }
+            if (! is_array($getItem)) {
+                $error = $firstError !== '' ? $firstError : trim((string) ($svc->lastGetItemError ?? ''));
+
                 return [
                     'success' => false,
-                    'message' => 'GetItem failed for '.$label.' listing '.$itemId.'.',
+                    'message' => 'eBay could not open '.$label.' listing '.$itemId.' for '.$sku
+                        .($error !== '' ? ': '.$error : '.')
+                        .' The listing may have ended or been relisted under a new item number; re-sync '.$label.' listings and try again.',
                     'account' => $account,
                     'label' => $label,
                 ];
@@ -287,10 +306,25 @@ class Hero2EbayImagePushService
         return $row->toUiArray();
     }
 
-    private function resolveItemId(string $sku, string $account, object $svc): ?string
+    private function rememberLiveItemId(string $account, string $sku, string $itemId): void
     {
         $table = self::METRICS[$account] ?? null;
-        if ($table && Schema::hasTable($table)) {
+        if (! $table || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'item_id')) {
+            return;
+        }
+        try {
+            DB::table($table)
+                ->whereIn('sku', array_unique([$sku, strtoupper($sku), strtolower($sku)]))
+                ->update(['item_id' => $itemId]);
+        } catch (\Throwable $e) {
+            Log::warning('Hero Image 2: could not store live eBay item id', ['sku' => $sku, 'account' => $account, 'error' => $e->getMessage()]);
+        }
+    }
+
+    private function resolveItemId(string $sku, string $account, object $svc, bool $liveOnly = false): ?string
+    {
+        $table = self::METRICS[$account] ?? null;
+        if (! $liveOnly && $table && Schema::hasTable($table)) {
             $row = DB::table($table)->where(function ($q) use ($sku) {
                 $q->where('sku', $sku)
                     ->orWhere('sku', strtoupper($sku))
