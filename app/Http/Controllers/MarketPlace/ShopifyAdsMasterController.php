@@ -280,30 +280,7 @@ class ShopifyAdsMasterController extends Controller
         // School, and types saved later). Children keep `is_sub_row=true` so the
         // rolled-up badges and history endpoint skip them — they're slices of the
         // parent, not new channels.
-        $sep = self::SUBROW_SEPARATOR;
-
-        $facebook = $this->metaChannelMetrics('Facebook', 'FB');
-        $facebook['_children'] = [];
-        foreach ($this->metaAdTypeLenses('shopify_facebook') as [$suffix, , $adTypes]) {
-            $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$suffix, 'FB', $adTypes, true);
-        }
-        foreach ($this->facebookB2bOptionNames() as $tag) {
-            $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$tag, 'FB', null, true, false, $tag);
-        }
-
-        $instagram = $this->metaChannelMetrics('Instagram', 'Insta');
-        $instagram['_children'] = [];
-        foreach ($this->metaAdTypeLenses('shopify_instagram', false) as [$suffix, , $adTypes]) {
-            $instagram['_children'][] = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
-        }
-        $rows = [
-            $this->googleShoppingMetrics(),
-            $this->googleSerpMetrics(),
-            $this->googleYoutubeAdsMetrics(),
-            $this->tiktokVideoAdsMetrics(),
-            $facebook,
-            $instagram,
-        ];
+        $rows = $this->channelTableRows();
 
         $netSales = $this->shopifyNetSales();
 
@@ -713,13 +690,18 @@ class ShopifyAdsMasterController extends Controller
         $this->persistCalculatedHistory($byChannel, $ssalesByDate, $savedKeys, $refreshedSold);
         $byDate = $this->rollupParentChannels($byChannel);
         $chartChannels = $this->withoutOpenGoogleDays($byChannel);
-        $this->alignInstagramChartWithCell($chartChannels);
+        $tableRows = $this->channelTableRows();
+        $this->applyTcosToRows($tableRows, $this->shopifyNetSales());
+        $this->alignChartsWithCells($chartChannels, $tableRows);
 
         $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
         $metrics['ssales'] = array_map(
             fn ($d) => array_key_exists($d, $ssalesByDate) ? round($ssalesByDate[$d], 2) : null,
             $labels
         );
+        $this->alignTotalChartWithBadges($metrics, $labels, $tableRows);
+        $channels = $this->buildChannelSeries($chartChannels, $labels, $ssalesByDate);
+        $this->alignChannelTcosWithCells($channels, $tableRows);
         return response()->json([
             'status'   => 200,
             'days'     => $days,
@@ -728,7 +710,7 @@ class ShopifyAdsMasterController extends Controller
                 $labels
             ),
             'metrics'  => $metrics,
-            'channels' => $this->buildChannelSeries($chartChannels, $labels, $ssalesByDate),
+            'channels' => $channels,
         ]);
     }
 
@@ -959,24 +941,124 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * The Instagram cell is the current sheet total. The chart ends on the
-     * completed California day, so that last point uses the cell's spend,
-     * clicks, sold, and sales.
+     * Same channel rows the table cells show.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function channelTableRows(): array
+    {
+        $sep = self::SUBROW_SEPARATOR;
+
+        $facebook = $this->metaChannelMetrics('Facebook', 'FB');
+        $facebook['_children'] = [];
+        foreach ($this->metaAdTypeLenses('shopify_facebook') as [$suffix, , $adTypes]) {
+            $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$suffix, 'FB', $adTypes, true);
+        }
+        foreach ($this->facebookB2bOptionNames() as $tag) {
+            $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$tag, 'FB', null, true, false, $tag);
+        }
+
+        $instagram = $this->metaChannelMetrics('Instagram', 'Insta');
+        $instagram['_children'] = [];
+        foreach ($this->metaAdTypeLenses('shopify_instagram', false) as [$suffix, , $adTypes]) {
+            $instagram['_children'][] = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
+        }
+
+        return [
+            $this->googleShoppingMetrics(),
+            $this->googleSerpMetrics(),
+            $this->googleYoutubeAdsMetrics(),
+            $this->tiktokVideoAdsMetrics(),
+            $facebook,
+            $instagram,
+        ];
+    }
+
+    /**
+     * Each chart's last point is the number in that row's cell. Google
+     * Shopping ads sales is the cell value, not an older saved day.
      *
      * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<int, array<string, mixed>>  $tableRows
      */
-    private function alignInstagramChartWithCell(array &$byChannel): void
+    private function alignChartsWithCells(array &$byChannel, array $tableRows): void
     {
-        $day = $this->completedCaliforniaChartEnd()->toDateString();
-        $sep = self::SUBROW_SEPARATOR;
-        $parent = $this->metaChannelMetrics('Instagram', 'Insta');
-        $byChannel['Instagram'][$day] = $this->chartMeasuresFromRow($parent);
-
-        foreach ($this->metaAdTypeLenses('shopify_instagram', false) as [$suffix, , $adTypes]) {
-            $name = 'Instagram'.$sep.$suffix;
-            $child = $this->metaChannelMetrics($name, 'Insta', $adTypes, true);
-            $byChannel[$name][$day] = $this->chartMeasuresFromRow($child);
+        $completed = $this->completedCaliforniaChartEnd()->toDateString();
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
+        foreach ($this->flattenRows($tableRows) as $row) {
+            $channel = (string) ($row['channel'] ?? '');
+            if ($channel === '') {
+                continue;
+            }
+            $day = $this->chartUsesCompletedDay($channel) ? $completed : $today;
+            $byChannel[$channel][$day] = $this->chartMeasuresFromRow($row);
         }
+    }
+
+    /**
+     * TCOS on the chart uses that day's store sales. The cell uses the
+     * current Shopify net sales, so the last point is set to the cell.
+     *
+     * @param  array<string, array<string, array<int, float|null>>>  $channels
+     * @param  array<int, array<string, mixed>>  $tableRows
+     */
+    private function alignChannelTcosWithCells(array &$channels, array $tableRows): void
+    {
+        foreach ($this->flattenRows($tableRows) as $row) {
+            $channel = (string) ($row['channel'] ?? '');
+            if ($channel === '' || ! isset($channels[$channel]['tcos'])) {
+                continue;
+            }
+            $series = $channels[$channel]['tcos'];
+            for ($i = count($series) - 1; $i >= 0; $i--) {
+                if ($series[$i] === null) {
+                    continue;
+                }
+                $channels[$channel]['tcos'][$i] = (int) round((float) ($row['tcos'] ?? 0));
+                break;
+            }
+        }
+    }
+
+    /**
+     * The rolled-up chart's last point matches the page badges, which are
+     * the sum of the parent cells.
+     *
+     * @param  array<string, array<int, float|null>>  $metrics
+     * @param  array<int, string>  $labels
+     * @param  array<int, array<string, mixed>>  $tableRows
+     */
+    private function alignTotalChartWithBadges(array &$metrics, array $labels, array $tableRows): void
+    {
+        if ($labels === []) {
+            return;
+        }
+        $last = count($labels) - 1;
+        $spend = $clicks = $sold = $sales = $active = 0.0;
+        foreach ($tableRows as $row) {
+            if (! empty($row['is_sub_row'])) {
+                continue;
+            }
+            $spend += (float) ($row['spend'] ?? 0);
+            $clicks += (float) ($row['clicks'] ?? 0);
+            $sold += (float) ($row['sold'] ?? 0);
+            $sales += (float) ($row['sales'] ?? 0);
+            $active += (float) ($row['active'] ?? 0);
+        }
+        $net = $this->shopifyNetSales();
+        $metrics['spend'][$last] = round($spend, 2);
+        $metrics['clicks'][$last] = (int) round($clicks);
+        $metrics['sold'][$last] = (int) round($sold);
+        $metrics['sales'][$last] = round($sales, 2);
+        $metrics['active'][$last] = (int) round($active);
+        $metrics['cvr'][$last] = $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0;
+        $metrics['acos'][$last] = $sales > 0
+            ? (int) round(($spend / $sales) * 100)
+            : ($spend > 0 ? 100 : 0);
+        $metrics['tcos'][$last] = $net > 0
+            ? (int) round(($spend / $net) * 100)
+            : ($spend > 0 ? 100 : 0);
+        $metrics['ssales'][$last] = round($net, 2);
     }
 
     /**
