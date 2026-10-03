@@ -1132,6 +1132,17 @@ class TopDawgApiService
         if (! ChannelListingRegistry::isLiveTopDawgListingId($listingId, $sku)
             && ! ChannelListingRegistry::isLiveTopDawgListingId($tdid, $sku)) {
             $reply = mb_substr(trim((string) $response->body()), 0, 400);
+            $lowerMsg = mb_strtolower($lastMessage);
+            if (str_contains($lowerMsg, 'review') && (str_contains($lowerMsg, 'submitted') || str_contains($lowerMsg, 'success'))) {
+                Log::info('TopDawgApiService: product submitted for TopDawg review', ['sku' => $sku, 'body' => mb_substr((string) $response->body(), 0, 800)]);
+
+                return [
+                    'success' => false,
+                    'pending_review' => true,
+                    'message' => 'TopDawg accepted '.$sku.' and is reviewing it ("'.$lastMessage.'"). '
+                        .'It appears in the TopDawg catalog once TopDawg approves it; no need to publish again.',
+                ];
+            }
             Log::warning('TopDawgApiService: create accepted but no catalog product', [
                 'sku' => $sku,
                 'status' => $response->status(),
