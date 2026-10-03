@@ -143,6 +143,14 @@ class SheinApiService
             ];
         }
 
+        $lockKey = 'shein.lm.locked.'.$hash;
+        if (Cache::has($lockKey)) {
+            $pending = Cache::get($key);
+            Cache::put($key, array_merge(is_array($pending) ? $pending : [], $changes), now()->addMinutes(5));
+
+            return ['success' => false, 'message' => 'Not sent — same Shein review lock as above.'];
+        }
+
         $pending = Cache::get($key);
         $merged = array_merge($batchChanges, is_array($pending) ? $pending : [], $changes);
         Cache::put($key, $merged, now()->addMinutes(5));
@@ -162,8 +170,10 @@ class SheinApiService
             Log::warning('Shein listing edit rejected', ['sku' => $sku, 'changes' => array_keys($changes), 'shein' => $message]);
             $reason = self::sheinRawReason($message);
             if (self::sheinEditRejectedInReview($message)) {
+                Cache::put($lockKey, true, now()->addSeconds(self::SHEIN_REVIEW_LOCK_TTL_SECONDS));
                 $message = 'Shein rejected a previous edit of this SPU in review, so it is locked until the product is fixed in Seller Hub. Shein says: '.$reason;
             } elseif (self::sheinEditUnderReview($message)) {
+                Cache::put($lockKey, true, now()->addSeconds(self::SHEIN_REVIEW_LOCK_TTL_SECONDS));
                 $message = 'Shein is still reviewing a previous edit for this SPU; this change was not sent — push again after Shein finishes review. Shein says: '.$reason;
             } else {
                 $message = 'Shein rejected the edit: '.$reason;
@@ -174,6 +184,9 @@ class SheinApiService
     }
 
     private const SHEIN_PUSH_BATCH_TTL_SECONDS = 120;
+
+    /** Long enough to cover the remaining parts of one push, short enough not to block a later retry. */
+    private const SHEIN_REVIEW_LOCK_TTL_SECONDS = 60;
 
     /**
      * Only a pending review locks the SPU; rejected reviews and validation errors also mention
