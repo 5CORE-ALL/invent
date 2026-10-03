@@ -22,7 +22,10 @@ class ImageMasterPushJobStore
     /**
      * @param  list<array{marketplace: string, images: list<string>}>  $tasks
      */
-    public function create(string $sku, string $mode, array $tasks, ?array $mainByMarketplace = null): array
+    /**
+     * @param  array{id: int|null, name: string|null, email: string|null}|null  $user
+     */
+    public function create(string $sku, string $mode, array $tasks, ?array $mainByMarketplace = null, ?array $user = null): array
     {
         $normalized = [];
         foreach ($tasks as $task) {
@@ -44,6 +47,7 @@ class ImageMasterPushJobStore
             'sku' => trim($sku),
             'mode' => $mode === 'add' ? 'add' : 'replace',
             'main_by_marketplace' => $mainByMarketplace ?? [],
+            'user' => $user,
             'status' => 'running',
             'tasks' => $normalized,
             'total' => count($normalized),

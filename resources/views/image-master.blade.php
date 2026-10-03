@@ -61,6 +61,20 @@
         .toast-container { z-index:1100; }
         .shopify-row-pull-btn { background:#f59e0b; color:#fff; border:none; padding:5px 8px; border-radius:4px; }
         .shopify-row-pull-btn:hover { background:#d97706; color:#fff; }
+        .im-hist { display:inline-flex; flex-direction:column; gap:2px; cursor:help; white-space:nowrap; font-size:10px; line-height:1.25; }
+        .im-hist-date { font-weight:600; color:#334155; }
+        .im-hist-counts .ok { color:#16a34a; font-weight:700; }
+        .im-hist-counts .bad { color:#dc2626; font-weight:700; }
+        #imHistoryPop { position:fixed; z-index:2000; display:none; width:320px; max-height:420px; overflow:auto; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.18); padding:10px 12px; font-size:11px; color:#0f172a; pointer-events:none; }
+        #imHistoryPop .hp-title { font-weight:700; font-size:12px; margin-bottom:4px; }
+        #imHistoryPop .hp-meta { color:#475569; margin-bottom:6px; }
+        #imHistoryPop .hp-section { font-weight:700; margin:6px 0 3px; text-transform:uppercase; font-size:9px; letter-spacing:.3px; color:#64748b; }
+        #imHistoryPop .hp-row { display:flex; gap:6px; align-items:flex-start; padding:1px 0; }
+        #imHistoryPop .hp-row .mk { min-width:16px; font-weight:700; }
+        #imHistoryPop .hp-row .mk.ok { color:#16a34a; }
+        #imHistoryPop .hp-row .mk.bad { color:#dc2626; }
+        #imHistoryPop .hp-row .nm { font-weight:600; min-width:92px; }
+        #imHistoryPop .hp-row .msg { color:#64748b; white-space:normal; word-break:break-word; }
     </style>
 @endsection
 
@@ -105,6 +119,7 @@
                                     </th>
                                     <th>SKU <input type="text" id="skuSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
                                     <th>Product Name</th>
+                                    <th title="Hover a row's History to see the last image push">History</th>
                                     <th>Preview</th>
                                     <th>Action</th>
                                     <th title="eBay1–3, Macy's, Amz, Temu, Reverb, Wayfair, Best Buy">
@@ -294,6 +309,7 @@
     {{-- ── End push mode popup ─────────────────────────────────────── --}}
 
     <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+    <div id="imHistoryPop" role="tooltip"></div>
 @endsection
 
 @section('script')
@@ -598,13 +614,81 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function fmtHistoryDate(raw, withTime = true) {
+        if (!raw) return '';
+        const d = new Date(String(raw).replace(' ', 'T'));
+        if (isNaN(d.getTime())) return String(raw);
+        const opts = withTime
+            ? { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }
+            : { month: 'short', day: 'numeric', year: 'numeric' };
+        return d.toLocaleString(undefined, opts);
+    }
+
+    function historyCellHtml(sku, h) {
+        if (!h || !h.last_at) return '<span class="text-muted">—</span>';
+        const pushed = Array.isArray(h.pushed) ? h.pushed : [];
+        const ok = pushed.filter(p => p.success).length;
+        const bad = pushed.length - ok;
+        return `<span class="im-hist" data-history-sku="${esc(sku)}">
+            <span class="im-hist-date"><i class="far fa-clock me-1"></i>${esc(fmtHistoryDate(h.last_at, false))}</span>
+            <span class="im-hist-counts"><span class="ok">${ok}✓</span>${bad ? ` <span class="bad">${bad}✗</span>` : ''}</span>
+        </span>`;
+    }
+
+    function historyPopHtml(sku, h) {
+        const pushed = Array.isArray(h.pushed) ? h.pushed : [];
+        const ok = pushed.filter(p => p.success);
+        const bad = pushed.filter(p => !p.success);
+        const who = h.user_name || h.user_email
+            ? `${esc(h.user_name || h.user_email)}${h.user_email && h.user_name ? ` (${esc(h.user_email)})` : ''}${h.user_id ? ` · ID #${esc(h.user_id)}` : ''}`
+            : '<span class="text-muted">Unknown (pushed before history tracking)</span>';
+        const line = (p, isOk) => `<div class="hp-row"><span class="mk ${isOk ? 'ok' : 'bad'}">${isOk ? '✓' : '✗'}</span><span class="nm">${esc(LABELS[p.marketplace] || p.marketplace)}</span>${!isOk && p.message ? `<span class="msg">${esc(p.message)}</span>` : ''}</div>`;
+        const lastSuccess = Object.entries(h.last_success || {})
+            .filter(([mp]) => !ok.some(p => p.marketplace === mp))
+            .sort((a, b) => String(b[1]).localeCompare(String(a[1])));
+        return `<div class="hp-title">${esc(sku)} — last image push</div>
+            <div class="hp-meta"><div><b>Date:</b> ${esc(fmtHistoryDate(h.last_at))}</div><div><b>By:</b> ${who}</div>${h.mode ? `<div><b>Mode:</b> ${esc(h.mode)}</div>` : ''}</div>
+            ${ok.length ? `<div class="hp-section">Pushed successfully (${ok.length})</div>${ok.map(p => line(p, true)).join('')}` : ''}
+            ${bad.length ? `<div class="hp-section">Failed (${bad.length})</div>${bad.map(p => line(p, false)).join('')}` : ''}
+            ${lastSuccess.length ? `<div class="hp-section">Earlier successful pushes</div>${lastSuccess.map(([mp, at]) => `<div class="hp-row"><span class="mk ok">✓</span><span class="nm">${esc(LABELS[mp] || mp)}</span><span class="msg">${esc(fmtHistoryDate(at))}</span></div>`).join('')}` : ''}`;
+    }
+
+    (function bindHistoryHover() {
+        const pop = document.getElementById('imHistoryPop');
+        const tbody = document.getElementById('table-body');
+        if (!pop || !tbody) return;
+        const hide = () => { pop.style.display = 'none'; };
+        tbody.addEventListener('mouseover', (e) => {
+            const el = e.target.closest('[data-history-sku]');
+            if (!el) return;
+            const sku = el.dataset.historySku;
+            const h = bySku.get(sku)?.push_history;
+            if (!h) return;
+            pop.innerHTML = historyPopHtml(sku, h);
+            pop.style.display = 'block';
+            const r = el.getBoundingClientRect();
+            const pw = pop.offsetWidth, ph = pop.offsetHeight;
+            let left = r.right + 8;
+            if (left + pw > window.innerWidth - 8) left = Math.max(8, r.left - pw - 8);
+            let top = r.top;
+            if (top + ph > window.innerHeight - 8) top = Math.max(8, window.innerHeight - ph - 8);
+            pop.style.left = left + 'px';
+            pop.style.top = top + 'px';
+        });
+        tbody.addEventListener('mouseout', (e) => {
+            const el = e.target.closest('[data-history-sku]');
+            if (el && !el.contains(e.relatedTarget)) hide();
+        });
+        document.querySelector('.table-responsive')?.addEventListener('scroll', hide, { passive: true });
+    })();
+
     function renderTable(rows) {
         const tbody = document.getElementById('table-body');
         const q = (document.getElementById('skuSearchIm')?.value || '').trim().toLowerCase();
         if (q) rows = rows.filter(r => String(r.SKU||'').toLowerCase().includes(q));
         visibleFilteredRows = rows;
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No products</td></tr>';
             updateSelectedCount();
             syncSelectAllCheckbox();
             return;
@@ -618,6 +702,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="text-center"><input type="checkbox" class="form-check-input row-select-im" data-sku="${esc(sku)}" ${checked} aria-label="Select ${esc(sku)}"></td>
                 <td>${esc(sku)}</td>
                 <td>${esc(r.Parent||sku)}</td>
+                <td>${historyCellHtml(sku, r.push_history)}</td>
                 <td>${thumbImg}</td>
                 <td>
                     <div class="d-flex gap-1 flex-wrap align-items-center">
