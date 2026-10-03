@@ -147,7 +147,8 @@ class MiraklListingPublishService
         if ($description === '') {
             $description = $this->resolveDescription($product, $title);
         }
-        $bullets = $this->resolveBullets($product);
+        $draftBullets = array_values(array_filter(array_map(static fn ($v) => trim((string) $v), (array) ($overrides['bullets'] ?? []))));
+        $bullets = $draftBullets !== [] ? implode("\n", $draftBullets) : $this->resolveBullets($product);
         $inv = isset($overrides['quantity']) && is_numeric($overrides['quantity'])
             ? max(0, (int) $overrides['quantity'])
             : $this->shopifyInv($sku);
@@ -184,6 +185,25 @@ class MiraklListingPublishService
         string $categoryCode,
         array $offerOptions = []
     ): array {
+        if (! $api->miraklMcmProductExists($sku)) {
+            $createRes = $api->createProductViaMiraklMcm($sku, [
+                'title' => $title,
+                'description' => $description,
+                'bullets' => array_values(array_filter(array_map('trim', preg_split('/\R/', $bullets) ?: []))),
+                'images' => $images,
+                'upc' => (string) ($offerOptions['upc'] ?? ''),
+                'msrp' => $price,
+            ]);
+            if (empty($createRes['success'])) {
+                return [
+                    'success' => false,
+                    'message' => $createRes['message'] ?? ($label.' product create failed for '.$sku.'.'),
+                ];
+            }
+
+            return $this->finishOffer($api, $sku, $title, $price, $inv, $channel, $label, $categoryCode, $offerOptions, [trim((string) ($createRes['message'] ?? ''))]);
+        }
+
         $titleRes = $api->updateTitle($sku, $title);
         if (empty($titleRes['success'])) {
             return [
@@ -210,6 +230,25 @@ class MiraklListingPublishService
             $api->updateBulletPoints($sku, $bullets);
         }
 
+        return $this->finishOffer($api, $sku, $title, $price, $inv, $channel, $label, $categoryCode, $offerOptions, $parts);
+    }
+
+    /**
+     * @param  list<string>  $parts
+     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
+     */
+    private function finishOffer(
+        MacysApiService|BestBuyApiService|PurchasingPowerApiService $api,
+        string $sku,
+        string $title,
+        float $price,
+        int $inv,
+        string $channel,
+        string $label,
+        string $categoryCode,
+        array $offerOptions,
+        array $parts
+    ): array {
         // The offer (OF01) is what makes the product sellable; P41 alone only fills the catalog.
         $offerId = '';
         $offerOk = false;

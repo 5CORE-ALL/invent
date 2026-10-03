@@ -804,6 +804,8 @@ trait MiraklMcmBulletImport
     /** @var array<string, string> SKU (upper) => category code chosen by the caller for this request */
     protected array $miraklMcmHierarchyOverrides = [];
 
+    protected bool $miraklMcmForceFillRequired = false;
+
     /**
      * Category the user picked (Listing Manager) wins over anything derived from existing data.
      */
@@ -1138,6 +1140,172 @@ trait MiraklMcmBulletImport
 
             return is_array($attributes) ? $attributes : [];
         });
+    }
+
+    public function miraklMcmProductExists(string $sku): bool
+    {
+        try {
+            $product = $this->fetchMiraklMcmProductBySku(trim($sku));
+        } catch (\Throwable) {
+            return false;
+        }
+        if ($product === []) {
+            return false;
+        }
+        $shopSku = trim((string) ($product['shop_sku'] ?? ''));
+        $productSku = trim((string) ($product['product_sku'] ?? ''));
+
+        return strcasecmp($shopSku, trim($sku)) === 0 || strcasecmp($productSku, trim($sku)) === 0;
+    }
+
+    /**
+     * New products need every PM11 REQUIRED attribute on the very first P41 row; a title-only row
+     * is rejected (error 1000) before the description / image / bullet imports ever run.
+     *
+     * @param  array{title: string, description?: string, bullets?: list<string>, images?: list<string>, upc?: string, msrp?: float|string|null}  $content
+     * @return array{success: bool, message: string, import_id?: int, missing?: list<string>}
+     */
+    public function createProductViaMiraklMcm(string $sku, array $content): array
+    {
+        $label = $this->miraklMcmMarketplaceLabel();
+        if ($this->miraklMcmApiKey() === null) {
+            return ['success' => false, 'message' => "{$this->miraklMcmApiKeyEnvName()} is required to create {$label} products (MCM P41)."];
+        }
+
+        $sku = trim($sku);
+        if ($sku === '' || trim((string) ($content['title'] ?? '')) === '') {
+            return ['success' => false, 'message' => 'SKU and title are required.'];
+        }
+        $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
+        if ($hierarchy === null || trim($hierarchy) === '') {
+            return ['success' => false, 'message' => "Pick a {$label} category for {$sku} before publishing."];
+        }
+
+        $extraRequired = [];
+        $result = ['success' => false, 'message' => "{$label} P41 create failed."];
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $row = $this->buildMiraklMcmCreateRow($sku, $content, $extraRequired);
+            $csv = $this->miraklMcmRowToCsv($row);
+            Log::info("{$label} MCM P41 create row", ['sku' => $sku, 'hierarchy' => $hierarchy, 'attempt' => $attempt, 'columns' => array_keys($row)]);
+
+            $import = $this->importMiraklMcmProductsP41($csv);
+            if (! ($import['success'] ?? false)) {
+                return $import;
+            }
+            $importId = (int) ($import['import_id'] ?? 0);
+            $poll = $this->waitForMiraklMcmImportP42($importId, $sku);
+            if ($poll['success'] ?? false) {
+                return [
+                    'success' => true,
+                    'message' => "{$label} product created via MCM P41 (import #{$importId}, category {$hierarchy}).",
+                    'import_id' => $importId,
+                ];
+            }
+
+            $report = $this->fetchMiraklMcmImportErrorReport($importId, is_array($poll['response'] ?? null) ? $poll['response'] : null);
+            $result = $this->miraklMcmAttachImportErrorReport($poll, $importId, $sku);
+            $reported = $this->miraklMcmRequiredCodesFromErrorReport($report);
+            $unfilled = array_filter($reported, fn ($_, $code) => ! $this->miraklMcmP41RowValueIsFilled($row, (string) $code), ARRAY_FILTER_USE_BOTH);
+            $newCodes = array_diff_key($unfilled, $extraRequired);
+            if ($attempt > 0 || $newCodes === []) {
+                $stillMissing = $unfilled !== [] ? $unfilled : $reported;
+                if ($stillMissing !== []) {
+                    $names = [];
+                    foreach ($stillMissing as $code => $name) {
+                        $names[] = $name !== '' ? $name : (string) $code;
+                    }
+                    $result['missing'] = array_keys($stillMissing);
+                    $result['message'] = "{$label} rejected {$sku} in category {$hierarchy}. Still missing: "
+                        .implode(', ', array_slice($names, 0, 15))
+                        .'. Check the category is right for this product, fill these on the draft, then publish again.';
+                }
+
+                return $result;
+            }
+            $extraRequired = $extraRequired + $newCodes;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  array<string, mixed>  $content
+     * @param  array<string, string>  $extraRequired  code => label
+     * @return array<string, string>
+     */
+    public function buildMiraklMcmCreateRow(string $sku, array $content, array $extraRequired = []): array
+    {
+        $sku = trim($sku);
+        $title = mb_substr(trim((string) ($content['title'] ?? '')), 0, 150);
+        $description = trim((string) ($content['description'] ?? ''));
+        $bullets = array_values(array_filter(array_map(static fn ($v) => trim((string) $v), (array) ($content['bullets'] ?? []))));
+        $images = array_values(array_unique(array_filter(array_map(static fn ($v) => trim((string) $v), (array) ($content['images'] ?? [])))));
+        $upc = preg_replace('/\D+/', '', (string) ($content['upc'] ?? '')) ?: '';
+        $msrp = is_numeric($content['msrp'] ?? null) && (float) $content['msrp'] > 0 ? number_format((float) $content['msrp'], 2, '.', '') : '';
+
+        $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
+        $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($hierarchy);
+        $maxLen = (int) $this->miraklMcmConfig('features_benefits_max_length', 254);
+
+        $row = $this->resolveMiraklMcmP41RowValues(
+            $sku,
+            $bullets,
+            $fbCodes,
+            $hierarchy,
+            $maxLen,
+            $title,
+            $description !== '' ? $description : null,
+            $images !== [] ? $images : null
+        );
+        if ($upc !== '' && trim((string) ($row['UPC'] ?? '')) === '') {
+            $row['UPC'] = $upc;
+        }
+        if ($msrp !== '' && trim((string) ($row['msrp'] ?? '')) === '') {
+            $row['msrp'] = $msrp;
+        }
+
+        $this->miraklMcmForceFillRequired = true;
+        try {
+            return $this->miraklMcmCompleteP41RequiredAttributes($sku, $hierarchy, $row, [
+                'title' => $title,
+                'description' => $description,
+                'bullets' => $bullets,
+                'images' => $images,
+            ], $extraRequired);
+        } finally {
+            $this->miraklMcmForceFillRequired = false;
+        }
+    }
+
+    /**
+     * "The attribute 'X.modelNumber' (Model Number) is required" => ['X.modelNumber' => 'Model Number'].
+     *
+     * @return array<string, string>
+     */
+    protected function miraklMcmRequiredCodesFromErrorReport(string $report): array
+    {
+        if ($report === '' || preg_match_all("/The attribute '([^']+)'\s*(?:\(([^)]*)\))?[^,|\"]*?is required/i", $report, $m, PREG_SET_ORDER) < 1) {
+            return [];
+        }
+        $out = [];
+        foreach ($m as $match) {
+            $out[trim($match[1])] = trim((string) ($match[2] ?? ''));
+        }
+
+        return $out;
+    }
+
+    /** @param  array<string, string>  $row */
+    protected function miraklMcmRowToCsv(array $row): string
+    {
+        $handle = fopen('php://temp', 'r+');
+        fputcsv($handle, array_keys($row));
+        fputcsv($handle, array_values($row));
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
+        return "\xEF\xBB\xBF".($csv ?: '');
     }
 
     /**
@@ -2226,9 +2394,9 @@ trait MiraklMcmBulletImport
      * @param  array{title?: string, description?: string, bullets?: list<string>, images?: list<string>}  $context
      * @return array<string, string>
      */
-    protected function miraklMcmCompleteP41RequiredAttributes(string $sku, ?string $hierarchy, array $row, array $context = []): array
+    protected function miraklMcmCompleteP41RequiredAttributes(string $sku, ?string $hierarchy, array $row, array $context = [], array $extraRequired = []): array
     {
-        if (! $this->miraklMcmFillRequiredFromMasters()) {
+        if (! $this->miraklMcmFillRequiredFromMasters() && ! $this->miraklMcmForceFillRequired) {
             return $row;
         }
 
@@ -2257,6 +2425,16 @@ trait MiraklMcmBulletImport
         }
         foreach (array_keys($explicit) as $code) {
             $required[$code] = true;
+        }
+        foreach ($extraRequired as $code => $name) {
+            $code = trim((string) $code);
+            if ($code === '') {
+                continue;
+            }
+            $required[$code] = true;
+            if (! isset($byCode[$code])) {
+                $byCode[$code] = ['code' => $code, 'label' => (string) $name];
+            }
         }
 
         $skuColumn = strtolower((string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku'));
@@ -2435,6 +2613,7 @@ trait MiraklMcmBulletImport
             'variant_flag' => '/isvariant|is this a variant|variant product/',
             'box_count' => '/number ?of ?boxes|numberofboxes|boxes shipped|box(es)? ?count|package ?count|number of packages/',
             'box_contents' => '/box ?contents|in the box|what.?s included|included (items|components)/',
+            'count_one' => '/number ?of ?(instruments|items|pieces|units|devices)|numberof(instruments|items|pieces|units|devices)|piece ?count/',
             'zoom_image' => '/zoom/',
             'wireless' => '/\bwireless\b/',
         ];
@@ -2445,6 +2624,9 @@ trait MiraklMcmBulletImport
         }
 
         $isDimension = (bool) preg_match('/length|width|height|depth|dimension/', $text);
+        if ($isDimension && preg_match('/length|width|height|depth|unit|uom|weight|measur/', $text) !== 1) {
+            return 'dimensions_text';
+        }
         $rules = [
             'battery_flag' => '/battery.*(embedded|contain|include|covered|install|lithium)|(embedded|contain|include|covered|install|lithium).*battery|\bcbe\b/',
             'weight_unit' => '/weight.*(unit|uom)|(unit|uom).*weight/',
@@ -2725,7 +2907,14 @@ trait MiraklMcmBulletImport
             case 'wireless':
                 return preg_match('/\bwireless\b|bluetooth|\buhf\b|\bvhf\b/i', $title) === 1 ? 'Yes' : 'No';
             case 'box_count':
+            case 'count_one':
                 return '1';
+            case 'dimensions_text':
+                $l = $str($master['package_length'] ?? null);
+                $w = $str($master['package_width'] ?? null);
+                $h = $str($master['package_height'] ?? null);
+
+                return ($l !== '' && $w !== '' && $h !== '') ? $l.' x '.$w.' x '.$h.' in' : '';
             case 'box_contents':
                 $name = trim((string) preg_replace('/\s*[-|,(].*$/', '', $title));
 

@@ -115,6 +115,10 @@ class ListingManagerPublishDispatcher
                     'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
                     'upc' => trim((string) ($details['upc'] ?? '')),
                     'brand' => trim((string) ($details['brand'] ?? '')),
+                    'bullets' => array_values(array_filter(array_map(
+                        static fn ($k) => trim((string) ($details[$k] ?? '')),
+                        ['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5']
+                    ))),
                     // Save & Publish is an explicit request: re-push even if a local table already says listed.
                     'relist' => true,
                 ];
