@@ -209,6 +209,9 @@ class DobaApiService
             } catch (\Throwable) {
                 $goodsId = '';
             }
+            if ($goodsId === '') {
+                return ['success' => false, 'message' => 'Doba product id (spuId) is missing for this SKU. Run the Doba metrics sync so goods_id is stored, then push again.'];
+            }
 
             $url = $this->baseUrl.'/goods/update';
             $lastMessage = 'Doba '.$label.' update failed.';
@@ -216,7 +219,7 @@ class DobaApiService
                 if ($i > 0) {
                     usleep(1200000);
                 }
-                $payload = array_merge(['itemNo' => (string) $itemNo], $goodsId !== '' ? ['goodsId' => $goodsId] : [], $fields);
+                $payload = array_merge(['spuId' => $goodsId, 'goodsId' => $goodsId, 'itemNo' => (string) $itemNo], $fields);
 
                 $response = null;
                 for ($try = 0; $try < 2; $try++) {
@@ -263,6 +266,9 @@ class DobaApiService
                 }
                 if (isset($data['responseCode']) && (string) $data['responseCode'] !== '000000') {
                     $lastMessage = $apiMsg !== '' ? $apiMsg : 'Doba API error '.$data['responseCode'];
+                    if (preg_match('/\bis required\b/i', $apiMsg)) {
+                        return ['success' => false, 'message' => $lastMessage];
+                    }
                     continue;
                 }
                 if (($businessStatus !== '' && $businessStatus !== '000000')
@@ -1478,22 +1484,6 @@ class DobaApiService
                 }
             }
 
-            $itemNo = $this->resolveSkuToItemNo($identifier);
-            if (! $itemNo) {
-                return ['success' => false, 'message' => 'SKU or item_id not found in DobaMetric/DobaDataView.'];
-            }
-
-            $timestamp = $this->getMillisecond();
-            $content = $this->getContent($timestamp);
-            $sign = $this->generateSignature($content);
-            $headers = [
-                'appKey' => config('services.doba.app_key'),
-                'signType' => 'rsa2',
-                'timestamp' => $timestamp,
-                'sign' => $sign,
-                'Content-Type' => 'application/x-www-form-urlencoded',
-            ];
-
             $picList = [];
             foreach ($images as $i => $url) {
                 $picList[] = [
@@ -1501,44 +1491,18 @@ class DobaApiService
                     'picType' => $i === 0 ? 1 : 2,
                 ];
             }
-            $payloadAttempts = [
-                ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'productPicList' => json_encode($picList)],
-                ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'picList' => json_encode($picList)],
-                ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'picList' => json_encode($images)],
-                ['itemNo' => (string) $itemNo, 'productImageList' => json_encode($images)],
-            ];
 
-            $attempts = [
-                'https://openapi.doba.com/api/goods/info/update',
-                'https://openapi.doba.com/api/goods/update',
-            ];
-
-            $lastMessage = 'Doba image update failed for all endpoints.';
-            foreach ($attempts as $url) {
-                foreach ($payloadAttempts as $payload) {
-                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
-                    $responseData = $response->json() ?? [];
-                    if (! $response->successful()) {
-                        $lastMessage = 'HTTP '.$response->status().': '.($responseData['responseMessage'] ?? $response->body());
-                        continue;
-                    }
-                    if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
-                        $lastMessage = (string) ($responseData['responseMessage'] ?? 'Unknown Doba API error');
-                        continue;
-                    }
-
-                    $sku = trim($identifier);
-                    $this->saveImageUrlsToMetricsRow('doba_metrics', $sku, $images);
-
-                    return [
-                        'success' => true,
-                        'message' => 'Doba product images updated.',
-                        'normalized_urls' => $images,
-                    ];
-                }
+            $res = $this->dobaContentUpdate($identifier, 'images', [
+                ['mainPic' => $images[0], 'picList' => $picList],
+                ['mainPic' => $images[0], 'productPicList' => $picList],
+            ], 'Doba product images updated.');
+            if (empty($res['success'])) {
+                return $res;
             }
 
-            return ['success' => false, 'message' => $lastMessage];
+            $this->saveImageUrlsToMetricsRow('doba_metrics', trim($identifier), $images);
+
+            return $res + ['normalized_urls' => $images];
         } catch (\Throwable $e) {
             Log::error('Doba updateImages failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
 

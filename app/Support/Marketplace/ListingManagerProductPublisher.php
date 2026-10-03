@@ -214,7 +214,7 @@ class ListingManagerProductPublisher
     private function pushOneChannel(string $sku, int $channelId, string $channelName, array $fields, array $parts, bool $updateOnly = false): array
     {
         $key = self::marketplaceKeyFromChannel($channelName) ?? '';
-        $live = ListingManagerPublishStatus::check($channelName, $sku);
+        $live = ListingManagerPublishStatus::check($channelName, $sku, true);
         $draft = $this->findDraft($channelId, $sku);
         $appOnly = ListingManagerPublishStatus::requiresAppPublishForActive($channelName);
         $draftListedFromApp = $draft

@@ -522,7 +522,7 @@ class ListingManagerController extends Controller
                     continue;
                 }
                 $appOnly = ListingManagerPublishStatus::requiresAppPublishForActive($name);
-                $live = $appOnly ? ['listed' => false] : ListingManagerPublishStatus::check($name, $sku);
+                $live = $appOnly ? ['listed' => false] : ListingManagerPublishStatus::check($name, $sku, true);
                 if ($appOnly && $this->channelHasConnectedListingApi($name)) {
                     $exists = ListingManagerPublishStatus::existsOnMarketplace($name, $sku);
                     if ($exists['exists']) {
