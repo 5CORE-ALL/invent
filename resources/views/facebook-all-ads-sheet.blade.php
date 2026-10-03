@@ -3438,6 +3438,7 @@
         // Same look & feel as the chart on /all-marketplace-master.
         const BADGE_HISTORY_URL = '/facebook-all-ads-sheet/badge-history';
         let badgeChartInstance = null;
+        let badgeChartReq      = 0;
         let activeBadgeMetric  = null;
         let activeBadgeLabel   = '';
 
@@ -3481,10 +3482,29 @@
             loadBadgeChart(metric, label);
         }
 
+        function clearBadgeChart(message) {
+            if (badgeChartInstance) { badgeChartInstance.destroy(); badgeChartInstance = null; }
+            const canvas = document.getElementById('badgeChartCanvas');
+            const emptyEl = document.getElementById('badgeChartEmpty');
+            if (canvas) canvas.style.display = 'none';
+            if (emptyEl) {
+                emptyEl.textContent = message || 'Loading…';
+                emptyEl.classList.remove('d-none');
+            }
+            ['badgeChartHighest', 'badgeChartMedian', 'badgeChartLowest'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '—';
+            });
+        }
+
         function loadBadgeChart(metric, label) {
             const days = parseInt(document.getElementById('badgeChartRange').value || '32', 10);
             const titleEl = document.getElementById('badgeChartTitle');
             if (titleEl) titleEl.textContent = `${label} (Rolling L${days})`;
+            const req = ++badgeChartReq;
+            // Drop the previous series before the request returns. A slow
+            // response for the first graph must not paint over the second.
+            clearBadgeChart('Loading…');
 
             // Limit chart to currently-visible campaigns so the badges
             // and the chart agree about scope. Empty list → backend
@@ -3502,10 +3522,14 @@
             fetch(`${BADGE_HISTORY_URL}?${params.toString()}`, { credentials: 'same-origin' })
                 .then(r => r.json())
                 .then(resp => {
+                    if (req !== badgeChartReq) return;
                     const data = (resp && resp.data) || [];
                     renderBadgeChart(metric, data);
                 })
-                .catch(err => console.error('badge-history fetch failed:', err));
+                .catch(err => {
+                    if (req !== badgeChartReq) return;
+                    console.error('badge-history fetch failed:', err);
+                });
         }
 
         function renderBadgeChart(metric, data) {
@@ -3524,7 +3548,10 @@
 
             if (!data.length) {
                 canvas.style.display = 'none';
-                emptyEl?.classList.remove('d-none');
+                if (emptyEl) {
+                    emptyEl.textContent = 'No history available for this metric in the selected window.';
+                    emptyEl.classList.remove('d-none');
+                }
                 return;
             }
             canvas.style.display = '';

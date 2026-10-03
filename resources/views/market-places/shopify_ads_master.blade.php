@@ -483,6 +483,8 @@
             const historyUrl = "{{ route('shopify.ads.master.history') }}";
             let samTrendChart  = null;
             let samTrendCache  = null;   // last /history payload
+            let samTrendCacheDays = 0;
+            let samHistoryReq  = 0;
             let samTrendMetric = 'spend';
             let samTrendLabel  = 'Spend';
 
@@ -594,13 +596,49 @@
                 if (titleEl) titleEl.textContent = `${samTrendLabel}${chTxt} (Rolling L${days})`;
             }
 
+            function samClearChart(message) {
+                if (samTrendChart) { samTrendChart.destroy(); samTrendChart = null; }
+                const canvas = document.getElementById('sam-trend-canvas');
+                const emptyEl = document.getElementById('sam-trend-empty');
+                if (canvas) canvas.style.display = 'none';
+                if (emptyEl) {
+                    emptyEl.textContent = message || 'Loading…';
+                    emptyEl.classList.remove('d-none');
+                }
+                ['sam-trend-highest', 'sam-trend-median', 'sam-trend-lowest'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    el.textContent = '—';
+                    el.style.color = '';
+                });
+            }
+
             function loadSamHistory() {
                 const days = parseInt(document.getElementById('sam-trend-days').value || '30', 10);
                 samSetTrendTitle();
+                const req = ++samHistoryReq;
+                // The history payload already has every metric. Draw the one
+                // just opened immediately so the previous graph does not stay
+                // on screen while the refresh request is in flight.
+                if (samTrendCache && samTrendCacheDays === days) {
+                    renderSamChart();
+                } else {
+                    samClearChart('Loading…');
+                }
                 fetch(historyUrl + '?days=' + encodeURIComponent(days), { credentials: 'same-origin' })
                     .then(r => r.json())
-                    .then(payload => { samTrendCache = payload; renderSamChart(); })
-                    .catch(() => { samTrendCache = { labels: [], metrics: {}, channels: {} }; renderSamChart(); });
+                    .then(payload => {
+                        if (req !== samHistoryReq) return;
+                        samTrendCache = payload;
+                        samTrendCacheDays = days;
+                        renderSamChart();
+                    })
+                    .catch(() => {
+                        if (req !== samHistoryReq) return;
+                        samTrendCache = { labels: [], metrics: {}, channels: {} };
+                        samTrendCacheDays = days;
+                        renderSamChart();
+                    });
             }
 
             function renderSamChart() {
@@ -630,7 +668,10 @@
 
                 if (!labels.length || !numericValues.length) {
                     canvas.style.display = 'none';
-                    emptyEl?.classList.remove('d-none');
+                    if (emptyEl) {
+                        emptyEl.textContent = 'No history available for this metric in the selected window.';
+                        emptyEl.classList.remove('d-none');
+                    }
                     return;
                 }
                 if (typeof Chart === 'undefined') {
