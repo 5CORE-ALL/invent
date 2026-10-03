@@ -1131,11 +1131,18 @@ class TopDawgApiService
 
         if (! ChannelListingRegistry::isLiveTopDawgListingId($listingId, $sku)
             && ! ChannelListingRegistry::isLiveTopDawgListingId($tdid, $sku)) {
+            $reply = mb_substr(trim((string) $response->body()), 0, 400);
+            Log::warning('TopDawgApiService: create accepted but no catalog product', [
+                'sku' => $sku,
+                'status' => $response->status(),
+                'body' => mb_substr((string) $response->body(), 0, 2000),
+                'payload_keys' => array_keys($payload),
+            ]);
+
             return [
                 'success' => false,
-                'message' => $lastMessage !== '' && ! str_contains(mb_strtolower($lastMessage), 'success')
-                    ? $lastMessage
-                    : 'TopDawg did not create a catalog product for '.$sku.'. Fill department / section / category, 4 images, made-in, and package size, then publish again.',
+                'message' => 'TopDawg did not create a catalog product for '.$sku.' (HTTP '.$response->status().').'
+                    .' TopDawg replied: '.($reply !== '' ? $reply : '(empty body)'),
             ];
         }
 

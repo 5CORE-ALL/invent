@@ -13,10 +13,10 @@ use Illuminate\Console\Command;
 class ListingDiagnose extends Command
 {
     protected $signature = 'listing:diagnose
-        {channel : aliexpress | tiktok | tiktok2 | bestbuy | purchasingpower | wayfair}
+        {channel : aliexpress | tiktok | tiktok2 | bestbuy | purchasingpower | wayfair | topdawg}
         {sku : Our SKU}
         {--full : Print complete JSON instead of trimmed output}
-        {--probe : AliExpress only: re-send the current subject/detail/images/weight unchanged and print the raw replies}';
+        {--probe : AliExpress: re-send current values unchanged. TopDawg: run a real create for the SKU and print the reply}';
 
     protected $description = 'Read-only dump of marketplace listing data/schema for one SKU (for debugging Push Updates)';
 
@@ -33,6 +33,7 @@ class ListingDiagnose extends Command
                 'bestbuy', 'bestbuyusa' => $this->mirakl(\App\Services\BestBuyApiService::class, $sku),
                 'purchasingpower', 'pp' => $this->mirakl(\App\Services\PurchasingPowerApiService::class, $sku),
                 'wayfair' => $this->wayfair($sku),
+                'topdawg' => $this->topdawg($sku),
                 default => $this->unknown($channel),
             };
         } catch (\Throwable $e) {
@@ -45,7 +46,7 @@ class ListingDiagnose extends Command
 
     private function unknown(string $channel): int
     {
-        $this->error('Unknown channel "'.$channel.'". Use aliexpress, tiktok, tiktok2, bestbuy, purchasingpower or wayfair.');
+        $this->error('Unknown channel "'.$channel.'". Use aliexpress, tiktok, tiktok2, bestbuy, purchasingpower, wayfair or topdawg.');
 
         return self::INVALID;
     }
@@ -265,6 +266,22 @@ class ListingDiagnose extends Command
             ['input' => ['filter' => ['supplierPartNumbers' => [$sku]], 'paginationOptions' => ['page' => 1, 'pageSize' => 5]]]
         );
         $this->section('raw supplierCatalogItems response', $json);
+
+        return self::SUCCESS;
+    }
+
+    private function topdawg(string $sku): int
+    {
+        $svc = app(\App\Services\TopDawgApiService::class);
+        $this->section('local topdawg_products row', \Illuminate\Support\Facades\Schema::hasTable('topdawg_products')
+            ? \App\Models\TopDawgProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()?->toArray() ?? '(none)'
+            : '(table missing)');
+        $this->section('live catalog lookup (full scan)', $svc->lookupLiveCatalogProduct($sku, true) ?? '(not in TopDawg catalog)');
+
+        if ($this->option('probe')) {
+            $result = app(\App\Services\MarketplaceManager\TopDawgListingPublishService::class)->publishSkus([$sku], false, 'single');
+            $this->section('probe: create listing via TopDawgListingPublishService', $result);
+        }
 
         return self::SUCCESS;
     }
