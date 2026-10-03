@@ -1225,6 +1225,9 @@ class Ebay2SyncController extends Controller
             $request->input('quantity_calc_percent', $inventory['quantity_calc_percent'] ?? 100)
         );
         $inventory['quantity_calc_percent'] = max(0, min(100, (int) $pct));
+        if ($request->exists('max_quantity')) {
+            $inventory['max_quantity'] = $request->input('max_quantity');
+        }
         $inventory['min_quantity'] = 0;
         $current['inventory'] = $inventory;
         MarketplaceSyncSettings::setFor('ebay2', $current);

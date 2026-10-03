@@ -296,7 +296,6 @@ class TikTok2SyncController extends Controller
         if ($request->has('inventory.quantity_calc_percent')) {
             $inventory['quantity_calc_percent'] = max(0, min(100, (int) $request->input('inventory.quantity_calc_percent')));
         }
-        $inventory['max_quantity'] = null;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only',
             'keep_order_number_from_channel', 'push_tracking_to_tiktok2', 'sync_address_to_shopify',

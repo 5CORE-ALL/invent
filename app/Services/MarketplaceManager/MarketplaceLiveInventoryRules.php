@@ -19,6 +19,9 @@ use App\Models\MarketplaceSyncSettings;
  */
 final class MarketplaceLiveInventoryRules
 {
+    /** @var array<string, array{at: float, caps: array{percent: int, maxQty: int|null}}> */
+    private static array $capsMemo = [];
+
     /**
      * Linked = real marketplace product/listing id that is not the SKU placeholder.
      */
@@ -59,18 +62,32 @@ final class MarketplaceLiveInventoryRules
             return 0;
         }
 
-        $qty = (int) $liveShopifyQty;
-        $percent = $percent === null ? 100 : max(0, min(100, (int) $percent));
-        if ($percent < 100) {
-            $qty = (int) floor($qty * $percent / 100);
+        // Rule (per marketplace Settings): stock >= Max Cap → exactly the cap,
+        // otherwise floor(stock × Qty %). Empty / 0 cap = no cap.
+        $live = (int) $liveShopifyQty;
+        $cap = self::normalizeMaxCap($maxQty);
+        if ($cap !== null && $live >= $cap) {
+            return $cap;
         }
 
-        if ($maxQty !== null && $maxQty !== '' && is_numeric($maxQty) && (int) $maxQty >= 0) {
-            $qty = min($qty, (int) $maxQty);
-        }
+        $percent = $percent === null ? 100 : max(0, min(100, (int) $percent));
+        $qty = $percent < 100 ? (int) floor($live * $percent / 100) : $live;
 
         // Absolute: never exceed live Shopify; never invent when live was 0.
-        return max(0, min($qty, (int) $liveShopifyQty));
+        return max(0, min($qty, $live));
+    }
+
+    /**
+     * @param  int|string|null  $maxQty
+     */
+    public static function normalizeMaxCap($maxQty): ?int
+    {
+        if ($maxQty === null || $maxQty === '' || ! is_numeric($maxQty)) {
+            return null;
+        }
+        $cap = (int) $maxQty;
+
+        return $cap > 0 ? $cap : null;
     }
 
     /**
@@ -96,12 +113,35 @@ final class MarketplaceLiveInventoryRules
      */
     public static function inventoryCapsForMarketplace(string $marketplace): array
     {
-        $settings = MarketplaceSyncSettings::getFor(strtolower(trim($marketplace)));
+        $marketplace = strtolower(trim($marketplace));
+        // Called per SKU by mismatch classification; long-running workers re-read every minute.
+        $hit = self::$capsMemo[$marketplace] ?? null;
+        if ($hit !== null && $hit['at'] > microtime(true) - 60) {
+            return $hit['caps'];
+        }
 
-        return [
+        try {
+            $settings = MarketplaceSyncSettings::getFor($marketplace);
+        } catch (\Throwable) {
+            $settings = [];
+        }
+        $caps = [
             'percent' => max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100))),
-            'maxQty' => $settings['inventory']['max_quantity'] ?? null,
+            'maxQty' => self::normalizeMaxCap($settings['inventory']['max_quantity'] ?? null),
         ];
+        self::$capsMemo[$marketplace] = ['at' => microtime(true), 'caps' => $caps];
+
+        return $caps;
+    }
+
+    public static function forgetInventoryCaps(?string $marketplace = null): void
+    {
+        if ($marketplace === null) {
+            self::$capsMemo = [];
+
+            return;
+        }
+        unset(self::$capsMemo[strtolower(trim($marketplace))]);
     }
 
     /**
@@ -115,19 +155,17 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
-     * Mismatch-tab / mismatch-pass push. $exactShopifyQty writes live Shopify qty
-     * (no Qty % / max). Scheduled sync still follows the channel's Qty % / max.
+     * Mismatch-tab / mismatch-pass push. Follows the channel's Qty % / Max Cap like the
+     * scheduled sync — pushing raw Shopify here used to undo the rule every hour.
+     * $exactShopifyQty only changes which stock source the services read.
      *
      * @param  int|string|null  $maxQty
      */
     public static function qtyForMismatchPush(?int $shopifyStock, bool $exactShopifyQty, int $qtyPercent = 100, $maxQty = null): int
     {
+        unset($exactShopifyQty);
         if ($shopifyStock === null) {
             return self::qtyWhenMissingFromShopify();
-        }
-
-        if ($exactShopifyQty) {
-            return self::qtyFromLiveShopify($shopifyStock, 100, null);
         }
 
         return self::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
@@ -338,9 +376,8 @@ final class MarketplaceLiveInventoryRules
     /**
      * Listings match band:
      * Marketplace above Shopify is never a match.
-     * Otherwise match when qty sits at Shopify (mismatch-button exact push),
-     * at the channel Qty % target (scheduled sync), or is short of that target
-     * by at most max(3 units, 3% of target).
+     * Otherwise match when qty is within max(3 units, 3% of target) of the
+     * channel's rule target (Qty % / Max Cap).
      * Missing marketplace qty is never treated as within tolerance.
      */
     public static function qtyWithinMismatchTolerance(int $shopifyQty, ?int $marketplaceQty, ?string $marketplace = null): bool
@@ -355,17 +392,15 @@ final class MarketplaceLiveInventoryRules
         if ($shopifyQty <= 0) {
             return $marketplaceQty <= 0;
         }
+        // Matched = follows that marketplace's rule (Qty % / Max Cap), not raw Shopify.
         $target = $marketplace
             ? self::expectedMarketplaceQty($shopifyQty, $marketplace)
             : $shopifyQty;
-        if ($marketplaceQty === $target || $marketplaceQty === $shopifyQty) {
+        if ($marketplaceQty === $target) {
             return true;
         }
 
-        $threshold = self::mismatchIgnoreThreshold($target);
-        $low = max(0, $target - $threshold);
-
-        return $marketplaceQty >= $low && $marketplaceQty <= $shopifyQty;
+        return abs($marketplaceQty - $target) <= self::mismatchIgnoreThreshold($target);
     }
 
     /**

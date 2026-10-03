@@ -95,7 +95,7 @@ class PlsInventorySyncService
             }
 
             $pushQty = MarketplaceLiveInventoryRules::clampPushQty(
-                MarketplaceLiveInventoryRules::pushQtyFromLiveShopify($qty),
+                MarketplaceLiveInventoryRules::expectedMarketplaceQty($qty, 'pls'),
                 $qty
             );
             $result = $this->pushSku($sku, $pushQty);

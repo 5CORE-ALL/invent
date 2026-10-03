@@ -112,6 +112,18 @@
                     },
                 },
                 {
+                    title: "Expected",
+                    field: "expected",
+                    width: 110,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Qty this channel should have under its settings rule (Qty % of Shopify / Max Cap)",
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        return v === undefined || v === null ? '—' : Number(v).toLocaleString('en-US');
+                    },
+                },
+                {
                     title: @json($channelInvLabel ?? 'Channel Inv'),
                     field: "channel_inv",
                     width: 150,

@@ -41,10 +41,10 @@
                                    value="{{ $settings['inventory']['quantity_calc_percent'] ?? 100 }}"
                                    min="0" max="100" style="width: 100px;">
                         </div>
+                        @include('marketplace.partials.max-cap-field')
                     </div>
                     <div class="form-text mt-2">Always uses <strong>live Shopify</strong> stock. Shopify 0/− → marketplace <strong>0</strong>. Requires <code>sku_id</code> from product sync.</div>
                     <input type="hidden" name="inventory[min_quantity]" value="0">
-                    <input type="hidden" name="inventory[max_quantity]" value="">
                 </div>
             </div>
 

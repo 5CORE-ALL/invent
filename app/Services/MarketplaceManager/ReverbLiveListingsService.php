@@ -204,7 +204,7 @@ final class ReverbLiveListingsService
             }
             $shopifyQty = (int) $liveShopifyByUpper[$upper];
             $reverbQty = (int) ($row['inventory'] ?? 0);
-            $want = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyQty);
+            $want = MarketplaceLiveInventoryRules::expectedMarketplaceQty($shopifyQty, 'reverb');
             if ($want === $reverbQty) {
                 continue;
             }

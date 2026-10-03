@@ -36,10 +36,6 @@ class TikTokInventorySyncService
         $settings = MarketplaceSyncSettings::getFor('tiktok');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
-        if ($exactShopifyQty) {
-            $qtyPercent = 100;
-            $maxQty = null;
-        }
 
         $shopifyQty = $this->shopifyQtyForPush($skus, $shopifyConfig);
         $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
