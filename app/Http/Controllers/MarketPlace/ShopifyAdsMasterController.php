@@ -594,11 +594,13 @@ class ShopifyAdsMasterController extends Controller
         $byDate     = [];   // date => [spend, clicks, sold, sales]
         $byChannel  = [];   // channel => date => [...]
         $ssalesByDate = []; // date => net sales
+        $savedKeys  = [];   // channel|date already stored — do not overwrite
         foreach ($rows as $r) {
             // DATE columns can come back as Y-m-d or Y-m-d H:i:s. Keep the
             // calendar day only so a snapshot is not dropped as "no data".
             $d  = substr((string) $r->snapshot_date, 0, 10);
             $ch = (string) $r->channel;
+            $savedKeys[$ch.'|'.$d] = true;
 
             if ($ch === self::SSALES_CHANNEL) {
                 $ssalesByDate[$d] = (float) $r->sales;
@@ -631,8 +633,9 @@ class ShopifyAdsMasterController extends Controller
             $byDate[$d]['active'] += (float) ($r->active ?? 0);
         }
 
-        // Continuous calendar window. Days with no snapshot stay null; the
-        // chart holds the previous value instead of drawing a gap as "ND".
+        // Continuous calendar window. Days this page never snapshotted are
+        // rebuilt from the source tables (Google Ads daily rows, Meta and
+        // TikTok campaign snapshots, Shopify orders) before the chart draws.
         $end = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
         $labels = [];
         $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->startOfDay();
@@ -642,12 +645,15 @@ class ShopifyAdsMasterController extends Controller
             $cursor->addDay();
         }
 
+        $this->fillHistoryFromSources($labels, $byChannel, $ssalesByDate);
+        $this->persistCalculatedHistory($byChannel, $ssalesByDate, $savedKeys);
+        $byDate = $this->rollupParentChannels($byChannel);
+
         $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
         $metrics['ssales'] = array_map(
             fn ($d) => array_key_exists($d, $ssalesByDate) ? round($ssalesByDate[$d], 2) : null,
             $labels
         );
-
         return response()->json([
             'status'   => 200,
             'days'     => $days,
@@ -658,9 +664,701 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
+     * Fill calendar days that /shopify-ads-master itself never snapshotted.
+     *
+     * Google Ads and Shopify orders are stored per day, so each missing day
+     * is the same L30 window the badges use (that day and the 29 before it).
+     * Meta and TikTok campaign snapshots are already that L30 total for the
+     * day they were saved, so a missing day uses that day's snapshot sum.
+     *
+     * @param  array<int, string>  $labels
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<string, float>  $ssalesByDate
+     */
+    private function fillHistoryFromSources(array $labels, array &$byChannel, array &$ssalesByDate): void
+    {
+        if ($labels === []) {
+            return;
+        }
+
+        try {
+            $this->fillGoogleHistory($labels, $byChannel);
+        } catch (\Throwable $e) {
+            \Log::warning('ShopifyAdsMaster history Google backfill failed: ' . $e->getMessage());
+        }
+
+        try {
+            $this->fillMetaHistory($labels, $byChannel);
+        } catch (\Throwable $e) {
+            \Log::warning('ShopifyAdsMaster history Meta backfill failed: ' . $e->getMessage());
+        }
+
+        try {
+            $this->fillTiktokHistory($labels, $byChannel);
+        } catch (\Throwable $e) {
+            \Log::warning('ShopifyAdsMaster history TikTok backfill failed: ' . $e->getMessage());
+        }
+
+        try {
+            $this->fillShopifySalesHistory($labels, $ssalesByDate);
+        } catch (\Throwable $e) {
+            \Log::warning('ShopifyAdsMaster history Shopify sales backfill failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Store source-calculated days that this page never snapshotted.
+     * Existing rows are left alone. The chart then reads this table.
+     *
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<string, float>  $ssalesByDate
+     * @param  array<string, bool>  $savedKeys  channel|date
+     */
+    private function persistCalculatedHistory(array $byChannel, array $ssalesByDate, array $savedKeys): void
+    {
+        $now = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateTimeString();
+        $rows = [];
+
+        foreach ($byChannel as $channel => $perDay) {
+            foreach ($perDay as $date => $m) {
+                if (isset($savedKeys[$channel.'|'.$date])) {
+                    continue;
+                }
+                $rows[] = [
+                    'snapshot_date' => $date,
+                    'channel'       => $channel,
+                    'spend'         => round((float) ($m['spend'] ?? 0), 2),
+                    'clicks'        => round((float) ($m['clicks'] ?? 0), 2),
+                    'sold'          => round((float) ($m['sold'] ?? 0), 2),
+                    'sales'         => round((float) ($m['sales'] ?? 0), 2),
+                    'active'        => (int) round((float) ($m['active'] ?? 0)),
+                    'created_at'    => $now,
+                    'updated_at'    => $now,
+                ];
+            }
+        }
+
+        foreach ($ssalesByDate as $date => $sales) {
+            if (isset($savedKeys[self::SSALES_CHANNEL.'|'.$date])) {
+                continue;
+            }
+            $rows[] = [
+                'snapshot_date' => $date,
+                'channel'       => self::SSALES_CHANNEL,
+                'spend'         => 0,
+                'clicks'        => 0,
+                'sold'          => 0,
+                'sales'         => round((float) $sales, 2),
+                'active'        => 0,
+                'created_at'    => $now,
+                'updated_at'    => $now,
+            ];
+        }
+
+        foreach (array_chunk($rows, 100) as $chunk) {
+            try {
+                DB::table('shopify_ads_master_metric_snapshots')->insertOrIgnore($chunk);
+            } catch (\Throwable $e) {
+                \Log::warning('ShopifyAdsMaster history persist failed: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Parent-channel totals for the rolled-up chart. Sub-rows stay out so
+     * Facebook · G Video is not added on top of Facebook.
+     *
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @return array<string, array<string, float>>
+     */
+    private function rollupParentChannels(array $byChannel): array
+    {
+        $byDate = [];
+        foreach ($byChannel as $channel => $perDay) {
+            if (str_contains((string) $channel, self::SUBROW_SEPARATOR)) {
+                continue;
+            }
+            foreach ($perDay as $date => $m) {
+                $byDate[$date] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0, 'active' => 0.0];
+                $byDate[$date]['spend']  += (float) ($m['spend'] ?? 0);
+                $byDate[$date]['clicks'] += (float) ($m['clicks'] ?? 0);
+                $byDate[$date]['sold']   += (float) ($m['sold'] ?? 0);
+                $byDate[$date]['sales']  += (float) ($m['sales'] ?? 0);
+                $byDate[$date]['active'] += (float) ($m['active'] ?? 0);
+            }
+        }
+
+        return $byDate;
+    }
+
+    /**
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array{spend: float, clicks: float, sold: float, sales: float, active?: float}  $measures
+     */
+    private function putHistoryDay(array &$byChannel, string $channel, string $date, array $measures): void
+    {
+        if (isset($byChannel[$channel][$date])) {
+            return;
+        }
+
+        $byChannel[$channel][$date] = [
+            'spend'  => round((float) ($measures['spend'] ?? 0), 2),
+            'clicks' => (float) ($measures['clicks'] ?? 0),
+            'sold'   => (float) ($measures['sold'] ?? 0),
+            'sales'  => round((float) ($measures['sales'] ?? 0), 2),
+            'active' => (float) ($measures['active'] ?? 0),
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $labels
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     */
+    private function fillGoogleHistory(array $labels, array &$byChannel): void
+    {
+        if (! Schema::hasTable('google_ads_campaigns')) {
+            return;
+        }
+
+        $end = $labels[array_key_last($labels)];
+        $start = Carbon::parse($labels[0], self::SNAPSHOT_TIMEZONE)->subDays(29)->toDateString();
+
+        foreach ([
+            'Google Shopping' => 'shopping',
+            'Google SERP'     => 'serp',
+        ] as $channel => $scope) {
+            $daily = $this->googleScopeDaily($scope, $start, $end);
+            $active = $this->googleActiveByDate($scope, $start, $end);
+            $this->writeRollingGoogleChannel($byChannel, $labels, $channel, $daily, $active);
+        }
+
+        $this->writeRollingYoutubeChannel(
+            $byChannel,
+            $labels,
+            $this->googleYoutubeCampaignDays($start, $end),
+            $this->googleActiveByDate('youtube', $start, $end)
+        );
+    }
+
+    /**
+     * @return array<string, array{spend: float, clicks: float, sold: float, sales: float}>
+     */
+    private function googleScopeDaily(string $scope, string $start, string $end): array
+    {
+        $query = DB::table('google_ads_campaigns')
+            ->whereNotNull('campaign_id')
+            ->whereNotNull('date')
+            ->whereBetween('date', [$start, $end]);
+        $this->applyGoogleScope($query, $scope);
+
+        $rows = $query
+            ->select('date')
+            ->selectRaw('SUM(metrics_cost_micros) / 1000000 as spend')
+            ->selectRaw('SUM(metrics_clicks) as clicks')
+            ->selectRaw('SUM(ga4_actual_sold_units) as sold')
+            ->selectRaw('COALESCE(SUM(ga4_actual_revenue), 0) as sales')
+            ->groupBy('date')
+            ->get();
+
+        $daily = [];
+        foreach ($rows as $r) {
+            $daily[substr((string) $r->date, 0, 10)] = [
+                'spend'  => (float) $r->spend,
+                'clicks' => (float) $r->clicks,
+                'sold'   => (float) $r->sold,
+                'sales'  => (float) $r->sales,
+            ];
+        }
+
+        return $daily;
+    }
+
+    /**
+     * Per campaign, per day. YouTube sales are lifted on the L30 campaign
+     * total, which a pre-summed daily total cannot do.
+     *
+     * @return array<string, array{name: string, days: array<string, array{spend: float, clicks: float, sold_actual: float, sold_fallback: float, sales_actual: float, sales_fallback: float}>}>
+     */
+    private function googleYoutubeCampaignDays(string $start, string $end): array
+    {
+        $query = DB::table('google_ads_campaigns')
+            ->whereNotNull('campaign_id')
+            ->whereNotNull('date')
+            ->whereBetween('date', [$start, $end]);
+        $this->applyGoogleScope($query, 'youtube');
+
+        $rows = $query
+            ->select('date', 'campaign_id')
+            ->selectRaw('MAX(campaign_name) as campaign_name')
+            ->selectRaw('SUM(metrics_cost_micros) / 1000000 as spend')
+            ->selectRaw('SUM(metrics_clicks) as clicks')
+            ->selectRaw('SUM(ga4_actual_sold_units) as sold_actual')
+            ->selectRaw('SUM(ga4_sold_units) as sold_fallback')
+            ->selectRaw('SUM(ga4_actual_revenue) as sales_actual')
+            ->selectRaw('SUM(ga4_ad_sales) as sales_fallback')
+            ->groupBy('date', 'campaign_id')
+            ->get();
+
+        $byCampaign = [];
+        foreach ($rows as $r) {
+            $cid = (string) $r->campaign_id;
+            $byCampaign[$cid] ??= ['name' => (string) ($r->campaign_name ?? ''), 'days' => []];
+            if ($byCampaign[$cid]['name'] === '' && $r->campaign_name) {
+                $byCampaign[$cid]['name'] = (string) $r->campaign_name;
+            }
+            $byCampaign[$cid]['days'][substr((string) $r->date, 0, 10)] = [
+                'spend'          => (float) $r->spend,
+                'clicks'         => (float) $r->clicks,
+                'sold_actual'    => (float) $r->sold_actual,
+                'sold_fallback'  => (float) $r->sold_fallback,
+                'sales_actual'   => (float) $r->sales_actual,
+                'sales_fallback' => (float) $r->sales_fallback,
+            ];
+        }
+
+        return $byCampaign;
+    }
+
+    /**
+     * @return array<string, float> date => enabled campaign count
+     */
+    private function googleActiveByDate(string $scope, string $start, string $end): array
+    {
+        $query = DB::table('google_ads_campaigns')
+            ->whereNotNull('campaign_id')
+            ->whereNotNull('date')
+            ->whereBetween('date', [$start, $end])
+            ->whereRaw('UPPER(TRIM(COALESCE(campaign_status, ""))) = ?', ['ENABLED']);
+        $this->applyGoogleScope($query, $scope);
+
+        $rows = $query
+            ->select('date')
+            ->selectRaw('COUNT(DISTINCT campaign_id) as active')
+            ->groupBy('date')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[substr((string) $r->date, 0, 10)] = (float) $r->active;
+        }
+
+        return $out;
+    }
+
+    private function applyGoogleScope($query, string $scope): void
+    {
+        if ($scope === 'shopping') {
+            $query->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% SEARCH%'])
+                ->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% YT']);
+        } elseif ($scope === 'serp') {
+            $query->whereRaw('UPPER(campaign_name) LIKE ?', ['% SEARCH%']);
+        } elseif ($scope === 'youtube') {
+            $query->whereRaw('UPPER(campaign_name) LIKE ?', ['% YT']);
+        }
+    }
+
+    /**
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<int, string>  $labels
+     * @param  array<string, array{spend: float, clicks: float, sold: float, sales: float}>  $daily
+     * @param  array<string, float>  $activeByDate
+     */
+    private function writeRollingGoogleChannel(array &$byChannel, array $labels, string $channel, array $daily, array $activeByDate): void
+    {
+        foreach ($labels as $day) {
+            if (isset($byChannel[$channel][$day])) {
+                continue;
+            }
+            $sum = $this->sumDailyWindow($daily, $day, 30);
+            if ($sum === null) {
+                continue;
+            }
+            $sum['active'] = $this->activeOnOrBefore($activeByDate, $day);
+            $this->putHistoryDay($byChannel, $channel, $day, $sum);
+        }
+    }
+
+    /**
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<int, string>  $labels
+     * @param  array<string, array{name: string, days: array<string, array<string, float>>}>  $byCampaign
+     * @param  array<string, float>  $activeByDate
+     */
+    private function writeRollingYoutubeChannel(array &$byChannel, array $labels, array $byCampaign, array $activeByDate): void
+    {
+        $channel = 'Youtube ads';
+        foreach ($labels as $day) {
+            if (isset($byChannel[$channel][$day])) {
+                continue;
+            }
+            $end = $day;
+            $start = Carbon::parse($day, self::SNAPSHOT_TIMEZONE)->subDays(29)->toDateString();
+            $spend = 0.0;
+            $clicks = 0.0;
+            $sold = 0.0;
+            $sales = 0.0;
+            $saw = false;
+
+            foreach ($byCampaign as $campaign) {
+                $sp = $cl = $soldActual = $soldFallback = $salesActual = $salesFallback = 0.0;
+                foreach ($campaign['days'] as $date => $m) {
+                    if ($date < $start || $date > $end) {
+                        continue;
+                    }
+                    $saw = true;
+                    $sp += (float) $m['spend'];
+                    $cl += (float) $m['clicks'];
+                    $soldActual += (float) $m['sold_actual'];
+                    $soldFallback += (float) $m['sold_fallback'];
+                    $salesActual += (float) $m['sales_actual'];
+                    $salesFallback += (float) $m['sales_fallback'];
+                }
+                if ($sp == 0.0 && $cl == 0.0 && $soldActual == 0.0 && $soldFallback == 0.0 && $salesActual == 0.0 && $salesFallback == 0.0) {
+                    continue;
+                }
+                $cSold = $soldActual > 0 ? $soldActual : $soldFallback;
+                $cSales = $salesActual > 0 ? $salesActual : $salesFallback;
+                $spend += $sp;
+                $clicks += $cl;
+                $sold += $cSold;
+                $sales += GoogleYoutubeCampaignSales::lift($cSales, $cSold, $campaign['name']);
+            }
+
+            if (! $saw) {
+                continue;
+            }
+
+            $this->putHistoryDay($byChannel, $channel, $day, [
+                'spend'  => $spend,
+                'clicks' => $clicks,
+                'sold'   => $sold,
+                'sales'  => $sales,
+                'active' => $this->activeOnOrBefore($activeByDate, $day),
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, array{spend: float, clicks: float, sold: float, sales: float}>  $daily
+     * @return array{spend: float, clicks: float, sold: float, sales: float}|null
+     */
+    private function sumDailyWindow(array $daily, string $day, int $window): ?array
+    {
+        $start = Carbon::parse($day, self::SNAPSHOT_TIMEZONE)->subDays($window - 1)->toDateString();
+        $sum = ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+        $saw = false;
+        $cursor = Carbon::parse($start, self::SNAPSHOT_TIMEZONE);
+        $end = Carbon::parse($day, self::SNAPSHOT_TIMEZONE);
+        while ($cursor->lte($end)) {
+            $key = $cursor->toDateString();
+            if (isset($daily[$key])) {
+                $saw = true;
+                $sum['spend'] += (float) $daily[$key]['spend'];
+                $sum['clicks'] += (float) $daily[$key]['clicks'];
+                $sum['sold'] += (float) $daily[$key]['sold'];
+                $sum['sales'] += (float) $daily[$key]['sales'];
+            }
+            $cursor->addDay();
+        }
+
+        return $saw ? $sum : null;
+    }
+
+    /**
+     * @param  array<string, float>  $activeByDate
+     */
+    private function activeOnOrBefore(array $activeByDate, string $day): float
+    {
+        if (isset($activeByDate[$day])) {
+            return (float) $activeByDate[$day];
+        }
+        $cursor = Carbon::parse($day, self::SNAPSHOT_TIMEZONE)->subDay();
+        $floor = Carbon::parse($day, self::SNAPSHOT_TIMEZONE)->subDays(29);
+        while ($cursor->gte($floor)) {
+            $key = $cursor->toDateString();
+            if (isset($activeByDate[$key])) {
+                return (float) $activeByDate[$key];
+            }
+            $cursor->subDay();
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @param  array<int, string>  $labels
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     */
+    private function fillMetaHistory(array $labels, array &$byChannel): void
+    {
+        if (Schema::hasTable('facebook_campaign_metric_snapshots')) {
+            $this->fillMetaFromCampaignSnapshots($labels, $byChannel);
+        }
+
+        // Days the Facebook sheet was not opened still have a real daily
+        // spend/click/purchase row in meta_insights_daily. Roll those into
+        // the same L30 total the badges use so the line keeps moving.
+        $this->fillMetaFromInsights($labels, $byChannel);
+    }
+
+    /**
+     * @param  array<int, string>  $labels
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     */
+    private function fillMetaFromCampaignSnapshots(array $labels, array &$byChannel): void
+    {
+        $from = $labels[0];
+        $end = $labels[array_key_last($labels)];
+        $rows = DB::table('facebook_campaign_metric_snapshots')
+            ->whereBetween('snapshot_date', [$from, $end])
+            ->get(['campaign_id', 'snapshot_date', 'spend', 'clk', 'sold', 'sales']);
+
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $chMap = $this->facebookChMap();
+        $adTypeMap = $this->facebookAdTypeMap();
+        $subByType = $this->metaSubChannelsByAdType();
+
+        /** @var array<string, array<string, array{spend: float, clicks: float, sold: float, sales: float, active: float}>> $bucket */
+        $bucket = [];
+        foreach ($rows as $r) {
+            $cid = (string) $r->campaign_id;
+            $code = $chMap[$cid] ?? null;
+            if ($code !== 'FB' && $code !== 'Insta') {
+                continue;
+            }
+            $parent = $code === 'FB' ? 'Facebook' : 'Instagram';
+            $date = substr((string) $r->snapshot_date, 0, 10);
+            $this->addMetaBucket($bucket, $parent, $date, $r);
+
+            $adType = mb_strtoupper(trim((string) ($adTypeMap[$cid] ?? '')));
+            foreach ($subByType[$adType] ?? [] as $subChannel) {
+                if (! str_starts_with($subChannel, $parent . self::SUBROW_SEPARATOR)) {
+                    continue;
+                }
+                $this->addMetaBucket($bucket, $subChannel, $date, $r);
+            }
+        }
+
+        foreach ($bucket as $channel => $perDay) {
+            foreach ($labels as $day) {
+                if (! isset($perDay[$day]) || isset($byChannel[$channel][$day])) {
+                    continue;
+                }
+                $this->putHistoryDay($byChannel, $channel, $day, $perDay[$day]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, string>  $labels
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     */
+    private function fillMetaFromInsights(array $labels, array &$byChannel): void
+    {
+        if (! Schema::hasTable('meta_insights_daily') || ! Schema::hasTable('meta_campaigns')) {
+            return;
+        }
+
+        $end = $labels[array_key_last($labels)];
+        $start = Carbon::parse($labels[0], self::SNAPSHOT_TIMEZONE)->subDays(29)->toDateString();
+
+        $rows = DB::table('meta_insights_daily as mid')
+            ->join('meta_campaigns as mc', function ($join) {
+                $join->on('mc.id', '=', 'mid.entity_id')
+                    ->where('mid.entity_type', 'campaign');
+            })
+            ->whereBetween('mid.date_start', [$start, $end])
+            ->where('mid.breakdown_hash', md5(json_encode([])))
+            ->groupBy('mid.date_start', 'mc.meta_id')
+            ->selectRaw('mid.date_start as d, mc.meta_id as meta_id')
+            ->selectRaw('SUM(mid.spend) as spend')
+            ->selectRaw('SUM(mid.clicks) as clicks')
+            ->selectRaw('SUM(mid.purchases) as sold')
+            ->selectRaw('SUM(mid.action_values) as sales')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $chMap = $this->facebookChMap();
+        $adTypeMap = $this->facebookAdTypeMap();
+        $subByType = $this->metaSubChannelsByAdType();
+
+        /** @var array<string, array<string, array{spend: float, clicks: float, sold: float, sales: float}>> $daily */
+        $daily = [];
+        foreach ($rows as $r) {
+            $cid = (string) $r->meta_id;
+            $code = $chMap[$cid] ?? null;
+            if ($code !== 'FB' && $code !== 'Insta') {
+                continue;
+            }
+            $date = substr((string) $r->d, 0, 10);
+            $parent = $code === 'FB' ? 'Facebook' : 'Instagram';
+            $this->addInsightDay($daily, $parent, $date, $r);
+
+            $adType = mb_strtoupper(trim((string) ($adTypeMap[$cid] ?? '')));
+            foreach ($subByType[$adType] ?? [] as $subChannel) {
+                if (! str_starts_with($subChannel, $parent . self::SUBROW_SEPARATOR)) {
+                    continue;
+                }
+                $this->addInsightDay($daily, $subChannel, $date, $r);
+            }
+        }
+
+        foreach ($daily as $channel => $perDay) {
+            foreach ($labels as $day) {
+                if (isset($byChannel[$channel][$day])) {
+                    continue;
+                }
+                $sum = $this->sumDailyWindow($perDay, $day, 30);
+                $this->putHistoryDay($byChannel, $channel, $day, $sum ?? [
+                    'spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0, 'active' => 0.0,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, array<string, array{spend: float, clicks: float, sold: float, sales: float}>>  $daily
+     */
+    private function addInsightDay(array &$daily, string $channel, string $date, object $row): void
+    {
+        $daily[$channel][$date] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+        $daily[$channel][$date]['spend'] += (float) $row->spend;
+        $daily[$channel][$date]['clicks'] += (float) $row->clicks;
+        $daily[$channel][$date]['sold'] += (float) $row->sold;
+        $daily[$channel][$date]['sales'] += (float) $row->sales;
+    }
+
+    /**
+     * @param  array<string, array<string, array{spend: float, clicks: float, sold: float, sales: float, active: float}>>  $bucket
+     */
+    private function addMetaBucket(array &$bucket, string $channel, string $date, object $row): void
+    {
+        $bucket[$channel][$date] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0, 'active' => 0.0];
+        $bucket[$channel][$date]['spend'] += (float) $row->spend;
+        $bucket[$channel][$date]['clicks'] += (float) $row->clk;
+        $bucket[$channel][$date]['sold'] += (float) $row->sold;
+        $bucket[$channel][$date]['sales'] += (float) $row->sales;
+        $bucket[$channel][$date]['active'] += 1;
+    }
+
+    /**
+     * Uppercase ad type => channel names such as "Facebook · G Video".
+     *
+     * @return array<string, list<string>>
+     */
+    private function metaSubChannelsByAdType(): array
+    {
+        $out = [];
+        foreach (['Facebook' => true, 'Instagram' => false] as $parent => $includeSheetTypes) {
+            foreach ($this->metaAdTypeLenses(strtolower($parent), $includeSheetTypes) as [$label, $source, $types]) {
+                unset($source);
+                foreach ($types as $type) {
+                    $key = mb_strtoupper(trim((string) $type));
+                    if ($key === '') {
+                        continue;
+                    }
+                    $out[$key][] = $parent . self::SUBROW_SEPARATOR . $label;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, string>  $labels
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     */
+    private function fillTiktokHistory(array $labels, array &$byChannel): void
+    {
+        if (! Schema::hasTable('tiktok_campaign_metric_snapshots')) {
+            return;
+        }
+
+        $channel = 'TikTok Video Ads';
+        $rows = DB::table('tiktok_campaign_metric_snapshots')
+            ->whereBetween('snapshot_date', [$labels[0], $labels[array_key_last($labels)]])
+            ->select('snapshot_date')
+            ->selectRaw('SUM(spend) as spend')
+            ->selectRaw('SUM(clk) as clicks')
+            ->selectRaw('SUM(sold) as sold')
+            ->selectRaw('SUM(sales) as sales')
+            ->selectRaw('COUNT(DISTINCT campaign_id) as active')
+            ->groupBy('snapshot_date')
+            ->get();
+
+        foreach ($rows as $r) {
+            $day = substr((string) $r->snapshot_date, 0, 10);
+            if (! in_array($day, $labels, true)) {
+                continue;
+            }
+            $this->putHistoryDay($byChannel, $channel, $day, [
+                'spend'  => (float) $r->spend,
+                'clicks' => (float) $r->clicks,
+                'sold'   => (float) $r->sold,
+                'sales'  => (float) $r->sales,
+                'active' => (float) $r->active,
+            ]);
+        }
+    }
+
+    /**
+     * Store net sales, same exclusions as the Shopify Sales badge, rolled
+     * into an L30 total for each chart day.
+     *
+     * @param  array<int, string>  $labels
+     * @param  array<string, float>  $ssalesByDate
+     */
+    private function fillShopifySalesHistory(array $labels, array &$ssalesByDate): void
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return;
+        }
+
+        $end = $labels[array_key_last($labels)];
+        $start = Carbon::parse($labels[0], self::SNAPSHOT_TIMEZONE)->subDays(29)->toDateString();
+
+        $query = DB::table('shopify_raw_orders')
+            ->whereRaw('DATE(order_date) >= ?', [$start])
+            ->whereRaw('DATE(order_date) <= ?', [$end]);
+        \App\Http\Controllers\ShopifyRawDataController::applyDirectExclusions($query);
+
+        $rows = $query
+            ->selectRaw('DATE(order_date) as d')
+            ->selectRaw('SUM(net_sales) as sales')
+            ->groupBy(DB::raw('DATE(order_date)'))
+            ->get();
+
+        $daily = [];
+        foreach ($rows as $r) {
+            $daily[substr((string) $r->d, 0, 10)] = [
+                'spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => (float) $r->sales,
+            ];
+        }
+
+        if ($daily === []) {
+            return;
+        }
+
+        foreach ($labels as $day) {
+            if (array_key_exists($day, $ssalesByDate)) {
+                continue;
+            }
+            $sum = $this->sumDailyWindow($daily, $day, 30);
+            $ssalesByDate[$day] = round((float) ($sum['sales'] ?? 0), 2);
+        }
+    }
+
+    /**
      * Turn the per-day raw measures into the badge series (with CVR /
      * ACOS derived exactly like the badges / table do). Days with no
-     * snapshot are null; the chart repeats the previous value for those days.
+     * stored or calculated row stay null.
      *
      * @param  array<string, array<string, float>>  $byDate
      * @param  array<int, string>  $labels

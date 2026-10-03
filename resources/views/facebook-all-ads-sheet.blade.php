@@ -1025,8 +1025,7 @@
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script>
     (function () {
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
                         || document.querySelector('input[name="_token"]')?.value

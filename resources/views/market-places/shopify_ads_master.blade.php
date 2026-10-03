@@ -610,29 +610,16 @@
                 const metric  = samTrendMetric;
                 const channel = document.getElementById('sam-trend-channel').value;
                 const labels  = (samTrendCache && samTrendCache.labels) || [];
-                // A day with no snapshot keeps the last recorded value. These
-                // are rolling totals — they do not become "no data", and the
-                // line must not slope through a gap as if the number changed.
+                // Each point is the value stored for that day. Missing days
+                // stay empty instead of repeating the previous number.
                 const rawSeries = samSeriesFor(samTrendCache, channel, metric);
-                const values = [];
-                const isReal = [];
-                let lastHeld = null;
-                labels.forEach((_, i) => {
+                const values = labels.map((_, i) => {
                     const v = rawSeries[i];
-                    const missing = v === null || v === undefined || v === '';
-                    if (!missing) {
-                        const n = Number(v);
-                        if (Number.isFinite(n)) {
-                            lastHeld = n;
-                            values.push(n);
-                            isReal.push(true);
-                            return;
-                        }
-                    }
-                    values.push(lastHeld);
-                    isReal.push(false);
+                    if (v === null || v === undefined || v === '') return null;
+                    const n = Number(v);
+                    return Number.isFinite(n) ? n : null;
                 });
-                const numericValues = values.filter((_, i) => isReal[i]);
+                const numericValues = values.filter((v) => v !== null);
 
                 // Tear down previous chart + reset the side panel first.
                 if (samTrendChart) { samTrendChart.destroy(); samTrendChart = null; }
@@ -748,7 +735,7 @@
                             borderColor:     '#adb5bd',
                             borderWidth:     1.5,
                             fill:            true,
-                            tension:         0,
+                            tension:         0.3,
                             spanGaps:        true,
                             pointRadius:      (ctx) => values[ctx.dataIndex] === null ? 0 : 3,
                             pointHoverRadius: (ctx) => values[ctx.dataIndex] === null ? 0 : 5,
