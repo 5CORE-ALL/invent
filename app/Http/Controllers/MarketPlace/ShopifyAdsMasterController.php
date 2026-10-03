@@ -312,19 +312,11 @@ class ShopifyAdsMasterController extends Controller
         $this->applyTcosToRows($rows, $netSales);
 
         // Trend dots are read before today's snapshot write so "previous"
-        // never means today. ACOS / TCOS are inverted in the view (higher is
-        // worse → red); spend increasing is green.
-        // Color each cell the same way the chart colors its latest point.
-        // The chart ends on the last completed California day, so a row whose
-        // number still matches that day uses that day's move (79 vs 71 = green),
-        // not a flat comparison against a same-day copy.
-        $chartEnd = $this->completedCaliforniaChartEnd()->toDateString();
-        $chartPrev = Carbon::parse($chartEnd, self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
-        $this->attachTrends(
-            $rows,
-            $this->snapshotByChannelOn($chartEnd),
-            $this->snapshotByChannelOn($chartPrev)
-        );
+        // never means today. The cell compares to yesterday, which is the
+        // same pair the chart uses for its last point. ACOS / TCOS are
+        // inverted in the view (higher is worse → red); spend increasing is green.
+        $yesterday = Carbon::now(self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
+        $this->attachTrends($rows, $this->snapshotByChannelOn($yesterday), []);
 
         // Persist today's snapshot so the badge trend chart has history. The
         // snapshot table is flat (one row per channel), so flatten the tree
@@ -631,9 +623,10 @@ class ShopifyAdsMasterController extends Controller
     public function history(Request $request)
     {
         $days = max(1, min(365, (int) $request->query('days', 32)));
-        // Same window as /google/shopping/google-shopping: the last completed
-        // California day, never the incomplete Pacific "today".
-        $endC = $this->completedCaliforniaChartEnd();
+        // End on today in California so the last point is the same number as
+        // the table. Google channel series stop a day earlier, below, so they
+        // still match the completed-day window on the Google Shopping page.
+        $endC = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
         $from = $endC->copy()->subDays($days - 1)->toDateString();
 
         $rows = DB::table('shopify_ads_master_metric_snapshots')
@@ -686,9 +679,8 @@ class ShopifyAdsMasterController extends Controller
             $byDate[$d]['active'] += (float) ($r->active ?? 0);
         }
 
-        // Continuous calendar window ending on the last completed California day.
-        // Days this page never snapshotted are rebuilt from the source tables
-        // before the chart draws.
+        // Continuous calendar window ending today (California). The last point
+        // is the same day as the table. Google channel charts drop today later.
         $end = $endC->toDateString();
         $labels = [];
         $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->startOfDay();
@@ -702,6 +694,7 @@ class ShopifyAdsMasterController extends Controller
         $this->fillHistoryFromSources($labels, $byChannel, $ssalesByDate, $refreshedSold);
         $this->persistCalculatedHistory($byChannel, $ssalesByDate, $savedKeys, $refreshedSold);
         $byDate = $this->rollupParentChannels($byChannel);
+        $chartChannels = $this->withoutOpenGoogleDays($byChannel);
 
         $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
         $metrics['ssales'] = array_map(
@@ -716,7 +709,7 @@ class ShopifyAdsMasterController extends Controller
                 $labels
             ),
             'metrics'  => $metrics,
-            'channels' => $this->buildChannelSeries($byChannel, $labels, $ssalesByDate),
+            'channels' => $this->buildChannelSeries($chartChannels, $labels, $ssalesByDate),
         ]);
     }
 
@@ -930,6 +923,31 @@ class ShopifyAdsMasterController extends Controller
         $refreshedSold[$channel.'|'.$date] = true;
 
         return true;
+    }
+
+    /**
+     * Google Shopping, SERP, and YouTube charts stop on the last completed
+     * California day. Instagram, Facebook, and the other rows keep today so
+     * their last point matches the table.
+     *
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @return array<string, array<string, array<string, float>>>
+     */
+    private function withoutOpenGoogleDays(array $byChannel): array
+    {
+        $googleEnd = $this->completedCaliforniaChartEnd()->toDateString();
+        foreach (['Google Shopping', 'Google SERP', 'Youtube ads'] as $channel) {
+            if (! isset($byChannel[$channel])) {
+                continue;
+            }
+            foreach (array_keys($byChannel[$channel]) as $day) {
+                if ($day > $googleEnd) {
+                    unset($byChannel[$channel][$day]);
+                }
+            }
+        }
+
+        return $byChannel;
     }
 
     /**
