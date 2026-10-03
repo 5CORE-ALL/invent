@@ -9,6 +9,7 @@ use App\Services\DobaApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\ShopifyPlsTokenService;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -120,6 +121,7 @@ class DirectStoreListingPublishService
         $title = $title !== '' ? $title : trim((string) ($hydrated['title'] ?? ''));
 
         $description = $primary ? trim((string) ($overrides['description'] ?? '')) : '';
+        $descriptionFromDraft = $description !== '';
         $description = $description !== '' ? $description : trim((string) ($hydrated['description'] ?? ''));
 
         $price = null;
@@ -151,11 +153,21 @@ class DirectStoreListingPublishService
             $weight = round($lb + $oz / 16, 3);
         }
 
+        $dims = [];
+        foreach (['length', 'width', 'height'] as $axis) {
+            $v = (float) ($primary ? ($overrides['package_'.$axis] ?? 0) : 0) ?: (float) ($hydrated['package_'.$axis] ?? 0);
+            $dims[$axis] = $v > 0 ? round($v, 2) : null;
+        }
+
         return [
             'sku' => $sku,
             'primary' => $primary,
             'title' => $title,
             'description' => $description,
+            'description_from_draft' => $descriptionFromDraft,
+            'length_in' => $dims['length'],
+            'width_in' => $dims['width'],
+            'height_in' => $dims['height'],
             'price' => $price,
             'create_price' => $price ?? (isset($hydrated['price']) && (float) $hydrated['price'] > 0 ? round((float) $hydrated['price'], 2) : null),
             'quantity' => $quantity,
@@ -443,6 +455,119 @@ class DirectStoreListingPublishService
     }
 
     /**
+     * Shopify 5 Core (main store) product for a SKU from the synced catalog.
+     *
+     * @return array{product_type: string, body_html: string}|null
+     */
+    private function shopifyMainProduct(string $sku): ?array
+    {
+        if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
+            return null;
+        }
+        try {
+            $row = DB::table('shopify_catalog_variants as v')
+                ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+                ->where('v.store', 'main')
+                ->whereRaw('UPPER(TRIM(v.sku)) = ?', [strtoupper(trim($sku))])
+                ->orderByDesc('p.synced_at')
+                ->first(['p.product_type', 'p.body_html']);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $row ? ['product_type' => trim((string) $row->product_type), 'body_html' => trim((string) $row->body_html)] : null;
+    }
+
+    /**
+     * Brands and flattened categories from the B2B store (GET /api/listings/catalog).
+     *
+     * @return array{brands: list<array{id: int, slug: string, name: string}>, categories: list<array{id: int, slug: string, name: string}>}
+     */
+    private function b2bCatalog(): array
+    {
+        return Cache::remember('b5cb2b_catalog_v1', now()->addHours(6), function () {
+            $res = app(Business5CoreB2bApiService::class)->get('/api/listings/catalog');
+            $flat = [];
+            $walk = function (array $nodes) use (&$walk, &$flat): void {
+                foreach ($nodes as $node) {
+                    if (! is_array($node) || ! isset($node['id'])) {
+                        continue;
+                    }
+                    $flat[] = ['id' => (int) $node['id'], 'slug' => (string) ($node['slug'] ?? ''), 'name' => (string) ($node['name'] ?? '')];
+                    foreach (['children', 'items', 'subcategories'] as $key) {
+                        if (is_array($node[$key] ?? null)) {
+                            $walk($node[$key]);
+                        }
+                    }
+                }
+            };
+            $walk(is_array($res['categories'] ?? null) ? $res['categories'] : []);
+            $brands = [];
+            foreach ((array) ($res['brands'] ?? []) as $b) {
+                if (is_array($b) && isset($b['id'])) {
+                    $brands[] = ['id' => (int) $b['id'], 'slug' => (string) ($b['slug'] ?? ''), 'name' => (string) ($b['name'] ?? '')];
+                }
+            }
+
+            return ['brands' => $brands, 'categories' => $flat];
+        });
+    }
+
+    private static function b2bKey(string $value): string
+    {
+        return preg_replace('/[^a-z0-9]/', '', strtolower($value)) ?? '';
+    }
+
+    private function b2bBrandId(): ?int
+    {
+        try {
+            foreach ($this->b2bCatalog()['brands'] as $brand) {
+                if (self::b2bKey($brand['name']) === '5core' || self::b2bKey($brand['slug']) === '5core') {
+                    return $brand['id'];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('B2B catalog fetch failed', ['error' => $e->getMessage()]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Store category matching the Shopify 5 Core product type (exact, then singular/plural, then contains).
+     */
+    private function b2bCategoryId(string $productType): ?int
+    {
+        $want = self::b2bKey($productType);
+        if ($want === '') {
+            return null;
+        }
+        try {
+            $categories = $this->b2bCatalog()['categories'];
+        } catch (\Throwable $e) {
+            Log::warning('B2B catalog fetch failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+        $singular = static fn (string $k): string => preg_replace('/(es|s)$/', '', $k) ?? $k;
+        foreach ([
+            static fn (string $k): bool => $k === $want,
+            static fn (string $k): bool => $singular($k) === $singular($want),
+            static fn (string $k): bool => strlen($k) >= 4 && (str_contains($want, $k) || str_contains($k, $want)),
+        ] as $match) {
+            foreach ($categories as $category) {
+                foreach ([self::b2bKey($category['name']), self::b2bKey($category['slug'])] as $key) {
+                    if ($key !== '' && $match($key)) {
+                        return $category['id'];
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param  array<string, mixed>  $item
      * @return array{success: bool, message: string, id?: string, created?: bool}
      */
@@ -458,12 +583,40 @@ class DirectStoreListingPublishService
             ? B5cB2bProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
             : null;
 
+        $shopify = $this->shopifyMainProduct($sku);
+
         $payload = ['sku' => $sku];
         if ($item['title'] !== '') {
             $payload['name'] = $item['title'];
         }
-        if ($item['description'] !== '') {
-            $payload['description'] = $item['description'];
+        $description = $item['description_from_draft'] ? $item['description'] : '';
+        if ($description === '') {
+            $description = trim(ListingManagerAmazonHydrator::descriptionMaster($sku));
+        }
+        if ($description === '') {
+            $description = trim((string) ($shopify['body_html'] ?? ''));
+        }
+        if ($description === '') {
+            $description = trim(ListingManagerAmazonHydrator::shopifyDescription($sku));
+        }
+        if ($description === '') {
+            $description = $item['description'];
+        }
+        if ($description !== '') {
+            $payload['description'] = $description;
+        }
+        foreach (['length', 'width', 'height'] as $axis) {
+            if ($item[$axis.'_in'] !== null) {
+                $payload[$axis] = $item[$axis.'_in'];
+            }
+        }
+        $brandId = $this->b2bBrandId();
+        if ($brandId !== null) {
+            $payload['brand_id'] = $brandId;
+        }
+        $categoryId = $this->b2bCategoryId((string) ($shopify['product_type'] ?? ''));
+        if ($categoryId !== null) {
+            $payload['categories'] = [$categoryId];
         }
         $price = $local ? $item['price'] : ($item['price'] ?? $this->b2bPricingSprice($sku) ?? $item['create_price']);
         if ($price !== null) {
@@ -486,7 +639,9 @@ class DirectStoreListingPublishService
             if ($price === null) {
                 return ['success' => false, 'message' => 'No B2B price for '.$sku.'. Set S PRC on /shopify-b2b-pricing, then publish again.'];
             }
-            $payload['brand'] = (string) (config('listing_manager.default_brand', '5 Core') ?: '5 Core');
+            if (! isset($payload['brand_id'])) {
+                $payload['brand'] = '5 CORE';
+            }
             $payload['is_active'] = true;
         }
 
