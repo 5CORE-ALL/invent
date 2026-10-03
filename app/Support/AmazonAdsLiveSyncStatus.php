@@ -115,7 +115,7 @@ final class AmazonAdsLiveSyncStatus
                         'reason' => 'already_matched',
                         'tip' => self::greenTip('BID', 'SBID', 'already_matched', $shown, $want),
                     ];
-                } elseif ($field === 'bid' && $presented['color'] === self::GREEN && self::displayedBidsDiffer($row['last_sbid'] ?? null, $row['sbid'] ?? null)) {
+                } elseif ($field === 'bid' && $presented['color'] !== self::RED && self::displayedBidsDiffer($row['last_sbid'] ?? null, $row['sbid'] ?? null)) {
                     $presented = [
                         'color' => self::YELLOW,
                         'status' => 'pending',
@@ -153,7 +153,7 @@ final class AmazonAdsLiveSyncStatus
     }
 
     /**
-     * Hover text for the SBID Alert column. Empty unless the bid push failed.
+     * Hover text for the SBID Alert column. Set when Lbid and SBID differ, or the bid push failed.
      *
      * @param  array<string, mixed>  $row
      */
@@ -183,9 +183,12 @@ final class AmazonAdsLiveSyncStatus
         }
         $color = (string) ($row[$field.'_sync_color'] ?? '');
         $reason = (string) ($row[$field.'_sync_reason'] ?? '');
-        // A gap that is still waiting to push stays a yellow dot. The red alert is a failed push,
-        // or an SBGT of 0 that paused the campaign.
+        // Red is a failed push. SBGT 0 is a pause. A live Lbid that still differs from SBID
+        // is also an alert — the yellow dot alone was leaving gaps like 0.83 vs 0.73 blank.
         if ($color === self::RED || ($field === 'bgt' && $reason === 'paused_zero_sbgt')) {
+            return $label.': '.$tip;
+        }
+        if ($field === 'bid' && self::displayedBidsDiffer($row['last_sbid'] ?? null, $row['sbid'] ?? null)) {
             return $label.': '.$tip;
         }
 

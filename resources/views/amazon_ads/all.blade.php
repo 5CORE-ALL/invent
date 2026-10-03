@@ -1580,9 +1580,17 @@
                 return '<span class="amz-push-alert" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '">!</span>';
             }
             function amzPushAlertText(row) {
-                if (!row || !row.bid_sync_tip) return '';
-                if (row.bid_sync_color === 'red') {
+                if (!row) return '';
+                if (row.bid_sync_color === 'red' && row.bid_sync_tip) {
                     return 'SBID: ' + row.bid_sync_tip;
+                }
+                var live = parseFloat(row.last_sbid);
+                var want = parseFloat(row.sbid);
+                if (isFinite(live) && live > 0 && isFinite(want) && want > 0 && Math.round(live * 100) !== Math.round(want * 100)) {
+                    var tip = row.bid_sync_tip
+                        ? String(row.bid_sync_tip)
+                        : ('Pending — saved SBID $' + want.toFixed(2) + ' does not match live BID $' + live.toFixed(2));
+                    return 'SBID: ' + tip;
                 }
                 return '';
             }
@@ -2115,7 +2123,7 @@
                 }
                 if (c === 'pushAlert') {
                     col.title = 'Alert';
-                    col.headerTooltip = 'Shown when the SBID push failed. A pending Lbid gap stays a yellow dot on Lbid.';
+                    col.headerTooltip = 'Shown when Lbid and SBID differ, or the SBID push failed.';
                     col.formatter = fmtPushAlert;
                     col.headerSort = false;
                     col.width = 48;

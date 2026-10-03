@@ -171,6 +171,9 @@ class AmazonAdsLiveValuePuller
                 continue;
             }
             $bid = $group['defaultBid'] ?? null;
+            if (is_array($bid)) {
+                $bid = $bid['amount'] ?? $bid['value'] ?? $bid['bid'] ?? null;
+            }
             if (! is_numeric($bid) || (float) $bid <= 0) {
                 continue;
             }
@@ -185,7 +188,7 @@ class AmazonAdsLiveValuePuller
      */
     public static function entityBid(array $row): ?float
     {
-        $bid = $row['bid'] ?? null;
+        $bid = $row['bid'] ?? $row['keywordBid'] ?? $row['defaultBid'] ?? null;
         if (is_array($bid)) {
             $bid = $bid['amount'] ?? $bid['value'] ?? $bid['bid'] ?? null;
         }

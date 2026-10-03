@@ -54,6 +54,49 @@ class AmazonAdsLiveBidBgtSyncService
      * @param  list<array<string, mixed>>  $rows  campaign_id, channel (sp|sb), campaign_name?, sbgt?, sbid?
      * @return array{results: list<array<string, mixed>>, synced: int, failed: int, skipped: int, in_progress: int}
      */
+    /**
+     * Save Amazon's current keyword/target bid onto Lbid when the grid cell is blank.
+     * Does not push. A campaign with no SBID still has a live bid in Amazon.
+     *
+     * @param  list<string>  $campaignIds
+     */
+    public function fillLiveBids(string $channel, array $campaignIds): int
+    {
+        $channel = self::normalizeChannel($channel);
+        $ids = [];
+        foreach ($campaignIds as $id) {
+            $id = trim((string) $id);
+            if ($id !== '') {
+                $ids[$id] = $id;
+            }
+        }
+        $ids = array_values($ids);
+        if ($ids === []) {
+            return 0;
+        }
+        $pull = $this->pullLiveWithRetry($channel, 'bid', $ids);
+        if (! $pull['ok']) {
+            Log::warning('amazon-ads live bid fill failed', [
+                'channel' => $channel,
+                'error' => $pull['error'] ?? 'pull_failed',
+            ]);
+
+            return 0;
+        }
+        $filled = 0;
+        $map = is_array($pull['map'] ?? null) ? $pull['map'] : [];
+        foreach ($ids as $cid) {
+            $bid = $map[$cid] ?? null;
+            if (! is_numeric($bid) || (float) $bid <= 0) {
+                continue;
+            }
+            $this->persistVerifiedLive($channel, 'bid', $cid, (float) $bid);
+            $filled++;
+        }
+
+        return $filled;
+    }
+
     public function syncRows(array $rows, string $source = 'web'): array
     {
         $normalized = [];

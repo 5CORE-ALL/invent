@@ -434,6 +434,29 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
         $this->assertSame(['111'], $paused);
     }
 
+    public function test_blank_lbid_pull_is_saved_without_a_push(): void
+    {
+        $persisted = [];
+        $pushed = [];
+        $svc = $this->service([
+            'pullBids' => fn () => ['88' => 0.62, '89' => null],
+            'pushBid' => function () use (&$pushed) {
+                $pushed[] = true;
+
+                return ['status' => 200, 'failed' => []];
+            },
+            'persistLive' => function ($ch, $field, $cid, $val) use (&$persisted) {
+                $persisted[] = [$ch, $field, $cid, $val];
+            },
+        ]);
+
+        $n = $svc->fillLiveBids('sp', ['88', '89', '']);
+
+        $this->assertSame(1, $n);
+        $this->assertSame([['sp', 'bid', '88', 0.62]], $persisted);
+        $this->assertSame([], $pushed);
+    }
+
     public function test_retry_helper_marks_timeouts_retryable(): void
     {
         $this->assertTrue(AmazonAdsApiRetry::isRetryable(new RuntimeException('Connection timed out')));
