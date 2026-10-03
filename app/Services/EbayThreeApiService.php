@@ -156,8 +156,11 @@ class EbayThreeApiService
         Cache::forget('ebay3_bearer_token_'.md5($clientId));
     }
 
+    public string $lastGetItemError = '';
+
     public function getItem($itemId)
     {
+        $this->lastGetItemError = '';
         try {
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
             $credentials = $xml->addChild('RequesterCredentials');
@@ -208,9 +211,11 @@ class EbayThreeApiService
                 $errMsg .= ($errMsg ? '; ' : '') . ($this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]));
             }
             Log::warning('eBay3 GetItem failed', ['itemId' => $itemId, 'ack' => $ack, 'errors' => $errors, 'parsed' => $errMsg]);
+            $this->lastGetItemError = $errMsg;
             return null;
         } catch (\Exception $e) {
             Log::warning('eBay3 GetItem exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+            $this->lastGetItemError = $e->getMessage();
             return null;
         }
     }

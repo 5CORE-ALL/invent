@@ -532,8 +532,11 @@ class Ebay2ApiService
     /**
      * Get item details from eBay Trading API (same pattern as eBay 1 / eBay 3).
      */
+    public string $lastGetItemError = '';
+
     public function getItem($itemId)
     {
+        $this->lastGetItemError = '';
         try {
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
             $credentials = $xml->addChild('RequesterCredentials');
@@ -587,10 +590,12 @@ class Ebay2ApiService
                 $errMsg .= ($errMsg ? '; ' : '') . ($this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]));
             }
             Log::warning('eBay2 GetItem failed', ['itemId' => $itemId, 'ack' => $ack, 'errors' => $errors, 'parsed' => $errMsg]);
+            $this->lastGetItemError = $errMsg;
 
             return null;
         } catch (\Exception $e) {
             Log::warning('eBay2 GetItem exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+            $this->lastGetItemError = $e->getMessage();
 
             return null;
         }
