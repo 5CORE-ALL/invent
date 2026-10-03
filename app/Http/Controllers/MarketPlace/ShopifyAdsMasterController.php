@@ -579,9 +579,10 @@ class ShopifyAdsMasterController extends Controller
     public function history(Request $request)
     {
         $days = max(1, min(365, (int) $request->query('days', 32)));
-        // Anchor the window to the Pacific business day so it lines up with
-        // the timezone the snapshots are stamped in.
-        $from = Carbon::now(self::SNAPSHOT_TIMEZONE)->subDays($days - 1)->toDateString();
+        // Same window as /google/shopping/google-shopping: the last completed
+        // California day, never the incomplete Pacific "today".
+        $endC = $this->completedCaliforniaChartEnd();
+        $from = $endC->copy()->subDays($days - 1)->toDateString();
 
         $rows = DB::table('shopify_ads_master_metric_snapshots')
             ->where('snapshot_date', '>=', $from)
@@ -633,10 +634,10 @@ class ShopifyAdsMasterController extends Controller
             $byDate[$d]['active'] += (float) ($r->active ?? 0);
         }
 
-        // Continuous calendar window. Days this page never snapshotted are
-        // rebuilt from the source tables (Google Ads daily rows, Meta and
-        // TikTok campaign snapshots, Shopify orders) before the chart draws.
-        $end = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
+        // Continuous calendar window ending on the last completed California day.
+        // Days this page never snapshotted are rebuilt from the source tables
+        // before the chart draws.
+        $end = $endC->toDateString();
         $labels = [];
         $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->startOfDay();
         $endC = Carbon::parse($end, self::SNAPSHOT_TIMEZONE)->startOfDay();
@@ -658,7 +659,10 @@ class ShopifyAdsMasterController extends Controller
         return response()->json([
             'status'   => 200,
             'days'     => $days,
-            'labels'   => array_map(fn ($d) => date('M d', strtotime($d)), $labels),
+            'labels'   => array_map(
+                fn ($d) => Carbon::parse($d, self::SNAPSHOT_TIMEZONE)->format('M d'),
+                $labels
+            ),
             'metrics'  => $metrics,
             'channels' => $this->buildChannelSeries($byChannel, $labels, $ssalesByDate),
         ]);
@@ -780,6 +784,8 @@ class ShopifyAdsMasterController extends Controller
                     ->where('snapshot_date', $date)
                     ->where('channel', $channel)
                     ->update([
+                        'spend'      => round((float) ($m['spend'] ?? 0), 2),
+                        'clicks'     => round((float) ($m['clicks'] ?? 0), 2),
                         'sold'       => round((float) ($m['sold'] ?? 0), 2),
                         'sales'      => round((float) ($m['sales'] ?? 0), 2),
                         'updated_at' => $now,
@@ -837,14 +843,14 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * Replace sold and ads sales on a day this page already snapshotted.
-     * Spend and clicks stay as saved. Returns true when the day already existed.
+     * Replace a day this page already snapshotted with the source measures.
+     * Returns true when the day already existed.
      *
      * @param  array<string, array<string, array<string, float>>>  $byChannel
      * @param  array{spend?: float, clicks?: float, sold?: float, sales?: float}  $measures
      * @param  array<string, bool>  $refreshedSold
      */
-    private function refreshSoldSales(array &$byChannel, string $channel, string $date, array $measures, array &$refreshedSold): bool
+    private function refreshSoldSales(array &$byChannel, string $channel, string $date, array $measures, array &$refreshedSold, bool $syncSpend = false): bool
     {
         if (! isset($byChannel[$channel][$date])) {
             return false;
@@ -852,17 +858,55 @@ class ShopifyAdsMasterController extends Controller
 
         $sold = round((float) ($measures['sold'] ?? 0), 2);
         $sales = round((float) ($measures['sales'] ?? 0), 2);
+        $spend = round((float) ($measures['spend'] ?? $byChannel[$channel][$date]['spend'] ?? 0), 2);
+        $clicks = round((float) ($measures['clicks'] ?? $byChannel[$channel][$date]['clicks'] ?? 0), 2);
         $currentSold = round((float) ($byChannel[$channel][$date]['sold'] ?? 0), 2);
         $currentSales = round((float) ($byChannel[$channel][$date]['sales'] ?? 0), 2);
-        if (abs($currentSold - $sold) < 0.005 && abs($currentSales - $sales) < 0.005) {
+        $currentSpend = round((float) ($byChannel[$channel][$date]['spend'] ?? 0), 2);
+        $currentClicks = round((float) ($byChannel[$channel][$date]['clicks'] ?? 0), 2);
+        $spendSame = ! $syncSpend || (abs($currentSpend - $spend) < 0.005 && abs($currentClicks - $clicks) < 0.005);
+        if (abs($currentSold - $sold) < 0.005 && abs($currentSales - $sales) < 0.005 && $spendSame) {
             return true;
         }
 
         $byChannel[$channel][$date]['sold'] = $sold;
         $byChannel[$channel][$date]['sales'] = $sales;
+        if ($syncSpend) {
+            $byChannel[$channel][$date]['spend'] = $spend;
+            $byChannel[$channel][$date]['clicks'] = $clicks;
+        }
         $refreshedSold[$channel.'|'.$date] = true;
 
         return true;
+    }
+
+    /**
+     * Last completed California day, same rule as the Google Shopping chart.
+     * Today in America/Los_Angeles is left off because that day is not finished,
+     * and the end is never later than the newest google_ads_campaigns date.
+     */
+    private function completedCaliforniaChartEnd(): Carbon
+    {
+        $tz = self::SNAPSHOT_TIMEZONE;
+        $usYesterday = Carbon::now($tz)->subDay()->startOfDay();
+
+        $maxDateStr = null;
+        try {
+            if (Schema::hasTable('google_ads_campaigns')) {
+                $maxDateStr = DB::table('google_ads_campaigns')->whereNotNull('date')->max('date');
+            }
+        } catch (\Throwable) {
+            $maxDateStr = null;
+        }
+
+        if ($maxDateStr !== null && $maxDateStr !== '') {
+            $maxData = Carbon::parse(substr((string) $maxDateStr, 0, 10), $tz)->startOfDay();
+            if ($maxData->lt($usYesterday)) {
+                return $maxData;
+            }
+        }
+
+        return $usYesterday;
     }
 
     /**
@@ -1103,9 +1147,11 @@ class ShopifyAdsMasterController extends Controller
         foreach ($labels as $day) {
             $sum = $this->sumDailyWindow($daily, $day, 30);
             if (isset($pageSold[$day])) {
+                // Same totals the Google Shopping / SERP / YouTube chart saved
+                // for this California day (google_ads_sbgt_snapshots).
                 $measures = [
-                    'spend'  => (float) ($sum['spend'] ?? $pageSold[$day]['spend']),
-                    'clicks' => (float) ($sum['clicks'] ?? $pageSold[$day]['clicks']),
+                    'spend'  => (float) $pageSold[$day]['spend'],
+                    'clicks' => (float) $pageSold[$day]['clicks'],
                     'sold'   => (float) $pageSold[$day]['sold'],
                     'sales'  => (float) $pageSold[$day]['sales'],
                     'active' => $this->activeOnOrBefore($activeByDate, $day),
@@ -1130,7 +1176,7 @@ class ShopifyAdsMasterController extends Controller
                 $measures['sold'] = (float) $tableSold[$day]['sold'];
                 $measures['sales'] = (float) $tableSold[$day]['sales'];
             }
-            if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold)) {
+            if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold, true)) {
                 continue;
             }
             $this->putHistoryDay($byChannel, $channel, $day, $measures);
