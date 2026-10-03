@@ -713,6 +713,7 @@ class ShopifyAdsMasterController extends Controller
         $this->persistCalculatedHistory($byChannel, $ssalesByDate, $savedKeys, $refreshedSold);
         $byDate = $this->rollupParentChannels($byChannel);
         $chartChannels = $this->withoutOpenGoogleDays($byChannel);
+        $this->alignInstagramChartWithCell($chartChannels);
 
         $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
         $metrics['ssales'] = array_map(
@@ -955,6 +956,42 @@ class ShopifyAdsMasterController extends Controller
 
         return str_starts_with($channel, 'Facebook'.self::SUBROW_SEPARATOR)
             || str_starts_with($channel, 'Instagram'.self::SUBROW_SEPARATOR);
+    }
+
+    /**
+     * The Instagram cell is the current sheet total. The chart ends on the
+     * completed California day, so that last point uses the cell's spend,
+     * clicks, sold, and sales.
+     *
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     */
+    private function alignInstagramChartWithCell(array &$byChannel): void
+    {
+        $day = $this->completedCaliforniaChartEnd()->toDateString();
+        $sep = self::SUBROW_SEPARATOR;
+        $parent = $this->metaChannelMetrics('Instagram', 'Insta');
+        $byChannel['Instagram'][$day] = $this->chartMeasuresFromRow($parent);
+
+        foreach ($this->metaAdTypeLenses('shopify_instagram', false) as [$suffix, , $adTypes]) {
+            $name = 'Instagram'.$sep.$suffix;
+            $child = $this->metaChannelMetrics($name, 'Insta', $adTypes, true);
+            $byChannel[$name][$day] = $this->chartMeasuresFromRow($child);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array{spend: float, clicks: float, sold: float, sales: float, active: float}
+     */
+    private function chartMeasuresFromRow(array $row): array
+    {
+        return [
+            'spend'  => (float) ($row['spend'] ?? 0),
+            'clicks' => (float) ($row['clicks'] ?? 0),
+            'sold'   => (float) ($row['sold'] ?? 0),
+            'sales'  => (float) ($row['sales'] ?? 0),
+            'active' => (float) ($row['active'] ?? 0),
+        ];
     }
 
     /**
