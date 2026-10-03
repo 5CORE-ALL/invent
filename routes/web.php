@@ -6261,6 +6261,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_topdawg/import', [ListingTopDawgController::class, 'import'])->name('listing_topdawg.import');
     Route::get('/listing_topdawg/export', [ListingTopDawgController::class, 'export'])->name('listing_topdawg.export');
 
+    Route::get('/listing-b5cb2b', [\App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingB5cB2bController::class, 'listingB5cB2b'])->name('listing.b5cb2b');
+    Route::get('/listing_b5cb2b/view-data', [\App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingB5cB2bController::class, 'getViewListingB5cB2bData']);
+    Route::post('/listing_b5cb2b/save-status', [\App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingB5cB2bController::class, 'saveStatus']);
+    Route::post('/listing_b5cb2b/import', [\App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingB5cB2bController::class, 'import'])->name('listing_b5cb2b.import');
+    Route::get('/listing_b5cb2b/export', [\App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingB5cB2bController::class, 'export'])->name('listing_b5cb2b.export');
+
     Route::get('/listing-purchasingpower', [ListingPurchasingPowerController::class, 'listingPurchasingPower'])->name('listing.purchasingpower');
     Route::get('/listing_purchasingpower/view-data', [ListingPurchasingPowerController::class, 'getViewListingPurchasingPowerData']);
     Route::post('/listing_purchasingpower/save-status', [ListingPurchasingPowerController::class, 'saveStatus']);
