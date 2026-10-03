@@ -66,6 +66,7 @@ class B5cB2bInventorySyncService
 
         $settings = MarketplaceSyncSettings::getFor('b5cb2b');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
+        $maxQty = $settings['inventory']['max_quantity'] ?? null;
 
         $fetchSkus = $skus;
         foreach ($skus as $sku) {
@@ -92,7 +93,7 @@ class B5cB2bInventorySyncService
                 $skipped++;
                 continue;
             }
-            $pushQty = $exactShopifyQty ? (int) $qty : (int) floor(((int) $qty) * ($qtyPercent / 100));
+            $pushQty = MarketplaceLiveInventoryRules::qtyFromLiveShopify((int) $qty, $qtyPercent, $maxQty);
             $batch[] = [
                 'sku' => $sku,
                 'qty' => max(0, $pushQty),

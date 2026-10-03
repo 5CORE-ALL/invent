@@ -56,6 +56,7 @@
                             <label class="form-label small">Qty % of Shopify</label>
                             <input type="number" class="form-control form-control-sm" name="inventory[quantity_calc_percent]" value="{{ $settings['inventory']['quantity_calc_percent'] ?? 100 }}" min="0" max="100" style="width: 100px;">
                         </div>
+                        @include('marketplace.partials.max-cap-field')
                     </div>
                     <div class="form-text mt-2">Always uses <strong>live Shopify</strong> stock. Shopify 0/− → marketplace <strong>0</strong> (never forced to 1). Draft / inactive / unpublished listings are never stocked or activated.</div>
                     <input type="hidden" name="inventory[min_quantity]" value="0">

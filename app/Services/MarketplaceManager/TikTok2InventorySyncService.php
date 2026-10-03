@@ -36,10 +36,6 @@ class TikTok2InventorySyncService
         $settings = MarketplaceSyncSettings::getFor('tiktok2');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
-        if ($exactShopifyQty) {
-            $qtyPercent = 100;
-            $maxQty = null;
-        }
 
         if ($exactShopifyQty) {
             // Mismatch button / hourly pass: use the listings Shopify qty.

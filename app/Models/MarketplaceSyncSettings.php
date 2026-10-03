@@ -24,10 +24,19 @@ class MarketplaceSyncSettings extends Model
 
     public static function setFor(string $marketplace, array $settings): void
     {
+        if (isset($settings['inventory']) && is_array($settings['inventory'])
+            && array_key_exists('max_quantity', $settings['inventory'])) {
+            $settings['inventory']['max_quantity'] = \App\Services\MarketplaceManager\MarketplaceLiveInventoryRules::normalizeMaxCap(
+                $settings['inventory']['max_quantity']
+            );
+        }
+
         self::updateOrCreate(
             ['marketplace' => $marketplace],
             ['settings' => $settings]
         );
+
+        \App\Services\MarketplaceManager\MarketplaceLiveInventoryRules::forgetInventoryCaps($marketplace);
     }
 
     public static function aliexpressCanCreateProducts(?array $settings = null): bool

@@ -343,7 +343,9 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
-     * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float}>
+     * diff = channel qty vs that channel's rule (Qty % / Max Cap), not raw Shopify.
+     *
+     * @return list<array{sku: string, channel_sku: string, inv: float, expected: int, channel_inv: float, diff: float}>
      */
     public function mismatchRows(string $mmChannel): array
     {
@@ -359,12 +361,14 @@ final class MarketplaceListingQtyMatchService
             $sku = (string) $sku;
             $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($shopify, $sku) ?? 0);
             $channelInv = (int) (MarketplaceListingStockResolver::qtyFromMap($mp, $sku) ?? 0);
+            $expected = MarketplaceLiveInventoryRules::expectedMarketplaceQty($inv, $mmChannel);
             $out[] = [
                 'sku' => $sku,
                 'channel_sku' => $sku,
                 'inv' => $inv,
+                'expected' => $expected,
                 'channel_inv' => $channelInv,
-                'diff' => abs($inv - $channelInv),
+                'diff' => abs($channelInv - $expected),
             ];
         }
 
@@ -392,6 +396,7 @@ final class MarketplaceListingQtyMatchService
                 'sku' => $sku,
                 'channel_sku' => $sku,
                 'inv' => $inv,
+                'expected' => MarketplaceLiveInventoryRules::expectedMarketplaceQty($inv, $mmChannel),
                 'channel_inv' => $channelInv,
                 'diff' => abs($inv - $channelInv),
             ];
