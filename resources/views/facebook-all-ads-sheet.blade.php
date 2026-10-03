@@ -1033,7 +1033,7 @@
 
         // Page-specific config (set by the controller).
         const PAGE_TYPE = @json($pageType);
-        // Channel lens ('FB' | 'Insta' | null) — sent to the data feed as
+        // Channel lens ('FB' | 'Insta' | null) — sent to the dxxata feed as
         // ?ch=… so the server filters rows by the CH column.
         const CH_FILTER = @json($chFilter);
         const B2B_FILTER = @json($b2bFilter);

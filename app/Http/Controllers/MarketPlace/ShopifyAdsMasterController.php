@@ -645,8 +645,9 @@ class ShopifyAdsMasterController extends Controller
             $cursor->addDay();
         }
 
-        $this->fillHistoryFromSources($labels, $byChannel, $ssalesByDate);
-        $this->persistCalculatedHistory($byChannel, $ssalesByDate, $savedKeys);
+        $refreshedSold = [];
+        $this->fillHistoryFromSources($labels, $byChannel, $ssalesByDate, $refreshedSold);
+        $this->persistCalculatedHistory($byChannel, $ssalesByDate, $savedKeys, $refreshedSold);
         $byDate = $this->rollupParentChannels($byChannel);
 
         $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
@@ -674,27 +675,28 @@ class ShopifyAdsMasterController extends Controller
      * @param  array<int, string>  $labels
      * @param  array<string, array<string, array<string, float>>>  $byChannel
      * @param  array<string, float>  $ssalesByDate
+     * @param  array<string, bool>  $refreshedSold  channel|date whose sold/sales came from the source
      */
-    private function fillHistoryFromSources(array $labels, array &$byChannel, array &$ssalesByDate): void
+    private function fillHistoryFromSources(array $labels, array &$byChannel, array &$ssalesByDate, array &$refreshedSold): void
     {
         if ($labels === []) {
             return;
         }
 
         try {
-            $this->fillGoogleHistory($labels, $byChannel);
+            $this->fillGoogleHistory($labels, $byChannel, $refreshedSold);
         } catch (\Throwable $e) {
             \Log::warning('ShopifyAdsMaster history Google backfill failed: ' . $e->getMessage());
         }
 
         try {
-            $this->fillMetaHistory($labels, $byChannel);
+            $this->fillMetaHistory($labels, $byChannel, $refreshedSold);
         } catch (\Throwable $e) {
             \Log::warning('ShopifyAdsMaster history Meta backfill failed: ' . $e->getMessage());
         }
 
         try {
-            $this->fillTiktokHistory($labels, $byChannel);
+            $this->fillTiktokHistory($labels, $byChannel, $refreshedSold);
         } catch (\Throwable $e) {
             \Log::warning('ShopifyAdsMaster history TikTok backfill failed: ' . $e->getMessage());
         }
@@ -713,8 +715,9 @@ class ShopifyAdsMasterController extends Controller
      * @param  array<string, array<string, array<string, float>>>  $byChannel
      * @param  array<string, float>  $ssalesByDate
      * @param  array<string, bool>  $savedKeys  channel|date
+     * @param  array<string, bool>  $refreshedSold  channel|date
      */
-    private function persistCalculatedHistory(array $byChannel, array $ssalesByDate, array $savedKeys): void
+    private function persistCalculatedHistory(array $byChannel, array $ssalesByDate, array $savedKeys, array $refreshedSold = []): void
     {
         $now = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateTimeString();
         $rows = [];
@@ -760,6 +763,29 @@ class ShopifyAdsMasterController extends Controller
                 DB::table('shopify_ads_master_metric_snapshots')->insertOrIgnore($chunk);
             } catch (\Throwable $e) {
                 \Log::warning('ShopifyAdsMaster history persist failed: ' . $e->getMessage());
+            }
+        }
+
+        // Page-open rows keep spend and clicks. Sold and ads sales are
+        // rewritten from the source window so a later GA4 sync, or YouTube's
+        // actual-else-conversions rule, is what the chart stores.
+        foreach ($refreshedSold as $key => $_) {
+            [$channel, $date] = explode('|', (string) $key, 2);
+            $m = $byChannel[$channel][$date] ?? null;
+            if ($m === null) {
+                continue;
+            }
+            try {
+                DB::table('shopify_ads_master_metric_snapshots')
+                    ->where('snapshot_date', $date)
+                    ->where('channel', $channel)
+                    ->update([
+                        'sold'       => round((float) ($m['sold'] ?? 0), 2),
+                        'sales'      => round((float) ($m['sales'] ?? 0), 2),
+                        'updated_at' => $now,
+                    ]);
+            } catch (\Throwable $e) {
+                \Log::warning('ShopifyAdsMaster history sold refresh failed: ' . $e->getMessage());
             }
         }
     }
@@ -811,10 +837,40 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
+     * Replace sold and ads sales on a day this page already snapshotted.
+     * Spend and clicks stay as saved. Returns true when the day already existed.
+     *
+     * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array{spend?: float, clicks?: float, sold?: float, sales?: float}  $measures
+     * @param  array<string, bool>  $refreshedSold
+     */
+    private function refreshSoldSales(array &$byChannel, string $channel, string $date, array $measures, array &$refreshedSold): bool
+    {
+        if (! isset($byChannel[$channel][$date])) {
+            return false;
+        }
+
+        $sold = round((float) ($measures['sold'] ?? 0), 2);
+        $sales = round((float) ($measures['sales'] ?? 0), 2);
+        $currentSold = round((float) ($byChannel[$channel][$date]['sold'] ?? 0), 2);
+        $currentSales = round((float) ($byChannel[$channel][$date]['sales'] ?? 0), 2);
+        if (abs($currentSold - $sold) < 0.005 && abs($currentSales - $sales) < 0.005) {
+            return true;
+        }
+
+        $byChannel[$channel][$date]['sold'] = $sold;
+        $byChannel[$channel][$date]['sales'] = $sales;
+        $refreshedSold[$channel.'|'.$date] = true;
+
+        return true;
+    }
+
+    /**
      * @param  array<int, string>  $labels
      * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<string, bool>  $refreshedSold
      */
-    private function fillGoogleHistory(array $labels, array &$byChannel): void
+    private function fillGoogleHistory(array $labels, array &$byChannel, array &$refreshedSold): void
     {
         if (! Schema::hasTable('google_ads_campaigns')) {
             return;
@@ -829,15 +885,74 @@ class ShopifyAdsMasterController extends Controller
         ] as $channel => $scope) {
             $daily = $this->googleScopeDaily($scope, $start, $end);
             $active = $this->googleActiveByDate($scope, $start, $end);
-            $this->writeRollingGoogleChannel($byChannel, $labels, $channel, $daily, $active);
+            $pageSold = $this->googlePageSoldByDate($scope, $labels[0], $end);
+            $this->writeRollingGoogleChannel($byChannel, $labels, $channel, $daily, $active, $pageSold, $refreshedSold);
         }
 
         $this->writeRollingYoutubeChannel(
             $byChannel,
             $labels,
             $this->googleYoutubeCampaignDays($start, $end),
-            $this->googleActiveByDate('youtube', $start, $end)
+            $this->googleActiveByDate('youtube', $start, $end),
+            $this->googlePageSoldByDate('youtube', $labels[0], $end),
+            $refreshedSold
         );
+    }
+
+    /**
+     * Sold and ads sales the Google grid chart saved for each day
+     * (google_ads_sbgt_snapshots). That is the number on /google/shopping.
+     *
+     * @return array<string, array{spend: float, clicks: float, sold: float, sales: float}>
+     */
+    private function googlePageSoldByDate(string $channelKey, string $start, string $end): array
+    {
+        if (! Schema::hasTable('google_ads_sbgt_snapshots')
+            || ! Schema::hasColumn('google_ads_sbgt_snapshots', 'sold_l30')) {
+            return [];
+        }
+
+        $rows = DB::table('google_ads_sbgt_snapshots')
+            ->where('channel', $channelKey)
+            ->whereBetween('snapshot_date', [$start, $end])
+            ->whereNotNull('sold_l30')
+            ->groupBy('snapshot_date')
+            ->selectRaw('snapshot_date')
+            ->selectRaw('SUM(COALESCE(sold_l30, 0)) as sold')
+            ->selectRaw('SUM(COALESCE(sales_l30, 0)) as sales')
+            ->selectRaw('SUM(COALESCE(spend_l30, 0)) as spend')
+            ->selectRaw('SUM(COALESCE(clicks_l30, 0)) as clicks')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[substr((string) $r->snapshot_date, 0, 10)] = [
+                'spend'  => (float) $r->spend,
+                'clicks' => (float) $r->clicks,
+                'sold'   => (float) $r->sold,
+                'sales'  => (float) $r->sales,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Last day Google actually stored. A later calendar day has no new rows,
+     * so plotting it would repeat the previous total.
+     *
+     * @param  array<string, mixed>  $daily
+     * @param  array<string, mixed>  $pageSold
+     */
+    private function lastGoogleSourceDate(array $daily, array $pageSold): ?string
+    {
+        $keys = array_merge(array_keys($daily), array_keys($pageSold));
+        if ($keys === []) {
+            return null;
+        }
+        rsort($keys);
+
+        return $keys[0];
     }
 
     /**
@@ -962,19 +1077,36 @@ class ShopifyAdsMasterController extends Controller
      * @param  array<int, string>  $labels
      * @param  array<string, array{spend: float, clicks: float, sold: float, sales: float}>  $daily
      * @param  array<string, float>  $activeByDate
+     * @param  array<string, array{spend: float, clicks: float, sold: float, sales: float}>  $pageSold
+     * @param  array<string, bool>  $refreshedSold
      */
-    private function writeRollingGoogleChannel(array &$byChannel, array $labels, string $channel, array $daily, array $activeByDate): void
+    private function writeRollingGoogleChannel(array &$byChannel, array $labels, string $channel, array $daily, array $activeByDate, array $pageSold, array &$refreshedSold): void
     {
+        $lastSource = $this->lastGoogleSourceDate($daily, $pageSold);
         foreach ($labels as $day) {
-            if (isset($byChannel[$channel][$day])) {
+            if ($lastSource !== null && $day > $lastSource) {
+                unset($byChannel[$channel][$day]);
                 continue;
             }
             $sum = $this->sumDailyWindow($daily, $day, 30);
-            if ($sum === null) {
+            if (isset($pageSold[$day])) {
+                $measures = [
+                    'spend'  => (float) ($sum['spend'] ?? $pageSold[$day]['spend']),
+                    'clicks' => (float) ($sum['clicks'] ?? $pageSold[$day]['clicks']),
+                    'sold'   => (float) $pageSold[$day]['sold'],
+                    'sales'  => (float) $pageSold[$day]['sales'],
+                    'active' => $this->activeOnOrBefore($activeByDate, $day),
+                ];
+            } elseif ($sum !== null) {
+                $sum['active'] = $this->activeOnOrBefore($activeByDate, $day);
+                $measures = $sum;
+            } else {
                 continue;
             }
-            $sum['active'] = $this->activeOnOrBefore($activeByDate, $day);
-            $this->putHistoryDay($byChannel, $channel, $day, $sum);
+            if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold)) {
+                continue;
+            }
+            $this->putHistoryDay($byChannel, $channel, $day, $measures);
         }
     }
 
@@ -983,12 +1115,36 @@ class ShopifyAdsMasterController extends Controller
      * @param  array<int, string>  $labels
      * @param  array<string, array{name: string, days: array<string, array<string, float>>}>  $byCampaign
      * @param  array<string, float>  $activeByDate
+     * @param  array<string, array{spend: float, clicks: float, sold: float, sales: float}>  $pageSold
+     * @param  array<string, bool>  $refreshedSold
      */
-    private function writeRollingYoutubeChannel(array &$byChannel, array $labels, array $byCampaign, array $activeByDate): void
+    private function writeRollingYoutubeChannel(array &$byChannel, array $labels, array $byCampaign, array $activeByDate, array $pageSold, array &$refreshedSold): void
     {
         $channel = 'Youtube ads';
+        $dailyKeys = [];
+        foreach ($byCampaign as $campaign) {
+            foreach (array_keys($campaign['days'] ?? []) as $date) {
+                $dailyKeys[$date] = true;
+            }
+        }
+        $lastSource = $this->lastGoogleSourceDate($dailyKeys, $pageSold);
         foreach ($labels as $day) {
-            if (isset($byChannel[$channel][$day])) {
+            if ($lastSource !== null && $day > $lastSource) {
+                unset($byChannel[$channel][$day]);
+                continue;
+            }
+            if (isset($pageSold[$day])) {
+                $measures = [
+                    'spend'  => (float) $pageSold[$day]['spend'],
+                    'clicks' => (float) $pageSold[$day]['clicks'],
+                    'sold'   => (float) $pageSold[$day]['sold'],
+                    'sales'  => (float) $pageSold[$day]['sales'],
+                    'active' => $this->activeOnOrBefore($activeByDate, $day),
+                ];
+                if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold)) {
+                    continue;
+                }
+                $this->putHistoryDay($byChannel, $channel, $day, $measures);
                 continue;
             }
             $end = $day;
@@ -1028,13 +1184,17 @@ class ShopifyAdsMasterController extends Controller
                 continue;
             }
 
-            $this->putHistoryDay($byChannel, $channel, $day, [
+            $measures = [
                 'spend'  => $spend,
                 'clicks' => $clicks,
                 'sold'   => $sold,
                 'sales'  => $sales,
                 'active' => $this->activeOnOrBefore($activeByDate, $day),
-            ]);
+            ];
+            if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold)) {
+                continue;
+            }
+            $this->putHistoryDay($byChannel, $channel, $day, $measures);
         }
     }
 
@@ -1088,11 +1248,12 @@ class ShopifyAdsMasterController extends Controller
     /**
      * @param  array<int, string>  $labels
      * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<string, bool>  $refreshedSold
      */
-    private function fillMetaHistory(array $labels, array &$byChannel): void
+    private function fillMetaHistory(array $labels, array &$byChannel, array &$refreshedSold): void
     {
         if (Schema::hasTable('facebook_campaign_metric_snapshots')) {
-            $this->fillMetaFromCampaignSnapshots($labels, $byChannel);
+            $this->fillMetaFromCampaignSnapshots($labels, $byChannel, $refreshedSold);
         }
 
         // Days the Facebook sheet was not opened still have a real daily
@@ -1104,8 +1265,9 @@ class ShopifyAdsMasterController extends Controller
     /**
      * @param  array<int, string>  $labels
      * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<string, bool>  $refreshedSold
      */
-    private function fillMetaFromCampaignSnapshots(array $labels, array &$byChannel): void
+    private function fillMetaFromCampaignSnapshots(array $labels, array &$byChannel, array &$refreshedSold): void
     {
         $from = $labels[0];
         $end = $labels[array_key_last($labels)];
@@ -1144,7 +1306,10 @@ class ShopifyAdsMasterController extends Controller
 
         foreach ($bucket as $channel => $perDay) {
             foreach ($labels as $day) {
-                if (! isset($perDay[$day]) || isset($byChannel[$channel][$day])) {
+                if (! isset($perDay[$day])) {
+                    continue;
+                }
+                if ($this->refreshSoldSales($byChannel, $channel, $day, $perDay[$day], $refreshedSold)) {
                     continue;
                 }
                 $this->putHistoryDay($byChannel, $channel, $day, $perDay[$day]);
@@ -1274,8 +1439,9 @@ class ShopifyAdsMasterController extends Controller
     /**
      * @param  array<int, string>  $labels
      * @param  array<string, array<string, array<string, float>>>  $byChannel
+     * @param  array<string, bool>  $refreshedSold
      */
-    private function fillTiktokHistory(array $labels, array &$byChannel): void
+    private function fillTiktokHistory(array $labels, array &$byChannel, array &$refreshedSold): void
     {
         if (! Schema::hasTable('tiktok_campaign_metric_snapshots')) {
             return;
@@ -1298,13 +1464,17 @@ class ShopifyAdsMasterController extends Controller
             if (! in_array($day, $labels, true)) {
                 continue;
             }
-            $this->putHistoryDay($byChannel, $channel, $day, [
+            $measures = [
                 'spend'  => (float) $r->spend,
                 'clicks' => (float) $r->clicks,
                 'sold'   => (float) $r->sold,
                 'sales'  => (float) $r->sales,
                 'active' => (float) $r->active,
-            ]);
+            ];
+            if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold)) {
+                continue;
+            }
+            $this->putHistoryDay($byChannel, $channel, $day, $measures);
         }
     }
 
