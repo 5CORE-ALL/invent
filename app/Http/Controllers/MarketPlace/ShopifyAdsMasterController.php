@@ -886,7 +886,10 @@ class ShopifyAdsMasterController extends Controller
             $daily = $this->googleScopeDaily($scope, $start, $end);
             $active = $this->googleActiveByDate($scope, $start, $end);
             $pageSold = $this->googlePageSoldByDate($scope, $labels[0], $end);
-            $this->writeRollingGoogleChannel($byChannel, $labels, $channel, $daily, $active, $pageSold, $refreshedSold);
+            $tableSold = $channel === 'Google Shopping'
+                ? $this->shopifyB2cAdSoldByDate($labels[0], $end)
+                : [];
+            $this->writeRollingGoogleChannel($byChannel, $labels, $channel, $daily, $active, $pageSold, $tableSold, $refreshedSold);
         }
 
         $this->writeRollingYoutubeChannel(
@@ -938,21 +941,35 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * Last day Google actually stored. A later calendar day has no new rows,
-     * so plotting it would repeat the previous total.
+     * Active Channel Shopify B2C ad sold / ad sales, already calculated into
+     * channel_master_daily_data. Used when Google has no campaign row for that day.
      *
-     * @param  array<string, mixed>  $daily
-     * @param  array<string, mixed>  $pageSold
+     * @return array<string, array{sold: float, sales: float}>
      */
-    private function lastGoogleSourceDate(array $daily, array $pageSold): ?string
+    private function shopifyB2cAdSoldByDate(string $start, string $end): array
     {
-        $keys = array_merge(array_keys($daily), array_keys($pageSold));
-        if ($keys === []) {
-            return null;
+        if (! Schema::hasTable('channel_master_daily_data')) {
+            return [];
         }
-        rsort($keys);
 
-        return $keys[0];
+        $rows = DB::table('channel_master_daily_data')
+            ->where('channel', 'shopifyb2c')
+            ->whereBetween('snapshot_date', [$start, $end])
+            ->get(['snapshot_date', 'summary_data']);
+
+        $out = [];
+        foreach ($rows as $r) {
+            $summary = json_decode((string) $r->summary_data, true);
+            if (! is_array($summary) || ! array_key_exists('ad_sold', $summary)) {
+                continue;
+            }
+            $out[substr((string) $r->snapshot_date, 0, 10)] = [
+                'sold'  => (float) $summary['ad_sold'],
+                'sales' => (float) ($summary['ad_sales'] ?? 0),
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -1078,16 +1095,12 @@ class ShopifyAdsMasterController extends Controller
      * @param  array<string, array{spend: float, clicks: float, sold: float, sales: float}>  $daily
      * @param  array<string, float>  $activeByDate
      * @param  array<string, array{spend: float, clicks: float, sold: float, sales: float}>  $pageSold
+     * @param  array<string, array{sold: float, sales: float}>  $tableSold
      * @param  array<string, bool>  $refreshedSold
      */
-    private function writeRollingGoogleChannel(array &$byChannel, array $labels, string $channel, array $daily, array $activeByDate, array $pageSold, array &$refreshedSold): void
+    private function writeRollingGoogleChannel(array &$byChannel, array $labels, string $channel, array $daily, array $activeByDate, array $pageSold, array $tableSold, array &$refreshedSold): void
     {
-        $lastSource = $this->lastGoogleSourceDate($daily, $pageSold);
         foreach ($labels as $day) {
-            if ($lastSource !== null && $day > $lastSource) {
-                unset($byChannel[$channel][$day]);
-                continue;
-            }
             $sum = $this->sumDailyWindow($daily, $day, 30);
             if (isset($pageSold[$day])) {
                 $measures = [
@@ -1100,8 +1113,22 @@ class ShopifyAdsMasterController extends Controller
             } elseif ($sum !== null) {
                 $sum['active'] = $this->activeOnOrBefore($activeByDate, $day);
                 $measures = $sum;
+            } elseif (isset($tableSold[$day])) {
+                $measures = [
+                    'spend'  => 0.0,
+                    'clicks' => 0.0,
+                    'sold'   => (float) $tableSold[$day]['sold'],
+                    'sales'  => (float) $tableSold[$day]['sales'],
+                    'active' => 0.0,
+                ];
             } else {
                 continue;
+            }
+            // Google has no campaign row for this day. Use the sold Active
+            // Channel already calculated into channel_master_daily_data.
+            if (! isset($daily[$day]) && isset($tableSold[$day])) {
+                $measures['sold'] = (float) $tableSold[$day]['sold'];
+                $measures['sales'] = (float) $tableSold[$day]['sales'];
             }
             if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold)) {
                 continue;
@@ -1121,18 +1148,7 @@ class ShopifyAdsMasterController extends Controller
     private function writeRollingYoutubeChannel(array &$byChannel, array $labels, array $byCampaign, array $activeByDate, array $pageSold, array &$refreshedSold): void
     {
         $channel = 'Youtube ads';
-        $dailyKeys = [];
-        foreach ($byCampaign as $campaign) {
-            foreach (array_keys($campaign['days'] ?? []) as $date) {
-                $dailyKeys[$date] = true;
-            }
-        }
-        $lastSource = $this->lastGoogleSourceDate($dailyKeys, $pageSold);
         foreach ($labels as $day) {
-            if ($lastSource !== null && $day > $lastSource) {
-                unset($byChannel[$channel][$day]);
-                continue;
-            }
             if (isset($pageSold[$day])) {
                 $measures = [
                     'spend'  => (float) $pageSold[$day]['spend'],
@@ -1724,12 +1740,37 @@ class ShopifyAdsMasterController extends Controller
 
             if ($row !== null) {
                 $row->active = $this->googleAdsActiveCount($scope, $bounds);
+                if ($scope === 'shopping') {
+                    $this->applyChannelTableSold($row);
+                }
             }
 
             return $this->metricRow($label, $row);
         } catch (\Throwable) {
             return $this->metricRow($label);
         }
+    }
+
+    /**
+     * Today's Google Shopping sold comes from channel_master_daily_data when
+     * google_ads_campaigns has not recorded today yet.
+     */
+    private function applyChannelTableSold(object $row): void
+    {
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
+        $maxDate = DB::table('google_ads_campaigns')->whereNotNull('date')->max('date');
+        $maxDay = $maxDate ? substr((string) $maxDate, 0, 10) : null;
+        if ($maxDay !== null && $maxDay >= $today) {
+            return;
+        }
+
+        $saved = $this->shopifyB2cAdSoldByDate($today, $today);
+        if (! isset($saved[$today])) {
+            return;
+        }
+
+        $row->sold = $saved[$today]['sold'];
+        $row->sales = $saved[$today]['sales'];
     }
 
     /**
