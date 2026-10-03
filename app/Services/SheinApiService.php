@@ -158,9 +158,16 @@ class SheinApiService
                 'changes' => $merged,
                 'spu' => (string) ($result['spu_name'] ?? ''),
             ], now()->addSeconds(self::SHEIN_PUSH_BATCH_TTL_SECONDS));
-        } elseif (self::sheinEditUnderReview($message)) {
-            Log::info('Shein edit skipped: SPU still under review', ['sku' => $sku, 'changes' => array_keys($changes), 'shein' => $message]);
-            $message = 'Shein is still reviewing a previous edit for this SPU; this change was not sent — push again after Shein finishes review.';
+        } else {
+            Log::warning('Shein listing edit rejected', ['sku' => $sku, 'changes' => array_keys($changes), 'shein' => $message]);
+            $reason = self::sheinRawReason($message);
+            if (self::sheinEditRejectedInReview($message)) {
+                $message = 'Shein rejected a previous edit of this SPU in review, so it is locked until the product is fixed in Seller Hub. Shein says: '.$reason;
+            } elseif (self::sheinEditUnderReview($message)) {
+                $message = 'Shein is still reviewing a previous edit for this SPU; this change was not sent — push again after Shein finishes review. Shein says: '.$reason;
+            } else {
+                $message = 'Shein rejected the edit: '.$reason;
+            }
         }
 
         return ['success' => $success, 'message' => $message];
@@ -168,14 +175,46 @@ class SheinApiService
 
     private const SHEIN_PUSH_BATCH_TTL_SECONDS = 120;
 
+    /**
+     * Only a pending review locks the SPU; rejected reviews and validation errors also mention
+     * "审核" / "cannot be published" and must surface Shein's own reason instead.
+     */
     private static function sheinEditUnderReview(string $message): bool
     {
         $m = mb_strtolower($message);
+        if (self::sheinEditRejectedInReview($message)) {
+            return false;
+        }
 
         return str_contains($m, 'under review')
-            || str_contains($m, 'cannot be published')
             || str_contains($m, 'in review')
-            || str_contains($m, '审核');
+            || str_contains($m, 'being reviewed')
+            || str_contains($m, 'reviewing')
+            || str_contains($m, 'pending review')
+            || str_contains($m, 'auditing')
+            || str_contains($m, '审核中')
+            || str_contains($m, '待审核')
+            || str_contains($m, '审核流程');
+    }
+
+    private static function sheinEditRejectedInReview(string $message): bool
+    {
+        $m = mb_strtolower($message);
+
+        return str_contains($m, '审核不通过')
+            || str_contains($m, '审核失败')
+            || str_contains($m, '驳回')
+            || str_contains($m, 'review failed')
+            || str_contains($m, 'failed review')
+            || str_contains($m, 'audit failed')
+            || str_contains($m, 'rejected');
+    }
+
+    private static function sheinRawReason(string $message): string
+    {
+        $reason = trim((string) preg_replace('/^Shein did not create the product:\s*/i', '', $message));
+
+        return mb_strlen($reason) > 600 ? mb_substr($reason, 0, 600).'…' : ($reason !== '' ? $reason : 'no reason given');
     }
 
     /**
