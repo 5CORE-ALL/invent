@@ -23,13 +23,23 @@ class PushMissingMappingInventory extends Command
     protected $signature = 'inventory:push-missing-mapping
         {--channel=* : Only these channels (e.g. --channel=tiktok2 --channel=newegg)}
         {--chunk=25 : SKUs per push call}
-        {--dry-run : List the SKUs that would be pushed}';
+        {--dry-run : List the SKUs that would be pushed}
+        {--status : Show the last automatic run per channel and exit}';
 
     protected $description = 'Push Shopify qty for every Missing Mapping (/map-issues) SKU, then retry the ones still mismatched';
+
+    public const LAST_RUN_CACHE_PREFIX = 'mm_push_missing_mapping_last:';
 
     public function handle(MarketplaceMismatchInventoryPass $pass, MarketplaceListingQtyMatchService $match): int
     {
         @set_time_limit(0);
+        // Full-catalog channels (TopDawg, eBay) exceed the CLI default; a fatal here used to kill every later channel.
+        @ini_set('memory_limit', '2048M');
+
+        if ($this->option('status')) {
+            return $this->printStatus();
+        }
+
         $only = array_map(static fn ($c) => strtolower(trim((string) $c)), (array) $this->option('channel'));
         $channels = $only !== [] ? array_values(array_intersect(self::CHANNELS, $only)) : self::CHANNELS;
         $chunk = max(1, (int) $this->option('chunk'));
@@ -46,6 +56,16 @@ class PushMissingMappingInventory extends Command
                 Log::error('inventory:push-missing-mapping channel failed', ['channel' => $channel, 'error' => $e->getMessage()]);
             }
             $summary[] = $row;
+            if (! $dryRun) {
+                Cache::put(self::LAST_RUN_CACHE_PREFIX.$channel, [
+                    'at' => now()->toDateTimeString(),
+                    'skus' => $row['skus'],
+                    'fixed' => $row['fixed'],
+                    'still' => count($row['still']),
+                    'still_sample' => array_slice($row['still'], 0, 10),
+                    'note' => $row['note'],
+                ], now()->addDays(14));
+            }
             $totals['skus'] += $row['skus'];
             $totals['fixed'] += $row['fixed'];
             $totals['still'] += count($row['still']);
@@ -96,25 +116,30 @@ class PushMissingMappingInventory extends Command
             return $row;
         }
 
-        $this->pushInChunks($pass, $channel, $skus, $chunk);
+        $errors = [];
+        $this->pushInChunks($pass, $channel, $skus, $chunk, $errors);
         $still = $match->stillMismatched($channel, $skus);
 
         if ($still !== []) {
             sleep(5);
-            $this->pushInChunks($pass, $channel, $still, $chunk);
+            $this->pushInChunks($pass, $channel, $still, $chunk, $errors);
             $still = $match->stillMismatched($channel, $still);
         }
 
         $row['still'] = array_values($still);
         $row['fixed'] = $row['skus'] - count($still);
+        if ($still !== [] && $errors !== []) {
+            $row['note'] = 'push errors: '.mb_substr(implode(' | ', array_slice(array_unique($errors), 0, 3)), 0, 500);
+        }
 
         return $row;
     }
 
     /**
      * @param  list<string>  $skus
+     * @param  list<string>  $errors
      */
-    private function pushInChunks(MarketplaceMismatchInventoryPass $pass, string $channel, array $skus, int $chunk): void
+    private function pushInChunks(MarketplaceMismatchInventoryPass $pass, string $channel, array $skus, int $chunk, array &$errors): void
     {
         foreach (array_chunk($skus, $chunk) as $batch) {
             try {
@@ -122,7 +147,11 @@ class PushMissingMappingInventory extends Command
                 if (! empty($result['rate_limited'])) {
                     sleep(30);
                 }
+                if ((int) ($result['failed'] ?? 0) > 0 && trim((string) ($result['message'] ?? '')) !== '') {
+                    $errors[] = trim((string) $result['message']);
+                }
             } catch (\Throwable $e) {
+                $errors[] = $e->getMessage();
                 Log::warning('inventory:push-missing-mapping batch failed', [
                     'channel' => $channel,
                     'skus' => $batch,
@@ -130,5 +159,19 @@ class PushMissingMappingInventory extends Command
                 ]);
             }
         }
+    }
+
+    private function printStatus(): int
+    {
+        $rows = [];
+        foreach (self::CHANNELS as $channel) {
+            $last = Cache::get(self::LAST_RUN_CACHE_PREFIX.$channel);
+            $rows[] = is_array($last)
+                ? [$channel, $last['at'], $last['skus'], $last['fixed'], $last['still'], mb_substr((string) $last['note'], 0, 90)]
+                : [$channel, 'never (or not since this version)', '', '', '', MarketplaceMismatchInventoryPass::syncEnabled($channel) ? '' : 'sync off in channel settings'];
+        }
+        $this->table(['channel', 'last run', 'mismatched', 'fixed', 'still off', 'note'], $rows);
+
+        return self::SUCCESS;
     }
 }
