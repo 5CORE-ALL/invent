@@ -13,10 +13,11 @@ use Illuminate\Console\Command;
 class ListingDiagnose extends Command
 {
     protected $signature = 'listing:diagnose
-        {channel : aliexpress | tiktok | tiktok2 | bestbuy | purchasingpower | wayfair}
+        {channel : aliexpress | tiktok | tiktok2 | bestbuy | purchasingpower | macys | wayfair | topdawg}
         {sku : Our SKU}
         {--full : Print complete JSON instead of trimmed output}
-        {--probe : AliExpress only: re-send the current subject/detail/images/weight unchanged and print the raw replies}';
+        {--category= : Mirakl: category / hierarchy code to diagnose (defaults to the Listing Manager draft category)}
+        {--probe : AliExpress: re-send current values unchanged. TopDawg: run a real create for the SKU and print the reply}';
 
     protected $description = 'Read-only dump of marketplace listing data/schema for one SKU (for debugging Push Updates)';
 
@@ -32,7 +33,9 @@ class ListingDiagnose extends Command
                 'tiktok2' => $this->tiktok(\App\Services\TikTok2ShopService::class, $sku),
                 'bestbuy', 'bestbuyusa' => $this->mirakl(\App\Services\BestBuyApiService::class, $sku),
                 'purchasingpower', 'pp' => $this->mirakl(\App\Services\PurchasingPowerApiService::class, $sku),
+                'macys', 'macy' => $this->mirakl(\App\Services\MacysApiService::class, $sku),
                 'wayfair' => $this->wayfair($sku),
+                'topdawg' => $this->topdawg($sku),
                 default => $this->unknown($channel),
             };
         } catch (\Throwable $e) {
@@ -45,7 +48,7 @@ class ListingDiagnose extends Command
 
     private function unknown(string $channel): int
     {
-        $this->error('Unknown channel "'.$channel.'". Use aliexpress, tiktok, tiktok2, bestbuy, purchasingpower or wayfair.');
+        $this->error('Unknown channel "'.$channel.'". Use aliexpress, tiktok, tiktok2, bestbuy, purchasingpower, wayfair or topdawg.');
 
         return self::INVALID;
     }
@@ -187,6 +190,11 @@ class ListingDiagnose extends Command
     private function mirakl(string $class, string $sku): int
     {
         $svc = app($class);
+        $draft = $this->miraklDraft($class, $sku);
+        $category = trim((string) ($this->option('category') ?: ($draft['category'] ?? '')));
+        if ($category !== '') {
+            $svc->setMiraklMcmHierarchyOverride($sku, $category);
+        }
         $hierarchy = $this->invoke($svc, 'resolveMiraklMcmHierarchyForP41', $sku);
         $this->info('Hierarchy: '.($hierarchy ?: '(none)'));
 
@@ -238,7 +246,54 @@ class ListingDiagnose extends Command
         $this->table(['code', 'label', 'type', 'semantic', 'master value', 'sent value', 'values list'], $rows);
         $this->line('Master data keys: '.implode(', ', array_keys(array_filter($master, fn ($v) => $v !== '' && $v !== null && $v !== []))));
 
+        if ($hierarchy) {
+            $createRow = $svc->buildMiraklMcmCreateRow($sku, [
+                'title' => (string) ($draft['title'] ?? ($master['title'] ?? $sku)),
+                'description' => (string) ($draft['description'] ?? ''),
+                'bullets' => (array) ($draft['bullets'] ?? []),
+                'images' => (array) ($draft['images'] ?? []),
+                'upc' => (string) ($draft['upc'] ?? ''),
+                'msrp' => $draft['price'] ?? null,
+            ]);
+            $this->section('dry run: P41 create row that a new-product publish sends (nothing submitted)', array_map(
+                fn ($v) => $this->option('full') ? $v : mb_substr((string) $v, 0, 120),
+                $createRow
+            ));
+        }
+
         return self::SUCCESS;
+    }
+
+    /** @return array<string, mixed> */
+    private function miraklDraft(string $class, string $sku): array
+    {
+        $needle = match ($class) {
+            \App\Services\MacysApiService::class => 'macy',
+            \App\Services\PurchasingPowerApiService::class => 'purchasing',
+            default => 'best',
+        };
+        $draft = \App\Models\ListingManagerChannelDraft::query()
+            ->whereRaw('UPPER(TRIM(seller_sku)) = ?', [strtoupper($sku)])
+            ->whereHas('channel', fn ($q) => $q->where('channel', 'like', '%'.$needle.'%'))
+            ->orderByDesc('id')
+            ->first();
+        if (! $draft) {
+            return [];
+        }
+        $details = is_array($draft->listing_details) ? $draft->listing_details : [];
+
+        return [
+            'title' => (string) $draft->title,
+            'price' => $draft->price,
+            'category' => trim((string) ($details['category_uuid'] ?? $details['primary_category_id'] ?? '')),
+            'description' => (string) ($details['description'] ?? ''),
+            'images' => is_array($details['images'] ?? null) ? $details['images'] : [],
+            'upc' => (string) ($details['upc'] ?? ''),
+            'bullets' => array_values(array_filter(array_map(
+                static fn ($k) => trim((string) ($details[$k] ?? '')),
+                ['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5']
+            ))),
+        ];
     }
 
     private function wayfair(string $sku): int
@@ -265,6 +320,22 @@ class ListingDiagnose extends Command
             ['input' => ['filter' => ['supplierPartNumbers' => [$sku]], 'paginationOptions' => ['page' => 1, 'pageSize' => 5]]]
         );
         $this->section('raw supplierCatalogItems response', $json);
+
+        return self::SUCCESS;
+    }
+
+    private function topdawg(string $sku): int
+    {
+        $svc = app(\App\Services\TopDawgApiService::class);
+        $this->section('local topdawg_products row', \Illuminate\Support\Facades\Schema::hasTable('topdawg_products')
+            ? \App\Models\TopDawgProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()?->toArray() ?? '(none)'
+            : '(table missing)');
+        $this->section('live catalog lookup (full scan)', $svc->lookupLiveCatalogProduct($sku, true) ?? '(not in TopDawg catalog)');
+
+        if ($this->option('probe')) {
+            $result = app(\App\Services\MarketplaceManager\TopDawgListingPublishService::class)->publishSkus([$sku], false, 'single');
+            $this->section('probe: create listing via TopDawgListingPublishService', $result);
+        }
 
         return self::SUCCESS;
     }

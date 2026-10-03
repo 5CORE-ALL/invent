@@ -1885,14 +1885,18 @@ class NeweggApiService
         return $this->updateDescription($identifier, $description);
     }
 
+    /**
+     * The REST content endpoints answer "success" while ignoring description/image fields, so these
+     * go straight to the ITEM_DATA feed, the only write path Newegg applies them from.
+     */
     public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
         $description = self::descriptionHtmlForFeed($description);
+        if (trim($identifier) === '' || $description === '') {
+            return ['success' => false, 'message' => 'SKU and description are required.'];
+        }
 
-        return $this->pushItemContent($identifier, [
-            'ItemDescription' => $description,
-            'ProductDescription' => $description,
-        ]);
+        return $this->submitItemBasicInfoFeed(trim($identifier), ['ProductDescription' => $description]);
     }
 
     /**
@@ -1904,18 +1908,24 @@ class NeweggApiService
         if ($images === []) {
             return ['success' => false, 'message' => 'At least one image URL is required.'];
         }
+        $usable = array_values(array_unique(array_filter(array_map([self::class, 'neweggImageUrl'], $images))));
+        if ($usable === []) {
+            return [
+                'success' => false,
+                'message' => 'Newegg only accepts JPG/JPEG/GIF image links; none of the '.count($images).' image(s) qualify (PNG/WebP are rejected).',
+            ];
+        }
 
-        return $this->pushItemContent($identifier, [
-            'Image' => $images[0],
-            'PrimaryImage' => $images[0],
-            'ImageUrl' => $images[0],
-            'ItemImages' => array_map(fn ($url, $i) => [
-                'ImageUrl' => $url,
-                'IsPrimary' => $i === 0 ? 'true' : 'false',
-            ], $images, array_keys($images)),
-            'AdditionalImages' => array_slice($images, 1),
+        $result = $this->submitItemBasicInfoFeed(trim($identifier), [
+            'ItemImages' => $usable,
             'ImageMode' => strtolower(trim($mode)) === 'append' ? 'append' : 'replace',
         ]);
+        $skipped = count($images) - count($usable);
+        if (($result['success'] ?? false) && $skipped > 0) {
+            $result['message'] = trim((string) ($result['message'] ?? '')).' '.$skipped.' non-JPG/GIF image(s) were skipped.';
+        }
+
+        return $result;
     }
 
     /**

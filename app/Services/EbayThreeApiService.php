@@ -1665,7 +1665,7 @@ class EbayThreeApiService
             isset($row->sku) ? (string) $row->sku : (string) $identifier
         );
 
-        return EbayTradingReviseItem::reviseItemDescription(
+        $res = EbayTradingReviseItem::reviseItemDescription(
             $this->endpoint,
             $this->compatLevel,
             $this->devId,
@@ -1675,6 +1675,14 @@ class EbayThreeApiService
             $token,
             (string) $itemId,
             $html
+        );
+
+        return EbayTradingReviseItem::verifyDescriptionApplied(
+            $res,
+            ($res['success'] ?? false) ? $this->getItem((string) $itemId) : null,
+            $html,
+            (string) $itemId,
+            'eBay3'
         );
     }
 

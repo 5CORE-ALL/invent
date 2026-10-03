@@ -115,6 +115,10 @@ class ListingManagerPublishDispatcher
                     'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
                     'upc' => trim((string) ($details['upc'] ?? '')),
                     'brand' => trim((string) ($details['brand'] ?? '')),
+                    'bullets' => array_values(array_filter(array_map(
+                        static fn ($k) => trim((string) ($details[$k] ?? '')),
+                        ['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5']
+                    ))),
                     // Save & Publish is an explicit request: re-push even if a local table already says listed.
                     'relist' => true,
                 ];
@@ -194,15 +198,16 @@ class ListingManagerPublishDispatcher
 
     /**
      * Channels whose publish takes longer than the web gateway allows (Mirakl P41/P42 polling,
-     * Shein image uploads + category lookups, Newegg feed submission + result wait) and therefore
-     * runs as a background CLI process instead of inside the HTTP request.
+     * Shein image uploads + category lookups, Newegg feed submission + result wait, TopDawg's
+     * post-create live-catalog scan, Wayfair item submission) and therefore runs as a background
+     * CLI process instead of inside the HTTP request.
      */
     public static function publishesInBackground(string $channelName): bool
     {
         $key = ListingChannelCounts::normalize($channelName);
 
         return MiraklListingPublishService::isMiraklListingChannel($channelName)
-            || in_array($key, ['shein', 'newegg', 'neweggb2c', 'neweggb2b'], true);
+            || in_array($key, ['shein', 'newegg', 'neweggb2c', 'neweggb2b', 'topdawg', 'topdawginc', 'wayfair'], true);
     }
 
     /**

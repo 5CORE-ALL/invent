@@ -57,17 +57,36 @@ class TopDawgListingPublishService
             : $this->filterPublishable($skus, ! $expandSiblings);
 
         if ($publishSkus === []) {
+            if (count($skus) === 1) {
+                $live = $this->api->lookupLiveCatalogProduct($skus[0], true);
+                $liveId = is_array($live) ? trim((string) ($live['id'] ?? $live['listing_id'] ?? $live['tdid'] ?? $live['TDID'] ?? '')) : '';
+                if ($liveId !== '' && ChannelListingRegistry::isLiveTopDawgListingId($liveId, $skus[0])) {
+                    Cache::forget(self::reviewPendingCacheKey($skus[0]));
+
+                    return [
+                        'success' => true,
+                        'message' => $skus[0].' is live on TopDawg (listing '.$liveId.').',
+                        'goods_id' => $liveId,
+                        'sku_id' => $liveId,
+                        'skus' => [$skus[0]],
+                    ];
+                }
+            }
+
             return ['success' => false, 'message' => $this->publishBlockReason($skus)];
         }
 
         if (count($publishSkus) > 1) {
             $ok = [];
             $fail = [];
+            $pending = [];
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
                 $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryUuid, $categoryName, $overrides);
-                if ($one['success'] ?? false) {
+                if (! empty($one['pending_review'])) {
+                    $pending[] = $one['message'] ?? ($sku.' submitted for TopDawg review.');
+                } elseif ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
                         $listed[] = $listedSku;
@@ -80,9 +99,18 @@ class TopDawgListingPublishService
                 }
             }
 
+            if ($ok === [] && $fail === [] && $pending !== []) {
+                return [
+                    'success' => false,
+                    'queued' => true,
+                    'pending_review' => true,
+                    'message' => implode(' ', $pending),
+                ];
+            }
+
             return [
                 'success' => $fail === [],
-                'message' => trim(implode(' ', $ok).($fail !== [] ? ' '.implode(' ', $fail) : '')),
+                'message' => trim(implode(' ', $ok).($pending !== [] ? ' '.implode(' ', $pending) : '').($fail !== [] ? ' '.implode(' ', $fail) : '')),
                 'goods_id' => $lastId,
                 'sku_id' => $lastId,
                 'skus' => array_values(array_unique($listed)),
@@ -143,6 +171,18 @@ class TopDawgListingPublishService
         $msrp = isset($overrides['msrp']) && is_numeric($overrides['msrp']) && (float) $overrides['msrp'] > 0
             ? round((float) $overrides['msrp'], 2)
             : $this->resolveMsrp($sku, $product, $price);
+        $pendingKey = self::reviewPendingCacheKey($sku);
+        $pendingSince = Cache::get($pendingKey);
+        if (is_string($pendingSince) && $pendingSince !== '' && empty($overrides['force_resubmit'])) {
+            return [
+                'success' => false,
+                'queued' => true,
+                'pending_review' => true,
+                'message' => $sku.' was submitted to TopDawg on '.$pendingSince.' and is still waiting for TopDawg review. '
+                    .'Not resubmitted, to avoid a duplicate product; it lists automatically once TopDawg approves it.',
+            ];
+        }
+
         $description = trim((string) ($overrides['description'] ?? '')) ?: $this->resolveDescription($product, $title);
         $res = $this->api->createProduct([
             'product_code' => $sku,
@@ -172,6 +212,16 @@ class TopDawgListingPublishService
             'product_made_in' => $madeIn,
         ]);
 
+        if (! empty($res['pending_review'])) {
+            Cache::put($pendingKey, now()->format('Y-m-d H:i'), now()->addDays(14));
+
+            return [
+                'success' => false,
+                'queued' => true,
+                'pending_review' => true,
+                'message' => (string) ($res['message'] ?? 'Submitted to TopDawg for review.'),
+            ];
+        }
         if (empty($res['success'])) {
             return [
                 'success' => false,
@@ -179,6 +229,7 @@ class TopDawgListingPublishService
             ];
         }
 
+        Cache::forget($pendingKey);
         $listingId = trim((string) ($res['listing_id'] ?? ''));
         $this->persistListed($sku, $listingId, trim((string) ($res['tdid'] ?? '')), $title, $price, $inv);
         $this->forgetListingCaches();
@@ -366,6 +417,11 @@ class TopDawgListingPublishService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    public static function reviewPendingCacheKey(string $sku): string
+    {
+        return 'topdawg_review_pending:'.strtoupper(trim($sku));
     }
 
     private function forgetListingCaches(): void
