@@ -172,94 +172,113 @@ class DobaApiService
 
     /**
      * Update product title for the given SKU on Doba.
-     * Resolves SKU to itemNo via DobaMetric or DobaDataView, then calls OpenAPI.
      *
-     * @param  string  $sku
-     * @param  string  $title
-     * @return bool
+     * @return array{success: bool, message: string}
      */
-    public function updateTitle(string $sku, string $title): bool
+    public function updateTitle(string $sku, string $title): array
     {
-        Log::info('🚀 Push to Doba - Started', ['sku' => $sku]);
+        $title = trim($title);
+        if (trim($sku) === '' || $title === '') {
+            return ['success' => false, 'message' => 'SKU and title are required.'];
+        }
 
+        return $this->dobaContentUpdate($sku, 'title', [
+            ['title' => $title],
+            ['productTitle' => $title],
+        ], 'Doba title updated.');
+    }
+
+    /**
+     * Content edits go to goods/update as signed JSON (form bodies get "Unsupported Content-Type").
+     * Doba rate-limits this endpoint hard, so candidates are tried slowly and the loop stops on any
+     * request-level rejection (429, content type, whitelist) instead of hammering every variant.
+     *
+     * @param  list<array<string, mixed>>  $fieldCandidates
+     * @return array{success: bool, message: string}
+     */
+    private function dobaContentUpdate(string $identifier, string $label, array $fieldCandidates, string $okMessage): array
+    {
         try {
-            $itemNo = $this->resolveSkuToItemNo($sku);
+            $itemNo = $this->resolveSkuToItemNo($identifier);
             if (! $itemNo) {
-                Log::warning('Doba: could not resolve SKU to itemNo', ['sku' => $sku]);
-                Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'error' => 'SKU not found in DobaMetric/DobaDataView']);
-
-                return false;
+                return ['success' => false, 'message' => 'SKU or item_id not found in DobaMetric/DobaDataView. Sync Doba listings first.'];
+            }
+            $goodsId = '';
+            try {
+                $goodsId = trim((string) (DobaMetric::query()->where('item_id', $itemNo)->value('goods_id') ?? ''));
+            } catch (\Throwable) {
+                $goodsId = '';
             }
 
-            $timestamp = $this->getMillisecond();
-            $content = $this->getContent($timestamp);
-            $sign = $this->generateSignature($content);
-
-            $payload = [
-                'itemNo' => (string) $itemNo,
-                'productTitle' => $title,
-            ];
-
-            $headers = [
-                'appKey' => config('services.doba.app_key'),
-                'signType' => 'rsa2',
-                'timestamp' => $timestamp,
-                'sign' => $sign,
-                'Content-Type' => 'application/x-www-form-urlencoded',
-            ];
-
-            $attempts = [
-                ['url' => 'https://openapi.doba.com/api/goods/info/update', 'method' => 'post', 'body' => 'form'],
-                ['url' => 'https://openapi.doba.com/api/goods/update', 'method' => 'post', 'body' => 'form'],
-                ['url' => 'https://openapi.doba.com/api/product/update', 'method' => 'post', 'body' => 'form'],
-                ['url' => 'https://openapi.doba.com/v1/products/update', 'method' => 'post', 'body' => 'form'],
-                ['url' => 'https://openapi.doba.com/v1/products/' . $itemNo, 'method' => 'put', 'body' => 'json'],
-                ['url' => 'https://openapi.doba.com/v1/products/' . $itemNo, 'method' => 'post', 'body' => 'form'],
-                ['url' => 'https://api.doba.com/v1/products/update', 'method' => 'post', 'body' => 'form'],
-            ];
-
-            foreach ($attempts as $attempt) {
-                $url = $attempt['url'];
-                Log::info('Doba title update attempt', ['url' => $url, 'method' => strtoupper($attempt['method']), 'item_no' => $itemNo, 'sku' => $sku]);
-
-                if ($attempt['method'] === 'put' && $attempt['body'] === 'json') {
-                    $response = Http::withHeaders(array_merge($headers, ['Content-Type' => 'application/json']))
-                        ->put($url, $payload);
-                } else {
-                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
+            $url = $this->baseUrl.'/goods/update';
+            $lastMessage = 'Doba '.$label.' update failed.';
+            foreach (array_values($fieldCandidates) as $i => $fields) {
+                if ($i > 0) {
+                    usleep(1200000);
                 }
-                $statusCode = $response->status();
-                $responseData = $response->json();
+                $payload = array_merge(['itemNo' => (string) $itemNo], $goodsId !== '' ? ['goodsId' => $goodsId] : [], $fields);
 
-                Log::info('Doba title update response', ['url' => $url, 'status' => $statusCode, 'response' => $responseData]);
+                $response = null;
+                for ($try = 0; $try < 2; $try++) {
+                    $timestamp = $this->getMillisecond();
+                    $sign = $this->generateSignature($this->getContent($timestamp));
+                    $response = Http::withoutVerifying()->timeout(30)->withHeaders([
+                        'appKey' => config('services.doba.app_key'),
+                        'signType' => 'rsa2',
+                        'timestamp' => $timestamp,
+                        'sign' => $sign,
+                    ])->asJson()->post($url, $payload);
+                    if ($response->status() !== 429) {
+                        break;
+                    }
+                    sleep(4);
+                }
 
-                if (in_array($statusCode, [404, 500])) {
-                    Log::warning('Doba endpoint returned ' . $statusCode . ', trying next', ['url' => $url]);
+                $data = $response->json();
+                $data = is_array($data) ? $data : [];
+                $apiMsg = trim((string) ($data['responseMessage'] ?? $data['message'] ?? ''));
+                $business = is_array($data['businessData'] ?? null) ? $data['businessData'] : [];
+                $businessMsg = trim((string) ($business['businessMessage'] ?? ($business[0]['businessMessage'] ?? '')));
+                $businessStatus = (string) ($business['businessStatus'] ?? ($business[0]['businessStatus'] ?? ''));
+                Log::info('Doba content update response', [
+                    'item_no' => $itemNo,
+                    'part' => $label,
+                    'fields' => array_keys($fields),
+                    'status' => $response->status(),
+                    'response' => mb_substr((string) $response->body(), 0, 800),
+                ]);
+
+                if ($response->status() === 429) {
+                    return ['success' => false, 'message' => 'Doba rate limit hit (HTTP 429). Wait a minute and push again.'];
+                }
+                if (! $response->successful()) {
+                    $lastMessage = 'HTTP '.$response->status().': '.($apiMsg !== '' ? $apiMsg : mb_substr((string) $response->body(), 0, 300));
+                    if (stripos($apiMsg, 'whitelist') !== false) {
+                        return ['success' => false, 'message' => 'Doba API IP whitelist check failed — add this server IP in the Doba Open Platform app settings.'];
+                    }
+                    if ($response->status() === 404 || stripos($apiMsg, 'content-type') !== false) {
+                        return ['success' => false, 'message' => $lastMessage];
+                    }
+                    continue;
+                }
+                if (isset($data['responseCode']) && (string) $data['responseCode'] !== '000000') {
+                    $lastMessage = $apiMsg !== '' ? $apiMsg : 'Doba API error '.$data['responseCode'];
+                    continue;
+                }
+                if (($businessStatus !== '' && $businessStatus !== '000000')
+                    || (array_key_exists('successful', $business) && $business['successful'] !== true)) {
+                    $lastMessage = $businessMsg !== '' ? $businessMsg : 'Doba rejected the '.$label.' update.';
                     continue;
                 }
 
-                if ($response->failed()) {
-                    $err = "HTTP {$statusCode}: " . ($responseData['responseMessage'] ?? $response->body());
-                    Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'url' => $url, 'error' => $err]);
-                    return false;
-                }
-
-                if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
-                    $err = $responseData['responseMessage'] ?? 'Unknown error';
-                    Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'url' => $url, 'error' => $err]);
-                    return false;
-                }
-
-                Log::info('✅ Push to Doba - Success', ['sku' => $sku, 'url' => $url]);
-                return true;
+                return ['success' => true, 'message' => $okMessage];
             }
 
-            Log::warning('All Doba OpenAPI endpoints returned 404/500, falling back to legacy api.doba.com', ['sku' => $sku]);
-            return false;
-        } catch (Exception $e) {
-            Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return ['success' => false, 'message' => $lastMessage];
+        } catch (\Throwable $e) {
+            Log::warning('Doba content update failed', ['identifier' => $identifier, 'part' => $label, 'error' => $e->getMessage()]);
 
-            return false;
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
@@ -305,26 +324,6 @@ class DobaApiService
         }
 
         return null;
-    }
-
-    /**
-     * Seller SKU label for payloads when identifier was Doba item_id.
-     */
-    private function resolveDobaSellerSkuLabel(string $identifier, ?string $itemNo): string
-    {
-        $id = trim($identifier);
-        $metric = DobaMetric::where('sku', $id)
-            ->orWhere('sku', strtoupper($id))
-            ->orWhere('sku', strtolower($id))
-            ->first();
-        if (! $metric && $itemNo !== null) {
-            $metric = DobaMetric::where('item_id', $itemNo)->first();
-        }
-        if ($metric && $metric->sku) {
-            return trim((string) $metric->sku);
-        }
-
-        return $id;
     }
 
     /**
@@ -1314,94 +1313,21 @@ class DobaApiService
     }
 
     /**
-     * Push long product description / bullets to Doba OpenAPI (no truncation).
+     * Bullets are Doba's "Highlights" (sellPoint list), separate from the long description.
      *
      * @return array{success: bool, message: string}
      */
     public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        Log::info('Doba updateBulletPoints', ['identifier' => $identifier]);
-
-        try {
-            $bulletPoints = trim($bulletPoints);
-            if (trim($identifier) === '' || $bulletPoints === '') {
-                return ['success' => false, 'message' => 'SKU (or item_id) and bullet points are required.'];
-            }
-
-            $itemNo = $this->resolveSkuToItemNo($identifier);
-            if (! $itemNo) {
-                return ['success' => false, 'message' => 'SKU or item_id not found in DobaMetric/DobaDataView.'];
-            }
-
-            $sellerSku = $this->resolveDobaSellerSkuLabel($identifier, $itemNo);
-
-            $timestamp = $this->getMillisecond();
-            $content = $this->getContent($timestamp);
-            $sign = $this->generateSignature($content);
-
-            $payloadAttempts = [
-                ['itemNo' => (string) $itemNo, 'goodsDesc' => $bulletPoints],
-                ['itemNo' => (string) $itemNo, 'productDescription' => $bulletPoints],
-                ['itemNo' => (string) $itemNo, 'description' => $bulletPoints],
-                ['itemNo' => (string) $itemNo, 'detail' => $bulletPoints],
-                ['itemNo' => (string) $itemNo, 'productDetail' => $bulletPoints],
-                [
-                    'itemNo' => (string) $itemNo,
-                    'productTitle' => $sellerSku,
-                    'productDescription' => $bulletPoints,
-                ],
-            ];
-
-            $headers = [
-                'appKey' => config('services.doba.app_key'),
-                'signType' => 'rsa2',
-                'timestamp' => $timestamp,
-                'sign' => $sign,
-                'Content-Type' => 'application/x-www-form-urlencoded',
-            ];
-
-            $attempts = [
-                'https://openapi.doba.com/api/goods/update',
-            ];
-
-            $lastMessage = 'Doba bullet update failed for all endpoints.';
-            foreach ($attempts as $url) {
-                foreach ($payloadAttempts as $payload) {
-                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
-                    $responseData = $response->json();
-                    Log::info('Doba bullet update response', [
-                        'url' => $url,
-                        'item_no' => $itemNo,
-                        'payload_keys' => array_keys($payload),
-                        'status' => $response->status(),
-                        'response' => $responseData,
-                    ]);
-
-                    if (! $response->successful()) {
-                        $msg = (string) ($responseData['responseMessage'] ?? mb_substr((string) $response->body(), 0, 300));
-                        if (stripos($msg, 'IP whitelist') !== false || stripos($msg, 'whitelist') !== false) {
-                            return [
-                                'success' => false,
-                                'message' => 'Doba API IP whitelist check failed — add this server IP in the Doba Open Platform app settings.',
-                            ];
-                        }
-                        $lastMessage = 'HTTP '.$response->status().': '.$msg;
-                        continue;
-                    }
-
-                    if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
-                        $lastMessage = (string) ($responseData['responseMessage'] ?? 'Doba API error '.$responseData['responseCode']);
-                        continue;
-                    }
-
-                    return ['success' => true, 'message' => 'Doba product description updated.'];
-                }
-            }
-
-            return ['success' => false, 'message' => $lastMessage];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', trim($bulletPoints)) ?: []), fn ($s) => $s !== ''));
+        if (trim($identifier) === '' || $lines === []) {
+            return ['success' => false, 'message' => 'SKU (or item_id) and bullet points are required.'];
         }
+
+        return $this->dobaContentUpdate($identifier, 'bullets', [
+            ['sellPoint' => array_slice($lines, 0, 5)],
+            ['sellPoints' => array_slice($lines, 0, 5)],
+        ], 'Doba highlights (bullet points) updated.');
     }
 
     /**
@@ -1409,7 +1335,15 @@ class DobaApiService
      */
     public function updateProductDescription(string $identifier, string $description): array
     {
-        return $this->updateBulletPoints($identifier, $description);
+        $description = trim($description);
+        if (trim($identifier) === '' || $description === '') {
+            return ['success' => false, 'message' => 'SKU (or item_id) and description are required.'];
+        }
+
+        return $this->dobaContentUpdate($identifier, 'description', [
+            ['goodsDesc' => $description],
+            ['productDescription' => $description],
+        ], 'Doba product description updated.');
     }
 
     /**

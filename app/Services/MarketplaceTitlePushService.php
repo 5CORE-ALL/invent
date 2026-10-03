@@ -209,8 +209,9 @@ class MarketplaceTitlePushService
     {
         $endpoint = 'DobaApiService::updateTitle';
 
-        if (app(DobaApiService::class)->updateTitle($sku, $title)) {
-            return ['success' => true, 'message' => 'OK', 'endpoint' => $endpoint];
+        $res = app(DobaApiService::class)->updateTitle($sku, $title);
+        if (! empty($res['success'])) {
+            return ['success' => true, 'message' => (string) ($res['message'] ?? 'OK'), 'endpoint' => $endpoint];
         }
 
         if ($this->dobaPusher !== null) {
@@ -223,7 +224,7 @@ class MarketplaceTitlePushService
             ];
         }
 
-        return ['success' => false, 'message' => 'Doba title update failed.', 'endpoint' => $endpoint];
+        return ['success' => false, 'message' => (string) ($res['message'] ?? 'Doba title update failed.'), 'endpoint' => $endpoint];
     }
 
     /**
