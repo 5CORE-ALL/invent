@@ -647,16 +647,30 @@
                 if (!canvas) return;
                 const metric  = samTrendMetric;
                 const channel = document.getElementById('sam-trend-channel').value;
-                const labels  = (samTrendCache && samTrendCache.labels) || [];
+                const days = parseInt(document.getElementById('sam-trend-days').value || '30', 10);
+                let labels  = (samTrendCache && samTrendCache.labels) || [];
                 // Each point is the value stored for that day. Missing days
                 // stay empty instead of repeating the previous number.
                 const rawSeries = samSeriesFor(samTrendCache, channel, metric);
-                const values = labels.map((_, i) => {
+                let values = labels.map((_, i) => {
                     const v = rawSeries[i];
                     if (v === null || v === undefined || v === '') return null;
                     const n = Number(v);
                     return Number.isFinite(n) ? n : null;
                 });
+                // Google charts stop on the last completed California day.
+                // Other channels keep today so the last point matches the row.
+                const googleChannel = channel === 'Google Shopping' || channel === 'Google SERP' || channel === 'Youtube ads';
+                if (googleChannel) {
+                    let end = values.length;
+                    while (end > 0 && values[end - 1] === null) end--;
+                    const start = Math.max(0, end - days);
+                    labels = labels.slice(start, end);
+                    values = values.slice(start, end);
+                } else if (labels.length > days) {
+                    labels = labels.slice(labels.length - days);
+                    values = values.slice(values.length - days);
+                }
                 const numericValues = values.filter((v) => v !== null);
 
                 // Tear down previous chart + reset the side panel first.

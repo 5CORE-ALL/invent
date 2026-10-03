@@ -623,11 +623,18 @@ class ShopifyAdsMasterController extends Controller
     public function history(Request $request)
     {
         $days = max(1, min(365, (int) $request->query('days', 32)));
-        // End on today in California so the last point is the same number as
-        // the table. Google channel series stop a day earlier, below, so they
-        // still match the completed-day window on the Google Shopping page.
-        $endC = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
-        $from = $endC->copy()->subDays($days - 1)->toDateString();
+        // Google Shopping ends on the last completed California day (same
+        // dates as that page). Instagram and Facebook still need today, so
+        // the loaded range covers both windows.
+        $todayC = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $googleEndC = $this->completedCaliforniaChartEnd();
+        $fromC = $googleEndC->copy()->subDays($days - 1);
+        $todayFrom = $todayC->copy()->subDays($days - 1);
+        if ($todayFrom->lt($fromC)) {
+            $fromC = $todayFrom;
+        }
+        $endC = $todayC->greaterThan($googleEndC) ? $todayC : $googleEndC;
+        $from = $fromC->toDateString();
 
         $rows = DB::table('shopify_ads_master_metric_snapshots')
             ->where('snapshot_date', '>=', $from)
@@ -1214,7 +1221,11 @@ class ShopifyAdsMasterController extends Controller
      */
     private function writeRollingGoogleChannel(array &$byChannel, array $labels, string $channel, array $daily, array $activeByDate, array $pageSold, array $tableSold, array &$refreshedSold): void
     {
+        $googleEnd = $this->completedCaliforniaChartEnd()->toDateString();
         foreach ($labels as $day) {
+            if ($day > $googleEnd) {
+                continue;
+            }
             $sum = $this->sumDailyWindow($daily, $day, 30);
             if (isset($pageSold[$day])) {
                 // Same totals the Google Shopping / SERP / YouTube chart saved
@@ -1264,7 +1275,11 @@ class ShopifyAdsMasterController extends Controller
     private function writeRollingYoutubeChannel(array &$byChannel, array $labels, array $byCampaign, array $activeByDate, array $pageSold, array &$refreshedSold): void
     {
         $channel = 'Youtube ads';
+        $googleEnd = $this->completedCaliforniaChartEnd()->toDateString();
         foreach ($labels as $day) {
+            if ($day > $googleEnd) {
+                continue;
+            }
             if (isset($pageSold[$day])) {                   
                 $measures = [
                     'spend'  => (float) $pageSold[$day]['spend'],
