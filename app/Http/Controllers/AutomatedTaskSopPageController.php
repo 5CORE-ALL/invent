@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\AutomateTaskSopPage;
 use App\Models\User;
+use App\Policies\TaskPolicy;
+use App\Support\AutomatedTaskAccess;
 use App\Support\AutomatedTaskSopPageAi;
 use App\Support\AutomatedTaskSopPageBuilder;
 use App\Support\AutomatedTaskSopSourceReader;
@@ -21,6 +23,11 @@ class AutomatedTaskSopPageController extends Controller
             abort(404, 'Automated task not found.');
         }
 
+        $user = Auth::user();
+        if (! $user || ! AutomatedTaskAccess::canView($user, $task)) {
+            abort(403, 'You are not allowed to view this automated task.');
+        }
+
         $page = AutomateTaskSopPage::query()->where('automate_task_id', $id)->first();
         $sopLink = trim((string) ($task->link3 ?? ''));
         if (! $page && $sopLink === '') {
@@ -35,12 +42,10 @@ class AutomatedTaskSopPageController extends Controller
             ]);
         }
 
-        $user = Auth::user();
-
         return view('tasks.sop-page', [
             'task' => $task,
             'page' => $page,
-            'canEdit' => $this->isAssignor($user, $task),
+            'canEdit' => AutomatedTaskAccess::canModify($user, $task),
             'canUseAiBox' => $this->canUseAiBox($user, $task),
         ]);
     }
@@ -53,8 +58,8 @@ class AutomatedTaskSopPageController extends Controller
         }
 
         $user = Auth::user();
-        if (! $this->isAssignor($user, $task)) {
-            abort(403, 'Only the assignor can edit this SOP page.');
+        if (! $user || ! AutomatedTaskAccess::canModify($user, $task)) {
+            abort(403, 'You are not allowed to edit this automated task.');
         }
 
         $page = AutomateTaskSopPage::query()->where('automate_task_id', $id)->first();
@@ -73,6 +78,11 @@ class AutomatedTaskSopPageController extends Controller
         $task = DB::table('automate_tasks')->where('id', $id)->first();
         if (! $task) {
             return response()->json(['message' => 'Automated task not found.'], 404);
+        }
+
+        $user = Auth::user();
+        if (! $user || ! AutomatedTaskAccess::canView($user, $task)) {
+            return response()->json(['message' => 'You are not allowed to view this automated task.'], 403);
         }
 
         $sopLink = trim((string) ($task->link3 ?? ''));
@@ -107,6 +117,10 @@ class AutomatedTaskSopPageController extends Controller
         }
 
         $user = Auth::user();
+        if (! $user || ! AutomatedTaskAccess::canModify($user, $task)) {
+            return response()->json(['message' => 'You are not allowed to update this automated task.'], 403);
+        }
+
         $sopLink = trim((string) ($task->link3 ?? ''));
         if ($sopLink === '') {
             return response()->json(['message' => 'Add an SOP link or file first, then create the page.'], 422);
@@ -139,8 +153,8 @@ class AutomatedTaskSopPageController extends Controller
         }
 
         $user = Auth::user();
-        if (! $this->isAssignor($user, $task)) {
-            abort(403, 'Only the assignor can edit this SOP page.');
+        if (! $user || ! AutomatedTaskAccess::canModify($user, $task)) {
+            abort(403, 'You are not allowed to edit this automated task.');
         }
 
         $page = AutomateTaskSopPage::query()->where('automate_task_id', $id)->firstOrFail();
@@ -175,7 +189,7 @@ class AutomatedTaskSopPageController extends Controller
         }
 
         $user = Auth::user();
-        if (! $this->canUseAiBox($user, $task)) {
+        if (! $user || ! AutomatedTaskAccess::canView($user, $task) || ! $this->canUseAiBox($user, $task)) {
             return response()->json(['message' => 'Only the assignor, president@5core.com, or a Director can use this box.'], 403);
         }
 
@@ -265,10 +279,7 @@ class AutomatedTaskSopPageController extends Controller
             return false;
         }
 
-        $assignor = strtolower(trim((string) ($task->assignor ?? '')));
-        $email = strtolower(trim((string) ($user->email ?? '')));
-
-        return $assignor !== '' && $email !== '' && $assignor === $email;
+        return TaskPolicy::userIsAssignor($user, $task->assignor ?? null);
     }
 
     private function isPresident(?User $user): bool

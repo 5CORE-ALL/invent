@@ -1840,6 +1840,14 @@
                 var escAttr = function(t) {
                     return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
                 };
+                var canModify = automatedRowAllows(rowData, 'can_modify');
+                if (!canModify) {
+                    if (isOpenableSopLink(v)) {
+                        return '<a href="' + escAttr(v) + '" target="_blank" rel="noopener noreferrer" title="' + escAttr(v) + '" style="line-height:1;display:inline-flex;align-items:center;justify-content:center;">' +
+                            '<img src="{{ asset("assets/images/task-sop-icon.png") }}" alt="SOP" width="28" height="28" style="width:28px;height:28px;display:inline-block;vertical-align:middle;"></a>';
+                    }
+                    return '<span style="color:#adb5bd;">-</span>';
+                }
                 var openBtn = function(inner, title) {
                     return '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-sop-open" data-id="' + escAttr(rowData.id) + '" data-title="' + escAttr(rowData.title || '') + '" data-sop="' + escAttr(v) + '" title="' + escAttr(title) + '" aria-label="' + escAttr(title) + '" style="line-height:1;display:inline-flex;align-items:center;justify-content:center;">' + inner + '</button>';
                 };
@@ -1866,8 +1874,10 @@
                     ? (rowData.has_sop_page ? 'Rebuild SOP page from the SOP link' : 'Create SOP page from the SOP link')
                     : 'Add an SOP link, then create the page';
                 var html = '<span class="d-inline-flex align-items-center justify-content-center gap-1">';
-                html += '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-sop-page-create" data-id="' + escAttr(rowData.id) + '" data-title="' + escAttr(rowData.title || '') + '" data-sop="' + escAttr(rowData.link3 || rowData.training_link || '') + '" data-has-sop="' + (hasSop ? '1' : '0') + '" title="' + createTitle + '" aria-label="Create" style="line-height:1;">' +
-                    '<i class="mdi mdi-plus-box" style="font-size:22px;color:#198754;"></i></button>';
+                if (automatedRowAllows(rowData, 'can_modify')) {
+                    html += '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-sop-page-create" data-id="' + escAttr(rowData.id) + '" data-title="' + escAttr(rowData.title || '') + '" data-sop="' + escAttr(rowData.link3 || rowData.training_link || '') + '" data-has-sop="' + (hasSop ? '1' : '0') + '" title="' + createTitle + '" aria-label="Create" style="line-height:1;">' +
+                        '<i class="mdi mdi-plus-box" style="font-size:22px;color:#198754;"></i></button>';
+                }
                 if (canView) {
                     html += '<a href="' + escAttr(pageUrl) + '" class="at-sop-page-view" title="View SOP page" aria-label="View" style="line-height:1;text-decoration:none;">' +
                         '<i class="mdi mdi-eye" style="font-size:22px;color:#0d6efd;"></i></a>';
@@ -1898,6 +1908,11 @@
                 return String(s == null ? '' : s)
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+            }
+
+            function automatedRowAllows(rowData, flag) {
+                var value = rowData ? rowData[flag] : false;
+                return value === true || value === 1 || value === '1';
             }
 
             // Transform a flat list into a Tabulator dataTree (parent + nested subtasks).
@@ -2551,21 +2566,22 @@
                         width: 220,
                         hozAlign: "center",
                         formatter: function(cell) {
-                            var id = cell.getValue();
-                            return `
-                                <button class="action-btn-icon action-btn-edit edit-automated-task" data-id="${id}" title="Edit" style="background: #0dcaf0; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
-                                    <i class="mdi mdi-pencil"></i>
-                                </button>
-                                <button class="action-btn-icon action-btn-duplicate duplicate-automated-task" data-id="${id}" title="Duplicate (same assignee or change)" style="background: #6f42c1; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
-                                    <i class="mdi mdi-content-copy"></i>
-                                </button>
-                                <button class="action-btn-icon action-btn-delete delete-automated-task" data-id="${id}" title="Delete (or delete all selected)" style="background: #fd7e14; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
-                                    <i class="mdi mdi-delete"></i>
-                                </button>
-                                <button class="action-btn-icon action-btn-subtasks manage-subtasks" data-id="${id}" title="Manage subtasks" style="background: #4facfe; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
-                                    <i class="mdi mdi-subdirectory-arrow-right"></i>
-                                </button>
-                            `;
+                            var data = cell.getRow().getData() || {};
+                            var id = data.id != null ? data.id : cell.getValue();
+                            var html = '';
+                            if (automatedRowAllows(data, 'can_modify')) {
+                                html += '<button class="action-btn-icon action-btn-edit edit-automated-task" data-id="' + id + '" title="Edit" style="background: #0dcaf0; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">' +
+                                    '<i class="mdi mdi-pencil"></i></button>';
+                                html += '<button class="action-btn-icon action-btn-duplicate duplicate-automated-task" data-id="' + id + '" title="Duplicate (same assignee or change)" style="background: #6f42c1; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">' +
+                                    '<i class="mdi mdi-content-copy"></i></button>';
+                                html += '<button class="action-btn-icon action-btn-subtasks manage-subtasks" data-id="' + id + '" title="Manage subtasks" style="background: #4facfe; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">' +
+                                    '<i class="mdi mdi-subdirectory-arrow-right"></i></button>';
+                            }
+                            if (automatedRowAllows(data, 'can_delete')) {
+                                html += '<button class="action-btn-icon action-btn-delete delete-automated-task" data-id="' + id + '" title="Delete (or delete all selected)" style="background: #fd7e14; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">' +
+                                    '<i class="mdi mdi-delete"></i></button>';
+                            }
+                            return html || '<span style="color:#adb5bd;">-</span>';
                         }
                     });
                     

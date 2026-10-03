@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AutomateTaskChecklistForm;
 use App\Models\AutomateTaskChecklistSubmission;
 use App\Models\User;
+use App\Support\AutomatedTaskAccess;
 use App\Support\AutomatedTaskChecklistIds;
 use App\Support\SuperAdminAccess;
 use Illuminate\Http\Request;
@@ -77,9 +78,9 @@ class AutomatedTaskChecklistController extends Controller
             return response()->json(['message' => 'Only Senior and Director roles can create or edit checklist forms.'], 403);
         }
 
-        $task = DB::table('automate_tasks')->where('id', $automateTaskId)->first();
-        if (! $task) {
-            return response()->json(['message' => 'Automated task not found.'], 404);
+        $task = $this->templateForChecklistEditor($automateTaskId);
+        if ($task instanceof \Illuminate\Http\JsonResponse) {
+            return $task;
         }
 
         $validated = $request->validate([
@@ -226,9 +227,9 @@ class AutomatedTaskChecklistController extends Controller
 
     public function downloadTemplate(int $automateTaskId)
     {
-        $task = DB::table('automate_tasks')->where('id', $automateTaskId)->first();
-        if (! $task) {
-            return response()->json(['message' => 'Automated task not found.'], 404);
+        $task = $this->templateVisibleToCurrentUser($automateTaskId);
+        if ($task instanceof \Illuminate\Http\JsonResponse) {
+            return $task;
         }
 
         $form = AutomateTaskChecklistForm::query()
@@ -274,9 +275,9 @@ class AutomatedTaskChecklistController extends Controller
             return response()->json(['message' => 'Only Senior and Director roles can upload checklist templates.'], 403);
         }
 
-        $task = DB::table('automate_tasks')->where('id', $automateTaskId)->first();
-        if (! $task) {
-            return response()->json(['message' => 'Automated task not found.'], 404);
+        $task = $this->templateForChecklistEditor($automateTaskId);
+        if ($task instanceof \Illuminate\Http\JsonResponse) {
+            return $task;
         }
 
         $request->validate([
@@ -348,6 +349,11 @@ class AutomatedTaskChecklistController extends Controller
 
     public function history(int $automateTaskId)
     {
+        $task = $this->templateVisibleToCurrentUser($automateTaskId);
+        if ($task instanceof \Illuminate\Http\JsonResponse) {
+            return $task;
+        }
+
         $form = AutomateTaskChecklistForm::query()
             ->where('automate_task_id', $automateTaskId)
             ->first();
@@ -411,5 +417,42 @@ class AutomatedTaskChecklistController extends Controller
             'task_title' => $task->title ?? '',
             'form' => AutomatedTaskChecklistIds::formPayload($form),
         ]);
+    }
+
+    /**
+     * Checklist fill/submit stays open so fired task instances can be completed.
+     * Reading history or a template file requires access to that automated template.
+     *
+     * @return object|\Illuminate\Http\JsonResponse
+     */
+    private function templateVisibleToCurrentUser(int $automateTaskId)
+    {
+        $task = DB::table('automate_tasks')->where('id', $automateTaskId)->first();
+        if (! $task) {
+            return response()->json(['message' => 'Automated task not found.'], 404);
+        }
+
+        $user = Auth::user();
+        if (! $user || ! AutomatedTaskAccess::canView($user, $task)) {
+            return response()->json(['message' => 'You are not allowed to view this automated task.'], 403);
+        }
+
+        return $task;
+    }
+
+    /**
+     * Creating or replacing a checklist form is limited to the Senior/Director checklist permission,
+     * and only for templates this user is allowed to see.
+     *
+     * @return object|\Illuminate\Http\JsonResponse
+     */
+    private function templateForChecklistEditor(int $automateTaskId)
+    {
+        $user = Auth::user();
+        if (! self::canManageChecklist($user)) {
+            return response()->json(['message' => 'Only Senior and Director roles can create or edit checklist forms.'], 403);
+        }
+
+        return $this->templateVisibleToCurrentUser($automateTaskId);
     }
 }

@@ -610,20 +610,29 @@
                 const metric  = samTrendMetric;
                 const channel = document.getElementById('sam-trend-channel').value;
                 const labels  = (samTrendCache && samTrendCache.labels) || [];
-                // Align to labels. Missing snapshot days are plotted as 0 so the
-                // line pattern stays continuous, but flagged so labels show "0" + ND
-                // and HIGHEST/MEDIAN/LOWEST ignore those filler zeros.
+                // A day with no snapshot keeps the last recorded value. These
+                // are rolling totals — they do not become "no data", and the
+                // line must not slope through a gap as if the number changed.
                 const rawSeries = samSeriesFor(samTrendCache, channel, metric);
-                const isMissing = labels.map((_, i) => {
+                const values = [];
+                const isReal = [];
+                let lastHeld = null;
+                labels.forEach((_, i) => {
                     const v = rawSeries[i];
-                    return v === null || v === undefined || v === '';
+                    const missing = v === null || v === undefined || v === '';
+                    if (!missing) {
+                        const n = Number(v);
+                        if (Number.isFinite(n)) {
+                            lastHeld = n;
+                            values.push(n);
+                            isReal.push(true);
+                            return;
+                        }
+                    }
+                    values.push(lastHeld);
+                    isReal.push(false);
                 });
-                const values = labels.map((_, i) => {
-                    if (isMissing[i]) return 0;
-                    const n = Number(rawSeries[i]);
-                    return Number.isFinite(n) ? n : 0;
-                });
-                const numericValues = values.filter((_, i) => !isMissing[i]);
+                const numericValues = values.filter((_, i) => isReal[i]);
 
                 // Tear down previous chart + reset the side panel first.
                 if (samTrendChart) { samTrendChart.destroy(); samTrendChart = null; }
@@ -646,8 +655,8 @@
                 canvas.style.display = '';
                 emptyEl?.classList.add('d-none');
 
-                // Scale + side stats from real snapshot days only — filler 0s
-                // must not flatten the graph pattern.
+                // Scale + side stats from recorded snapshot days. Held days
+                // repeat the last value and must not shift the median.
                 const dataMin = Math.min(...numericValues);
                 const dataMax = Math.max(...numericValues);
                 const sorted  = [...numericValues].sort((a, b) => a - b);
@@ -659,40 +668,33 @@
                 const yMin  = Math.max(0, dataMin - range * 0.1);
                 const yMax  = dataMax + range * 0.1;
 
-                // Side panel — same colour rules as the Facebook page.
                 const refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
-                const setStat = (id, v) => {
+                const setStat = (id, v, color) => {
                     const el = document.getElementById(id);
                     if (!el) return;
                     el.textContent = fmtSamValue(metric, v);
-                    el.style.color = (v === 0) ? refGreen : (v > 0 ? refRed : refGray);
+                    el.style.color = color;
                 };
-                setStat('sam-trend-highest', dataMax);
-                setStat('sam-trend-median',  median);
-                setStat('sam-trend-lowest',  dataMin);
+                setStat('sam-trend-highest', dataMax, refRed);
+                setStat('sam-trend-median',  median,  refGray);
+                setStat('sam-trend-lowest',  dataMin, refGreen);
 
-                // Per-day dot colours: green = improved vs prev day, red =
-                // worse, grey = flat. Inverted for "lower is better" (ACOS).
-                // Skip filler ND zeros when finding the previous real value.
+                // Dot + label share one colour: green = improved vs the
+                // previous day, red = worse, grey = flat (including a day
+                // that only repeats the last snapshot). ACOS / TCOS invert.
                 const isInverted = (metric === 'acos' || metric === 'tcos');
-                const prevNumeric = (i) => {
+                const prevValue = (i) => {
                     for (let j = i - 1; j >= 0; j--) {
-                        if (!isMissing[j]) return values[j];
+                        if (values[j] !== null) return values[j];
                     }
                     return null;
                 };
                 const dotColors = values.map((v, i) => {
-                    if (isMissing[i]) return refGray;
-                    const prev = prevNumeric(i);
-                    if (prev === null) return refGray;
-                    if (isInverted) {
-                        return v < prev ? '#28a745'
-                             : v > prev ? '#dc3545'
-                             : refGray;
-                    }
-                    return v > prev ? '#28a745'
-                         : v < prev ? '#dc3545'
-                         : refGray;
+                    if (v === null) return refGray;
+                    const prev = prevValue(i);
+                    if (prev === null || v === prev) return refGray;
+                    const improved = isInverted ? v < prev : v > prev;
+                    return improved ? '#28a745' : '#dc3545';
                 });
 
                 const medianLinePlugin = {
@@ -713,63 +715,27 @@
                         ctx.restore();
                     }
                 };
-                const labelColors = values.map((v, i) => {
-                    if (isMissing[i]) return refGray;
-                    return v === 0 ? refGreen : (v > 0 ? refRed : refGray);
-                });
-                // Slanted value labels (−45°). Missing days: show "0" with ND
-                // on the continuous line (interpolated) so the trend shape is unchanged.
+                // Slanted value labels (−45°), same colour as that day's dot.
                 const valueLabelsPlugin = {
                     id: 'valueLabels',
                     afterDatasetsDraw(chart) {
                         const meta = chart.getDatasetMeta(0);
                         const ctx  = chart.ctx;
-                        const xScale = chart.scales.x;
-                        const yScale = chart.scales.y;
-
-                        // Y on the spanned trend line between neighbouring real points.
-                        const yOnTrend = (i) => {
-                            let prev = -1, next = -1;
-                            for (let j = i - 1; j >= 0; j--) {
-                                if (!isMissing[j] && Number.isFinite(meta.data[j]?.y)) { prev = j; break; }
-                            }
-                            for (let j = i + 1; j < values.length; j++) {
-                                if (!isMissing[j] && Number.isFinite(meta.data[j]?.y)) { next = j; break; }
-                            }
-                            if (prev >= 0 && next >= 0) {
-                                const t = (i - prev) / (next - prev);
-                                return meta.data[prev].y + (meta.data[next].y - meta.data[prev].y) * t;
-                            }
-                            if (prev >= 0) return meta.data[prev].y;
-                            if (next >= 0) return meta.data[next].y;
-                            return (yScale.top + yScale.bottom) / 2;
-                        };
-
                         meta.data.forEach((point, i) => {
-                            const missing = isMissing[i];
-                            const x = Number.isFinite(point?.x) ? point.x : xScale.getPixelForValue(i);
-                            const y = missing ? yOnTrend(i) : point.y;
-                            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+                            if (values[i] === null || !Number.isFinite(point?.x) || !Number.isFinite(point?.y)) return;
                             const offY = (i % 2 === 0) ? -10 : -20;
                             ctx.save();
-                            ctx.translate(x, y + offY);
+                            ctx.translate(point.x, point.y + offY);
                             ctx.rotate(-Math.PI / 4);
                             ctx.textAlign    = 'center';
                             ctx.textBaseline = 'bottom';
-                            ctx.fillStyle    = labelColors[i];
-                            ctx.font = missing
-                                ? 'bold 10px Inter, system-ui, sans-serif'
-                                : 'bold 11px Inter, system-ui, sans-serif';
-                            // Missing / no movement: show 0 with ND.
-                            ctx.fillText(missing ? '0 ND' : fmtSamValue(metric, values[i]), 0, 0);
+                            ctx.fillStyle    = dotColors[i];
+                            ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+                            ctx.fillText(fmtSamValue(metric, values[i]), 0, 0);
                             ctx.restore();
                         });
                     }
                 };
-
-                // Plot null for missing days + spanGaps so the line/fill keep a
-                // continuous pattern (filler zeros would yank the scale to 0).
-                const plotValues = values.map((v, i) => (isMissing[i] ? null : v));
 
                 samTrendChart = new Chart(canvas.getContext('2d'), {
                     type: 'line',
@@ -777,15 +743,15 @@
                         labels,
                         datasets: [{
                             label: samTrendLabel,
-                            data: plotValues,
+                            data: values,
                             backgroundColor: 'rgba(108,117,125,0.08)',
                             borderColor:     '#adb5bd',
                             borderWidth:     1.5,
                             fill:            true,
-                            tension:         0.3,
+                            tension:         0,
                             spanGaps:        true,
-                            pointRadius:     (ctx) => isMissing[ctx.dataIndex] ? 0 : 3,
-                            pointHoverRadius: (ctx) => isMissing[ctx.dataIndex] ? 0 : 5,
+                            pointRadius:      (ctx) => values[ctx.dataIndex] === null ? 0 : 3,
+                            pointHoverRadius: (ctx) => values[ctx.dataIndex] === null ? 0 : 5,
                             pointBackgroundColor: dotColors,
                             pointBorderColor:     dotColors,
                         }],
@@ -798,10 +764,7 @@
                             legend:  { display: false },
                             tooltip: {
                                 callbacks: {
-                                    label: (ctx) => {
-                                        if (isMissing[ctx.dataIndex]) return '0 (ND)';
-                                        return fmtSamValue(metric, ctx.parsed.y);
-                                    },
+                                    label: (ctx) => fmtSamValue(metric, ctx.parsed.y),
                                 },
                             },
                         },

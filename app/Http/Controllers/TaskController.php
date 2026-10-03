@@ -38,6 +38,7 @@ use App\Policies\TaskPolicy;
 use App\Services\TaskSheetImportService;
 use App\Services\TaskWhatsAppNotificationService;
 use App\Support\AttL30Metrics;
+use App\Support\AutomatedTaskAccess;
 use App\Support\AutomatedTaskChecklistIds;
 use App\Support\AutomatedTaskSchedule;
 use App\Support\Badges\BadgeDataCatalog;
@@ -4182,6 +4183,13 @@ class TaskController extends Controller
             'count' => count($taskIds)
         ]);
 
+        if ($isAutomatedTask && ! $this->userMayBulkChangeAutomatedTasks($user, $taskIds, $action)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to change automated tasks that belong to someone else.',
+            ], 403);
+        }
+
         switch ($action) {
             case 'delete':
                 if ($isAutomatedTask) {
@@ -4673,6 +4681,31 @@ class TaskController extends Controller
         return false;
     }
 
+    /**
+     * Bulk changes to automate_tasks must be allowed for every selected row.
+     * Missing ids are ignored here; the action itself no-ops on rows that are gone.
+     *
+     * @param  list<int>  $taskIds
+     */
+    private function userMayBulkChangeAutomatedTasks(?User $user, array $taskIds, string $action): bool
+    {
+        if (! $user || $taskIds === []) {
+            return false;
+        }
+
+        $templates = \DB::table('automate_tasks')->whereIn('id', $taskIds)->get();
+        foreach ($templates as $template) {
+            $allowed = $action === 'delete'
+                ? AutomatedTaskAccess::canDelete($user, $template)
+                : AutomatedTaskAccess::canModify($user, $template);
+            if (! $allowed) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     // Automated Tasks Methods
     public function automatedIndex()
     {
@@ -4686,17 +4719,13 @@ class TaskController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Calculate statistics for automated tasks
-        $automatedQuery = \DB::table('automate_tasks');
-        
-        // Show all automated templates to everyone (admin and non-admin).
-
+        $visibleTemplates = AutomatedTaskAccess::visibleTasks($user);
         $stats = [
-            'total' => (clone $automatedQuery)->count(),
-            'daily' => (clone $automatedQuery)->where('schedule_type', 'daily')->count(),
-            'weekly' => (clone $automatedQuery)->where('schedule_type', 'weekly')->count(),
-            'monthly' => (clone $automatedQuery)->where('schedule_type', 'monthly')->count(),
-            'active' => (clone $automatedQuery)->where('status', 'Todo')->count(),
+            'total' => $visibleTemplates->count(),
+            'daily' => $visibleTemplates->where('schedule_type', 'daily')->count(),
+            'weekly' => $visibleTemplates->where('schedule_type', 'weekly')->count(),
+            'monthly' => $visibleTemplates->where('schedule_type', 'monthly')->count(),
+            'active' => $visibleTemplates->where('status', 'Todo')->count(),
         ];
 
         return view('tasks.automated', compact('stats', 'isAdmin', 'users', 'canManageChecklist'));
@@ -4705,13 +4734,8 @@ class TaskController extends Controller
     public function getAutomatedData()
     {
         $user = Auth::user();
-        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
-        $query = \DB::table('automate_tasks');
-        
-        // Show all automated templates to everyone (admin and non-admin).
-
-        $tasks = $query->orderBy('id', 'desc')->get();
+        $tasks = AutomatedTaskAccess::visibleTasks($user);
 
         $formMeta = collect();
         $submissionCounts = collect();
@@ -4740,7 +4764,11 @@ class TaskController extends Controller
         $defaultAvatar = asset('images/users/avatar-2.jpg');
         $sopPageSet = $sopPageIds->map(fn ($v) => (int) $v)->flip();
         $currentEmail = strtolower(trim((string) ($user->email ?? '')));
-        $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts, $sopPageSet, $currentEmail) {
+        $tasksById = [];
+        foreach ($tasks as $template) {
+            $tasksById[(int) $template->id] = $template;
+        }
+        $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts, $sopPageSet, $currentEmail, $user, $tasksById) {
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_id = $assignorUser ? $assignorUser->id : null;
@@ -4779,12 +4807,13 @@ class TaskController extends Controller
             }
             $task->checklist_submission_count = (int) ($submissionCounts[$task->id] ?? 0);
             $task->has_sop_page = $sopPageSet->has((int) $task->id);
-            $assignorEmail = strtolower(trim((string) ($task->assignor ?? '')));
             $hasSopFile = trim((string) ($task->link3 ?? '')) !== '';
             $task->has_sop_link = $hasSopFile;
             $task->sop_page_url = ($hasSopFile || $task->has_sop_page) ? url('/tasks/automated/'.$task->id.'/sop-page') : null;
-            $task->is_sop_assignor = $assignorEmail !== '' && $assignorEmail === $currentEmail;
-            $task->can_create_sop_page = $hasSopFile;
+            $task->can_modify = AutomatedTaskAccess::canModify($user, $task, $tasksById);
+            $task->can_delete = AutomatedTaskAccess::canDelete($user, $task, $tasksById);
+            $task->is_sop_assignor = $task->can_modify || ($currentEmail !== '' && strtolower(trim((string) ($task->assignor ?? ''))) === $currentEmail);
+            $task->can_create_sop_page = $hasSopFile && $task->can_modify;
         });
 
         return response()->json($tasks);
@@ -4959,6 +4988,11 @@ class TaskController extends Controller
         if (!$taskModel) {
             return redirect()->route('tasks.automated')->with('error', 'Automated task not found');
         }
+
+        $user = Auth::user();
+        if (! $user || ! AutomatedTaskAccess::canModify($user, $taskModel)) {
+            return redirect()->route('tasks.automated')->with('error', 'You are not allowed to edit this automated task.');
+        }
         
         $users = User::all();
         
@@ -5053,10 +5087,13 @@ class TaskController extends Controller
         if (!$existing) {
             return redirect()->route('tasks.automated')->with('error', 'Automated task not found.');
         }
+        if (! $user || ! AutomatedTaskAccess::canModify($user, $existing)) {
+            return redirect()->route('tasks.automated')->with('error', 'You are not allowed to edit this automated task.');
+        }
 
-        // Resolve assignor email from assignor_id (form always sends it: dropdown for admin, hidden for non-admin)
+        // Only admins / full task access may reassign ownership. Everyone else keeps the current assignor.
         $assignorEmail = $existing->assignor ?? $user->email;
-        if ($request->filled('assignor_id')) {
+        if (AutomatedTaskAccess::hasAdminAccess($user) && $request->filled('assignor_id')) {
             $assignorUser = User::find($validated['assignor_id']);
             $assignorEmail = $assignorUser ? $assignorUser->email : $assignorEmail;
         }
@@ -5147,6 +5184,11 @@ class TaskController extends Controller
             return response()->json(['message' => 'Automated task not found.'], 404);
         }
 
+        $user = Auth::user();
+        if (! $user || ! AutomatedTaskAccess::canModify($user, $existing)) {
+            return response()->json(['message' => 'You are not allowed to update this automated task.'], 403);
+        }
+
         $validated = $request->validate([
             'sop_link' => 'nullable|string|max:2048',
             'file' => 'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,png,jpg,jpeg,gif,webp,txt,csv',
@@ -5191,6 +5233,18 @@ class TaskController extends Controller
 
     public function automatedDestroy($id)
     {
+        $user = Auth::user();
+        $task = \DB::table('automate_tasks')->where('id', $id)->first();
+        if (! $task) {
+            return response()->json(['success' => false, 'message' => 'Automated task not found.'], 404);
+        }
+        if (! $user || ! AutomatedTaskAccess::canDelete($user, $task)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to delete this automated task.',
+            ], 403);
+        }
+
         // Cascade-delete child subtask templates first, then the parent.
         $childIds = \DB::table('automate_tasks')
             ->where('parent_task_id', $id)
@@ -5225,6 +5279,11 @@ class TaskController extends Controller
             return response()->json(['error' => 'Automated task not found.'], 404);
         }
 
+        $user = Auth::user();
+        if (! $user || ! AutomatedTaskAccess::canView($user, $parent)) {
+            return response()->json(['error' => 'You are not allowed to view this automated task.'], 403);
+        }
+
         $subtasks = \DB::table('automate_tasks')
             ->where('parent_task_id', $id)
             ->orderBy('subtask_order')
@@ -5245,6 +5304,14 @@ class TaskController extends Controller
             return response()->json(['success' => false, 'error' => 'Automated task not found.'], 404);
         }
 
+        $user = Auth::user();
+        if (! $user || ! AutomatedTaskAccess::canModify($user, $parent)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'You are not allowed to change this automated task.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'title' => 'required|string|max:1000',
             'description' => 'nullable|string',
@@ -5253,7 +5320,6 @@ class TaskController extends Controller
             'etc_minutes' => 'nullable|integer',
         ]);
 
-        $user = Auth::user();
         $assignorEmail = $user->email;
         $assigneeEmail = null;
         if (! empty($validated['assignee_id'])) {

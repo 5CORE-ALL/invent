@@ -595,7 +595,9 @@ class ShopifyAdsMasterController extends Controller
         $byChannel  = [];   // channel => date => [...]
         $ssalesByDate = []; // date => net sales
         foreach ($rows as $r) {
-            $d  = (string) $r->snapshot_date;
+            // DATE columns can come back as Y-m-d or Y-m-d H:i:s. Keep the
+            // calendar day only so a snapshot is not dropped as "no data".
+            $d  = substr((string) $r->snapshot_date, 0, 10);
             $ch = (string) $r->channel;
 
             if ($ch === self::SSALES_CHANNEL) {
@@ -629,9 +631,8 @@ class ShopifyAdsMasterController extends Controller
             $byDate[$d]['active'] += (float) ($r->active ?? 0);
         }
 
-        // Continuous calendar window so days with no snapshot still appear
-        // on the chart (as null → "No data for that date") instead of being
-        // skipped and connecting the line across gaps.
+        // Continuous calendar window. Days with no snapshot stay null; the
+        // chart holds the previous value instead of drawing a gap as "ND".
         $end = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
         $labels = [];
         $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->startOfDay();
@@ -657,9 +658,9 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * Turn the per-day raw measures into the 6 badge series (with CVR /
+     * Turn the per-day raw measures into the badge series (with CVR /
      * ACOS derived exactly like the badges / table do). Days with no
-     * snapshot are null so the chart can show "No data for that date".
+     * snapshot are null; the chart repeats the previous value for those days.
      *
      * @param  array<string, array<string, float>>  $byDate
      * @param  array<int, string>  $labels
@@ -703,7 +704,7 @@ class ShopifyAdsMasterController extends Controller
 
     /**
      * Per-channel badge series, aligned to the same date labels. Missing
-     * days stay null so the chart can show "No data for that date".
+     * days stay null; the chart repeats the previous value for those days.
      *
      * @param  array<string, array<string, array<string, float>>>  $byChannel
      * @param  array<int, string>  $labels

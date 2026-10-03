@@ -108,7 +108,15 @@ class TaskPolicy
      */
     private function userIsAssignee(User $user, Task $task): bool
     {
-        $assignTo = trim((string) ($task->assign_to ?? ''));
+        return self::userIsListedAssignee($user, $task->assign_to ?? null);
+    }
+
+    /**
+     * assign_to may be a single email or comma-separated emails (shared task).
+     */
+    public static function userIsListedAssignee(User $user, mixed $assignTo): bool
+    {
+        $assignTo = trim((string) $assignTo);
         if ($assignTo === '') {
             return false;
         }
@@ -123,6 +131,62 @@ class TaskPolicy
         }
 
         return false;
+    }
+
+    /**
+     * Admin, super-admin, or a user with full task access may see and edit every automated template.
+     */
+    public static function userHasAutomatedTaskAdminAccess(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        return SuperAdminAccess::isTaskAdmin($user) || self::userHasFullTaskAccess($user);
+    }
+
+    /**
+     * View an automate_tasks row: admins and full-access users see all;
+     * everyone else sees templates they assigned or that are assigned to them.
+     */
+    public static function userCanViewAutomatedTask(User $user, object $task): bool
+    {
+        if (self::userHasAutomatedTaskAdminAccess($user)) {
+            return true;
+        }
+
+        if (self::userIsAssignor($user, $task->assignor ?? null)) {
+            return true;
+        }
+
+        return self::userIsListedAssignee($user, $task->assign_to ?? null);
+    }
+
+    /**
+     * Edit an automate_tasks row. Assignees may view a template but not change it.
+     */
+    public static function userCanModifyAutomatedTask(User $user, object $task): bool
+    {
+        if (self::userHasAutomatedTaskAdminAccess($user)) {
+            return true;
+        }
+
+        return self::userIsAssignor($user, $task->assignor ?? null);
+    }
+
+    /**
+     * Delete an automate_tasks row.
+     * Assignors may delete their own. Admins, super-admins, and the delete-any
+     * emails (president / Ritu) may delete someone else's. Other full-access
+     * seniors may edit, but delete stays with the assignor — same as regular tasks.
+     */
+    public static function userCanDeleteAutomatedTask(User $user, object $task): bool
+    {
+        if (SuperAdminAccess::isTaskAdmin($user) || self::userCanDeleteAnyTask($user)) {
+            return true;
+        }
+
+        return self::userIsAssignor($user, $task->assignor ?? null);
     }
 
     /**
