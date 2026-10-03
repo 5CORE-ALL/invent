@@ -311,12 +311,10 @@ class ShopifyAdsMasterController extends Controller
         // recursively so nested children get it too.
         $this->applyTcosToRows($rows, $netSales);
 
-        // Trend dots match the chart's last real move. A cell that still
-        // shows the same number as the chart's last day uses that day's
-        // change (Facebook sold 79 vs 71 = green), not a flat gray.
-        // Google uses the completed California day. Other channels use
-        // yesterday. Read before today's snapshot write. ACOS / TCOS invert
-        // in the view.
+        // Trend dots match the chart's last real move. Google, Facebook, and
+        // Instagram charts end on the completed California day, so those
+        // cells use that day. Other channels use yesterday. Read before
+        // today's snapshot write. ACOS / TCOS invert in the view.
         $completed = $this->completedCaliforniaChartEnd()->toDateString();
         $beforeCompleted = Carbon::parse($completed, self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
         $yesterday = Carbon::now(self::SNAPSHOT_TIMEZONE)->subDay()->toDateString();
@@ -433,11 +431,11 @@ class ShopifyAdsMasterController extends Controller
     {
         foreach ($rows as &$row) {
             $channel = (string) ($row['channel'] ?? '');
-            $googleChart = in_array($channel, ['Google Shopping', 'Google SERP', 'Youtube ads'], true);
+            $completedChart = $this->chartUsesCompletedDay($channel);
             $row['trend'] = $this->computeTrend(
                 $row,
-                $googleChart ? ($endByChannel[$channel] ?? null) : ($yesterdayByChannel[$channel] ?? null),
-                $googleChart ? ($priorByChannel[$channel] ?? null) : ($beforeYesterdayByChannel[$channel] ?? null)
+                $completedChart ? ($endByChannel[$channel] ?? null) : ($yesterdayByChannel[$channel] ?? null),
+                $completedChart ? ($priorByChannel[$channel] ?? null) : ($beforeYesterdayByChannel[$channel] ?? null)
             );
 
             if (! empty($row['_children']) && is_array($row['_children'])) {
@@ -637,9 +635,8 @@ class ShopifyAdsMasterController extends Controller
     public function history(Request $request)
     {
         $days = max(1, min(365, (int) $request->query('days', 32)));
-        // Google Shopping ends on the last completed California day (same
-        // dates as that page). Instagram and Facebook still need today, so
-        // the loaded range covers both windows.
+        // Google, Facebook, and Instagram end on the last completed California
+        // day. Other channels still include today, so the loaded range covers both.
         $todayC = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
         $googleEndC = $this->completedCaliforniaChartEnd();
         $fromC = $googleEndC->copy()->subDays($days - 1);
@@ -947,22 +944,34 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * Google Shopping, SERP, and YouTube charts stop on the last completed
-     * California day. Instagram, Facebook, and the other rows keep today so
-     * their last point matches the table.
+     * Google, Facebook, and Instagram charts stop on the last completed
+     * California day, the same end date as the Google Shopping page.
+     */
+    private function chartUsesCompletedDay(string $channel): bool
+    {
+        if (in_array($channel, ['Google Shopping', 'Google SERP', 'Youtube ads', 'Facebook', 'Instagram'], true)) {
+            return true;
+        }
+
+        return str_starts_with($channel, 'Facebook'.self::SUBROW_SEPARATOR)
+            || str_starts_with($channel, 'Instagram'.self::SUBROW_SEPARATOR);
+    }
+
+    /**
+     * Drop the unfinished California day from Google, Facebook, and Instagram.
      *
      * @param  array<string, array<string, array<string, float>>>  $byChannel
      * @return array<string, array<string, array<string, float>>>
      */
     private function withoutOpenGoogleDays(array $byChannel): array
     {
-        $googleEnd = $this->completedCaliforniaChartEnd()->toDateString();
-        foreach (['Google Shopping', 'Google SERP', 'Youtube ads'] as $channel) {
-            if (! isset($byChannel[$channel])) {
+        $chartEnd = $this->completedCaliforniaChartEnd()->toDateString();
+        foreach (array_keys($byChannel) as $channel) {
+            if (! $this->chartUsesCompletedDay((string) $channel)) {
                 continue;
             }
             foreach (array_keys($byChannel[$channel]) as $day) {
-                if ($day > $googleEnd) {
+                if ($day > $chartEnd) {
                     unset($byChannel[$channel][$day]);
                 }
             }
@@ -1302,7 +1311,7 @@ class ShopifyAdsMasterController extends Controller
                     'sales'  => (float) $pageSold[$day]['sales'],
                     'active' => $this->activeOnOrBefore($activeByDate, $day),
                 ];
-                if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold)) {
+                if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold, true)) {
                     continue;
                 }
                 $this->putHistoryDay($byChannel, $channel, $day, $measures);
@@ -1352,7 +1361,7 @@ class ShopifyAdsMasterController extends Controller
                 'sales'  => $sales,
                 'active' => $this->activeOnOrBefore($activeByDate, $day),
             ];
-            if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold)) {
+            if ($this->refreshSoldSales($byChannel, $channel, $day, $measures, $refreshedSold, true)) {
                 continue;
             }
             $this->putHistoryDay($byChannel, $channel, $day, $measures);

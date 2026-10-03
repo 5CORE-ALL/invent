@@ -658,10 +658,10 @@
                     const n = Number(v);
                     return Number.isFinite(n) ? n : null;
                 });
-                // Google charts stop on the last completed California day.
+                // Google, Facebook, and Instagram stop on the last completed California day.
                 // Other channels keep today so the last point matches the row.
-                const googleChannel = channel === 'Google Shopping' || channel === 'Google SERP' || channel === 'Youtube ads';
-                if (googleChannel) {
+                const completedDayChannel = channel === 'Google Shopping' || channel === 'Google SERP' || channel === 'Youtube ads' || channel === 'Facebook' || channel === 'Instagram' || channel.indexOf('Facebook · ') === 0 || channel.indexOf('Instagram · ') === 0;
+                if (completedDayChannel) {
                     let end = values.length;
                     while (end > 0 && values[end - 1] === null) end--;
                     const start = Math.max(0, end - days);
