@@ -435,6 +435,16 @@
             max-width: 100%;
         }
 
+        .eca-sync-cell { display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+        .eca-sync-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12); }
+        .eca-sync-dot.is-green { background: #16a34a; }
+        .eca-sync-dot.is-yellow { background: #f59e0b; }
+        .eca-sync-dot.is-red { background: #dc2626; }
+        .eca-push-alert {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; border-radius: 50%; background: #dc2626; color: #fff;
+            font-size: 11px; font-weight: 700; line-height: 1; cursor: help;
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay3'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
@@ -615,6 +625,10 @@
                     </button>
 
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay3'])
+                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
+                        title="Set S Bid from Dil. eBay 3 keeps its own slabs.">
+                        Dil vs SBid
+                    </button>
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay3'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay3'])
 
@@ -816,6 +830,10 @@
     </div>
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay3'])
+    @include('campaign.partials.ebay-dil-sbid-rule', [
+        'part' => 'modal',
+        'account' => 'eBay 3',
+    ])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay3'])
 @endsection
@@ -831,6 +849,13 @@
     const EBAY3_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
     const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
+    @include('campaign.partials.ebay-dil-sbid-rule', [
+        'part' => 'script',
+        'account' => 'eBay 3',
+        'getUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
+        'saveUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
+        'applyUrl' => url('/ebay3/campaign-ads/push-selected'),
+    ])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
@@ -2242,6 +2267,48 @@
             ebayMpClampPreviewPosition(wrap, clientX, clientY);
         }
         
+        function ebay3HasCampaignAdsRow(data) {
+            if (!data) return false;
+            if (data.ca_has_ad_row == 1 || data.ca_has_ad_row === true || data.ca_has_ad_row === '1') return true;
+            if (data.ca_suggested_bid != null && data.ca_suggested_bid !== '') return true;
+            if (data.ca_bid_percentage != null && data.ca_bid_percentage !== '') return true;
+            return false;
+        }
+        function getCombinedSbid(row) {
+            if (!ebay3HasCampaignAdsRow(row)) {
+                return { bid: 0, color: '#6c757d', skip: true, title: 'No bid on /ebay3/campaign-ads' };
+            }
+            if (typeof campaignSbid === 'function') return campaignSbid(row);
+            return { bid: 0, color: '#6c757d', skip: true, title: 'No Dil vs SBid' };
+        }
+        function ebay3TabRound2(n) { return Math.round(Number(n) * 100) / 100; }
+        function ebay3TabSbidResult(row) {
+            if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
+            if (typeof ebay3IsAlertParentRow === 'function' && ebay3IsAlertParentRow(row)) return null;
+            if (String(row.ca_funding_strategy || '') !== 'COST_PER_SALE') return null;
+            if (String(row.ca_campaign_status || '').trim().toUpperCase() !== 'RUNNING') return null;
+            const res = getCombinedSbid(row);
+            if (!res || res.skip || res.off || !(res.bid > 0)) return null;
+            return res;
+        }
+        function ebay3TabBidSync(row) {
+            const res = ebay3TabSbidResult(row);
+            if (!res) return null;
+            const live = parseFloat(row.ca_bid_percentage);
+            const liveOk = isFinite(live) && live > 0;
+            const want = Number(res.bid).toFixed(1);
+            const liveText = liveOk ? live.toFixed(1) + '%' : 'empty';
+            if (liveOk && Math.abs(ebay3TabRound2(live) - ebay3TabRound2(res.bid)) < 0.009) {
+                return { color: 'green', tip: 'Updated — C Bid matches S Bid ' + want + '%' };
+            }
+            return { color: 'yellow', tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText };
+        }
+        function ebay3TabBidAlertText(row) {
+            const sync = ebay3TabBidSync(row);
+            if (!sync || sync.color === 'green') return '';
+            return 'S Bid: ' + sync.tip;
+        }
+
         // Initialize Tabulator
         table = new Tabulator("#ebay3-table", {
             ajaxURL: "/ebay3-data-json",
@@ -2909,6 +2976,74 @@
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 80
+                },
+                {
+                    title: "ES BID",
+                    field: "ca_suggested_bid",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 90,
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v)) return '<span class="text-muted">—</span>';
+                        return `<span class="text-info fw-semibold">${v.toFixed(1)}%</span>`;
+                    }
+                },
+                {
+                    title: "C BID",
+                    field: "ca_bid_percentage",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 90,
+                    headerTooltip: "Live eBay bid, shown just before Alert. Green = C Bid matches S Bid. Yellow = still waiting to push.",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const v = parseFloat(cell.getValue());
+                        let valueHtml = '<span class="text-muted">—</span>';
+                        if (!isNaN(v)) {
+                            const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
+                            valueHtml = '<span style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
+                        }
+                        const sync = ebay3TabBidSync(row);
+                        if (!sync) return valueHtml;
+                        const safe = String(sync.tip).replace(/"/g, '&quot;');
+                        return '<span class="eca-sync-cell"><span class="eca-sync-dot is-' + sync.color + '" title="' + safe + '"></span>' + valueHtml + '</span>';
+                    }
+                },
+                {
+                    title: "Alert",
+                    field: "_bid_alert",
+                    width: 56,
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Shown when C Bid does not match S Bid. Hover the mark for both percents. A running promoted listing only.",
+                    formatter: function(cell) {
+                        const tip = ebay3TabBidAlertText(cell.getRow().getData());
+                        if (!tip) return '';
+                        const safe = String(tip).replace(/"/g, '&quot;');
+                        return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
+                    }
+                },
+                {
+                    title: "S BID",
+                    field: "s_bid",
+                    hozAlign: "center",
+                    width: 90,
+                    headerTooltip: "Dil vs SBid, then the CVR overlay. Same S Bid as /ebay3/campaign-ads.",
+                    sorter: function(a, b, aRow, bRow) {
+                        return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
+                    },
+                    formatter: function(cell) {
+                        const res = getCombinedSbid(cell.getRow().getData());
+                        if (res && res.off) {
+                            return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
+                        }
+                        if (!res || res.skip) {
+                            return `<span class="text-muted" title="${(res && res.title) || 'No matching Dil slab'}" style="font-size:11px;">—</span>`;
+                        }
+                        const title = res.title || 'Dil vs SBid';
+                        return `<span title="${title}" style="font-weight:700;">${Number(res.bid).toFixed(1)}%</span>`;
+                    }
                 },
             ]
         });
@@ -3904,7 +4039,7 @@
 
             if (
                 /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SPRC_DIL|SGPFT|SGROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
-                /\b(prc|price|std\s*prc|gpft|groi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
+                /\b(prc|price|std\s*prc|gpft|groi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc|es\s*bid|c\s*bid|s\s*bid|alert)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {
                 return 'pricing';
@@ -3988,7 +4123,7 @@
                         const def = col.getDefinition();
                         if (!def.field) return;
                         if (def.field === '_parent_expand' || def.field === '_select' || def.field === 'nr_req' || def.field === 'CVR_60' || def.field === 'eBay Stock') return;
-                        if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|growth_percent|NROI|PFT %|SROI|SPFT|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(def.field)) return;
+                        if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|growth_percent|NROI|PFT %|SROI|SPFT)$/i.test(def.field)) return;
 
                         const rawTitle = def.title || def.field;
                         const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
@@ -4028,7 +4163,7 @@
             const visibility = {};
             table.getColumns().forEach(col => {
                 const def = col.getDefinition();
-                if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|nr_req|growth_percent|CVR_60|eBay Stock|NROI|PFT %|SROI|SPFT|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(def.field)) {
+                if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|nr_req|growth_percent|CVR_60|eBay Stock|NROI|PFT %|SROI|SPFT)$/i.test(def.field)) {
                     visibility[def.field] = col.isVisible();
                 }
             });
@@ -4061,6 +4196,10 @@
                         if (!def.field || def.field === '_parent_expand' || def.field === '_select') return;
                         if (def.field === 'nr_req' || def.field === 'CVR_60' || def.field === 'eBay Stock') {
                             col.hide();
+                            return;
+                        }
+                        if (def.field === 'ca_bid_percentage' || def.field === '_bid_alert') {
+                            col.show();
                             return;
                         }
                         if (savedVisibility[def.field] === false) {

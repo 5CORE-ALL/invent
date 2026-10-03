@@ -225,6 +225,56 @@ class EbayThreeController extends Controller
         return null;
     }
 
+    /**
+     * Latest COST_PER_SALE ad per listing, same pick as /ebay3/campaign-ads.
+     */
+    private function ebay3CampaignAdsByListing()
+    {
+        try {
+            return DB::table('ebay3_campaign_ads as t')
+                ->join(DB::raw('(SELECT listing_id,
+                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                        MAX(id) AS max_id
+                                 FROM ebay3_campaign_ads
+                                 GROUP BY listing_id) x'), function ($join) {
+                    $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                })
+                ->select(
+                    't.listing_id',
+                    't.bid_percentage',
+                    't.suggested_bid',
+                    't.promote_with_ad',
+                    't.funding_strategy',
+                    't.campaign_status'
+                )
+                ->get()
+                ->keyBy(fn ($row) => (string) $row->listing_id);
+        } catch (\Throwable $e) {
+            Log::warning('ebay3_campaign_ads unavailable: '.$e->getMessage());
+
+            return collect();
+        }
+    }
+
+    private function ebay3AttachCampaignAd(array &$row, $map, $itemId): bool
+    {
+        $key = trim((string) ($itemId ?? ''));
+        if ($key === '' || ! $map || ! $map->has($key)) {
+            return false;
+        }
+        $ad = $map->get($key);
+        $row['bid_percentage'] = $ad->bid_percentage ?? null;
+        $row['suggested_bid'] = $ad->suggested_bid ?? null;
+        $row['ca_bid_percentage'] = $ad->bid_percentage ?? null;
+        $row['ca_suggested_bid'] = $ad->suggested_bid ?? null;
+        $row['ca_promote_with_ad'] = $ad->promote_with_ad ?? null;
+        $row['ca_funding_strategy'] = $ad->funding_strategy ?? null;
+        $row['ca_campaign_status'] = $ad->campaign_status ?? null;
+        $row['ca_has_ad_row'] = 1;
+
+        return true;
+    }
+
     private function findEbay3MetricBySku(string $sku): ?Ebay3Metric
     {
         $sku = trim($sku);
@@ -418,7 +468,7 @@ class EbayThreeController extends Controller
         $lastSbidMap = [];
         $sbidMMap = [];
         $apprSbidMap = [];
-        $campaignListingsMap = collect();
+        $campaignListingsMap = $this->ebay3CampaignAdsByListing();
         $pmtAdMetricsBySku = [];
         $pmtAdMetricsBySkuL7 = [];
         $extraClicksData = [];
@@ -720,10 +770,7 @@ class EbayThreeController extends Controller
                 // PMT Ads fields for parent rows
                 // Use PARENT's own Ebay3Metric data (not aggregated children) for PMT columns
                 $parentOwnItemId = $ebayMetric->item_id ?? null;
-                if ($parentOwnItemId && isset($campaignListingsMap[$parentOwnItemId])) {
-                    $row['bid_percentage'] = $campaignListingsMap[$parentOwnItemId]->bid_percentage ?? null;
-                    $row['suggested_bid'] = $campaignListingsMap[$parentOwnItemId]->suggested_bid ?? null;
-                } else {
+                if (! $this->ebay3AttachCampaignAd($row, $campaignListingsMap, $parentOwnItemId)) {
                     $row['bid_percentage'] = $sums['pmt_bid_percentage'] ?? null;
                     $row['suggested_bid'] = $sums['pmt_suggested_bid'] ?? null;
                 }
@@ -762,7 +809,9 @@ class EbayThreeController extends Controller
                     $row['L30'] = 0;
                 }
                 
-                // eBay3 Metrics for child SKUs
+                // eBay3 Metrics for child SKUs. S Bid uses these metric totals, same as /ebay3/campaign-ads.
+                $row['metric_ebay_l30'] = (float) ($ebayMetric->ebay_l30 ?? 0);
+                $row['metric_ebay_l60'] = (float) ($ebayMetric->ebay_l60 ?? 0);
                 $row['eBay L30'] = $ebayMetric->ebay_l30 ?? 0;
                 $row['views'] = $ebayMetric->views ?? 0;
                 $row['eBay Price'] = $ebayMetric->ebay_price ?? 0;
@@ -924,10 +973,7 @@ class EbayThreeController extends Controller
                 // === PMT Ads: bid_percentage, suggested_bid, clicks ===
                 // Match Ebay3PmtAdsController: use item_id directly with keyBy collection
                 if ($ebayMetric && $ebayMetric->item_id) {
-                    if (isset($campaignListingsMap[$ebayMetric->item_id])) {
-                        $row['bid_percentage'] = $campaignListingsMap[$ebayMetric->item_id]->bid_percentage ?? null;
-                        $row['suggested_bid'] = $campaignListingsMap[$ebayMetric->item_id]->suggested_bid ?? null;
-                    }
+                    $this->ebay3AttachCampaignAd($row, $campaignListingsMap, $ebayMetric->item_id);
 
                     // PMT clicks from aggregated metrics
                     $skuUpper = strtoupper($sku);
