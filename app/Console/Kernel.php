@@ -790,7 +790,7 @@ class Kernel extends ConsoleKernel
             ->name('fetch-temu-metrics')
             ->withoutOverlapping()
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log)); 
 
         $ist($schedule->command('app:fetch-temu2-metrics')
             ->dailyAt('14:35')
@@ -1569,11 +1569,10 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Grid loads after 21:50 save a new rule SBID/SBGT. This run pushes those
-        // the same day. Recent failures stay on the 21:50 retry.
+        // gaps, including overnight. Recent failures stay on the 21:50 retry.
         $schedule->command('amazon:ads-live-bid-bgt-sync --limit=100')
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
-            ->between('09:00', '23:30')
             ->name('amazon-ads-live-bid-bgt-sync-followup')
             ->withoutOverlapping(25)
             ->runInBackground()

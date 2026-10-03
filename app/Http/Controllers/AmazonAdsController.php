@@ -23,6 +23,7 @@ use App\Support\AmazonAdsSbidRule;
 use App\Support\AmazonAdsLiveSyncFollowUp;
 use App\Support\AmazonAdsLiveSyncStatus;
 use App\Support\AmazonAdsSbgt;
+use App\Support\AmazonAdsStoredLiveBid;
 use App\Support\AmazonAdsTargetCounts;
 use App\Support\AmazonAcosSbgtRule;
 use Illuminate\Database\Query\Builder;
@@ -5334,6 +5335,7 @@ class AmazonAdsController extends Controller
         }
 
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
+            $data = AmazonAdsStoredLiveBid::fillRows($table, $data);
             $data = self::attachLiveSyncStatusesToRows($data, $table);
             AmazonAdsLiveSyncFollowUp::requestFromGrid($data, $table);
         }

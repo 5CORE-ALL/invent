@@ -122,7 +122,22 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
         $this->assertSame('sbid_differs', $rows[0]['bid_sync_reason']);
         $this->assertStringContainsString('$0.68', $rows[0]['bid_sync_tip']);
         $this->assertStringContainsString('$0.83', $rows[0]['bid_sync_tip']);
-        $this->assertSame('', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('SBID:', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('$0.68', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('$0.83', $rows[0]['pushAlert']);
+    }
+
+    public function test_unverified_lbid_sbid_gap_still_alerts_with_both_amounts(): void
+    {
+        $rows = AmazonAdsLiveSyncStatus::attachToRows(
+            [['campaign_id' => '531', 'sbid' => 0.73, 'last_sbid' => 0.83]],
+            ['bid' => []]
+        );
+
+        $this->assertSame('yellow', $rows[0]['bid_sync_color']);
+        $this->assertSame('sbid_differs', $rows[0]['bid_sync_reason']);
+        $this->assertStringContainsString('$0.73', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('$0.83', $rows[0]['pushAlert']);
     }
 
     public function test_one_cent_lbid_sbid_gap_is_an_alert(): void
@@ -143,7 +158,9 @@ class AmazonAdsLiveSyncStatusTest extends TestCase
 
         $this->assertSame('yellow', $rows[0]['bid_sync_color']);
         $this->assertSame('sbid_differs', $rows[0]['bid_sync_reason']);
-        $this->assertSame('', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('SBID:', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('$0.37', $rows[0]['pushAlert']);
+        $this->assertStringContainsString('$0.36', $rows[0]['pushAlert']);
         $this->assertStringContainsString('$0.37', $rows[0]['bid_sync_tip']);
         $this->assertStringContainsString('$0.36', $rows[0]['bid_sync_tip']);
     }
