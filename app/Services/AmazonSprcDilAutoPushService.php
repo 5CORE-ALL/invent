@@ -272,8 +272,17 @@ class AmazonSprcDilAutoPushService
             return null;
         }
 
-        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship);
-        $lmpCapped = ($effective - $capped) > 0.009;
+        $capped = AmazonDilGroiRule::capSpriceToLmp(
+            $effective,
+            $lmp,
+            $lp,
+            $ship,
+            AmazonDilGroiRule::TAKE_HOME,
+            $std
+        );
+        $lmpCapped = $lmp > 0
+            && ($effective - $capped) > 0.009
+            && abs($capped - round($lmp, 2)) <= 0.02;
         $sprice = $capped;
 
         if (! is_finite($sprice) || $sprice < 0.01) {

@@ -717,6 +717,17 @@
                             it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
                         </li>
                         <li>
+                            <strong>When</strong> LMP is not there:
+                            <strong>Std Prc</strong> is the maximum S PRC on every marketplace blade.
+                            If the rule price is above Std Prc, S PRC = Std Prc.
+                            A blank Std Prc leaves the calculated price.
+                        </li>
+                        <li>
+                            <strong>When</strong> LMP is above Std Prc:
+                            every calculated price is capped at <strong>Std Prc</strong>.
+                            An orange triangle on Std Prc means review that Std price.
+                        </li>
+                        <li>
                             <strong>When</strong> you change the first Target NROI%:
                             later rows fill as first +5, +10, … (increasing down the table).
                         </li>
@@ -2940,10 +2951,15 @@
                         + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
                 }
                 parts.push(groiNote + (plan.dilGroiLabel ? (' · ' + plan.dilGroiLabel) : ''));
+                if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
+                else if (plan.stdCapped) parts.push('Std cap (no LMP)');
+                if (plan.lmpCapped) parts.push('LMP cap');
                 return parts.length ? ' (' + parts.join(' + ') + ')' : '';
             }
             if (plan.cvrDisc) parts.push('CVR Disc ' + plan.cvrDisc + '%');
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
+            if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
+            else if (plan.stdCapped) parts.push('Std cap (no LMP)');
             if (plan.lmpCapped) parts.push('LMP cap');
             return parts.length ? ' (' + parts.join(' + ') + ')' : '';
         }
@@ -3030,7 +3046,13 @@
             const saleBase = plan.sale != null ? plan.sale : capped;
             plan.min = amzMinBusinessFromSprc(saleBase);
             plan.business = amzMinBusinessFromSprc(saleBase);
-            plan.lmpCapped = (origEffective - capped) > 0.009;
+            const lmpNow = (typeof amzPefLmp === 'function') ? amzPefLmp(d) : 0;
+            const stdNow = Number(d && (d.STANDARD_PRICE || d.standard_price || d.std_price)) || 0;
+            const dropped = (origEffective - capped) > 0.009;
+            plan.lmpAboveStd = dropped && lmpNow > 0 && stdNow > 0 && lmpNow + 0.0001 > stdNow
+                && capped + 0.0001 <= stdNow + 0.0001;
+            plan.lmpCapped = dropped && lmpNow > 0 && !plan.lmpAboveStd && capped + 0.0001 <= lmpNow + 0.0001;
+            plan.stdCapped = dropped && !(lmpNow > 0);
             return plan;
         }
         function amzPushPrcPlanForQueue(d) {

@@ -1552,7 +1552,7 @@
                             const dot = neStdPrcChangeDotHtml(std, comparePrice);
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + '</span>';
+                                dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
                         }
                     },
                     moneyCol("Price", "price"),

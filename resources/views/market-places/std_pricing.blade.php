@@ -27,6 +27,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 4px 2px !important;
         }
         #std-pricing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
@@ -49,7 +50,7 @@
             transform: none !important;
             height: auto !important;
         }
-        #std-pricing-wrap .tabulator .tabulator-cell { padding: 6px 8px !important; vertical-align: middle; }
+        #std-pricing-wrap .tabulator .tabulator-cell { padding: 4px 3px !important; vertical-align: middle; }
         #std-pricing-wrap .tabulator-row.tabulator-row-even { background: #f3f4f6; }
         #std-pricing-wrap .tabulator-row.tabulator-row-odd { background: #fff; }
         #std-pricing-wrap .tabulator-row.tabulator-selected { background: #e7f1ff !important; }
@@ -67,7 +68,7 @@
         }
         .std-pricing-edit:hover { background: #f0fdfa; }
         #std-pricing-wrap .tabulator .tabulator-calcs-holder { background: #eef6fb; font-weight: 700; }
-        #std-pricing-wrap .tabulator .tabulator-calcs-holder .tabulator-cell { padding: 6px 8px !important; }
+        #std-pricing-wrap .tabulator .tabulator-calcs-holder .tabulator-cell { padding: 4px 3px !important; }
         #std-column-dropdown-menu.show {
             min-width: min(92vw, 720px);
             max-width: min(96vw, 780px);
@@ -194,18 +195,6 @@
                             title="P GNROI% = Σ (P PFT − P sales × 10%) / Σ (inv × LP).">P GNROI%: —</span>
                         <span class="badge fs-6 p-2" id="std-badge-p-gnpft" style="background:#0dcaf0;color:#000;font-weight:700;"
                             title="P GNPFT% = Σ (P PFT − P sales × 10%) / Σ P sales.">P GNPFT%: —</span>
-                    </div>
-                    <div class="d-flex flex-wrap gap-2 mb-2" id="std-pricing-sp-badges">
-                        <span class="badge fs-6 p-2" id="std-badge-sp-sales" style="background:#198754;color:#fff;font-weight:700;"
-                            title="Σ S sales. S sales = inv × S P price">S Sales: —</span>
-                        <span class="badge fs-6 p-2" id="std-badge-sp-groi" style="background:#6f42c1;color:#fff;font-weight:700;"
-                            title="S GROI% = Σ S PFT / Σ (inv × LP). 20% margin, ads not included.">S GROI%: —</span>
-                        <span class="badge fs-6 p-2" id="std-badge-sp-gpft" style="background:#0dcaf0;color:#000;font-weight:700;"
-                            title="S GPFT% = Σ S PFT / Σ S sales. 20% margin, ads not included.">S GPFT%: —</span>
-                        <span class="badge fs-6 p-2" id="std-badge-sp-gnroi" style="background:#6f42c1;color:#fff;font-weight:700;"
-                            title="S GNROI% = Σ (S PFT − S sales × 10%) / Σ (inv × LP).">S GNROI%: —</span>
-                        <span class="badge fs-6 p-2" id="std-badge-sp-gnpft" style="background:#0dcaf0;color:#000;font-weight:700;"
-                            title="S GNPFT% = Σ (S PFT − S sales × 10%) / Σ S sales.">S GNPFT%: —</span>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <span id="std-pricing-total" class="badge bg-secondary">Total: —</span>
@@ -409,31 +398,6 @@
                 return currentFromRows(basis);
             }
 
-            function spPool(rows) {
-                let sales = 0;
-                let pft = 0;
-                let cogs = 0;
-                (rows || []).forEach(function (row) {
-                    const price = spPriceOf(row);
-                    const qty = parseFloat(row.inv) || 0;
-                    const cost = parseFloat(row.lp);
-                    const freight = parseFloat(row.ship) || 0;
-                    if (!isFinite(price) || price <= 0 || !(qty > 0)) return;
-                    const landed = isFinite(cost) && cost > 0 ? cost : 0;
-                    sales += qty * price;
-                    pft += qty * ((price * marginRate()) - freight - landed);
-                    if (landed > 0) cogs += qty * landed;
-                });
-                const net = pft - (sales * adsRate());
-                return {
-                    sp_sales: sales,
-                    sp_groi: Math.abs(cogs) > 0.00001 ? (pft / cogs) * 100 : null,
-                    sp_gpft: Math.abs(sales) > 0.00001 ? (pft / sales) * 100 : null,
-                    sp_gnroi: Math.abs(cogs) > 0.00001 ? (net / cogs) * 100 : null,
-                    sp_gnpft: Math.abs(sales) > 0.00001 ? (net / sales) * 100 : null,
-                };
-            }
-
             function rowsForCalc() {
                 try {
                     if (table) return table.getData('active');
@@ -484,7 +448,8 @@
                     field: field,
                     hozAlign: 'center',
                     headerHozAlign: 'center',
-                    width: 100,
+                    minWidth: 44,
+                    width: 52,
                     sorter: 'number',
                     headerTooltip: tip,
                     formatter: function (cell) { return pctCell(cell.getValue(), kind); },
@@ -497,7 +462,8 @@
                     field: key,
                     hozAlign: 'center',
                     headerHozAlign: 'center',
-                    width: 100,
+                    minWidth: 44,
+                    width: 52,
                     headerTooltip: tip,
                     sorter: function (a, b, aRow, bRow) {
                         const av = spMetrics(aRow.getData())[key];
@@ -516,7 +482,8 @@
                     field: field,
                     hozAlign: 'center',
                     headerHozAlign: 'center',
-                    width: 100,
+                    minWidth: 44,
+                    width: 52,
                     sorter: 'number',
                     headerTooltip: tip,
                     formatter: function (cell) { return pctCell(cell.getValue(), kind); },
@@ -569,7 +536,7 @@
             window.stdPricingTable = null;
             table = new Tabulator('#std-pricing-table', {
                 height: 'calc(100vh - 260px)',
-                layout: 'fitColumns',
+                layout: 'fitData',
                 placeholder: 'No SKUs',
                 selectable: true,
                 pagination: true,
@@ -673,9 +640,14 @@
                         headerTooltip: 'Amazon Standard Price (amazon_data_view.STANDARD_PRICE)',
                         formatter: function (cell) { return money(cell.getValue()); },
                     },
+                    pctColumn('STD GROI%', 'std_groi', 'groi', '((Std Price × 0.80 − ship − LP) / LP) × 100. 20% margin, ads not included.'),
+                    pctColumn('STD GPFT%', 'std_gpft', 'gpft', '((Std Price × 0.80 − ship − LP) / Std Price) × 100. 20% margin, ads not included.'),
+                    pctColumn('STD GNROI%', 'std_gnroi', 'nroi', '((Std Price × 0.80 − ship − LP − Std Price × 10%) / LP) × 100.'),
+                    pctColumn('STD GNPFT%', 'std_gnpft', 'npft', 'STD GPFT% minus 10% ads.'),
                     {
                         title: 'Use Price',
                         field: 'use_price',
+                        visible: false,
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         width: 110,
@@ -712,13 +684,10 @@
                     spColumn('S P GPFT%', 'sp_gpft', 'gpft', '((S P price × 0.80 − ship − LP) / S P price) × 100. 20% margin, ads not included.'),
                     spColumn('S P GNROI%', 'sp_gnroi', 'nroi', '((S P price × 0.80 − ship − LP − S P price × 10%) / LP) × 100.'),
                     spColumn('S P GNPFT%', 'sp_gnpft', 'npft', 'S P GPFT% minus 10% ads.'),
-                    pctColumn('STD GROI%', 'std_groi', 'groi', '((Std Price × 0.80 − ship − LP) / LP) × 100. 20% margin, ads not included.'),
-                    pctColumn('STD GPFT%', 'std_gpft', 'gpft', '((Std Price × 0.80 − ship − LP) / Std Price) × 100. 20% margin, ads not included.'),
-                    pctColumn('STD GNROI%', 'std_gnroi', 'nroi', '((Std Price × 0.80 − ship − LP − Std Price × 10%) / LP) × 100.'),
-                    pctColumn('STD GNPFT%', 'std_gnpft', 'npft', 'STD GPFT% minus 10% ads.'),
                     {
                         title: 'P sales',
                         field: 'p_sales',
+                        visible: false,
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         width: 110,
@@ -764,10 +733,7 @@
             function moneyBadge(value) {
                 const n = parseFloat(value);
                 if (!isFinite(n)) return '—';
-                return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                });
+                return (n < 0 ? '-$' : '$') + Math.round(Math.abs(n)).toLocaleString('en-US');
             }
 
             function paintPctBadge(id, label, value, kind) {
@@ -801,27 +767,51 @@
                 paintPctBadge('std-badge-p-gpft', 'P GPFT%', pool.p_gpft, 'gpft');
                 paintPctBadge('std-badge-p-gnroi', 'P GNROI%', pool.p_gnroi, 'nroi');
                 paintPctBadge('std-badge-p-gnpft', 'P GNPFT%', pool.p_gnpft, 'npft');
-                const sp = spPool(rowsForCalc());
-                const spSalesEl = document.getElementById('std-badge-sp-sales');
-                if (spSalesEl) spSalesEl.textContent = 'S Sales: ' + moneyBadge(sp.sp_sales);
-                paintPctBadge('std-badge-sp-groi', 'S GROI%', sp.sp_groi, 'groi');
-                paintPctBadge('std-badge-sp-gpft', 'S GPFT%', sp.sp_gpft, 'gpft');
-                paintPctBadge('std-badge-sp-gnroi', 'S GNROI%', sp.sp_gnroi, 'nroi');
-                paintPctBadge('std-badge-sp-gnpft', 'S GNPFT%', sp.sp_gnpft, 'npft');
             }
             window.stdPricingUpdateCounts = updateCounts;
-            window.stdPricingApplyFormula = function () {
-                if (!table) return;
-                table.getRows().forEach(function (row) {
+            let stdBgToken = 0;
+            window.stdPricingApplyInBackground = function (mutateRow, done) {
+                if (!table) {
+                    if (done) done();
+                    return;
+                }
+                const token = ++stdBgToken;
+                const rows = table.getRows();
+                let index = 0;
+                window.stdPricingApplying = true;
+                table.blockRedraw();
+                function finish() {
+                    if (token !== stdBgToken) return;
+                    window.stdPricingApplying = false;
+                    window.stdPricingSkipApply = true;
+                    table.restoreRedraw();
+                    updateCounts();
+                    setTimeout(function () { window.stdPricingSkipApply = false; }, 0);
+                    if (done) done();
+                }
+                function step() {
+                    if (token !== stdBgToken) return;
+                    const end = Math.min(index + 80, rows.length);
+                    for (; index < end; index++) {
+                        try { mutateRow(rows[index]); } catch (e) {}
+                    }
+                    if (index < rows.length) setTimeout(step, 0);
+                    else finish();
+                }
+                setTimeout(step, 0);
+            };
+            window.stdPricingApplyFormula = function (done) {
+                window.stdPricingApplyInBackground(function (row) {
                     const data = row.getData();
+                    const sprc = (typeof window.stdPricingSprcForRow === 'function')
+                        ? window.stdPricingSprcForRow(data)
+                        : data.sprc_dil;
                     row.update(Object.assign(
-                        {},
+                        { sprc_dil: sprc },
                         stdMetrics(data.std_price, data.lp, data.ship),
                         projectedMetrics(data.std_price, data.lp, data.ship, data.inv)
                     ));
-                });
-                if (typeof window.stdPricingStampSprcDil === 'function') window.stdPricingStampSprcDil();
-                else updateCounts();
+                }, done);
             };
 
             window.stdPricingTable = table;
@@ -1048,16 +1038,85 @@
             fetch(STD_COL_VIS_URL + '?channel=' + encodeURIComponent(STD_COL_CHANNEL), {
                 headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': stdCsrf() },
             }).then(function (r) { return r.json(); }).then(function (saved) {
-                applyStdColumnVisibility(saved);
-                buildStdColumnDropdown(saved);
+                const map = (saved && typeof saved === 'object' && !Array.isArray(saved)) ? saved : {};
+                const hidePSales = !localStorage.getItem('std_psales_hidden_v1');
+                if (hidePSales) {
+                    map.p_sales = false;
+                    localStorage.setItem('std_psales_hidden_v1', '1');
+                }
+                applyStdColumnVisibility(map);
+                buildStdColumnDropdown(map);
+                if (hidePSales) {
+                    const pSalesCol = table.getColumn('p_sales');
+                    if (pSalesCol) pSalesCol.hide();
+                    saveStdColumnVisibility();
+                }
             }).catch(function () {
                 buildStdColumnDropdown({});
             });
 
+            let stdAutofitLock = false;
+            let stdAutofitQueued = false;
+            function stdAutofitColumns() {
+                if (!table) return;
+                if (stdAutofitLock) {
+                    stdAutofitQueued = true;
+                    return;
+                }
+                stdAutofitLock = true;
+                const probe = stdAutofitColumns.probe || (stdAutofitColumns.probe = document.createElement('span'));
+                if (!probe.parentNode) {
+                    probe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;font-size:13px;font-weight:700;';
+                    document.body.appendChild(probe);
+                }
+                table.getColumns().forEach(function (col) {
+                    try {
+                        if (typeof col.isVisible === 'function' && !col.isVisible()) return;
+                        const def = col.getDefinition() || {};
+                        const field = col.getField();
+                        if (def.formatter === 'rowSelection' || field === 'image' || field === 'edit') return;
+                        let max = 0;
+                        (col.getCells() || []).forEach(function (cell) {
+                            const el = cell.getElement && cell.getElement();
+                            if (!el) return;
+                            const child = el.firstElementChild;
+                            probe.textContent = '';
+                            probe.innerHTML = '';
+                            if (child) probe.appendChild(child.cloneNode(true));
+                            else probe.textContent = (el.textContent || '').trim();
+                            const w = probe.offsetWidth || 0;
+                            if (w > max) max = w;
+                        });
+                        probe.textContent = '';
+                        probe.innerHTML = '';
+                        if (!(max > 0)) return;
+                        const next = Math.max(40, Math.min(220, Math.ceil(max + 10)));
+                        if (Math.abs((col.getWidth() || 0) - next) > 3) col.setWidth(next);
+                    } catch (e) { /* ignore */ }
+                });
+                setTimeout(function () {
+                    stdAutofitLock = false;
+                    if (!stdAutofitQueued) return;
+                    stdAutofitQueued = false;
+                    stdAutofitSoon();
+                }, 180);
+            }
+            function stdAutofitSoon() {
+                if (stdAutofitLock) {
+                    stdAutofitQueued = true;
+                    return;
+                }
+                clearTimeout(stdAutofitSoon.timer);
+                stdAutofitSoon.timer = setTimeout(stdAutofitColumns, 80);
+            }
             table.on('dataProcessed', function () {
                 updateCounts();
-                if (typeof window.stdPricingStampSprcDil === 'function') window.stdPricingStampSprcDil();
+                stdAutofitSoon();
+                if (window.stdPricingApplying || window.stdPricingSkipApply) return;
+                if (typeof window.stdPricingApplyFormula === 'function') window.stdPricingApplyFormula();
             });
+            table.on('renderComplete', stdAutofitSoon);
+            table.on('pageLoaded', stdAutofitSoon);
             table.on('rowSelectionChanged', updateCounts);
             table.on('dataFiltered', updateCounts);
 

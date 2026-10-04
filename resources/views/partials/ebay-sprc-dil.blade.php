@@ -448,6 +448,17 @@
                         </li>
 @endif
                         <li>
+                            <strong>When</strong> LMP is not there:
+                            <strong>Std Prc</strong> is the maximum S PRC on every marketplace blade.
+                            If the rule price is above Std Prc, S PRC = Std Prc.
+                            A blank Std Prc leaves the calculated price.
+                        </li>
+                        <li>
+                            <strong>When</strong> LMP is above Std Prc:
+                            every calculated price is capped at <strong>Std Prc</strong>.
+                            An orange triangle on Std Prc means review that Std price.
+                        </li>
+                        <li>
                             <strong>When</strong> you change the first Target {{ $ebaySprcDilTargetLabel }}%:
                             later rows fill as first +5, +10, … (increasing down the table).
                         </li>

@@ -1948,7 +1948,7 @@
                             const comparePrice = lmpPrice > 0 ? lmpPrice : channelPrice;
                             const dot = sheinStdPrcChangeDotHtml(std, comparePrice);
 
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
                         }
                     },
                     {
@@ -2185,7 +2185,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. AL30 = 0 uses min Target NROI. AL30 > 0 uses Dil-matching Target NROI; Dil outside the table uses the nearest slab. CVR overlay adjusts Target NROI when the SKU has views. Dil below LMP stays Dil; Dil at/above LMP becomes LMP only when SGROI at LMP ≥ 20%. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. AL30 = 0 uses min Target NROI. AL30 > 0 uses Dil-matching Target NROI; Dil outside the table uses the nearest slab. CVR overlay adjusts Target NROI when the SKU has views. Dil below LMP stays Dil; Dil at/above LMP becomes LMP only when SGROI at LMP ≥ 20%. When LMP is missing, Std Prc is the maximum. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';

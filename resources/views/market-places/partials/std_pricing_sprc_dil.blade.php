@@ -544,11 +544,13 @@
             };
             function redrawUsePrice() {
                 const table = window.stdPricingTable;
-                if (!table) return;
+                if (!table || window.stdPricingApplying) return;
                 try {
                     const col = table.getColumn('use_price');
-                    if (col) col.getCells().forEach(function (cell) { cell.getElement() && cell.getRow().reformat && null; });
-                    table.redraw(true);
+                    if (!col || (typeof col.isVisible === 'function' && !col.isVisible())) return;
+                    col.getCells().forEach(function (cell) {
+                        if (cell.getElement()) cell.getRow().reformat();
+                    });
                 } catch (e) { /* ignore */ }
             }
             function normalizeFormula(raw) {
@@ -610,20 +612,13 @@
                 const price = (lp * (1 + (Number(rule.nroi) || 0) / 100) + ship) / denom;
                 return (isFinite(price) && price > 0) ? round2(price) : null;
             };
-            let stamping = false;
             window.stdPricingStampSprcDil = function () {
-                const table = window.stdPricingTable;
-                if (stamping || !table || typeof table.getRows !== 'function') return;
-                stamping = true;
-                try {
-                    table.getRows().forEach(function (row) {
-                        const next = window.stdPricingSprcForRow(row.getData());
-                        if (row.getData().sprc_dil !== next) row.update({ sprc_dil: next });
-                    });
-                } finally {
-                    stamping = false;
-                    if (typeof window.stdPricingUpdateCounts === 'function') window.stdPricingUpdateCounts();
-                }
+                if (window.stdPricingApplying) return;
+                if (typeof window.stdPricingApplyInBackground !== 'function') return;
+                window.stdPricingApplyInBackground(function (row) {
+                    const next = window.stdPricingSprcForRow(row.getData());
+                    if (row.getData().sprc_dil !== next) row.update({ sprc_dil: next });
+                });
             };
             function loadRules() {
                 const status = document.getElementById('std-dil-groi-status');
@@ -689,10 +684,15 @@
                     paintFormula(res && res.formula);
                     renderLmpRules();
                     renderTable();
-                    if (typeof window.stdPricingApplyFormula === 'function') window.stdPricingApplyFormula();
-                    else window.stdPricingStampSprcDil();
-                    redrawUsePrice();
-                    if (status) status.textContent = 'Saved. Formula, Sprc Dil, and Use Price are applied.';
+                    if (status) status.textContent = 'Saved. Applying prices…';
+                    const finish = function () {
+                        if (status) status.textContent = 'Saved. Formula and prices are applied.';
+                    };
+                    if (typeof window.stdPricingApplyFormula === 'function') window.stdPricingApplyFormula(finish);
+                    else {
+                        window.stdPricingStampSprcDil();
+                        finish();
+                    }
                 }).catch(function (err) {
                     if (status) status.textContent = err.message || 'Save failed';
                 });

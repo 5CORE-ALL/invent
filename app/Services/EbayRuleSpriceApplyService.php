@@ -248,7 +248,14 @@ class EbayRuleSpriceApplyService
             return null;
         }
 
-        $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, (float) ($row['lmp'] ?? 0), $lp, $ship, $margin);
+        $sprice = AmazonDilGroiRule::capSpriceToLmp(
+            $raw,
+            (float) ($row['lmp'] ?? 0),
+            $lp,
+            $ship,
+            $margin,
+            (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0)
+        );
 
         return [
             'sprice' => $sprice,
@@ -324,6 +331,7 @@ class EbayRuleSpriceApplyService
             'cvr' => (float) ($item['SCVR'] ?? $item['cvr'] ?? 0),
             'cvr_60' => (float) ($item['CVR_60'] ?? $item['cvr_60'] ?? 0),
             'lmp' => (float) ($item['lmp_price'] ?? $item['lmp'] ?? 0),
+            'std_price' => (float) ($item['STANDARD_PRICE'] ?? $item['standard_price'] ?? $item['std_price'] ?? 0),
         ], $store['rules'] ?? [], $store['cvr_adj'] ?? null, $margin, $adsPct);
 
         if ($computed === null) {
@@ -472,6 +480,7 @@ class EbayRuleSpriceApplyService
         $lmpLookups = $this->lmpLookupForSkus($skus);
         $lmpDetails = $lmpLookups['details'];
         $lmpLowest = $lmpLookups['lowest'];
+        $stdBySku = DilRuleSpriceApplyService::amazonStdBySku($skus);
 
         $draft = [];
         foreach ($skus as $sku) {
@@ -504,6 +513,7 @@ class EbayRuleSpriceApplyService
                 'cvr_60' => $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0.0,
                 'ebay_l30' => $ebayL30,
                 'lmp' => (float) ($lmpRow['lmp_price'] ?? 0),
+                'std_price' => (float) ($stdBySku[$sku] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
                 'pushed_sprice' => $pushedBySku[$sku] ?? 0.0,
                 'dil' => $inv > 0 ? round(($ov / $inv) * 100, 2) : 0.0,

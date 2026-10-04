@@ -341,29 +341,50 @@ class AmazonDilGroiRule
     }
 
     /**
+     * Std Prc is the maximum when LMP is missing, or when LMP is above Std Prc.
+     * A blank Std Prc does not cap. LMP at or below Std leaves the price unchanged here.
+     */
+    public static function capToStdWhenNoLmp(float $sprice, float $lmp, float $std): float
+    {
+        $s = round($sprice, 2);
+        if (! ($std > 0) || ! ($s > 0) || ($s + 0.0001) <= $std) {
+            return $s;
+        }
+        if ($lmp > 0 && ($lmp + 0.0001) <= $std) {
+            return $s;
+        }
+
+        return round($std, 2);
+    }
+
+    /**
      * Amazon LMP cap (eBay 1–3 cron + tabulator use the same rule):
      *  Dil below LMP → keep Dil (no cap).
      *  Dil at/above LMP and SGROI at LMP ≥ 20% → S PRC = LMP.
      *  Dil at/above LMP and SGROI at LMP < 20% → keep Dil (no cap).
-     * Never raises Dil up to LMP.
+     *  No LMP, or LMP above Std Prc → Std Prc is the maximum.
+     * Never raises Dil up to LMP or Std Prc.
      */
     public static function capSpriceToLmp(
         float $sprice,
         float $lmp,
         float $lp,
         float $ship = 0.0,
-        float $margin = self::TAKE_HOME
+        float $margin = self::TAKE_HOME,
+        float $std = 0.0
     ): float {
         $s = round($sprice, 2);
-        if (! ($lmp > 0) || ! ($s > 0) || ($s + 0.0001) < $lmp) {
+        if (! ($s > 0)) {
             return $s;
         }
-        $sgroiAtLmp = self::sgroiAtPrice($lmp, $lp, $ship, $margin);
-        if ($sgroiAtLmp !== null && $sgroiAtLmp < self::LMP_SGROI_MIN) {
-            return $s;
+        if ($lmp > 0 && ($s + 0.0001) >= $lmp) {
+            $sgroiAtLmp = self::sgroiAtPrice($lmp, $lp, $ship, $margin);
+            if ($sgroiAtLmp === null || $sgroiAtLmp >= self::LMP_SGROI_MIN) {
+                $s = round($lmp, 2);
+            }
         }
 
-        return round($lmp, 2);
+        return self::capToStdWhenNoLmp($s, $lmp, $std);
     }
 
     /** Same as the Amazon tabulator CVR L30 column (A L30 ÷ Sess30). */

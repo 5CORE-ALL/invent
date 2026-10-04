@@ -1303,14 +1303,35 @@
             if (sgroiAtLmp != null && sgroiAtLmp < 20) return false;
             return true;
         }
+        function amazonStdPrice(rowData) {
+            const raw = rowData && (rowData.STANDARD_PRICE != null && rowData.STANDARD_PRICE !== ''
+                ? rowData.STANDARD_PRICE
+                : (rowData.standard_price != null && rowData.standard_price !== ''
+                    ? rowData.standard_price
+                    : rowData.std_price));
+            const n = parseFloat(raw);
+            return (isFinite(n) && n > 0) ? n : 0;
+        }
+        /** Std Prc is the maximum when LMP is missing, or when LMP is above Std. */
+        function amazonCapToStdWhenNoLmp(rowData, sprice) {
+            const s = parseFloat(sprice);
+            if (!(s > 0)) return s;
+            const rounded = +Number(s).toFixed(2);
+            const std = amazonStdPrice(rowData);
+            if (!(std > 0) || rounded + 0.0001 <= std) return rounded;
+            const lmp = lmpWithShipping(rowData);
+            if (lmp > 0 && lmp + 0.0001 <= std) return rounded;
+            return +Number(std).toFixed(2);
+        }
         function amazonCapSpriceToLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
-            if (!amazonShouldCapSpriceToLmp(rowData, s)) {
-                return +Number(s).toFixed(2);
+            let out = +Number(s).toFixed(2);
+            if (amazonShouldCapSpriceToLmp(rowData, s)) {
+                const lmp = lmpWithShipping(rowData);
+                if (lmp > 0) out = +Number(lmp).toFixed(2);
             }
-            const lmp = lmpWithShipping(rowData);
-            return +Number(lmp).toFixed(2);
+            return amazonCapToStdWhenNoLmp(rowData, out);
         }
         window.amazonSgroiAtPrice = amazonSgroiAtPrice;
         window.amazonShouldCapSpriceToLmp = amazonShouldCapSpriceToLmp;
@@ -4275,7 +4296,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: "number",
-                        headerTooltip: "Standard Price (Std Prc) — manual only (LMP modal / Std Prc editor). Blank unless filled when LMP cannot be determined. Dot vs Amz price.",
+                        headerTooltip: "Standard Price (Std Prc) — manual only (LMP modal / Std Prc editor). Blank unless filled when LMP cannot be determined. Orange triangle = LMP is above Std Prc; review Std price. Dot vs Amz price.",
                         editor: "input",
                         width: 70,
                         formatter: function(cell) {
@@ -4288,8 +4309,11 @@
                             if (!value || std <= 0) return '';
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(std, currentPrice, sku);
+                            const reviewTri = (window.SpriceLmpCap && SpriceLmpCap.reviewStdTriangleHtml)
+                                ? SpriceLmpCap.reviewStdTriangleHtml(rowData)
+                                : '';
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + '</span>';
+                                dot + ('$' + std.toFixed(2)) + reviewTri + '</span>';
                         },
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
@@ -4414,7 +4438,7 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. Live rule price. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. Red triangle stays when S PRC ≥ LMP.",
+                        headerTooltip: "Read-only. Live rule price. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. When LMP is missing, or LMP is above Std Prc, Std Prc is the maximum. Red triangle stays when S PRC ≥ LMP. Orange triangle = LMP above Std, review Std price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -4430,18 +4454,24 @@
                             if (!(raw > 0)) return '';
 
                             const lmpNow = lmpWithShipping(rowData);
+                            const stdNow = amazonStdPrice(rowData);
                             const shown = amazonCapSpriceToLmp(rowData, raw);
                             const sprice = shown > 0 ? shown : raw;
                             const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                             const appliedLmp = wouldHitLmp && shown + 0.0001 <= lmpNow + 0.0001;
                             const atOrAboveLmp = wouldHitLmp;
+                            const lmpAboveStd = lmpNow > 0 && stdNow > 0 && lmpNow + 0.0001 > stdNow;
+                            const stdCappedHighLmp = lmpAboveStd && raw + 0.0001 > stdNow
+                                && shown + 0.0001 <= stdNow + 0.0001;
+                            const stdCapped = !lmpAboveStd && !(lmpNow > 0) && stdNow > 0 && raw + 0.0001 > stdNow
+                                && shown + 0.0001 <= stdNow + 0.0001;
                             const sgroiAtLmp = (typeof amazonSgroiAtPrice === 'function')
                                 ? amazonSgroiAtPrice(rowData, lmpNow)
                                 : null;
 
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
-                            const redTri = atOrAboveLmp
+                            const redTri = (atOrAboveLmp && !stdCappedHighLmp)
                                 ? (appliedLmp
                                     ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
                                         + lmpNow.toFixed(2) + '"></i>'
@@ -4451,21 +4481,34 @@
                                         + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
                                         + '% (&lt; 20%)"></i>')
                                 : '';
-                            const blueTri = (!atOrAboveLmp && currentPrice > 0 && sprice > 0
+                            const reviewTri = stdCappedHighLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#fd7e14;font-size:10px;margin-left:3px;" title="LMP $'
+                                    + lmpNow.toFixed(2) + ' is above Std Prc $' + stdNow.toFixed(2)
+                                    + ' — S PRC capped at Std. Review Std price."></i>'
+                                : '';
+                            const stdTri = stdCapped
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#b45309;font-size:10px;margin-left:3px;" title="No LMP — S PRC capped at Std Prc $'
+                                    + stdNow.toFixed(2) + '"></i>'
+                                : '';
+                            const blueTri = (!atOrAboveLmp && !stdCapped && !stdCappedHighLmp && currentPrice > 0 && sprice > 0
                                 && currentPrice.toFixed(2) !== sprice.toFixed(2))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Price $' + currentPrice.toFixed(2) + '"></i>'
                                 : '';
 
                             let formattedValue = '$' + sprice.toFixed(2);
-                            if (atOrAboveLmp) {
+                            if (atOrAboveLmp && !stdCappedHighLmp) {
                                 formattedValue = '<span style="color: #dc3545; font-weight: 600;">' + formattedValue + '</span>';
+                            } else if (stdCappedHighLmp) {
+                                formattedValue = '<span style="color: #fd7e14; font-weight: 600;">' + formattedValue + '</span>';
+                            } else if (stdCapped) {
+                                formattedValue = '<span style="color: #b45309; font-weight: 600;">' + formattedValue + '</span>';
                             } else if (hasCustomSprice === false) {
                                 formattedValue = '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
                             }
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + blueTri + redTri + '</span>';
+                                dot + formattedValue + blueTri + redTri + reviewTri + stdTri + '</span>';
                         },
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {

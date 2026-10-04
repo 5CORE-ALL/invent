@@ -289,6 +289,68 @@ class AmazonDilGroiRuleTest extends TestCase
         );
     }
 
+    public function test_missing_lmp_caps_at_std_price(): void
+    {
+        // No LMP and Dil $50 > Std $32 → Std is the maximum.
+        $this->assertEqualsWithDelta(
+            32.0,
+            AmazonDilGroiRule::capSpriceToLmp(50, 0, 10, 0, 0.80, 32),
+            0.001
+        );
+
+        // No LMP and Dil $18 is already under Std $32 → keep Dil.
+        $this->assertEqualsWithDelta(
+            18.0,
+            AmazonDilGroiRule::capSpriceToLmp(18, 0, 10, 0, 0.80, 32),
+            0.001
+        );
+
+        // No LMP and blank Std → keep Dil.
+        $this->assertEqualsWithDelta(
+            50.0,
+            AmazonDilGroiRule::capSpriceToLmp(50, 0, 10, 0, 0.80, 0),
+            0.001
+        );
+
+        // LMP is present and SGROI at LMP is under 20 → keep Dil, even when Std is lower.
+        $this->assertEqualsWithDelta(
+            50.0,
+            AmazonDilGroiRule::capSpriceToLmp(50, 12, 10, 0, 0.80, 20),
+            0.001
+        );
+    }
+
+    public function test_lmp_above_std_caps_every_price_at_std(): void
+    {
+        // LMP $40 > Std $32. Dil $50 would become LMP, then Std is still the maximum.
+        $this->assertEqualsWithDelta(
+            32.0,
+            AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 32),
+            0.001
+        );
+
+        // Price between Std and LMP is pulled down to Std.
+        $this->assertEqualsWithDelta(
+            20.0,
+            AmazonDilGroiRule::capSpriceToLmp(25, 40, 10, 0, 0.80, 20),
+            0.001
+        );
+
+        // Price already under Std stays there.
+        $this->assertEqualsWithDelta(
+            15.0,
+            AmazonDilGroiRule::capSpriceToLmp(15, 40, 10, 0, 0.80, 20),
+            0.001
+        );
+
+        // LMP below Std still uses the LMP cap.
+        $this->assertEqualsWithDelta(
+            30.0,
+            AmazonDilGroiRule::capSpriceToLmp(50, 30, 10, 0, 0.80, 40),
+            0.001
+        );
+    }
+
     public function test_adjust_groi_level_only_ignores_trend(): void
     {
         $this->assertSame(40.0, AmazonDilGroiRule::adjustGroiForCvrLevel(50, 6.9));

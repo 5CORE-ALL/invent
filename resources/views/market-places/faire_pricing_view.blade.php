@@ -2414,7 +2414,8 @@
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue());
                             if (!isFinite(v) || !(v > 0)) return '<span style="color:#6c757d;">–</span>';
-                            return '<span style="font-weight:600;">' + money(v) + '</span>';
+                            const reviewTri = (window.SpriceLmpCap ? SpriceLmpCap.reviewStdTriangleHtml(d) : '');
+                            return '<span style="font-weight:600;display:inline-flex;align-items:center;gap:4px;">' + money(v) + reviewTri + '</span>';
                         }
                     },
                     {
