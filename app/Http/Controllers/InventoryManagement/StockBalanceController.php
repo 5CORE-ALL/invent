@@ -1984,6 +1984,8 @@ class StockBalanceController extends Controller
             return response()->json(['rules' => []]);
         }
 
+        $this->syncRulesFromLatestHistory(false);
+
         $rules = [];
         StockBalanceRule::query()
             ->orderByDesc('updated_at')
@@ -2003,6 +2005,116 @@ class StockBalanceController extends Controller
             });
 
         return response()->json(['rules' => $rules]);
+    }
+
+    /**
+     * Set each destination SKU's rule from its latest stock transfer.
+     * When $force is false, a rule edited after that transfer is left as saved.
+     */
+    public function syncRulesFromLatestHistory(bool $force = false): int
+    {
+        $latestIds = DB::table('stock_balances as sb')
+            ->joinSub(
+                DB::table('stock_balances')
+                    ->select('to_sku', DB::raw('MAX(transferred_at) as transferred_at'))
+                    ->whereNotNull('to_sku')
+                    ->where('to_sku', '!=', '')
+                    ->whereNotNull('from_sku')
+                    ->where('from_sku', '!=', '')
+                    ->groupBy('to_sku'),
+                'latest',
+                function ($join) {
+                    $join->on('sb.to_sku', '=', 'latest.to_sku')
+                        ->on('sb.transferred_at', '=', 'latest.transferred_at');
+                }
+            )
+            ->selectRaw('MAX(sb.id) as id')
+            ->groupBy('sb.to_sku')
+            ->pluck('id');
+
+        if ($latestIds->isEmpty()) {
+            return 0;
+        }
+
+        $updated = 0;
+        StockBalance::query()
+            ->whereIn('id', $latestIds)
+            ->orderBy('id')
+            ->chunkById(200, function ($rows) use ($force, &$updated) {
+                foreach ($rows as $transfer) {
+                    $toSku = trim((string) $transfer->to_sku);
+                    $fromSku = trim((string) $transfer->from_sku);
+                    if ($toSku === '' || $fromSku === '' || strcasecmp($toSku, $fromSku) === 0) {
+                        continue;
+                    }
+
+                    $existing = StockBalanceRule::query()->where('to_sku', $toSku)->first();
+                    $transferredAt = $transfer->transferred_at ? Carbon::parse($transfer->transferred_at) : null;
+                    if (! $force && $existing && $transferredAt && $existing->updated_at && $existing->updated_at->gt($transferredAt)) {
+                        continue;
+                    }
+
+                    $fromQty = (int) ($transfer->from_adjust_qty ?? 0);
+                    $toQty = (int) ($transfer->to_adjust_qty ?? 0);
+                    if ($fromQty <= 0 && $toQty > 0) {
+                        $fromQty = $toQty;
+                    }
+
+                    $ratio = $this->nearestTransferRatio($fromQty, $toQty);
+                    StockBalanceRule::updateOrCreate(
+                        ['to_sku' => $toSku],
+                        [
+                            'from_sku' => $fromSku,
+                            'ratio' => $ratio,
+                            'from_qty' => $fromQty > 0 ? $fromQty : null,
+                            'action' => $existing->action ?? null,
+                            'user_id' => $existing->user_id ?? Auth::id(),
+                        ]
+                    );
+
+                    StockBalanceTransferPreference::query()
+                        ->where('to_sku', $toSku)
+                        ->update([
+                            'from_sku' => $fromSku,
+                            'ratio' => $ratio,
+                            'from_qty' => $fromQty > 0 ? $fromQty : null,
+                            'updated_at' => now(),
+                        ]);
+
+                    $updated++;
+                }
+            });
+
+        return $updated;
+    }
+
+    private function nearestTransferRatio(int $fromQty, int $toQty): string
+    {
+        $allowed = [
+            '1:4' => 4.0,
+            '1:3' => 3.0,
+            '1:2' => 2.0,
+            '1:1' => 1.0,
+            '2:1' => 0.5,
+            '3:1' => 1 / 3,
+            '4:1' => 0.25,
+        ];
+        if ($fromQty <= 0 || $toQty <= 0) {
+            return '1:1';
+        }
+
+        $actual = $toQty / $fromQty;
+        $best = '1:1';
+        $bestDiff = INF;
+        foreach ($allowed as $label => $value) {
+            $diff = abs($actual - $value);
+            if ($diff < $bestDiff) {
+                $bestDiff = $diff;
+                $best = $label;
+            }
+        }
+
+        return $best;
     }
 
     /**
