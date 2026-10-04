@@ -68,7 +68,7 @@
                     <div class="std-dg-rules-title">Rules — when each condition applies</div>
                     <ul class="small text-muted std-dg-rules">
                         <li><strong>When</strong> Dil = 0 (INV &gt; 0 and ovl30 = 0): use the <strong>0–0</strong> slab’s Target NROI.</li>
-                        <li><strong>When</strong> Dil sits in a From–To range (INV &gt; 0): use that slab’s Target NROI. Sprc Dil = (LP × (1 + NROI%/100) + Ship) / (0.80 − 10%).</li>
+                        <li><strong>When</strong> Dil sits in a From–To range (INV &gt; 0): use that slab’s Target NROI. S P price uses the margin and ads in Formula below.</li>
                         <li><strong>When</strong> you change the first Target NROI%: later rows fill as first +5, +10, …</li>
                         <li><strong>When</strong> you click <strong>Save and Apply</strong>: rules are stored in <strong>std_pricing_sprc_dil</strong> (not Amazon), then Sprc Dil is written on this table.</li>
                         <li><strong>When</strong> INV ≤ 0: count and pies skip that SKU.</li>
@@ -91,6 +91,29 @@
                     <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="std-dil-groi-add-btn">
                         <i class="fas fa-plus me-1"></i> Add slab
                     </button>
+                    <div class="std-dg-rules-title mt-3">Formula</div>
+                    <p class="small text-muted mb-2" id="std-formula-preview">
+                        S P price = (LP × (1 + Target NROI% / 100) + Ship) / (margin − ads). Profit columns use the same margin and ads.
+                    </p>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold mb-1" for="std-formula-sales">Current sales</label>
+                            <select class="form-select form-select-sm" id="std-formula-sales">
+                                <option value="marketplace">All Marketplace L30 Sales</option>
+                                <option value="ovl30_avg">OVL30 units × OVL30 avg price</option>
+                                <option value="ovl30_std">ovl30 × Std Price</option>
+                                <option value="inv_std">inv × Std Price</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label small fw-bold mb-1" for="std-formula-margin">Margin kept %</label>
+                            <input type="number" min="1" max="99" step="0.1" class="form-control form-control-sm" id="std-formula-margin" value="80">
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label small fw-bold mb-1" for="std-formula-ads">Ads %</label>
+                            <input type="number" min="0" max="98" step="0.1" class="form-control form-control-sm" id="std-formula-ads" value="10">
+                        </div>
+                    </div>
                     <div class="std-dg-rules-title mt-3">Use price — Std Price or LMP</div>
                     <p class="small text-muted mb-2">
                         When Dil falls in a row, Use Price is the lower of <strong>Std Price</strong> and <strong>LMP × factor</strong>.
@@ -157,8 +180,16 @@
     <script>
         (function () {
             const COLORS = ['#6f42c1', '#3b82f6', '#14b8a6', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c'];
-            const MARGIN = 0.80;
-            const ADS = 0.10;
+            window.stdPricingFormula = window.stdPricingFormula || { sales_basis: 'marketplace', margin: 0.80, ads: 0.10 };
+            function marginRate() {
+                const n = parseFloat(window.stdPricingFormula && window.stdPricingFormula.margin);
+                return (isFinite(n) && n > 0 && n < 1) ? n : 0.80;
+            }
+            function adsRate() {
+                const n = parseFloat(window.stdPricingFormula && window.stdPricingFormula.ads);
+                if (!isFinite(n) || n < 0) return 0.10;
+                return Math.min(n, marginRate() - 0.01);
+            }
             let rules = [];
             let lmpRules = [
                 { min: 25, max: 50, factor: 0.95, above: false },
@@ -520,6 +551,52 @@
                     table.redraw(true);
                 } catch (e) { /* ignore */ }
             }
+            function normalizeFormula(raw) {
+                const basisOk = { marketplace: 1, ovl30_avg: 1, ovl30_std: 1, inv_std: 1 };
+                const basis = raw && basisOk[raw.sales_basis] ? raw.sales_basis : 'marketplace';
+                let margin = parseFloat(raw && raw.margin);
+                let ads = parseFloat(raw && raw.ads);
+                if (!isFinite(margin)) margin = 0.80;
+                if (margin > 1) margin = margin / 100;
+                margin = Math.min(0.99, Math.max(0.01, margin));
+                if (!isFinite(ads)) ads = 0.10;
+                if (ads > 1) ads = ads / 100;
+                ads = Math.min(margin - 0.01, Math.max(0, ads));
+                return {
+                    sales_basis: basis,
+                    margin: Math.round(margin * 10000) / 10000,
+                    ads: Math.round(ads * 10000) / 10000,
+                };
+            }
+            function readFormula() {
+                return normalizeFormula({
+                    sales_basis: document.getElementById('std-formula-sales')?.value,
+                    margin: parseFloat(document.getElementById('std-formula-margin')?.value) / 100,
+                    ads: parseFloat(document.getElementById('std-formula-ads')?.value) / 100,
+                });
+            }
+            function paintFormula(raw) {
+                const formula = normalizeFormula(raw);
+                window.stdPricingFormula = formula;
+                const sales = document.getElementById('std-formula-sales');
+                const margin = document.getElementById('std-formula-margin');
+                const ads = document.getElementById('std-formula-ads');
+                if (sales) sales.value = formula.sales_basis;
+                if (margin) margin.value = String(Math.round(formula.margin * 1000) / 10);
+                if (ads) ads.value = String(Math.round(formula.ads * 1000) / 10);
+                const preview = document.getElementById('std-formula-preview');
+                if (preview) {
+                    const kept = Math.round(formula.margin * 1000) / 10;
+                    const ad = Math.round(formula.ads * 1000) / 10;
+                    preview.textContent = 'S P price = (LP × (1 + Target NROI% / 100) + Ship) / ('
+                        + kept + '% − ' + ad + '%). Profit columns use the same margin and ads.';
+                }
+            }
+            function applyFormula() {
+                window.stdPricingFormula = readFormula();
+                paintFormula(window.stdPricingFormula);
+                if (typeof window.stdPricingApplyFormula === 'function') window.stdPricingApplyFormula();
+            }
             window.stdPricingSprcForRow = function (d) {
                 if (!d || !((parseFloat(d.inv) || 0) > 0)) return null;
                 const list = displayRules();
@@ -528,7 +605,7 @@
                 const lp = parseFloat(d.lp) || 0;
                 if (!(lp > 0)) return null;
                 const ship = parseFloat(d.ship) || 0;
-                const denom = MARGIN - ADS;
+                const denom = marginRate() - adsRate();
                 if (!(denom > 0)) return null;
                 const price = (lp * (1 + (Number(rule.nroi) || 0) / 100) + ship) / denom;
                 return (isFinite(price) && price > 0) ? round2(price) : null;
@@ -562,9 +639,11 @@
                         if (res && Array.isArray(res.lmp_rules) && res.lmp_rules.length) {
                             lmpRules = res.lmp_rules.map(normalizeLmpRule).filter(Boolean);
                         }
+                        paintFormula(res && res.formula);
                         renderLmpRules();
                         renderTable();
-                        window.stdPricingStampSprcDil();
+                        if (typeof window.stdPricingApplyFormula === 'function') window.stdPricingApplyFormula();
+                        else window.stdPricingStampSprcDil();
                         if (status) {
                             status.textContent = (res && res.is_default)
                                 ? 'Using first-time defaults. Save and Apply stores them in std_pricing_sprc_dil.'
@@ -582,6 +661,7 @@
                     cvr_adj: cvrAdjNow(),
                     clearance_nroi: clearanceNroi,
                     lmp_rules: readLmpRules(),
+                    formula: readFormula(),
                 };
                 if (status) status.textContent = 'Saving…';
                 return fetch(@json(route('std.pricing.sprc-dil.save')), {
@@ -606,11 +686,13 @@
                     if (res && Array.isArray(res.lmp_rules)) {
                         lmpRules = res.lmp_rules.map(normalizeLmpRule).filter(Boolean);
                     }
+                    paintFormula(res && res.formula);
                     renderLmpRules();
                     renderTable();
-                    window.stdPricingStampSprcDil();
+                    if (typeof window.stdPricingApplyFormula === 'function') window.stdPricingApplyFormula();
+                    else window.stdPricingStampSprcDil();
                     redrawUsePrice();
-                    if (status) status.textContent = 'Saved in std_pricing_sprc_dil and applied to Sprc Dil and Use Price.';
+                    if (status) status.textContent = 'Saved. Formula, Sprc Dil, and Use Price are applied.';
                 }).catch(function (err) {
                     if (status) status.textContent = err.message || 'Save failed';
                 });

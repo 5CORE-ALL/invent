@@ -21,11 +21,15 @@ use Illuminate\View\View;
 
 class StdPricingController extends Controller
 {
-    /** 20% marketplace margin → price × 0.80. */
+    /** 20% marketplace fee → price × 0.80. */
     private const MARGIN = 0.80;
 
-    /** 10% ads on Std Price. */
+    /** 10% ads on price. */
     private const ADS = 0.10;
+
+    private float $marginRate = self::MARGIN;
+
+    private float $adsRate = self::ADS;
 
     public function index(): View
     {
@@ -34,6 +38,10 @@ class StdPricingController extends Controller
 
     public function data(): JsonResponse
     {
+        $formula = $this->savedFormula();
+        $this->marginRate = $formula['margin'];
+        $this->adsRate = $formula['ads'];
+
         $products = ProductMaster::query()
             ->whereNull('deleted_at')
             ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
@@ -102,6 +110,7 @@ class StdPricingController extends Controller
                 'sku_count' => count($rows),
                 'refreshed_at' => now()->timezone('Asia/Kolkata')->format('Y-m-d H:i'),
                 'current' => $this->marketplaceMasterCurrent(),
+                'formula' => $formula,
             ],
         ]);
     }
@@ -178,6 +187,7 @@ class StdPricingController extends Controller
             'clearance_nroi' => $row?->clearance_nroi,
             'lmp_rules' => $savedLmp === [] ? $this->defaultLmpRules() : $this->normalizeLmpRules($savedLmp),
             'lmp_rules_default' => $savedLmp === [],
+            'formula' => $this->savedFormula($row),
         ]);
     }
 
@@ -215,12 +225,14 @@ class StdPricingController extends Controller
             $lmpIncoming = is_array($decodedLmp) ? $decodedLmp : null;
         }
         $lmpRules = is_array($lmpIncoming) ? $this->normalizeLmpRules($lmpIncoming) : $this->defaultLmpRules();
+        $formula = $this->normalizeFormula($request->input('formula'));
 
         $row = StdPricingSprcDil::query()->orderBy('id')->first() ?: new StdPricingSprcDil;
         $row->rules = $rules;
         $row->cvr_adj = $cvrAdj;
         $row->clearance_nroi = $clearance;
         $row->lmp_rules = $lmpRules;
+        $row->formula = $formula;
         $row->save();
 
         return response()->json([
@@ -229,6 +241,7 @@ class StdPricingController extends Controller
             'cvr_adj' => $cvrAdj,
             'clearance_nroi' => $clearance,
             'lmp_rules' => $lmpRules,
+            'formula' => $formula,
         ]);
     }
 
@@ -273,6 +286,63 @@ class StdPricingController extends Controller
     }
 
     /**
+     * @return array{sales_basis: string, margin: float, ads: float}
+     */
+    private function defaultFormula(): array
+    {
+        return [
+            'sales_basis' => 'marketplace',
+            'margin' => self::MARGIN,
+            'ads' => self::ADS,
+        ];
+    }
+
+    /**
+     * @return array{sales_basis: string, margin: float, ads: float}
+     */
+    private function savedFormula(?StdPricingSprcDil $row = null): array
+    {
+        $row ??= StdPricingSprcDil::query()->orderBy('id')->first();
+
+        return $this->normalizeFormula($row?->formula);
+    }
+
+    /**
+     * @return array{sales_basis: string, margin: float, ads: float}
+     */
+    private function normalizeFormula(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : null;
+        }
+        $base = $this->defaultFormula();
+        if (! is_array($raw)) {
+            return $base;
+        }
+        $basis = (string) ($raw['sales_basis'] ?? $base['sales_basis']);
+        if (! in_array($basis, ['marketplace', 'ovl30_avg', 'ovl30_std', 'inv_std'], true)) {
+            $basis = $base['sales_basis'];
+        }
+        $margin = is_numeric($raw['margin'] ?? null) ? (float) $raw['margin'] : $base['margin'];
+        if ($margin > 1) {
+            $margin = $margin / 100;
+        }
+        $margin = round(min(0.99, max(0.01, $margin)), 4);
+        $ads = is_numeric($raw['ads'] ?? null) ? (float) $raw['ads'] : $base['ads'];
+        if ($ads > 1) {
+            $ads = $ads / 100;
+        }
+        $ads = round(min($margin - 0.01, max(0, $ads)), 4);
+
+        return [
+            'sales_basis' => $basis,
+            'margin' => $margin,
+            'ads' => $ads,
+        ];
+    }
+
+    /**
      * STD GROI / GPFT ignore ads. STD GNROI / GNPFT subtract 10% ads.
      *
      * @return array{std_groi: ?float, std_gpft: ?float, std_gnroi: ?float, std_gnpft: ?float}
@@ -289,8 +359,8 @@ class StdPricingController extends Controller
             return $empty;
         }
 
-        $gross = ($std * self::MARGIN) - $ship - $lp;
-        $net = $gross - ($std * self::ADS);
+        $gross = ($std * $this->marginRate) - $ship - $lp;
+        $net = $gross - ($std * $this->adsRate);
 
         return [
             'std_groi' => $lp > 0 ? round(($gross / $lp) * 100, 2) : null,
@@ -321,9 +391,9 @@ class StdPricingController extends Controller
         }
 
         $pSales = round($inv * $std, 2);
-        $pPft = round($inv * (($std * self::MARGIN) - $ship - $lp), 2);
+        $pPft = round($inv * (($std * $this->marginRate) - $ship - $lp), 2);
         $pCogs = $inv * $lp;
-        $pNet = $pPft - ($pSales * self::ADS);
+        $pNet = $pPft - ($pSales * $this->adsRate);
 
         return [
             'p_sales' => $pSales,

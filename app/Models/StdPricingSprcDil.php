@@ -13,6 +13,7 @@ class StdPricingSprcDil extends Model
         'cvr_adj',
         'clearance_nroi',
         'lmp_rules',
+        'formula',
     ];
 
     protected $casts = [
@@ -20,5 +21,6 @@ class StdPricingSprcDil extends Model
         'cvr_adj' => 'array',
         'clearance_nroi' => 'float',
         'lmp_rules' => 'array',
+        'formula' => 'array',
     ];
 }

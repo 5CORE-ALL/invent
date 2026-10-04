@@ -287,8 +287,17 @@
                 return Math.round(parseFloat(value) || 0).toLocaleString('en-US');
             }
 
-            const STD_MARGIN = 0.80;
-            const STD_ADS = 0.10;
+            function marginRate() {
+                const n = parseFloat(window.stdPricingFormula && window.stdPricingFormula.margin);
+                return (isFinite(n) && n > 0 && n < 1) ? n : 0.80;
+            }
+
+            function adsRate() {
+                const n = parseFloat(window.stdPricingFormula && window.stdPricingFormula.ads);
+                const margin = marginRate();
+                if (!isFinite(n) || n < 0) return 0.10;
+                return Math.min(n, margin - 0.01);
+            }
 
             function stdMetrics(price, lp, ship) {
                 const std = parseFloat(price);
@@ -298,8 +307,8 @@
                     return { std_groi: null, std_gpft: null, std_gnroi: null, std_gnpft: null };
                 }
                 const landed = isFinite(cost) && cost > 0 ? cost : 0;
-                const gross = (std * STD_MARGIN) - freight - landed;
-                const net = gross - (std * STD_ADS);
+                const gross = (std * marginRate()) - freight - landed;
+                const net = gross - (std * adsRate());
                 const round2 = function (n) { return Math.round(n * 100) / 100; };
                 return {
                     std_groi: landed > 0 ? round2((gross / landed) * 100) : null,
@@ -319,9 +328,9 @@
                 const landed = isFinite(cost) && cost > 0 ? cost : 0;
                 const round2 = function (n) { return Math.round(n * 100) / 100; };
                 const pSales = round2(qty * std);
-                const pPft = round2(qty * ((std * STD_MARGIN) - freight - landed));
+                const pPft = round2(qty * ((std * marginRate()) - freight - landed));
                 const pCogs = qty * landed;
-                const pNet = pPft - (pSales * STD_ADS);
+                const pNet = pPft - (pSales * adsRate());
                 return {
                     p_sales: pSales,
                     p_pft: pPft,
@@ -345,7 +354,7 @@
                     if (isFinite(pftN)) pft += pftN;
                     if (isFinite(cost) && cost > 0) cogs += qty * cost;
                 });
-                const net = pft - (sales * STD_ADS);
+                const net = pft - (sales * adsRate());
                 return {
                     p_gpft: Math.abs(sales) > 0.00001 ? (pft / sales) * 100 : null,
                     p_gnpft: Math.abs(sales) > 0.00001 ? (net / sales) * 100 : null,
@@ -357,9 +366,47 @@
 
             let marketCurrent = null;
 
+            function currentFromRows(basis) {
+                let sales = 0;
+                let pft = 0;
+                let cogs = 0;
+                rowsForCalc().forEach(function (row) {
+                    let price = 0;
+                    let sold = 0;
+                    if (basis === 'ovl30_avg') {
+                        price = parseFloat(row.ovl30_price);
+                        sold = parseFloat(row.ovl30_units) || 0;
+                    } else if (basis === 'ovl30_std') {
+                        price = parseFloat(row.std_price);
+                        sold = parseFloat(row.ovl30) || 0;
+                    } else {
+                        price = parseFloat(row.std_price);
+                        sold = parseFloat(row.inv) || 0;
+                    }
+                    const cost = parseFloat(row.lp);
+                    const freight = parseFloat(row.ship) || 0;
+                    if (!isFinite(price) || price <= 0 || !(sold > 0)) return;
+                    const landed = isFinite(cost) && cost > 0 ? cost : 0;
+                    sales += sold * price;
+                    pft += sold * ((price * marginRate()) - freight - landed);
+                    if (landed > 0) cogs += sold * landed;
+                });
+                const net = pft - (sales * adsRate());
+                return {
+                    sales: sales,
+                    groi: Math.abs(cogs) > 0.00001 ? (pft / cogs) * 100 : null,
+                    gpft: Math.abs(sales) > 0.00001 ? (pft / sales) * 100 : null,
+                    gnroi: Math.abs(cogs) > 0.00001 ? (net / cogs) * 100 : null,
+                    gnpft: Math.abs(sales) > 0.00001 ? (net / sales) * 100 : null,
+                };
+            }
+
             function currentPool() {
-                if (marketCurrent) return marketCurrent;
-                return { sales: 0, groi: null, gpft: null, gnroi: null, gnpft: null };
+                const basis = (window.stdPricingFormula && window.stdPricingFormula.sales_basis) || 'marketplace';
+                if (basis === 'marketplace') {
+                    return marketCurrent || { sales: 0, groi: null, gpft: null, gnroi: null, gnpft: null };
+                }
+                return currentFromRows(basis);
             }
 
             function spPool(rows) {
@@ -374,10 +421,10 @@
                     if (!isFinite(price) || price <= 0 || !(qty > 0)) return;
                     const landed = isFinite(cost) && cost > 0 ? cost : 0;
                     sales += qty * price;
-                    pft += qty * ((price * STD_MARGIN) - freight - landed);
+                    pft += qty * ((price * marginRate()) - freight - landed);
                     if (landed > 0) cogs += qty * landed;
                 });
-                const net = pft - (sales * STD_ADS);
+                const net = pft - (sales * adsRate());
                 return {
                     sp_sales: sales,
                     sp_groi: Math.abs(cogs) > 0.00001 ? (pft / cogs) * 100 : null,
@@ -420,8 +467,8 @@
                 const empty = { sp_groi: null, sp_gpft: null, sp_gnroi: null, sp_gnpft: null };
                 if (!isFinite(price) || price <= 0) return empty;
                 const landed = isFinite(cost) && cost > 0 ? cost : 0;
-                const gross = (price * STD_MARGIN) - freight - landed;
-                const net = gross - (price * STD_ADS);
+                const gross = (price * marginRate()) - freight - landed;
+                const net = gross - (price * adsRate());
                 const round2 = function (n) { return Math.round(n * 100) / 100; };
                 return {
                     sp_groi: landed > 0 ? round2((gross / landed) * 100) : null,
@@ -534,6 +581,9 @@
                 ajaxResponse: function (url, params, response) {
                     const meta = response && response.meta ? response.meta : {};
                     const current = meta.current || {};
+                    if (meta.formula && typeof meta.formula === 'object') {
+                        window.stdPricingFormula = meta.formula;
+                    }
                     marketCurrent = {
                         sales: parseFloat(current.sales) || 0,
                         groi: current.groi,
@@ -760,6 +810,19 @@
                 paintPctBadge('std-badge-sp-gnpft', 'S GNPFT%', sp.sp_gnpft, 'npft');
             }
             window.stdPricingUpdateCounts = updateCounts;
+            window.stdPricingApplyFormula = function () {
+                if (!table) return;
+                table.getRows().forEach(function (row) {
+                    const data = row.getData();
+                    row.update(Object.assign(
+                        {},
+                        stdMetrics(data.std_price, data.lp, data.ship),
+                        projectedMetrics(data.std_price, data.lp, data.ship, data.inv)
+                    ));
+                });
+                if (typeof window.stdPricingStampSprcDil === 'function') window.stdPricingStampSprcDil();
+                else updateCounts();
+            };
 
             window.stdPricingTable = table;
 
