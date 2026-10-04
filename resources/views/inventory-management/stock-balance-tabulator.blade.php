@@ -118,98 +118,95 @@
             letter-spacing: 0.5px;
         }
         
-        /* FROM SKU column: allow dropdown to show (no clip) */
-        .tabulator-cell.from-sku-column,
-        .tabulator-cell[data-field="to_sku"] {
-            overflow: visible !important;
+        .from-sku-display,
+        .ratio-display {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-        .from-sku-column .custom-from-sku-wrap.open {
-            z-index: 100;
+        .from-qty-input {
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            height: auto;
+            text-align: center;
+            width: 42px;
         }
-        /* FROM SKU column: same header style as FROM SOLD (vertical label, default look) */
-        /* Custom FROM SKU select with search (combo-trf style, single-select) */
-        .from-sku-column .custom-from-sku-wrap {
-            width: 100%;
-            min-width: 200px;
-            max-width: 230px;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            background: #fff;
-            padding: 4px 28px 4px 10px;
-            min-height: 34px;
-            position: relative;
-        }
-        .from-sku-column .custom-from-sku-wrap.open {
-            border-color: #80bdff;
-            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-        }
-        .from-sku-column .custom-sku-search {
-            width: 100%;
+        .tabulator .to-qty-display.form-control {
             border: none !important;
             outline: none !important;
             box-shadow: none !important;
-            padding: 0 2px;
-            font-size: 13px;
-            background: transparent;
-        }
-        .from-sku-column .custom-sku-search::placeholder {
-            color: #6c757d;
-        }
-        .from-sku-column .custom-from-sku-wrap .custom-sku-arrow {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-60%) rotate(-45deg);
-            pointer-events: none;
-            border: solid #212529;
-            border-width: 0 0 2px 2px;
-            width: 8px;
-            height: 8px;
-            display: inline-block;
-        }
-        .from-sku-column .custom-sku-dropdown {
-            display: none;
-            position: absolute;
-            left: 0;
-            right: 0;
-            top: 100%;
-            margin-top: 2px;
-            max-height: 260px;
-            overflow-y: auto;
-            background: #fff;
-            border: 1px solid #ced4da;
+            background-color: #d4edda !important;
+            padding: 1px 2px !important;
+            height: auto;
+            min-height: 0;
             border-radius: 4px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 9999;
+            text-align: center;
+            width: 36px;
+            font-weight: 700;
         }
-        .from-sku-column .custom-from-sku-wrap.open .custom-sku-dropdown {
-            display: block;
+        .from-qty-input:focus {
+            outline: none;
+            box-shadow: none !important;
         }
-        .from-sku-column .custom-sku-option {
-            padding: 6px 10px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            border-bottom: 1px solid #f0f0f0;
+        .from-qty-input::-webkit-outer-spin-button,
+        .from-qty-input::-webkit-inner-spin-button {
+            margin: 0;
         }
-        .from-sku-column .custom-sku-option:hover {
-            background: #e7f3ff;
+        .submit-transfer-btn {
+            background-color: #ffc107 !important;
+            border-color: #ffc107 !important;
+            color: #000 !important;
         }
-        .from-sku-column .custom-sku-option.selected {
-            background: #e7f3ff;
-            color: #0d6efd;
+        .submit-transfer-btn:hover,
+        .submit-transfer-btn:focus {
+            background-color: #e0a800 !important;
+            border-color: #e0a800 !important;
+            color: #000 !important;
         }
-        .from-sku-column .custom-sku-option:last-child {
-            border-bottom: none;
+        .submit-transfer-btn.submit-blocked,
+        .submit-transfer-btn.submit-blocked:hover,
+        .submit-transfer-btn.submit-blocked:focus {
+            background-color: #dc3545 !important;
+            border-color: #dc3545 !important;
+            color: #fff !important;
+            cursor: not-allowed;
+        }
+        #bulk-submit-transfer {
+            background-color: #ffc107;
+            border-color: #ffc107;
+            color: #000;
+            font-weight: 700;
+        }
+        #bulk-submit-transfer:hover,
+        #bulk-submit-transfer:focus {
+            background-color: #e0a800;
+            border-color: #e0a800;
+            color: #000;
         }
 
         .rule-edit-btn {
-            width: 32px;
-            height: 32px;
+            width: 22px;
+            height: 22px;
             padding: 0;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            color: #6c757d;
+        }
+        .rule-edit-btn.has-rule {
+            color: #0d6efd;
+        }
+        .rule-edit-btn:hover {
+            color: #0a58ca;
         }
         #addRuleModal .form-label {
             font-size: 11px;
@@ -332,6 +329,9 @@
                 <div id="bulk-actions-panel" class="p-2 bg-warning border-bottom" style="display: none;">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-count" class="fw-bold">0 SKUs selected</span>
+                        <button id="bulk-submit-transfer" class="btn btn-sm" title="Submit selected yellow rows">
+                            <i class="fas fa-check"></i> Submit
+                        </button>
                         <button id="bulk-pull-inventory" class="btn btn-sm btn-primary" title="Pull latest inventory from Shopify for selected SKUs">
                             <i class="fas fa-sync-alt"></i> Pull Inventory
                         </button>
@@ -909,7 +909,7 @@
                 // Reduce ACTION column width to save space
                 table.getColumn('ACTION').updateDefinition({width: 36});
                 
-                // Custom FROM SKU is already in DOM; restore saved and sync display
+                // Restore saved FROM SKU and ratio text
                 setTimeout(function() {
                     restoreSavedFromSku();
                 }, 100);
@@ -975,144 +975,8 @@
             });
         });
         
-        // Custom FROM SKU select (combo-trf style): fill dropdown list (single-select)
-        function fillCustomSkuDropdownSingle($wrap, searchTerm) {
-            const currentSku = $wrap.attr('data-from-sku') || '';
-            const $cell = $wrap.closest('.tabulator-cell');
-            const $select = $cell.find('.to-sku-select');
-            const selected = $select.val() || '';
-            const term = (searchTerm || '').trim().toLowerCase().replace(/\s+/g, ' ');
-            const list = [];
-            allTableData.forEach(function(item) {
-                if (!item.SKU || item.SKU === currentSku || (item.SKU + '').toUpperCase().indexOf('PARENT') !== -1) return;
-                const searchStr = ((item.SKU || '') + ' ' + (item.Parent || '')).toLowerCase();
-                if (term && searchStr.indexOf(term) === -1) return;
-                list.push({ sku: item.SKU, selected: item.SKU === selected });
-            });
-            const $dd = $wrap.find('.custom-sku-dropdown');
-            const esc = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
-            const escAttr = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
-            if (list.length === 0) {
-                $dd.html('<div class="custom-sku-option text-muted" style="cursor:default;">No matching SKU</div>');
-            } else {
-                $dd.html(list.map(function(o) {
-                    return '<div class="custom-sku-option' + (o.selected ? ' selected' : '') + '" data-sku="' + escAttr(o.sku) + '">' + esc(o.sku) + '</div>';
-                }).join(''));
-            }
-        }
-        function syncDisplayFromSkuSingle($row) {
-            const $select = $row.find('.to-sku-select');
-            const $input = $row.find('.custom-sku-search');
-            if (!$input.length) return;
-            const val = $select.val();
-            $input.val(val || '');
-        }
-        $(document).on('focus', '.custom-sku-search', function() {
-            const $wrap = $(this).closest('.custom-from-sku-wrap');
-            $wrap.addClass('open');
-            fillCustomSkuDropdownSingle($wrap, $(this).val());
-        });
-        $(document).on('click', '.custom-from-sku-wrap', function(e) {
-            if ($(e.target).closest('.custom-sku-dropdown').length) return;
-            $(this).find('.custom-sku-search').focus();
-        });
-        $(document).on('input', '.custom-sku-search', function() {
-            const $wrap = $(this).closest('.custom-from-sku-wrap');
-            fillCustomSkuDropdownSingle($wrap, $(this).val());
-        });
-        $(document).on('mousedown', '.custom-sku-option', function(e) {
-            e.preventDefault();
-            const sku = $(this).attr('data-sku');
-            if (!sku || $(this).hasClass('text-muted')) return;
-            const $row = $(this).closest('.tabulator-row');
-            const $select = $row.find('.to-sku-select');
-            $select.val(sku).trigger('change');
-            $(this).closest('.custom-from-sku-wrap').removeClass('open');
-            syncDisplayFromSkuSingle($row);
-        });
-        $(document).on('keydown', '.custom-sku-search', function(e) {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            commitTypedFromSku($(this));
-            $(this).closest('.custom-from-sku-wrap').removeClass('open');
-            $(this).blur();
-        });
-        $(document).on('blur', '.custom-sku-search', function() {
-            const $input = $(this);
-            setTimeout(function() {
-                if ($input.closest('.custom-from-sku-wrap').hasClass('open') && $input.is(':focus')) return;
-                commitTypedFromSku($input);
-            }, 150);
-        });
-        $(document).on('click', function(e) {
-            if (!$(e.target).closest('.custom-from-sku-wrap').length) {
-                $('.custom-from-sku-wrap.open').each(function() {
-                    commitTypedFromSku($(this).find('.custom-sku-search'));
-                    $(this).removeClass('open');
-                });
-            }
-        });
-        
         function normalizeSkuKey(sku) {
             return String(sku || '').trim().toUpperCase().replace(/\s+/g, ' ');
-        }
-
-        function findExactFromSku(typed, excludeSku) {
-            const term = normalizeSkuKey(typed);
-            if (!term) return '';
-            const exclude = normalizeSkuKey(excludeSku);
-            let found = '';
-            allTableData.forEach(function(item) {
-                if (!item.SKU) return;
-                const key = normalizeSkuKey(item.SKU);
-                if (!key || key === exclude || key.indexOf('PARENT') !== -1) return;
-                if (key === term) found = item.SKU;
-            });
-            return found;
-        }
-
-        function commitTypedFromSku($input) {
-            if (restoringFromSku || !$input || !$input.length || !table) return;
-            const $row = $input.closest('.tabulator-row');
-            if (!$row.length) return;
-            const row = table.getRow($row[0]);
-            if (!row) return;
-
-            const typed = ($input.val() || '').trim();
-            const $select = $row.find('.to-sku-select');
-            const current = $select.val() || '';
-            const toSku = row.getData().SKU;
-
-            if (!typed) {
-                if (current) {
-                    $select.val('').trigger('change');
-                } else {
-                    syncDisplayFromSkuSingle($row);
-                }
-                return;
-            }
-
-            let matched = findExactFromSku(typed, toSku);
-            if (!matched) {
-                const $opts = $input.closest('.custom-from-sku-wrap').find('.custom-sku-option[data-sku]');
-                if ($opts.length === 1) {
-                    matched = $opts.first().attr('data-sku') || '';
-                }
-            }
-
-            if (!matched) {
-                syncDisplayFromSkuSingle($row);
-                return;
-            }
-            if (normalizeSkuKey(matched) === normalizeSkuKey(current)) {
-                syncDisplayFromSkuSingle($row);
-                return;
-            }
-            if (!$select.find('option').filter(function() { return $(this).val() === matched; }).length) {
-                $select.append($('<option>', { value: matched, text: matched }));
-            }
-            $select.val(matched).trigger('change');
-            syncDisplayFromSkuSingle($row);
         }
 
         // DIL is stored as ratio (e.g. 14.6 => 1460%). Always convert like the column formatter.
@@ -1176,29 +1040,35 @@
             }, 350);
         }
 
+        function displayedFromSku($row, rowData) {
+            const text = String($row.find('.from-sku-display').text() || '').trim();
+            return text || (rowData && rowData._from_sku) || '';
+        }
+
+        function displayedRatio($row, rowData) {
+            const text = String($row.find('.ratio-display').text() || '').trim();
+            return text || (rowData && rowData._ratio) || '1:1';
+        }
+
+        function setRatioDisplay($row, ratio) {
+            $row.find('.ratio-display').text(ratio || '');
+        }
+
         function applyFromSkuToRow($row, row, fromSku, options) {
             options = options || {};
             const silent = !!options.silent;
             const toSku = row.getData().SKU;
             fromSku = fromSku || '';
-
-            const $select = $row.find('.to-sku-select');
-            if (fromSku && !$select.find('option').filter(function() { return $(this).val() === fromSku; }).length) {
-                $select.append($('<option>', { value: fromSku, text: fromSku }));
-            }
-            if (fromSku) {
-                $select.val(fromSku);
-            }
+            $row.find('.from-sku-display').text(fromSku);
 
             if (fromSku) {
-                const selectedOption = $select.find('option:selected');
                 const meta = getFromSkuMeta(fromSku);
-                const fromParent = selectedOption.attr('data-parent') || meta.parent || '';
-                const fromInv = meta.inv || parseInt(selectedOption.attr('data-inv'), 10) || 0;
+                const fromParent = meta.parent || '';
+                const fromInv = meta.inv || 0;
 
                 $row.find('.to-parent-display').val(fromParent);
-                $row.find('.from-inv-display').val(fromInv);
-                $row.find('.from-sold-display').val(meta.sold);
+                $row.find('.from-inv-display').text(fromInv);
+                $row.find('.from-sold-display').text(meta.sold);
                 const data = row.getData();
                 const savedQty = savedTransferQty(toSku);
                 const keepQty = !!options.keepQty && data._from_qty != null && data._from_qty !== '';
@@ -1210,12 +1080,12 @@
                 data._from_dil = meta.dil;
                 data._from_sku = fromSku;
                 if (!silent) {
-                    persistTransferInputs(toSku, fromSku, $row.find('.ratio-select').val() || data._ratio || '1:1', qtyToShow);
+                    persistTransferInputs(toSku, fromSku, displayedRatio($row, data), qtyToShow);
                 }
             } else {
                 $row.find('.to-parent-display').val('');
-                $row.find('.from-inv-display').val('');
-                $row.find('.from-sold-display').val('');
+                $row.find('.from-inv-display').text('');
+                $row.find('.from-sold-display').text('');
                 $row.find('.from-qty-input').val('');
                 $row.find('.from-dil-percent').attr('class', 'from-dil-percent').text('-');
                 const data = row.getData();
@@ -1223,42 +1093,116 @@
                 data._from_dil = null;
                 data._from_sku = null;
                 if (!silent) {
-                    persistTransferInputs(toSku, '', $row.find('.ratio-select').val() || '1:1', null);
+                    persistTransferInputs(toSku, '', displayedRatio($row, data), null);
                 }
             }
-            syncDisplayFromSkuSingle($row);
+            updateSubmitButton($row);
         }
 
-        // FROM SKU dropdown change handler (inline in table)
-        $(document).on('change', '.to-sku-select', function() {
-            if (restoringFromSku) return;
-            const $select = $(this);
-            const $row = $select.closest('.tabulator-row');
-            const row = table.getRow($row[0]);
-            if (!row) return;
-            applyFromSkuToRow($row, row, $select.val(), { silent: false });
-        });
-        
-        // Ratio change handler (inline in table)
-        $(document).on('change', '.ratio-select', function() {
-            const $select = $(this);
-            const $row = $select.closest('.tabulator-row');
-            const row = table.getRow($row[0]);
-            const rowData = row.getData();
-            const toSku = rowData.SKU; // Current row's SKU (TO SKU)
-            const ratio = $select.val();
-            rowData._ratio = ratio;
-            
-            persistTransferInputs(
-                toSku,
-                $row.find('.to-sku-select').val() || rowData._from_sku || '',
-                ratio,
-                $row.find('.from-qty-input').val()
-            );
-            // Recalculate TO Qty
-            calculateToQty($row);
-        });
-        
+        function transferIsBlocked(fromQtyRaw, fromInvRaw) {
+            const fromQty = parseInt(fromQtyRaw, 10);
+            const fromInv = parseInt(fromInvRaw, 10);
+            return String(fromQtyRaw ?? '').trim() !== '' && String(fromInvRaw ?? '').trim() !== '' && !isNaN(fromQty) && !isNaN(fromInv) && fromInv < fromQty;
+        }
+
+        function updateSubmitButton($row) {
+            if (!$row || !$row.length || !table) return;
+            const rowComp = table.getRow($row[0]);
+            if (!rowComp) return;
+            const fromQtyRaw = String($row.find('.from-qty-input').val() ?? '').trim();
+            const fromInvRaw = String($row.find('.from-inv-display').text() || '').trim();
+            const blocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
+            const $btn = $row.find('.submit-transfer-btn');
+            $btn.toggleClass('submit-blocked', blocked);
+            $btn.attr('title', blocked ? 'FROM SKU INV is less than FROM Qty' : 'Execute Transfer');
+            $btn.find('i').attr('class', blocked ? 'fas fa-times' : 'fas fa-check');
+        }
+
+        function transferFieldsForSku(sku) {
+            const rowData = allTableData.find(function(item) { return item.SKU === sku; });
+            if (!rowData) return null;
+            let $row = $();
+            if (table) {
+                const matches = table.searchRows('SKU', '=', sku);
+                if (matches.length) {
+                    const el = matches[0].getElement();
+                    if (el) $row = $(el);
+                }
+            }
+            const hasDom = $row.length && $row.find('.from-qty-input').length;
+            const fromSku = hasDom ? displayedFromSku($row, rowData) : (rowData._from_sku || '');
+            const fromQtyRaw = hasDom
+                ? String($row.find('.from-qty-input').val() ?? '').trim()
+                : (rowData._from_qty == null || rowData._from_qty === '' ? '' : String(rowData._from_qty));
+            const meta = getFromSkuMeta(fromSku);
+            const fromInvRaw = hasDom
+                ? String($row.find('.from-inv-display').text() || '').trim()
+                : (fromSku ? String(meta.inv) : '');
+            const ratio = hasDom ? displayedRatio($row, rowData) : (rowData._ratio || '1:1');
+            const fromQty = parseInt(fromQtyRaw, 10) || 0;
+            let toQty = 0;
+            if (hasDom) {
+                toQty = parseInt($row.find('.to-qty-display').val(), 10) || 0;
+            } else if (fromQty > 0) {
+                const parts = String(ratio).split(':');
+                toQty = Math.round(fromQty * (parseFloat(parts[1]) / parseFloat(parts[0])));
+            }
+            return {
+                sku: sku,
+                blocked: transferIsBlocked(fromQtyRaw, fromInvRaw),
+                fromSku: fromSku,
+                fromQty: fromQty,
+                toQty: toQty,
+                ratio: ratio,
+                fromParent: hasDom ? ($row.find('.to-parent-display').val() || meta.parent || '') : (meta.parent || ''),
+                toParent: rowData.Parent || '',
+                toInv: parseInt(rowData.INV, 10) || 0,
+                toDil: parseFloat(rowData.DIL) || 0,
+                fromInv: meta.found ? (parseInt(meta.inv, 10) || 0) : (parseInt(fromInvRaw, 10) || 0),
+                fromDil: meta.dil || 0
+            };
+        }
+
+        function validateTransferFields(fields) {
+            if (!fields) return 'Row not found';
+            if (fields.blocked) return 'FROM SKU INV is less than FROM Qty';
+            if (!fields.fromSku) return 'Missing FROM SKU';
+            if (fields.fromQty <= 0) return 'FROM Qty must be greater than 0';
+            if (fields.toQty <= 0) return 'TO Qty must be greater than 0';
+            if (fields.fromQty > fields.fromInv) return 'Insufficient inventory for ' + fields.fromSku + '. Available: ' + fields.fromInv;
+            return '';
+        }
+
+        function postTransfer(fields) {
+            return $.ajax({
+                url: '{{ route("stock.balance.store") }}',
+                method: 'POST',
+                data: {
+                    to_sku: fields.sku,
+                    to_parent_name: fields.toParent,
+                    to_available_qty: fields.toInv,
+                    to_dil_percent: fields.toDil * 100,
+                    to_adjust_qty: fields.toQty,
+                    from_sku: fields.fromSku,
+                    from_parent_name: fields.fromParent,
+                    from_available_qty: fields.fromInv,
+                    from_dil_percent: fields.fromDil * 100,
+                    from_adjust_qty: fields.fromQty,
+                    ratio: fields.ratio,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                },
+                timeout: 120000
+            });
+        }
+
+        function reloadAfterTransfers() {
+            table.setData().then(function() {
+                setTimeout(function() {
+                    restoreSavedFromSku();
+                }, 100);
+            });
+        }
+
         // FROM Qty input change handler — do not re-filter (that re-sorts and jumps the row)
         $(document).on('input', '.from-qty-input', function() {
             if (restoringFromSku) return;
@@ -1271,18 +1215,20 @@
                 data._from_qty = qty;
                 persistTransferInputs(
                     data.SKU,
-                    $row.find('.to-sku-select').val() || data._from_sku || '',
-                    $row.find('.ratio-select').val() || data._ratio || '1:1',
+                    displayedFromSku($row, data),
+                    displayedRatio($row, data),
                     qty
                 );
             }
             calculateToQty($row);
+            updateSubmitButton($row);
         });
         
         // Calculate TO Qty based on FROM Qty × Ratio
         function calculateToQty($row) {
             const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
-            const ratio = $row.find('.ratio-select').val() || '1:1';
+            const rowComp = table ? table.getRow($row[0]) : null;
+            const ratio = displayedRatio($row, rowComp ? rowComp.getData() : null);
             
             if (fromQty > 0) {
                 const ratioParts = ratio.split(':');
@@ -1293,110 +1239,110 @@
             }
         }
         
-        // Submit transfer button handler (inline in table)
+        // Submit transfer button handler (inline in table). Red rows are blocked.
         $(document).on('click', '.submit-transfer-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const $btn = $(this);
+            if ($btn.prop('disabled')) return;
             const $row = $btn.closest('.tabulator-row');
             const row = table.getRow($row[0]);
-            const rowData = row.getData();
-            
-            // Table row SKU is the TO SKU (destination)
-            const toSku = rowData.SKU;
-            const toParent = rowData.Parent || '';
-            const toInv = parseInt(rowData.INV) || 0;
-            const toDil = parseFloat(rowData.DIL) || 0;
-            const toQty = parseInt($row.find('.to-qty-display').val()) || 0;
-            
-            // User selects FROM SKU manually (from dropdown)
-            const fromSku = $row.find('.to-sku-select').val();
-            const fromParent = $row.find('.to-parent-display').val();
-            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
-            const ratio = $row.find('.ratio-select').val();
-            
-            // Validation
-            if (!fromSku) {
-                showToast('Please select a FROM SKU', 'error');
+            if (!row) return;
+            if ($btn.hasClass('submit-blocked')) {
+                showToast('This row cannot be submitted. FROM SKU INV is less than FROM Qty.', 'error');
                 return;
             }
-            
-            if (fromQty <= 0) {
-                showToast('FROM Qty must be greater than 0', 'error');
+
+            const fields = transferFieldsForSku(row.getData().SKU);
+            const err = validateTransferFields(fields);
+            if (err) {
+                showToast(err, 'error');
                 return;
             }
-            
-            if (toQty <= 0) {
-                showToast('TO Qty must be greater than 0', 'error');
-                return;
-            }
-            
-            // Get FROM SKU data
-            const fromItem = allTableData.find(function(i) { return i.SKU === fromSku; });
-            const fromInv = fromItem ? (parseInt(fromItem.INV) || 0) : 0;
-            const fromDil = fromItem ? (parseFloat(fromItem.DIL) || 0) : 0;
-            
-            if (fromQty > fromInv) {
-                showToast('Insufficient inventory for ' + fromSku + '. Available: ' + fromInv, 'error');
-                return;
-            }
-            
-            // Prepare transfer data
-            // Backend: to_sku = destination, from_sku = source (SWAPPING SKUs!)
-            // UI: FROM SKU (source), TO SKU (destination)
-            // Transfer: Deduct FROM Qty from FROM SKU, Add TO Qty to TO SKU
-            const transferData = {
-                to_sku: toSku,             // TO SKU (destination - add TO here)
-                to_parent_name: toParent,
-                to_available_qty: toInv,
-                to_dil_percent: toDil * 100,
-                to_adjust_qty: toQty,      // Add TO Qty
-                from_sku: fromSku,         // FROM SKU (source - deduct FROM here)
-                from_parent_name: fromParent,
-                from_available_qty: fromInv,
-                from_dil_percent: fromDil * 100,
-                from_adjust_qty: fromQty,  // Deduct FROM Qty
-                ratio: ratio,
-                _token: $('meta[name="csrf-token"]').attr('content')
-            };
-            
+
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-            
-            $.ajax({
-                url: '{{ route("stock.balance.store") }}',
-                method: 'POST',
-                data: transferData,
-                timeout: 120000,
-                success: function(response) {
-                    showToast(response.message || 'Transfer successful!', 'success');
-                    
-                    // Keep per-SKU preferences saved (don't clear)
-                    // Each row will remember its own FROM SKU and Ratio
-                    
-                    // Reload table to get fresh inventory data
-                    table.setData().then(function() {
-                        if (transferModeActive) {
-                            setTimeout(function() {
-                                initializeSelect2FromSku();
-                            }, 100);
-                        }
-                    });
-                    
-                    $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
-                },
-                error: function(xhr) {
-                    $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
-                    const resp = xhr.responseJSON || {};
-                    const errorMsg = resp.error || 'Transfer failed';
-                    const details = resp.details || '';
-                    const isRateLimit = (xhr.status === 429) || (resp.is_rate_limit === true);
-                    const fullMsg = isRateLimit
-                        ? (errorMsg + (details ? '<br><br>' + details : '') + '<br><br><em>Wait 1–2 minutes then click Submit again.</em>')
-                        : (errorMsg + (details ? '<br>' + details : ''));
-                    showToast(fullMsg, 'error', isRateLimit ? 12000 : 5000);
-                }
+            postTransfer(fields).done(function(response) {
+                showToast(response.message || 'Transfer successful!', 'success');
+                reloadAfterTransfers();
+            }).fail(function(xhr) {
+                const resp = xhr.responseJSON || {};
+                const errorMsg = resp.error || 'Transfer failed';
+                const details = resp.details || '';
+                const isRateLimit = (xhr.status === 429) || (resp.is_rate_limit === true);
+                const fullMsg = isRateLimit
+                    ? (errorMsg + (details ? '<br><br>' + details : '') + '<br><br><em>Wait 1–2 minutes then click Submit again.</em>')
+                    : (errorMsg + (details ? '<br>' + details : ''));
+                showToast(fullMsg, 'error', isRateLimit ? 12000 : 5000);
+            }).always(function() {
+                $btn.prop('disabled', false);
+                updateSubmitButton($row);
             });
+        });
+
+        $('#bulk-submit-transfer').on('click', function() {
+            const $btn = $(this);
+            if ($btn.prop('disabled')) return;
+            if (selectedSkus.size === 0) {
+                showToast('Select at least one yellow row to submit.', 'error');
+                return;
+            }
+
+            const ready = [];
+            let skippedRed = 0;
+            const invalid = [];
+            Array.from(selectedSkus).forEach(function(sku) {
+                const fields = transferFieldsForSku(sku);
+                if (!fields) return;
+                if (fields.blocked) {
+                    skippedRed++;
+                    return;
+                }
+                const err = validateTransferFields(fields);
+                if (err) {
+                    invalid.push(sku);
+                    return;
+                }
+                ready.push(fields);
+            });
+
+            if (!ready.length) {
+                showToast('No yellow rows to submit. Red rows are blocked.', 'error');
+                return;
+            }
+
+            $btn.prop('disabled', true);
+            let index = 0;
+            let ok = 0;
+            const failed = [];
+
+            function finish() {
+                $btn.prop('disabled', false);
+                reloadAfterTransfers();
+                let msg = 'Submitted ' + ok + ' transfer' + (ok === 1 ? '' : 's') + '.';
+                if (skippedRed) msg += ' Skipped ' + skippedRed + ' red row' + (skippedRed === 1 ? '' : 's') + '.';
+                if (invalid.length) msg += ' Skipped ' + invalid.length + ' invalid row' + (invalid.length === 1 ? '' : 's') + '.';
+                if (failed.length) msg += '<br>' + failed.join('<br>');
+                showToast(msg, failed.length ? 'error' : 'success', 6000);
+            }
+
+            function next() {
+                if (index >= ready.length) {
+                    finish();
+                    return;
+                }
+                const fields = ready[index++];
+                postTransfer(fields).done(function() {
+                    ok++;
+                    next();
+                }).fail(function(xhr) {
+                    const resp = xhr.responseJSON || {};
+                    failed.push(fields.sku + ': ' + (resp.error || 'Transfer failed'));
+                    next();
+                });
+            }
+
+            next();
         });
         
         // Initialize Tabulator
@@ -1583,26 +1529,22 @@
                     title: "FROM SKU",
                     field: "to_sku",
                     hozAlign: "center",
-                    width: 240,
+                    width: 150,
                     visible: true,
                     cssClass: "from-sku-column",
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const currentSku = (rowData.SKU || '').replace(/"/g, '&quot;');
-                        const esc = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
-                        const escAttr = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
-                        let selectOpts = '';
-                        allTableData.forEach(function(item) {
-                            if (item.SKU && item.SKU !== rowData.SKU && (item.SKU + '').toUpperCase().indexOf('PARENT') === -1) {
-                                selectOpts += '<option value="' + escAttr(item.SKU) + '" data-parent="' + escAttr(item.Parent || '') + '" data-inv="' + (item.INV || 0) + '" data-search="' + escAttr((item.SKU || '') + ' ' + (item.Parent || '')) + '">' + esc(item.SKU) + '</option>';
-                            }
-                        });
-                        return '<select class="to-sku-select" data-from-sku="' + escAttr(rowData.SKU) + '" style="display:none;">' +
-                            '<option value="">Search FROM SKU...</option>' + selectOpts + '</select>' +
-                            '<div class="custom-from-sku-wrap" data-from-sku="' + escAttr(rowData.SKU) + '">' +
-                            '<input type="text" class="form-control form-control-sm custom-sku-search" placeholder="Search FROM SKU..." autocomplete="off">' +
-                            '<span class="custom-sku-arrow"></span>' +
-                            '<div class="custom-sku-dropdown"></div></div>';
+                        return '<span class="from-sku-display"></span>';
+                    }
+                },
+                {
+                    title: "INV",
+                    field: "from_inv_display",
+                    hozAlign: "center",
+                    width: 48,
+                    visible: true,
+                    headerSort: false,
+                    formatter: function(cell) {
+                        return '<span class="from-inv-display"></span>';
                     }
                 },
                 {
@@ -1616,23 +1558,13 @@
                     }
                 },
                 {
-                    title: "FROM INV",
-                    field: "from_inv_display",
-                    hozAlign: "center",
-                    width: 70,
-                    visible: false,
-                    formatter: function(cell) {
-                        return '<input type="text" class="form-control form-control-sm from-inv-display" readonly style="width:60px;">';
-                    }
-                },
-                {
                     title: "FROM SOLD",
                     field: "from_sold_display",
                     hozAlign: "center",
-                    width: 80,
+                    width: 48,
                     visible: true,
                     formatter: function(cell) {
-                        return '<input type="text" class="form-control form-control-sm from-sold-display" readonly style="width:70px;">';
+                        return '<span class="from-sold-display"></span>';
                     }
                 },
                 {
@@ -1649,30 +1581,30 @@
                     title: "FROM Qty",
                     field: "from_qty",
                     hozAlign: "center",
-                    width: 80,
+                    width: 48,
                     visible: true,
                     formatter: function(cell) {
-                        return '<input type="number" class="form-control form-control-sm from-qty-input" min="1" value="" placeholder="Select FROM SKU first" style="width:70px;">';
+                        return '<input type="number" class="form-control form-control-sm from-qty-input" min="1" value="" placeholder="">';
                     }
                 },
                 {
                     title: "TO Qty",
                     field: "to_qty_calc",
                     hozAlign: "center",
-                    width: 70,
+                    width: 48,
                     visible: true,
                     formatter: function(cell) {
-                        return '<input type="text" class="form-control form-control-sm to-qty-display" readonly placeholder="Calc" style="width:60px; background-color:#d4edda; font-weight:bold;">';
+                        return '<input type="text" class="form-control form-control-sm to-qty-display" readonly placeholder="">';
                     }
                 },
                 {
                     title: "Ratio",
                     field: "ratio",
                     hozAlign: "center",
-                    width: 100,
+                    width: 52,
                     visible: true,
                     formatter: function(cell) {
-                        return '<select class="form-select form-select-sm ratio-select" style="width:90px; font-size:14px;"><option value="1:4">1:4</option><option value="1:3">1:3</option><option value="1:2">1:2</option><option value="1:1" selected>1:1</option><option value="2:1">2:1</option><option value="3:1">3:1</option><option value="4:1">4:1</option></select>';
+                        return '<span class="ratio-display"></span>';
                     }
                 },
                 {
@@ -1683,22 +1615,22 @@
                     visible: true,
                     headerSort: false,
                     formatter: function(cell) {
-                        return '<button class="btn btn-success btn submit-transfer-btn" title="Execute Transfer"><i class="fas fa-check"></i></button>';
+                        return '<button class="btn submit-transfer-btn" title="Execute Transfer"><i class="fas fa-check"></i></button>';
                     }
                 },
                 {
                     title: "Rule",
                     field: "rule",
                     hozAlign: "center",
-                    width: 70,
+                    width: 40,
                     visible: true,
                     headerSort: false,
                     formatter: function(cell) {
                         const sku = cell.getRow().getData().SKU || '';
                         const escAttr = function(s) { return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
                         const hasRule = !!getRuleForSku(sku);
-                        const cls = hasRule ? 'btn-primary' : 'btn-outline-secondary';
-                        return '<button type="button" class="btn btn-sm ' + cls + ' rule-edit-btn edit-rule-btn" data-sku="' + escAttr(sku) + '" title="Edit Rule"><i class="fas fa-pen"></i></button>';
+                        const cls = hasRule ? ' has-rule' : '';
+                        return '<button type="button" class="btn btn-sm rule-edit-btn edit-rule-btn' + cls + '" data-sku="' + escAttr(sku) + '" title="Edit Rule"><i class="fas fa-pen"></i></button>';
                     }
                 },
                 {
@@ -1822,11 +1754,33 @@
             return null;
         }
 
+        function savedTransferQtyForRow(rowData) {
+            const saved = savedTransferQty(rowData.SKU);
+            if (saved != null) return saved;
+            const history = historyAutofill(rowData);
+            if (history && history.fromQty != null) return history.fromQty;
+            return null;
+        }
+
         function refreshRuleButtons() {
             $('.edit-rule-btn').each(function() {
                 const hasRule = !!getRuleForSku($(this).attr('data-sku'));
-                $(this).toggleClass('btn-primary', hasRule).toggleClass('btn-outline-secondary', !hasRule);
+                $(this).toggleClass('has-rule', hasRule);
             });
+        }
+
+        function historyAutofill(rowData) {
+            const history = rowData && rowData.LAST_UPDATE;
+            if (!history || history.direction !== 'IN') return null;
+            const fromSku = history.from_sku || history.other_sku || '';
+            if (!fromSku || normalizeSkuKey(fromSku) === normalizeSkuKey(rowData.SKU)) return null;
+            const fromQty = parseInt(history.from_qty, 10);
+            const shownQty = parseInt(history.qty, 10);
+            return {
+                fromSku: fromSku,
+                fromQty: fromQty > 0 ? fromQty : (shownQty > 0 ? shownQty : null),
+                ratio: history.ratio || '1:1'
+            };
         }
 
         function resolveFromSkuForRow(rowData) {
@@ -1836,13 +1790,11 @@
             if (serverPref && serverPref.fromSku) return serverPref.fromSku;
             const rule = getRuleForSku(toSku);
             if (rule && rule.fromSku) return rule.fromSku;
+            const history = historyAutofill(rowData);
+            if (history && history.fromSku) return history.fromSku;
             const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
             const savedFromSku = savedData.fromSku || null;
-            const lastUpdate = rowData.LAST_UPDATE || null;
-            const lastUpdateFromSku = (lastUpdate && lastUpdate.direction === 'IN' && lastUpdate.other_sku)
-                ? lastUpdate.other_sku
-                : null;
-            return (serverPref && serverPref.fromSku) || savedFromSku || lastUpdateFromSku || null;
+            return savedFromSku || null;
         }
 
         // Apply all filters together (guarded to avoid renderComplete recursion)
@@ -1886,6 +1838,7 @@
             } finally {
                 setTimeout(function() {
                     isApplyingFilters = false;
+                    restoreSavedFromSku();
                 }, 0);
             }
         }
@@ -1895,10 +1848,11 @@
             allTableData.forEach(function(data) {
                 const rule = getRuleForSku(data.SKU);
                 const pref = getServerPref(data.SKU);
+                const history = historyAutofill(data);
                 const fromSku = resolveFromSkuForRow(data);
                 if (fromSku) {
                     const meta = getFromSkuMeta(fromSku);
-                    const savedQty = savedTransferQty(data.SKU);
+                    const savedQty = savedTransferQtyForRow(data);
                     data._from_sku = fromSku;
                     data._from_qty = savedQty != null ? savedQty : meta.inv;
                     data._from_dil = meta.dil;
@@ -1907,7 +1861,7 @@
                     data._from_qty = null;
                     data._from_dil = null;
                 }
-                data._ratio = (pref && pref.ratio) || (rule && rule.ratio) || null;
+                data._ratio = (pref && pref.ratio) || (rule && rule.ratio) || (history && history.ratio) || null;
             });
         }
         
@@ -1934,9 +1888,8 @@
             if (!table || restoringFromSku || isApplyingFilters) return;
             restoringFromSku = true;
             try {
-                $('.to-sku-select').each(function() {
-                    const $select = $(this);
-                    const $row = $select.closest('.tabulator-row');
+                $('.from-sku-display').each(function() {
+                    const $row = $(this).closest('.tabulator-row');
                     const row = table.getRow($row[0]);
                     if (!row) return;
                     const rowData = row.getData();
@@ -1946,13 +1899,15 @@
                     const savedFromSku = savedData.fromSku || null;
                     const savedRatio = savedData.ratio || '1:1';
                     const rule = getRuleForSku(toSku);
-                    const fromSkuToRestore = rowData._from_sku || (serverPref && serverPref.fromSku) || (rule && rule.fromSku) || resolveFromSkuForRow(rowData);
-                    const ratioToRestore = rowData._ratio || (serverPref && serverPref.ratio) || (rule && rule.ratio) || savedRatio || '1:1';
-                    const savedQty = savedTransferQty(toSku);
+                    const history = historyAutofill(rowData);
+                    const fromSkuToRestore = rowData._from_sku || (serverPref && serverPref.fromSku) || (rule && rule.fromSku) || (history && history.fromSku) || resolveFromSkuForRow(rowData);
+                    const ratioToRestore = rowData._ratio || (serverPref && serverPref.ratio) || (rule && rule.ratio) || (history && history.ratio) || savedRatio || '1:1';
+                    const savedQty = savedTransferQtyForRow(rowData);
                     if (savedQty != null) {
                         rowData._from_qty = savedQty;
                     }
-                    $row.find('.ratio-select').val(ratioToRestore);
+                    rowData._ratio = ratioToRestore;
+                    setRatioDisplay($row, ratioToRestore);
                     if (fromSkuToRestore) {
                         applyFromSkuToRow($row, row, fromSkuToRestore, { silent: true, keepQty: true });
                         if (!savedFromSku && fromSkuToRestore && !(serverPref && serverPref.fromSku)) {
@@ -2250,6 +2205,7 @@
                     if (rows.length) {
                         applyRuleToItem(rows[0].getData());
                         rows[0].reformat();
+                        setTimeout(restoreSavedFromSku, 0);
                     } else {
                         refreshRuleButtons();
                     }

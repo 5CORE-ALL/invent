@@ -1169,33 +1169,30 @@ class StockBalanceController extends Controller
                 $dil = 0;
             }
             
-            // Format last update history
+            // Format last update history, including the quantities used to autofill the row.
             $lastUpdate = null;
             if ($lastBalance) {
-                $direction = '';
-                $otherSku = '';
-                $qty = 0;
-                
-                if ($lastBalance->from_sku === $item->sku) {
-                    $direction = 'OUT';
-                    $otherSku = $lastBalance->to_sku;
-                    $qty = $lastBalance->from_adjust_qty;
-                } else {
-                    $direction = 'IN';
-                    $otherSku = $lastBalance->from_sku;
-                    $qty = $lastBalance->to_adjust_qty;
-                }
-                
-                $transferredAt = $lastBalance->transferred_at 
+                $fromQty = (int) ($lastBalance->from_adjust_qty ?? 0);
+                $toQty = (int) ($lastBalance->to_adjust_qty ?? 0);
+                $isOut = $normalizeSku($lastBalance->from_sku ?? '') === $sku && $sku !== '';
+                $transferredAt = $lastBalance->transferred_at
                     ? Carbon::parse($lastBalance->transferred_at)->timezone('America/New_York')->format('m/d/y H:i')
                     : '';
-                
+
                 $lastUpdate = [
-                    'direction' => $direction,
-                    'other_sku' => $otherSku,
-                    'qty' => $qty,
+                    'direction' => $isOut ? 'OUT' : 'IN',
+                    'other_sku' => $isOut ? $lastBalance->to_sku : $lastBalance->from_sku,
+                    'from_sku' => $lastBalance->from_sku,
+                    'to_sku' => $lastBalance->to_sku,
+                    'from_qty' => $fromQty,
+                    'to_qty' => $toQty,
+                    'qty' => $isOut ? $fromQty : $toQty,
+                    'ratio' => $this->nearestTransferRatio(
+                        $fromQty > 0 ? $fromQty : $toQty,
+                        $toQty > 0 ? $toQty : $fromQty
+                    ),
                     'date' => $transferredAt,
-                    'by' => $lastBalance->transferred_by
+                    'by' => $lastBalance->transferred_by,
                 ];
             }
 
