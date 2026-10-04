@@ -1031,6 +1031,11 @@
             return Math.round(dilToPercent(fromDil)) > Math.round(dilToPercent(rowDil));
         }
 
+        function fromInvIsZero(fromInv) {
+            const n = parseInt(fromInv, 10);
+            return String(fromInv ?? '').trim() !== '' && !isNaN(n) && n === 0;
+        }
+
         function updateSubmitButton($row) {
             if (!$row || !$row.length || !table) return;
             const rowComp = table.getRow($row[0]);
@@ -1040,15 +1045,18 @@
             const fromInvRaw = String($row.find('.from-inv-display').text() || '').trim();
             const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
             const fromSku = displayedFromSku($row, rowData);
+            const zeroInv = !!fromSku && fromInvIsZero(fromInvRaw);
             const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, getFromSkuMeta(fromSku).dil);
-            const blocked = invBlocked || dilBlocked;
+            const blocked = invBlocked || dilBlocked || zeroInv;
             const recent = recentlySubmitted(rowData.SKU);
             const $btn = $row.find('.submit-transfer-btn');
             $btn.toggleClass('submit-blocked', blocked);
             $btn.toggleClass('submit-recent', recent && !blocked);
-            const title = invBlocked
-                ? 'FROM SKU INV is less than FROM Qty'
-                : (dilBlocked ? 'FROM DIL% is higher than DIL%' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer'));
+            const title = zeroInv
+                ? 'FROM SKU INV is 0'
+                : (invBlocked
+                    ? 'FROM SKU INV is less than FROM Qty'
+                    : (dilBlocked ? 'FROM DIL% is higher than DIL%' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer')));
             $btn.attr('title', title);
             $btn.find('i').attr('class', blocked ? 'fas fa-times' : 'fas fa-check');
         }
@@ -1083,11 +1091,12 @@
                 toQty = Math.round(fromQty * (parseFloat(parts[1]) / parseFloat(parts[0])));
             }
             const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
+            const zeroInv = !!fromSku && (fromInvIsZero(fromInvRaw) || (meta.found && meta.inv === 0));
             const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, meta.dil);
             return {
                 sku: sku,
-                blocked: invBlocked || dilBlocked,
-                blockReason: invBlocked ? 'FROM SKU INV is less than FROM Qty' : (dilBlocked ? 'FROM DIL% is higher than DIL%' : ''),
+                blocked: invBlocked || dilBlocked || zeroInv,
+                blockReason: zeroInv ? 'FROM SKU INV is 0' : (invBlocked ? 'FROM SKU INV is less than FROM Qty' : (dilBlocked ? 'FROM DIL% is higher than DIL%' : '')),
                 fromSku: fromSku,
                 fromQty: fromQty,
                 toQty: toQty,
@@ -1867,7 +1876,7 @@
                 const saved = savedTransferQtyForRow(data);
                 fromQty = saved != null ? saved : meta.inv;
             }
-            return transferIsBlocked(fromQty, meta.inv) || dilSubmitBlocked(data.DIL, meta.dil);
+            return transferIsBlocked(fromQty, meta.inv) || dilSubmitBlocked(data.DIL, meta.dil) || (meta.found && meta.inv === 0);
         }
 
         // Apply all filters together (guarded to avoid renderComplete recursion)
