@@ -1018,18 +1018,29 @@
             return String(fromQtyRaw ?? '').trim() !== '' && String(fromInvRaw ?? '').trim() !== '' && !isNaN(fromQty) && !isNaN(fromInv) && fromInv < fromQty;
         }
 
+        function dilSubmitBlocked(rowDil, fromDil) {
+            return Math.round(dilToPercent(fromDil)) > Math.round(dilToPercent(rowDil));
+        }
+
         function updateSubmitButton($row) {
             if (!$row || !$row.length || !table) return;
             const rowComp = table.getRow($row[0]);
             if (!rowComp) return;
+            const rowData = rowComp.getData();
             const fromQtyRaw = String($row.find('.from-qty-input').val() ?? '').trim();
             const fromInvRaw = String($row.find('.from-inv-display').text() || '').trim();
-            const blocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
-            const recent = recentlySubmitted(rowComp.getData().SKU);
+            const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
+            const fromSku = displayedFromSku($row, rowData);
+            const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, getFromSkuMeta(fromSku).dil);
+            const blocked = invBlocked || dilBlocked;
+            const recent = recentlySubmitted(rowData.SKU);
             const $btn = $row.find('.submit-transfer-btn');
             $btn.toggleClass('submit-blocked', blocked);
             $btn.toggleClass('submit-recent', recent && !blocked);
-            $btn.attr('title', blocked ? 'FROM SKU INV is less than FROM Qty' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer'));
+            const title = invBlocked
+                ? 'FROM SKU INV is less than FROM Qty'
+                : (dilBlocked ? 'FROM DIL% is higher than DIL%' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer'));
+            $btn.attr('title', title);
             $btn.find('i').attr('class', blocked ? 'fas fa-times' : 'fas fa-check');
         }
 
@@ -1062,9 +1073,12 @@
                 const parts = String(ratio).split(':');
                 toQty = Math.round(fromQty * (parseFloat(parts[1]) / parseFloat(parts[0])));
             }
+            const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
+            const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, meta.dil);
             return {
                 sku: sku,
-                blocked: transferIsBlocked(fromQtyRaw, fromInvRaw),
+                blocked: invBlocked || dilBlocked,
+                blockReason: invBlocked ? 'FROM SKU INV is less than FROM Qty' : (dilBlocked ? 'FROM DIL% is higher than DIL%' : ''),
                 fromSku: fromSku,
                 fromQty: fromQty,
                 toQty: toQty,
@@ -1080,7 +1094,7 @@
 
         function validateTransferFields(fields) {
             if (!fields) return 'Row not found';
-            if (fields.blocked) return 'FROM SKU INV is less than FROM Qty';
+            if (fields.blocked) return fields.blockReason || 'This row cannot be submitted';
             if (!fields.fromSku) return 'Missing FROM SKU';
             if (fields.fromQty <= 0) return 'FROM Qty must be greater than 0';
             if (fields.toQty <= 0) return 'TO Qty must be greater than 0';
@@ -1290,7 +1304,7 @@
             const row = table.getRow($row[0]);
             if (!row) return;
             if ($btn.hasClass('submit-blocked')) {
-                showToast('This row cannot be submitted. FROM SKU INV is less than FROM Qty.', 'error');
+                showToast($btn.attr('title') || 'This row cannot be submitted.', 'error');
                 return;
             }
 
