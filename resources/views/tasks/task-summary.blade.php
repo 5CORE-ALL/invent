@@ -3383,7 +3383,7 @@
         })();
 
         // -------------------------------------------------------------------
-        // Member expand / minimize / snooze-until-midnight-PT
+        // Member expand / minimize (stays hidden until Refresh) / snooze-until-midnight-PT
         // -------------------------------------------------------------------
         (function () {
             var tbody = document.querySelector('.task-summary-table tbody');

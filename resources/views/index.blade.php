@@ -715,6 +715,64 @@
     </div>
 </div>
 
+<!-- Support -->
+<div id="support-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #99f6e4, #f0fdfa);">
+        <i class="ri-customer-service-2-line" title="Support" style="color:#0f766e;"></i>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Support
+            </h6>
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#0f766e;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('help-desk-faqs.index') }}'"
+                role="button"
+                title="Open Help Desk FAQs"
+            >Help Desk FAQs</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.messages.pending') }}'"
+                role="button"
+                title="Open Messages Pending"
+            >Messages Pending</span>
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.faq.customers.index') }}'"
+                role="button"
+                title="Open FAQ / FFP Customers"
+            >FAQ / FFP</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#7c3aed;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.report') }}'"
+                role="button"
+                title="Open Returns Report"
+            >Returns</span>
+            <span
+                class="badge bg-warning text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.orders.on.hold') }}'"
+                role="button"
+                title="Open on hold / Mapping"
+            >On Hold</span>
+            <span
+                class="badge bg-danger text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.c.care.issues') }}'"
+                role="button"
+                title="Open C-care Issues"
+            >C-care Issues</span>
+        </div>
+    </div>
+</div>
+
 <!-- Fulfillment — user-provided label printer image -->
 <div id="fulfillment-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #e5e7eb, #f9fafb); padding: 0; overflow: hidden;">
