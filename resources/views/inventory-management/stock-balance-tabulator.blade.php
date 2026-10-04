@@ -1222,6 +1222,9 @@
             }
             calculateToQty($row);
             updateSubmitButton($row);
+            if ($row.find('.submit-transfer-btn').hasClass('submit-blocked')) {
+                applyAllFilters();
+            }
         });
         
         // Calculate TO Qty based on FROM Qty × Ratio
@@ -1797,6 +1800,19 @@
             return savedFromSku || null;
         }
 
+        function rowSubmitBlocked(data) {
+            if (!data) return false;
+            const fromSku = data._from_sku || resolveFromSkuForRow(data);
+            if (!fromSku) return false;
+            const meta = getFromSkuMeta(fromSku);
+            let fromQty = data._from_qty;
+            if (fromQty == null || fromQty === '') {
+                const saved = savedTransferQtyForRow(data);
+                fromQty = saved != null ? saved : meta.inv;
+            }
+            return transferIsBlocked(fromQty, meta.inv);
+        }
+
         // Apply all filters together (guarded to avoid renderComplete recursion)
         function applyAllFilters() {
             if (!table || isApplyingFilters || restoringFromSku) return;
@@ -1832,6 +1848,8 @@
                             return false;
                         }
                     }
+
+                    if (rowSubmitBlocked(data)) return false;
 
                     return true;
                 });
