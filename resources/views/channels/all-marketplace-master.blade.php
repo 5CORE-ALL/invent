@@ -5115,6 +5115,7 @@
                     return v2 > v1 ? 'up' : 'down';
                 }
                 $('#summary-stats .summary-trend-dot[data-metric]').each(function() {
+                    if ($(this).closest('#analytics-dil-badge').length) return;
                     var metric = $(this).attr('data-metric');
                     if (!metric) return;
                     // Prefer the blended All pair. Only treat it as settled when

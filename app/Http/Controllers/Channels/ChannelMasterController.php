@@ -5822,7 +5822,47 @@ class ChannelMasterController extends Controller
             }
         }
 
+        $this->persistAllMarketplaceDilSnapshot($payload);
+
         return $payload;
+    }
+
+    /**
+     * Write today's Dil% for /all-marketplace-master. The badge chart reads
+     * amazon_channel_summary_data and previously depended on a browser post.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function persistAllMarketplaceDilSnapshot(array $payload): void
+    {
+        $ov = round((float) ($payload['total_ov_l30'] ?? 0), 2);
+        $inv = round((float) ($payload['total_inv'] ?? 0), 2);
+        if (! isset($payload['dil_ov_percent']) || $payload['dil_ov_percent'] === '' || $payload['dil_ov_percent'] === null) {
+            return;
+        }
+        if ($ov <= 0 && $inv <= 0) {
+            return;
+        }
+
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $row = \App\Models\AmazonChannelSummary::firstOrNew([
+                'channel' => 'allmarketplace',
+                'snapshot_date' => $today,
+            ]);
+            $sd = is_array($row->summary_data) ? $row->summary_data : [];
+            $sd['dil_ov_percent'] = round((float) $payload['dil_ov_percent'], 2);
+            $sd['total_ov_l30'] = $ov;
+            $sd['total_inv'] = $inv;
+            $sd['dil_updated_at'] = now()->toDateTimeString();
+            $row->summary_data = $sd;
+            if ($row->notes === null || $row->notes === '') {
+                $row->notes = 'Dil% daily snapshot';
+            }
+            $row->save();
+        } catch (\Throwable $e) {
+            Log::warning('All-marketplace Dil% snapshot failed: '.$e->getMessage());
+        }
     }
 
     /**

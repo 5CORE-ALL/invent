@@ -91,6 +91,7 @@
     let prevDil = null;
     let prevLoaded = false;
     let lastPosted = '';
+    let lastPosting = '';
     let chartInst = null;
     let chartAjax = null;
     let chartDays = 30;
@@ -195,8 +196,8 @@
         const ch = channel();
         if (!ch) return;
         const key = ch + '|' + todayPt() + '|' + dil.toFixed(2);
-        if (key === lastPosted) return;
-        lastPosted = key;
+        if (key === lastPosted || key === lastPosting) return;
+        lastPosting = key;
         $.ajax({
             url: '/analytics/dil-badge-snapshot',
             method: 'POST',
@@ -206,7 +207,9 @@
                 dil_ov_percent: dil.toFixed(2),
                 total_ov_l30: ov,
                 total_inv: inv
-            }
+            },
+            success: function() { lastPosted = key; lastPosting = ''; },
+            error: function() { if (lastPosting === key) lastPosting = ''; }
         });
     }
     function loadPrev() {

@@ -918,6 +918,12 @@
                 <div class="collapse" id="lmpsMaster">
                    <ul class="side-nav-third-level">
                                     <li>
+                                        <a href="{{ route('lmp.overall') }}"
+                                            class="{{ request()->is('lmp-overall*') ? 'active' : '' }}">
+                                            LMP Overall
+                                        </a>
+                                    </li>
+                                    <li>
                                         <a href="{{ url('/repricer/amazon-search') }}"
                                             class="{{ request()->is('repricer/amazon-search*') ? 'active' : '' }}">
                                             Amz Competitors

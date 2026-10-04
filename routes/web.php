@@ -4196,6 +4196,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
         ->name('missing.listing.csv.import');
 
+    // LMP Overall — parent/SKU inventory with Amz, eBay, Temu, and Google LMP
+    Route::get('/lmp-overall', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'index'])->name('lmp.overall');
+    Route::get('/lmp-overall/data', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'data'])->name('lmp.overall.data');
+    Route::post('/lmp-overall/save', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'save'])->name('lmp.overall.save');
+
     // LMP Missing data — analytics channels + LMP M. counts
     Route::get('/lmp-missing-data', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'index'])->name('lmp.missing');
     Route::get('/lmp-missing-data/data', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'getData'])->name('lmp.missing.data');
