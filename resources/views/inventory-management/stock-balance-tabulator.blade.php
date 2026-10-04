@@ -156,6 +156,13 @@
             border-color: #e0a800 !important;
             color: #000 !important;
         }
+        .submit-transfer-btn.submit-recent,
+        .submit-transfer-btn.submit-recent:hover,
+        .submit-transfer-btn.submit-recent:focus {
+            background-color: #198754 !important;
+            border-color: #198754 !important;
+            color: #fff !important;
+        }
         .submit-transfer-btn.submit-blocked,
         .submit-transfer-btn.submit-blocked:hover,
         .submit-transfer-btn.submit-blocked:focus {
@@ -528,18 +535,16 @@
                 SOLD: data.SOLD != null ? data.SOLD : 0,
                 DIL: data.DIL != null ? data.DIL : 0
             };
-            const rows = table.searchRows('SKU', '=', sku);
-            if (rows.length > 0) {
-                rows[0].update(patch);
+            const key = normalizeSkuKey(sku);
+            if (table) {
+                table.getRows().forEach(function(row) {
+                    if (normalizeSkuKey(row.getData().SKU) === key) {
+                        row.update(patch);
+                    }
+                });
             }
-            const item = allTableData.find(function(i) { return i.SKU === sku; });
-            if (item) {
-                Object.assign(item, patch);
-            }
-            // Also match case-insensitive if needed
-            const normalized = String(sku).trim().toUpperCase();
             allTableData.forEach(function(i) {
-                if (String(i.SKU || '').trim().toUpperCase() === normalized) {
+                if (normalizeSkuKey(i.SKU) === key) {
                     Object.assign(i, patch);
                 }
             });
@@ -1020,9 +1025,11 @@
             const fromQtyRaw = String($row.find('.from-qty-input').val() ?? '').trim();
             const fromInvRaw = String($row.find('.from-inv-display').text() || '').trim();
             const blocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
+            const recent = recentlySubmitted(rowComp.getData().SKU);
             const $btn = $row.find('.submit-transfer-btn');
             $btn.toggleClass('submit-blocked', blocked);
-            $btn.attr('title', blocked ? 'FROM SKU INV is less than FROM Qty' : 'Execute Transfer');
+            $btn.toggleClass('submit-recent', recent && !blocked);
+            $btn.attr('title', blocked ? 'FROM SKU INV is less than FROM Qty' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer'));
             $btn.find('i').attr('class', blocked ? 'fas fa-times' : 'fas fa-check');
         }
 
@@ -1104,61 +1111,81 @@
         }
 
         function reloadAfterTransfers() {
-            table.setData().then(function() {
+            return table.setData().then(function() {
                 setTimeout(function() {
                     restoreSavedFromSku();
                 }, 100);
             });
         }
 
-        function scheduleInventoryPull(skus, startedAt) {
+        function markSubmitted(sku) {
+            if (!sku) return;
+            let map = {};
+            try {
+                map = JSON.parse(localStorage.getItem('stock_balance_submitted_at') || '{}');
+            } catch (e) {
+                map = {};
+            }
+            map[normalizeSkuKey(sku)] = Date.now();
+            localStorage.setItem('stock_balance_submitted_at', JSON.stringify(map));
+        }
+
+        function recentlySubmitted(sku) {
+            let map = {};
+            try {
+                map = JSON.parse(localStorage.getItem('stock_balance_submitted_at') || '{}');
+            } catch (e) {
+                map = {};
+            }
+            const key = normalizeSkuKey(sku);
+            const at = map[key];
+            if (!at) return false;
+            if (Date.now() - at > 24 * 60 * 60 * 1000) {
+                delete map[key];
+                localStorage.setItem('stock_balance_submitted_at', JSON.stringify(map));
+                return false;
+            }
+            return true;
+        }
+
+        function pullInventoryForSkus(skus) {
             const list = [];
             (skus || []).forEach(function(sku) {
                 const value = String(sku || '').trim();
                 if (value && list.indexOf(value) === -1) list.push(value);
             });
-            if (!list.length) return;
+            if (!list.length) {
+                reloadAfterTransfers();
+                return;
+            }
+            const csrfToken = $('meta[name="csrf-token"]').attr('content');
+            let index = 0;
+            function next() {
+                if (index >= list.length) {
+                    reloadAfterTransfers();
+                    showToast('Inventory updated from Shopify.', 'success', 3000);
+                    return;
+                }
+                const sku = list[index++];
+                $.ajax({
+                    url: '/stock-balance-refresh-shopify',
+                    type: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken },
+                    data: { sku: sku, _token: csrfToken }
+                }).done(function(response) {
+                    if (response && response.success && response.data) {
+                        applyStockBalanceRefreshData(sku, response.data);
+                    }
+                }).always(next);
+            }
+            next();
+        }
+
+        function scheduleInventoryPull(skus, startedAt) {
             const elapsed = startedAt ? (Date.now() - startedAt) : 0;
             const wait = Math.max(0, 5000 - elapsed);
             setTimeout(function() {
-                const csrfToken = $('meta[name="csrf-token"]').attr('content');
-                const applyItems = function(items) {
-                    Object.keys(items || {}).forEach(function(sku) {
-                        applyStockBalanceRefreshData(sku, items[sku]);
-                    });
-                    if (table) {
-                        table.redraw(true);
-                        applyAllFilters();
-                    }
-                };
-                if (list.length === 1) {
-                    $.ajax({
-                        url: '/stock-balance-refresh-shopify',
-                        type: 'POST',
-                        headers: { 'X-CSRF-TOKEN': csrfToken },
-                        data: { sku: list[0], _token: csrfToken }
-                    }).done(function(response) {
-                        if (response && response.success && response.data) {
-                            const items = {};
-                            items[list[0]] = response.data;
-                            applyItems(items);
-                        }
-                    });
-                    return;
-                }
-                $.ajax({
-                    url: '/stock-balance-refresh-shopify-bulk',
-                    type: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': csrfToken,
-                        'Content-Type': 'application/json'
-                    },
-                    data: JSON.stringify({ skus: list, _token: csrfToken })
-                }).done(function(response) {
-                    if (response && response.success && response.data && response.data.items) {
-                        applyItems(response.data.items);
-                    }
-                });
+                pullInventoryForSkus(skus);
             }, wait);
         }
 
@@ -1232,7 +1259,7 @@
             const startedAt = Date.now();
             postTransfer(fields).done(function(response) {
                 showToast(response.message || 'Transfer successful!', 'success');
-                reloadAfterTransfers();
+                markSubmitted(fields.sku);
                 scheduleInventoryPull([fields.sku, fields.fromSku], startedAt);
             }).fail(function(xhr) {
                 const resp = xhr.responseJSON || {};
@@ -1285,8 +1312,8 @@
             const startedAt = Date.now();
 
             function finish() {
-                reloadAfterTransfers();
                 if (pulled.length) scheduleInventoryPull(pulled, startedAt);
+                else reloadAfterTransfers();
                 let msg = 'Submitted ' + ok + ' transfer' + (ok === 1 ? '' : 's') + '.';
                 if (skippedRed) msg += ' Skipped ' + skippedRed + ' red row' + (skippedRed === 1 ? '' : 's') + '.';
                 if (invalid.length) msg += ' Skipped ' + invalid.length + ' invalid row' + (invalid.length === 1 ? '' : 's') + '.';
@@ -1302,6 +1329,7 @@
                 const fields = ready[index++];
                 postTransfer(fields).done(function() {
                     ok++;
+                    markSubmitted(fields.sku);
                     pulled.push(fields.sku, fields.fromSku);
                     next();
                 }).fail(function(xhr) {
@@ -1482,7 +1510,7 @@
                     title: "FROM SKU",
                     field: "to_sku",
                     hozAlign: "center",
-                    width: 150,
+                    width: 180,
                     visible: true,
                     cssClass: "from-sku-column",
                     formatter: function(cell) {
@@ -2009,12 +2037,34 @@
                 $to.append($('<option>', { value: lockedSku, text: lockedSku }));
             }
             $to.val(lockedSku);
-            const fromSku = (rule && rule.fromSku) || '';
-            if (fromSku && $from.find('option').filter(function() { return $(this).val() === fromSku; }).length === 0) {
-                $from.append($('<option>', { value: fromSku, text: fromSku }));
+
+            const itemForHistory = lockedSku ? allTableData.find(function(i) {
+                return normalizeSkuKey(i.SKU) === normalizeSkuKey(lockedSku);
+            }) : null;
+            const history = itemForHistory ? historyAutofill(itemForHistory) : null;
+            const fromSku = (history && history.fromSku) || (rule && rule.fromSku) || (itemForHistory && itemForHistory._from_sku) || '';
+            const ratio = (history && history.ratio) || (rule && rule.ratio) || (itemForHistory && itemForHistory._ratio) || '1:1';
+            const historyQty = history && history.fromQty != null && history.fromQty !== '' ? history.fromQty : null;
+            const ruleQty = rule && rule.fromQty != null && rule.fromQty !== '' ? rule.fromQty : null;
+            const fromQty = historyQty != null ? historyQty : ruleQty;
+
+            function optionValueForSku($select, sku) {
+                if (!sku) return '';
+                const key = normalizeSkuKey(sku);
+                let matched = '';
+                $select.find('option').each(function() {
+                    if (normalizeSkuKey($(this).val()) === key) matched = $(this).val();
+                });
+                if (!matched) {
+                    $select.append($('<option>', { value: sku, text: sku }));
+                    matched = sku;
+                }
+                return matched;
             }
-            $from.val(fromSku);
-            $('#rule-ratio').val((rule && rule.ratio) || '1:1');
+
+            const fromSkuValue = optionValueForSku($from, fromSku);
+            $from.val(fromSkuValue);
+            $('#rule-ratio').val(ratio);
 
             initRuleSelect($to, 'Search SKU...');
             initRuleSelect($from, 'Search FROM SKU...');
@@ -2022,10 +2072,9 @@
             const item = lockedSku ? fillRuleToSkuDetails(lockedSku) : null;
             const action = (rule && rule.action) || (item && item.ACTION) || '';
             $('#rule-action').val(action);
-            if (fromSku) {
-                const keepQty = !!(rule && rule.fromQty != null && rule.fromQty !== '');
-                fillRuleFromSkuDetails(fromSku, keepQty);
-                if (keepQty) $('#rule-from-qty').val(rule.fromQty);
+            if (fromSkuValue) {
+                fillRuleFromSkuDetails(fromSkuValue, fromQty != null);
+                if (fromQty != null) $('#rule-from-qty').val(fromQty);
                 calcRuleToQty();
             } else {
                 $('#rule-from-inv, #rule-from-sold, #rule-from-qty, #rule-to-qty').val('');
