@@ -3708,7 +3708,7 @@
                             const dot = ttStdPrcChangeDotHtml(std, channelPrice);
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '') + '</span>';
+                                dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '') + '</span>';
                         }
                     },
                     {

@@ -2983,7 +2983,7 @@
                         const value = cell.getValue();
                         const std = parseFloat(value) || 0;
                         if (!value || std <= 0) return '';
-                        const reviewTri = (window.SpriceLmpCap ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '');
+                        const reviewTri = (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '');
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">$'
                             + std.toFixed(2) + reviewTri + '</span>';
                     }

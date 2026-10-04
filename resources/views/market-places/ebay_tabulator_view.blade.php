@@ -4622,7 +4622,7 @@
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                             const dot = ebayStdPrcChangeDotHtml(std, ebayPrice, sku);
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '') + '</span>';
+                                dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '') + '</span>';
                         }
                     },
 

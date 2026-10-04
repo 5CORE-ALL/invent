@@ -1040,7 +1040,7 @@
                         const dot = tdStdPrcChangeDotHtml(std, channelPrice);
 
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                            dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
+                            dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
                     }},
                 { title: 'Price', field: 'TD Price', hozAlign: 'center', width: 70, sorter: 'number',
                     formatter: c => {
