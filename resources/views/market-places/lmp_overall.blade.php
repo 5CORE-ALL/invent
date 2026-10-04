@@ -49,6 +49,9 @@
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected,
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell { background: #ffe08a !important; }
         .lmp-overall-price { font-weight: 700; color: #198754; }
+        .lmp-std-tri { font-size: 11px; margin-left: 3px; vertical-align: middle; }
+        .lmp-std-tri-high { color: #6f42c1; }
+        .lmp-std-tri-low { color: #dc3545; }
         .lmp-overall-count { color: #007bff; font-weight: 700; text-decoration: none; cursor: pointer; }
         .lmp-overall-count:hover { text-decoration: underline; }
         .lmp-overall-edit { position: relative; z-index: 2; line-height: 1; }
@@ -79,6 +82,32 @@
                             <i class="ri-refresh-line"></i>
                         </button>
                         <span class="text-muted small" id="lmp-overall-status">Loading…</span>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="lmp-overall-std-badges">
+                        <span class="badge" style="background:#6f42c1;color:#fff;font-weight:700;" title="SKU rows where LMP amz is above 120% of Std Price">
+                            <i class="ri-alert-fill"></i> LMP amz <span id="lmp-badge-high-lmp_amz">0</span>
+                        </span>
+                        <span class="badge" style="background:#6f42c1;color:#fff;font-weight:700;" title="SKU rows where LMP ebay is above 120% of Std Price">
+                            <i class="ri-alert-fill"></i> LMP ebay <span id="lmp-badge-high-lmp_ebay">0</span>
+                        </span>
+                        <span class="badge" style="background:#6f42c1;color:#fff;font-weight:700;" title="SKU rows where LMP temu is above 120% of Std Price">
+                            <i class="ri-alert-fill"></i> LMP temu <span id="lmp-badge-high-lmp_temu">0</span>
+                        </span>
+                        <span class="badge" style="background:#6f42c1;color:#fff;font-weight:700;" title="SKU rows where LMP Google is above 120% of Std Price">
+                            <i class="ri-alert-fill"></i> LMP Google <span id="lmp-badge-high-lmp_google">0</span>
+                        </span>
+                        <span class="badge bg-danger" style="font-weight:700;" title="SKU rows where LMP amz is below 80% of Std Price">
+                            <i class="ri-alert-fill"></i> LMP amz <span id="lmp-badge-low-lmp_amz">0</span>
+                        </span>
+                        <span class="badge bg-danger" style="font-weight:700;" title="SKU rows where LMP ebay is below 80% of Std Price">
+                            <i class="ri-alert-fill"></i> LMP ebay <span id="lmp-badge-low-lmp_ebay">0</span>
+                        </span>
+                        <span class="badge bg-danger" style="font-weight:700;" title="SKU rows where LMP temu is below 80% of Std Price">
+                            <i class="ri-alert-fill"></i> LMP temu <span id="lmp-badge-low-lmp_temu">0</span>
+                        </span>
+                        <span class="badge bg-danger" style="font-weight:700;" title="SKU rows where LMP Google is below 80% of Std Price">
+                            <i class="ri-alert-fill"></i> LMP Google <span id="lmp-badge-low-lmp_google">0</span>
+                        </span>
                     </div>
                     <div id="lmp-overall-wrap">
                         <div id="lmp-overall-table"></div>
@@ -148,7 +177,40 @@
                     .replace(/"/g, '&quot;');
             }
 
-            function lmpCell(price, count) {
+            const lmpBadgeCols = [
+                { field: 'lmp_amz', label: 'LMP amz' },
+                { field: 'lmp_ebay', label: 'LMP ebay' },
+                { field: 'lmp_temu', label: 'LMP temu' },
+                { field: 'lmp_google', label: 'LMP Google' },
+            ];
+
+            function lmpStdBand(lmp, std) {
+                const price = parseFloat(lmp);
+                const base = parseFloat(std);
+                if (!isFinite(price) || price <= 0 || !isFinite(base) || base <= 0) return '';
+                if (price > base * 1.2) return 'high';
+                if (price < base * 0.8) return 'low';
+                return '';
+            }
+
+            function lmpTriangle(band, title, price, std) {
+                const shown = isFinite(price) ? ('$' + price.toFixed(2)) : '';
+                const base = parseFloat(std);
+                const stdText = isFinite(base) ? ('$' + base.toFixed(2)) : '';
+                if (band === 'high') {
+                    return ' <i class="ri-alert-fill lmp-std-tri lmp-std-tri-high" title="'
+                        + escHtml(title + ' ' + shown + ' is above 120% of Std Price ' + stdText)
+                        + '"></i>';
+                }
+                if (band === 'low') {
+                    return ' <i class="ri-alert-fill lmp-std-tri lmp-std-tri-low" title="'
+                        + escHtml(title + ' ' + shown + ' is below 80% of Std Price ' + stdText)
+                        + '"></i>';
+                }
+                return '';
+            }
+
+            function lmpCell(price, count, std, title) {
                 const n = parseFloat(price);
                 const c = parseInt(count, 10) || 0;
                 if ((!isFinite(n) || n <= 0) && c === 0) {
@@ -157,6 +219,7 @@
                 let html = '';
                 if (isFinite(n) && n > 0) {
                     html += '<span class="lmp-overall-price">$' + n.toFixed(2) + '</span>';
+                    html += lmpTriangle(lmpStdBand(n, std), title, n, std);
                 }
                 if (c > 0) {
                     html += ' <a href="#" class="lmp-overall-count" title="View ' + c
@@ -171,10 +234,11 @@
                     field: field,
                     hozAlign: 'center',
                     headerHozAlign: 'center',
-                    width: 110,
+                    width: 118,
                     sorter: 'number',
                     formatter: function (cell) {
-                        return lmpCell(cell.getValue(), cell.getRow().getData()[countField]);
+                        const row = cell.getRow().getData();
+                        return lmpCell(cell.getValue(), row[countField], row.std_price, title);
                     },
                     cellClick: function (e, cell) {
                         e.preventDefault();
@@ -368,6 +432,7 @@
                     if (inGroup) updates.push(Object.assign({ sku: data.sku }, fields));
                 });
                 if (updates.length) table.updateData(updates);
+                updateLmpStdBadges();
             }
 
             const table = new Tabulator('#lmp-overall-table', {
@@ -461,24 +526,6 @@
                             return '<span style="color:' + color + ';font-weight:600;">' + Math.round(dil) + '%</span>';
                         },
                     },
-                    {
-                        title: 'Std Price',
-                        field: 'std_price',
-                        hozAlign: 'center',
-                        width: 90,
-                        sorter: 'number',
-                        headerTooltip: 'Amazon Standard Price (amazon_data_view.STANDARD_PRICE)',
-                        formatter: function (cell) { return money(cell.getValue()); },
-                    },
-                    {
-                        title: 'Avg Price',
-                        field: 'avg_price',
-                        hozAlign: 'center',
-                        width: 90,
-                        sorter: 'number',
-                        headerTooltip: 'Avg Price from /pricing-master-cvr',
-                        formatter: function (cell) { return money(cell.getValue()); },
-                    },
                     percentColumn('Avg GPFT%', 'gpft', 'gpftStyle', 'Avg GPFT% from /pricing-master-cvr'),
                     percentColumn('Avg GROI%', 'groi', 'groiStyle', 'Avg GROI% from /pricing-master-cvr'),
                     percentColumn('Avg NPFT%', 'npft', 'npftStyle', 'Avg NPFT% from /pricing-master-cvr'),
@@ -517,6 +564,24 @@
                         formatter: function (cell) { return money(cell.getValue()); },
                     },
                     {
+                        title: 'Std Price',
+                        field: 'std_price',
+                        hozAlign: 'center',
+                        width: 90,
+                        sorter: 'number',
+                        headerTooltip: 'Amazon Standard Price (amazon_data_view.STANDARD_PRICE)',
+                        formatter: function (cell) { return money(cell.getValue()); },
+                    },
+                    {
+                        title: 'Avg Price',
+                        field: 'avg_price',
+                        hozAlign: 'center',
+                        width: 90,
+                        sorter: 'number',
+                        headerTooltip: 'Avg Price from /pricing-master-cvr',
+                        formatter: function (cell) { return money(cell.getValue()); },
+                    },
+                    {
                         title: 'Edit',
                         field: 'row_edit',
                         hozAlign: 'center',
@@ -533,11 +598,32 @@
                 ],
             });
 
+            function updateLmpStdBadges() {
+                const counts = {};
+                lmpBadgeCols.forEach(function (col) {
+                    counts[col.field] = { high: 0, low: 0 };
+                });
+                table.getData('active').forEach(function (row) {
+                    if (row.is_parent_summary) return;
+                    lmpBadgeCols.forEach(function (col) {
+                        const band = lmpStdBand(row[col.field], row.std_price);
+                        if (band) counts[col.field][band]++;
+                    });
+                });
+                lmpBadgeCols.forEach(function (col) {
+                    const highEl = document.getElementById('lmp-badge-high-' + col.field);
+                    const lowEl = document.getElementById('lmp-badge-low-' + col.field);
+                    if (highEl) highEl.textContent = counts[col.field].high.toLocaleString('en-US');
+                    if (lowEl) lowEl.textContent = counts[col.field].low.toLocaleString('en-US');
+                });
+            }
+
             function updateCounts() {
                 const selected = table.getSelectedRows().length;
                 const active = table.getDataCount('active');
                 document.getElementById('lmp-overall-total').textContent = 'Total: ' + active.toLocaleString();
                 document.getElementById('lmp-overall-selected').textContent = 'Selected: ' + selected.toLocaleString();
+                updateLmpStdBadges();
             }
 
             document.getElementById('lmp-overall-wrap').addEventListener('click', function (e) {
@@ -551,6 +637,7 @@
             }, true);
 
             table.on('dataProcessed', updateCounts);
+            table.on('dataFiltered', updateLmpStdBadges);
             table.on('rowSelectionChanged', updateCounts);
 
             let searchTimer = null;

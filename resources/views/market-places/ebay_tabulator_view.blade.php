@@ -919,10 +919,12 @@
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: Price &gt; LMP and INV &gt; 0. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge fs-6 p-2" id="ebay1-lmp-missing-badge"
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-lmp-missing-badge"
+                            data-lmp-channel="ebay"
+                            data-metric="lmp_missing_count" data-invert="1" data-live-value="0" data-format="number"
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
-                            title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
-                            LMP M. 0</span>
+                            title="LMP M.: INV &gt; 0 SKUs with no LMP data. INV = 0 is not counted. Green = 0 missing. Click badge to filter. Click dot for rolling history.">
+                            <span class="summary-trend-dot none" data-metric="lmp_missing_count" title="Rolling history"></span>LMP M. 0</span>
                         <span class="badge fs-6 p-2" id="ebay1-purple-triangle-badge"
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="Purple triangle: Price &lt; 80% of LMP. Click to show only those rows.">
@@ -1465,6 +1467,16 @@
             const stored = parseFloat(row.lmp_price);
             return (isFinite(stored) && stored > 0) ? stored : 0;
         }
+        /** Same 8px circle as the Price column dot. Purple when eBay Price is under 20% of LMP. */
+        function ebayLmpUnder20DotHtml(row, lmpPrice) {
+            if (!row || row.is_parent_summary) return '';
+            const price = parseFloat(row['eBay Price']) || 0;
+            const lmp = parseFloat(lmpPrice) || 0;
+            if (!(price > 0 && lmp > 0 && price < lmp * 0.2)) return '';
+            const pct = ((price / lmp) * 100).toFixed(0);
+            const tip = 'Price $' + price.toFixed(2) + ' is ' + pct + '% of LMP $' + lmp.toFixed(2) + ' (< 20%)';
+            return '<span title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6f42c1;flex-shrink:0;"></span>';
+        }
         /** SGROI at a candidate price — same formula as the S GROI column (not chPromo _margin). */
         function ebaySgroiAtPrice(rowData, price) {
             const sprice = parseFloat(price);
@@ -1567,9 +1579,10 @@
             nroi_percent: 'NROI%',
             cvr_percent: 'CVR%',
             total_views: 'Views',
+            lmp_missing_count: 'LMP M.',
         };
         /** Metrics where lower is better → invert 3-color (up=red, down=green) */
-        const ebay1BadgeInvertMetrics = { tcos_percent: true };
+        const ebay1BadgeInvertMetrics = { tcos_percent: true, lmp_missing_count: true };
         let ebay1ChartInstance = null;
         let ebay1ChartAjax = null;
         let ebay1ChartDays = 30;
@@ -3107,7 +3120,7 @@
                 if ($(e.target).closest('.summary-trend-dot').length) return;
                 const id = this.id || '';
                 // These badges still use body click for table filters
-                if (id === 'zero-sold-count-badge' || id === 'more-sold-count-badge') {
+                if (id === 'zero-sold-count-badge' || id === 'more-sold-count-badge' || id === 'ebay1-lmp-missing-badge') {
                     return;
                 }
                 e.stopPropagation();
@@ -3367,7 +3380,8 @@
                 }
                 applyFilters();
             });
-            $('#ebay1-lmp-missing-badge').on('click', function() {
+            $('#ebay1-lmp-missing-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
                 lmpMissingFilterActive = !lmpMissingFilterActive;
                 if (lmpMissingFilterActive) {
                     blueTriangleFilterActive = false;
@@ -4814,6 +4828,7 @@
                         field: "lmp_price",
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "Lowest marketplace price. Purple dot = eBay Price is under 20% of LMP.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (window.ParentExpand) {
@@ -4840,13 +4855,16 @@
                                 ? ` <span style="color:#007bff;font-weight:500;font-size:12px;">(${totalCompetitors})</span>`
                                 : '';
 
-                            // Compact: $34.50 (9) — click opens competitors drawer
+                            // Compact: $34.50 (9) — click opens competitors drawer.
+                            // Purple dot matches the Price column dot when Price < 20% of LMP.
                             if (lmpPrice) {
-                                return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
+                                const purpleDot = ebayLmpUnder20DotHtml(rowData, lmpPrice);
+                                return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;">
+                                    <a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
                                     style="color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap;"
                                     title="Open LMP competitors">
                                     <span style="font-weight: 600; font-size: 14px;">$${parseFloat(lmpPrice).toFixed(2)}</span>${countHtml}
-                                </a>`;
+                                </a>${purpleDot}</span>`;
                             }
 
                             if (ignoredPrice > 0) {
@@ -4868,7 +4886,7 @@
                                 style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;"
                                 title="Add LMP competitors">—</a>`;
                         },
-                        width: 88
+                        width: 104
                     },
                     {
                         title: " ",

@@ -2665,6 +2665,7 @@ class EbayController extends Controller
                 'missing_count', // M L
                 'dil_ov_percent',
                 'dil_eb1_percent',
+                'lmp_missing_count',
             ];
 
             if (! in_array($metric, $allowedMetrics, true)) {
@@ -2764,6 +2765,10 @@ class EbayController extends Controller
                     if (! array_key_exists($metric, $summary) || floatval($raw) <= 0) {
                         return null;
                     }
+                }
+                // Older snapshots have no LMP M. key. Do not plot those days as 0.
+                if ($metric === 'lmp_missing_count' && ! array_key_exists('lmp_missing_count', $summary)) {
+                    return null;
                 }
 
                 $sd = $row->snapshot_date;
@@ -3375,6 +3380,9 @@ class EbayController extends Controller
                     'missing_count' => floatval($s['missing_count'] ?? 0),
                     'dil_ov_percent' => floatval($s['dil_ov_percent'] ?? 0),
                     'dil_eb1_percent' => floatval($s['dil_eb1_percent'] ?? 0),
+                    'lmp_missing_count' => array_key_exists('lmp_missing_count', $s)
+                        ? floatval($s['lmp_missing_count'])
+                        : null,
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -4376,6 +4384,113 @@ class EbayController extends Controller
     }
 
     /**
+     * INV > 0 child SKUs with no LMP. Same rule as LmpMissingBadge.isMissingLmp on /ebay-tabulator-view.
+     *
+     * @param  array<int, mixed>  $products
+     */
+    private function ebay1CountLmpMissing(array $products): int
+    {
+        $n = 0;
+        foreach ($products as $row) {
+            if (is_object($row)) {
+                $row = json_decode(json_encode($row), true) ?: [];
+            }
+            if (! is_array($row) || $this->ebay1RowIsParent($row)) {
+                continue;
+            }
+            $inv = $this->ebay1RowInv($row);
+            if ($inv !== null && ! ($inv > 0)) {
+                continue;
+            }
+            if (! $this->ebay1RowHasLmp($row)) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function ebay1RowIsParent(array $row): bool
+    {
+        if (! empty($row['is_parent_summary']) || ! empty($row['is_parent']) || ! empty($row['is_parent_row'])) {
+            return true;
+        }
+        if (! empty($row['_children']) && is_array($row['_children'])) {
+            return true;
+        }
+        $sku = strtoupper(trim((string) ($row['(Child) sku'] ?? $row['sku'] ?? $row['Sku'] ?? $row['SKU'] ?? '')));
+
+        return str_contains($sku, 'PARENT');
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function ebay1RowInv(array $row): ?float
+    {
+        foreach (['inventory', 'INV', 'inv', 'Inv', 'QTY AVAIL', 'qty_avail'] as $field) {
+            if (! array_key_exists($field, $row) || $row[$field] === null || $row[$field] === '') {
+                continue;
+            }
+            if (is_numeric($row[$field])) {
+                return (float) $row[$field];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function ebay1RowHasLmp(array $row): bool
+    {
+        $entries = $row['lmp_entries'] ?? null;
+        if (is_array($entries) && $entries !== []) {
+            foreach ($entries as $entry) {
+                if (! is_array($entry) || $this->ebay1LmpEntryIgnored($entry)) {
+                    continue;
+                }
+                $price = $entry['total_price'] ?? ($entry['price'] ?? ($entry['lmp'] ?? null));
+                if (is_numeric($price) && (float) $price > 0) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        foreach (['lmp_price', 'lmp', 'LMP', 'LMP 1', 'lmp_1'] as $field) {
+            if (isset($row[$field]) && is_numeric($row[$field]) && (float) $row[$field] > 0) {
+                return true;
+            }
+        }
+        if (isset($row['lmp_entries_total']) && is_numeric($row['lmp_entries_total']) && (float) $row['lmp_entries_total'] > 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $entry
+     */
+    private function ebay1LmpEntryIgnored(array $entry): bool
+    {
+        $v = $entry['ignored'] ?? null;
+        if ($v === true || $v === 1 || $v === '1') {
+            return true;
+        }
+        if (is_string($v)) {
+            return in_array(strtolower(trim($v)), ['true', 'yes', 'on'], true);
+        }
+
+        return false;
+    }
+
+    /**
      * Auto-save daily eBay summary snapshot (channel-wise)
      * Matches JavaScript updateSummary() logic exactly
      */
@@ -4558,6 +4673,7 @@ class EbayController extends Controller
                 'less_amz_count' => 0,
                 'more_amz_count' => 0,
                 'prc_gt_lmp_count' => $prcGtLmpCount,
+                'lmp_missing_count' => $this->ebay1CountLmpMissing($products),
                 
                 // Financial Totals
                 'grand_total_kw_spend' => round($grandTotalKwSpend, 2),
