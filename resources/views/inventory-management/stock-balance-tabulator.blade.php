@@ -1326,6 +1326,7 @@
                 showToast(response.message || 'Transfer successful!', 'success');
                 markSubmitted(fields.sku);
                 applyAdjustedInventory(fields, response);
+                applyAllFilters();
                 scheduleInventoryPull([fields.sku, fields.fromSku], startedAt);
             }).fail(function(xhr) {
                 const resp = xhr.responseJSON || {};
@@ -1378,6 +1379,7 @@
             const startedAt = Date.now();
 
             function finish() {
+                applyAllFilters();
                 if (pulled.length) scheduleInventoryPull(pulled, startedAt);
                 else reloadAfterTransfers();
                 let msg = 'Submitted ' + ok + ' transfer' + (ok === 1 ? '' : 's') + '.';
@@ -1847,6 +1849,7 @@
 
         function rowSubmitBlocked(data) {
             if (!data) return false;
+            if (recentlySubmitted(data.SKU)) return true;
             const fromSku = data._from_sku || resolveFromSkuForRow(data);
             if (!fromSku) return false;
             const meta = getFromSkuMeta(fromSku);
