@@ -235,9 +235,16 @@
                     
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="">All DIL%</option>
-                        <option value="red">Red (&lt;25%)</option>
-                        <option value="green">Green (25-50%)</option>
-                        <option value="pink">Pink (50%+)</option>
+                        <option value="red">DIL Red (&lt;25%)</option>
+                        <option value="green">DIL Green (25-50%)</option>
+                        <option value="pink">DIL Pink (50%+)</option>
+                    </select>
+
+                    <select id="from-dil-filter" class="form-select form-select-sm" style="width: auto;">
+                        <option value="">All FROM DIL%</option>
+                        <option value="red">FROM DIL Red (&lt;25%)</option>
+                        <option value="green">FROM DIL Green (25-50%)</option>
+                        <option value="pink">FROM DIL Pink (50%+)</option>
                     </select>
                     
                     <select id="action-filter" class="form-select form-select-sm" style="width: auto;">
@@ -1755,7 +1762,7 @@
             applyAllFilters();
         });
         
-        $('#dil-filter').on('change', function() {
+        $('#dil-filter, #from-dil-filter').on('change', function() {
             applyAllFilters();
         });
         
@@ -1868,8 +1875,16 @@
             try {
                 const rowVal = $('#row-filter').val() || 'sku';
                 const dilVal = $('#dil-filter').val();
+                const fromDilVal = $('#from-dil-filter').val();
                 const actionVal = $('#action-filter').val();
                 const searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
+
+                function matchesDilBand(percent, band) {
+                    if (band === 'red') return percent < 25;
+                    if (band === 'green') return percent >= 25 && percent < 50;
+                    if (band === 'pink') return percent >= 50;
+                    return true;
+                }
 
                 table.setFilter(function(data) {
                     if (searchVal) {
@@ -1882,11 +1897,13 @@
                     if (rowVal === 'sku' && parent) return false;
                     if (rowVal === 'parent' && !parent) return false;
 
-                    if (dilVal) {
-                        const dil = dilToPercent(data.DIL);
-                        if (dilVal === 'red'    && !(dil < 25)) return false;
-                        if (dilVal === 'green' && !(dil >= 25 && dil < 50)) return false;
-                        if (dilVal === 'pink' && !(dil >= 50)) return false;
+                    if (dilVal && !matchesDilBand(dilToPercent(data.DIL), dilVal)) return false;
+
+                    if (fromDilVal) {
+                        const fromSku = data._from_sku || resolveFromSkuForRow(data);
+                        if (!fromSku) return false;
+                        const fromDil = dilToPercent(getFromSkuMeta(fromSku).dil);
+                        if (!matchesDilBand(fromDil, fromDilVal)) return false;
                     }
 
                     if (actionVal) {
