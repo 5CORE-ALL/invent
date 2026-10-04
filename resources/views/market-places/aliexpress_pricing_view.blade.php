@@ -825,11 +825,6 @@
                 ? ebayDilGroiMetaForRow(data)
                 : null;
             if (meta && meta.sprc > 0) {
-                if (meta.zeroSoldMin) {
-                    return 'AL30 = 0 (0 Sold). min Target NROI ' + meta.groi + '%'
-                        + ' → S PRC $' + Number(meta.sprc).toFixed(2)
-                        + ' → SGROI ' + shown + '%';
-                }
                 if (meta.outOfSlabStd) {
                     return 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% is outside slabs. '
                         + meta.label + ' → S PRC $' + Number(meta.sprc).toFixed(2)
@@ -2227,7 +2222,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target NROI slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. AL30 = 0 uses min Target NROI. AL30 > 0 uses the Dil-matching slab. Dil above last To uses Std, then LMP if Std > LMP. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
+                        headerTooltip: "S PRC from Dil → Target NROI slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab. Dil above last To uses Std, then LMP if Std > LMP. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof aeIsParentRow === 'function' && aeIsParentRow(rowData)) return '';
@@ -2250,7 +2245,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. AL30 = 0 uses min Target NROI. AL30 > 0 uses Dil-matching Target NROI. Dil above last To uses Std, then LMP if Std > LMP. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab. Dil above last To uses Std, then LMP if Std > LMP. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2340,7 +2335,7 @@
                     {
                         title: "SGROI%",
                         field: "sroi",
-                        headerTooltip: "SGROI from Sprc Dil S PRC. AL30 = 0 uses min Target NROI (no LMP cap). AL30 > 0 uses Dil slab; LMP cap can lower the shown %.",
+                        headerTooltip: "SGROI from Sprc Dil S PRC. AL30 = 0 still uses the Dil slab. LMP cap can lower the shown %.",
                         sorter: function(a, b, aRow, bRow) {
                             const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;

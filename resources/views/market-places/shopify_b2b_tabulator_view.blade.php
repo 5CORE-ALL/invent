@@ -2030,7 +2030,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2B L30 > 0; 0 Sold uses the lowest Target NROI. Dil outside the table uses the nearest slab. CVR overlay: Down < 7% / Up > 10% (editable). 0 Sold and no views skip CVR. B2B formula excludes Ship.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. B2B L30 = 0 still uses the Dil-matching slab. Dil outside the table uses the nearest slab. CVR overlay: Down < 7% / Up > 10% (editable). 0 Sold and no views skip CVR. B2B formula excludes Ship.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) return '';
@@ -2054,7 +2054,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Live from Sprc Dil (Dil slab when B2B L30 > 0; 0 Sold = min Target NROI; then CVR overlay). No LMP cap. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "Not editable. Live from Sprc Dil (Dil slab, including when B2B L30 = 0; then CVR overlay). No LMP cap. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) {

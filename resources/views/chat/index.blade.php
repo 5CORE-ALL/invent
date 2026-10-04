@@ -22,30 +22,12 @@
             flex-direction: column;
         }
         .slack-nav__ws {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
             padding: 14px 16px 12px;
             border-bottom: 1px solid rgba(255,255,255,.08);
             font-weight: 800;
             color: #fff;
             font-size: 17px;
         }
-        .slack-dock-close {
-            width: 28px;
-            height: 28px;
-            flex-shrink: 0;
-            border: 0;
-            border-radius: 6px;
-            background: transparent;
-            color: #fff;
-            font-size: 22px;
-            line-height: 1;
-            padding: 0;
-            cursor: pointer;
-        }
-        .slack-dock-close:hover { background: rgba(255,255,255,.16); }
         .slack-nav__search {
             margin: 10px 12px 0;
         }
@@ -329,6 +311,8 @@
         .slack-mention-pick button { display: block; width: 100%; border: 0; background: #fff; text-align: left; padding: 6px 10px; }
         .slack-mention-pick button:hover { background: #f8f8f8; }
         .slack-back { display: none; border: 0; background: transparent; font-weight: 800; margin-right: 8px; }
+        .slack-install { display: none; margin: 8px 12px; width: calc(100% - 24px); border: 0; border-radius: 6px; background: #1164a3; color: #fff; font-weight: 700; padding: 8px; }
+        .slack-install.is-on { display: block; }
         .slack-progress { display: none; height: 3px; background: #e8e8e8; margin: 0 16px 8px; }
         .slack-progress.is-on { display: block; }
         .slack-progress span { display: block; height: 100%; width: 0; background: #007a5a; }
@@ -388,15 +372,10 @@
 @endsection
 
 @section('content')
-    <p class="fivecore-chat-dock-note">5Core Chat is open on the right.</p>
     <div class="slack" id="slackApp">
         <aside class="slack-nav">
-            <div class="slack-nav__ws">
-                <span>5Core Chat</span>
-                @if (request()->boolean('embed'))
-                    <button type="button" class="slack-dock-close" id="slackDockClose" aria-label="Close" title="Close">&times;</button>
-                @endif
-            </div>
+            <div class="slack-nav__ws">5Core Chat</div>
+            <button type="button" class="slack-install" id="slackInstallBtn">Install 5Core Chat</button>
             <div class="slack-status" id="slackConn">Connected</div>
             <div class="slack-nav__search">
                 <input type="search" id="slackSearch" placeholder="Find people or start a DM" autocomplete="off">
@@ -675,20 +654,6 @@
 <script>
 (function () {
     document.body.classList.add('invent-chat-page');
-    const dockCloseBtn = document.getElementById('slackDockClose');
-    if (dockCloseBtn) {
-        dockCloseBtn.addEventListener('click', function () {
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage({ type: 'fivecore-chat-dock-close' }, location.origin);
-            }
-        });
-    }
-    const docked = document.body.classList.contains('has-fivecore-chat-dock')
-        && !document.documentElement.classList.contains('fivecore-chat-dock-closed')
-        && window.matchMedia('(min-width: 993px)').matches
-        && !window.matchMedia('(display-mode: standalone)').matches
-        && !new URLSearchParams(location.search).get('embed');
-    if (docked) return;
     const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const meId = {{ (int) $meId }};
     const canAnnounce = {{ !empty($canAnnounce) ? 'true' : 'false' }};
@@ -2097,6 +2062,22 @@
             if (d.type === 'unread' && typeof d.unread === 'number') updateTopbar(d.unread);
         };
     }
+    function revealInstall() {
+        const btn = document.getElementById('slackInstallBtn');
+        if (btn && window.__inventPwaInstall && !window.matchMedia('(display-mode: standalone)').matches) {
+            btn.classList.add('is-on');
+        }
+    }
+    window.addEventListener('invent-pwa-install-ready', revealInstall);
+    revealInstall();
+    document.getElementById('slackInstallBtn').addEventListener('click', function () {
+        if (typeof installPWA === 'function') {
+            installPWA().then(function () {
+                document.getElementById('slackInstallBtn').classList.remove('is-on');
+            });
+        }
+    });
+
     function openTaskFrom(m) {
         const authorId = Number(m.user_id) || 0;
         const title = String(m.body || '').replace(/\s+/g, ' ').trim().slice(0, 1000);

@@ -1740,7 +1740,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Dil suggestion only. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (L30 = 0, INV > 0) uses the lowest Target NROI. If this price is below A Price, S PRC uses A Price. If it is at or above A Price, S PRC keeps this Sprc Dil. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
+                        headerTooltip: "Dil suggestion only. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. L30 = 0 still uses the Dil-matching slab. If this price is below A Price, S PRC uses A Price. If it is at or above A Price, S PRC keeps this Sprc Dil. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof chPromoIsParentRow === 'function' && chPromoIsParentRow(rowData)) return '';

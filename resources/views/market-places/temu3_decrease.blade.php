@@ -4167,10 +4167,8 @@
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
                         const tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Temu L30 → min Target NROI' })
-                            : ((meta.zeroSoldMin
-                                ? '0 Sold Temu L30 → min Target NROI'
-                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
+                            ? ebayDilGroiTipText(meta)
+                            : (('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
                             + ' → ' + meta.label
                             + ' → NROI ' + meta.groi + '%'
                             + ' → $' + meta.sprc.toFixed(2));

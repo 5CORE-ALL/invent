@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use App\Models\StockBalance;
+use App\Models\StockBalanceRule;
 use App\Models\StockBalanceTransferPreference;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\ShopifyApiInventoryController;
@@ -1285,11 +1286,13 @@ class StockBalanceController extends Controller
         if (! $shopifyController->syncLiveInventoryForSku($sku, 0)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.',
+                'message' => $shopifyController->lastLiveInventorySyncMessage
+                    ?: 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.',
             ], 422);
         }
 
-        $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        $row = ShopifySku::firstForProductSku($sku)
+            ?: ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
         if (! $row) {
             return response()->json([
                 'success' => false,
@@ -1933,6 +1936,7 @@ class StockBalanceController extends Controller
             $preferences[$row->to_sku] = [
                 'fromSku' => $row->from_sku,
                 'ratio' => $row->ratio ?? '1:1',
+                'fromQty' => $row->from_qty,
             ];
         }
         return response()->json(['preferences' => $preferences]);
@@ -1948,21 +1952,115 @@ class StockBalanceController extends Controller
             'to_sku' => 'required|string',
             'from_sku' => 'nullable|string',
             'ratio' => 'nullable|string|max:20',
+            'from_qty' => 'nullable|integer|min:0',
         ]);
         $user = Auth::user();
         if (!$user) {
             return response()->json(['error' => 'Unauthorized'], 401);
+        }
+        $payload = [
+            'from_sku' => $request->filled('from_sku') ? trim($request->from_sku) : null,
+            'ratio' => $request->input('ratio', '1:1'),
+        ];
+        if ($request->exists('from_qty')) {
+            $payload['from_qty'] = $request->filled('from_qty') ? (int) $request->from_qty : null;
         }
         StockBalanceTransferPreference::updateOrCreate(
             [
                 'user_id' => $user->id,
                 'to_sku' => trim($request->to_sku),
             ],
-            [
-                'from_sku' => $request->filled('from_sku') ? trim($request->from_sku) : null,
-                'ratio' => $request->input('ratio', '1:1'),
-            ]
+            $payload
         );
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Transfer rules keyed by destination SKU (shared across users).
+     */
+    public function getRules()
+    {
+        if (!Auth::user()) {
+            return response()->json(['rules' => []]);
+        }
+
+        $rules = [];
+        StockBalanceRule::query()
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get()
+            ->each(function ($row) use (&$rules) {
+                if (isset($rules[$row->to_sku])) {
+                    return;
+                }
+                $rules[$row->to_sku] = [
+                    'toSku' => $row->to_sku,
+                    'fromSku' => $row->from_sku,
+                    'ratio' => $row->ratio ?? '1:1',
+                    'fromQty' => $row->from_qty,
+                    'action' => $row->action,
+                ];
+            });
+
+        return response()->json(['rules' => $rules]);
+    }
+
+    /**
+     * Create or update one transfer rule, and keep the row preference in sync.
+     */
+    public function saveRule(Request $request)
+    {
+        $request->validate([
+            'to_sku' => 'required|string',
+            'from_sku' => 'required|string',
+            'ratio' => 'nullable|string|max:20',
+            'from_qty' => 'nullable|integer|min:1',
+            'action' => 'nullable|string|in:NRB,RB',
+        ]);
+
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $toSku = trim($request->to_sku);
+        $fromSku = trim($request->from_sku);
+        $ratio = $request->input('ratio', '1:1') ?: '1:1';
+        $fromQty = $request->filled('from_qty') ? (int) $request->from_qty : null;
+        $action = $request->filled('action') ? $request->action : null;
+
+        $rule = StockBalanceRule::updateOrCreate(
+            ['to_sku' => $toSku],
+            [
+                'from_sku' => $fromSku,
+                'ratio' => $ratio,
+                'from_qty' => $fromQty,
+                'action' => $action,
+                'user_id' => $user->id,
+            ]
+        );
+
+        StockBalanceTransferPreference::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'to_sku' => $toSku,
+            ],
+            [
+                'from_sku' => $fromSku,
+                'ratio' => $ratio,
+                'from_qty' => $fromQty,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'rule' => [
+                'toSku' => $rule->to_sku,
+                'fromSku' => $rule->from_sku,
+                'ratio' => $rule->ratio ?? '1:1',
+                'fromQty' => $rule->from_qty,
+                'action' => $rule->action,
+            ],
+        ]);
     }
 }

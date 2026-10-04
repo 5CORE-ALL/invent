@@ -2154,7 +2154,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. AL30 = 0 uses min Target NROI. AL30 > 0 uses the Dil-matching slab; Dil outside the table uses the nearest slab. CVR overlay is level-only (CVR < 7% −10; CVR > 10% +10) and only when the SKU has views. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
+                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab; Dil outside the table uses the nearest slab. CVR overlay is level-only (CVR < 7% −10; CVR > 10% +10) and only when the SKU has views. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData && rowData.is_parent) return '';
@@ -2185,7 +2185,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. AL30 = 0 uses min Target NROI. AL30 > 0 uses Dil-matching Target NROI; Dil outside the table uses the nearest slab. CVR overlay adjusts Target NROI when the SKU has views. Dil below LMP stays Dil; Dil at/above LMP becomes LMP only when SGROI at LMP ≥ 20%. When LMP is missing, Std Prc is the maximum. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab; Dil outside the table uses the nearest slab. CVR overlay adjusts Target NROI when the SKU has views. Dil below LMP stays Dil; Dil at/above LMP becomes LMP only when SGROI at LMP ≥ 20%. When LMP is missing, Std Prc is the maximum. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2260,7 +2260,7 @@
                     {
                         title: "SGROI",
                         field: "sroi",
-                        headerTooltip: "SGROI from Sprc Dil S PRC. AL30 = 0 uses min Target NROI. AL30 > 0 uses Dil slab. Shein has no Ads%.",
+                        headerTooltip: "SGROI from Sprc Dil S PRC. AL30 = 0 still uses the Dil slab. Shein has no Ads%.",
                         sorter: function(a, b, aRow, bRow) {
                             const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;

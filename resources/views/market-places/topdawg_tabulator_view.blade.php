@@ -1124,7 +1124,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. TD L30 > 0 uses the matching slab; 0 Sold uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100)) / margin (Ship not used).',
+                    headerTooltip: 'S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. TD L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + NROI%/100)) / margin (Ship not used).',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
@@ -1142,7 +1142,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 92, sorter: 'number',
                     editable: false,
-                    headerTooltip: 'Not editable. Auto-saved from Sprc Dil (0–0 when Dil = 0; Dil slab when TD L30 > 0; 0 Sold uses the lowest Target NROI). S PRC = (LP × (1 + NROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
+                    headerTooltip: 'Not editable. Auto-saved from Sprc Dil (0–0 when Dil = 0; Dil slab when TD L30 > 0; TD L30 = 0 still uses the Dil-matching slab). S PRC = (LP × (1 + NROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';

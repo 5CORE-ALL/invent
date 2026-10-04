@@ -3242,7 +3242,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as Amazon). 0 Sold (RV L30 = 0, INV > 0) uses the lowest Target GROI. CVR overlay (editable) adjusts Target GROI; Count updates live. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as Amazon). RV L30 = 0 still uses the Dil-matching slab. CVR overlay (editable) adjusts Target GROI; Count updates live. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isReverbParentRow(rowData)) return '';
@@ -3264,7 +3264,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Sprc Dil (Amazon Dil slabs). Dil-matching when RV L30 > 0; 0 Sold uses the lowest Target GROI. CVR% still applies when there is no Dil slab match. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "Not editable. S PRC from Sprc Dil (Amazon Dil slabs). RV L30 = 0 still uses the Dil-matching slab. CVR% still applies when there is no Dil slab match. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {

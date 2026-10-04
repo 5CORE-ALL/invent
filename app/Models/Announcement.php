@@ -46,6 +46,11 @@ class Announcement extends Model
         return $this->hasMany(AnnouncementComment::class)->orderBy('id');
     }
 
+    public function reactions(): HasMany
+    {
+        return $this->hasMany(AnnouncementReaction::class);
+    }
+
     public function scopePosted(Builder $query): Builder
     {
         return $query->whereNotNull('posted_at');

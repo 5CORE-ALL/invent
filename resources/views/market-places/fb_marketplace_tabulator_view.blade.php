@@ -706,7 +706,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (FB L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: LP × (1 + GROI%/100) / margin (no ship). CVR% still fills S PRC when Dil does not match a slab.",
+                        headerTooltip: "S PRC from Dil → Target GROI% slabs. FB L30 = 0 still uses the Dil-matching slab. Formula: LP × (1 + GROI%/100) / margin (no ship). CVR% still fills S PRC when Dil does not match a slab.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(rowData)) return '';
@@ -731,7 +731,7 @@
                         sorter: function(a, b, aRow, bRow) {
                             return fbMpDisplayedSprice(aRow.getData()) - fbMpDisplayedSprice(bRow.getData());
                         },
-                        headerTooltip: "Same dollar as Sprc Dil (live Dil → Target GROI, including 0 Sold min GROI). Otherwise Std × (1 − CVR%/100). S PRC = LP × (1 + GROI%/100) / margin (no ship). Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "Same dollar as Sprc Dil (live Dil → Target GROI, including when FB L30 = 0). Otherwise Std × (1 − CVR%/100). S PRC = LP × (1 + GROI%/100) / margin (no ship). Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             let value = fbMpDisplayedSprice(d);

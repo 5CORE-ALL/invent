@@ -3408,6 +3408,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/stock-balance-search-history', [StockBalanceController::class, 'searchHistory']);
     Route::get('/stock-balance-transfer-preferences', [StockBalanceController::class, 'getTransferPreferences']);
     Route::post('/stock-balance-transfer-preferences', [StockBalanceController::class, 'saveTransferPreference']);
+    Route::get('/stock-balance-rules', [StockBalanceController::class, 'getRules']);
+    Route::post('/stock-balance-rules', [StockBalanceController::class, 'saveRule']);
     Route::get('/combo-trf', [StockBalanceController::class, 'comboTrfView'])->name('combo.trf');
     Route::post('/combo-trf-store', [StockBalanceController::class, 'storeComboTrf'])->name('combo.trf.store');
     Route::get('/combo-trf-inventory-data', [StockBalanceController::class, 'getComboTrfInventoryData']);
@@ -3545,6 +3547,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/announcements/{id}/viewers', 'viewers')->name('announcements.viewers');
         Route::get('/announcements/{id}/comments', 'comments')->name('announcements.comments');
         Route::post('/announcements/{id}/comments', 'comment')->name('announcements.comment');
+        Route::post('/announcements/{id}/react', 'react')->whereNumber('id')->name('announcements.react');
         Route::post('/announcements/comments/{comment}/react', 'reactComment')->whereNumber('comment')->name('announcements.comments.react');
         Route::post('/announcements/store', 'store')->name('announcements.store');
         Route::post('/announcements/post/{id}', 'post')->name('announcements.post');

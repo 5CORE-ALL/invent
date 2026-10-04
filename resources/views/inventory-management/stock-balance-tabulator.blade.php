@@ -46,6 +46,35 @@
             cursor: wait;
         }
 
+        /* ACTION is a colored dot only */
+        .last-update-dot {
+            width: 16px;
+            height: 16px;
+            border: none;
+            border-radius: 50%;
+            padding: 0;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .tabulator .action-select.form-select {
+            width: 16px;
+            height: 16px;
+            min-height: 16px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: none !important;
+            font-size: 0;
+            line-height: 16px;
+            color: transparent;
+            cursor: pointer;
+            box-shadow: none;
+        }
+
         /* DIL% colors */
         .dil-red { color: #a00211; font-weight: 600; }
         .dil-yellow { color: #ffc107; font-weight: 600; }
@@ -172,6 +201,27 @@
         }
         .from-sku-column .custom-sku-option:last-child {
             border-bottom: none;
+        }
+
+        .rule-edit-btn {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #addRuleModal .form-label {
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            letter-spacing: 0.02em;
+        }
+        #addRuleModal .select2-container {
+            width: 100% !important;
+        }
+        #addRuleModal .select2-container--open {
+            z-index: 2000;
         }
     </style>
 @endsection
@@ -303,6 +353,9 @@
                 <div id="stock-balance-table-wrapper" style="height: calc(100vh - 250px); display: flex; flex-direction: column;">
                     <!-- SKU Search + Inventory note & Refresh -->
                     <div class="p-2 bg-light border-bottom d-flex align-items-center gap-3 flex-wrap">
+                        <button type="button" id="add-rule-btn" class="btn btn-sm btn-primary">
+                            <i class="fas fa-plus"></i> Add Rule
+                        </button>
                         <input type="text" id="sku-search" class="form-control" placeholder="Search SKU..." style="max-width: 220px;">
                         <span class="text-muted small">INV and Sold are from last sync. If numbers look wrong, click Refresh.</span>
                         <button type="button" id="refresh-inventory-data-btn" class="btn btn-sm btn-outline-primary" title="Reload table data from server">
@@ -311,6 +364,114 @@
                     </div>
                     <!-- Table -->
                     <div id="stock-balance-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addRuleModal" tabindex="-1" aria-labelledby="addRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addRuleModalLabel">Add Rule</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <label class="form-label" for="rule-to-sku">SKU</label>
+                            <select id="rule-to-sku" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="rule-parent">Parent</label>
+                            <input type="text" id="rule-parent" class="form-control form-control-sm" readonly>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label" for="rule-inv">INV</label>
+                            <input type="text" id="rule-inv" class="form-control form-control-sm" readonly>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label" for="rule-sold">SOLD</label>
+                            <input type="text" id="rule-sold" class="form-control form-control-sm" readonly>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">DIL%</label>
+                            <div id="rule-dil" class="form-control form-control-sm bg-light" style="font-weight:600;">-</div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="rule-action">ACTION</label>
+                            <select id="rule-action" class="form-select form-select-sm">
+                                <option value="">--</option>
+                                <option value="RB">RB</option>
+                                <option value="NRB">NRB</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="rule-ratio">Ratio</label>
+                            <select id="rule-ratio" class="form-select form-select-sm">
+                                <option value="1:4">1:4</option>
+                                <option value="1:3">1:3</option>
+                                <option value="1:2">1:2</option>
+                                <option value="1:1" selected>1:1</option>
+                                <option value="2:1">2:1</option>
+                                <option value="3:1">3:1</option>
+                                <option value="4:1">4:1</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-3">
+                            <label class="form-label" for="rule-from-sku">FROM SKU</label>
+                            <select id="rule-from-sku" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="rule-from-sold">FROM SOLD</label>
+                            <input type="text" id="rule-from-sold" class="form-control form-control-sm" readonly>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">FROM DIL%</label>
+                            <div id="rule-from-dil" class="form-control form-control-sm bg-light" style="font-weight:600;">-</div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="rule-from-qty">FROM Qty</label>
+                            <input type="number" id="rule-from-qty" class="form-control form-control-sm" min="1" placeholder="Qty">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="rule-to-qty">TO Qty</label>
+                            <input type="text" id="rule-to-qty" class="form-control form-control-sm" readonly placeholder="Calc" style="background-color:#d4edda; font-weight:bold;">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-rule-btn">Save Rule</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="lastUpdateModal" tabindex="-1" aria-labelledby="lastUpdateModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="lastUpdateModalLabel">Last Update</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <dl class="row mb-0">
+                        <dt class="col-4">SKU</dt>
+                        <dd class="col-8" id="lu-sku"></dd>
+                        <dt class="col-4">Direction</dt>
+                        <dd class="col-8" id="lu-direction"></dd>
+                        <dt class="col-4">Qty</dt>
+                        <dd class="col-8" id="lu-qty"></dd>
+                        <dt class="col-4" id="lu-other-label">Other SKU</dt>
+                        <dd class="col-8" id="lu-other"></dd>
+                        <dt class="col-4">When</dt>
+                        <dd class="col-8" id="lu-date"></dd>
+                        <dt class="col-4">By</dt>
+                        <dd class="col-8 mb-0" id="lu-by"></dd>
+                    </dl>
                 </div>
             </div>
         </div>
@@ -324,6 +485,7 @@
     let selectedSkus = new Set();
     let allTableData = [];
     let serverSavedPreferences = {}; // FROM SKU & ratio per to_sku (shared — latest save from any user)
+    let rulesBySku = {}; // transfer rules keyed by destination SKU
     let restoringFromSku = false; // batch restore; skip side effects
     let isApplyingFilters = false; // prevent filter↔render infinite loop
     
@@ -745,7 +907,7 @@
                 table.getColumn('ratio').show();
                 table.getColumn('submit').show();
                 // Reduce ACTION column width to save space
-                table.getColumn('ACTION').updateDefinition({width: 100});
+                table.getColumn('ACTION').updateDefinition({width: 36});
                 
                 // Custom FROM SKU is already in DOM; restore saved and sync display
                 setTimeout(function() {
@@ -765,7 +927,7 @@
                 table.getColumn('ratio').hide();
                 table.getColumn('submit').hide();
                 // Restore ACTION column width
-                table.getColumn('ACTION').updateDefinition({width: 60});
+                table.getColumn('ACTION').updateDefinition({width: 36});
             }
         });
         
@@ -777,11 +939,11 @@
             
             // Update styling based on selection
             if (action === 'RB') {
-                $select.css({'background-color': '#28a745', 'color': 'white'});
+                $select.css('background-color', '#28a745');
             } else if (action === 'NRB') {
-                $select.css({'background-color': '#dc3545', 'color': 'white'});
+                $select.css('background-color', '#dc3545');
             } else {
-                $select.css({'background-color': '#fff', 'color': '#212529'});
+                $select.css('background-color', '#6c757d');
             }
             
             // Save to database
@@ -984,20 +1146,34 @@
             $dilSpan.attr('class', 'from-dil-percent ' + dilClass).text(fromDilPercent + '%');
         }
 
-        function persistFromSkuPreference(toSku, fromSku, ratio) {
-            const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+        const transferSaveTimers = {};
+
+        function persistTransferInputs(toSku, fromSku, ratio, fromQty) {
+            if (!toSku) return;
+            let savedData = {};
+            try {
+                savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+            } catch (e) {
+                savedData = {};
+            }
             savedData.fromSku = fromSku || '';
             savedData.ratio = ratio || savedData.ratio || '1:1';
+            savedData.fromQty = (fromQty === '' || fromQty == null) ? null : (parseInt(fromQty, 10) || 0);
             localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
             serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
-            serverSavedPreferences[toSku].fromSku = fromSku || '';
+            serverSavedPreferences[toSku].fromSku = savedData.fromSku;
             serverSavedPreferences[toSku].ratio = savedData.ratio;
-            $.post('/stock-balance-transfer-preferences', {
-                _token: $('meta[name="csrf-token"]').attr('content'),
-                to_sku: toSku,
-                from_sku: fromSku || '',
-                ratio: savedData.ratio
-            });
+            serverSavedPreferences[toSku].fromQty = savedData.fromQty;
+            clearTimeout(transferSaveTimers[toSku]);
+            transferSaveTimers[toSku] = setTimeout(function() {
+                $.post('/stock-balance-transfer-preferences', {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    to_sku: toSku,
+                    from_sku: savedData.fromSku,
+                    ratio: savedData.ratio,
+                    from_qty: savedData.fromQty == null ? '' : savedData.fromQty
+                });
+            }, 350);
         }
 
         function applyFromSkuToRow($row, row, fromSku, options) {
@@ -1006,12 +1182,16 @@
             const toSku = row.getData().SKU;
             fromSku = fromSku || '';
 
-            if (!silent) {
-                persistFromSkuPreference(toSku, fromSku, $row.find('.ratio-select').val() || '1:1');
+            const $select = $row.find('.to-sku-select');
+            if (fromSku && !$select.find('option').filter(function() { return $(this).val() === fromSku; }).length) {
+                $select.append($('<option>', { value: fromSku, text: fromSku }));
+            }
+            if (fromSku) {
+                $select.val(fromSku);
             }
 
             if (fromSku) {
-                const selectedOption = $row.find('.to-sku-select option:selected');
+                const selectedOption = $select.find('option:selected');
                 const meta = getFromSkuMeta(fromSku);
                 const fromParent = selectedOption.attr('data-parent') || meta.parent || '';
                 const fromInv = meta.inv || parseInt(selectedOption.attr('data-inv'), 10) || 0;
@@ -1020,14 +1200,18 @@
                 $row.find('.from-inv-display').val(fromInv);
                 $row.find('.from-sold-display').val(meta.sold);
                 const data = row.getData();
+                const savedQty = savedTransferQty(toSku);
                 const keepQty = !!options.keepQty && data._from_qty != null && data._from_qty !== '';
-                const qtyToShow = keepQty ? data._from_qty : fromInv;
+                const qtyToShow = keepQty ? data._from_qty : (savedQty != null ? savedQty : fromInv);
                 $row.find('.from-qty-input').val(qtyToShow);
                 setFromDilDisplay($row, meta.dil);
 
                 data._from_qty = qtyToShow;
                 data._from_dil = meta.dil;
                 data._from_sku = fromSku;
+                if (!silent) {
+                    persistTransferInputs(toSku, fromSku, $row.find('.ratio-select').val() || data._ratio || '1:1', qtyToShow);
+                }
             } else {
                 $row.find('.to-parent-display').val('');
                 $row.find('.from-inv-display').val('');
@@ -1038,6 +1222,9 @@
                 data._from_qty = null;
                 data._from_dil = null;
                 data._from_sku = null;
+                if (!silent) {
+                    persistTransferInputs(toSku, '', $row.find('.ratio-select').val() || '1:1', null);
+                }
             }
             syncDisplayFromSkuSingle($row);
         }
@@ -1060,18 +1247,14 @@
             const rowData = row.getData();
             const toSku = rowData.SKU; // Current row's SKU (TO SKU)
             const ratio = $select.val();
+            rowData._ratio = ratio;
             
-            const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
-            savedData.ratio = ratio;
-            localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
-            serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
-            serverSavedPreferences[toSku].ratio = ratio;
-            $.post('/stock-balance-transfer-preferences', {
-                _token: $('meta[name="csrf-token"]').attr('content'),
-                to_sku: toSku,
-                from_sku: $row.find('.to-sku-select').val() || '',
-                ratio: ratio
-            });
+            persistTransferInputs(
+                toSku,
+                $row.find('.to-sku-select').val() || rowData._from_sku || '',
+                ratio,
+                $row.find('.from-qty-input').val()
+            );
             // Recalculate TO Qty
             calculateToQty($row);
         });
@@ -1084,7 +1267,14 @@
             const raw = String($(this).val() ?? '').trim();
             const qty = raw === '' ? null : (parseInt(raw, 10) || 0);
             if (row) {
-                row.getData()._from_qty = qty;
+                const data = row.getData();
+                data._from_qty = qty;
+                persistTransferInputs(
+                    data.SKU,
+                    $row.find('.to-sku-select').val() || data._from_sku || '',
+                    $row.find('.ratio-select').val() || data._ratio || '1:1',
+                    qty
+                );
             }
             calculateToQty($row);
         });
@@ -1217,14 +1407,20 @@
                 return response.data || [];
             },
             dataLoaded: function() {
-                // Fetch server-saved preferences so FROM SKU & ratio sync across devices
-                $.get('/stock-balance-transfer-preferences').done(function(res) {
-                    if (res.preferences && typeof res.preferences === 'object') {
+                // Fetch server-saved preferences and rules so FROM SKU, ratio, and qty stay shared
+                $.get('/stock-balance-transfer-preferences').always(function(res) {
+                    if (res && res.preferences && typeof res.preferences === 'object') {
                         serverSavedPreferences = res.preferences;
                     }
-                    enrichTransferMetaFromPreferences();
-                    applyAllFilters();
-                    restoreSavedFromSku();
+                    $.get('/stock-balance-rules').always(function(ruleRes) {
+                        if (ruleRes && ruleRes.rules && typeof ruleRes.rules === 'object') {
+                            rulesBySku = ruleRes.rules;
+                        }
+                        enrichTransferMetaFromPreferences();
+                        applyAllFilters();
+                        restoreSavedFromSku();
+                        refreshRuleButtons();
+                    });
                 });
             },
             layout: "fitDataStretch",
@@ -1348,24 +1544,22 @@
                     title: "ACTION",
                     field: "ACTION",
                     hozAlign: "center",
-                    width: 90,
+                    width: 36,
                     headerSort: false,
                     formatter: function(cell) {
                         const value = cell.getValue() || '';
                         let selectBg = '#6c757d';
-                        let selectColor = 'white';
-                        
+
                         if (value === 'RB') {
                             selectBg = '#28a745';
                         } else if (value === 'NRB') {
                             selectBg = '#dc3545';
                         }
-                        
-                        // Use colored dots instead of text
-                        return '<select class="form-select form-select-sm action-select" data-sku="' + cell.getRow().getData().SKU + '" style="width:80px; font-size:14px; font-weight:bold; text-align:center; background-color:' + selectBg + '; color:' + selectColor + '; border:none;">' +
-                            '<option value="" ' + (value === '' ? 'selected' : '') + ' style="background-color:#6c757d;color:white;">--</option>' +
-                            '<option value="RB" ' + (value === 'RB' ? 'selected' : '') + ' style="background-color:#28a745;color:white;">🟢</option>' +
-                            '<option value="NRB" ' + (value === 'NRB' ? 'selected' : '') + ' style="background-color:#dc3545;color:white;">🔴</option>' +
+
+                        return '<select class="form-select action-select" data-sku="' + cell.getRow().getData().SKU + '" title="' + (value || '--') + '" style="background-color:' + selectBg + ';">' +
+                            '<option value="" ' + (value === '' ? 'selected' : '') + '>--</option>' +
+                            '<option value="RB" ' + (value === 'RB' ? 'selected' : '') + '>RB</option>' +
+                            '<option value="NRB" ' + (value === 'NRB' ? 'selected' : '') + '>NRB</option>' +
                             '</select>';
                     },
                     cellClick: function(e, cell) {
@@ -1493,33 +1687,65 @@
                     }
                 },
                 {
+                    title: "Rule",
+                    field: "rule",
+                    hozAlign: "center",
+                    width: 70,
+                    visible: true,
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const sku = cell.getRow().getData().SKU || '';
+                        const escAttr = function(s) { return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
+                        const hasRule = !!getRuleForSku(sku);
+                        const cls = hasRule ? 'btn-primary' : 'btn-outline-secondary';
+                        return '<button type="button" class="btn btn-sm ' + cls + ' rule-edit-btn edit-rule-btn" data-sku="' + escAttr(sku) + '" title="Edit Rule"><i class="fas fa-pen"></i></button>';
+                    }
+                },
+                {
                     title: "Last Updt",
                     field: "LAST_UPDATE",
                     hozAlign: "center",
-                    width: 250,
+                    width: 48,
                     headerSort: false,
                     formatter: function(cell) {
                         const data = cell.getValue();
                         if (!data) {
-                            return '<span style="color:#999;">No history</span>';
+                            return '<span class="text-muted">—</span>';
                         }
-                        
-                        const directionColor = data.direction === 'IN' ? '#28a745' : '#dc3545';
-                        const directionIcon = data.direction === 'IN' ? '↓' : '↑';
-                        const directionText = data.direction === 'IN' ? 'IN' : 'OUT';
-                        
-                        return '<div style="font-size:12px; line-height:1.3;">' +
-                            '<span style="font-weight:bold; color:' + directionColor + ';">' + directionIcon + ' ' + directionText + '</span> ' +
-                            '<span style="font-weight:600;">' + data.qty + '</span> ' +
-                            '<span style="color:#666;">' + (data.direction === 'IN' ? 'from' : 'to') + '</span> ' +
-                            '<span style="font-weight:500;">' + data.other_sku + '</span><br>' +
-                            '<span style="color:#999; font-size:11px;">' + data.date + ' • ' + data.by + '</span>' +
-                            '</div>';
+                        const color = data.direction === 'IN' ? '#28a745' : '#dc3545';
+                        const label = data.direction === 'IN' ? 'Stock in' : 'Stock out';
+                        return '<button type="button" class="last-update-dot" style="background-color:' + color + ';" title="' + label + '" aria-label="' + label + '"></button>';
                     }
                 },
             ]
         });
         
+        $(document).on('click', '.last-update-dot', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $row = $(this).closest('.tabulator-row');
+            const row = table.getRow($row[0]);
+            if (!row) return;
+            const rowData = row.getData();
+            const data = rowData.LAST_UPDATE;
+            if (!data) return;
+
+            const incoming = data.direction === 'IN';
+            $('#lu-sku').text(rowData.SKU || '');
+            $('#lu-direction').text(incoming ? 'IN' : 'OUT').css('color', incoming ? '#28a745' : '#dc3545');
+            $('#lu-qty').text(data.qty != null ? data.qty : '');
+            $('#lu-other-label').text(incoming ? 'From SKU' : 'To SKU');
+            $('#lu-other').text(data.other_sku || '');
+            $('#lu-date').text(data.date || '');
+            $('#lu-by').text(data.by || '');
+
+            const modalEl = document.getElementById('lastUpdateModal');
+            if (modalEl && modalEl.parentElement !== document.body) {
+                document.body.appendChild(modalEl);
+            }
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        });
+
         // SKU Search — go through applyAllFilters so Row / DIL / Action stay applied
         $('#sku-search').on('input', function() {
             applyAllFilters();
@@ -1555,17 +1781,61 @@
             applyAllFilters();
         });
         
+        function getRuleForSku(sku) {
+            if (!sku || !rulesBySku) return null;
+            if (rulesBySku[sku]) return rulesBySku[sku];
+            const key = normalizeSkuKey(sku);
+            const found = Object.keys(rulesBySku).find(function(k) {
+                return normalizeSkuKey(k) === key;
+            });
+            return found ? rulesBySku[found] : null;
+        }
+
+        function getServerPref(sku) {
+            if (!sku || !serverSavedPreferences) return null;
+            if (serverSavedPreferences[sku]) return serverSavedPreferences[sku];
+            const key = normalizeSkuKey(sku);
+            const found = Object.keys(serverSavedPreferences).find(function(k) {
+                return normalizeSkuKey(k) === key;
+            });
+            return found ? serverSavedPreferences[found] : null;
+        }
+
+        function savedTransferQty(toSku) {
+            const pref = getServerPref(toSku);
+            if (pref && pref.fromQty != null && pref.fromQty !== '') {
+                return parseInt(pref.fromQty, 10) || 0;
+            }
+            let saved = {};
+            try {
+                saved = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+            } catch (e) {
+                saved = {};
+            }
+            if (saved.fromQty != null && saved.fromQty !== '') {
+                return parseInt(saved.fromQty, 10) || 0;
+            }
+            const rule = getRuleForSku(toSku);
+            if (rule && rule.fromQty != null && rule.fromQty !== '') {
+                return parseInt(rule.fromQty, 10) || 0;
+            }
+            return null;
+        }
+
+        function refreshRuleButtons() {
+            $('.edit-rule-btn').each(function() {
+                const hasRule = !!getRuleForSku($(this).attr('data-sku'));
+                $(this).toggleClass('btn-primary', hasRule).toggleClass('btn-outline-secondary', !hasRule);
+            });
+        }
+
         function resolveFromSkuForRow(rowData) {
             if (rowData._from_sku) return rowData._from_sku;
             const toSku = rowData.SKU;
-            const toKey = normalizeSkuKey(toSku);
-            let serverPref = serverSavedPreferences[toSku] || null;
-            if (!serverPref) {
-                const prefKey = Object.keys(serverSavedPreferences || {}).find(function(k) {
-                    return normalizeSkuKey(k) === toKey;
-                });
-                if (prefKey) serverPref = serverSavedPreferences[prefKey];
-            }
+            const serverPref = getServerPref(toSku);
+            if (serverPref && serverPref.fromSku) return serverPref.fromSku;
+            const rule = getRuleForSku(toSku);
+            if (rule && rule.fromSku) return rule.fromSku;
             const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
             const savedFromSku = savedData.fromSku || null;
             const lastUpdate = rowData.LAST_UPDATE || null;
@@ -1623,17 +1893,21 @@
         // Precompute FROM SKU fields on data objects (same refs Tabulator uses)
         function enrichTransferMetaFromPreferences() {
             allTableData.forEach(function(data) {
+                const rule = getRuleForSku(data.SKU);
+                const pref = getServerPref(data.SKU);
                 const fromSku = resolveFromSkuForRow(data);
                 if (fromSku) {
                     const meta = getFromSkuMeta(fromSku);
+                    const savedQty = savedTransferQty(data.SKU);
                     data._from_sku = fromSku;
-                    data._from_qty = meta.inv;
+                    data._from_qty = savedQty != null ? savedQty : meta.inv;
                     data._from_dil = meta.dil;
                 } else {
                     data._from_sku = null;
                     data._from_qty = null;
                     data._from_dil = null;
                 }
+                data._ratio = (pref && pref.ratio) || (rule && rule.ratio) || null;
             });
         }
         
@@ -1667,15 +1941,19 @@
                     if (!row) return;
                     const rowData = row.getData();
                     const toSku = rowData.SKU;
-                    const serverPref = serverSavedPreferences[toSku] || null;
+                    const serverPref = getServerPref(toSku);
                     const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
                     const savedFromSku = savedData.fromSku || null;
                     const savedRatio = savedData.ratio || '1:1';
-                    const fromSkuToRestore = rowData._from_sku || resolveFromSkuForRow(rowData);
-                    const ratioToRestore = (serverPref && serverPref.ratio) || savedRatio || '1:1';
+                    const rule = getRuleForSku(toSku);
+                    const fromSkuToRestore = rowData._from_sku || (serverPref && serverPref.fromSku) || (rule && rule.fromSku) || resolveFromSkuForRow(rowData);
+                    const ratioToRestore = rowData._ratio || (serverPref && serverPref.ratio) || (rule && rule.ratio) || savedRatio || '1:1';
+                    const savedQty = savedTransferQty(toSku);
+                    if (savedQty != null) {
+                        rowData._from_qty = savedQty;
+                    }
                     $row.find('.ratio-select').val(ratioToRestore);
                     if (fromSkuToRestore) {
-                        $select.val(fromSkuToRestore);
                         applyFromSkuToRow($row, row, fromSkuToRestore, { silent: true, keepQty: true });
                         if (!savedFromSku && fromSkuToRestore && !(serverPref && serverPref.fromSku)) {
                             savedData.fromSku = fromSkuToRestore;
@@ -1693,6 +1971,323 @@
         table.on('renderComplete', function() {
             if (restoringFromSku || isApplyingFilters) return;
             restoreSavedFromSku();
+            refreshRuleButtons();
+        });
+
+        let ruleModalFilling = false;
+
+        function skuSelectOptions(excludeSku) {
+            const exclude = normalizeSkuKey(excludeSku);
+            const esc = function(s) {
+                return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            };
+            let html = '<option value=""></option>';
+            allTableData.forEach(function(item) {
+                if (!item.SKU || normalizeSkuKey(item.SKU).indexOf('PARENT') !== -1) return;
+                if (exclude && normalizeSkuKey(item.SKU) === exclude) return;
+                html += '<option value="' + esc(item.SKU) + '">' + esc(item.SKU) + '</option>';
+            });
+            return html;
+        }
+
+        function setDilBox($el, dil) {
+            const n = parseFloat(dil);
+            const percent = Math.round((isNaN(n) ? 0 : n) * 100);
+            let cls = 'form-control form-control-sm bg-light';
+            if (isNaN(n) || percent <= 0) {
+                $el.attr('class', cls).text('-');
+                return;
+            }
+            if (percent < 25) cls += ' dil-red';
+            else if (percent < 50) cls += ' dil-green';
+            else cls += ' dil-pink';
+            $el.attr('class', cls).text(percent + '%');
+        }
+
+        function calcRuleToQty() {
+            const fromQty = parseInt($('#rule-from-qty').val(), 10) || 0;
+            const ratio = $('#rule-ratio').val() || '1:1';
+            if (fromQty > 0) {
+                const parts = ratio.split(':');
+                const toQty = Math.round(fromQty * (parseFloat(parts[1]) / parseFloat(parts[0])));
+                $('#rule-to-qty').val(toQty);
+            } else {
+                $('#rule-to-qty').val('');
+            }
+        }
+
+        function destroyRuleSelect($el) {
+            if ($el.hasClass('select2-hidden-accessible')) {
+                $el.select2('destroy');
+            }
+        }
+
+        function initRuleSelect($el, placeholder) {
+            $el.select2({
+                dropdownParent: $('#addRuleModal'),
+                width: '100%',
+                placeholder: placeholder,
+                allowClear: !$el.prop('disabled')
+            });
+        }
+
+        function fillRuleToSkuDetails(sku) {
+            const item = allTableData.find(function(i) {
+                return normalizeSkuKey(i.SKU) === normalizeSkuKey(sku);
+            });
+            if (!item) {
+                $('#rule-parent, #rule-inv, #rule-sold').val('');
+                setDilBox($('#rule-dil'), null);
+                return null;
+            }
+            $('#rule-parent').val(item.Parent || '');
+            $('#rule-inv').val(item.INV != null ? item.INV : '');
+            $('#rule-sold').val(item.SOLD != null ? item.SOLD : '');
+            setDilBox($('#rule-dil'), item.DIL);
+            return item;
+        }
+
+        function fillRuleFromSkuDetails(fromSku, keepQty) {
+            if (!fromSku) {
+                $('#rule-from-sold').val('');
+                setDilBox($('#rule-from-dil'), null);
+                if (!keepQty) $('#rule-from-qty').val('');
+                calcRuleToQty();
+                return;
+            }
+            const meta = getFromSkuMeta(fromSku);
+            $('#rule-from-sold').val(meta.found ? meta.sold : '');
+            setDilBox($('#rule-from-dil'), meta.found ? meta.dil : null);
+            if (!keepQty) $('#rule-from-qty').val(meta.inv || '');
+            calcRuleToQty();
+        }
+
+        function openRuleModal(options) {
+            const ruleModalEl = document.getElementById('addRuleModal');
+            if (ruleModalEl && ruleModalEl.parentElement !== document.body) {
+                document.body.appendChild(ruleModalEl);
+            }
+            options = options || {};
+            const lockedSku = options.sku || '';
+            const editing = !!lockedSku;
+            ruleModalFilling = true;
+            $('#addRuleModalLabel').text(editing ? 'Edit Rule' : 'Add Rule');
+            $('#save-rule-btn').text(editing ? 'Update Rule' : 'Save Rule');
+
+            const $to = $('#rule-to-sku');
+            const $from = $('#rule-from-sku');
+            destroyRuleSelect($to);
+            destroyRuleSelect($from);
+            $to.html(skuSelectOptions('')).prop('disabled', editing);
+            $from.html(skuSelectOptions(lockedSku));
+
+            const rule = lockedSku ? getRuleForSku(lockedSku) : null;
+            if (lockedSku && $to.find('option').filter(function() { return $(this).val() === lockedSku; }).length === 0) {
+                $to.append($('<option>', { value: lockedSku, text: lockedSku }));
+            }
+            $to.val(lockedSku);
+            const fromSku = (rule && rule.fromSku) || '';
+            if (fromSku && $from.find('option').filter(function() { return $(this).val() === fromSku; }).length === 0) {
+                $from.append($('<option>', { value: fromSku, text: fromSku }));
+            }
+            $from.val(fromSku);
+            $('#rule-ratio').val((rule && rule.ratio) || '1:1');
+
+            initRuleSelect($to, 'Search SKU...');
+            initRuleSelect($from, 'Search FROM SKU...');
+
+            const item = lockedSku ? fillRuleToSkuDetails(lockedSku) : null;
+            const action = (rule && rule.action) || (item && item.ACTION) || '';
+            $('#rule-action').val(action);
+            if (fromSku) {
+                const keepQty = !!(rule && rule.fromQty != null && rule.fromQty !== '');
+                fillRuleFromSkuDetails(fromSku, keepQty);
+                if (keepQty) $('#rule-from-qty').val(rule.fromQty);
+                calcRuleToQty();
+            } else {
+                $('#rule-from-sold, #rule-from-qty, #rule-to-qty').val('');
+                setDilBox($('#rule-from-dil'), null);
+                if (!lockedSku) {
+                    $('#rule-parent, #rule-inv, #rule-sold').val('');
+                    setDilBox($('#rule-dil'), null);
+                    $('#rule-action').val('');
+                }
+            }
+
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('addRuleModal')).show();
+            setTimeout(function() { ruleModalFilling = false; }, 0);
+        }
+
+        $('#add-rule-btn').on('click', function() {
+            if (!allTableData.length) {
+                showToast('Wait for the table to finish loading', 'error');
+                return;
+            }
+            openRuleModal({});
+        });
+
+        $(document).on('click', '.edit-rule-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openRuleModal({ sku: $(this).attr('data-sku') || '' });
+        });
+
+        $('#rule-to-sku').on('change', function() {
+            if (ruleModalFilling) return;
+            const sku = $(this).val() || '';
+            const $from = $('#rule-from-sku');
+            const currentFrom = $from.val() || '';
+            destroyRuleSelect($from);
+            $from.html(skuSelectOptions(sku));
+            if (currentFrom && normalizeSkuKey(currentFrom) !== normalizeSkuKey(sku)) {
+                $from.val(currentFrom);
+            }
+            initRuleSelect($from, 'Search FROM SKU...');
+            const item = fillRuleToSkuDetails(sku);
+            const rule = getRuleForSku(sku);
+            if (rule && rule.fromSku) {
+                if ($from.find('option').filter(function() { return $(this).val() === rule.fromSku; }).length === 0) {
+                    destroyRuleSelect($from);
+                    $from.append($('<option>', { value: rule.fromSku, text: rule.fromSku }));
+                    initRuleSelect($from, 'Search FROM SKU...');
+                }
+                $from.val(rule.fromSku).trigger('change.select2');
+                $('#rule-ratio').val(rule.ratio || '1:1');
+                const keepQty = rule.fromQty != null && rule.fromQty !== '';
+                fillRuleFromSkuDetails(rule.fromSku, keepQty);
+                if (keepQty) $('#rule-from-qty').val(rule.fromQty);
+                $('#rule-action').val(rule.action || (item && item.ACTION) || '');
+                calcRuleToQty();
+            } else {
+                fillRuleFromSkuDetails($from.val(), false);
+                $('#rule-action').val((item && item.ACTION) || '');
+                $('#rule-ratio').val('1:1');
+            }
+        });
+
+        $('#rule-from-sku').on('change', function() {
+            if (ruleModalFilling) return;
+            fillRuleFromSkuDetails($(this).val(), false);
+        });
+
+        $('#rule-ratio, #rule-from-qty').on('input change', calcRuleToQty);
+
+        $('#save-rule-btn').on('click', function() {
+            const $btn = $(this);
+            const toSku = $('#rule-to-sku').val();
+            const fromSku = $('#rule-from-sku').val();
+            const ratio = $('#rule-ratio').val() || '1:1';
+            const fromQtyRaw = String($('#rule-from-qty').val() || '').trim();
+            const fromQty = fromQtyRaw === '' ? '' : parseInt(fromQtyRaw, 10);
+            const action = $('#rule-action').val() || '';
+
+            if (!toSku) {
+                showToast('Select a SKU for the rule', 'error');
+                return;
+            }
+            if (!fromSku) {
+                showToast('Select a FROM SKU', 'error');
+                return;
+            }
+            if (normalizeSkuKey(toSku) === normalizeSkuKey(fromSku)) {
+                showToast('FROM SKU must be different from SKU', 'error');
+                return;
+            }
+            if (fromQty !== '' && (!fromQty || fromQty < 1)) {
+                showToast('FROM Qty must be at least 1', 'error');
+                return;
+            }
+
+            const item = allTableData.find(function(i) {
+                return normalizeSkuKey(i.SKU) === normalizeSkuKey(toSku);
+            });
+            const previousAction = item ? (item.ACTION || '') : '';
+
+            $btn.prop('disabled', true);
+            $.ajax({
+                url: '/stock-balance-rules',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: {
+                    to_sku: toSku,
+                    from_sku: fromSku,
+                    ratio: ratio,
+                    from_qty: fromQty,
+                    action: action
+                },
+                success: function(res) {
+                    const rule = (res && res.rule) || {
+                        toSku: toSku,
+                        fromSku: fromSku,
+                        ratio: ratio,
+                        fromQty: fromQty === '' ? null : fromQty,
+                        action: action || null
+                    };
+                    rulesBySku[rule.toSku] = rule;
+                    serverSavedPreferences[rule.toSku] = serverSavedPreferences[rule.toSku] || {};
+                    serverSavedPreferences[rule.toSku].fromSku = rule.fromSku || '';
+                    serverSavedPreferences[rule.toSku].ratio = rule.ratio || '1:1';
+                    serverSavedPreferences[rule.toSku].fromQty = (rule.fromQty == null || rule.fromQty === '') ? null : parseInt(rule.fromQty, 10);
+                    const savedData = JSON.parse(localStorage.getItem('transfer_' + rule.toSku) || '{}');
+                    savedData.fromSku = rule.fromSku || '';
+                    savedData.ratio = rule.ratio || '1:1';
+                    savedData.fromQty = serverSavedPreferences[rule.toSku].fromQty;
+                    localStorage.setItem('transfer_' + rule.toSku, JSON.stringify(savedData));
+
+                    function applyRuleToItem(rowItem) {
+                        if (!rowItem) return;
+                        rowItem._from_sku = rule.fromSku;
+                        rowItem._ratio = rule.ratio || '1:1';
+                        if (rule.fromQty != null && rule.fromQty !== '') {
+                            rowItem._from_qty = parseInt(rule.fromQty, 10);
+                        }
+                        rowItem.ACTION = rule.action || '';
+                    }
+                    applyRuleToItem(item);
+                    const rows = table.getRows().filter(function(row) {
+                        return normalizeSkuKey(row.getData().SKU) === normalizeSkuKey(rule.toSku);
+                    });
+                    if (rows.length) {
+                        applyRuleToItem(rows[0].getData());
+                        rows[0].reformat();
+                    } else {
+                        refreshRuleButtons();
+                    }
+
+                    const finish = function() {
+                        $btn.prop('disabled', false);
+                        const modalEl = document.getElementById('addRuleModal');
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) modal.hide();
+                        showToast('Rule saved for ' + rule.toSku, 'success', 3000);
+                    };
+
+                    if ((action || '') !== (previousAction || '')) {
+                        $.ajax({
+                            url: '/stock-balance-update-action',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                                'Content-Type': 'application/json'
+                            },
+                            data: JSON.stringify({ sku: toSku, action: action || null }),
+                            complete: finish
+                        });
+                    } else {
+                        finish();
+                    }
+                },
+                error: function(xhr) {
+                    $btn.prop('disabled', false);
+                    const resp = xhr.responseJSON || {};
+                    let msg = resp.error || resp.message || 'Failed to save rule';
+                    if (resp.errors) {
+                        const first = Object.values(resp.errors)[0];
+                        if (first && first[0]) msg = first[0];
+                    }
+                    showToast(msg, 'error');
+                }
+            });
         });
         
     });

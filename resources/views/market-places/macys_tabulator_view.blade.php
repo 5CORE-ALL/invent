@@ -2010,7 +2010,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "MC L30 = 0 uses min Target GROI. Sold SKUs use the Dil-matching slab (Dil = OV L30 ÷ Shopify INV). If that S PRC < A Price, S PRC = A Price.",
+                    headerTooltip: "MC L30 = 0 still uses the Dil-matching slab (Dil = OV L30 ÷ Shopify INV). If that S PRC < A Price, S PRC = A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';

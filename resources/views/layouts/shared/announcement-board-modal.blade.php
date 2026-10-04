@@ -262,14 +262,15 @@
         }
         .ann-board-comment__name { font-size: 12px; font-weight: 800; color: #0f172a; }
         .ann-board-comment__text { font-size: 13px; color: #1e293b; white-space: pre-wrap; }
-        .ann-board-reacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .ann-board-reacts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .ann-board-reacts.is-post { margin-top: 12px; margin-bottom: 2px; }
         .ann-board-react {
             border: 1px solid #e2e8f0;
             background: #fff;
             border-radius: 999px;
-            padding: 1px 7px;
-            font-size: 13px;
-            line-height: 1.45;
+            padding: 4px 8px;
+            font-size: 16px;
+            line-height: 1.2;
             cursor: pointer;
         }
         .ann-board-react.is-mine { background: #e0f2fe; border-color: #38bdf8; }
@@ -358,18 +359,26 @@
 
             const commentEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '✅', '🔥'];
 
-            function renderReacts(comment) {
+            function emojiButtons(reactions, dataAttr, dataValue, extraClass) {
                 const byEmoji = {};
-                (comment.reactions || []).forEach(function (reaction) {
+                (reactions || []).forEach(function (reaction) {
                     byEmoji[reaction.emoji] = reaction;
                 });
-                return '<div class="ann-board-reacts" data-comment="' + comment.id + '">'
+                return '<div class="ann-board-reacts' + (extraClass ? ' ' + extraClass : '') + '" ' + dataAttr + '="' + dataValue + '">'
                     + commentEmojis.map(function (emoji) {
                         const reaction = byEmoji[emoji] || { count: 0, mine: false };
-                        const count = reaction.count ? ' ' + reaction.count : '';
-                        return '<button type="button" class="ann-board-react' + (reaction.mine ? ' is-mine' : '') + '" data-comment="' + comment.id + '" data-emoji="' + emoji + '" aria-label="Reply ' + emoji + '">' + emoji + count + '</button>';
+                        const count = reaction.count ? ' <span>' + reaction.count + '</span>' : '';
+                        return '<button type="button" class="ann-board-react' + (reaction.mine ? ' is-mine' : '') + '" ' + dataAttr + '="' + dataValue + '" data-emoji="' + emoji + '" aria-label="Reply ' + emoji + '">' + emoji + count + '</button>';
                     }).join('')
                     + '</div>';
+            }
+
+            function renderReacts(comment) {
+                return emojiButtons(comment.reactions, 'data-comment', comment.id, '');
+            }
+
+            function renderPostReacts(row) {
+                return emojiButtons(row.reactions, 'data-ann', row.id, 'is-post');
             }
 
             function renderComment(comment) {
@@ -487,6 +496,7 @@
                         + motive
                         + text
                         + renderMedia(row)
+                        + renderPostReacts(row)
                         + renderComments(row)
                         + '<div class="ann-board-card__actions">'
                         + '<button type="button" class="ann-board-read-btn" data-id="' + row.id + '">Mark as read</button>'
@@ -537,12 +547,16 @@
 
             function reactToComment(btn) {
                 const commentId = btn.getAttribute('data-comment');
+                const announcementId = btn.getAttribute('data-ann');
                 const emoji = btn.getAttribute('data-emoji');
                 const wrap = btn.parentElement;
                 if (wrap) {
                     wrap.querySelectorAll('button').forEach(function (button) { button.disabled = true; });
                 }
-                fetch(commentBase + '/comments/' + commentId + '/react', {
+                const url = announcementId
+                    ? commentBase + '/' + announcementId + '/react'
+                    : commentBase + '/comments/' + commentId + '/react';
+                fetch(url, {
                     method: 'POST',
                     headers: {
                         'Accept': 'application/json',
@@ -553,7 +567,14 @@
                     body: JSON.stringify({ emoji: emoji }),
                 }).then(function (res) { return res.json().then(function (json) { return { ok: res.ok, json: json }; }); })
                     .then(function (result) {
-                        if (!result.ok || !result.json || !result.json.comment) {
+                        if (!result.ok || !result.json) {
+                            throw new Error((result.json && result.json.message) || 'Could not save emoji reply.');
+                        }
+                        if (announcementId) {
+                            if (wrap) wrap.outerHTML = renderPostReacts({ id: announcementId, reactions: result.json.reactions || [] });
+                            return;
+                        }
+                        if (!result.json.comment) {
                             throw new Error((result.json && result.json.message) || 'Could not save emoji reply.');
                         }
                         if (wrap) wrap.outerHTML = renderReacts(result.json.comment);

@@ -2499,7 +2499,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: 'S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (AL30 = 0, INV > 0) uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. Formula: (LP × (1 + NROI%/100)) / margin (Ship not used).',
+                        headerTooltip: 'S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab. CVR overlay (editable) adjusts Target NROI; Count updates live. Formula: (LP × (1 + NROI%/100)) / margin (Ship not used).',
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof frIsParentRow === 'function' && frIsParentRow(rowData)) return '';
@@ -2520,7 +2520,7 @@
                     {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editable: false,
-                        headerTooltip: 'Not editable. S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. Dil match or 0 Sold min NROI. Otherwise Std × (1 − CVR%/100). Ship not used. No LMP cap. Blue triangle = S PRC ≠ Price.',
+                        headerTooltip: 'Not editable. S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. Dil-matching slab, including when AL30 = 0. Otherwise Std × (1 − CVR%/100). Ship not used. No LMP cap. Blue triangle = S PRC ≠ Price.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';

@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 use App\Models\ShopifySku;
+use App\Services\ShopifyAdminCallGate;
+use App\Services\ShopifyOhioLocationResolver;
 
 class ShopifyApiInventoryController extends Controller
 {
@@ -28,6 +30,9 @@ class ShopifyApiInventoryController extends Controller
 
     /** Max SKU rows logged per run to shopify_live_inventory (full sync / lists). */
     protected int $shopifyLiveInventoryLogSampleCap = 40;
+
+    /** Reason from the last failed single-SKU or list live sync, for the UI toast. */
+    public ?string $lastLiveInventorySyncMessage = null;
 
     protected function logShopifyLiveInventory(string $message, array $context = [], string $level = 'info'): void
     {
@@ -89,10 +94,12 @@ class ShopifyApiInventoryController extends Controller
             $attempt++;
 
             try {
+                ShopifyAdminCallGate::acquire();
                 $response = Http::withHeaders([
                     'X-Shopify-Access-Token' => $this->shopifyAccessToken,
                     'Content-Type' => 'application/json'
                 ])->timeout(120)->get($url, $params);
+                ShopifyAdminCallGate::record($response);
 
                 if ($response->successful()) {
                     if ($attempt > 1) {
@@ -392,6 +399,7 @@ class ShopifyApiInventoryController extends Controller
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             try {
+                ShopifyAdminCallGate::acquire();
                 $response = Http::withHeaders([
                     'Content-Type' => 'application/json',
                     'X-Shopify-Access-Token' => $this->shopifyAccessToken,
@@ -399,6 +407,7 @@ class ShopifyApiInventoryController extends Controller
                     'query' => $query,
                     'variables' => $variables,
                 ]);
+                ShopifyAdminCallGate::record($response);
             } catch (\Exception $e) {
                 Log::warning('shopifyGraphqlPost exception', ['message' => $e->getMessage(), 'attempt' => $attempt]);
                 usleep(($delayMs + rand(100, 400)) * 1000);
@@ -1404,51 +1413,53 @@ GQL;
     public function syncLiveInventoryForSku(string $skuInput, int $graphQlSampleLimit = 1): bool
     {
         $this->setGraphQlQuantitySampleLimit(max(0, $graphQlSampleLimit));
+        $this->lastLiveInventorySyncMessage = null;
 
         try {
-            $normalized = strtoupper(trim((string) $skuInput));
-            $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
-            if (! $row || ! $row->variant_id) {
+            $row = $this->shopifySkuRowForLiveSync($skuInput);
+            if (! $row) {
+                $this->lastLiveInventorySyncMessage = 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.';
                 Log::warning('syncLiveInventoryForSku: row or variant_id missing', ['sku' => $skuInput]);
 
                 return false;
             }
 
+            $variantId = $this->numericShopifyId($row->variant_id);
             $shopUrl = 'https://'.config('services.shopify.store_url');
-            $variantRes = $this->shopifyGet("$shopUrl/admin/api/2025-01/variants/{$row->variant_id}.json");
-            if (! $variantRes->successful()) {
-                Log::error('syncLiveInventoryForSku: variant fetch failed', ['body' => substr((string) $variantRes->body(), 0, 300)]);
+            $resolved = $this->resolveVariantInventoryItemIdsViaGraphQl([$variantId]);
+            $inventoryItemId = $resolved['iids'][$variantId] ?? null;
+            if ($inventoryItemId === null) {
+                $inventoryItemId = $this->resolveInventoryItemIdForVariant($shopUrl, $variantId);
+            }
+            if ($inventoryItemId === null) {
+                $this->lastLiveInventorySyncMessage = 'Shopify did not return inventory for this SKU. Wait a few seconds and try again.';
+                Log::error('syncLiveInventoryForSku: inventory item unresolved', [
+                    'sku' => $skuInput,
+                    'variant_id' => $variantId,
+                ]);
 
                 return false;
             }
 
-            $inventoryItemId = $variantRes->json('variant.inventory_item_id');
-            if (! $inventoryItemId) {
-                return false;
+            $locationId = (int) (ShopifyOhioLocationResolver::preferredLocationId() ?? 0);
+            if ($locationId <= 0) {
+                $locationId = (int) ($this->resolveOhioLocationId($shopUrl) ?? 0);
             }
+            if ($locationId <= 0) {
+                $this->lastLiveInventorySyncMessage = 'Could not find the Shopify warehouse location. Try again in a moment.';
 
-            $locationId = null;
-            $locationResponse = $this->shopifyGet("$shopUrl/admin/api/2025-01/locations.json");
-            if ($locationResponse->successful()) {
-                foreach ($locationResponse->json('locations') ?? [] as $loc) {
-                    if (stripos($loc['name'], 'Ohio') !== false) {
-                        $locationId = (int) $loc['id'];
-                        break;
-                    }
-                }
-            }
-
-            if (! $locationId) {
                 return false;
             }
 
             $exactSku = $row->sku;
             $skuMap = [$exactSku => $inventoryItemId];
-            $imageMap = [$exactSku => $row->image_src];
+            $imageMap = [$exactSku => $resolved['images'][$variantId] ?? $row->image_src];
 
             $final = $this->fetchDashboardInventoryViaGraphQl($skuMap, $imageMap, $locationId);
             $data = $final[$exactSku] ?? null;
             if ($data === null) {
+                $this->lastLiveInventorySyncMessage = 'Shopify did not return inventory for this SKU. Wait a few seconds and try again.';
+
                 return false;
             }
 
@@ -1465,6 +1476,52 @@ GQL;
         } finally {
             $this->graphQlQuantitySampleLimit = 0;
         }
+    }
+
+    /**
+     * shopify_skus row for a product SKU, including spacing / hyphen / NBSP differences.
+     * A row that already has a variant id wins over an empty stub.
+     */
+    private function shopifySkuRowForLiveSync(string $skuInput): ?ShopifySku
+    {
+        $row = ShopifySku::firstForProductSku($skuInput);
+        if ($row && $this->numericShopifyId($row->variant_id) > 0) {
+            return $row;
+        }
+
+        $catalogVid = ShopifySku::mainCatalogVariantId($row ? (string) $row->sku : $skuInput);
+        $variantId = $this->numericShopifyId($catalogVid);
+        if ($variantId <= 0) {
+            return null;
+        }
+
+        if ($row) {
+            ShopifySku::where('id', $row->id)->update([
+                'variant_id' => (string) $variantId,
+                'updated_at' => now(),
+            ]);
+            $row->variant_id = (string) $variantId;
+
+            return $row;
+        }
+
+        return ShopifySku::updateOrCreate(
+            ['sku' => trim($skuInput)],
+            ['variant_id' => (string) $variantId, 'updated_at' => now()]
+        );
+    }
+
+    private function numericShopifyId(mixed $id): int
+    {
+        $value = trim((string) $id);
+        if ($value === '') {
+            return 0;
+        }
+        if (preg_match('/(\d+)\s*$/', $value, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return 0;
     }
 
     /**
@@ -1507,7 +1564,10 @@ GQL;
             foreach ($skuInputs as $skuInput) {
                 $normalized = strtoupper(trim((string) $skuInput));
                 $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
-                if (! $row || ! $row->variant_id) {
+                if (! $row || $this->numericShopifyId($row->variant_id) <= 0) {
+                    $row = $this->shopifySkuRowForLiveSync($skuInput);
+                }
+                if (! $row || $this->numericShopifyId($row->variant_id) <= 0) {
                     Log::warning('syncLiveInventoryForSkuList: missing shopify_skus row or variant_id', ['sku' => $skuInput]);
 
                     continue;

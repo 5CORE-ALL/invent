@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Announcement;
 use App\Models\AnnouncementComment;
 use App\Models\AnnouncementCommentReaction;
+use App\Models\AnnouncementReaction;
 use App\Models\AnnouncementView;
 use App\Models\User;
 use Illuminate\Validation\Rule;
@@ -47,6 +48,9 @@ class AnnouncementController extends Controller
                 $query->with(['comments.reactions']);
             }
         }
+        if (Schema::hasTable('announcement_reactions')) {
+            $query->with('reactions');
+        }
 
         if (Schema::hasTable('announcement_views')) {
             $query->withCount('views');
@@ -81,6 +85,9 @@ class AnnouncementController extends Controller
             if (Schema::hasTable('announcement_comment_reactions')) {
                 $query->with(['comments.reactions']);
             }
+        }
+        if (Schema::hasTable('announcement_reactions')) {
+            $query->with('reactions');
         }
 
         if (Schema::hasTable('announcement_views')) {
@@ -202,6 +209,42 @@ class AnnouncementController extends Controller
         return response()->json([
             'success' => true,
             'comment' => $this->serializeComment($comment->load('user:id,name,avatar')),
+        ]);
+    }
+
+    public function react(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasTable('announcement_reactions')) {
+            abort(503, 'Announcement emoji replies need a migration. Run php artisan migrate.');
+        }
+
+        $row = Announcement::query()->findOrFail($id);
+        $validated = $request->validate([
+            'emoji' => ['required', 'string', Rule::in(self::COMMENT_EMOJIS)],
+        ]);
+        $emoji = $validated['emoji'];
+        $userId = (int) Auth::id();
+
+        $existing = AnnouncementReaction::query()
+            ->where('announcement_id', $row->id)
+            ->where('user_id', $userId)
+            ->where('emoji', $emoji)
+            ->first();
+        if ($existing) {
+            $existing->delete();
+        } else {
+            AnnouncementReaction::query()->create([
+                'announcement_id' => $row->id,
+                'user_id' => $userId,
+                'emoji' => $emoji,
+            ]);
+        }
+
+        $row->load('reactions');
+
+        return response()->json([
+            'success' => true,
+            'reactions' => $this->serializeAnnouncementReactions($row),
         ]);
     }
 
@@ -462,6 +505,7 @@ class AnnouncementController extends Controller
             'posted_by' => optional($row->user)->name ?: ($row->created_by ?: '—'),
             'posted_by_avatar' => $this->userAvatarUrl($row->user),
             'comments' => $this->serializeComments($row),
+            'reactions' => $this->serializeAnnouncementReactions($row),
             'viewed_count' => (int) ($row->views_count ?? 0),
             'created_at' => optional($row->created_at)->format('Y-m-d H:i'),
         ];
@@ -1123,16 +1167,42 @@ class AnnouncementController extends Controller
     /**
      * @return list<array{emoji: string, count: int, mine: bool}>
      */
+    private function serializeAnnouncementReactions(Announcement $row): array
+    {
+        if (! Schema::hasTable('announcement_reactions')) {
+            return [];
+        }
+
+        $reactions = $row->relationLoaded('reactions')
+            ? $row->reactions
+            : $row->reactions()->get();
+
+        return $this->groupEmojiReactions($reactions);
+    }
+
+    /**
+     * @return list<array{emoji: string, count: int, mine: bool}>
+     */
     private function serializeCommentReactions(AnnouncementComment $comment): array
     {
         if (! Schema::hasTable('announcement_comment_reactions')) {
             return [];
         }
 
-        $userId = (int) Auth::id();
         $reactions = $comment->relationLoaded('reactions')
             ? $comment->reactions
             : $comment->reactions()->get();
+
+        return $this->groupEmojiReactions($reactions);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, mixed>  $reactions
+     * @return list<array{emoji: string, count: int, mine: bool}>
+     */
+    private function groupEmojiReactions($reactions): array
+    {
+        $userId = (int) Auth::id();
 
         return $reactions
             ->groupBy('emoji')
