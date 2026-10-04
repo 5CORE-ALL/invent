@@ -14,8 +14,13 @@ class StockBalanceRule extends Model
         'from_sku',
         'ratio',
         'from_qty',
+        'from_items',
         'action',
         'user_id',
+    ];
+
+    protected $casts = [
+        'from_items' => 'array',
     ];
 
     public function user(): BelongsTo

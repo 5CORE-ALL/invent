@@ -381,7 +381,10 @@
                     </div>
                     <div class="row g-2 mt-1" id="rule-from-row">
                         <div class="col-md-3">
-                            <label class="form-label" for="rule-from-sku">FROM SKU</label>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label mb-1" for="rule-from-sku">FROM SKU</label>
+                                <button type="button" id="add-from-sku-btn" class="btn btn-sm btn-outline-primary py-0 px-2">Add</button>
+                            </div>
                             <select id="rule-from-sku" class="form-select form-select-sm"></select>
                         </div>
                         <div class="col-md-1">
@@ -405,6 +408,7 @@
                             <input type="text" id="rule-to-qty" class="form-control form-control-sm" readonly placeholder="Calc" style="background-color:#d4edda; font-weight:bold;">
                         </div>
                     </div>
+                    <div id="rule-extra-from"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
@@ -1106,7 +1110,10 @@
                 toInv: parseInt(rowData.INV, 10) || 0,
                 toDil: parseFloat(rowData.DIL) || 0,
                 fromInv: meta.found ? (parseInt(meta.inv, 10) || 0) : (parseInt(fromInvRaw, 10) || 0),
-                fromDil: meta.dil || 0
+                fromDil: meta.dil || 0,
+                fromItems: (rowData._from_items || (getRuleForSku(sku) && getRuleForSku(sku).fromItems) || []).filter(function(item) {
+                    return item && item.sku;
+                })
             };
         }
 
@@ -1121,6 +1128,41 @@
         }
 
         function postTransfer(fields) {
+            const extras = fields.fromItems || [];
+            if (extras.length) {
+                const parts = String(fields.ratio || '1:1').split(':');
+                const factor = parseFloat(parts[1]) / parseFloat(parts[0]);
+                const sources = [{ sku: fields.fromSku, fromQty: fields.fromQty }].concat(extras.map(function(item) {
+                    return { sku: item.sku, fromQty: parseInt(item.fromQty != null ? item.fromQty : item.from_qty, 10) || 0 };
+                }));
+                let toQty = 0;
+                const fromItems = sources.map(function(item) {
+                    const qty = parseInt(item.fromQty, 10) || 0;
+                    if (qty > 0 && !isNaN(factor)) toQty += Math.round(qty * factor);
+                    const meta = getFromSkuMeta(item.sku);
+                    return {
+                        sku: item.sku,
+                        parent_name: meta.parent || '',
+                        available_qty: meta.inv,
+                        dil_percent: (meta.dil || 0) * 100,
+                        adjust_qty: qty
+                    };
+                });
+                return $.ajax({
+                    url: '{{ route("combo.trf.store") }}',
+                    method: 'POST',
+                    data: {
+                        to_sku: fields.sku,
+                        to_parent_name: fields.toParent,
+                        to_available_qty: fields.toInv,
+                        to_dil_percent: fields.toDil * 100,
+                        to_adjust_qty: toQty,
+                        from_items: fromItems,
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    },
+                    timeout: 120000
+                });
+            }
             return $.ajax({
                 url: '{{ route("stock.balance.store") }}',
                 method: 'POST',
@@ -1976,10 +2018,12 @@
                     data._from_sku = fromSku;
                     data._from_qty = savedQty != null ? savedQty : meta.inv;
                     data._from_dil = meta.dil;
+                    data._from_items = (rule && rule.fromItems) || [];
                 } else {
                     data._from_sku = null;
                     data._from_qty = null;
                     data._from_dil = null;
+                    data._from_items = [];
                 }
                 data._ratio = (pref && pref.ratio) || (rule && rule.ratio) || (history && history.ratio) || null;
             });
@@ -2080,15 +2124,74 @@
         }
 
         function calcRuleToQty() {
-            const fromQty = parseInt($('#rule-from-qty').val(), 10) || 0;
             const ratio = $('#rule-ratio').val() || '1:1';
-            if (fromQty > 0) {
-                const parts = ratio.split(':');
-                const toQty = Math.round(fromQty * (parseFloat(parts[1]) / parseFloat(parts[0])));
-                $('#rule-to-qty').val(toQty);
-            } else {
-                $('#rule-to-qty').val('');
+            const parts = String(ratio).split(':');
+            const factor = parseFloat(parts[1]) / parseFloat(parts[0]);
+            let total = 0;
+            function addQty(qty) {
+                const n = parseInt(qty, 10) || 0;
+                if (n > 0 && !isNaN(factor)) total += Math.round(n * factor);
             }
+            addQty($('#rule-from-qty').val());
+            $('#rule-extra-from .rule-extra-qty').each(function() {
+                addQty($(this).val());
+            });
+            $('#rule-to-qty').val(total > 0 ? total : '');
+        }
+
+        function clearExtraFromLines() {
+            $('#rule-extra-from .rule-extra-sku').each(function() {
+                destroyRuleSelect($(this));
+            });
+            $('#rule-extra-from').empty();
+        }
+
+        function fillExtraFromLine($line, sku) {
+            const meta = getFromSkuMeta(sku);
+            $line.find('.rule-extra-inv').val(sku && meta.found ? String(meta.inv) : '');
+            $line.find('.rule-extra-sold').val(sku && meta.found ? meta.sold : '');
+            setDilBox($line.find('.rule-extra-dil'), sku && meta.found ? meta.dil : null);
+            if (sku && meta.found && meta.inv > 0 && !$line.find('.rule-extra-qty').val()) {
+                $line.find('.rule-extra-qty').val(meta.inv);
+            }
+        }
+
+        function addExtraFromLine(sku, qty) {
+            const toSku = $('#rule-to-sku').val() || '';
+            const $line = $('<div class="row g-2 mt-1 rule-extra-line align-items-end">' +
+                '<div class="col-md-3"><label class="form-label">FROM SKU</label><select class="form-select form-select-sm rule-extra-sku"></select></div>' +
+                '<div class="col-md-1"><label class="form-label">FROM INV</label><input type="text" class="form-control form-control-sm rule-extra-inv" readonly></div>' +
+                '<div class="col-md-2"><label class="form-label">FROM SOLD</label><input type="text" class="form-control form-control-sm rule-extra-sold" readonly></div>' +
+                '<div class="col-md-1"><label class="form-label">FROM DIL%</label><div class="form-control form-control-sm bg-light rule-extra-dil" style="font-weight:600;">-</div></div>' +
+                '<div class="col-md-2"><label class="form-label">FROM Qty</label><input type="number" class="form-control form-control-sm rule-extra-qty" min="1" placeholder="Qty"></div>' +
+                '<div class="col-md-1"><button type="button" class="btn btn-sm btn-outline-danger rule-extra-remove">Remove</button></div>' +
+                '</div>');
+            const $select = $line.find('.rule-extra-sku');
+            $select.html(skuSelectOptions(toSku));
+            if (sku && !$select.find('option').filter(function() { return $(this).val() === sku; }).length) {
+                $select.append($('<option>', { value: sku, text: sku }));
+            }
+            if (qty != null && qty !== '') $line.find('.rule-extra-qty').val(qty);
+            $('#rule-extra-from').append($line);
+            if (sku) $select.val(sku);
+            initRuleSelect($select, 'Search FROM SKU...');
+            if (sku) fillExtraFromLine($line, sku);
+            calcRuleToQty();
+        }
+
+        function collectExtraFromItems() {
+            const toSku = $('#rule-to-sku').val() || '';
+            const primary = $('#rule-from-sku').val() || '';
+            const items = [];
+            $('#rule-extra-from .rule-extra-line').each(function() {
+                const sku = $(this).find('.rule-extra-sku').val() || '';
+                const qty = parseInt($(this).find('.rule-extra-qty').val(), 10);
+                if (!sku) return;
+                if (normalizeSkuKey(sku) === normalizeSkuKey(toSku)) return;
+                if (primary && normalizeSkuKey(sku) === normalizeSkuKey(primary)) return;
+                items.push({ sku: sku, from_qty: qty > 0 ? qty : '' });
+            });
+            return items;
         }
 
         function destroyRuleSelect($el) {
@@ -2212,6 +2315,11 @@
             }
 
             syncRuleFromRow();
+            clearExtraFromLines();
+            ((rule && rule.fromItems) || []).forEach(function(item) {
+                if (!item || !item.sku) return;
+                addExtraFromLine(item.sku, item.fromQty != null ? item.fromQty : item.from_qty);
+            });
             bootstrap.Modal.getOrCreateInstance(document.getElementById('addRuleModal')).show();
             setTimeout(function() { ruleModalFilling = false; }, 0);
         }
@@ -2265,10 +2373,29 @@
         });
 
         function syncRuleFromRow() {
-            $('#rule-from-row').toggle($('#rule-action').val() !== 'NRB');
+            $('#rule-from-row, #rule-extra-from, #add-from-sku-btn').toggle($('#rule-action').val() !== 'NRB');
         }
 
         $('#rule-action').on('change', syncRuleFromRow);
+
+        $('#add-from-sku-btn').on('click', function() {
+            addExtraFromLine('', '');
+        });
+
+        $(document).on('click', '.rule-extra-remove', function() {
+            const $line = $(this).closest('.rule-extra-line');
+            destroyRuleSelect($line.find('.rule-extra-sku'));
+            $line.remove();
+            calcRuleToQty();
+        });
+
+        $(document).on('change', '.rule-extra-sku', function() {
+            const $line = $(this).closest('.rule-extra-line');
+            fillExtraFromLine($line, $(this).val() || '');
+            calcRuleToQty();
+        });
+
+        $(document).on('input', '.rule-extra-qty', calcRuleToQty);
 
         $('#rule-from-sku').on('change', function() {
             if (ruleModalFilling) return;
@@ -2318,7 +2445,8 @@
                     from_sku: fromSku,
                     ratio: ratio,
                     from_qty: fromQty,
-                    action: action
+                    action: action,
+                    from_items: collectExtraFromItems()
                 },
                 success: function(res) {
                     const rule = (res && res.rule) || {
@@ -2326,6 +2454,9 @@
                         fromSku: fromSku,
                         ratio: ratio,
                         fromQty: fromQty === '' ? null : fromQty,
+                        fromItems: collectExtraFromItems().map(function(item) {
+                            return { sku: item.sku, fromQty: item.from_qty === '' ? null : item.from_qty };
+                        }),
                         action: action || null
                     };
                     rulesBySku[rule.toSku] = rule;
@@ -2347,6 +2478,7 @@
                             rowItem._from_qty = parseInt(rule.fromQty, 10);
                         }
                         rowItem.ACTION = rule.action || '';
+                        rowItem._from_items = rule.fromItems || [];
                     }
                     applyRuleToItem(item);
                     const rows = table.getRows().filter(function(row) {

@@ -2025,6 +2025,7 @@ class StockBalanceController extends Controller
                     'fromSku' => $row->from_sku,
                     'ratio' => $row->ratio ?? '1:1',
                     'fromQty' => $row->from_qty,
+                    'fromItems' => $row->from_items ?: [],
                     'action' => $row->action,
                 ];
             });
@@ -2153,6 +2154,9 @@ class StockBalanceController extends Controller
             'ratio' => 'nullable|string|max:20',
             'from_qty' => 'nullable|integer|min:1',
             'action' => 'nullable|string|in:NRB,RB',
+            'from_items' => 'nullable|array',
+            'from_items.*.sku' => 'required|string',
+            'from_items.*.from_qty' => 'nullable|integer|min:1',
         ]);
 
         $user = Auth::user();
@@ -2165,6 +2169,23 @@ class StockBalanceController extends Controller
         $ratio = $request->input('ratio', '1:1') ?: '1:1';
         $fromQty = $request->filled('from_qty') ? (int) $request->from_qty : null;
         $action = $request->filled('action') ? $request->action : null;
+        $fromItems = collect($request->input('from_items', []))
+            ->map(function ($item) use ($toSku, $fromSku) {
+                $sku = trim((string) ($item['sku'] ?? ''));
+                if ($sku === '' || strcasecmp($sku, $toSku) === 0 || strcasecmp($sku, $fromSku) === 0) {
+                    return null;
+                }
+                $qty = isset($item['from_qty']) && $item['from_qty'] !== '' ? (int) $item['from_qty'] : null;
+
+                return [
+                    'sku' => $sku,
+                    'fromQty' => $qty && $qty > 0 ? $qty : null,
+                ];
+            })
+            ->filter()
+            ->unique(fn ($item) => strtoupper($item['sku']))
+            ->values()
+            ->all();
 
         $rule = StockBalanceRule::updateOrCreate(
             ['to_sku' => $toSku],
@@ -2172,6 +2193,7 @@ class StockBalanceController extends Controller
                 'from_sku' => $fromSku,
                 'ratio' => $ratio,
                 'from_qty' => $fromQty,
+                'from_items' => $fromItems ?: null,
                 'action' => $action,
                 'user_id' => $user->id,
             ]
@@ -2196,6 +2218,7 @@ class StockBalanceController extends Controller
                 'fromSku' => $rule->from_sku,
                 'ratio' => $rule->ratio ?? '1:1',
                 'fromQty' => $rule->from_qty,
+                'fromItems' => $rule->from_items ?: [],
                 'action' => $rule->action,
             ],
         ]);
