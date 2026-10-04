@@ -376,6 +376,7 @@
                                 <option value="2:1">2:1</option>
                                 <option value="3:1">3:1</option>
                                 <option value="4:1">4:1</option>
+                                <option value="combo">combo</option>
                             </select>
                         </div>
                     </div>
@@ -1025,6 +1026,10 @@
             updateSubmitButton($row);
         }
 
+        function isComboRatio(ratio) {
+            return String(ratio || '').toLowerCase() === 'combo';
+        }
+
         function transferIsBlocked(fromQtyRaw, fromInvRaw) {
             const fromQty = parseInt(fromQtyRaw, 10);
             const fromInv = parseInt(fromInvRaw, 10);
@@ -1047,20 +1052,26 @@
             const rowData = rowComp.getData();
             const fromQtyRaw = String($row.find('.from-qty-input').val() ?? '').trim();
             const fromInvRaw = String($row.find('.from-inv-display').text() || '').trim();
-            const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
+            const combo = isComboRatio(displayedRatio($row, rowData));
+            const qtyForCheck = combo ? '1' : fromQtyRaw;
+            const invBlocked = transferIsBlocked(qtyForCheck, fromInvRaw);
             const fromSku = displayedFromSku($row, rowData);
+            const extra = combo ? ((rowData._from_items || [])[0] || null) : null;
+            const extraMeta = extra && extra.sku ? getFromSkuMeta(extra.sku) : null;
+            const extraLow = !!(extraMeta && extraMeta.found && Number(extraMeta.inv) < 1);
             const zeroInv = !!fromSku && fromInvBelowOne(fromInvRaw);
             const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, getFromSkuMeta(fromSku).dil);
-            const blocked = invBlocked || dilBlocked || zeroInv;
+            const extraDilBlocked = !!(extraMeta && extraMeta.found && dilSubmitBlocked(rowData.DIL, extraMeta.dil));
+            const blocked = invBlocked || dilBlocked || extraDilBlocked || zeroInv || extraLow;
             const recent = recentlySubmitted(rowData.SKU);
             const $btn = $row.find('.submit-transfer-btn');
             $btn.toggleClass('submit-blocked', blocked);
             $btn.toggleClass('submit-recent', recent && !blocked);
-            const title = zeroInv
+            const title = (zeroInv || extraLow)
                 ? 'FROM INV is below 1. Transfer was not sent.'
                 : (invBlocked
                     ? 'FROM SKU INV is less than FROM Qty'
-                    : (dilBlocked ? 'FROM DIL% is higher than DIL%' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer')));
+                    : ((dilBlocked || extraDilBlocked) ? 'FROM DIL% is higher than DIL%' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer')));
             $btn.attr('title', title);
             $btn.find('i').attr('class', blocked ? 'fas fa-times' : 'fas fa-check');
         }
@@ -1086,15 +1097,18 @@
                 ? String($row.find('.from-inv-display').text() || '').trim()
                 : (fromSku ? String(meta.inv) : '');
             const ratio = hasDom ? displayedRatio($row, rowData) : (rowData._ratio || '1:1');
-            const fromQty = parseInt(fromQtyRaw, 10) || 0;
+            const combo = isComboRatio(ratio);
+            const fromQty = combo ? 1 : (parseInt(fromQtyRaw, 10) || 0);
             let toQty = 0;
-            if (hasDom) {
+            if (combo) {
+                toQty = fromSku ? 1 : 0;
+            } else if (hasDom) {
                 toQty = parseInt($row.find('.to-qty-display').val(), 10) || 0;
             } else if (fromQty > 0) {
                 const parts = String(ratio).split(':');
                 toQty = Math.round(fromQty * (parseFloat(parts[1]) / parseFloat(parts[0])));
             }
-            const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
+            const invBlocked = transferIsBlocked(combo ? '1' : fromQtyRaw, fromInvRaw);
             const zeroInv = !!fromSku && (fromInvBelowOne(fromInvRaw) || (meta.found && meta.inv < 1));
             const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, meta.dil);
             return {
@@ -1124,21 +1138,30 @@
             if (fields.fromQty <= 0) return 'FROM Qty must be greater than 0';
             if (fields.toQty <= 0) return 'TO Qty must be greater than 0';
             if (fields.fromQty > fields.fromInv) return 'Insufficient inventory for ' + fields.fromSku + '. Available: ' + fields.fromInv;
+            if (isComboRatio(fields.ratio)) {
+                const extras = fields.fromItems || [];
+                if (extras.length !== 1 || !extras[0].sku) return 'Combo needs 2 FROM SKUs';
+                const extraMeta = getFromSkuMeta(extras[0].sku);
+                const extraInv = extraMeta.found ? Number(extraMeta.inv) : 0;
+                if (extraInv < 1) return 'FROM INV is below 1 for ' + extras[0].sku;
+            }
             return '';
         }
 
         function postTransfer(fields) {
             const extras = fields.fromItems || [];
-            if (extras.length) {
+            const combo = isComboRatio(fields.ratio);
+            if (combo || extras.length) {
                 const parts = String(fields.ratio || '1:1').split(':');
-                const factor = parseFloat(parts[1]) / parseFloat(parts[0]);
-                const sources = [{ sku: fields.fromSku, fromQty: fields.fromQty }].concat(extras.map(function(item) {
-                    return { sku: item.sku, fromQty: parseInt(item.fromQty != null ? item.fromQty : item.from_qty, 10) || 0 };
+                const factor = combo ? null : (parseFloat(parts[1]) / parseFloat(parts[0]));
+                const sources = [{ sku: fields.fromSku, fromQty: combo ? 1 : fields.fromQty }].concat(extras.map(function(item) {
+                    const stored = parseInt(item.fromQty != null ? item.fromQty : item.from_qty, 10) || 0;
+                    return { sku: item.sku, fromQty: combo ? 1 : stored };
                 }));
-                let toQty = 0;
+                let toQty = combo ? 1 : 0;
                 const fromItems = sources.map(function(item) {
                     const qty = parseInt(item.fromQty, 10) || 0;
-                    if (qty > 0 && !isNaN(factor)) toQty += Math.round(qty * factor);
+                    if (!combo && qty > 0 && !isNaN(factor)) toQty += Math.round(qty * factor);
                     const meta = getFromSkuMeta(item.sku);
                     return {
                         sku: item.sku,
@@ -1185,8 +1208,9 @@
         }
 
         function applyAdjustedInventory(fields, response) {
-            const toDelta = parseInt(fields.toQty, 10) || 0;
-            const fromDelta = parseInt(fields.fromQty, 10) || 0;
+            const combo = isComboRatio(fields.ratio);
+            const toDelta = combo ? 1 : (parseInt(fields.toQty, 10) || 0);
+            const fromDelta = combo ? 1 : (parseInt(fields.fromQty, 10) || 0);
             function currentInv(sku) {
                 const item = allTableData.find(function(i) {
                     return normalizeSkuKey(i.SKU) === normalizeSkuKey(sku);
@@ -1206,15 +1230,27 @@
             if (fields.fromSku && !isNaN(nextFrom)) {
                 applyInvOnly(fields.fromSku, nextFrom);
             }
+            (fields.fromItems || []).forEach(function(item) {
+                if (!item || !item.sku) return;
+                const qty = combo ? 1 : (parseInt(item.fromQty != null ? item.fromQty : item.from_qty, 10) || 0);
+                if (qty > 0) applyInvOnly(item.sku, currentInv(item.sku) - qty);
+            });
             $('.tabulator-row').each(function() {
                 const row = table.getRow(this);
                 if (!row) return;
                 const $row = $(this);
                 const data = row.getData();
-                if (normalizeSkuKey(displayedFromSku($row, data)) === normalizeSkuKey(fields.fromSku)) {
+                const shown = displayedFromSku($row, data);
+                if (normalizeSkuKey(shown) === normalizeSkuKey(fields.fromSku)) {
                     $row.find('.from-inv-display').text(String(nextFrom));
                     updateSubmitButton($row);
                 }
+                (fields.fromItems || []).forEach(function(item) {
+                    if (!item || !item.sku) return;
+                    if (normalizeSkuKey(shown) !== normalizeSkuKey(item.sku)) return;
+                    $row.find('.from-inv-display').text(String(currentInv(item.sku)));
+                    updateSubmitButton($row);
+                });
             });
         }
 
@@ -1306,6 +1342,21 @@
             next();
         }
 
+        function transferSkusToPull(fields) {
+            const skus = [];
+            function add(sku) {
+                if (!sku) return;
+                if (skus.some(function(existing) { return normalizeSkuKey(existing) === normalizeSkuKey(sku); })) return;
+                skus.push(sku);
+            }
+            add(fields.sku);
+            add(fields.fromSku);
+            (fields.fromItems || []).forEach(function(item) {
+                if (item) add(item.sku);
+            });
+            return skus;
+        }
+
         function scheduleInventoryPull(skus, startedAt) {
             const elapsed = startedAt ? (Date.now() - startedAt) : 0;
             const wait = Math.max(0, 5000 - elapsed);
@@ -1319,6 +1370,10 @@
             if (restoringFromSku) return;
             const $row = $(this).closest('.tabulator-row');
             const row = table.getRow($row[0]);
+            const rowData = row ? row.getData() : null;
+            if (rowData && isComboRatio(displayedRatio($row, rowData))) {
+                $(this).val(1);
+            }
             const raw = String($(this).val() ?? '').trim();
             const qty = raw === '' ? null : (parseInt(raw, 10) || 0);
             if (row) {
@@ -1344,7 +1399,10 @@
             const rowComp = table ? table.getRow($row[0]) : null;
             const ratio = displayedRatio($row, rowComp ? rowComp.getData() : null);
             
-            if (fromQty > 0) {
+            if (isComboRatio(ratio)) {
+                $row.find('.from-qty-input').val(1);
+                $row.find('.to-qty-display').val(1);
+            } else if (fromQty > 0) {
                 const ratioParts = ratio.split(':');
                 const toQty = Math.round(fromQty * (parseFloat(ratioParts[1]) / parseFloat(ratioParts[0])));
                 $row.find('.to-qty-display').val(toQty);
@@ -1387,7 +1445,7 @@
                 markSubmitted(fields.sku);
                 applyAdjustedInventory(fields, response);
                 applyAllFilters();
-                scheduleInventoryPull([fields.sku, fields.fromSku], startedAt);
+                scheduleInventoryPull(transferSkusToPull(fields), startedAt);
             }).fail(function(xhr) {
                 const resp = xhr.responseJSON || {};
                 const errorMsg = resp.error || 'Transfer failed';
@@ -1459,7 +1517,7 @@
                     ok++;
                     markSubmitted(fields.sku);
                     applyAdjustedInventory(fields, response);
-                    pulled.push(fields.sku, fields.fromSku);
+                    transferSkusToPull(fields).forEach(function(sku) { pulled.push(sku); });
                     next();
                 }).fail(function(xhr) {
                     const resp = xhr.responseJSON || {};
@@ -1940,6 +1998,18 @@
                 lowFromInvSkus.push(data.SKU);
                 return true;
             }
+            if (isComboRatio(data._ratio || (getRuleForSku(data.SKU) && getRuleForSku(data.SKU).ratio))) {
+                fromQty = 1;
+                const extra = ((data._from_items || (getRuleForSku(data.SKU) && getRuleForSku(data.SKU).fromItems) || [])[0]) || null;
+                if (extra && extra.sku) {
+                    const extraMeta = getFromSkuMeta(extra.sku);
+                    if (extraMeta.found && Number(extraMeta.inv) < 1) {
+                        lowFromInvSkus.push(extra.sku);
+                        return true;
+                    }
+                    if (extraMeta.found && dilSubmitBlocked(data.DIL, extraMeta.dil)) return true;
+                }
+            }
             return transferIsBlocked(fromQty, meta.inv) || dilSubmitBlocked(data.DIL, meta.dil);
         }
 
@@ -2125,6 +2195,13 @@
 
         function calcRuleToQty() {
             const ratio = $('#rule-ratio').val() || '1:1';
+            if (isComboRatio(ratio)) {
+                $('#rule-from-qty').val(1).prop('readonly', true);
+                $('#rule-extra-from .rule-extra-qty').val(1).prop('readonly', true);
+                $('#rule-to-qty').val($('#rule-from-sku').val() ? 1 : '');
+                return;
+            }
+            $('#rule-from-qty, #rule-extra-from .rule-extra-qty').prop('readonly', false);
             const parts = String(ratio).split(':');
             const factor = parseFloat(parts[1]) / parseFloat(parts[0]);
             let total = 0;
@@ -2269,11 +2346,12 @@
                 return normalizeSkuKey(i.SKU) === normalizeSkuKey(lockedSku);
             }) : null;
             const history = itemForHistory ? historyAutofill(itemForHistory) : null;
-            const fromSku = (history && history.fromSku) || (rule && rule.fromSku) || (itemForHistory && itemForHistory._from_sku) || '';
-            const ratio = (history && history.ratio) || (rule && rule.ratio) || (itemForHistory && itemForHistory._ratio) || '1:1';
+            const comboRule = !!(rule && isComboRatio(rule.ratio));
+            const fromSku = (comboRule ? (rule.fromSku || '') : '') || (history && history.fromSku) || (rule && rule.fromSku) || (itemForHistory && itemForHistory._from_sku) || '';
+            const ratio = comboRule ? 'combo' : ((history && history.ratio) || (rule && rule.ratio) || (itemForHistory && itemForHistory._ratio) || '1:1');
             const historyQty = history && history.fromQty != null && history.fromQty !== '' ? history.fromQty : null;
             const ruleQty = rule && rule.fromQty != null && rule.fromQty !== '' ? rule.fromQty : null;
-            const fromQty = historyQty != null ? historyQty : ruleQty;
+            const fromQty = comboRule ? 1 : (historyQty != null ? historyQty : ruleQty);
 
             function optionValueForSku($select, sku) {
                 if (!sku) return '';
@@ -2318,8 +2396,12 @@
             clearExtraFromLines();
             ((rule && rule.fromItems) || []).forEach(function(item) {
                 if (!item || !item.sku) return;
-                addExtraFromLine(item.sku, item.fromQty != null ? item.fromQty : item.from_qty);
+                addExtraFromLine(item.sku, isComboRatio(ratio) ? 1 : (item.fromQty != null ? item.fromQty : item.from_qty));
             });
+            if (isComboRatio(ratio) && $('#rule-extra-from .rule-extra-line').length === 0) {
+                addExtraFromLine('', 1);
+            }
+            calcRuleToQty();
             bootstrap.Modal.getOrCreateInstance(document.getElementById('addRuleModal')).show();
             setTimeout(function() { ruleModalFilling = false; }, 0);
         }
@@ -2402,7 +2484,15 @@
             fillRuleFromSkuDetails($(this).val(), false);
         });
 
-        $('#rule-ratio, #rule-from-qty').on('input change', calcRuleToQty);
+        $('#rule-ratio').on('change', function() {
+            if (ruleModalFilling) return;
+            if (isComboRatio($(this).val()) && $('#rule-extra-from .rule-extra-line').length === 0) {
+                addExtraFromLine('', 1);
+            }
+            calcRuleToQty();
+        });
+
+        $('#rule-from-qty').on('input change', calcRuleToQty);
 
         $('#save-rule-btn').on('click', function() {
             const $btn = $(this);
@@ -2429,6 +2519,18 @@
                 showToast('FROM Qty must be at least 1', 'error');
                 return;
             }
+            let extras = collectExtraFromItems();
+            let saveFromQty = fromQty;
+            if (isComboRatio(ratio) && action !== 'NRB') {
+                if (extras.length !== 1) {
+                    showToast('Combo needs 2 different FROM SKUs', 'error');
+                    return;
+                }
+                saveFromQty = 1;
+                extras = extras.map(function(item) {
+                    return { sku: item.sku, from_qty: 1 };
+                });
+            }
 
             const item = allTableData.find(function(i) {
                 return normalizeSkuKey(i.SKU) === normalizeSkuKey(toSku);
@@ -2444,17 +2546,17 @@
                     to_sku: toSku,
                     from_sku: fromSku,
                     ratio: ratio,
-                    from_qty: fromQty,
+                    from_qty: saveFromQty,
                     action: action,
-                    from_items: collectExtraFromItems()
+                    from_items: extras
                 },
                 success: function(res) {
                     const rule = (res && res.rule) || {
                         toSku: toSku,
                         fromSku: fromSku,
                         ratio: ratio,
-                        fromQty: fromQty === '' ? null : fromQty,
-                        fromItems: collectExtraFromItems().map(function(item) {
+                        fromQty: saveFromQty === '' ? null : saveFromQty,
+                        fromItems: extras.map(function(item) {
                             return { sku: item.sku, fromQty: item.from_qty === '' ? null : item.from_qty };
                         }),
                         action: action || null

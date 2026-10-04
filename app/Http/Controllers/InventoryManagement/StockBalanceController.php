@@ -965,6 +965,7 @@ class StockBalanceController extends Controller
                         (string) $rollback['location_id'],
                         $rollback['adjust_qty']
                     );
+                    $this->adjustLocalShopifyInv($rollback['sku'], $rollback['adjust_qty']);
                 }
                 return response()->json([
                     'error' => ($decrease['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to deduct inventory from Shopify',
@@ -972,6 +973,7 @@ class StockBalanceController extends Controller
                     'is_rate_limit' => $decrease['is_rate_limit'] ?? false,
                 ], ($decrease['is_rate_limit'] ?? false) ? 429 : 500);
             }
+            $this->adjustLocalShopifyInv($from['sku'], -$from['adjust_qty']);
             $deducted[] = $from;
         }
 
@@ -983,6 +985,7 @@ class StockBalanceController extends Controller
                     (string) $rollback['location_id'],
                     $rollback['adjust_qty']
                 );
+                $this->adjustLocalShopifyInv($rollback['sku'], $rollback['adjust_qty']);
             }
             return response()->json([
                 'error' => $toInfo['error'],
@@ -1004,6 +1007,7 @@ class StockBalanceController extends Controller
                     (string) $rollback['location_id'],
                     $rollback['adjust_qty']
                 );
+                $this->adjustLocalShopifyInv($rollback['sku'], $rollback['adjust_qty']);
             }
             return response()->json([
                 'error' => ($increase['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to increase inventory in Shopify',
@@ -1011,6 +1015,8 @@ class StockBalanceController extends Controller
                 'is_rate_limit' => $increase['is_rate_limit'] ?? false,
             ], ($increase['is_rate_limit'] ?? false) ? 429 : 500);
         }
+
+        $toInvAfter = $this->adjustLocalShopifyInv($toSku, $toQty);
 
         try {
             DB::beginTransaction();
@@ -1046,7 +1052,11 @@ class StockBalanceController extends Controller
             ], 500);
         }
 
-        return response()->json(['message' => '✓ Combo transfer completed. ' . count($fromInfos) . ' FROM SKU(s) → 1 TO SKU, saved to database.']);
+        return response()->json([
+            'message' => '✓ Combo transfer completed. ' . count($fromInfos) . ' FROM SKU(s) → 1 TO SKU, saved to database.',
+            'to_sku' => $toSku,
+            'to_inv' => $toInvAfter,
+        ]);
     }
 
     /**
@@ -2079,6 +2089,9 @@ class StockBalanceController extends Controller
                     if (! $force && $existing && $transferredAt && $existing->updated_at && $existing->updated_at->gt($transferredAt)) {
                         continue;
                     }
+                    if ($existing && strcasecmp((string) $existing->ratio, 'combo') === 0) {
+                        continue;
+                    }
 
                     $fromQty = (int) ($transfer->from_adjust_qty ?? 0);
                     $toQty = (int) ($transfer->to_adjust_qty ?? 0);
@@ -2186,6 +2199,18 @@ class StockBalanceController extends Controller
             ->unique(fn ($item) => strtoupper($item['sku']))
             ->values()
             ->all();
+
+        if (strcasecmp($ratio, 'combo') === 0 && $action !== 'NRB') {
+            if (count($fromItems) !== 1) {
+                return response()->json(['error' => 'Combo needs 2 different FROM SKUs'], 422);
+            }
+            $fromQty = 1;
+            $fromItems = array_map(function ($item) {
+                $item['fromQty'] = 1;
+
+                return $item;
+            }, $fromItems);
+        }
 
         $rule = StockBalanceRule::updateOrCreate(
             ['to_sku' => $toSku],
