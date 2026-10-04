@@ -32,19 +32,6 @@
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
-        
-        /* Row-wise Shopify pull (refresh column) */
-        .sb-shopify-refresh-btn {
-            color: #0d6efd;
-            line-height: 1;
-        }
-        .sb-shopify-refresh-btn:hover:not(:disabled) {
-            color: #0a58ca;
-        }
-        .sb-shopify-refresh-btn:disabled {
-            opacity: 0.6;
-            cursor: wait;
-        }
 
         /* ACTION is a colored dot only */
         .last-update-dot {
@@ -176,18 +163,6 @@
             border-color: #dc3545 !important;
             color: #fff !important;
             cursor: not-allowed;
-        }
-        #bulk-submit-transfer {
-            background-color: #ffc107;
-            border-color: #ffc107;
-            color: #000;
-            font-weight: 700;
-        }
-        #bulk-submit-transfer:hover,
-        #bulk-submit-transfer:focus {
-            background-color: #e0a800;
-            border-color: #e0a800;
-            color: #000;
         }
 
         .rule-edit-btn {
@@ -325,31 +300,6 @@
             </div>
             
             <div class="card-body" style="padding: 0;">
-                <!-- Bulk Actions Panel (shown when SKUs are selected) -->
-                <div id="bulk-actions-panel" class="p-2 bg-warning border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span id="selected-count" class="fw-bold">0 SKUs selected</span>
-                        <button id="bulk-submit-transfer" class="btn btn-sm" title="Submit selected yellow rows">
-                            <i class="fas fa-check"></i> Submit
-                        </button>
-                        <button id="bulk-pull-inventory" class="btn btn-sm btn-primary" title="Pull latest inventory from Shopify for selected SKUs">
-                            <i class="fas fa-sync-alt"></i> Pull Inventory
-                        </button>
-                        <button id="bulk-action-blank" class="btn btn-sm btn-secondary">
-                            Set to --
-                        </button>
-                        <button id="bulk-action-rb" class="btn btn-sm btn-success">
-                            <i class="fas fa-circle"></i> Set to RB
-                        </button>
-                        <button id="bulk-action-nrb" class="btn btn-sm btn-danger">
-                            <i class="fas fa-circle"></i> Set to NRB
-                        </button>
-                        <button id="clear-selection" class="btn btn-sm btn-light">
-                            <i class="fas fa-times"></i> Clear Selection
-                        </button>
-                    </div>
-                </div>
-                
                 <div id="stock-balance-table-wrapper" style="height: calc(100vh - 250px); display: flex; flex-direction: column;">
                     <!-- SKU Search + Inventory note & Refresh -->
                     <div class="p-2 bg-light border-bottom d-flex align-items-center gap-3 flex-wrap">
@@ -381,10 +331,6 @@
                         <div class="col-md-3">
                             <label class="form-label" for="rule-to-sku">SKU</label>
                             <select id="rule-to-sku" class="form-select form-select-sm"></select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label" for="rule-parent">Parent</label>
-                            <input type="text" id="rule-parent" class="form-control form-control-sm" readonly>
                         </div>
                         <div class="col-md-1">
                             <label class="form-label" for="rule-inv">INV</label>
@@ -424,11 +370,15 @@
                             <label class="form-label" for="rule-from-sku">FROM SKU</label>
                             <select id="rule-from-sku" class="form-select form-select-sm"></select>
                         </div>
+                        <div class="col-md-1">
+                            <label class="form-label" for="rule-from-inv">FROM INV</label>
+                            <input type="text" id="rule-from-inv" class="form-control form-control-sm" readonly>
+                        </div>
                         <div class="col-md-2">
                             <label class="form-label" for="rule-from-sold">FROM SOLD</label>
                             <input type="text" id="rule-from-sold" class="form-control form-control-sm" readonly>
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-1">
                             <label class="form-label">FROM DIL%</label>
                             <div id="rule-from-dil" class="form-control form-control-sm bg-light" style="font-weight:600;">-</div>
                         </div>
@@ -594,55 +544,6 @@
                 }
             });
         }
-
-        // Row-wise pull inventory (same idea as verification-adjustment refresh column)
-        $(document).on('click', '.sb-shopify-refresh-btn', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const $btn = $(this);
-            const sku = String($btn.data('sku') || '').trim();
-            if (!sku || $btn.prop('disabled')) {
-                return;
-            }
-
-            const $icon = $btn.find('i');
-            const csrfToken = $('meta[name="csrf-token"]').attr('content');
-
-            $btn.prop('disabled', true);
-            $icon.removeClass('fa-sync-alt').addClass('fa-spinner fa-spin');
-
-            $.ajax({
-                url: '/stock-balance-refresh-shopify',
-                type: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken
-                },
-                data: {
-                    sku: sku,
-                    _token: csrfToken
-                },
-                success: function(response) {
-                    if (!response.success || !response.data) {
-                        showToast(response.message || 'Failed to refresh inventory from Shopify.', 'error');
-                        return;
-                    }
-                    applyStockBalanceRefreshData(sku, response.data);
-                    showToast(response.message || 'Inventory refreshed from Shopify.', 'success', 3000);
-                },
-                error: function(xhr) {
-                    let errorMsg = 'Failed to refresh inventory from Shopify.';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        errorMsg = xhr.responseJSON.message;
-                    }
-                    showToast(errorMsg, 'error');
-                },
-                complete: function() {
-                    $btn.prop('disabled', false);
-                    $icon.removeClass('fa-spinner fa-spin').addClass('fa-sync-alt');
-                }
-            });
-        });
 
         // Bulk pull inventory for selected SKUs
         $('#bulk-pull-inventory').on('click', function() {
@@ -986,13 +887,20 @@
             return n * 100;
         }
 
+        function inventoryNumber(value) {
+            if (value == null || value === '') return null;
+            const n = Number(value);
+            return isNaN(n) ? null : n;
+        }
+
         function getFromSkuMeta(fromSku) {
             const key = normalizeSkuKey(fromSku);
             const fromItem = allTableData.find(function(i) {
                 return normalizeSkuKey(i.SKU) === key;
             });
+            const inv = fromItem ? inventoryNumber(fromItem.INV) : null;
             return {
-                inv: fromItem ? (parseInt(fromItem.INV, 10) || 0) : 0,
+                inv: inv == null ? 0 : inv,
                 sold: fromItem ? (fromItem.SOLD || 0) : 0,
                 dil: fromItem ? (parseFloat(fromItem.DIL) || 0) : 0,
                 parent: fromItem ? (fromItem.Parent || '') : '',
@@ -1064,10 +972,10 @@
             if (fromSku) {
                 const meta = getFromSkuMeta(fromSku);
                 const fromParent = meta.parent || '';
-                const fromInv = meta.inv || 0;
+                const fromInv = meta.found ? meta.inv : 0;
 
                 $row.find('.to-parent-display').val(fromParent);
-                $row.find('.from-inv-display').text(fromInv);
+                $row.find('.from-inv-display').text(meta.found ? String(fromInv) : '');
                 $row.find('.from-sold-display').text(meta.sold);
                 const data = row.getData();
                 const savedQty = savedTransferQty(toSku);
@@ -1203,6 +1111,57 @@
             });
         }
 
+        function scheduleInventoryPull(skus, startedAt) {
+            const list = [];
+            (skus || []).forEach(function(sku) {
+                const value = String(sku || '').trim();
+                if (value && list.indexOf(value) === -1) list.push(value);
+            });
+            if (!list.length) return;
+            const elapsed = startedAt ? (Date.now() - startedAt) : 0;
+            const wait = Math.max(0, 5000 - elapsed);
+            setTimeout(function() {
+                const csrfToken = $('meta[name="csrf-token"]').attr('content');
+                const applyItems = function(items) {
+                    Object.keys(items || {}).forEach(function(sku) {
+                        applyStockBalanceRefreshData(sku, items[sku]);
+                    });
+                    if (table) {
+                        table.redraw(true);
+                        applyAllFilters();
+                    }
+                };
+                if (list.length === 1) {
+                    $.ajax({
+                        url: '/stock-balance-refresh-shopify',
+                        type: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken },
+                        data: { sku: list[0], _token: csrfToken }
+                    }).done(function(response) {
+                        if (response && response.success && response.data) {
+                            const items = {};
+                            items[list[0]] = response.data;
+                            applyItems(items);
+                        }
+                    });
+                    return;
+                }
+                $.ajax({
+                    url: '/stock-balance-refresh-shopify-bulk',
+                    type: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Content-Type': 'application/json'
+                    },
+                    data: JSON.stringify({ skus: list, _token: csrfToken })
+                }).done(function(response) {
+                    if (response && response.success && response.data && response.data.items) {
+                        applyItems(response.data.items);
+                    }
+                });
+            }, wait);
+        }
+
         // FROM Qty input change handler — do not re-filter (that re-sorts and jumps the row)
         $(document).on('input', '.from-qty-input', function() {
             if (restoringFromSku) return;
@@ -1257,6 +1216,11 @@
                 return;
             }
 
+            if (selectedSkus.size > 0) {
+                submitSelectedTransfers();
+                return;
+            }
+
             const fields = transferFieldsForSku(row.getData().SKU);
             const err = validateTransferFields(fields);
             if (err) {
@@ -1265,9 +1229,11 @@
             }
 
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            const startedAt = Date.now();
             postTransfer(fields).done(function(response) {
                 showToast(response.message || 'Transfer successful!', 'success');
                 reloadAfterTransfers();
+                scheduleInventoryPull([fields.sku, fields.fromSku], startedAt);
             }).fail(function(xhr) {
                 const resp = xhr.responseJSON || {};
                 const errorMsg = resp.error || 'Transfer failed';
@@ -1283,9 +1249,7 @@
             });
         });
 
-        $('#bulk-submit-transfer').on('click', function() {
-            const $btn = $(this);
-            if ($btn.prop('disabled')) return;
+        function submitSelectedTransfers() {
             if (selectedSkus.size === 0) {
                 showToast('Select at least one yellow row to submit.', 'error');
                 return;
@@ -1314,14 +1278,15 @@
                 return;
             }
 
-            $btn.prop('disabled', true);
             let index = 0;
             let ok = 0;
             const failed = [];
+            const pulled = [];
+            const startedAt = Date.now();
 
             function finish() {
-                $btn.prop('disabled', false);
                 reloadAfterTransfers();
+                if (pulled.length) scheduleInventoryPull(pulled, startedAt);
                 let msg = 'Submitted ' + ok + ' transfer' + (ok === 1 ? '' : 's') + '.';
                 if (skippedRed) msg += ' Skipped ' + skippedRed + ' red row' + (skippedRed === 1 ? '' : 's') + '.';
                 if (invalid.length) msg += ' Skipped ' + invalid.length + ' invalid row' + (invalid.length === 1 ? '' : 's') + '.';
@@ -1337,6 +1302,7 @@
                 const fields = ready[index++];
                 postTransfer(fields).done(function() {
                     ok++;
+                    pulled.push(fields.sku, fields.fromSku);
                     next();
                 }).fail(function(xhr) {
                     const resp = xhr.responseJSON || {};
@@ -1346,7 +1312,7 @@
             }
 
             next();
-        });
+        }
         
         // Initialize Tabulator
         table = new Tabulator("#stock-balance-table", {
@@ -1421,7 +1387,7 @@
                     headerFilter: "input",
                     width: 150,
                     frozen: true,
-                    visible: true
+                    visible: false
                 },
                 {
                     title: "SKU",
@@ -1445,22 +1411,6 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 60
-                },
-                {
-                    title: "<i class='fas fa-sync-alt' title='Pull latest inventory from Shopify'></i>",
-                    field: "_refresh",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 48,
-                    formatter: function(cell) {
-                        const sku = cell.getRow().getData().SKU || '';
-                        if (!sku) {
-                            return '<span class="text-muted">—</span>';
-                        }
-                        return '<button type="button" class="btn btn-sm btn-link sb-shopify-refresh-btn p-0 border-0" data-sku="' +
-                            String(sku).replace(/"/g, '&quot;') +
-                            '" title="Pull latest inventory from Shopify"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>';
-                    }
                 },
                 {
                     title: "SOLD",
@@ -2009,11 +1959,10 @@
                 return normalizeSkuKey(i.SKU) === normalizeSkuKey(sku);
             });
             if (!item) {
-                $('#rule-parent, #rule-inv, #rule-sold').val('');
+                $('#rule-inv, #rule-sold').val('');
                 setDilBox($('#rule-dil'), null);
                 return null;
             }
-            $('#rule-parent').val(item.Parent || '');
             $('#rule-inv').val(item.INV != null ? item.INV : '');
             $('#rule-sold').val(item.SOLD != null ? item.SOLD : '');
             setDilBox($('#rule-dil'), item.DIL);
@@ -2022,16 +1971,17 @@
 
         function fillRuleFromSkuDetails(fromSku, keepQty) {
             if (!fromSku) {
-                $('#rule-from-sold').val('');
+                $('#rule-from-inv, #rule-from-sold').val('');
                 setDilBox($('#rule-from-dil'), null);
                 if (!keepQty) $('#rule-from-qty').val('');
                 calcRuleToQty();
                 return;
             }
             const meta = getFromSkuMeta(fromSku);
+            $('#rule-from-inv').val(meta.found ? String(meta.inv) : '');
             $('#rule-from-sold').val(meta.found ? meta.sold : '');
             setDilBox($('#rule-from-dil'), meta.found ? meta.dil : null);
-            if (!keepQty) $('#rule-from-qty').val(meta.inv || '');
+            if (!keepQty) $('#rule-from-qty').val(meta.inv > 0 ? meta.inv : '');
             calcRuleToQty();
         }
 
@@ -2078,10 +2028,10 @@
                 if (keepQty) $('#rule-from-qty').val(rule.fromQty);
                 calcRuleToQty();
             } else {
-                $('#rule-from-sold, #rule-from-qty, #rule-to-qty').val('');
+                $('#rule-from-inv, #rule-from-sold, #rule-from-qty, #rule-to-qty').val('');
                 setDilBox($('#rule-from-dil'), null);
                 if (!lockedSku) {
-                    $('#rule-parent, #rule-inv, #rule-sold').val('');
+                    $('#rule-inv, #rule-sold').val('');
                     setDilBox($('#rule-dil'), null);
                     $('#rule-action').val('');
                 }
