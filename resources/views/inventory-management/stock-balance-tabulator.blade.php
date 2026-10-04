@@ -1855,7 +1855,7 @@
                 const saved = savedTransferQtyForRow(data);
                 fromQty = saved != null ? saved : meta.inv;
             }
-            return transferIsBlocked(fromQty, meta.inv);
+            return transferIsBlocked(fromQty, meta.inv) || dilSubmitBlocked(data.DIL, meta.dil);
         }
 
         // Apply all filters together (guarded to avoid renderComplete recursion)
