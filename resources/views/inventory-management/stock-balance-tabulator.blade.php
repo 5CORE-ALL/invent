@@ -115,6 +115,14 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .from-sku-display.combo-from-skus {
+            white-space: normal;
+            overflow: visible;
+            text-overflow: clip;
+        }
+        .combo-from-line {
+            line-height: 1.3;
+        }
         .from-qty-input {
             border: none !important;
             box-shadow: none !important;
@@ -968,8 +976,9 @@
         }
 
         function displayedFromSku($row, rowData) {
+            if (rowData && rowData._from_sku) return rowData._from_sku;
             const text = String($row.find('.from-sku-display').text() || '').trim();
-            return text || (rowData && rowData._from_sku) || '';
+            return text.split('\n')[0].trim();
         }
 
         function displayedRatio($row, rowData) {
@@ -981,35 +990,87 @@
             $row.find('.ratio-display').text(ratio || '');
         }
 
+        function comboExtraItems(data) {
+            if (!data || !isComboRatio(data._ratio)) return [];
+            const primary = data._from_sku || '';
+            const items = data._from_items || ((getRuleForSku(data.SKU) || {}).fromItems) || [];
+            return items.filter(function(item) {
+                return item && item.sku && normalizeSkuKey(item.sku) !== normalizeSkuKey(primary);
+            });
+        }
+
+        function escapeCellText(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function dilLineHtml(dil) {
+            const n = parseFloat(dil);
+            const percent = Math.round((isNaN(n) ? 0 : n) * 100);
+            let dilClass = 'dil-pink';
+            if (isNaN(n) || percent <= 0) return '<div class="from-dil-percent combo-from-line">-</div>';
+            if (percent < 25) dilClass = 'dil-red';
+            else if (percent < 50) dilClass = 'dil-green';
+            return '<div class="from-dil-percent combo-from-line ' + dilClass + '">' + percent + '%</div>';
+        }
+
+        function paintComboFromCells($row, data, primarySku, primaryMeta) {
+            const extras = comboExtraItems(data);
+            const lines = [{ sku: primarySku, meta: primaryMeta }].concat(extras.map(function(item) {
+                return { sku: item.sku, meta: getFromSkuMeta(item.sku) };
+            }));
+            const $sku = $row.find('.from-sku-display');
+            $sku.toggleClass('combo-from-skus', lines.length > 1);
+            $sku.html(lines.map(function(line) {
+                return '<div class="combo-from-line">' + escapeCellText(line.sku) + '</div>';
+            }).join(''));
+            $row.find('.from-inv-display').html(lines.map(function(line) {
+                const inv = line.meta && line.meta.found ? String(line.meta.inv) : '';
+                return '<div class="combo-from-line">' + escapeCellText(inv) + '</div>';
+            }).join(''));
+            $row.find('.from-sold-display').html(lines.map(function(line) {
+                const sold = line.meta && line.meta.found ? line.meta.sold : '';
+                return '<div class="combo-from-line">' + escapeCellText(sold) + '</div>';
+            }).join(''));
+            $row.find('.from-dil-percent').parent().html(lines.map(function(line) {
+                return dilLineHtml(line.meta && line.meta.found ? line.meta.dil : null);
+            }).join(''));
+        }
         function applyFromSkuToRow($row, row, fromSku, options) {
             options = options || {};
             const silent = !!options.silent;
             const toSku = row.getData().SKU;
             fromSku = fromSku || '';
-            $row.find('.from-sku-display').text(fromSku);
 
             if (fromSku) {
                 const meta = getFromSkuMeta(fromSku);
                 const fromParent = meta.parent || '';
                 const fromInv = meta.found ? meta.inv : 0;
-
-                $row.find('.to-parent-display').val(fromParent);
-                $row.find('.from-inv-display').text(meta.found ? String(fromInv) : '');
-                $row.find('.from-sold-display').text(meta.sold);
                 const data = row.getData();
                 const savedQty = savedTransferQty(toSku);
                 const keepQty = !!options.keepQty && data._from_qty != null && data._from_qty !== '';
                 const qtyToShow = keepQty ? data._from_qty : (savedQty != null ? savedQty : fromInv);
-                $row.find('.from-qty-input').val(qtyToShow);
-                setFromDilDisplay($row, meta.dil);
 
+                $row.find('.to-parent-display').val(fromParent);
+                $row.find('.from-qty-input').val(qtyToShow);
                 data._from_qty = qtyToShow;
                 data._from_dil = meta.dil;
                 data._from_sku = fromSku;
+                if (isComboRatio(data._ratio) && comboExtraItems(data).length) {
+                    paintComboFromCells($row, data, fromSku, meta);
+                } else {
+                    $row.find('.from-sku-display').removeClass('combo-from-skus').text(fromSku);
+                    $row.find('.from-inv-display').text(meta.found ? String(fromInv) : '');
+                    $row.find('.from-sold-display').text(meta.sold);
+                    setFromDilDisplay($row, meta.dil);
+                }
                 if (!silent) {
                     persistTransferInputs(toSku, fromSku, displayedRatio($row, data), qtyToShow);
                 }
             } else {
+                $row.find('.from-sku-display').removeClass('combo-from-skus').text('');
                 $row.find('.to-parent-display').val('');
                 $row.find('.from-inv-display').text('');
                 $row.find('.from-sold-display').text('');
@@ -1051,7 +1112,7 @@
             if (!rowComp) return;
             const rowData = rowComp.getData();
             const fromQtyRaw = String($row.find('.from-qty-input').val() ?? '').trim();
-            const fromInvRaw = String($row.find('.from-inv-display').text() || '').trim();
+            const fromInvRaw = String($row.find('.from-inv-display').text() || '').trim().split('\n')[0].trim();
             const combo = isComboRatio(displayedRatio($row, rowData));
             const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
             const fromSku = displayedFromSku($row, rowData);
@@ -1062,8 +1123,7 @@
             const extraLow = !!(extraMeta && extraMeta.found && Number(extraMeta.inv) < 1);
             const zeroInv = !!fromSku && fromInvBelowOne(fromInvRaw);
             const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, getFromSkuMeta(fromSku).dil);
-            const extraDilBlocked = !!(extraMeta && extraMeta.found && dilSubmitBlocked(rowData.DIL, extraMeta.dil));
-            const blocked = invBlocked || extraShort || dilBlocked || extraDilBlocked || zeroInv || extraLow;
+            const blocked = invBlocked || extraShort || dilBlocked || zeroInv || extraLow;
             const recent = recentlySubmitted(rowData.SKU);
             const $btn = $row.find('.submit-transfer-btn');
             $btn.toggleClass('submit-blocked', blocked);
@@ -1072,7 +1132,7 @@
                 ? 'FROM INV is below 1. Transfer was not sent.'
                 : ((invBlocked || extraShort)
                     ? 'FROM SKU INV is less than FROM Qty'
-                    : ((dilBlocked || extraDilBlocked) ? 'FROM DIL% is higher than DIL%' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer')));
+                    : (dilBlocked ? 'FROM DIL% is higher than DIL%' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer')));
             $btn.attr('title', title);
             $btn.find('i').attr('class', blocked ? 'fas fa-times' : 'fas fa-check');
         }
@@ -2005,7 +2065,6 @@
                         return true;
                     }
                     if (extraMeta.found && need > Number(extraMeta.inv)) return true;
-                    if (extraMeta.found && dilSubmitBlocked(data.DIL, extraMeta.dil)) return true;
                 }
             }
             return transferIsBlocked(fromQty, meta.inv) || dilSubmitBlocked(data.DIL, meta.dil);
