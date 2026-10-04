@@ -545,6 +545,7 @@
                     });
                 } finally {
                     stamping = false;
+                    if (typeof window.stdPricingUpdateCounts === 'function') window.stdPricingUpdateCounts();
                 }
             };
             function loadRules() {

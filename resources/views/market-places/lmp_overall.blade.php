@@ -6,13 +6,36 @@
     <style>
         #lmp-overall-wrap .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 12px; }
         #lmp-overall-wrap .tabulator .tabulator-header { background: #f8f9fa; }
+        #lmp-overall-wrap .tabulator .tabulator-header .tabulator-col { height: 108px !important; }
+        #lmp-overall-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            height: 100%;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding: 6px 2px;
+        }
         #lmp-overall-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
-            white-space: normal !important;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap !important;
+            transform: rotate(180deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 11px;
             font-weight: 600;
             text-align: center;
-            line-height: 1.2;
-            padding: 4px 2px;
+            line-height: 1.1;
+            padding: 2px 0;
+        }
+        #lmp-overall-wrap .tabulator-col .tabulator-col-sorter { display: none !important; }
+        #lmp-overall-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0 !important;
+        }
+        #lmp-overall-wrap .tabulator-col.lmp-header-flat .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
         }
         #lmp-overall-wrap .tabulator .tabulator-cell { padding: 4px 6px !important; }
         #lmp-overall-wrap .tabulator-row.tabulator-selected { background: #e7f1ff !important; }
@@ -150,9 +173,7 @@
                     cellClick: function (e, cell) {
                         e.preventDefault();
                         e.stopPropagation();
-                        const data = cell.getRow().getData();
-                        if (data.is_parent_summary) return;
-                        openLmpModal(data, field);
+                        openLmpModal(cell.getRow().getData(), field);
                     },
                 };
             }
@@ -208,19 +229,36 @@
                     + '</tbody></table>';
             }
 
-            function openLmpModal(row, field) {
-                const site = lmpSites[field];
-                if (!site || !showBsModal(lmpModalEl)) return;
-                const sku = String(row.sku || '').trim();
-                document.getElementById('lmp-overall-lmp-title').textContent = site.label + ' — ' + sku;
-                document.getElementById('lmp-overall-lmp-body').innerHTML =
-                    '<div class="text-center text-muted py-4">Loading competitors…</div>';
+            const lmpCountFields = {
+                lmp_amz: 'lmp_amz_count',
+                lmp_ebay: 'lmp_ebay_count',
+                lmp_temu: 'lmp_temu_count',
+                lmp_google: 'lmp_google_count',
+            };
+
+            function competitorSkus(row, field) {
+                if (!row.is_parent_summary) {
+                    const sku = String(row.sku || '').trim();
+                    return sku ? [sku] : [];
+                }
+                const countField = lmpCountFields[field];
+                const parent = row.parent;
+                return table.getData().filter(function (data) {
+                    return !data.is_parent_summary
+                        && data.parent === parent
+                        && (parseInt(data[countField], 10) || 0) > 0;
+                }).map(function (data) {
+                    return String(data.sku || '').trim();
+                }).filter(Boolean);
+            }
+
+            function fetchCompetitors(site, sku, linked) {
                 const params = new URLSearchParams();
                 params.set('sku', sku);
-                (Array.isArray(row.linked_lmp_skus) ? row.linked_lmp_skus : []).forEach(function (linked) {
-                    params.append('linked_lmp_skus[]', linked);
+                (Array.isArray(linked) ? linked : []).forEach(function (item) {
+                    params.append('linked_lmp_skus[]', item);
                 });
-                fetch(site.url + '?' + params.toString(), {
+                return fetch(site.url + '?' + params.toString(), {
                     headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 }).then(function (r) {
                     return r.json().then(function (body) {
@@ -229,8 +267,39 @@
                     });
                 }).then(function (body) {
                     const raw = body && (body.competitors || body.data) ? (body.competitors || body.data) : [];
-                    const list = Array.isArray(raw) ? raw : Object.values(raw || {});
-                    document.getElementById('lmp-overall-lmp-body').innerHTML = renderLmpCompetitors(list);
+                    return Array.isArray(raw) ? raw : Object.values(raw || {});
+                });
+            }
+
+            function openLmpModal(row, field) {
+                const site = lmpSites[field];
+                if (!site) return;
+                const sku = String(row.sku || '').trim();
+                document.getElementById('lmp-overall-lmp-title').textContent = site.label + ' — ' + sku;
+                document.getElementById('lmp-overall-lmp-body').innerHTML =
+                    '<div class="text-center text-muted py-4">Loading competitors…</div>';
+                if (!showBsModal(lmpModalEl)) return;
+                const skus = competitorSkus(row, field);
+                if (!skus.length) {
+                    document.getElementById('lmp-overall-lmp-body').innerHTML =
+                        '<div class="text-muted p-3">No competitors</div>';
+                    return;
+                }
+                const linked = row.is_parent_summary ? [] : row.linked_lmp_skus;
+                Promise.all(skus.map(function (item) {
+                    return fetchCompetitors(site, item, linked).catch(function () { return []; });
+                })).then(function (lists) {
+                    const seen = {};
+                    const merged = [];
+                    lists.forEach(function (list) {
+                        list.forEach(function (item) {
+                            const key = [item.id, item.asin, item.product_link || item.link, item.product_title || item.title, competitorPrice(item)].join('|');
+                            if (seen[key]) return;
+                            seen[key] = true;
+                            merged.push(item);
+                        });
+                    });
+                    document.getElementById('lmp-overall-lmp-body').innerHTML = renderLmpCompetitors(merged);
                 }).catch(function (err) {
                     document.getElementById('lmp-overall-lmp-body').innerHTML =
                         '<div class="text-danger p-3">' + escHtml(err.message || 'Failed to load competitors') + '</div>';
@@ -330,6 +399,7 @@
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
+                        cssClass: 'lmp-header-flat',
                         width: 70,
                         frozen: true,
                     },
