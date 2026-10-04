@@ -561,6 +561,48 @@ class ListingChannelCounts
     }
 
     /**
+     * Recount one channel and patch its row in the cached /missing-listing payload
+     * (so a publish shows up without waiting for the full page rebuild).
+     *
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
+     */
+    public static function refreshChannelOnMissingListingPage(string $channel): array
+    {
+        $key = self::normalize($channel);
+        foreach (['inv', 'cp'] as $mode) {
+            Cache::forget('listing_channel_counts_v2:'.$mode.':'.$key);
+        }
+        $counts = self::forChannel($channel, true);
+
+        try {
+            $pageKey = \App\Http\Controllers\MarketPlace\MissingListingController::PAGE_CACHE_KEY;
+            $cached = Cache::get($pageKey);
+            if (is_array($cached) && is_array($cached['data'] ?? null)) {
+                $aliases = array_keys(array_filter(self::$listingPaths, static fn ($p) => $p !== null && $p === (self::$listingPaths[$key] ?? false)));
+                $aliases[] = $key;
+                foreach ($cached['data'] as $i => $row) {
+                    if (! in_array(self::normalize((string) ($row['channel'] ?? '')), $aliases, true) || ($row['req'] ?? null) === null) {
+                        continue;
+                    }
+                    $cached['data'][$i]['req'] = $counts['REQ'];
+                    $cached['data'][$i]['nrl'] = $counts['NRL'];
+                    $cached['data'][$i]['listed'] = $counts['Listed'];
+                    $cached['data'][$i]['missing_listing'] = $counts['Pending'];
+                }
+                $cached['total_missing_l'] = (int) collect($cached['data'])
+                    ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
+                    ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
+                Cache::put($pageKey, $cached, now()->addDays(7));
+                self::storeTotalMissingL((int) $cached['total_missing_l']);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingChannelCounts missing-listing patch failed ('.$key.'): '.$e->getMessage());
+        }
+
+        return $counts;
+    }
+
+    /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
      */
     private static function loadCounts(string $normalizedKey, bool $requirePositiveInv = true): array

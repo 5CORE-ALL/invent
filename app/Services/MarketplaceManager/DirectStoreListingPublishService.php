@@ -8,6 +8,7 @@ use App\Services\Business5CoreB2bApiService;
 use App\Services\DobaApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\ShopifyPlsTokenService;
+use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -84,6 +85,13 @@ class DirectStoreListingPublishService
         }
 
         $label = ['pls' => 'PLS', 'b5cb2b' => 'Business 5 Core (B2B)', 'doba' => 'Doba'][$channel] ?? $channel;
+        if ($ok !== []) {
+            try {
+                ListingChannelCounts::refreshChannelOnMissingListingPage($channel);
+            } catch (\Throwable $e) {
+                Log::warning('Missing Listing refresh after publish failed', ['channel' => $channel, 'error' => $e->getMessage()]);
+            }
+        }
         if ($ok === []) {
             return ['success' => false, 'message' => $label.': '.implode(' ', $errors)];
         }
