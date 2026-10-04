@@ -1110,6 +1110,57 @@
             });
         }
 
+        function applyAdjustedInventory(fields, response) {
+            const toDelta = parseInt(fields.toQty, 10) || 0;
+            const fromDelta = parseInt(fields.fromQty, 10) || 0;
+            function currentInv(sku) {
+                const item = allTableData.find(function(i) {
+                    return normalizeSkuKey(i.SKU) === normalizeSkuKey(sku);
+                });
+                const n = item ? inventoryNumber(item.INV) : null;
+                return n == null ? 0 : n;
+            }
+            const nextTo = response && response.to_inv != null && response.to_inv !== ''
+                ? Number(response.to_inv)
+                : currentInv(fields.sku) + toDelta;
+            const nextFrom = response && response.from_inv != null && response.from_inv !== ''
+                ? Number(response.from_inv)
+                : currentInv(fields.fromSku) - fromDelta;
+            if (fields.sku && !isNaN(nextTo)) {
+                applyInvOnly(fields.sku, nextTo);
+            }
+            if (fields.fromSku && !isNaN(nextFrom)) {
+                applyInvOnly(fields.fromSku, nextFrom);
+            }
+            $('.tabulator-row').each(function() {
+                const row = table.getRow(this);
+                if (!row) return;
+                const $row = $(this);
+                const data = row.getData();
+                if (normalizeSkuKey(displayedFromSku($row, data)) === normalizeSkuKey(fields.fromSku)) {
+                    $row.find('.from-inv-display').text(String(nextFrom));
+                    updateSubmitButton($row);
+                }
+            });
+        }
+
+        function applyInvOnly(sku, inv) {
+            if (!sku || inv == null || isNaN(inv)) return;
+            const key = normalizeSkuKey(sku);
+            if (table) {
+                table.getRows().forEach(function(row) {
+                    if (normalizeSkuKey(row.getData().SKU) === key) {
+                        row.update({ INV: inv });
+                    }
+                });
+            }
+            allTableData.forEach(function(item) {
+                if (normalizeSkuKey(item.SKU) === key) {
+                    item.INV = inv;
+                }
+            });
+        }
+
         function reloadAfterTransfers() {
             return table.setData().then(function() {
                 setTimeout(function() {
@@ -1260,6 +1311,7 @@
             postTransfer(fields).done(function(response) {
                 showToast(response.message || 'Transfer successful!', 'success');
                 markSubmitted(fields.sku);
+                applyAdjustedInventory(fields, response);
                 scheduleInventoryPull([fields.sku, fields.fromSku], startedAt);
             }).fail(function(xhr) {
                 const resp = xhr.responseJSON || {};
@@ -1327,9 +1379,10 @@
                     return;
                 }
                 const fields = ready[index++];
-                postTransfer(fields).done(function() {
+                postTransfer(fields).done(function(response) {
                     ok++;
                     markSubmitted(fields.sku);
+                    applyAdjustedInventory(fields, response);
                     pulled.push(fields.sku, fields.fromSku);
                     next();
                 }).fail(function(xhr) {

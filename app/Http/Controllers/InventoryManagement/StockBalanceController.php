@@ -448,6 +448,27 @@ class StockBalanceController extends Controller
     }
 
     /**
+     * Keep the table inventory in step with a successful Shopify adjustment.
+     */
+    private function adjustLocalShopifyInv(string $sku, int $delta): ?int
+    {
+        $row = ShopifySku::firstForProductSku($sku);
+        if (! $row) {
+            $normalized = $this->normalizeSkuKey($sku);
+            $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        }
+        if (! $row) {
+            return null;
+        }
+
+        $next = (int) $row->inv + $delta;
+        $row->inv = $next;
+        $row->save();
+
+        return $next;
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index()
@@ -674,6 +695,7 @@ class StockBalanceController extends Controller
                 'adjustment' => -$fromQty,
                 'response' => $decrease['response'] ?? null
             ]);
+            $fromInvAfter = $this->adjustLocalShopifyInv($fromSku, -$fromQty);
 
             // Step 2: Get inventory info and increase to 'to_sku'
             $toInfo = $getInventoryInfo($toSku);
@@ -711,6 +733,7 @@ class StockBalanceController extends Controller
                 );
                 
                 if ($rollback['success']) {
+                    $this->adjustLocalShopifyInv($fromSku, $fromQty);
                     Log::info("Successfully rolled back first adjustment", ['sku' => $fromSku]);
                     return response()->json([
                         'error' => ($increase['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to increase inventory in Shopify',
@@ -734,6 +757,7 @@ class StockBalanceController extends Controller
                 'adjustment' => $toQty,
                 'response' => $increase['response'] ?? null
             ]);
+            $toInvAfter = $this->adjustLocalShopifyInv($toSku, $toQty);
 
             // Step 3: Only save to database after both Shopify updates succeed
             try {
@@ -828,7 +852,11 @@ class StockBalanceController extends Controller
             }
 
             return response()->json([
-                'message' => '✓ SHOPIFY - Stock transferred successfully and saved to database'
+                'message' => '✓ SHOPIFY - Stock transferred successfully and saved to database',
+                'from_sku' => $fromSku,
+                'to_sku' => $toSku,
+                'from_inv' => $fromInvAfter,
+                'to_inv' => $toInvAfter,
             ]);
 
         } catch (\Exception $e) {
