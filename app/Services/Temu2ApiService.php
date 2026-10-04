@@ -330,20 +330,17 @@ class Temu2ApiService extends TemuApiService
         $attempts[] = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
-            'saveMode' => 1,
             $goodsBasicField => ['goodsName' => $title],
         ];
         $attempts[] = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
-            'saveMode' => 1,
             $goodsBasicField => ['goodsName' => $title],
             $skuListField => $liveEntries,
         ];
         $attempts[] = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
-            'saveMode' => 1,
             $goodsBasicField => ['goodsName' => $title],
             $skuListField => $inchEntries,
         ];

@@ -5,8 +5,11 @@ namespace App\Services;
 use App\Models\DobaDataView;
 use App\Models\DobaMetric;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Models\ProductStockMapping;
 use App\Services\Support\VideoMasterMarketplaceMethods;
 use App\Services\Support\SavesMarketplaceImageMetrics;
@@ -182,104 +185,279 @@ class DobaApiService
             return ['success' => false, 'message' => 'SKU and title are required.'];
         }
 
-        return $this->dobaContentUpdate($sku, 'title', [
-            ['title' => $title],
-            ['productTitle' => $title],
-        ], 'Doba title updated.');
+        return $this->dobaContentUpdate($sku, 'title', function (array $product) use ($title) {
+            $product['productName'] = $title;
+
+            return $product;
+        }, 'Doba title updated.');
     }
 
     /**
-     * Content edits go to goods/update as signed JSON (form bodies get "Unsupported Content-Type").
-     * Doba rate-limits this endpoint hard, so candidates are tried slowly and the loop stops on any
-     * request-level rejection (429, content type, whitelist) instead of hammering every variant.
+     * goods/update saves the whole SPU (all SKUs with their variation props), so read the live
+     * product from goods/detail, apply one change and send it all back as signed JSON.
+     * The successful result is cached so the next part of the same push builds on it instead of
+     * reverting it.
      *
-     * @param  list<array<string, mixed>>  $fieldCandidates
+     * @param  callable(array<string, mixed>, int): array<string, mixed>  $mutate  receives the product and the target SKU index
      * @return array{success: bool, message: string}
      */
-    private function dobaContentUpdate(string $identifier, string $label, array $fieldCandidates, string $okMessage): array
+    private function dobaContentUpdate(string $identifier, string $label, callable $mutate, string $okMessage): array
     {
         try {
             $itemNo = $this->resolveSkuToItemNo($identifier);
             if (! $itemNo) {
                 return ['success' => false, 'message' => 'SKU or item_id not found in DobaMetric/DobaDataView. Sync Doba listings first.'];
             }
-            $goodsId = '';
+            $spuId = '';
             try {
-                $goodsId = trim((string) (DobaMetric::query()->where('item_id', $itemNo)->value('goods_id') ?? ''));
+                $spuId = trim((string) (DobaMetric::query()->where('item_id', $itemNo)->value('goods_id') ?? ''));
             } catch (\Throwable) {
-                $goodsId = '';
+                $spuId = '';
             }
 
-            $url = $this->baseUrl.'/goods/update';
-            $lastMessage = 'Doba '.$label.' update failed.';
-            foreach (array_values($fieldCandidates) as $i => $fields) {
-                if ($i > 0) {
-                    usleep(1200000);
-                }
-                $payload = array_merge(['itemNo' => (string) $itemNo], $goodsId !== '' ? ['goodsId' => $goodsId] : [], $fields);
+            $product = $this->dobaLiveProduct($spuId, (string) $itemNo);
+            if ($product === null) {
+                return ['success' => false, 'message' => 'Could not load this product from Doba (goods/detail) to update it. Check the Doba listing exists, then push again.'];
+            }
+            $spuId = trim((string) ($product['spuId'] ?? $spuId));
 
-                $response = null;
-                for ($try = 0; $try < 2; $try++) {
-                    $timestamp = $this->getMillisecond();
-                    $sign = $this->generateSignature($this->getContent($timestamp));
-                    $response = Http::withoutVerifying()->timeout(30)->withHeaders([
-                        'appKey' => config('services.doba.app_key'),
-                        'signType' => 'rsa2',
-                        'timestamp' => $timestamp,
-                        'sign' => $sign,
-                    ])->asJson()->post($url, $payload);
-                    if ($response->status() !== 429) {
-                        break;
-                    }
-                    sleep(4);
-                }
-
-                $data = $response->json();
-                $data = is_array($data) ? $data : [];
-                $apiMsg = trim((string) ($data['responseMessage'] ?? $data['message'] ?? ''));
-                $business = is_array($data['businessData'] ?? null) ? $data['businessData'] : [];
-                $businessMsg = trim((string) ($business['businessMessage'] ?? ($business[0]['businessMessage'] ?? '')));
-                $businessStatus = (string) ($business['businessStatus'] ?? ($business[0]['businessStatus'] ?? ''));
-                Log::info('Doba content update response', [
-                    'item_no' => $itemNo,
-                    'part' => $label,
-                    'fields' => array_keys($fields),
-                    'status' => $response->status(),
-                    'response' => mb_substr((string) $response->body(), 0, 800),
-                ]);
-
-                if ($response->status() === 429) {
-                    return ['success' => false, 'message' => 'Doba rate limit hit (HTTP 429). Wait a minute and push again.'];
-                }
-                if (! $response->successful()) {
-                    $lastMessage = 'HTTP '.$response->status().': '.($apiMsg !== '' ? $apiMsg : mb_substr((string) $response->body(), 0, 300));
-                    if (stripos($apiMsg, 'whitelist') !== false) {
-                        return ['success' => false, 'message' => 'Doba API IP whitelist check failed — add this server IP in the Doba Open Platform app settings.'];
-                    }
-                    if ($response->status() === 404 || stripos($apiMsg, 'content-type') !== false) {
-                        return ['success' => false, 'message' => $lastMessage];
-                    }
-                    continue;
-                }
-                if (isset($data['responseCode']) && (string) $data['responseCode'] !== '000000') {
-                    $lastMessage = $apiMsg !== '' ? $apiMsg : 'Doba API error '.$data['responseCode'];
-                    continue;
-                }
-                if (($businessStatus !== '' && $businessStatus !== '000000')
-                    || (array_key_exists('successful', $business) && $business['successful'] !== true)) {
-                    $lastMessage = $businessMsg !== '' ? $businessMsg : 'Doba rejected the '.$label.' update.';
-                    continue;
-                }
-
-                return ['success' => true, 'message' => $okMessage];
+            $skuIndex = $this->dobaSkuIndex($product, (string) $itemNo, trim($identifier));
+            if ($skuIndex === null) {
+                return ['success' => false, 'message' => 'This SKU was not found inside its Doba product ('.$spuId.').'];
             }
 
-            return ['success' => false, 'message' => $lastMessage];
+            $product = $mutate($product, $skuIndex);
+            $payload = $this->dobaUpdatePayload($product);
+
+            $response = null;
+            for ($try = 0; $try < 2; $try++) {
+                $timestamp = $this->getMillisecond();
+                $sign = $this->generateSignature($this->getContent($timestamp));
+                $response = Http::withoutVerifying()->timeout(40)->withHeaders([
+                    'appKey' => config('services.doba.app_key'),
+                    'signType' => 'rsa2',
+                    'timestamp' => $timestamp,
+                    'sign' => $sign,
+                ])->asJson()->post($this->baseUrl.'/goods/update', $payload);
+                if ($response->status() !== 429) {
+                    break;
+                }
+                sleep(4);
+            }
+
+            $data = $response->json();
+            $data = is_array($data) ? $data : [];
+            $apiMsg = trim((string) ($data['responseMessage'] ?? $data['message'] ?? ''));
+            $business = is_array($data['businessData'] ?? null) ? $data['businessData'] : [];
+            $businessMsg = trim((string) ($business['businessMessage'] ?? ($business[0]['businessMessage'] ?? '')));
+            $businessStatus = (string) ($business['businessStatus'] ?? ($business[0]['businessStatus'] ?? ''));
+            Log::info('Doba content update response', [
+                'item_no' => $itemNo,
+                'spu_id' => $spuId,
+                'part' => $label,
+                'variation_props' => array_map(fn ($s) => [$s['skuCode'] ?? '', $s['variationProps'] ?? []], $payload['skus'] ?? []),
+                'status' => $response->status(),
+                'response' => mb_substr((string) $response->body(), 0, 800),
+            ]);
+
+            if ($response->status() === 429) {
+                return ['success' => false, 'message' => 'Doba rate limit hit (HTTP 429). Wait a minute and push again.'];
+            }
+            if (! $response->successful()) {
+                if (stripos($apiMsg, 'whitelist') !== false) {
+                    return ['success' => false, 'message' => 'Doba API IP whitelist check failed — add this server IP in the Doba Open Platform app settings.'];
+                }
+
+                return ['success' => false, 'message' => 'HTTP '.$response->status().': '.($apiMsg !== '' ? $apiMsg : mb_substr((string) $response->body(), 0, 300))];
+            }
+            if (isset($data['responseCode']) && (string) $data['responseCode'] !== '000000') {
+                return ['success' => false, 'message' => $apiMsg !== '' ? $apiMsg : 'Doba API error '.$data['responseCode']];
+            }
+            if (($businessStatus !== '' && $businessStatus !== '000000')
+                || (array_key_exists('successful', $business) && $business['successful'] !== true)) {
+                return ['success' => false, 'message' => $businessMsg !== '' ? $businessMsg : 'Doba rejected the '.$label.' update.'];
+            }
+
+            Cache::put($this->dobaProductCacheKey($spuId), $product, now()->addMinutes(10));
+
+            return ['success' => true, 'message' => $okMessage];
         } catch (\Throwable $e) {
             Log::warning('Doba content update failed', ['identifier' => $identifier, 'part' => $label, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    private function dobaProductCacheKey(string $spuId): string
+    {
+        return 'doba_lm_product:'.$spuId;
+    }
+
+    /**
+     * Full SPU from goods/detail (filtered lookups first, then a catalog scan).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function dobaLiveProduct(string $spuId, string $itemNo): ?array
+    {
+        if ($spuId !== '') {
+            $cached = Cache::get($this->dobaProductCacheKey($spuId));
+            if (is_array($cached) && is_array($cached['skus'] ?? null)) {
+                return $cached;
+            }
+        }
+
+        $matches = function (array $product) use ($spuId, $itemNo): bool {
+            if ($spuId !== '' && strcasecmp(trim((string) ($product['spuId'] ?? '')), $spuId) === 0) {
+                return true;
+            }
+            foreach (($product['skus'] ?? []) as $sku) {
+                foreach ((is_array($sku) ? ($sku['stocks'] ?? []) : []) as $stock) {
+                    if (is_array($stock) && strcasecmp(trim((string) ($stock['itemNo'] ?? '')), $itemNo) === 0) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        };
+
+        $filters = array_values(array_filter([
+            $spuId !== '' ? ['spuId' => $spuId] : null,
+            ['itemNo' => $itemNo],
+        ]));
+        foreach ($filters as $extra) {
+            foreach ($this->fetchGoodsDetailPage(1, 50, $extra) as $product) {
+                if (is_array($product) && $matches($product)) {
+                    return $product;
+                }
+            }
+        }
+        for ($page = 1; $page <= 40; $page++) {
+            $rows = $this->fetchGoodsDetailPage($page, 100);
+            foreach ($rows as $product) {
+                if (is_array($product) && $matches($product)) {
+                    return $product;
+                }
+            }
+            if (count($rows) < 100) {
+                break;
+            }
+            usleep(150000);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    private function dobaSkuIndex(array $product, string $itemNo, string $skuCode): ?int
+    {
+        foreach (array_values($product['skus'] ?? []) as $i => $sku) {
+            if (! is_array($sku)) {
+                continue;
+            }
+            foreach (($sku['stocks'] ?? []) as $stock) {
+                if (is_array($stock) && strcasecmp(trim((string) ($stock['itemNo'] ?? '')), $itemNo) === 0) {
+                    return $i;
+                }
+            }
+            if ($skuCode !== '' && strcasecmp(trim((string) ($sku['skuCode'] ?? '')), $skuCode) === 0) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * goods/detail reports every SKU's variation prop with the full comma-joined value list
+     * ("235 Black,58 Blue,…"), which goods/update rejects as an invalid variation property.
+     * Give each SKU its own single value: the Shopify variant title when it is one of Doba's
+     * values, otherwise the value at the SKU's position (Doba lists them in SKU order), otherwise
+     * the Shopify variant title, otherwise the SKU code.
+     *
+     * @param  array<string, mixed>  $product
+     * @return array<string, mixed>
+     */
+    private function dobaUpdatePayload(array $product): array
+    {
+        $skus = array_values(array_filter($product['skus'] ?? [], 'is_array'));
+        $shopifyTitles = $this->shopifyVariantTitles(array_map(fn ($s) => (string) ($s['skuCode'] ?? ''), $skus));
+
+        $used = [];
+        foreach ($skus as $i => $sku) {
+            $props = [];
+            foreach (($sku['variationProps'] ?? []) as $prop) {
+                if (! is_array($prop)) {
+                    continue;
+                }
+                $name = trim((string) ($prop['propName'] ?? ''));
+                $raw = trim((string) ($prop['propValue'] ?? ''));
+                $options = array_values(array_filter(array_map('trim', explode(',', $raw)), fn ($v) => $v !== ''));
+                $shopify = $shopifyTitles[strtoupper(trim((string) ($sku['skuCode'] ?? '')))] ?? '';
+
+                $value = count($options) === 1 ? $options[0] : '';
+                if ($value === '' && $shopify !== '') {
+                    foreach ($options as $opt) {
+                        if (strcasecmp($opt, $shopify) === 0) {
+                            $value = $opt;
+                            break;
+                        }
+                    }
+                }
+                if ($value === '' && isset($options[$i]) && ! isset($used[$name][mb_strtolower($options[$i])])) {
+                    $value = $options[$i];
+                }
+                if ($value === '') {
+                    $value = $shopify !== '' ? $shopify : trim((string) ($sku['skuCode'] ?? ''));
+                }
+                $used[$name][mb_strtolower($value)] = true;
+                $props[] = ['propName' => $name !== '' ? $name : 'Style', 'propValue' => $value];
+            }
+            if ($props === []) {
+                $shopify = $shopifyTitles[strtoupper(trim((string) ($sku['skuCode'] ?? '')))] ?? '';
+                $props[] = ['propName' => 'Style', 'propValue' => $shopify !== '' ? $shopify : trim((string) ($sku['skuCode'] ?? ''))];
+            }
+            $sku['variationProps'] = $props;
+            $skus[$i] = array_filter($sku, fn ($v) => $v !== null);
+        }
+
+        $payload = array_filter($product, fn ($v) => $v !== null);
+        $payload['skus'] = $skus;
+
+        return $payload;
+    }
+
+    /**
+     * @param  list<string>  $skuCodes
+     * @return array<string, string> upper-cased SKU => Shopify variant title (blank for "Default Title")
+     */
+    private function shopifyVariantTitles(array $skuCodes): array
+    {
+        $skuCodes = array_values(array_filter(array_map('trim', $skuCodes), fn ($s) => $s !== ''));
+        if ($skuCodes === []) {
+            return [];
+        }
+        try {
+            if (! Schema::hasTable('shopify_skus') || ! Schema::hasColumn('shopify_skus', 'variant_title')) {
+                return [];
+            }
+            $rows = DB::table('shopify_skus')->whereIn('sku', $skuCodes)->get(['sku', 'variant_title']);
+        } catch (\Throwable) {
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $row) {
+            $title = trim((string) ($row->variant_title ?? ''));
+            if ($title === '' || strcasecmp($title, 'Default Title') === 0) {
+                continue;
+            }
+            $out[strtoupper(trim((string) $row->sku))] = $title;
+        }
+
+        return $out;
     }
 
     public function resolveItemNo(string $identifier): ?string
@@ -1324,10 +1502,11 @@ class DobaApiService
             return ['success' => false, 'message' => 'SKU (or item_id) and bullet points are required.'];
         }
 
-        return $this->dobaContentUpdate($identifier, 'bullets', [
-            ['sellPoint' => array_slice($lines, 0, 5)],
-            ['sellPoints' => array_slice($lines, 0, 5)],
-        ], 'Doba highlights (bullet points) updated.');
+        return $this->dobaContentUpdate($identifier, 'bullets', function (array $product) use ($lines) {
+            $product['sellingPoints'] = array_slice($lines, 0, 5);
+
+            return $product;
+        }, 'Doba highlights (bullet points) updated.');
     }
 
     /**
@@ -1340,10 +1519,11 @@ class DobaApiService
             return ['success' => false, 'message' => 'SKU (or item_id) and description are required.'];
         }
 
-        return $this->dobaContentUpdate($identifier, 'description', [
-            ['goodsDesc' => $description],
-            ['productDescription' => $description],
-        ], 'Doba product description updated.');
+        return $this->dobaContentUpdate($identifier, 'description', function (array $product) use ($description) {
+            $product['productDetails'] = $description;
+
+            return $product;
+        }, 'Doba product description updated.');
     }
 
     /**
@@ -1478,67 +1658,18 @@ class DobaApiService
                 }
             }
 
-            $itemNo = $this->resolveSkuToItemNo($identifier);
-            if (! $itemNo) {
-                return ['success' => false, 'message' => 'SKU or item_id not found in DobaMetric/DobaDataView.'];
+            $res = $this->dobaContentUpdate($identifier, 'images', function (array $product, int $skuIndex) use ($images) {
+                $product['skus'][$skuIndex]['images'] = $images;
+
+                return $product;
+            }, 'Doba product images updated.');
+            if (empty($res['success'])) {
+                return $res;
             }
 
-            $timestamp = $this->getMillisecond();
-            $content = $this->getContent($timestamp);
-            $sign = $this->generateSignature($content);
-            $headers = [
-                'appKey' => config('services.doba.app_key'),
-                'signType' => 'rsa2',
-                'timestamp' => $timestamp,
-                'sign' => $sign,
-                'Content-Type' => 'application/x-www-form-urlencoded',
-            ];
+            $this->saveImageUrlsToMetricsRow('doba_metrics', trim($identifier), $images);
 
-            $picList = [];
-            foreach ($images as $i => $url) {
-                $picList[] = [
-                    'picUrl' => $url,
-                    'picType' => $i === 0 ? 1 : 2,
-                ];
-            }
-            $payloadAttempts = [
-                ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'productPicList' => json_encode($picList)],
-                ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'picList' => json_encode($picList)],
-                ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'picList' => json_encode($images)],
-                ['itemNo' => (string) $itemNo, 'productImageList' => json_encode($images)],
-            ];
-
-            $attempts = [
-                'https://openapi.doba.com/api/goods/info/update',
-                'https://openapi.doba.com/api/goods/update',
-            ];
-
-            $lastMessage = 'Doba image update failed for all endpoints.';
-            foreach ($attempts as $url) {
-                foreach ($payloadAttempts as $payload) {
-                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
-                    $responseData = $response->json() ?? [];
-                    if (! $response->successful()) {
-                        $lastMessage = 'HTTP '.$response->status().': '.($responseData['responseMessage'] ?? $response->body());
-                        continue;
-                    }
-                    if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
-                        $lastMessage = (string) ($responseData['responseMessage'] ?? 'Unknown Doba API error');
-                        continue;
-                    }
-
-                    $sku = trim($identifier);
-                    $this->saveImageUrlsToMetricsRow('doba_metrics', $sku, $images);
-
-                    return [
-                        'success' => true,
-                        'message' => 'Doba product images updated.',
-                        'normalized_urls' => $images,
-                    ];
-                }
-            }
-
-            return ['success' => false, 'message' => $lastMessage];
+            return $res + ['normalized_urls' => $images];
         } catch (\Throwable $e) {
             Log::error('Doba updateImages failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
 

@@ -196,12 +196,23 @@ class Business5CoreB2bApiService
             ]);
 
         $method = strtoupper($method);
-        $response = match ($method) {
-            'GET' => $pending->get($url, $query),
-            'POST' => $pending->post($url, $body ?? []),
-            'PATCH' => $pending->patch($url, $body ?? []),
-            default => $pending->put($url, $body ?? []),
-        };
+        $maxAttempts = 5;
+        for ($attempt = 1; ; $attempt++) {
+            $response = match ($method) {
+                'GET' => $pending->get($url, $query),
+                'POST' => $pending->post($url, $body ?? []),
+                'PATCH' => $pending->patch($url, $body ?? []),
+                default => $pending->put($url, $body ?? []),
+            };
+            if ($response->status() !== 429 || $attempt >= $maxAttempts) {
+                break;
+            }
+            $retryAfter = (int) $response->header('Retry-After');
+            $wait = $retryAfter > 0 ? min($retryAfter, 65) : min(5 * $attempt, 30);
+            Log::info('B5C B2B API rate limited, retrying', ['url' => $url, 'attempt' => $attempt, 'wait_s' => $wait]);
+            @set_time_limit($wait + $this->timeout() + 60);
+            sleep($wait);
+        }
 
         if (! $response->successful()) {
             $json = $response->json();

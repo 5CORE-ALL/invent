@@ -7,8 +7,10 @@ use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\Temu2Metric;
+use App\Models\Temu2Pricing;
 use App\Models\TemuMetric;
 use App\Services\AmazonSpApiService;
+use App\Services\Temu2ApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -22,7 +24,7 @@ class ListingManagerPublishStatus
     /**
      * @return array{listed: bool, listing_id: string|null, source: string}
      */
-    public static function check(string $channelName, string $sku): array
+    public static function check(string $channelName, string $sku, bool $allowLiveLookup = false): array
     {
         $sku = trim($sku);
         $key = ListingChannelCounts::normalize($channelName);
@@ -69,8 +71,18 @@ class ListingManagerPublishStatus
         }
         if (in_array($key, ['temu2', 'temutwo'], true) && class_exists(Temu2Metric::class)) {
             $id = self::idFromColumn(Temu2Metric::class, $sku, 'goods_id', true);
+            if ($id !== null) {
+                return ['listed' => true, 'listing_id' => $id, 'source' => 'temu2_metrics.goods_id'];
+            }
+            if (Schema::hasTable('temu2_pricing')) {
+                $id = self::idFromColumn(Temu2Pricing::class, $sku, 'goods_id', true);
+                if ($id !== null) {
+                    return ['listed' => true, 'listing_id' => $id, 'source' => 'temu2_pricing.goods_id'];
+                }
+            }
+            $id = $allowLiveLookup ? self::temu2LiveGoodsId($sku) : null;
 
-            return ['listed' => $id !== null, 'listing_id' => $id, 'source' => 'temu2_metrics.goods_id'];
+            return ['listed' => $id !== null, 'listing_id' => $id, 'source' => $allowLiveLookup ? 'temu2_api' : 'temu2_metrics.goods_id'];
         }
 
         $cfg = ChannelListingRegistry::get($key)
@@ -240,6 +252,30 @@ class ListingManagerPublishStatus
         }
 
         return null;
+    }
+
+    /**
+     * Temu 2 metric rows lose goods_id after a mall-mismatch reset, so fall back to the live
+     * catalog. That scan pages the whole store; misses are cached so the product window stays fast.
+     */
+    private static function temu2LiveGoodsId(string $sku): ?string
+    {
+        $cacheKey = 'lm_temu2_live_gid:'.mb_strtolower(trim($sku));
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached)) {
+            return $cached !== '' ? $cached : null;
+        }
+        try {
+            $id = trim((string) (app(Temu2ApiService::class)->getGoodsIdBySku($sku) ?? ''));
+        } catch (\Throwable) {
+            return null;
+        }
+        if (strcasecmp($id, trim($sku)) === 0) {
+            $id = '';
+        }
+        Cache::put($cacheKey, $id, $id !== '' ? now()->addDay() : now()->addHours(6));
+
+        return $id !== '' ? $id : null;
     }
 
     /**

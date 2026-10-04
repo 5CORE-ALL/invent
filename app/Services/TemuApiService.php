@@ -2198,7 +2198,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $requestBodies[] = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
-            'saveMode' => 1,
             $goodsBasicField => [
                 'goodsName' => $title,
             ],
@@ -2216,7 +2215,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             $requestBodies[] = [
                 'type' => $apiType,
                 'goodsId' => (int) $goodsId,
-                'saveMode' => 1,
                 $goodsBasicField => ['goodsName' => $title],
                 $skuListField => [$skuEntry],
             ];
@@ -2372,10 +2370,10 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $skuListField = $this->temuCfg('update_sku_list_field', 'skuList');
         $goodsBasicField = $this->temuCfg('goods_basic_field', 'goodsBasic');
 
+        // No saveMode: it is an ERP-only field and this app's key gets [150010003] Invalid Request Parameters.
         $requestBody = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
-            'saveMode' => 1,
         ];
 
         // bg.local.goods.partial.update takes bulletPoints (string[]) and goodsDesc (string) at the
@@ -2458,7 +2456,14 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                     return ['success' => true, 'message' => $outcome['message']];
                 }
                 $lastBody = $outcome['message'];
-                Log::warning($logContext.' rejected', ['sku' => $sku, 'goodsId' => $goodsId, 'attempt' => $attempt, 'error' => $lastBody]);
+                Log::warning($logContext.' rejected', [
+                    'sku' => $sku,
+                    'goodsId' => $goodsId,
+                    'attempt' => $attempt,
+                    'error' => $lastBody,
+                    'request_keys' => array_keys($requestBody),
+                    'response' => is_array($data) ? $data : $response->body(),
+                ]);
                 if ($attempt === 1 && $this->temuMallGoodsMismatch($lastBody)) {
                     $freshGoodsId = $this->replaceGoodsIdAfterMallMismatch($sku, (string) $goodsId);
                     if ($freshGoodsId !== null && $freshGoodsId !== '' && (string) $freshGoodsId !== (string) $goodsId) {
