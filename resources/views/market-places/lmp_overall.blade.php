@@ -38,6 +38,10 @@
             transform: none !important;
         }
         #lmp-overall-wrap .tabulator .tabulator-cell { padding: 4px 6px !important; }
+        #lmp-overall-wrap .tabulator-row.tabulator-selectable:hover { cursor: default; background-color: transparent; }
+        #lmp-overall-wrap .tabulator-row.tabulator-row-odd.tabulator-selectable:hover { background-color: #fff; }
+        #lmp-overall-wrap .tabulator-row.tabulator-row-even.tabulator-selectable:hover { background-color: #efefef; }
+        #lmp-overall-wrap .tabulator-row .tabulator-cell input[type="checkbox"] { cursor: pointer; }
         #lmp-overall-wrap .tabulator-row.tabulator-selected { background: #e7f1ff !important; }
         .lmp-overall-thumb { width: 36px; height: 36px; object-fit: contain; border-radius: 4px; background: #fff; }
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent,
@@ -47,6 +51,8 @@
         .lmp-overall-price { font-weight: 700; color: #198754; }
         .lmp-overall-count { color: #007bff; font-weight: 700; text-decoration: none; cursor: pointer; }
         .lmp-overall-count:hover { text-decoration: underline; }
+        .lmp-overall-edit { position: relative; z-index: 2; line-height: 1; }
+        #lmpOverallStdModal { z-index: 20000; }
         #lmpOverallLmpModal .lmp-overall-comp-img { width: 42px; height: 42px; object-fit: contain; background: #fff; border-radius: 4px; }
         #lmpOverallLmpModal tr.lmp-overall-ignored { opacity: 0.55; text-decoration: line-through; }
     </style>
@@ -369,7 +375,7 @@
                 height: '70vh',
                 layout: 'fitDataStretch',
                 placeholder: 'Loading…',
-                selectableRows: true,
+                selectableRows: 'highlight',
                 selectableRowsRollingSelection: true,
                 pagination: true,
                 paginationSize: 100,
@@ -465,22 +471,6 @@
                         formatter: function (cell) { return money(cell.getValue()); },
                     },
                     {
-                        title: 'Edit',
-                        field: 'edit',
-                        hozAlign: 'center',
-                        headerSort: false,
-                        width: 52,
-                        formatter: function (cell) {
-                            if (cell.getRow().getData().is_parent_summary) return '';
-                            return '<button type="button" class="btn btn-sm btn-link text-primary p-0" title="Edit"><i class="ri-pencil-line" style="font-size:16px;"></i></button>';
-                        },
-                        cellClick: function (e, cell) {
-                            e.stopPropagation();
-                            if (cell.getRow().getData().is_parent_summary) return;
-                            openStdModal(cell.getRow());
-                        },
-                    },
-                    {
                         title: 'Avg Price',
                         field: 'avg_price',
                         hozAlign: 'center',
@@ -526,6 +516,20 @@
                         headerTooltip: 'Manual My LMP (amazon_data_view.MY_LMP)',
                         formatter: function (cell) { return money(cell.getValue()); },
                     },
+                    {
+                        title: 'Edit',
+                        field: 'row_edit',
+                        hozAlign: 'center',
+                        headerSort: false,
+                        width: 52,
+                        formatter: function (cell) {
+                            const data = cell.getRow().getData();
+                            if (data.is_parent_summary) return '';
+                            return '<button type="button" class="btn btn-sm btn-link text-primary p-0 lmp-overall-edit" data-sku="'
+                                + escHtml(data.sku || '') + '" title="Edit Std Price and My LMP">'
+                                + '<i class="ri-pencil-line" style="font-size:16px;pointer-events:none;"></i></button>';
+                        },
+                    },
                 ],
             });
 
@@ -535,6 +539,16 @@
                 document.getElementById('lmp-overall-total').textContent = 'Total: ' + active.toLocaleString();
                 document.getElementById('lmp-overall-selected').textContent = 'Selected: ' + selected.toLocaleString();
             }
+
+            document.getElementById('lmp-overall-wrap').addEventListener('click', function (e) {
+                const btn = e.target.closest('.lmp-overall-edit');
+                if (!btn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = btn.getAttribute('data-sku');
+                const row = sku ? table.getRow(sku) : null;
+                if (row) openStdModal(row);
+            }, true);
 
             table.on('dataProcessed', updateCounts);
             table.on('rowSelectionChanged', updateCounts);

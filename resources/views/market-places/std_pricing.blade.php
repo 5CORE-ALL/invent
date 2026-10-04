@@ -171,6 +171,12 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
+                    <div class="d-flex flex-wrap gap-2 mb-2" id="std-pricing-current-badges">
+                        <span class="badge fs-6 p-2" id="std-badge-current-sales" style="background:#198754;color:#fff;font-weight:700;"
+                            title="Current sales = Σ (ovl30 × Std Price)">Current Sales: —</span>
+                        <span class="badge fs-6 p-2" id="std-badge-current-avg" style="background:#ffc107;color:#000;font-weight:700;"
+                            title="Current avg price = Σ (ovl30 × Std Price) / Σ ovl30">Current Avg Price: —</span>
+                    </div>
                     <div class="d-flex flex-wrap gap-2 mb-2" id="std-pricing-p-badges">
                         <span class="badge fs-6 p-2" id="std-badge-p-sales" style="background:#198754;color:#fff;font-weight:700;"
                             title="Σ P sales. P sales = inv × Std Price">P Sales: —</span>
@@ -186,8 +192,6 @@
                     <div class="d-flex flex-wrap gap-2 mb-2" id="std-pricing-sp-badges">
                         <span class="badge fs-6 p-2" id="std-badge-sp-sales" style="background:#198754;color:#fff;font-weight:700;"
                             title="Σ S sales. S sales = inv × S P price">S Sales: —</span>
-                        <span class="badge fs-6 p-2" id="std-badge-sp-avg" style="background:#ffc107;color:#000;font-weight:700;"
-                            title="S avg price = Σ (inv × S P price) / Σ inv">S Avg Price: —</span>
                         <span class="badge fs-6 p-2" id="std-badge-sp-groi" style="background:#6f42c1;color:#fff;font-weight:700;"
                             title="S GROI% = Σ S PFT / Σ (inv × LP). 20% margin, ads not included.">S GROI%: —</span>
                         <span class="badge fs-6 p-2" id="std-badge-sp-gpft" style="background:#0dcaf0;color:#000;font-weight:700;"
@@ -345,11 +349,26 @@
                 };
             }
 
+            function currentPool(rows) {
+                let sales = 0;
+                let qty = 0;
+                (rows || []).forEach(function (row) {
+                    const price = parseFloat(row.std_price);
+                    const sold = parseFloat(row.ovl30) || 0;
+                    if (!isFinite(price) || price <= 0 || !(sold > 0)) return;
+                    sales += sold * price;
+                    qty += sold;
+                });
+                return {
+                    sales: sales,
+                    avg: qty > 0.00001 ? (sales / qty) : null,
+                };
+            }
+
             function spPool(rows) {
                 let sales = 0;
                 let pft = 0;
                 let cogs = 0;
-                let invQty = 0;
                 (rows || []).forEach(function (row) {
                     const price = spPriceOf(row);
                     const qty = parseFloat(row.inv) || 0;
@@ -360,12 +379,10 @@
                     sales += qty * price;
                     pft += qty * ((price * STD_MARGIN) - freight - landed);
                     if (landed > 0) cogs += qty * landed;
-                    invQty += qty;
                 });
                 const net = pft - (sales * STD_ADS);
                 return {
                     sp_sales: sales,
-                    sp_avg: Math.abs(invQty) > 0.00001 ? (sales / invQty) : null,
                     sp_groi: Math.abs(cogs) > 0.00001 ? (pft / cogs) * 100 : null,
                     sp_gpft: Math.abs(sales) > 0.00001 ? (pft / sales) * 100 : null,
                     sp_gnroi: Math.abs(cogs) > 0.00001 ? (net / cogs) * 100 : null,
@@ -716,6 +733,11 @@
                 document.getElementById('std-pricing-selected').textContent =
                     'Selected: ' + table.getSelectedRows().length.toLocaleString();
                 const pool = projectedPool(rowsForCalc());
+                const current = currentPool(rowsForCalc());
+                const currentSalesEl = document.getElementById('std-badge-current-sales');
+                const currentAvgEl = document.getElementById('std-badge-current-avg');
+                if (currentSalesEl) currentSalesEl.textContent = 'Current Sales: ' + moneyBadge(current.sales);
+                if (currentAvgEl) currentAvgEl.textContent = 'Current Avg Price: ' + moneyBadge(current.avg);
                 const salesEl = document.getElementById('std-badge-p-sales');
                 if (salesEl) salesEl.textContent = 'P Sales: ' + moneyBadge(pool.p_sales);
                 paintPctBadge('std-badge-p-groi', 'P GROI%', pool.p_groi, 'groi');
@@ -724,9 +746,7 @@
                 paintPctBadge('std-badge-p-gnpft', 'P GNPFT%', pool.p_gnpft, 'npft');
                 const sp = spPool(rowsForCalc());
                 const spSalesEl = document.getElementById('std-badge-sp-sales');
-                const spAvgEl = document.getElementById('std-badge-sp-avg');
                 if (spSalesEl) spSalesEl.textContent = 'S Sales: ' + moneyBadge(sp.sp_sales);
-                if (spAvgEl) spAvgEl.textContent = 'S Avg Price: ' + moneyBadge(sp.sp_avg);
                 paintPctBadge('std-badge-sp-groi', 'S GROI%', sp.sp_groi, 'groi');
                 paintPctBadge('std-badge-sp-gpft', 'S GPFT%', sp.sp_gpft, 'gpft');
                 paintPctBadge('std-badge-sp-gnroi', 'S GNROI%', sp.sp_gnroi, 'nroi');
