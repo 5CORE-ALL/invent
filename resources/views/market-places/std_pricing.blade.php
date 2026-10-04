@@ -173,9 +173,15 @@
                 <div class="card-body">
                     <div class="d-flex flex-wrap gap-2 mb-2" id="std-pricing-current-badges">
                         <span class="badge fs-6 p-2" id="std-badge-current-sales" style="background:#198754;color:#fff;font-weight:700;"
-                            title="Current sales = Σ (ovl30 × Std Price)">Current Sales: —</span>
-                        <span class="badge fs-6 p-2" id="std-badge-current-avg" style="background:#ffc107;color:#000;font-weight:700;"
-                            title="Current avg price = Σ (ovl30 × Std Price) / Σ ovl30">Current Avg Price: —</span>
+                            title="Current sales = Σ (OVL30 units × OVL30 avg price)">Current Sales: —</span>
+                        <span class="badge fs-6 p-2" id="std-badge-current-groi" style="background:#6f42c1;color:#fff;font-weight:700;"
+                            title="Current GROI% = Σ current profit / Σ (OVL30 units × LP). 20% margin, ads not included.">Current GROI%: —</span>
+                        <span class="badge fs-6 p-2" id="std-badge-current-gpft" style="background:#0dcaf0;color:#000;font-weight:700;"
+                            title="Current GPFT% = Σ current profit / Σ current sales. 20% margin, ads not included.">Current GPFT%: —</span>
+                        <span class="badge fs-6 p-2" id="std-badge-current-gnroi" style="background:#6f42c1;color:#fff;font-weight:700;"
+                            title="Current GNROI% = Σ (current profit − current sales × 10%) / Σ (OVL30 units × LP).">Current GNROI%: —</span>
+                        <span class="badge fs-6 p-2" id="std-badge-current-gnpft" style="background:#0dcaf0;color:#000;font-weight:700;"
+                            title="Current GNPFT% = Σ (current profit − current sales × 10%) / Σ current sales.">Current GNPFT%: —</span>
                     </div>
                     <div class="d-flex flex-wrap gap-2 mb-2" id="std-pricing-p-badges">
                         <span class="badge fs-6 p-2" id="std-badge-p-sales" style="background:#198754;color:#fff;font-weight:700;"
@@ -351,17 +357,26 @@
 
             function currentPool(rows) {
                 let sales = 0;
-                let qty = 0;
+                let pft = 0;
+                let cogs = 0;
                 (rows || []).forEach(function (row) {
-                    const price = parseFloat(row.std_price);
-                    const sold = parseFloat(row.ovl30) || 0;
+                    const price = parseFloat(row.ovl30_price);
+                    const sold = parseFloat(row.ovl30_units) || 0;
+                    const cost = parseFloat(row.lp);
+                    const freight = parseFloat(row.ship) || 0;
                     if (!isFinite(price) || price <= 0 || !(sold > 0)) return;
+                    const landed = isFinite(cost) && cost > 0 ? cost : 0;
                     sales += sold * price;
-                    qty += sold;
+                    pft += sold * ((price * STD_MARGIN) - freight - landed);
+                    if (landed > 0) cogs += sold * landed;
                 });
+                const net = pft - (sales * STD_ADS);
                 return {
                     sales: sales,
-                    avg: qty > 0.00001 ? (sales / qty) : null,
+                    groi: Math.abs(cogs) > 0.00001 ? (pft / cogs) * 100 : null,
+                    gpft: Math.abs(sales) > 0.00001 ? (pft / sales) * 100 : null,
+                    gnroi: Math.abs(cogs) > 0.00001 ? (net / cogs) * 100 : null,
+                    gnpft: Math.abs(sales) > 0.00001 ? (net / sales) * 100 : null,
                 };
             }
 
@@ -735,9 +750,11 @@
                 const pool = projectedPool(rowsForCalc());
                 const current = currentPool(rowsForCalc());
                 const currentSalesEl = document.getElementById('std-badge-current-sales');
-                const currentAvgEl = document.getElementById('std-badge-current-avg');
                 if (currentSalesEl) currentSalesEl.textContent = 'Current Sales: ' + moneyBadge(current.sales);
-                if (currentAvgEl) currentAvgEl.textContent = 'Current Avg Price: ' + moneyBadge(current.avg);
+                paintPctBadge('std-badge-current-groi', 'Current GROI%', current.groi, 'groi');
+                paintPctBadge('std-badge-current-gpft', 'Current GPFT%', current.gpft, 'gpft');
+                paintPctBadge('std-badge-current-gnroi', 'Current GNROI%', current.gnroi, 'nroi');
+                paintPctBadge('std-badge-current-gnpft', 'Current GNPFT%', current.gnpft, 'npft');
                 const salesEl = document.getElementById('std-badge-p-sales');
                 if (salesEl) salesEl.textContent = 'P Sales: ' + moneyBadge(pool.p_sales);
                 paintPctBadge('std-badge-p-groi', 'P GROI%', pool.p_groi, 'groi');

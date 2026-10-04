@@ -11,6 +11,7 @@ use App\Services\LmpSkuGroupService;
 use App\Support\AmazonDilGroiRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -53,6 +54,7 @@ class StdPricingController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Std pricing: LMP lookup failed', ['error' => $e->getMessage()]);
         }
+        $ovl30BySku = $this->ovl30SnapshotBySku();
 
         $rows = [];
         foreach ($products as $product) {
@@ -71,6 +73,7 @@ class StdPricingController extends Controller
 
             [$lp, $ship] = $this->landedAndShip($product);
             $std = $this->priceForGroup($members, $stdBySku);
+            $ovl30Row = $this->ovl30ForSku($sku, $ovl30BySku);
 
             $rows[] = array_merge([
                 'image' => $product->main_image ?: null,
@@ -85,6 +88,8 @@ class StdPricingController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'linked_skus' => array_values($members),
+                'ovl30_units' => $ovl30Row['units'],
+                'ovl30_price' => $ovl30Row['price'],
             ], $this->stdMetrics($std, $lp, $ship), $this->projectedMetrics($std, $lp, $ship, $inv));
         }
 
@@ -401,6 +406,67 @@ class StdPricingController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Latest OVL30 snapshot: units sold and the current avg price for that SKU.
+     *
+     * @return array<string, array{units: float, price: ?float}>
+     */
+    private function ovl30SnapshotBySku(): array
+    {
+        $table = 'pricing_master_daily_snapshots_sku';
+        if (! Schema::hasTable($table)) {
+            return [];
+        }
+
+        try {
+            $date = DB::table($table)->max('snapshot_date');
+            if (! $date) {
+                return [];
+            }
+
+            $out = [];
+            foreach (DB::table($table)->where('snapshot_date', $date)->get(['sku', 'overall_l30', 'avg_price']) as $row) {
+                $key = $this->skuKey((string) ($row->sku ?? ''));
+                if ($key === '') {
+                    continue;
+                }
+                $entry = [
+                    'units' => is_numeric($row->overall_l30 ?? null) ? (float) $row->overall_l30 : 0.0,
+                    'price' => is_numeric($row->avg_price ?? null) && (float) $row->avg_price > 0
+                        ? round((float) $row->avg_price, 2)
+                        : null,
+                ];
+                $out[$key] = $entry;
+                $compact = str_replace(' ', '', $key);
+                if ($compact !== '' && $compact !== $key) {
+                    $out[$compact] = $entry;
+                }
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::warning('Std pricing: OVL30 snapshot lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<string, array{units: float, price: ?float}>  $bySku
+     * @return array{units: float, price: ?float}
+     */
+    private function ovl30ForSku(string $sku, array $bySku): array
+    {
+        $key = $this->skuKey($sku);
+        $compact = str_replace(' ', '', $key);
+        $row = $bySku[$key] ?? ($compact !== '' ? ($bySku[$compact] ?? null) : null);
+
+        return [
+            'units' => (float) ($row['units'] ?? 0),
+            'price' => $row['price'] ?? null,
+        ];
     }
 
     private function skuKey(string $sku): string
