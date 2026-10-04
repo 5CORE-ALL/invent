@@ -42,6 +42,95 @@
         .std-pricing-edit:hover { background: #f0fdfa; }
         #std-pricing-wrap .tabulator .tabulator-calcs-holder { background: #eef6fb; font-weight: 700; }
         #std-pricing-wrap .tabulator .tabulator-calcs-holder .tabulator-cell { padding: 6px 8px !important; }
+        #std-column-dropdown-menu.show {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+        #std-column-dropdown-menu > li.col-vis-full { list-style: none; }
+        #std-column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            margin: 0;
+            padding: 0;
+        }
+        #std-column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #std-column-dropdown-menu .col-vis-group.col-vis-drop-over {
+            border-color: #0d6efd;
+            background: #eef5ff;
+            box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.25);
+        }
+        #std-column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #std-column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #std-column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #std-column-dropdown-menu .col-vis-item { list-style: none; margin: 0; padding: 0; border-radius: 4px; cursor: grab; }
+        #std-column-dropdown-menu .col-vis-item:active { cursor: grabbing; }
+        #std-column-dropdown-menu .col-vis-item.col-vis-dragging { opacity: 0.55; }
+        #std-column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #std-column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+        #std-column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+        @media (max-width: 768px) {
+            #std-column-dropdown-menu .col-vis-groups {
+                grid-template-columns: repeat(2, minmax(140px, 1fr));
+            }
+        }
         @include('market-places.partials.std_pricing_sprc_dil', ['stdSprcDilPart' => 'css'])
     </style>
 @endsection
@@ -80,6 +169,14 @@
                         <button type="button" id="std-pricing-refresh" class="btn btn-sm btn-outline-primary" title="Reload">
                             <i class="ri-refresh-line"></i>
                         </button>
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
+                                id="stdColumnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" title="Columns">
+                                <i class="ri-layout-column-line"></i>
+                            </button>
+                            <ul class="dropdown-menu" id="std-column-dropdown-menu" aria-labelledby="stdColumnVisibilityDropdown"></ul>
+                        </div>
                         @include('market-places.partials.std_pricing_sprc_dil', ['stdSprcDilPart' => 'button'])
                         <span class="text-muted small" id="std-pricing-status">Loading…</span>
                     </div>
@@ -231,6 +328,33 @@
                 return Math.round(pct) + '%';
             }
 
+            function spPriceOf(row) {
+                if (window.stdPricingSprcForRow) {
+                    const live = window.stdPricingSprcForRow(row);
+                    if (isFinite(live) && live > 0) return live;
+                }
+                const stored = parseFloat(row && row.sprc_dil);
+                return (isFinite(stored) && stored > 0) ? stored : null;
+            }
+
+            function spMetrics(row) {
+                const price = spPriceOf(row);
+                const cost = parseFloat(row && row.lp);
+                const freight = parseFloat(row && row.ship) || 0;
+                const empty = { sp_groi: null, sp_gpft: null, sp_gnroi: null, sp_gnpft: null };
+                if (!isFinite(price) || price <= 0) return empty;
+                const landed = isFinite(cost) && cost > 0 ? cost : 0;
+                const gross = (price * STD_MARGIN) - freight - landed;
+                const net = gross - (price * STD_ADS);
+                const round2 = function (n) { return Math.round(n * 100) / 100; };
+                return {
+                    sp_groi: landed > 0 ? round2((gross / landed) * 100) : null,
+                    sp_gpft: round2((gross / price) * 100),
+                    sp_gnroi: landed > 0 ? round2((net / landed) * 100) : null,
+                    sp_gnpft: round2((net / price) * 100),
+                };
+            }
+
             function pctColumn(title, field, kind, tip) {
                 return {
                     title: title,
@@ -241,6 +365,25 @@
                     sorter: 'number',
                     headerTooltip: tip,
                     formatter: function (cell) { return pctCell(cell.getValue(), kind); },
+                };
+            }
+
+            function spColumn(title, key, kind, tip) {
+                return {
+                    title: title,
+                    field: key,
+                    hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    width: 100,
+                    headerTooltip: tip,
+                    sorter: function (a, b, aRow, bRow) {
+                        const av = spMetrics(aRow.getData())[key];
+                        const bv = spMetrics(bRow.getData())[key];
+                        return (isFinite(av) ? av : -Infinity) - (isFinite(bv) ? bv : -Infinity);
+                    },
+                    formatter: function (cell) {
+                        return pctCell(spMetrics(cell.getRow().getData())[key], kind);
+                    },
                 };
             }
 
@@ -397,22 +540,44 @@
                         formatter: function (cell) { return money(cell.getValue()); },
                     },
                     {
-                        title: 'Sprc Dil',
+                        title: 'Use Price',
+                        field: 'use_price',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        width: 110,
+                        sorter: function (a, b, aRow, bRow) {
+                            const av = window.stdPricingUsePrice ? window.stdPricingUsePrice(aRow.getData()) : 0;
+                            const bv = window.stdPricingUsePrice ? window.stdPricingUsePrice(bRow.getData()) : 0;
+                            return (av || 0) - (bv || 0);
+                        },
+                        headerTooltip: 'Lower of Std Price and LMP × the Dil factor. No LMP uses My LMP from LMP Overall.',
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            const n = window.stdPricingUsePrice ? window.stdPricingUsePrice(row) : null;
+                            if (!isFinite(n) || n <= 0) return '<span class="text-muted">—</span>';
+                            const note = window.stdPricingUsePriceNote ? window.stdPricingUsePriceNote(row) : '';
+                            return '<span class="std-pricing-price" title="' + note.replace(/"/g, '&quot;') + '">$' + n.toFixed(2) + '</span>';
+                        },
+                    },
+                    {
+                        title: 'S P price',
                         field: 'sprc_dil',
                         hozAlign: 'center',
                         headerHozAlign: 'center',
-                        width: 100,
+                        width: 110,
                         sorter: 'number',
-                        headerTooltip: 'Dil slab → Target NROI. (LP × (1 + NROI%/100) + Ship) / (0.80 − 10%). Rules saved in std_pricing_sprc_dil.',
+                        headerTooltip: 'S P price from the Sprc Dil slab. (LP × (1 + Target NROI%/100) + Ship) / (0.80 − 10%).',
                         formatter: function (cell) {
-                            const live = window.stdPricingSprcForRow
-                                ? window.stdPricingSprcForRow(cell.getRow().getData())
-                                : parseFloat(cell.getValue());
+                            const live = spPriceOf(cell.getRow().getData());
                             const n = parseFloat(live);
                             if (!isFinite(n) || n <= 0) return '<span class="text-muted">—</span>';
                             return '<span class="std-sprc-dil-price">$' + n.toFixed(2) + '</span>';
                         },
                     },
+                    spColumn('S P GROI%', 'sp_groi', 'groi', '((S P price × 0.80 − ship − LP) / LP) × 100. 20% margin, ads not included.'),
+                    spColumn('S P GPFT%', 'sp_gpft', 'gpft', '((S P price × 0.80 − ship − LP) / S P price) × 100. 20% margin, ads not included.'),
+                    spColumn('S P GNROI%', 'sp_gnroi', 'nroi', '((S P price × 0.80 − ship − LP − S P price × 10%) / LP) × 100.'),
+                    spColumn('S P GNPFT%', 'sp_gnpft', 'npft', 'S P GPFT% minus 10% ads.'),
                     pctColumn('STD GROI%', 'std_groi', 'groi', '((Std Price × 0.80 − ship − LP) / LP) × 100. 20% margin, ads not included.'),
                     pctColumn('STD GPFT%', 'std_gpft', 'gpft', '((Std Price × 0.80 − ship − LP) / Std Price) × 100. 20% margin, ads not included.'),
                     pctColumn('STD GNROI%', 'std_gnroi', 'nroi', '((Std Price × 0.80 − ship − LP − Std Price × 10%) / LP) × 100.'),
@@ -500,6 +665,235 @@
             }
 
             window.stdPricingTable = table;
+
+            const STD_COL_VIS_URL = @json(route('tabulator.column.visibility.get'));
+            const STD_COL_VIS_SET = @json(route('tabulator.column.visibility.set'));
+            const STD_COL_CHANNEL = 'std_pricing';
+            const STD_COL_CATS = ['basic', 'price', 'ads', 'other'];
+            const STD_COL_CAT_LABELS = { basic: 'Basic', price: 'Price', ads: 'Ads', other: 'Other' };
+            const STD_COL_CAT_STORAGE = 'std_pricing_col_cats_v1';
+
+            function stdCsrf() {
+                const meta = document.querySelector('meta[name="csrf-token"]');
+                return meta ? meta.getAttribute('content') : '';
+            }
+            function stdColPlainTitle(def) {
+                const field = def && def.field ? String(def.field) : '';
+                if (field === 'sprc_dil') return 'S P price';
+                if (field === 'p_pft') return 'P PFT';
+                const raw = (def && def.title != null) ? def.title : field;
+                const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                return t || field;
+            }
+            function classifyStdColumn(field, title) {
+                const f = String(field || '');
+                const t = String(title || '').toLowerCase();
+                if (/^(image|parent|sku|inv|ovl30|dil)$/.test(f) || /\b(image|parent|sku|inv|ovl30|dil)\b/.test(t)) return 'basic';
+                if (/price|sprc|groi|gpft|gnroi|gnpft|p_sales|p_pft/.test(f) || /\b(price|groi|gpft|nroi|pft|sales)\b/.test(t)) return 'price';
+                if (/\bads\b/.test(t)) return 'ads';
+                return 'other';
+            }
+            function loadStdColCats() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(STD_COL_CAT_STORAGE) || '{}');
+                    return (parsed && typeof parsed === 'object') ? parsed : {};
+                } catch (e) { return {}; }
+            }
+            function saveStdColCats(map) {
+                try { localStorage.setItem(STD_COL_CAT_STORAGE, JSON.stringify(map || {})); } catch (e) { /* ignore */ }
+            }
+            function syncStdGroupHeader(groupEl) {
+                if (!groupEl) return;
+                const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+                const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+                if (!headerCb) return;
+                if (!itemCbs.length) {
+                    headerCb.checked = false;
+                    headerCb.indeterminate = false;
+                    return;
+                }
+                let checked = 0;
+                itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
+            function saveStdColumnVisibility() {
+                const visibility = {};
+                table.getColumns().forEach(function (col) {
+                    const field = col.getDefinition().field;
+                    if (field) visibility[field] = col.isVisible();
+                });
+                fetch(STD_COL_VIS_SET, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': stdCsrf(),
+                    },
+                    body: JSON.stringify({ channel: STD_COL_CHANNEL, visibility: visibility }),
+                }).catch(function () {});
+            }
+            function bindStdColDrag(li, groupEls) {
+                li.draggable = true;
+                li.addEventListener('dragstart', function (e) {
+                    e.stopPropagation();
+                    li.classList.add('col-vis-dragging');
+                    e.dataTransfer.setData('text/plain', li.dataset.field || '');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                li.addEventListener('dragend', function () {
+                    li.classList.remove('col-vis-dragging');
+                    Object.keys(groupEls).forEach(function (k) { groupEls[k].classList.remove('col-vis-drop-over'); });
+                });
+            }
+            function bindStdColDrop(group, list, groupEls) {
+                [group, list].forEach(function (zone) {
+                    zone.addEventListener('dragover', function (e) {
+                        e.preventDefault();
+                        group.classList.add('col-vis-drop-over');
+                    });
+                    zone.addEventListener('dragleave', function (e) {
+                        if (!group.contains(e.relatedTarget)) group.classList.remove('col-vis-drop-over');
+                    });
+                    zone.addEventListener('drop', function (e) {
+                        e.preventDefault();
+                        group.classList.remove('col-vis-drop-over');
+                        const field = e.dataTransfer.getData('text/plain');
+                        const menu = document.getElementById('std-column-dropdown-menu');
+                        const item = menu ? menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]') : null;
+                        if (!item) return;
+                        const nextCat = group.dataset.category;
+                        if (!nextCat || item.dataset.group === nextCat) return;
+                        const fromGroup = item.closest('.col-vis-group');
+                        list.appendChild(item);
+                        item.dataset.group = nextCat;
+                        const cb = item.querySelector('input[type="checkbox"]');
+                        if (cb) cb.dataset.group = nextCat;
+                        const cats = loadStdColCats();
+                        cats[field] = nextCat;
+                        saveStdColCats(cats);
+                        syncStdGroupHeader(fromGroup);
+                        syncStdGroupHeader(group);
+                    });
+                });
+            }
+            function buildStdColumnDropdown(savedMap) {
+                const menu = document.getElementById('std-column-dropdown-menu');
+                if (!menu) return;
+                const map = (savedMap && typeof savedMap === 'object' && !Array.isArray(savedMap)) ? savedMap : {};
+                const catOverrides = loadStdColCats();
+                menu.innerHTML = '';
+                const groupsLi = document.createElement('li');
+                groupsLi.className = 'col-vis-full';
+                const groupsWrap = document.createElement('div');
+                groupsWrap.className = 'col-vis-groups';
+                const lists = {};
+                const groupEls = {};
+                STD_COL_CATS.forEach(function (cat) {
+                    const group = document.createElement('div');
+                    group.className = 'col-vis-group';
+                    group.dataset.category = cat;
+                    const titleEl = document.createElement('label');
+                    titleEl.className = 'col-vis-group-title';
+                    const groupCb = document.createElement('input');
+                    groupCb.type = 'checkbox';
+                    groupCb.className = 'col-vis-group-toggle';
+                    groupCb.dataset.group = cat;
+                    groupCb.title = 'Select / deselect all in ' + STD_COL_CAT_LABELS[cat];
+                    titleEl.appendChild(groupCb);
+                    titleEl.appendChild(document.createTextNode(STD_COL_CAT_LABELS[cat]));
+                    group.appendChild(titleEl);
+                    const list = document.createElement('ul');
+                    list.className = 'col-vis-group-list';
+                    group.appendChild(list);
+                    groupsWrap.appendChild(group);
+                    lists[cat] = list;
+                    groupEls[cat] = group;
+                    bindStdColDrop(group, list, groupEls);
+                });
+                table.getColumns().forEach(function (col) {
+                    const def = col.getDefinition();
+                    const field = def.field;
+                    if (!field) return;
+                    const title = stdColPlainTitle(def);
+                    let cat = catOverrides[field];
+                    if (STD_COL_CATS.indexOf(cat) === -1) cat = classifyStdColumn(field, title);
+                    const isVisible = Object.prototype.hasOwnProperty.call(map, field)
+                        ? map[field] !== false
+                        : (def.visible !== false);
+                    const li = document.createElement('li');
+                    li.className = 'col-vis-item';
+                    li.dataset.field = field;
+                    li.dataset.group = cat;
+                    const label = document.createElement('label');
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = field;
+                    checkbox.setAttribute('data-field', field);
+                    checkbox.className = 'col-vis-field-toggle';
+                    checkbox.dataset.group = cat;
+                    checkbox.checked = isVisible;
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(' ' + title));
+                    label.title = title + ' (drag to another header)';
+                    li.appendChild(label);
+                    bindStdColDrag(li, groupEls);
+                    lists[cat].appendChild(li);
+                });
+                STD_COL_CATS.forEach(function (cat) { syncStdGroupHeader(groupEls[cat]); });
+                groupsLi.appendChild(groupsWrap);
+                menu.appendChild(groupsLi);
+            }
+            function applyStdColumnVisibility(savedMap) {
+                const map = (savedMap && typeof savedMap === 'object' && !Array.isArray(savedMap)) ? savedMap : {};
+                table.getColumns().forEach(function (col) {
+                    const field = col.getDefinition().field;
+                    if (!field || !Object.prototype.hasOwnProperty.call(map, field)) return;
+                    if (map[field]) col.show();
+                    else col.hide();
+                });
+            }
+            const stdColMenu = document.getElementById('std-column-dropdown-menu');
+            if (stdColMenu) {
+                stdColMenu.addEventListener('change', function (e) {
+                    if (e.target.type !== 'checkbox') return;
+                    if (e.target.classList.contains('col-vis-group-toggle')) {
+                        const checked = e.target.checked;
+                        const groupEl = e.target.closest('.col-vis-group');
+                        const itemCbs = groupEl ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]') : [];
+                        itemCbs.forEach(function (cb) {
+                            const field = cb.getAttribute('data-field') || cb.value;
+                            cb.checked = checked;
+                            const col = table.getColumn(field);
+                            if (!col) return;
+                            if (checked) col.show();
+                            else col.hide();
+                        });
+                        e.target.indeterminate = false;
+                        saveStdColumnVisibility();
+                        return;
+                    }
+                    const field = e.target.getAttribute('data-field') || e.target.value;
+                    const col = table.getColumn(field);
+                    if (!col) return;
+                    if (e.target.checked) col.show();
+                    else col.hide();
+                    syncStdGroupHeader(e.target.closest('.col-vis-group'));
+                    saveStdColumnVisibility();
+                });
+                stdColMenu.addEventListener('click', function (e) {
+                    if (e.target.closest('label') || e.target.type === 'checkbox') e.stopPropagation();
+                });
+            }
+            fetch(STD_COL_VIS_URL + '?channel=' + encodeURIComponent(STD_COL_CHANNEL), {
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': stdCsrf() },
+            }).then(function (r) { return r.json(); }).then(function (saved) {
+                applyStdColumnVisibility(saved);
+                buildStdColumnDropdown(saved);
+            }).catch(function () {
+                buildStdColumnDropdown({});
+            });
+
             table.on('dataProcessed', function () {
                 updateCounts();
                 if (typeof window.stdPricingStampSprcDil === 'function') window.stdPricingStampSprcDil();

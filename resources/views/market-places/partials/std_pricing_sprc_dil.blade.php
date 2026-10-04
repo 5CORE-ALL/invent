@@ -91,6 +91,28 @@
                     <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="std-dil-groi-add-btn">
                         <i class="fas fa-plus me-1"></i> Add slab
                     </button>
+                    <div class="std-dg-rules-title mt-3">Use price — Std Price or LMP</div>
+                    <p class="small text-muted mb-2">
+                        When Dil falls in a row, Use Price is the lower of <strong>Std Price</strong> and <strong>LMP × factor</strong>.
+                        LMP is the lowest of Amz, eBay, Temu, and Google. If none is found, My LMP from LMP Overall is used.
+                        A blank To means Dil above From. 50 belongs to the 50–100 row, and Dil above 100 uses 1.05.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="std-lmp-cap-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width:90px;">From</th>
+                                    <th class="text-center" style="width:90px;">To</th>
+                                    <th class="text-end" style="width:110px;">LMP ×</th>
+                                    <th style="width:36px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="std-lmp-cap-tbody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="std-lmp-cap-add-btn">
+                        <i class="fas fa-plus me-1"></i> Add range
+                    </button>
                     <div class="std-dg-rules-title mt-3">CVR overlay — Target NROI</div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="std-cvr-groi-table">
@@ -138,6 +160,11 @@
             const MARGIN = 0.80;
             const ADS = 0.10;
             let rules = [];
+            let lmpRules = [
+                { min: 25, max: 50, factor: 0.95, above: false },
+                { min: 50, max: 100, factor: 1, above: false },
+                { min: 100, max: null, factor: 1.05, above: true },
+            ];
             let clearanceNroi = 0;
             let clearanceSet = null;
             let dilChart = null;
@@ -400,6 +427,99 @@
                 renderPies();
                 window.stdPricingStampSprcDil();
             }
+            function normalizeLmpRule(raw) {
+                if (!raw) return null;
+                const min = Number(raw.min);
+                const factor = Number(raw.factor);
+                if (!isFinite(min) || min < 0 || !isFinite(factor) || factor <= 0) return null;
+                const above = !!raw.above || raw.max === null || raw.max === '' || !isFinite(Number(raw.max));
+                const max = above ? null : round2(Number(raw.max));
+                if (!above && max < min) return null;
+                return { min: round2(min), max: max, factor: round2(factor * 10000) / 10000, above: above };
+            }
+            function readLmpRules() {
+                const out = [];
+                document.querySelectorAll('#std-lmp-cap-tbody tr').forEach(function (tr) {
+                    const maxRaw = tr.querySelector('.std-lmp-max')?.value;
+                    const rule = normalizeLmpRule({
+                        min: parseFloat(tr.querySelector('.std-lmp-min')?.value),
+                        max: maxRaw === '' ? null : parseFloat(maxRaw),
+                        factor: parseFloat(tr.querySelector('.std-lmp-factor')?.value),
+                        above: maxRaw === '',
+                    });
+                    if (rule) out.push(rule);
+                });
+                if (out.length) lmpRules = out.sort(function (a, b) { return a.min - b.min; });
+                return lmpRules;
+            }
+            function renderLmpRules() {
+                const tb = document.getElementById('std-lmp-cap-tbody');
+                if (!tb) return;
+                const list = lmpRules.map(normalizeLmpRule).filter(Boolean);
+                lmpRules = list.length ? list : lmpRules;
+                const canDelete = lmpRules.length > 1;
+                tb.innerHTML = lmpRules.map(function (r, idx) {
+                    return '<tr data-idx="' + idx + '">'
+                        + '<td><input type="number" min="0" step="0.1" class="form-control form-control-sm std-dg-input std-lmp-min" value="' + r.min + '"></td>'
+                        + '<td><input type="number" min="0" step="0.1" class="form-control form-control-sm std-dg-input std-lmp-max" value="' + (r.above || r.max == null ? '' : r.max) + '" placeholder="and above"></td>'
+                        + '<td class="text-end"><input type="number" min="0.01" step="0.01" class="form-control form-control-sm std-dg-input std-lmp-factor" value="' + r.factor + '"></td>'
+                        + '<td class="text-center">' + (canDelete ? '<button type="button" class="std-dg-del std-lmp-del" data-idx="' + idx + '">&times;</button>' : '') + '</td></tr>';
+                }).join('');
+            }
+            function matchLmpRule(dil) {
+                const list = lmpRules;
+                for (let i = 0; i < list.length; i++) {
+                    const rule = list[i];
+                    const next = list[i + 1];
+                    if (rule.above || rule.max == null) {
+                        if (dil > rule.min) return rule;
+                        continue;
+                    }
+                    const handEnd = next && !next.above && next.max != null && Number(next.min) === Number(rule.max);
+                    if (dil >= rule.min && (handEnd ? dil < rule.max : dil <= rule.max)) return rule;
+                }
+                return null;
+            }
+            function lmpChoice(d) {
+                const lmp = parseFloat(d && d.lmp);
+                if (isFinite(lmp) && lmp > 0) return { price: lmp, source: 'LMP' };
+                const mine = parseFloat(d && d.my_lmp);
+                if (isFinite(mine) && mine > 0) return { price: mine, source: 'My LMP' };
+                return null;
+            }
+            window.stdPricingUsePrice = function (d) {
+                const std = parseFloat(d && d.std_price);
+                if (!isFinite(std) || std <= 0) return null;
+                const inv = parseFloat(d.inv) || 0;
+                if (!(inv > 0)) return round2(std);
+                const dil = ((parseFloat(d.ovl30) || 0) / inv) * 100;
+                const rule = matchLmpRule(dil);
+                if (!rule) return round2(std);
+                const chosen = lmpChoice(d);
+                if (!chosen) return round2(std);
+                return round2(Math.min(std, chosen.price * rule.factor));
+            };
+            window.stdPricingUsePriceNote = function (d) {
+                const std = parseFloat(d && d.std_price);
+                const inv = parseFloat(d && d.inv) || 0;
+                if (!(std > 0) || !(inv > 0)) return '';
+                const dil = ((parseFloat(d.ovl30) || 0) / inv) * 100;
+                const rule = matchLmpRule(dil);
+                if (!rule) return 'Dil ' + round2(dil) + '% is outside the Use price ranges. Std Price.';
+                const chosen = lmpChoice(d);
+                if (!chosen) return 'No LMP or My LMP. Std Price.';
+                return 'Dil ' + round2(dil) + '% · ' + chosen.source + ' $' + chosen.price.toFixed(2)
+                    + ' × ' + rule.factor + ' vs Std $' + std.toFixed(2);
+            };
+            function redrawUsePrice() {
+                const table = window.stdPricingTable;
+                if (!table) return;
+                try {
+                    const col = table.getColumn('use_price');
+                    if (col) col.getCells().forEach(function (cell) { cell.getElement() && cell.getRow().reformat && null; });
+                    table.redraw(true);
+                } catch (e) { /* ignore */ }
+            }
             window.stdPricingSprcForRow = function (d) {
                 if (!d || !((parseFloat(d.inv) || 0) > 0)) return null;
                 const list = displayRules();
@@ -438,6 +558,10 @@
                         if (res && res.clearance_nroi != null && isFinite(Number(res.clearance_nroi))) {
                             clearanceNroi = round2(Number(res.clearance_nroi));
                         }
+                        if (res && Array.isArray(res.lmp_rules) && res.lmp_rules.length) {
+                            lmpRules = res.lmp_rules.map(normalizeLmpRule).filter(Boolean);
+                        }
+                        renderLmpRules();
                         renderTable();
                         window.stdPricingStampSprcDil();
                         if (status) {
@@ -456,6 +580,7 @@
                     rules: readRules(),
                     cvr_adj: cvrAdjNow(),
                     clearance_nroi: clearanceNroi,
+                    lmp_rules: readLmpRules(),
                 };
                 if (status) status.textContent = 'Saving…';
                 return fetch(@json(route('std.pricing.sprc-dil.save')), {
@@ -477,9 +602,14 @@
                     if (res && res.clearance_nroi != null && isFinite(Number(res.clearance_nroi))) {
                         clearanceNroi = round2(Number(res.clearance_nroi));
                     }
+                    if (res && Array.isArray(res.lmp_rules)) {
+                        lmpRules = res.lmp_rules.map(normalizeLmpRule).filter(Boolean);
+                    }
+                    renderLmpRules();
                     renderTable();
                     window.stdPricingStampSprcDil();
-                    if (status) status.textContent = 'Saved in std_pricing_sprc_dil and applied to Sprc Dil.';
+                    redrawUsePrice();
+                    if (status) status.textContent = 'Saved in std_pricing_sprc_dil and applied to Sprc Dil and Use Price.';
                 }).catch(function (err) {
                     if (status) status.textContent = err.message || 'Save failed';
                 });
@@ -524,6 +654,32 @@
             document.getElementById('std-cvr-groi-table')?.addEventListener('input', function () {
                 renderPies();
             });
+            document.getElementById('std-lmp-cap-add-btn')?.addEventListener('click', function () {
+                readLmpRules();
+                let nextMin = 0;
+                lmpRules.forEach(function (r) {
+                    const hi = r.above ? r.min : r.max;
+                    if (hi > nextMin) nextMin = hi;
+                });
+                lmpRules.push({ min: round2(nextMin), max: round2(nextMin + 25), factor: 1, above: false });
+                renderLmpRules();
+                redrawUsePrice();
+            });
+            document.getElementById('std-lmp-cap-tbody')?.addEventListener('click', function (e) {
+                const btn = e.target.closest('.std-lmp-del');
+                if (!btn) return;
+                readLmpRules();
+                const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                if (lmpRules.length <= 1 || !isFinite(idx)) return;
+                lmpRules.splice(idx, 1);
+                renderLmpRules();
+                redrawUsePrice();
+            });
+            document.getElementById('std-lmp-cap-tbody')?.addEventListener('input', function () {
+                readLmpRules();
+                redrawUsePrice();
+            });
+            renderLmpRules();
             loadRules();
         })();
     </script>

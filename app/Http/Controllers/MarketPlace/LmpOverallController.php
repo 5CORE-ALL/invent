@@ -28,6 +28,84 @@ class LmpOverallController extends Controller
         return view('market-places.lmp_overall');
     }
 
+    /**
+     * Lowest LMP across Amz, eBay, Temu, and Google, plus My LMP.
+     * Both maps are keyed by normalized SKU.
+     *
+     * @param  list<string>  $skus
+     * @return array{lmp: array<string, float>, my_lmp: array<string, float>}
+     */
+    public function lmpMapsForSkus(array $skus): array
+    {
+        $groups = app(LmpSkuGroupService::class);
+        try {
+            $groups->prepareForSkus($skus);
+        } catch (\Throwable $e) {
+            Log::warning('LMP Overall: SKU link groups failed', ['error' => $e->getMessage()]);
+        }
+
+        $amzLookup = $this->groupedLookup(fn () => AmazonSkuCompetitor::buildGroupedLookup('amazon'));
+        $ebayLookup = $this->groupedLookup(fn () => EbaySkuCompetitor::buildGroupedLookup('ebay'));
+        $googleLookup = $this->groupedLookup(fn () => GoogleSkuCompetitor::buildGroupedLookup('google'));
+        $temuBySku = $this->temuLowestBySku()['price'];
+        $myLmpBySku = $this->amazonManualPrices()['my_lmp'];
+
+        $lmp = [];
+        $mine = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $members = $groups->groupContaining($sku);
+            if ($members === []) {
+                $members = [$sku];
+            }
+            $key = $this->skuKey($sku);
+            if ($key === '') {
+                continue;
+            }
+            $prices = array_filter([
+                $this->minAcrossGroup(
+                    $members,
+                    $amzLookup['lowest'],
+                    fn (string $member) => AmazonSkuCompetitor::normalizeSkuKey($member),
+                    fn ($row) => AmazonSkuCompetitor::landedPrice($row)
+                ),
+                $this->minAcrossGroup(
+                    $members,
+                    $ebayLookup['lowest'],
+                    fn (string $member) => EbaySkuCompetitor::normalizeSkuKey($member),
+                    function ($row) {
+                        $price = $row->total_price ?? null;
+
+                        return is_numeric($price) && (float) $price > 0 ? (float) $price : null;
+                    }
+                ),
+                $this->minTemuAcrossGroup($members, $temuBySku),
+                $this->minAcrossGroup(
+                    $members,
+                    $googleLookup['lowest'],
+                    fn (string $member) => GoogleSkuCompetitor::normalizeSkuKey($member),
+                    function ($row) {
+                        $price = $row->price ?? null;
+
+                        return is_numeric($price) && (float) $price > 0 ? (float) $price : null;
+                    }
+                ),
+            ], fn ($price) => is_numeric($price) && (float) $price > 0);
+            if ($prices !== []) {
+                $lmp[$key] = round(min($prices), 2);
+            }
+            $my = $this->priceForGroup($members, $myLmpBySku);
+            if ($my !== null && $my > 0) {
+                $mine[$key] = $my;
+            }
+        }
+
+        return ['lmp' => $lmp, 'my_lmp' => $mine];
+    }
+
     public function data(): JsonResponse
     {
         $products = ProductMaster::query()
@@ -78,7 +156,7 @@ class LmpOverallController extends Controller
             $skuKey = $this->skuKey($sku);
             $cvr = $cvrBySku[$skuKey] ?? $cvrBySku[str_replace(' ', '', $skuKey)] ?? null;
 
-            $rows[] = [
+            $row = [
                 'image' => $product->main_image ?: null,
                 'parent' => preg_replace('/\s+/', ' ', trim((string) ($product->parent ?? ''))),
                 'sku' => $sku,
@@ -149,6 +227,7 @@ class LmpOverallController extends Controller
                 ),
                 'is_parent_summary' => false,
             ];
+            $rows[] = array_merge($row, $this->marketplaceLmpSummary($row));
         }
 
         $data = $this->withParentRows($rows);
@@ -215,7 +294,7 @@ class LmpOverallController extends Controller
             $image = $withImage['image'] ?? null;
         }
 
-        return [
+        $row = [
             'is_parent_summary' => true,
             'image' => $image,
             'parent' => $parent,
@@ -239,6 +318,31 @@ class LmpOverallController extends Controller
             'lmp_temu_count' => (int) $children->sum('lmp_temu_count'),
             'lmp_google' => $this->avgPositive($children, 'lmp_google'),
             'lmp_google_count' => (int) $children->sum('lmp_google_count'),
+        ];
+
+        return array_merge($row, $this->marketplaceLmpSummary($row));
+    }
+
+    /**
+     * OV LMP is the lowest of Amz, eBay, Temu, and Google. Avg LMP is their mean.
+     * Marketplaces with no price are left out of both.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{ov_lmp: ?float, avg_lmp: ?float}
+     */
+    private function marketplaceLmpSummary(array $row): array
+    {
+        $prices = array_values(array_filter(
+            [$row['lmp_amz'] ?? null, $row['lmp_ebay'] ?? null, $row['lmp_temu'] ?? null, $row['lmp_google'] ?? null],
+            fn ($price) => is_numeric($price) && (float) $price > 0
+        ));
+        if ($prices === []) {
+            return ['ov_lmp' => null, 'avg_lmp' => null];
+        }
+
+        return [
+            'ov_lmp' => round((float) min($prices), 2),
+            'avg_lmp' => round(array_sum($prices) / count($prices), 2),
         ];
     }
 

@@ -164,7 +164,14 @@
                 lmp_google: { label: 'LMP Google', url: '/google-lmp-data' },
             };
             const lmpModalEl = document.getElementById('lmpOverallLmpModal');
-            const lmpModal = lmpModalEl && window.bootstrap ? new bootstrap.Modal(lmpModalEl) : null;
+
+            function showBsModal(el) {
+                if (!el || !window.bootstrap || !bootstrap.Modal) return null;
+                if (el.parentElement !== document.body) document.body.appendChild(el);
+                const modal = bootstrap.Modal.getOrCreateInstance(el);
+                modal.show();
+                return modal;
+            }
 
             function competitorPrice(row) {
                 const landed = parseFloat(row.landed_price);
@@ -203,12 +210,11 @@
 
             function openLmpModal(row, field) {
                 const site = lmpSites[field];
-                if (!site || !lmpModal) return;
+                if (!site || !showBsModal(lmpModalEl)) return;
                 const sku = String(row.sku || '').trim();
                 document.getElementById('lmp-overall-lmp-title').textContent = site.label + ' — ' + sku;
                 document.getElementById('lmp-overall-lmp-body').innerHTML =
                     '<div class="text-center text-muted py-4">Loading competitors…</div>';
-                lmpModal.show();
                 const params = new URLSearchParams();
                 params.set('sku', sku);
                 (Array.isArray(row.linked_lmp_skus) ? row.linked_lmp_skus : []).forEach(function (linked) {
@@ -257,7 +263,6 @@
 
             let stdEditRow = null;
             const stdModalEl = document.getElementById('lmpOverallStdModal');
-            const stdModal = stdModalEl && window.bootstrap ? new bootstrap.Modal(stdModalEl) : null;
 
             function openStdModal(row) {
                 stdEditRow = row;
@@ -270,7 +275,7 @@
                 document.getElementById('lmp-overall-my-lmp-input').value =
                     (isFinite(mine) && mine > 0) ? mine.toFixed(2) : '';
                 document.getElementById('lmp-overall-std-msg').textContent = '';
-                if (stdModal) stdModal.show();
+                showBsModal(stdModalEl);
             }
 
             function applyEditToLinkedRows(sku, fields, appliedSkus) {
@@ -423,6 +428,26 @@
                     lmpSiteColumn('LMP temu', 'lmp_temu', 'lmp_temu_count'),
                     lmpSiteColumn('LMP Google', 'lmp_google', 'lmp_google_count'),
                     {
+                        title: 'OV LMP',
+                        field: 'ov_lmp',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        width: 90,
+                        sorter: 'number',
+                        headerTooltip: 'Lowest LMP across Amazon, eBay, Temu, and Google',
+                        formatter: function (cell) { return money(cell.getValue()); },
+                    },
+                    {
+                        title: 'Avg LMP',
+                        field: 'avg_lmp',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        width: 90,
+                        sorter: 'number',
+                        headerTooltip: 'Average LMP across Amazon, eBay, Temu, and Google',
+                        formatter: function (cell) { return money(cell.getValue()); },
+                    },
+                    {
                         title: 'My LMP',
                         field: 'my_lmp',
                         hozAlign: 'center',
@@ -518,7 +543,11 @@
                     }, body.applied_skus);
                     msg.className = 'small mt-2 text-success';
                     msg.textContent = 'Saved.';
-                    setTimeout(function () { if (stdModal) stdModal.hide(); }, 400);
+                    setTimeout(function () {
+                        if (stdModalEl && window.bootstrap) {
+                            bootstrap.Modal.getInstance(stdModalEl)?.hide();
+                        }
+                    }, 400);
                 }).catch(function (err) {
                     msg.className = 'small mt-2 text-danger';
                     msg.textContent = err.message || 'Save failed';

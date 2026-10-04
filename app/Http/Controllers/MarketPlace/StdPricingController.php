@@ -47,6 +47,12 @@ class StdPricingController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Std pricing: SKU link groups failed', ['error' => $e->getMessage()]);
         }
+        $lmpMaps = ['lmp' => [], 'my_lmp' => []];
+        try {
+            $lmpMaps = app(LmpOverallController::class)->lmpMapsForSkus($skus);
+        } catch (\Throwable $e) {
+            Log::warning('Std pricing: LMP lookup failed', ['error' => $e->getMessage()]);
+        }
 
         $rows = [];
         foreach ($products as $product) {
@@ -74,6 +80,8 @@ class StdPricingController extends Controller
                 'ovl30' => $ovl30,
                 'dil' => $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0.0,
                 'std_price' => $std,
+                'lmp' => $this->priceForGroup($members, $lmpMaps['lmp']),
+                'my_lmp' => $this->priceForGroup($members, $lmpMaps['my_lmp']),
                 'lp' => $lp,
                 'ship' => $ship,
                 'linked_skus' => array_values($members),
@@ -151,12 +159,16 @@ class StdPricingController extends Controller
             ? AmazonDilGroiRule::amazonDefaults()
             : AmazonDilGroiRule::ensureZeroToZero($savedRules);
 
+        $savedLmp = is_array($row?->lmp_rules) ? $row->lmp_rules : [];
+
         return response()->json([
             'success' => true,
             'is_default' => $savedRules === [],
             'rules' => $rules,
             'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(is_array($row?->cvr_adj) ? $row->cvr_adj : null),
             'clearance_nroi' => $row?->clearance_nroi,
+            'lmp_rules' => $savedLmp === [] ? $this->defaultLmpRules() : $this->normalizeLmpRules($savedLmp),
+            'lmp_rules_default' => $savedLmp === [],
         ]);
     }
 
@@ -188,10 +200,18 @@ class StdPricingController extends Controller
             $clearance = round(max(0, (float) $request->input('clearance_nroi')), 2);
         }
 
+        $lmpIncoming = $request->input('lmp_rules');
+        if (is_string($lmpIncoming)) {
+            $decodedLmp = json_decode($lmpIncoming, true);
+            $lmpIncoming = is_array($decodedLmp) ? $decodedLmp : null;
+        }
+        $lmpRules = is_array($lmpIncoming) ? $this->normalizeLmpRules($lmpIncoming) : $this->defaultLmpRules();
+
         $row = StdPricingSprcDil::query()->orderBy('id')->first() ?: new StdPricingSprcDil;
         $row->rules = $rules;
         $row->cvr_adj = $cvrAdj;
         $row->clearance_nroi = $clearance;
+        $row->lmp_rules = $lmpRules;
         $row->save();
 
         return response()->json([
@@ -199,7 +219,48 @@ class StdPricingController extends Controller
             'rules' => $rules,
             'cvr_adj' => $cvrAdj,
             'clearance_nroi' => $clearance,
+            'lmp_rules' => $lmpRules,
         ]);
+    }
+
+    /**
+     * @return list<array{min: float, max: ?float, factor: float, above: bool}>
+     */
+    private function defaultLmpRules(): array
+    {
+        return [
+            ['min' => 25.0, 'max' => 50.0, 'factor' => 0.95, 'above' => false],
+            ['min' => 50.0, 'max' => 100.0, 'factor' => 1.0, 'above' => false],
+            ['min' => 100.0, 'max' => null, 'factor' => 1.05, 'above' => true],
+        ];
+    }
+
+    /**
+     * @param  list<mixed>  $rules
+     * @return list<array{min: float, max: ?float, factor: float, above: bool}>
+     */
+    private function normalizeLmpRules(array $rules): array
+    {
+        $out = [];
+        foreach ($rules as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['factor'] ?? null)) {
+                continue;
+            }
+            $min = round(max(0, (float) $item['min']), 2);
+            $above = ! empty($item['above']) || ! is_numeric($item['max'] ?? null);
+            $max = $above ? null : round((float) $item['max'], 2);
+            if (! $above && $max < $min) {
+                continue;
+            }
+            $factor = round((float) $item['factor'], 4);
+            if ($factor <= 0) {
+                continue;
+            }
+            $out[] = ['min' => $min, 'max' => $max, 'factor' => $factor, 'above' => $above];
+        }
+        usort($out, fn ($a, $b) => $a['min'] <=> $b['min']);
+
+        return array_values($out);
     }
 
     /**
