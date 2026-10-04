@@ -909,18 +909,24 @@
 
             {{-- LMP's Master --}}
             <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#lmpsMaster" aria-expanded="false" aria-controls="lmpsMaster"
+                <a data-bs-toggle="collapse" href="#lmpsMaster" aria-expanded="{{ request()->is('std-pricing*') || request()->is('lmp-overall*') ? 'true' : 'false' }}" aria-controls="lmpsMaster"
                     class="side-nav-link">
                     <i class="ri-price-tag-3-line"></i>
                     <span>LMP's Master</span>
                     <span class="menu-arrow"></span>
                 </a>
-                <div class="collapse" id="lmpsMaster">
+                <div class="collapse {{ request()->is('std-pricing*') || request()->is('lmp-overall*') ? 'show' : '' }}" id="lmpsMaster">
                    <ul class="side-nav-third-level">
                                     <li>
                                         <a href="{{ route('lmp.overall') }}"
                                             class="{{ request()->is('lmp-overall*') ? 'active' : '' }}">
                                             LMP Overall
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('std.pricing') }}"
+                                            class="{{ request()->is('std-pricing*') ? 'active' : '' }}">
+                                            Std pricing
                                         </a>
                                     </li>
                                     <li>

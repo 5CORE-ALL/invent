@@ -102,6 +102,26 @@
             color: #0f172a;
             white-space: pre-wrap;
         }
+        .ann-table-reacts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .ann-table-react {
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            border-radius: 999px;
+            padding: 0 6px;
+            font-size: 12px;
+            line-height: 1.5;
+            cursor: pointer;
+        }
+        .ann-table-react.is-mine {
+            background: #dbeafe;
+            border-color: #93c5fd;
+        }
+        .ann-table-react:disabled { opacity: 0.6; cursor: wait; }
         .ann-table-comment-form {
             display: flex;
             align-items: center;
@@ -326,6 +346,41 @@
             font-weight: 600;
             opacity: 0.75;
         }
+        .ann-motive-picks {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .ann-motive-picks button {
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #334155;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 10px;
+        }
+        .ann-motive-picks button:hover { background: #e0f2fe; border-color: #7dd3fc; }
+        .ann-gif-preview {
+            display: block;
+            margin-top: 8px;
+            max-width: 100%;
+            max-height: 180px;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            background: #0f172a;
+        }
+        .ann-gif-preview[hidden] { display: none; }
+        .ann-motive-line {
+            margin-top: 6px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: #f5f3ff;
+            color: #5b21b6;
+            font-size: 12px;
+            font-weight: 700;
+        }
     </style>
 @endsection
 
@@ -395,6 +450,11 @@
                             <input type="date" id="ann_date" name="announced_on" class="form-control" required>
                         </div>
                         <div class="mb-3">
+                            <label for="ann_motivation" class="form-label">Motivation</label>
+                            <input type="text" id="ann_motivation" name="motivation" class="form-control" maxlength="280" placeholder="One line the team should remember">
+                            <div class="ann-motive-picks" id="annMotivePicks"></div>
+                        </div>
+                        <div class="mb-3">
                             <div class="ann-field-label mb-1">
                                 <label for="ann_message" class="form-label mb-0">Announcement</label>
                                 <div class="ann-pen-btns">
@@ -427,9 +487,16 @@
                             </div>
                             <div class="form-text">Text and images both go into the Announcement box above.</div>
                         </div>
+                        <div class="mb-3">
+                            <label for="ann_gif" class="form-label">GIF</label>
+                            <input type="url" id="ann_gif" name="gif_url" class="form-control" maxlength="500" placeholder="https://…gif">
+                            <img id="annGifPreview" class="ann-gif-preview" alt="" hidden>
+                            <div class="form-text">Paste an https GIF link. It plays on the notice board.</div>
+                        </div>
                         <div class="mb-0">
-                            <input type="file" id="ann_images" name="images[]" class="form-control" accept="image/*" multiple>
-                            <div class="form-text">Optional upload. Generated or uploaded images appear only in the Announcement box.</div>
+                            <label for="ann_images" class="form-label">Photos and GIFs</label>
+                            <input type="file" id="ann_images" name="images[]" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp" multiple>
+                            <div class="form-text">Optional. GIF, JPG, PNG, or WebP, up to 8 MB each.</div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -475,12 +542,29 @@
                 return d.innerHTML;
             }
 
+            const commentEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '✅', '🔥'];
+
+            function renderTableReacts(comment) {
+                const byEmoji = {};
+                (comment.reactions || []).forEach(function (reaction) {
+                    byEmoji[reaction.emoji] = reaction;
+                });
+                return '<div class="ann-table-reacts" data-comment="' + comment.id + '">'
+                    + commentEmojis.map(function (emoji) {
+                        const reaction = byEmoji[emoji] || { count: 0, mine: false };
+                        const count = reaction.count ? ' ' + reaction.count : '';
+                        return '<button type="button" class="ann-table-react' + (reaction.mine ? ' is-mine' : '') + '" data-comment="' + comment.id + '" data-emoji="' + emoji + '" aria-label="Reply ' + emoji + '">' + emoji + count + '</button>';
+                    }).join('')
+                    + '</div>';
+            }
+
             function renderTableComment(comment) {
                 return '<div class="ann-table-comment">'
                     + '<img src="' + escapeHtml(comment.user_avatar || currentUser.avatar) + '" alt="" class="no-img-hover">'
                     + '<div class="ann-table-comment__body">'
                     + '<div class="ann-table-comment__name">' + escapeHtml(comment.user_name || 'User') + '</div>'
                     + '<div class="ann-table-comment__text">' + escapeHtml(comment.comment || '') + '</div>'
+                    + renderTableReacts(comment)
                     + '</div></div>';
             }
 
@@ -504,7 +588,7 @@
             function renderImages(images) {
                 if (!images || !images.length) return '<span class="text-muted">—</span>';
                 return '<div class="ann-thumbs">' + images.map(function (img) {
-                    return '<a href="' + escapeHtml(img.url) + '" target="_blank" rel="noopener">'
+                    return '<a href="' + escapeHtml(img.url) + '" target="_blank" rel="noopener" data-hover-zoom>'
                         + '<img src="' + escapeHtml(img.url) + '" alt="Announcement image" loading="lazy">'
                         + '</a>';
                 }).join('') + '</div>';
@@ -529,12 +613,16 @@
                     formatter: function (cell) {
                         const row = cell.getRow().getData();
                         const text = row.message ? '<div class="ann-message">' + escapeHtml(row.message) + '</div>' : '';
+                        const motive = row.motivation ? '<div class="ann-motive-line">' + escapeHtml(row.motivation) + '</div>' : '';
+                        const gif = row.gif_url
+                            ? '<div class="ann-thumbs"><a href="' + escapeHtml(row.gif_url) + '" target="_blank" rel="noopener" data-hover-zoom><img src="' + escapeHtml(row.gif_url) + '" alt="GIF"></a></div>'
+                            : '';
                         const imgs = renderImages(row.images);
                         const imgHtml = (row.images && row.images.length) ? imgs : '';
-                        if (!text && !imgHtml && !(row.comments || []).length) return '<span class="text-muted">—</span>';
+                        if (!text && !motive && !gif && !imgHtml && !(row.comments || []).length) return '<span class="text-muted">—</span>';
                         return '<div class="ann-cell-with-user">'
                             + posterAvatar(row)
-                            + '<div class="ann-cell-with-user__body">' + text + imgHtml + renderTableComments(row) + '</div>'
+                            + '<div class="ann-cell-with-user__body">' + motive + text + gif + imgHtml + renderTableComments(row) + '</div>'
                             + '</div>';
                     },
                 },
@@ -643,6 +731,37 @@
             });
 
             document.getElementById('announcementTable').addEventListener('click', function (e) {
+                const reactBtn = e.target.closest('.ann-table-react');
+                if (reactBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const commentId = reactBtn.getAttribute('data-comment');
+                    const emoji = reactBtn.getAttribute('data-emoji');
+                    const wrap = reactBtn.parentElement;
+                    if (wrap) wrap.querySelectorAll('button').forEach(function (button) { button.disabled = true; });
+                    $.ajax({
+                        url: viewersBase + '/comments/' + commentId + '/react',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ emoji: emoji }),
+                        headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                    }).done(function (json) {
+                        if (!json || !json.comment || !wrap) return;
+                        wrap.outerHTML = renderTableReacts(json.comment);
+                        table.getRows().forEach(function (rowComponent) {
+                            const data = rowComponent.getData();
+                            (data.comments || []).forEach(function (comment, index) {
+                                if (String(comment.id) === String(json.comment.id)) {
+                                    data.comments[index] = json.comment;
+                                }
+                            });
+                        });
+                    }).fail(function (xhr) {
+                        if (wrap) wrap.querySelectorAll('button').forEach(function (button) { button.disabled = false; });
+                        alert((xhr.responseJSON && xhr.responseJSON.message) || 'Could not save emoji reply.');
+                    });
+                    return;
+                }
                 const viewedBtn = e.target.closest('.ann-viewed-btn');
                 if (!viewedBtn) return;
                 e.stopPropagation();
@@ -733,10 +852,38 @@
                 renderKeepImages(keepImages);
             });
 
+            const motiveIdeas = [
+                'Finish what you start.',
+                'Clear updates keep everyone fast.',
+                'Ask early. Fix early.',
+                'Own the next step.'
+            ];
+            const motivePicks = document.getElementById('annMotivePicks');
+            motivePicks.innerHTML = motiveIdeas.map(function (line) {
+                return '<button type="button" data-motive="' + escapeHtml(line) + '">' + escapeHtml(line) + '</button>';
+            }).join('');
+            motivePicks.addEventListener('click', function (e) {
+                const btn = e.target.closest('[data-motive]');
+                if (!btn) return;
+                document.getElementById('ann_motivation').value = btn.getAttribute('data-motive');
+            });
+            const gifInput = document.getElementById('ann_gif');
+            const gifPreview = document.getElementById('annGifPreview');
+            gifInput.addEventListener('input', function () {
+                const url = (gifInput.value || '').trim();
+                const ok = /^https:\/\/\S+$/i.test(url);
+                gifPreview.hidden = !ok;
+                gifPreview.src = ok ? url : '';
+            });
+
             function openCreate() {
                 form.reset();
                 document.getElementById('ann_id').value = '';
                 document.getElementById('ann_date').value = todayYmd();
+                document.getElementById('ann_motivation').value = '';
+                document.getElementById('ann_gif').value = '';
+                gifPreview.hidden = true;
+                gifPreview.src = '';
                 document.getElementById('ann_ai_prompt').value = '';
                 document.getElementById('annAiKindText').checked = true;
                 document.getElementById('annModalTitle').textContent = 'New Announcement';
@@ -748,6 +895,9 @@
                 form.reset();
                 document.getElementById('ann_id').value = row.id;
                 document.getElementById('ann_date').value = row.announced_on || todayYmd();
+                document.getElementById('ann_motivation').value = row.motivation || '';
+                document.getElementById('ann_gif').value = row.gif_url || '';
+                gifInput.dispatchEvent(new Event('input'));
                 document.getElementById('ann_message').value = row.message || '';
                 document.getElementById('ann_ai_prompt').value = '';
                 document.getElementById('annAiKindText').checked = true;

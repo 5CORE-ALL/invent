@@ -22,12 +22,30 @@
             flex-direction: column;
         }
         .slack-nav__ws {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
             padding: 14px 16px 12px;
             border-bottom: 1px solid rgba(255,255,255,.08);
             font-weight: 800;
             color: #fff;
             font-size: 17px;
         }
+        .slack-dock-close {
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            color: #fff;
+            font-size: 22px;
+            line-height: 1;
+            padding: 0;
+            cursor: pointer;
+        }
+        .slack-dock-close:hover { background: rgba(255,255,255,.16); }
         .slack-nav__search {
             margin: 10px 12px 0;
         }
@@ -164,6 +182,13 @@
         .slack-msg__act button {
             border: 0; background: #fff; padding: 4px 8px; font-size: 12px; font-weight: 700; color: #1d1c1d;
         }
+        .slack-msg__act button.is-ack-delete {
+            color: #dc2626;
+            font-size: 16px;
+            line-height: 1;
+            padding: 4px 10px;
+        }
+        .slack-msg__act button.is-ack-delete:hover { background: #fee2e2; color: #b91c1c; }
         #slackAckDeleteModal .modal-dialog { max-width: 380px; }
         #slackAckDeleteModal .modal-content { border: none; border-radius: 16px; overflow: hidden; }
         #slackAckDeleteModal .modal-header {
@@ -366,7 +391,12 @@
     <p class="fivecore-chat-dock-note">5Core Chat is open on the right.</p>
     <div class="slack" id="slackApp">
         <aside class="slack-nav">
-            <div class="slack-nav__ws">5Core Chat</div>
+            <div class="slack-nav__ws">
+                <span>5Core Chat</span>
+                @if (request()->boolean('embed'))
+                    <button type="button" class="slack-dock-close" id="slackDockClose" aria-label="Close" title="Close">&times;</button>
+                @endif
+            </div>
             <div class="slack-status" id="slackConn">Connected</div>
             <div class="slack-nav__search">
                 <input type="search" id="slackSearch" placeholder="Find people or start a DM" autocomplete="off">
@@ -645,7 +675,16 @@
 <script>
 (function () {
     document.body.classList.add('invent-chat-page');
+    const dockCloseBtn = document.getElementById('slackDockClose');
+    if (dockCloseBtn) {
+        dockCloseBtn.addEventListener('click', function () {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'fivecore-chat-dock-close' }, location.origin);
+            }
+        });
+    }
     const docked = document.body.classList.contains('has-fivecore-chat-dock')
+        && !document.documentElement.classList.contains('fivecore-chat-dock-closed')
         && window.matchMedia('(min-width: 993px)').matches
         && !window.matchMedia('(display-mode: standalone)').matches
         && !new URLSearchParams(location.search).get('embed');
@@ -933,7 +972,7 @@
             '<button type="button" data-pin="' + m.id + '">' + (m.pinned ? 'Unpin' : 'Pin') + '</button>' +
             '<button type="button" data-save="' + m.id + '">' + (m.bookmarked ? 'Saved' : 'Save') + '</button>' +
             '<button type="button" data-task="' + m.id + '">Create Task</button>' +
-            '<button type="button" data-ad="' + m.id + '">A &amp; D</button>' +
+            '<button type="button" class="is-ack-delete" data-ad="' + m.id + '" title="Acknowledge and delete" aria-label="Acknowledge and delete"><i class="ri-delete-bin-fill" aria-hidden="true"></i></button>' +
             '</div>'
         );
         wrap.innerHTML = avatar + '<div style="flex:1;min-width:0">' +

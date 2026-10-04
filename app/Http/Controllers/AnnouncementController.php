@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Announcement;
 use App\Models\AnnouncementComment;
+use App\Models\AnnouncementCommentReaction;
 use App\Models\AnnouncementView;
 use App\Models\User;
+use Illuminate\Validation\Rule;
 use App\Support\OpenAiRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +20,9 @@ use Illuminate\View\View;
 
 class AnnouncementController extends Controller
 {
+    /** @var list<string> */
+    private const COMMENT_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '✅', '🔥'];
+
     public function index(): View
     {
         return view('announcements.index', [
@@ -38,6 +43,9 @@ class AnnouncementController extends Controller
 
         if (Schema::hasTable('announcement_comments')) {
             $query->with(['comments.user:id,name,avatar']);
+            if (Schema::hasTable('announcement_comment_reactions')) {
+                $query->with(['comments.reactions']);
+            }
         }
 
         if (Schema::hasTable('announcement_views')) {
@@ -70,6 +78,9 @@ class AnnouncementController extends Controller
 
         if (Schema::hasTable('announcement_comments')) {
             $query->with(['comments.user:id,name,avatar']);
+            if (Schema::hasTable('announcement_comment_reactions')) {
+                $query->with(['comments.reactions']);
+            }
         }
 
         if (Schema::hasTable('announcement_views')) {
@@ -194,6 +205,42 @@ class AnnouncementController extends Controller
         ]);
     }
 
+    public function reactComment(Request $request, int $comment): JsonResponse
+    {
+        if (! Schema::hasTable('announcement_comment_reactions')) {
+            abort(503, 'Announcement emoji replies need a migration. Run php artisan migrate.');
+        }
+
+        $row = AnnouncementComment::query()->findOrFail($comment);
+        $validated = $request->validate([
+            'emoji' => ['required', 'string', Rule::in(self::COMMENT_EMOJIS)],
+        ]);
+        $emoji = $validated['emoji'];
+        $userId = (int) Auth::id();
+
+        $existing = AnnouncementCommentReaction::query()
+            ->where('comment_id', $row->id)
+            ->where('user_id', $userId)
+            ->where('emoji', $emoji)
+            ->first();
+        if ($existing) {
+            $existing->delete();
+        } else {
+            AnnouncementCommentReaction::query()->create([
+                'comment_id' => $row->id,
+                'user_id' => $userId,
+                'emoji' => $emoji,
+            ]);
+        }
+
+        $row->load(['user:id,name,avatar', 'reactions']);
+
+        return response()->json([
+            'success' => true,
+            'comment' => $this->serializeComment($row),
+        ]);
+    }
+
     public function post(int $id): JsonResponse
     {
         $this->authorizeDirector();
@@ -238,20 +285,20 @@ class AnnouncementController extends Controller
             $this->storeImages($request)
         )));
 
-        if ($validated['message'] === '' && $images === []) {
+        if ($this->announcementIsEmpty($validated, $images)) {
             return response()->json([
-                'message' => 'Add announcement text or at least one image.',
+                'message' => 'Add a message, motivation, GIF, or image.',
             ], 422);
         }
 
         $user = Auth::user();
-        $row = Announcement::create([
+        $row = Announcement::create(array_merge([
             'user_id' => (int) $user->id,
             'message' => $validated['message'] !== '' ? $validated['message'] : null,
             'images' => $images ?: null,
             'announced_on' => $validated['announced_on'],
             'created_by' => $user->name ?: $user->email,
-        ]);
+        ], $this->extraAnnouncementFields($validated)));
 
         return response()->json([
             'success' => true,
@@ -281,17 +328,17 @@ class AnnouncementController extends Controller
             $this->storeImages($request)
         )));
 
-        if ($validated['message'] === '' && $images === []) {
+        if ($this->announcementIsEmpty($validated, $images)) {
             return response()->json([
-                'message' => 'Add announcement text or at least one image.',
+                'message' => 'Add a message, motivation, GIF, or image.',
             ], 422);
         }
 
-        $row->update([
+        $row->update(array_merge([
             'message' => $validated['message'] !== '' ? $validated['message'] : null,
             'images' => $images ?: null,
             'announced_on' => $validated['announced_on'],
-        ]);
+        ], $this->extraAnnouncementFields($validated)));
 
         return response()->json([
             'success' => true,
@@ -398,11 +445,17 @@ class AnnouncementController extends Controller
         return [
             'id' => $row->id,
             'message' => $row->message,
+            'motivation' => Schema::hasColumn('announcements', 'motivation') ? ($row->motivation ?: null) : null,
+            'gif_url' => Schema::hasColumn('announcements', 'gif_url') ? ($row->gif_url ?: null) : null,
             'announced_on' => optional($row->announced_on)->format('Y-m-d'),
             'announced_on_display' => optional($row->announced_on)->format('d M Y'),
+            'date_day' => optional($row->announced_on)->format('d'),
+            'date_month' => optional($row->announced_on)->format('M'),
+            'date_weekday' => optional($row->announced_on)->format('l'),
             'images' => array_map(fn (string $path) => [
                 'path' => $path,
                 'url' => $this->announcementImageUrl($path),
+                'gif' => str_ends_with(strtolower($path), '.gif'),
             ], $paths),
             'posted' => $row->isPosted(),
             'posted_at' => optional($row->posted_at)->format('Y-m-d H:i'),
@@ -451,23 +504,56 @@ class AnnouncementController extends Controller
     }
 
     /**
-     * @return array{message: string, announced_on: string}
+     * @return array{message: string, announced_on: string, motivation: string, gif_url: string}
      */
     private function validatedPayload(Request $request): array
     {
         $validated = $request->validate([
             'message' => 'nullable|string|max:5000',
+            'motivation' => 'nullable|string|max:280',
+            'gif_url' => ['nullable', 'string', 'max:500', 'regex:/^https:\/\/\S+$/i'],
             'announced_on' => 'required|date',
             'images' => 'nullable|array|max:6',
-            'images.*' => 'image|mimes:jpg,jpeg,png,gif,webp|max:5120',
+            'images.*' => 'image|mimes:jpg,jpeg,png,gif,webp|max:8192',
             'keep_images' => 'nullable|array',
             'keep_images.*' => 'nullable|string',
         ]);
 
         return [
             'message' => trim((string) ($validated['message'] ?? '')),
+            'motivation' => trim((string) ($validated['motivation'] ?? '')),
+            'gif_url' => trim((string) ($validated['gif_url'] ?? '')),
             'announced_on' => $validated['announced_on'],
         ];
+    }
+
+    /**
+     * @param  array{message: string, announced_on: string, motivation: string, gif_url: string}  $validated
+     * @param  list<string>  $images
+     */
+    private function announcementIsEmpty(array $validated, array $images): bool
+    {
+        return $validated['message'] === ''
+            && $validated['motivation'] === ''
+            && $validated['gif_url'] === ''
+            && $images === [];
+    }
+
+    /**
+     * @param  array{message: string, announced_on: string, motivation: string, gif_url: string}  $validated
+     * @return array<string, ?string>
+     */
+    private function extraAnnouncementFields(array $validated): array
+    {
+        $extra = [];
+        if (Schema::hasColumn('announcements', 'motivation')) {
+            $extra['motivation'] = $validated['motivation'] !== '' ? $validated['motivation'] : null;
+        }
+        if (Schema::hasColumn('announcements', 'gif_url')) {
+            $extra['gif_url'] = $validated['gif_url'] !== '' ? $validated['gif_url'] : null;
+        }
+
+        return $extra;
     }
 
     /**
@@ -1008,6 +1094,10 @@ class AnnouncementController extends Controller
             ? $row->comments
             : $row->comments()->with('user:id,name,avatar')->get();
 
+        if (Schema::hasTable('announcement_comment_reactions')) {
+            $comments->loadMissing('reactions');
+        }
+
         return $comments
             ->map(fn (AnnouncementComment $comment) => $this->serializeComment($comment))
             ->values()
@@ -1026,7 +1116,35 @@ class AnnouncementController extends Controller
             'user_name' => optional($comment->user)->name ?: 'User',
             'user_avatar' => $this->userAvatarUrl($comment->user),
             'created_at' => optional($comment->created_at)->format('d M Y H:i'),
+            'reactions' => $this->serializeCommentReactions($comment),
         ];
+    }
+
+    /**
+     * @return list<array{emoji: string, count: int, mine: bool}>
+     */
+    private function serializeCommentReactions(AnnouncementComment $comment): array
+    {
+        if (! Schema::hasTable('announcement_comment_reactions')) {
+            return [];
+        }
+
+        $userId = (int) Auth::id();
+        $reactions = $comment->relationLoaded('reactions')
+            ? $comment->reactions
+            : $comment->reactions()->get();
+
+        return $reactions
+            ->groupBy('emoji')
+            ->map(function ($rows, $emoji) use ($userId) {
+                return [
+                    'emoji' => (string) $emoji,
+                    'count' => $rows->count(),
+                    'mine' => $rows->contains(fn ($row) => (int) $row->user_id === $userId),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     private function userAvatarUrl(?User $user): string

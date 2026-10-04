@@ -1,137 +1,207 @@
 @auth
     <style>
-        #annBoardModal .modal-dialog {
-            max-width: min(920px, 96vw);
-        }
+        #annBoardModal .modal-dialog { max-width: min(860px, 96vw); }
         #annBoardModal .modal-content {
             border: 0;
             overflow: hidden;
-            background: #6b4f2a;
+            border-radius: 22px;
+            background: #0b1020;
+            box-shadow: 0 30px 80px rgba(2, 6, 23, 0.45);
         }
         #annBoardModal .ann-board-header {
-            background: linear-gradient(180deg, #8b5a2b, #6b4220);
-            color: #fff8e7;
-            border-bottom: 4px solid #3f2a14;
-            padding: 0.85rem 1.1rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            background:
+                radial-gradient(circle at 12% 0%, rgba(56, 189, 248, 0.35), transparent 42%),
+                radial-gradient(circle at 90% 20%, rgba(167, 139, 250, 0.4), transparent 40%),
+                linear-gradient(160deg, #111827, #0b1020);
+            color: #f8fafc;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding: 1rem 1.1rem 0.95rem;
         }
+        #annBoardModal .ann-board-header__copy { flex: 1; min-width: 0; }
         #annBoardModal .ann-board-header .modal-title {
             font-weight: 800;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
+            letter-spacing: -0.02em;
+            font-size: 1.15rem;
+            margin: 0;
+        }
+        .ann-board-header__date {
+            margin-top: 2px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #7dd3fc;
+        }
+        .ann-board-header__motive {
+            margin-top: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
         }
         #annBoardModal .ann-board-header .btn-close {
             filter: invert(1);
             opacity: 0.85;
+            margin-left: 0;
         }
         #annBoardBody {
             min-height: 360px;
-            max-height: min(72vh, 720px);
+            max-height: min(74vh, 760px);
             overflow: auto;
-            padding: 1.1rem;
+            padding: 1rem;
             background:
-                radial-gradient(circle at 20% 20%, rgba(255,255,255,0.08), transparent 28%),
-                repeating-linear-gradient(0deg, rgba(0,0,0,0.04) 0 2px, transparent 2px 10px),
-                #c4a574;
+                radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.16), transparent 32%),
+                radial-gradient(circle at 100% 100%, rgba(167, 139, 250, 0.18), transparent 36%),
+                #0f172a;
         }
         .ann-board-empty {
             text-align: center;
-            color: #4a3724;
+            color: #cbd5e1;
             font-weight: 600;
             padding: 3rem 1rem;
         }
         .ann-board-card {
-            background: #fffdf6;
-            border: 1px solid rgba(80, 50, 20, 0.18);
-            border-radius: 4px;
-            box-shadow: 0 8px 18px rgba(50, 30, 10, 0.22);
-            padding: 0.95rem 1rem 1rem;
-            margin: 0 auto 1rem;
-            max-width: 720px;
-            position: relative;
+            background: rgba(255,255,255,0.97);
+            border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 20px;
+            box-shadow: 0 16px 40px rgba(2, 6, 23, 0.28);
+            padding: 1rem 1rem 0.9rem;
+            margin: 0 auto 0.9rem;
+            max-width: 760px;
         }
-        .ann-board-card::before {
-            content: '';
-            position: absolute;
-            top: 8px;
-            left: 50%;
-            width: 14px;
-            height: 14px;
-            margin-left: -7px;
-            border-radius: 50%;
-            background: radial-gradient(circle at 30% 30%, #fb7185, #be123c);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.25);
-        }
-        .ann-board-card__meta {
+        .ann-board-card__top {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            gap: 10px;
-            font-size: 0.78rem;
-            color: #7c5a32;
-            font-weight: 700;
-            margin: 0.35rem 0 0.55rem;
+            gap: 12px;
+            margin-bottom: 0.75rem;
         }
-        .ann-board-card__poster {
-            display: inline-flex;
+        .ann-board-cal {
+            width: 64px;
+            flex-shrink: 0;
+            border-radius: 16px;
+            background: linear-gradient(180deg, #0ea5e9, #4f46e5);
+            color: #fff;
+            text-align: center;
+            padding: 7px 4px 6px;
+            line-height: 1.05;
+        }
+        .ann-board-cal__mon {
+            display: block;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.9;
+        }
+        .ann-board-cal__day {
+            display: block;
+            font-size: 22px;
+            font-weight: 800;
+            margin-top: 2px;
+        }
+        .ann-board-cal__when {
+            display: block;
+            margin-top: 2px;
+            font-size: 10px;
+            font-weight: 700;
+            opacity: 0.92;
+        }
+        .ann-board-card__who {
+            display: flex;
             align-items: center;
             gap: 8px;
+            min-width: 0;
         }
-        .ann-board-card__poster img {
-            width: 28px;
-            height: 28px;
+        .ann-board-card__who img {
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
             object-fit: cover;
-            border: 1px solid #e8dcc8;
+            border: 2px solid #e0f2fe;
             background: #fff;
         }
-        .ann-board-card__body {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
+        .ann-board-card__name {
+            font-weight: 800;
+            color: #0f172a;
+            font-size: 14px;
         }
-        .ann-board-card__body-main {
-            min-width: 0;
-            flex: 1;
+        .ann-board-card__when {
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .ann-board-motive {
+            margin: 0 0 0.75rem;
+            padding: 10px 12px 10px 14px;
+            border-radius: 14px;
+            background: linear-gradient(90deg, #f5f3ff, #ecfeff);
+            border-left: 3px solid #7c3aed;
+            color: #4c1d95;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+        .ann-board-motive__label {
+            display: block;
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #7c3aed;
+            margin-bottom: 2px;
         }
         .ann-board-card__text {
             white-space: pre-wrap;
-            color: #1f2937;
-            font-size: 0.95rem;
-            line-height: 1.5;
+            color: #1e293b;
+            font-size: 0.96rem;
+            line-height: 1.55;
         }
-        .ann-board-card__imgs {
-            margin-top: 0.7rem;
-            width: 100%;
-            border-radius: 10px;
-            overflow: hidden;
-            background: #fff;
-            border: 1px solid #efe6d6;
+        .ann-board-gallery {
+            margin-top: 0.8rem;
+            display: grid;
+            gap: 8px;
         }
-        .ann-board-card__imgs a {
+        .ann-board-gallery.has-many {
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+        .ann-board-media {
+            position: relative;
             display: block;
-            width: 100%;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #020617;
+            border: 1px solid #e2e8f0;
         }
-        .ann-board-card__imgs img {
+        .ann-board-media img {
             display: block;
             width: 100%;
             height: auto;
-            max-height: min(58vh, 520px);
+            max-height: min(52vh, 460px);
             object-fit: contain;
-            object-position: center;
+            background: #020617;
+            cursor: zoom-in;
         }
-        .ann-board-card__imgs.has-many {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 8px;
-            overflow: visible;
-            background: transparent;
-            border: 0;
+        .ann-board-gallery.has-many .ann-board-media img { max-height: 280px; }
+        .ann-board-media__tag {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(15, 23, 42, 0.82);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            border-radius: 999px;
+            padding: 3px 8px;
         }
-        .ann-board-card__imgs.has-many img {
-            max-height: min(42vh, 360px);
-            border-radius: 10px;
-            border: 1px solid #efe6d6;
-            background: #fff;
+        .ann-board-media.is-broken img { display: none; }
+        .ann-board-media.is-broken::after {
+            content: 'GIF could not load';
+            display: block;
+            color: #cbd5e1;
+            text-align: center;
+            padding: 28px 12px;
+            font-size: 13px;
+            font-weight: 700;
         }
         .ann-board-card__actions {
             display: flex;
@@ -141,29 +211,30 @@
         .ann-board-read-btn {
             border: 0;
             border-radius: 999px;
-            background: #166534;
+            background: #0f172a;
             color: #fff;
             font-size: 12px;
             font-weight: 700;
-            padding: 5px 12px;
+            padding: 6px 14px;
             cursor: pointer;
         }
-        .ann-board-read-btn:hover { background: #15803d; }
+        .ann-board-read-btn:hover { background: #1e293b; }
         .ann-board-read-btn:disabled { opacity: 0.65; cursor: wait; }
         .ann-board-mark-all {
             border: 0;
-            background: transparent;
-            color: #fff8e7;
+            background: rgba(255,255,255,0.08);
+            color: #e2e8f0;
             font-size: 12px;
             font-weight: 700;
-            text-decoration: underline;
-            text-underline-offset: 2px;
-            padding: 0;
+            border-radius: 999px;
+            padding: 6px 10px;
+            white-space: nowrap;
         }
+        .ann-board-mark-all:hover { background: rgba(255,255,255,0.16); }
         .ann-board-comments {
             margin-top: 0.85rem;
             padding-top: 0.75rem;
-            border-top: 1px dashed rgba(80, 50, 20, 0.22);
+            border-top: 1px solid #e2e8f0;
         }
         .ann-board-comment {
             display: flex;
@@ -177,38 +248,37 @@
             height: 28px;
             border-radius: 50%;
             object-fit: cover;
-            border: 1px solid #e8dcc8;
+            border: 1px solid #e2e8f0;
             background: #fff;
             flex-shrink: 0;
         }
         .ann-board-comment__body {
             min-width: 0;
             flex: 1;
-            background: #fff;
-            border: 1px solid #efe6d6;
-            border-radius: 10px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
             padding: 6px 10px;
         }
-        .ann-board-comment__name {
-            font-size: 12px;
-            font-weight: 800;
-            color: #6b4220;
-        }
-        .ann-board-comment__text {
+        .ann-board-comment__name { font-size: 12px; font-weight: 800; color: #0f172a; }
+        .ann-board-comment__text { font-size: 13px; color: #1e293b; white-space: pre-wrap; }
+        .ann-board-reacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .ann-board-react {
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            border-radius: 999px;
+            padding: 1px 7px;
             font-size: 13px;
-            color: #1f2937;
-            white-space: pre-wrap;
+            line-height: 1.45;
+            cursor: pointer;
         }
-        .ann-board-comment-form {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-top: 8px;
-        }
+        .ann-board-react.is-mine { background: #e0f2fe; border-color: #38bdf8; }
+        .ann-board-react:disabled { opacity: 0.6; cursor: wait; }
+        .ann-board-comment-form { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
         .ann-board-comment-form input {
             flex: 1;
             min-width: 0;
-            border: 1px solid #d6c4a3;
+            border: 1px solid #cbd5e1;
             border-radius: 999px;
             padding: 6px 12px;
             font-size: 13px;
@@ -216,7 +286,7 @@
         .ann-board-comment-form button {
             border: 0;
             border-radius: 999px;
-            background: #1d4ed8;
+            background: #4f46e5;
             color: #fff;
             font-size: 12px;
             font-weight: 700;
@@ -228,9 +298,11 @@
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header ann-board-header">
-                    <h5 class="modal-title mb-0" id="annBoardModalTitle">
-                        <i class="ri-megaphone-fill me-2"></i>5 Core Announcements
-                    </h5>
+                    <div class="ann-board-header__copy">
+                        <h5 class="modal-title" id="annBoardModalTitle">Notice Board</h5>
+                        <div class="ann-board-header__date" id="annBoardToday"></div>
+                        <div class="ann-board-header__motive" id="annBoardMotive"></div>
+                    </div>
                     <button type="button" class="ann-board-mark-all d-none" id="annBoardMarkAllBtn">Mark all as read</button>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -284,12 +356,29 @@
                 if (countEl) countEl.textContent = String(next);
             }
 
+            const commentEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '✅', '🔥'];
+
+            function renderReacts(comment) {
+                const byEmoji = {};
+                (comment.reactions || []).forEach(function (reaction) {
+                    byEmoji[reaction.emoji] = reaction;
+                });
+                return '<div class="ann-board-reacts" data-comment="' + comment.id + '">'
+                    + commentEmojis.map(function (emoji) {
+                        const reaction = byEmoji[emoji] || { count: 0, mine: false };
+                        const count = reaction.count ? ' ' + reaction.count : '';
+                        return '<button type="button" class="ann-board-react' + (reaction.mine ? ' is-mine' : '') + '" data-comment="' + comment.id + '" data-emoji="' + emoji + '" aria-label="Reply ' + emoji + '">' + emoji + count + '</button>';
+                    }).join('')
+                    + '</div>';
+            }
+
             function renderComment(comment) {
                 return '<div class="ann-board-comment">'
-                    + '<img src="' + escapeHtml(comment.user_avatar || currentUser.avatar) + '" alt="" class="no-img-hover">'
+                    + '<img src="' + escapeHtml(comment.user_avatar || currentUser.avatar) + '" alt="" data-hover-zoom>'
                     + '<div class="ann-board-comment__body">'
                     + '<div class="ann-board-comment__name">' + escapeHtml(comment.user_name || 'User') + '</div>'
                     + '<div class="ann-board-comment__text">' + escapeHtml(comment.comment || '') + '</div>'
+                    + renderReacts(comment)
                     + '</div></div>';
             }
 
@@ -298,13 +387,76 @@
                 return '<div class="ann-board-comments">'
                     + '<div class="ann-board-comment-list">' + comments.map(renderComment).join('') + '</div>'
                     + '<form class="ann-board-comment-form" data-id="' + row.id + '">'
-                    + '<img src="' + escapeHtml(currentUser.avatar) + '" alt="" class="no-img-hover">'
+                    + '<img src="' + escapeHtml(currentUser.avatar) + '" alt="" data-hover-zoom>'
                     + '<input type="text" maxlength="2000" placeholder="Write a comment…">'
                     + '<button type="submit">Comment</button>'
                     + '</form></div>';
             }
 
+            const dailyMotives = [
+                'Finish what you start.',
+                'Clear updates keep everyone fast.',
+                'Ask early. Fix early.',
+                'One honest status beats ten guesses.',
+                'Protect the team\'s time.',
+                'Progress you can see is progress you can trust.',
+                'Reply today so tomorrow stays light.',
+                'Own the next step.',
+                'Small fixes compound.',
+                'Say the blocker out loud.',
+                'Leave the work clearer than you found it.',
+                'Momentum is a team habit.'
+            ];
+
+            function paintHeader() {
+                const now = new Date();
+                const dateEl = document.getElementById('annBoardToday');
+                const motiveEl = document.getElementById('annBoardMotive');
+                if (dateEl) {
+                    dateEl.textContent = now.toLocaleDateString(undefined, {
+                        weekday: 'long', day: 'numeric', month: 'short', year: 'numeric'
+                    });
+                }
+                if (motiveEl) {
+                    const start = new Date(now.getFullYear(), 0, 0);
+                    const day = Math.floor((now - start) / 86400000);
+                    motiveEl.textContent = dailyMotives[((day % dailyMotives.length) + dailyMotives.length) % dailyMotives.length];
+                }
+            }
+
+            function relativeWhen(ymd, weekday) {
+                if (!ymd) return weekday || '';
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const bits = String(ymd).split('-');
+                if (bits.length < 3) return weekday || '';
+                const date = new Date(Number(bits[0]), Number(bits[1]) - 1, Number(bits[2]));
+                const diff = Math.round((today - date) / 86400000);
+                if (diff === 0) return 'Today';
+                if (diff === 1) return 'Yesterday';
+                return weekday || '';
+            }
+
+            function mediaFrame(url, isGif) {
+                return '<a class="ann-board-media' + (isGif ? ' is-gif' : '') + '" data-hover-zoom href="' + escapeHtml(url) + '" target="_blank" rel="noopener">'
+                    + (isGif ? '<span class="ann-board-media__tag">GIF</span>' : '')
+                    + '<img src="' + escapeHtml(url) + '" alt="' + (isGif ? 'GIF' : 'Announcement image') + '">'
+                    + '</a>';
+            }
+
+            function renderMedia(row) {
+                const frames = [];
+                if (row.gif_url) frames.push(mediaFrame(row.gif_url, true));
+                (row.images || []).forEach(function (img) {
+                    const gif = !!img.gif || /\.gif(\?|$)/i.test(img.url || '');
+                    frames.push(mediaFrame(img.url, gif));
+                });
+                if (!frames.length) return '';
+                return '<div class="ann-board-gallery' + (frames.length > 1 ? ' has-many' : '') + '">' + frames.join('') + '</div>';
+            }
+
             function renderBoard(rows) {
+                paintHeader();
                 if (markAllBtn) markAllBtn.classList.toggle('d-none', !rows || !rows.length);
                 if (!rows || !rows.length) {
                     body.innerHTML = '<div class="ann-board-empty">You are all caught up. No new announcements.</div>';
@@ -314,31 +466,39 @@
                     const text = row.message
                         ? '<div class="ann-board-card__text">' + escapeHtml(row.message) + '</div>'
                         : '';
-                    const imageList = row.images || [];
-                    const imgs = imageList.map(function (img) {
-                        return '<a href="' + escapeHtml(img.url) + '" target="_blank" rel="noopener">'
-                            + '<img src="' + escapeHtml(img.url) + '" alt="Announcement image">'
-                            + '</a>';
-                    }).join('');
-                    const avatar = row.posted_by_avatar
-                        ? '<img src="' + escapeHtml(row.posted_by_avatar) + '" alt="" class="no-img-hover">'
+                    const motive = row.motivation
+                        ? '<blockquote class="ann-board-motive"><span class="ann-board-motive__label">Motivation</span>' + escapeHtml(row.motivation) + '</blockquote>'
                         : '';
+                    const avatar = row.posted_by_avatar
+                        ? '<img src="' + escapeHtml(row.posted_by_avatar) + '" alt="" data-hover-zoom>'
+                        : '';
+                    const when = relativeWhen(row.announced_on, row.date_weekday);
                     return '<article class="ann-board-card" data-id="' + row.id + '">'
-                        + '<div class="ann-board-card__meta">'
-                        + '<span>' + escapeHtml(row.announced_on_display || row.announced_on || '') + '</span>'
-                        + '<span class="ann-board-card__poster">' + avatar + '<span>' + escapeHtml(row.posted_by || '') + '</span></span>'
+                        + '<div class="ann-board-card__top">'
+                        + '<div class="ann-board-cal">'
+                        + '<span class="ann-board-cal__mon">' + escapeHtml(row.date_month || '') + '</span>'
+                        + '<span class="ann-board-cal__day">' + escapeHtml(row.date_day || '') + '</span>'
+                        + '<span class="ann-board-cal__when">' + escapeHtml(when) + '</span>'
                         + '</div>'
-                        + '<div class="ann-board-card__body">'
-                        + '<div class="ann-board-card__body-main">'
-                        + text
-                        + (imgs ? '<div class="ann-board-card__imgs' + (imageList.length > 1 ? ' has-many' : '') + '">' + imgs + '</div>' : '')
+                        + '<div class="ann-board-card__who">' + avatar
+                        + '<div><div class="ann-board-card__name">' + escapeHtml(row.posted_by || '') + '</div>'
+                        + '<div class="ann-board-card__when">' + escapeHtml(row.announced_on_display || row.announced_on || '') + '</div></div>'
                         + '</div></div>'
+                        + motive
+                        + text
+                        + renderMedia(row)
                         + renderComments(row)
                         + '<div class="ann-board-card__actions">'
                         + '<button type="button" class="ann-board-read-btn" data-id="' + row.id + '">Mark as read</button>'
                         + '</div>'
                         + '</article>';
                 }).join('');
+                body.querySelectorAll('.ann-board-media img').forEach(function (img) {
+                    img.addEventListener('error', function () {
+                        const frame = img.closest('.ann-board-media');
+                        if (frame) frame.classList.add('is-broken');
+                    });
+                });
             }
 
             function markRead(id, btn) {
@@ -375,7 +535,40 @@
                     });
             }
 
+            function reactToComment(btn) {
+                const commentId = btn.getAttribute('data-comment');
+                const emoji = btn.getAttribute('data-emoji');
+                const wrap = btn.parentElement;
+                if (wrap) {
+                    wrap.querySelectorAll('button').forEach(function (button) { button.disabled = true; });
+                }
+                fetch(commentBase + '/comments/' + commentId + '/react', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ emoji: emoji }),
+                }).then(function (res) { return res.json().then(function (json) { return { ok: res.ok, json: json }; }); })
+                    .then(function (result) {
+                        if (!result.ok || !result.json || !result.json.comment) {
+                            throw new Error((result.json && result.json.message) || 'Could not save emoji reply.');
+                        }
+                        if (wrap) wrap.outerHTML = renderReacts(result.json.comment);
+                    }).catch(function (err) {
+                        if (wrap) wrap.querySelectorAll('button').forEach(function (button) { button.disabled = false; });
+                        alert(err && err.message ? err.message : 'Could not save emoji reply.');
+                    });
+            }
+
             body.addEventListener('click', function (e) {
+                const reactBtn = e.target.closest('.ann-board-react');
+                if (reactBtn) {
+                    reactToComment(reactBtn);
+                    return;
+                }
                 const readBtn = e.target.closest('.ann-board-read-btn');
                 if (!readBtn) return;
                 markRead(readBtn.getAttribute('data-id'), readBtn);
@@ -440,6 +633,7 @@
 
             if (openBtn) {
                 openBtn.addEventListener('click', function () {
+                    paintHeader();
                     loadBoard();
                     modal.show();
                 });

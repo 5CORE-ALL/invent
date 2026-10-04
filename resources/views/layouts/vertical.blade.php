@@ -42,9 +42,20 @@
             }
         }
     @endphp
+    <script>
+        try {
+            if (localStorage.getItem('fivecoreChatDockClosed') === '1') {
+                document.documentElement.classList.add('fivecore-chat-dock-closed');
+            }
+        } catch (e) {}
+    </script>
     <style>
         .fivecore-chat-dock { display: none; }
         .fivecore-chat-dock-note { display: none; margin: 28px 8px; color: #616061; font-weight: 700; }
+        html.fivecore-chat-dock-closed body.has-fivecore-chat-dock .fivecore-chat-dock { display: none !important; }
+        html.fivecore-chat-dock-closed body.has-fivecore-chat-dock .wrapper { margin-right: 0 !important; }
+        html.fivecore-chat-dock-closed body.has-fivecore-chat-dock.invent-chat-page #slackApp { display: flex !important; }
+        html.fivecore-chat-dock-closed body.has-fivecore-chat-dock.invent-chat-page .fivecore-chat-dock-note { display: none !important; }
         @media (min-width: 993px) {
             body.has-fivecore-chat-dock .fivecore-chat-dock {
                 display: block;
@@ -106,15 +117,17 @@
     <!-- Begin page -->
     <div class="wrapper">
 
+        @unless($fivecoreChatEmbed)
         <!-- Desktop Navigation -->
         @include('layouts.shared/topbar')
         @unless($hideInventSidebar ?? false)
         @include('layouts.shared/left-sidebar')
         @endunless
-        
+
         <!-- Mobile Header -->
         @unless($hideInventSidebar ?? false)
         @include('layouts.mobile-header')
+        @endunless
         @endunless
 
         <div class="content-page">
@@ -129,7 +142,9 @@
             </div>
             <!-- content -->
 
+            @unless($fivecoreChatEmbed)
             @include('layouts.shared/footer')
+            @endunless
         </div>
 
     </div>
@@ -1004,7 +1019,7 @@
     {{-- Shared SP (Standard Price) box for all LMP competitor modals --}}
     <script src="{{ asset('js/lmp-modal-sp.js') }}"></script>
     {{-- Global: enlarge product thumbnails on hover --}}
-    <script src="{{ asset('js/image-hover-preview.js') }}"></script>
+    <script src="{{ asset('js/image-hover-preview.js') }}?v=20261004"></script>
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 
@@ -1107,12 +1122,30 @@
                 var frame = document.querySelector('#fivecoreChatDock iframe');
                 if (!frame) return;
                 var wide = window.matchMedia('(min-width: 993px)');
+                var closedKey = 'fivecoreChatDockClosed';
+                function dockIsClosed() {
+                    return document.documentElement.classList.contains('fivecore-chat-dock-closed');
+                }
                 function syncDock() {
                     var standalone = window.matchMedia('(display-mode: standalone)').matches;
-                    if (wide.matches && !standalone && !frame.getAttribute('src')) {
+                    if (wide.matches && !standalone && !dockIsClosed() && !frame.getAttribute('src')) {
                         frame.src = frame.getAttribute('data-src');
                     }
                 }
+                window.fivecoreChatDockSetOpen = function (open) {
+                    document.documentElement.classList.toggle('fivecore-chat-dock-closed', !open);
+                    if (open) document.body.classList.add('has-fivecore-chat-dock');
+                    try { localStorage.setItem(closedKey, open ? '0' : '1'); } catch (e) {}
+                    if (open) syncDock();
+                    if (!open && document.body.classList.contains('invent-chat-page') && !document.body.classList.contains('invent-chat-embed')) {
+                        location.reload();
+                    }
+                };
+                window.addEventListener('message', function (e) {
+                    if (e.origin !== location.origin) return;
+                    if (!e.data || e.data.type !== 'fivecore-chat-dock-close') return;
+                    window.fivecoreChatDockSetOpen(false);
+                });
                 syncDock();
                 wide.addEventListener('change', syncDock);
             })();

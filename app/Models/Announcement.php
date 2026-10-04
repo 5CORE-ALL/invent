@@ -12,7 +12,9 @@ class Announcement extends Model
     protected $fillable = [
         'user_id',
         'message',
+        'motivation',
         'images',
+        'gif_url',
         'announced_on',
         'posted_at',
         'created_by',

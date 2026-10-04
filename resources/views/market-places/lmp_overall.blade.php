@@ -17,7 +17,15 @@
         #lmp-overall-wrap .tabulator .tabulator-cell { padding: 4px 6px !important; }
         #lmp-overall-wrap .tabulator-row.tabulator-selected { background: #e7f1ff !important; }
         .lmp-overall-thumb { width: 36px; height: 36px; object-fit: contain; border-radius: 4px; background: #fff; }
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent .tabulator-cell { background: #fff3cd !important; font-weight: 600; }
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell { background: #ffe08a !important; }
         .lmp-overall-price { font-weight: 700; color: #198754; }
+        .lmp-overall-count { color: #007bff; font-weight: 700; text-decoration: none; cursor: pointer; }
+        .lmp-overall-count:hover { text-decoration: underline; }
+        #lmpOverallLmpModal .lmp-overall-comp-img { width: 42px; height: 42px; object-fit: contain; background: #fff; border-radius: 4px; }
+        #lmpOverallLmpModal tr.lmp-overall-ignored { opacity: 0.55; text-decoration: line-through; }
     </style>
 @endsection
 
@@ -34,8 +42,10 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <span id="lmp-overall-total" class="badge bg-secondary">Total: —</span>
                         <span id="lmp-overall-selected" class="badge bg-primary">Selected: 0</span>
-                        <input type="search" id="lmp-overall-search" class="form-control form-control-sm"
-                            placeholder="Search parent or SKU" autocomplete="off" style="max-width: 260px;">
+                        <input type="search" id="lmp-overall-search-parent" class="form-control form-control-sm"
+                            placeholder="Search parent" autocomplete="off" style="max-width: 200px;">
+                        <input type="search" id="lmp-overall-search-sku" class="form-control form-control-sm"
+                            placeholder="Search SKU" autocomplete="off" style="max-width: 200px;">
                         <button type="button" id="lmp-overall-refresh" class="btn btn-sm btn-outline-primary" title="Reload">
                             <i class="ri-refresh-line"></i>
                         </button>
@@ -71,6 +81,18 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="lmpOverallLmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="lmp-overall-lmp-title">LMP</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0" id="lmp-overall-lmp-body"></div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -89,18 +111,124 @@
                 return Math.round(parseFloat(value) || 0).toLocaleString('en-US');
             }
 
-            function lmpColumn(title, field) {
+            function escHtml(value) {
+                return String(value == null ? '' : value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }
+
+            function lmpCell(price, count) {
+                const n = parseFloat(price);
+                const c = parseInt(count, 10) || 0;
+                if ((!isFinite(n) || n <= 0) && c === 0) {
+                    return '<span class="text-muted">—</span>';
+                }
+                let html = '';
+                if (isFinite(n) && n > 0) {
+                    html += '<span class="lmp-overall-price">$' + n.toFixed(2) + '</span>';
+                }
+                if (c > 0) {
+                    html += ' <a href="#" class="lmp-overall-count" title="View ' + c
+                        + ' competitor' + (c === 1 ? '' : 's') + '">(' + c + ')</a>';
+                }
+                return html;
+            }
+
+            function lmpSiteColumn(title, field, countField) {
                 return {
                     title: title,
                     field: field,
                     hozAlign: 'center',
                     headerHozAlign: 'center',
-                    width: 100,
+                    width: 110,
                     sorter: 'number',
                     formatter: function (cell) {
-                        return money(cell.getValue());
+                        return lmpCell(cell.getValue(), cell.getRow().getData()[countField]);
+                    },
+                    cellClick: function (e, cell) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const data = cell.getRow().getData();
+                        if (data.is_parent_summary) return;
+                        openLmpModal(data, field);
                     },
                 };
+            }
+
+            const lmpSites = {
+                lmp_amz: { label: 'LMP amz', url: '/amazon/competitors' },
+                lmp_ebay: { label: 'LMP ebay', url: '/ebay-lmp-data' },
+                lmp_temu: { label: 'LMP temu', url: '/cvr-master-temu-lmp' },
+                lmp_google: { label: 'LMP Google', url: '/google-lmp-data' },
+            };
+            const lmpModalEl = document.getElementById('lmpOverallLmpModal');
+            const lmpModal = lmpModalEl && window.bootstrap ? new bootstrap.Modal(lmpModalEl) : null;
+
+            function competitorPrice(row) {
+                const landed = parseFloat(row.landed_price);
+                if (isFinite(landed) && landed > 0) return landed;
+                const total = parseFloat(row.total_price);
+                if (isFinite(total) && total > 0) return total;
+                return parseFloat(row.price) || 0;
+            }
+
+            function renderLmpCompetitors(list) {
+                const rows = (Array.isArray(list) ? list : []).slice().sort(function (a, b) {
+                    return competitorPrice(a) - competitorPrice(b);
+                });
+                if (!rows.length) {
+                    return '<div class="text-muted p-3">No competitors</div>';
+                }
+                return '<table class="table table-sm align-middle mb-0"><thead class="table-light"><tr>'
+                    + '<th style="width:52px;"></th><th>Title</th><th class="text-end" style="width:90px;">Price</th><th style="width:70px;">Link</th>'
+                    + '</tr></thead><tbody>'
+                    + rows.map(function (row) {
+                        const price = competitorPrice(row);
+                        const title = row.product_title || row.title || '';
+                        const link = row.product_link || row.link || '';
+                        const img = row.image
+                            ? '<img class="lmp-overall-comp-img" src="' + escHtml(row.image) + '" alt="">'
+                            : '';
+                        const ignored = row.ignored ? ' class="lmp-overall-ignored"' : '';
+                        return '<tr' + ignored + '><td>' + img + '</td><td>' + escHtml(title) + '</td>'
+                            + '<td class="text-end"><span class="lmp-overall-price">'
+                            + (price > 0 ? ('$' + price.toFixed(2)) : '—') + '</span></td><td>'
+                            + (link ? '<a href="' + escHtml(link) + '" target="_blank" rel="noopener">Open</a>' : '—')
+                            + '</td></tr>';
+                    }).join('')
+                    + '</tbody></table>';
+            }
+
+            function openLmpModal(row, field) {
+                const site = lmpSites[field];
+                if (!site || !lmpModal) return;
+                const sku = String(row.sku || '').trim();
+                document.getElementById('lmp-overall-lmp-title').textContent = site.label + ' — ' + sku;
+                document.getElementById('lmp-overall-lmp-body').innerHTML =
+                    '<div class="text-center text-muted py-4">Loading competitors…</div>';
+                lmpModal.show();
+                const params = new URLSearchParams();
+                params.set('sku', sku);
+                (Array.isArray(row.linked_lmp_skus) ? row.linked_lmp_skus : []).forEach(function (linked) {
+                    params.append('linked_lmp_skus[]', linked);
+                });
+                fetch(site.url + '?' + params.toString(), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                }).then(function (r) {
+                    return r.json().then(function (body) {
+                        if (!r.ok) throw new Error((body && (body.error || body.message)) || 'Failed to load competitors');
+                        return body;
+                    });
+                }).then(function (body) {
+                    const raw = body && (body.competitors || body.data) ? (body.competitors || body.data) : [];
+                    const list = Array.isArray(raw) ? raw : Object.values(raw || {});
+                    document.getElementById('lmp-overall-lmp-body').innerHTML = renderLmpCompetitors(list);
+                }).catch(function (err) {
+                    document.getElementById('lmp-overall-lmp-body').innerHTML =
+                        '<div class="text-danger p-3">' + escHtml(err.message || 'Failed to load competitors') + '</div>';
+                });
             }
 
             function pctCell(value, styleName) {
@@ -178,8 +306,15 @@
                     const meta = response && response.meta ? response.meta : {};
                     document.getElementById('lmp-overall-status').textContent =
                         'Loaded · ' + (meta.refreshed_at || '') +
-                        ' · SKUs: ' + (meta.sku_count || 0).toLocaleString();
+                        ' · SKUs: ' + (meta.sku_count || 0).toLocaleString()
+                        + ' · Parents: ' + (meta.parent_count || 0).toLocaleString();
                     return (response && response.data) ? response.data : [];
+                },
+                rowFormatter: function (row) {
+                    const el = row.getElement();
+                    if (!el) return;
+                    if (row.getData().is_parent_summary) el.classList.add('lmp-overall-parent');
+                    else el.classList.remove('lmp-overall-parent');
                 },
                 columns: [
                     {
@@ -259,12 +394,14 @@
                         field: 'edit',
                         hozAlign: 'center',
                         headerSort: false,
-                        width: 70,
-                        formatter: function () {
-                            return '<button type="button" class="btn btn-sm btn-outline-primary py-0">Edit</button>';
+                        width: 52,
+                        formatter: function (cell) {
+                            if (cell.getRow().getData().is_parent_summary) return '';
+                            return '<button type="button" class="btn btn-sm btn-link text-primary p-0" title="Edit"><i class="ri-pencil-line" style="font-size:16px;"></i></button>';
                         },
                         cellClick: function (e, cell) {
                             e.stopPropagation();
+                            if (cell.getRow().getData().is_parent_summary) return;
                             openStdModal(cell.getRow());
                         },
                     },
@@ -281,10 +418,10 @@
                     percentColumn('Avg GROI%', 'groi', 'groiStyle', 'Avg GROI% from /pricing-master-cvr'),
                     percentColumn('Avg NPFT%', 'npft', 'npftStyle', 'Avg NPFT% from /pricing-master-cvr'),
                     percentColumn('Avg NROI%', 'nroi', 'nroiStyle', 'Avg NROI% from /pricing-master-cvr'),
-                    lmpColumn('LMP amz', 'lmp_amz'),
-                    lmpColumn('LMP ebay', 'lmp_ebay'),
-                    lmpColumn('LMP temu', 'lmp_temu'),
-                    lmpColumn('LMP Google', 'lmp_google'),
+                    lmpSiteColumn('LMP amz', 'lmp_amz', 'lmp_amz_count'),
+                    lmpSiteColumn('LMP ebay', 'lmp_ebay', 'lmp_ebay_count'),
+                    lmpSiteColumn('LMP temu', 'lmp_temu', 'lmp_temu_count'),
+                    lmpSiteColumn('LMP Google', 'lmp_google', 'lmp_google_count'),
                     {
                         title: 'My LMP',
                         field: 'my_lmp',
@@ -308,19 +445,26 @@
             table.on('rowSelectionChanged', updateCounts);
 
             let searchTimer = null;
-            document.getElementById('lmp-overall-search').addEventListener('input', function (e) {
-                const term = (e.target.value || '').trim().toLowerCase();
-                clearTimeout(searchTimer);
-                searchTimer = setTimeout(function () {
-                    if (term === '') {
-                        table.clearFilter();
-                        return;
-                    }
-                    table.setFilter(function (data) {
-                        return String(data.parent || '').toLowerCase().indexOf(term) !== -1
-                            || String(data.sku || '').toLowerCase().indexOf(term) !== -1;
-                    });
-                }, 200);
+            function applySearch() {
+                const parentTerm = (document.getElementById('lmp-overall-search-parent').value || '').trim().toLowerCase();
+                const skuTerm = (document.getElementById('lmp-overall-search-sku').value || '').trim().toLowerCase();
+                if (parentTerm === '' && skuTerm === '') {
+                    table.clearFilter();
+                    return;
+                }
+                table.setFilter(function (data) {
+                    const parentOk = parentTerm === ''
+                        || String(data.parent || '').toLowerCase().indexOf(parentTerm) !== -1;
+                    const skuOk = skuTerm === ''
+                        || String(data.sku || '').toLowerCase().indexOf(skuTerm) !== -1;
+                    return parentOk && skuOk;
+                });
+            }
+            ['lmp-overall-search-parent', 'lmp-overall-search-sku'].forEach(function (id) {
+                document.getElementById(id).addEventListener('input', function () {
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(applySearch, 200);
+                });
             });
 
             document.getElementById('lmp-overall-refresh').addEventListener('click', function () {

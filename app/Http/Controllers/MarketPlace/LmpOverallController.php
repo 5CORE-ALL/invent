@@ -48,10 +48,12 @@ class LmpOverallController extends Controller
             Log::warning('LMP Overall: SKU link groups failed', ['error' => $e->getMessage()]);
         }
 
-        $amzLowest = $this->lowestLookup(fn () => AmazonSkuCompetitor::buildGroupedLookup('amazon'));
-        $ebayLowest = $this->lowestLookup(fn () => EbaySkuCompetitor::buildGroupedLookup('ebay'));
-        $googleLowest = $this->lowestLookup(fn () => GoogleSkuCompetitor::buildGroupedLookup('google'));
-        $temuBySku = $this->temuLowestBySku();
+        $amzLookup = $this->groupedLookup(fn () => AmazonSkuCompetitor::buildGroupedLookup('amazon'));
+        $ebayLookup = $this->groupedLookup(fn () => EbaySkuCompetitor::buildGroupedLookup('ebay'));
+        $googleLookup = $this->groupedLookup(fn () => GoogleSkuCompetitor::buildGroupedLookup('google'));
+        $temuStats = $this->temuLowestBySku();
+        $temuBySku = $temuStats['price'];
+        $temuCountBySku = $temuStats['count'];
         $manual = $this->amazonManualPrices();
         $stdBySku = $manual['std'];
         $myLmpBySku = $manual['my_lmp'];
@@ -93,13 +95,23 @@ class LmpOverallController extends Controller
                 'npft' => $cvr['avg_pft'] ?? null,
                 'lmp_amz' => $this->minAcrossGroup(
                     $members,
-                    $amzLowest,
+                    $amzLookup['lowest'],
                     fn (string $member) => AmazonSkuCompetitor::normalizeSkuKey($member),
                     fn ($row) => AmazonSkuCompetitor::landedPrice($row)
                 ),
+                'lmp_amz_count' => $this->countAcrossGroup(
+                    $members,
+                    $amzLookup['details'],
+                    fn (string $member) => AmazonSkuCompetitor::normalizeSkuKey($member),
+                    function ($row) {
+                        $asin = strtoupper(trim((string) ($row->asin ?? '')));
+
+                        return $asin !== '' ? $asin : 'id:'.($row->id ?? '');
+                    }
+                ),
                 'lmp_ebay' => $this->minAcrossGroup(
                     $members,
-                    $ebayLowest,
+                    $ebayLookup['lowest'],
                     fn (string $member) => EbaySkuCompetitor::normalizeSkuKey($member),
                     function ($row) {
                         $price = $row->total_price ?? null;
@@ -107,10 +119,21 @@ class LmpOverallController extends Controller
                         return is_numeric($price) && (float) $price > 0 ? (float) $price : null;
                     }
                 ),
+                'lmp_ebay_count' => $this->countAcrossGroup(
+                    $members,
+                    $ebayLookup['details'],
+                    fn (string $member) => EbaySkuCompetitor::normalizeSkuKey($member),
+                    function ($row) {
+                        $item = trim((string) ($row->item_id ?? ''));
+
+                        return $item !== '' ? $item : 'id:'.($row->id ?? '');
+                    }
+                ),
                 'lmp_temu' => $this->minTemuAcrossGroup($members, $temuBySku),
+                'lmp_temu_count' => $this->countTemuAcrossGroup($members, $temuCountBySku),
                 'lmp_google' => $this->minAcrossGroup(
                     $members,
-                    $googleLowest,
+                    $googleLookup['lowest'],
                     fn (string $member) => GoogleSkuCompetitor::normalizeSkuKey($member),
                     function ($row) {
                         $price = $row->price ?? null;
@@ -118,16 +141,119 @@ class LmpOverallController extends Controller
                         return is_numeric($price) && (float) $price > 0 ? (float) $price : null;
                     }
                 ),
+                'lmp_google_count' => $this->countAcrossGroup(
+                    $members,
+                    $googleLookup['details'],
+                    fn (string $member) => GoogleSkuCompetitor::normalizeSkuKey($member),
+                    fn ($row) => GoogleSkuCompetitor::offerDedupeKey($row)
+                ),
+                'is_parent_summary' => false,
             ];
         }
 
+        $data = $this->withParentRows($rows);
+
         return response()->json([
-            'data' => $rows,
+            'data' => $data,
             'meta' => [
                 'sku_count' => count($rows),
+                'parent_count' => count(array_filter($data, fn ($row) => ! empty($row['is_parent_summary']))),
                 'refreshed_at' => now()->timezone('Asia/Kolkata')->format('Y-m-d H:i'),
             ],
         ]);
+    }
+
+    /**
+     * One summary row per parent, placed above that parent's SKUs.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function withParentRows(array $rows): array
+    {
+        $parentNames = collect($rows)->pluck('parent')->filter()->unique()->values()->all();
+        $parentImages = [];
+        foreach (array_chunk(array_map(fn ($name) => 'PARENT '.$name, $parentNames), 500) as $chunk) {
+            if ($chunk === []) {
+                continue;
+            }
+            ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->whereIn('sku', $chunk)
+                ->get(['sku', 'main_image'])
+                ->each(function ($pm) use (&$parentImages) {
+                    $parentImages[trim((string) $pm->sku)] = $pm->main_image ?: null;
+                });
+        }
+
+        $data = [];
+        foreach (collect($rows)->groupBy(fn ($row) => ($row['parent'] ?? '') !== '' ? $row['parent'] : '__none__') as $parentKey => $children) {
+            if ($parentKey !== '__none__') {
+                $data[] = $this->parentSummaryRow((string) $parentKey, $children, $parentImages);
+            }
+            foreach ($children as $child) {
+                $data[] = $child;
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $children
+     * @param  array<string, ?string>  $parentImages
+     * @return array<string, mixed>
+     */
+    private function parentSummaryRow(string $parent, $children, array $parentImages): array
+    {
+        $inv = (float) $children->sum('inv');
+        $ovl30 = (float) $children->sum('ovl30');
+        $parentSku = 'PARENT '.$parent;
+        $image = $parentImages[$parentSku] ?? null;
+        if (! $image) {
+            $withImage = $children->first(fn ($row) => ! empty($row['image']));
+            $image = $withImage['image'] ?? null;
+        }
+
+        return [
+            'is_parent_summary' => true,
+            'image' => $image,
+            'parent' => $parent,
+            'sku' => $parentSku,
+            'inv' => $inv,
+            'ovl30' => $ovl30,
+            'dil' => $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0.0,
+            'std_price' => $this->avgPositive($children, 'std_price'),
+            'my_lmp' => $this->avgPositive($children, 'my_lmp'),
+            'linked_lmp_skus' => [],
+            'avg_price' => $this->avgPositive($children, 'avg_price'),
+            'groi' => $this->avgNumeric($children, 'groi'),
+            'gpft' => $this->avgNumeric($children, 'gpft'),
+            'nroi' => $this->avgNumeric($children, 'nroi'),
+            'npft' => $this->avgNumeric($children, 'npft'),
+            'lmp_amz' => $this->avgPositive($children, 'lmp_amz'),
+            'lmp_amz_count' => (int) $children->sum('lmp_amz_count'),
+            'lmp_ebay' => $this->avgPositive($children, 'lmp_ebay'),
+            'lmp_ebay_count' => (int) $children->sum('lmp_ebay_count'),
+            'lmp_temu' => $this->avgPositive($children, 'lmp_temu'),
+            'lmp_temu_count' => (int) $children->sum('lmp_temu_count'),
+            'lmp_google' => $this->avgPositive($children, 'lmp_google'),
+            'lmp_google_count' => (int) $children->sum('lmp_google_count'),
+        ];
+    }
+
+    private function avgPositive($rows, string $field): ?float
+    {
+        $values = collect($rows)->pluck($field)->filter(fn ($value) => is_numeric($value) && (float) $value > 0);
+
+        return $values->isNotEmpty() ? round((float) $values->avg(), 2) : null;
+    }
+
+    private function avgNumeric($rows, string $field): ?float
+    {
+        $values = collect($rows)->pluck($field)->filter(fn ($value) => is_numeric($value));
+
+        return $values->isNotEmpty() ? round((float) $values->avg(), 2) : null;
     }
 
     private function skuKey(string $sku): string
@@ -439,19 +565,50 @@ class LmpOverallController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<string, mixed>
+     * @return array{details: \Illuminate\Support\Collection, lowest: \Illuminate\Support\Collection}
      */
-    private function lowestLookup(callable $build)
+    private function groupedLookup(callable $build): array
     {
         try {
             $lookup = $build();
 
-            return $lookup['lowest'] ?? collect();
+            return [
+                'details' => $lookup['details'] ?? collect(),
+                'lowest' => $lookup['lowest'] ?? collect(),
+            ];
         } catch (\Throwable $e) {
             Log::warning('LMP Overall: competitor lookup failed', ['error' => $e->getMessage()]);
 
-            return collect();
+            return ['details' => collect(), 'lowest' => collect()];
         }
+    }
+
+    /**
+     * @param  list<string>  $members
+     */
+    private function countAcrossGroup(array $members, $details, callable $keyOf, callable $idOf): int
+    {
+        $ids = [];
+        $seen = [];
+        foreach ($members as $member) {
+            $key = $keyOf((string) $member);
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $entries = $details->get($key);
+            if (! $entries instanceof \Illuminate\Support\Collection) {
+                continue;
+            }
+            foreach ($entries as $entry) {
+                $id = (string) $idOf($entry);
+                if ($id !== '') {
+                    $ids[$id] = true;
+                }
+            }
+        }
+
+        return count($ids);
     }
 
     /**
@@ -503,17 +660,37 @@ class LmpOverallController extends Controller
     }
 
     /**
-     * Lowest Temu LMP (price + delivery) keyed by normalized SKU.
+     * @param  list<string>  $members
+     * @param  array<string, int>  $countBySku
+     */
+    private function countTemuAcrossGroup(array $members, array $countBySku): int
+    {
+        $total = 0;
+        $seen = [];
+        foreach ($members as $member) {
+            $key = $this->skuKey((string) $member);
+            if ($key === '' || isset($seen[$key]) || ! isset($countBySku[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $total += (int) $countBySku[$key];
+        }
+
+        return $total;
+    }
+
+    /**
+     * Lowest Temu LMP (price + delivery) and competitor counts, keyed by normalized SKU.
      *
-     * @return array<string, float>
+     * @return array{price: array<string, float>, count: array<string, int>}
      */
     private function temuLowestBySku(): array
     {
+        $out = ['price' => [], 'count' => []];
         if (! Schema::hasTable('temu_lmp')) {
-            return [];
+            return $out;
         }
 
-        $out = [];
         try {
             TemuLmp::query()
                 ->select(['id', 'sku', 'lmp', 'lmp_2', 'lmp_entries'])
@@ -524,12 +701,12 @@ class LmpOverallController extends Controller
                         if ($key === '') {
                             continue;
                         }
-                        $price = $this->temuRowPrice($row);
-                        if ($price === null) {
-                            continue;
+                        $stats = $this->temuRowStats($row);
+                        if ($stats['price'] !== null && (! isset($out['price'][$key]) || $stats['price'] < $out['price'][$key])) {
+                            $out['price'][$key] = $stats['price'];
                         }
-                        if (! isset($out[$key]) || $price < $out[$key]) {
-                            $out[$key] = $price;
+                        if ($stats['count'] > 0) {
+                            $out['count'][$key] = ($out['count'][$key] ?? 0) + $stats['count'];
                         }
                     }
                 });
@@ -540,17 +717,25 @@ class LmpOverallController extends Controller
         return $out;
     }
 
-    private function temuRowPrice(TemuLmp $row): ?float
+    /**
+     * @return array{price: ?float, count: int}
+     */
+    private function temuRowStats(TemuLmp $row): array
     {
         $prices = [];
+        $count = 0;
         $entries = $row->lmp_entries;
         if (is_array($entries)) {
             foreach ($entries as $entry) {
-                if (! is_array($entry) || ! empty($entry['ignored'])) {
+                if (! is_array($entry)) {
                     continue;
                 }
                 $price = isset($entry['price']) && is_numeric($entry['price']) ? (float) $entry['price'] : 0.0;
                 if ($price <= 0) {
+                    continue;
+                }
+                $count++;
+                if (! empty($entry['ignored'])) {
                     continue;
                 }
                 $delivery = isset($entry['delivery']) && is_numeric($entry['delivery'])
@@ -563,15 +748,20 @@ class LmpOverallController extends Controller
             }
         }
 
-        if ($prices === []) {
+        if ($count === 0) {
             if ($row->lmp !== null && is_numeric($row->lmp) && (float) $row->lmp > 0) {
                 $prices[] = (float) $row->lmp;
+                $count++;
             }
             if ($row->lmp_2 !== null && is_numeric($row->lmp_2) && (float) $row->lmp_2 > 0) {
                 $prices[] = (float) $row->lmp_2;
+                $count++;
             }
         }
 
-        return $prices !== [] ? round(min($prices), 2) : null;
+        return [
+            'price' => $prices !== [] ? round(min($prices), 2) : null,
+            'count' => $count,
+        ];
     }
 }

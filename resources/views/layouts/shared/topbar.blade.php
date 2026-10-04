@@ -657,6 +657,17 @@
         } catch (e) {}
     }
     setInterval(tick, 15000);
+    btn.addEventListener('click', function (e) {
+        if (typeof window.fivecoreChatDockSetOpen !== 'function') return;
+        if (!window.matchMedia('(min-width: 993px)').matches) return;
+        if (window.matchMedia('(display-mode: standalone)').matches) return;
+        var closed = document.documentElement.classList.contains('fivecore-chat-dock-closed')
+            || !document.body.classList.contains('has-fivecore-chat-dock');
+        if (!closed) return;
+        e.preventDefault();
+        window.fivecoreChatDockSetOpen(true);
+        if (document.body.classList.contains('invent-chat-page')) location.reload();
+    });
 })();
 </script>
 @endauth
