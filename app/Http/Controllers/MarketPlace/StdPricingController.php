@@ -4,13 +4,16 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDataView;
+use App\Models\ChannelMasterCalculatedData;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\StdPricingSprcDil;
 use App\Services\LmpSkuGroupService;
 use App\Support\AmazonDilGroiRule;
+use App\Support\Badges\AllMarketplaceMasterBadgeAggregator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -98,6 +101,7 @@ class StdPricingController extends Controller
             'meta' => [
                 'sku_count' => count($rows),
                 'refreshed_at' => now()->timezone('Asia/Kolkata')->format('Y-m-d H:i'),
+                'current' => $this->marketplaceMasterCurrent(),
             ],
         ]);
     }
@@ -406,6 +410,73 @@ class StdPricingController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Same Sales / GPFT / GROI / NPFT / NROI blend as /all-marketplace-master.
+     *
+     * @return array{sales: float, gpft: ?float, groi: ?float, gnpft: ?float, gnroi: ?float}
+     */
+    private function marketplaceMasterCurrent(): array
+    {
+        $empty = ['sales' => 0.0, 'gpft' => null, 'groi' => null, 'gnpft' => null, 'gnroi' => null];
+        try {
+            $cacheKey = ChannelMasterCalculatedData::fastPayloadCacheKey([
+                'page' => 1,
+                'size' => 0,
+                'section' => '',
+            ]);
+            $cached = Cache::get($cacheKey);
+            $rows = is_array($cached['data'] ?? null) && $cached['data'] !== []
+                ? $cached['data']
+                : $this->calculatedChannelRows();
+            if ($rows === []) {
+                return $empty;
+            }
+            $totals = AllMarketplaceMasterBadgeAggregator::aggregate($rows);
+
+            return [
+                'sales' => (float) ($totals['l30_sales'] ?? 0),
+                'gpft' => $totals['gprofit_pct'] ?? null,
+                'groi' => $totals['g_roi'] ?? null,
+                'gnpft' => $totals['npft_pct'] ?? null,
+                'gnroi' => $totals['n_roi'] ?? null,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Std pricing: marketplace sales badges failed', ['error' => $e->getMessage()]);
+
+            return $empty;
+        }
+    }
+
+    /**
+     * Saved channel rows behind /all-marketplace-master, shaped for the badge aggregator.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function calculatedChannelRows(): array
+    {
+        if (! Schema::hasTable('channel_master_calculated_data')) {
+            return [];
+        }
+
+        $rows = [];
+        foreach (ChannelMasterCalculatedData::query()->get([
+            'channel', 'l30_sales', 'gprofit_pct', 'cogs', 'total_ad_spend', 'ads_percentage', 'l7_sales', 'n_pft',
+        ]) as $row) {
+            $rows[] = [
+                'Channel' => $row->channel,
+                'L30 Sales' => $row->l30_sales,
+                'Gprofit%' => $row->gprofit_pct,
+                'cogs' => $row->cogs,
+                'Total Ad Spend' => $row->total_ad_spend,
+                'Ads%' => $row->ads_percentage,
+                'L7 Sales' => $row->l7_sales,
+                'N PFT' => $row->n_pft,
+            ];
+        }
+
+        return $rows;
     }
 
     /**

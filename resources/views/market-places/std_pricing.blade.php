@@ -173,15 +173,15 @@
                 <div class="card-body">
                     <div class="d-flex flex-wrap gap-2 mb-2" id="std-pricing-current-badges">
                         <span class="badge fs-6 p-2" id="std-badge-current-sales" style="background:#198754;color:#fff;font-weight:700;"
-                            title="Current sales = Σ (OVL30 units × OVL30 avg price)">Current Sales: —</span>
+                            title="Same as /all-marketplace-master Sales: sum of each channel’s L30 Sales.">Current Sales: —</span>
                         <span class="badge fs-6 p-2" id="std-badge-current-groi" style="background:#6f42c1;color:#fff;font-weight:700;"
-                            title="Current GROI% = Σ current profit / Σ (OVL30 units × LP). 20% margin, ads not included.">Current GROI%: —</span>
+                            title="Same as /all-marketplace-master G ROI: sum(Sales × GPFT%) / sum(COGS).">Current GROI%: —</span>
                         <span class="badge fs-6 p-2" id="std-badge-current-gpft" style="background:#0dcaf0;color:#000;font-weight:700;"
-                            title="Current GPFT% = Σ current profit / Σ current sales. 20% margin, ads not included.">Current GPFT%: —</span>
+                            title="Same as /all-marketplace-master GPFT: sum(Sales × G%) / sum(Sales).">Current GPFT%: —</span>
                         <span class="badge fs-6 p-2" id="std-badge-current-gnroi" style="background:#6f42c1;color:#fff;font-weight:700;"
-                            title="Current GNROI% = Σ (current profit − current sales × 10%) / Σ (OVL30 units × LP).">Current GNROI%: —</span>
+                            title="Same as /all-marketplace-master NROI: (gross profit − ad spend) / COGS.">Current GNROI%: —</span>
                         <span class="badge fs-6 p-2" id="std-badge-current-gnpft" style="background:#0dcaf0;color:#000;font-weight:700;"
-                            title="Current GNPFT% = Σ (current profit − current sales × 10%) / Σ current sales.">Current GNPFT%: —</span>
+                            title="Same as /all-marketplace-master NPFT: GPFT% minus Ads% (ad spend / L30 Sales).">Current GNPFT%: —</span>
                     </div>
                     <div class="d-flex flex-wrap gap-2 mb-2" id="std-pricing-p-badges">
                         <span class="badge fs-6 p-2" id="std-badge-p-sales" style="background:#198754;color:#fff;font-weight:700;"
@@ -355,29 +355,11 @@
                 };
             }
 
-            function currentPool(rows) {
-                let sales = 0;
-                let pft = 0;
-                let cogs = 0;
-                (rows || []).forEach(function (row) {
-                    const price = parseFloat(row.ovl30_price);
-                    const sold = parseFloat(row.ovl30_units) || 0;
-                    const cost = parseFloat(row.lp);
-                    const freight = parseFloat(row.ship) || 0;
-                    if (!isFinite(price) || price <= 0 || !(sold > 0)) return;
-                    const landed = isFinite(cost) && cost > 0 ? cost : 0;
-                    sales += sold * price;
-                    pft += sold * ((price * STD_MARGIN) - freight - landed);
-                    if (landed > 0) cogs += sold * landed;
-                });
-                const net = pft - (sales * STD_ADS);
-                return {
-                    sales: sales,
-                    groi: Math.abs(cogs) > 0.00001 ? (pft / cogs) * 100 : null,
-                    gpft: Math.abs(sales) > 0.00001 ? (pft / sales) * 100 : null,
-                    gnroi: Math.abs(cogs) > 0.00001 ? (net / cogs) * 100 : null,
-                    gnpft: Math.abs(sales) > 0.00001 ? (net / sales) * 100 : null,
-                };
+            let marketCurrent = null;
+
+            function currentPool() {
+                if (marketCurrent) return marketCurrent;
+                return { sales: 0, groi: null, gpft: null, gnroi: null, gnpft: null };
             }
 
             function spPool(rows) {
@@ -551,6 +533,14 @@
                 ajaxConfig: 'GET',
                 ajaxResponse: function (url, params, response) {
                     const meta = response && response.meta ? response.meta : {};
+                    const current = meta.current || {};
+                    marketCurrent = {
+                        sales: parseFloat(current.sales) || 0,
+                        groi: current.groi,
+                        gpft: current.gpft,
+                        gnroi: current.gnroi,
+                        gnpft: current.gnpft,
+                    };
                     document.getElementById('std-pricing-status').textContent =
                         'Loaded · ' + (meta.refreshed_at || '') +
                         ' · SKUs: ' + (meta.sku_count || 0).toLocaleString();
