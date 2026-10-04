@@ -376,7 +376,11 @@
     }
     function refreshFromTable() {
         const t = totalsFromRows(defaultRows());
-        if (t.inv <= 0 && t.ovL30 <= 0 && !inited) return;
+        if (t.inv <= 0 && t.ovL30 <= 0) {
+            if (!inited) return;
+            const live = parseFloat($('#analytics-dil-badge').attr('data-live-value'));
+            if (isFinite(live) && live > 0) return;
+        }
         set(t.dil, t.ovL30, t.inv);
     }
 

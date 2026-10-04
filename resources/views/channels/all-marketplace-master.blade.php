@@ -756,10 +756,10 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
                             <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_pft" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y PFT $ = sum of (Y Sales × GPFT%) per channel. Yesterday gross profit using each channel’s GPFT% on the Y Sales column.">
+                        <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_pft" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y PFT $ = sum of (Y Sales × GPFT%) per channel. Yesterday gross profit using each channel’s GPFT% on the Y Sales column.">
                             <span class="summary-trend-dot none" data-metric="y_pft" title="Rolling history"></span>Y PFT: <span id="total-y-pft">$0</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_amt" style="background-color: #0f766e; color: white; font-weight: bold; cursor:pointer;" title="Y NPFT $ = sum of (Y Sales × NPFT%) per channel. Yesterday net profit using each channel’s NPFT% on the Y Sales column.">
+                        <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_npft_amt" style="background-color: #0f766e; color: white; font-weight: bold; cursor:pointer;" title="Y NPFT $ = sum of (Y Sales × NPFT%) per channel. Yesterday net profit using each channel’s NPFT% on the Y Sales column.">
                             <span class="summary-trend-dot none" data-metric="y_npft_amt" title="Rolling history"></span>Y NPFT: <span id="total-y-npft">$0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="today_sales" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now. Dot compares today with yesterday.">
@@ -802,7 +802,7 @@
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="npft" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             <span class="summary-trend-dot none" data-metric="npft" title="Rolling history"></span>NPFT: <span id="avg-npft">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = blended GPFT% on P-Sales minus Ads% on P-Sales. P-Sales is last-7-day pace × 30; spend is current L30 ad spend.">
+                        <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="p_npft" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = blended GPFT% on P-Sales minus Ads% on P-Sales. P-Sales is last-7-day pace × 30; spend is current L30 ad spend.">
                             <span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>P-Npft%: <span id="avg-p-npft">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_nroi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-NROI% uses the same projected COGS as P GROI%. P-Sales = (L7 ÷ 7) × 30. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-NROI% = Σ (P-Sales × GPFT% − ad spend) ÷ Σ projected COGS.">
@@ -2231,18 +2231,16 @@
                         );
                         if (window.AnalyticsDilBadge) {
                             const ovL30 = parseFloat(response.total_ov_l30) || 0;
-                            const dilInv = parseFloat(response.total_inv || response.shopify_inv_sum) || 0;
+                            const dilInv = parseFloat(response.total_inv) || parseFloat(response.shopify_inv_sum) || 0;
+                            const fromSums = dilInv > 0 ? (ovL30 / dilInv) * 100 : 0;
                             const dilPct = parseFloat(response.dil_ov_percent);
+                            const pct = (isFinite(dilPct) && !(dilPct === 0 && fromSums > 0)) ? dilPct : fromSums;
                             AnalyticsDilBadge.init({
                                 getRows: function() {
                                     return [{ L30: ovL30, INV: dilInv }];
                                 }
                             });
-                            AnalyticsDilBadge.set(
-                                isFinite(dilPct) ? dilPct : (dilInv > 0 ? (ovL30 / dilInv) * 100 : 0),
-                                ovL30,
-                                dilInv
-                            );
+                            AnalyticsDilBadge.set(pct, ovL30, dilInv);
                         }
                         if (response.inventory_pies && Array.isArray(response.inventory_pies.slices)) {
                             lastInventoryPies = response.inventory_pies;
@@ -5111,7 +5109,8 @@
                         || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'p_nroi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
                         || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                     if (Math.abs(v2 - v1) <= eps) return 'flat';
-                    var isInv = inverted.indexOf(metric) >= 0;
+                    // TAT badge only: higher months of stock is worse (red up, green down).
+                    var isInv = inverted.indexOf(metric) >= 0 || metric === 'tat';
                     if (isInv) return v2 < v1 ? 'up' : 'down';
                     return v2 > v1 ? 'up' : 'down';
                 }

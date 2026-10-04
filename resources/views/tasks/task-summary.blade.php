@@ -961,6 +961,46 @@
             background: #f1f5f9;
             color: #0f172a;
         }
+        .ts-unhide-minimized-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.2rem 0.6rem;
+            background: #fff;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            border-radius: 999px;
+            line-height: 1.2;
+        }
+        .ts-unhide-minimized-btn:hover:not(:disabled) {
+            background: #f8fafc;
+            border-color: #94a3b8;
+            color: #0f172a;
+        }
+        .ts-unhide-minimized-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .ts-unhide-minimized-btn.has-hidden {
+            border-color: #fcd34d;
+            background: #fffbeb;
+            color: #92400e;
+        }
+        .ts-unhide-minimized-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.1rem;
+            height: 1.1rem;
+            padding: 0 0.3rem;
+            border-radius: 999px;
+            background: #f59e0b;
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 700;
+        }
 
         .task-summary-table tbody tr.task-summary-group-header td {
             background-color: #f8fafc;
@@ -1254,6 +1294,15 @@
                         {{-- Single-row top controls: Group toggle · Search (flex grow) · Avatar size --}}
                         <div class="task-summary-topbar d-flex flex-wrap align-items-center mb-3 gap-2">
                             <div class="d-flex flex-wrap align-items-center gap-2 task-summary-topbar-left">
+                                <button type="button"
+                                        id="ts-unhide-minimized"
+                                        class="ts-unhide-minimized-btn"
+                                        title="Show members hidden with Minimize"
+                                        disabled>
+                                    <i class="ri-refresh-line" aria-hidden="true"></i>
+                                    Refresh
+                                    <span id="ts-unhide-minimized-count" class="ts-unhide-minimized-count d-none">0</span>
+                                </button>
                                 <div class="task-summary-group-toggle-wrap">
                                     <div class="form-check form-switch m-0">
                                         <input class="form-check-input" type="checkbox" role="switch" id="task-summary-group-toggle" />
@@ -1448,7 +1497,7 @@
                                     <th scope="col" title="Incentives — amount in thousands (K)">
                                         Inc
                                     </th>
-                                    <th scope="col" class="task-summary-col-minimize" title="Minimize — hide this member until midnight PST">
+                                    <th scope="col" class="task-summary-col-minimize" title="Minimize — hide this member until Refresh is clicked">
                                         <i class="ri-subtract-line" aria-hidden="true"></i>
                                     </th>
                                 </tr>
@@ -1923,8 +1972,8 @@
                                             <span class="ts-member-actions" role="group" aria-label="Minimize {{ e($row['team_member']) }}">
                                                 <button type="button"
                                                         class="ts-member-minimize-btn"
-                                                        title="Minimize until midnight PST"
-                                                        aria-label="Minimize {{ e($row['team_member']) }} until midnight PST">
+                                                        title="Hide this member until Refresh"
+                                                        aria-label="Minimize {{ e($row['team_member']) }} until Refresh">
                                                     <i class="ri-subtract-line" aria-hidden="true"></i>
                                                 </button>
                                             </span>
@@ -3513,12 +3562,43 @@
                     tr.classList.toggle('is-ts-minimized', !!isMin && !isSnoozed);
                 });
                 renderRestoreBar();
+                syncUnhideButton();
                 notifyVisibility();
             }
 
             function minimizeMember(key) {
-                // Minimize = hide this row until the next midnight in America/Los_Angeles (PST/PDT).
-                snoozeMember(key);
+                if (!key) return;
+                var list = getMinimized();
+                if (list.indexOf(key) === -1) list.push(key);
+                setMinimized(list);
+                var snoozed = getSnoozed();
+                if (snoozed[key]) {
+                    delete snoozed[key];
+                    setSnoozed(snoozed);
+                }
+                applyVisibility();
+            }
+
+            function unhideMinimized() {
+                if (!getMinimized().length) return;
+                setMinimized([]);
+                applyVisibility();
+            }
+
+            function syncUnhideButton() {
+                var btn = document.getElementById('ts-unhide-minimized');
+                var countEl = document.getElementById('ts-unhide-minimized-count');
+                if (!btn) return;
+                var n = getMinimized().length;
+                btn.disabled = n === 0;
+                btn.classList.toggle('has-hidden', n > 0);
+                btn.title = n
+                    ? ('Show ' + n + ' minimized member' + (n === 1 ? '' : 's'))
+                    : 'No minimized members';
+                if (countEl) {
+                    countEl.textContent = String(n);
+                    countEl.classList.toggle('d-none', n === 0);
+                }
             }
 
             function snoozeMember(key) {
@@ -3603,6 +3683,13 @@
                 }
             });
 
+            var unhideBtn = document.getElementById('ts-unhide-minimized');
+            if (unhideBtn) {
+                unhideBtn.addEventListener('click', function () {
+                    unhideMinimized();
+                });
+            }
+
             applyVisibility();
             scheduleSnoozeWake();
 
@@ -3610,6 +3697,7 @@
                 minimizeMember: minimizeMember,
                 snoozeMember: snoozeMember,
                 restoreMember: restoreMember,
+                unhideMinimized: unhideMinimized,
                 expandMember: expandMember,
                 applyVisibility: applyVisibility,
             };

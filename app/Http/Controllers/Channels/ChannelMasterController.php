@@ -164,8 +164,8 @@ class ChannelMasterController extends Controller
     /** @var array<string, float>|null */
     private ?array $closedDayOrderYSalesByKey = null;
 
-    /** Bump when Inv / Inv@SP / Inv@LP formulas change so stale cache is recomputed. */
-    private const INV_METRICS_VERSION = 2;
+    /** Bump when Inv / Inv@SP / Inv@LP / Dil% formulas change so stale cache is recomputed. */
+    private const INV_METRICS_VERSION = 4;
 
     /** @var array<string, mixed>|null */
     private ?array $shopifyInvLpMetricsCache = null;
@@ -5247,6 +5247,45 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Same Inventory and OV L30 as /product-master: shopify_skus.inv and
+     * shopify_skus.quantity, matched on SKU the same way that page does.
+     * Parent rows are excluded so they are not added on top of their children.
+     * Dil% = Σ OV L30 ÷ Σ Inventory × 100.
+     *
+     * @return array{ov_l30_sum: float, dil_inv_sum: float, dil_ov_percent: float}
+     */
+    private function productMasterDilTotals(): array
+    {
+        $shopifySkus = ShopifySku::query()
+            ->orderBy('id')
+            ->get(['sku', 'inv', 'quantity'])
+            ->keyBy(function ($item) {
+                return str_replace("\u{00a0}", ' ', (string) $item->sku);
+            });
+
+        $inv = 0.0;
+        $ov = 0.0;
+        foreach (ProductMaster::query()->get(['sku']) as $product) {
+            $sku = (string) ($product->sku ?? '');
+            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            $shopify = $shopifySkus->get(str_replace("\u{00a0}", ' ', $sku));
+            if (! $shopify) {
+                continue;
+            }
+            $inv += $shopify->inv !== null ? (float) $shopify->inv : 0.0;
+            $ov += $shopify->quantity !== null ? (float) $shopify->quantity : 0.0;
+        }
+
+        return [
+            'ov_l30_sum' => round($ov, 2),
+            'dil_inv_sum' => round($inv, 2),
+            'dil_ov_percent' => $inv > 0 ? round(($ov / $inv) * 100, 2) : 0.0,
+        ];
+    }
+
+    /**
      * Shopify inventory + LP / SP from product_master Values JSON.
      * Active SKUs only. Each Shopify inventory row is counted once.
      * Inv@SP uses amazon_data_view.STANDARD_PRICE (Sku Link LMP siblings), then live Amazon price.
@@ -5277,13 +5316,13 @@ class ChannelMasterController extends Controller
             return strtolower(ProductMaster::statusValueFromValues($pm->Values ?? [])) === 'active';
         });
         if ($productMasters->isEmpty()) {
-            return $this->shopifyInvLpMetricsCache = $empty;
+            return $this->shopifyInvLpMetricsCache = array_merge($empty, $this->productMasterDilTotals());
         }
 
         $activeSkus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
         $shopifyByPmSku = ShopifySku::mapByProductSkus($activeSkus);
         if ($shopifyByPmSku->isEmpty()) {
-            return $this->shopifyInvLpMetricsCache = $empty;
+            return $this->shopifyInvLpMetricsCache = array_merge($empty, $this->productMasterDilTotals());
         }
 
         $pmBySku = $productMasters->keyBy(function ($item) {
@@ -5301,8 +5340,6 @@ class ChannelMasterController extends Controller
         }
 
         $invSum = 0.0;
-        $ovL30Sum = 0.0;
-        $dilInvSum = 0.0;
         $invAtLp = 0.0;
         $invAtSp = 0.0;
         $invAtAmz = 0.0;
@@ -5322,14 +5359,7 @@ class ChannelMasterController extends Controller
             $seenShopify[$dedupeKey] = true;
 
             $inv = is_numeric($row->inv ?? null) ? (float) $row->inv : 0.0;
-            $l30 = 0.0;
-            if (is_numeric($row->quantity ?? null)) {
-                $l30 = (float) $row->quantity;
-            } elseif (is_numeric($row->shopify_l30 ?? null)) {
-                $l30 = (float) $row->shopify_l30;
-            }
-            $ovL30Sum += $l30;
-            $dilInvSum += max(0.0, $inv);
+            $l30 = is_numeric($row->quantity ?? null) ? (float) $row->quantity : 0.0;
 
             if ($inv < 0.01) {
                 continue;
@@ -5365,11 +5395,13 @@ class ChannelMasterController extends Controller
             $dilBands[$key]['inv_at_sp'] = round((float) $band['inv_at_sp'], 2);
         }
 
+        $dil = $this->productMasterDilTotals();
+
         return $this->shopifyInvLpMetricsCache = [
             'inv_sum' => round($invSum, 2),
-            'ov_l30_sum' => round($ovL30Sum, 2),
-            'dil_inv_sum' => round($dilInvSum, 2),
-            'dil_ov_percent' => $dilInvSum > 0 ? round(($ovL30Sum / $dilInvSum) * 100, 2) : 0.0,
+            'ov_l30_sum' => $dil['ov_l30_sum'],
+            'dil_inv_sum' => $dil['dil_inv_sum'],
+            'dil_ov_percent' => $dil['dil_ov_percent'],
             'inv_at_lp' => round($invAtLp, 2),
             'inv_at_sp' => round($invAtSp, 2),
             'inv_at_amz' => round($invAtAmz, 2),
@@ -5794,7 +5826,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Dil% = Σ Shopify OV L30 ÷ Σ INV (PARENT excluded). Same formula as analytics Dil% badges.
+     * Dil% = Σ /product-master OV L30 ÷ Σ /product-master Inventory (parent rows excluded).
      *
      * @param  array<string, mixed>  $payload
      * @param  array<string, mixed>  $metrics
