@@ -1053,23 +1053,24 @@
             const fromQtyRaw = String($row.find('.from-qty-input').val() ?? '').trim();
             const fromInvRaw = String($row.find('.from-inv-display').text() || '').trim();
             const combo = isComboRatio(displayedRatio($row, rowData));
-            const qtyForCheck = combo ? '1' : fromQtyRaw;
-            const invBlocked = transferIsBlocked(qtyForCheck, fromInvRaw);
+            const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
             const fromSku = displayedFromSku($row, rowData);
             const extra = combo ? ((rowData._from_items || [])[0] || null) : null;
             const extraMeta = extra && extra.sku ? getFromSkuMeta(extra.sku) : null;
+            const need = parseInt(fromQtyRaw, 10);
+            const extraShort = !!(extraMeta && extraMeta.found && !isNaN(need) && need > Number(extraMeta.inv));
             const extraLow = !!(extraMeta && extraMeta.found && Number(extraMeta.inv) < 1);
             const zeroInv = !!fromSku && fromInvBelowOne(fromInvRaw);
             const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, getFromSkuMeta(fromSku).dil);
             const extraDilBlocked = !!(extraMeta && extraMeta.found && dilSubmitBlocked(rowData.DIL, extraMeta.dil));
-            const blocked = invBlocked || dilBlocked || extraDilBlocked || zeroInv || extraLow;
+            const blocked = invBlocked || extraShort || dilBlocked || extraDilBlocked || zeroInv || extraLow;
             const recent = recentlySubmitted(rowData.SKU);
             const $btn = $row.find('.submit-transfer-btn');
             $btn.toggleClass('submit-blocked', blocked);
             $btn.toggleClass('submit-recent', recent && !blocked);
             const title = (zeroInv || extraLow)
                 ? 'FROM INV is below 1. Transfer was not sent.'
-                : (invBlocked
+                : ((invBlocked || extraShort)
                     ? 'FROM SKU INV is less than FROM Qty'
                     : ((dilBlocked || extraDilBlocked) ? 'FROM DIL% is higher than DIL%' : (recent ? 'Submitted in the last 24 hours' : 'Execute Transfer')));
             $btn.attr('title', title);
@@ -1098,17 +1099,17 @@
                 : (fromSku ? String(meta.inv) : '');
             const ratio = hasDom ? displayedRatio($row, rowData) : (rowData._ratio || '1:1');
             const combo = isComboRatio(ratio);
-            const fromQty = combo ? 1 : (parseInt(fromQtyRaw, 10) || 0);
+            const fromQty = parseInt(fromQtyRaw, 10) || 0;
             let toQty = 0;
             if (combo) {
-                toQty = fromSku ? 1 : 0;
+                toQty = fromQty;
             } else if (hasDom) {
                 toQty = parseInt($row.find('.to-qty-display').val(), 10) || 0;
             } else if (fromQty > 0) {
                 const parts = String(ratio).split(':');
                 toQty = Math.round(fromQty * (parseFloat(parts[1]) / parseFloat(parts[0])));
             }
-            const invBlocked = transferIsBlocked(combo ? '1' : fromQtyRaw, fromInvRaw);
+            const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
             const zeroInv = !!fromSku && (fromInvBelowOne(fromInvRaw) || (meta.found && meta.inv < 1));
             const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, meta.dil);
             return {
@@ -1144,6 +1145,7 @@
                 const extraMeta = getFromSkuMeta(extras[0].sku);
                 const extraInv = extraMeta.found ? Number(extraMeta.inv) : 0;
                 if (extraInv < 1) return 'FROM INV is below 1 for ' + extras[0].sku;
+                if (extraInv < fields.fromQty) return 'Insufficient inventory for ' + extras[0].sku + '. Available: ' + extraInv;
             }
             return '';
         }
@@ -1154,11 +1156,11 @@
             if (combo || extras.length) {
                 const parts = String(fields.ratio || '1:1').split(':');
                 const factor = combo ? null : (parseFloat(parts[1]) / parseFloat(parts[0]));
-                const sources = [{ sku: fields.fromSku, fromQty: combo ? 1 : fields.fromQty }].concat(extras.map(function(item) {
+                const sources = [{ sku: fields.fromSku, fromQty: fields.fromQty }].concat(extras.map(function(item) {
                     const stored = parseInt(item.fromQty != null ? item.fromQty : item.from_qty, 10) || 0;
-                    return { sku: item.sku, fromQty: combo ? 1 : stored };
+                    return { sku: item.sku, fromQty: combo ? fields.fromQty : stored };
                 }));
-                let toQty = combo ? 1 : 0;
+                let toQty = combo ? (parseInt(fields.fromQty, 10) || 0) : 0;
                 const fromItems = sources.map(function(item) {
                     const qty = parseInt(item.fromQty, 10) || 0;
                     if (!combo && qty > 0 && !isNaN(factor)) toQty += Math.round(qty * factor);
@@ -1209,8 +1211,8 @@
 
         function applyAdjustedInventory(fields, response) {
             const combo = isComboRatio(fields.ratio);
-            const toDelta = combo ? 1 : (parseInt(fields.toQty, 10) || 0);
-            const fromDelta = combo ? 1 : (parseInt(fields.fromQty, 10) || 0);
+            const toDelta = parseInt(fields.toQty, 10) || 0;
+            const fromDelta = parseInt(fields.fromQty, 10) || 0;
             function currentInv(sku) {
                 const item = allTableData.find(function(i) {
                     return normalizeSkuKey(i.SKU) === normalizeSkuKey(sku);
@@ -1232,7 +1234,7 @@
             }
             (fields.fromItems || []).forEach(function(item) {
                 if (!item || !item.sku) return;
-                const qty = combo ? 1 : (parseInt(item.fromQty != null ? item.fromQty : item.from_qty, 10) || 0);
+                const qty = combo ? fromDelta : (parseInt(item.fromQty != null ? item.fromQty : item.from_qty, 10) || 0);
                 if (qty > 0) applyInvOnly(item.sku, currentInv(item.sku) - qty);
             });
             $('.tabulator-row').each(function() {
@@ -1370,10 +1372,6 @@
             if (restoringFromSku) return;
             const $row = $(this).closest('.tabulator-row');
             const row = table.getRow($row[0]);
-            const rowData = row ? row.getData() : null;
-            if (rowData && isComboRatio(displayedRatio($row, rowData))) {
-                $(this).val(1);
-            }
             const raw = String($(this).val() ?? '').trim();
             const qty = raw === '' ? null : (parseInt(raw, 10) || 0);
             if (row) {
@@ -1400,8 +1398,7 @@
             const ratio = displayedRatio($row, rowComp ? rowComp.getData() : null);
             
             if (isComboRatio(ratio)) {
-                $row.find('.from-qty-input').val(1);
-                $row.find('.to-qty-display').val(1);
+                $row.find('.to-qty-display').val(fromQty > 0 ? fromQty : '');
             } else if (fromQty > 0) {
                 const ratioParts = ratio.split(':');
                 const toQty = Math.round(fromQty * (parseFloat(ratioParts[1]) / parseFloat(ratioParts[0])));
@@ -1999,14 +1996,15 @@
                 return true;
             }
             if (isComboRatio(data._ratio || (getRuleForSku(data.SKU) && getRuleForSku(data.SKU).ratio))) {
-                fromQty = 1;
                 const extra = ((data._from_items || (getRuleForSku(data.SKU) && getRuleForSku(data.SKU).fromItems) || [])[0]) || null;
+                const need = parseInt(fromQty, 10) || 0;
                 if (extra && extra.sku) {
                     const extraMeta = getFromSkuMeta(extra.sku);
                     if (extraMeta.found && Number(extraMeta.inv) < 1) {
                         lowFromInvSkus.push(extra.sku);
                         return true;
                     }
+                    if (extraMeta.found && need > Number(extraMeta.inv)) return true;
                     if (extraMeta.found && dilSubmitBlocked(data.DIL, extraMeta.dil)) return true;
                 }
             }
@@ -2193,12 +2191,14 @@
             $el.attr('class', cls).text(percent + '%');
         }
 
-        function calcRuleToQty() {
+        function calcRuleToQty(sourceQty) {
             const ratio = $('#rule-ratio').val() || '1:1';
             if (isComboRatio(ratio)) {
-                $('#rule-from-qty').val(1).prop('readonly', true);
-                $('#rule-extra-from .rule-extra-qty').val(1).prop('readonly', true);
-                $('#rule-to-qty').val($('#rule-from-sku').val() ? 1 : '');
+                const raw = sourceQty != null ? sourceQty : $('#rule-from-qty').val();
+                const n = parseInt(raw, 10);
+                const shown = n > 0 ? n : '';
+                $('#rule-from-qty, #rule-extra-from .rule-extra-qty').prop('readonly', false).val(shown);
+                $('#rule-to-qty').val(shown);
                 return;
             }
             $('#rule-from-qty, #rule-extra-from .rule-extra-qty').prop('readonly', false);
@@ -2229,7 +2229,12 @@
             $line.find('.rule-extra-sold').val(sku && meta.found ? meta.sold : '');
             setDilBox($line.find('.rule-extra-dil'), sku && meta.found ? meta.dil : null);
             if (sku && meta.found && meta.inv > 0 && !$line.find('.rule-extra-qty').val()) {
-                $line.find('.rule-extra-qty').val(meta.inv);
+                if (isComboRatio($('#rule-ratio').val())) {
+                    const primary = parseInt($('#rule-from-qty').val(), 10);
+                    if (primary > 0) $line.find('.rule-extra-qty').val(primary);
+                } else {
+                    $line.find('.rule-extra-qty').val(meta.inv);
+                }
             }
         }
 
@@ -2313,7 +2318,7 @@
             $('#rule-from-inv').val(meta.found ? String(meta.inv) : '');
             $('#rule-from-sold').val(meta.found ? meta.sold : '');
             setDilBox($('#rule-from-dil'), meta.found ? meta.dil : null);
-            if (!keepQty) $('#rule-from-qty').val(meta.inv > 0 ? meta.inv : '');
+            if (!keepQty && !isComboRatio($('#rule-ratio').val())) $('#rule-from-qty').val(meta.inv > 0 ? meta.inv : '');
             calcRuleToQty();
         }
 
@@ -2351,7 +2356,7 @@
             const ratio = comboRule ? 'combo' : ((history && history.ratio) || (rule && rule.ratio) || (itemForHistory && itemForHistory._ratio) || '1:1');
             const historyQty = history && history.fromQty != null && history.fromQty !== '' ? history.fromQty : null;
             const ruleQty = rule && rule.fromQty != null && rule.fromQty !== '' ? rule.fromQty : null;
-            const fromQty = comboRule ? 1 : (historyQty != null ? historyQty : ruleQty);
+            const fromQty = comboRule ? (ruleQty != null ? ruleQty : 1) : (historyQty != null ? historyQty : ruleQty);
 
             function optionValueForSku($select, sku) {
                 if (!sku) return '';
@@ -2396,10 +2401,10 @@
             clearExtraFromLines();
             ((rule && rule.fromItems) || []).forEach(function(item) {
                 if (!item || !item.sku) return;
-                addExtraFromLine(item.sku, isComboRatio(ratio) ? 1 : (item.fromQty != null ? item.fromQty : item.from_qty));
+                addExtraFromLine(item.sku, isComboRatio(ratio) ? fromQty : (item.fromQty != null ? item.fromQty : item.from_qty));
             });
             if (isComboRatio(ratio) && $('#rule-extra-from .rule-extra-line').length === 0) {
-                addExtraFromLine('', 1);
+                addExtraFromLine('', fromQty || '');
             }
             calcRuleToQty();
             bootstrap.Modal.getOrCreateInstance(document.getElementById('addRuleModal')).show();
@@ -2477,7 +2482,13 @@
             calcRuleToQty();
         });
 
-        $(document).on('input', '.rule-extra-qty', calcRuleToQty);
+        $(document).on('input', '.rule-extra-qty', function() {
+            if (isComboRatio($('#rule-ratio').val())) {
+                calcRuleToQty($(this).val());
+                return;
+            }
+            calcRuleToQty();
+        });
 
         $('#rule-from-sku').on('change', function() {
             if (ruleModalFilling) return;
@@ -2487,12 +2498,18 @@
         $('#rule-ratio').on('change', function() {
             if (ruleModalFilling) return;
             if (isComboRatio($(this).val()) && $('#rule-extra-from .rule-extra-line').length === 0) {
-                addExtraFromLine('', 1);
+                addExtraFromLine('', $('#rule-from-qty').val() || '');
             }
             calcRuleToQty();
         });
 
-        $('#rule-from-qty').on('input change', calcRuleToQty);
+        $('#rule-from-qty').on('input change', function() {
+            if (isComboRatio($('#rule-ratio').val())) {
+                calcRuleToQty($(this).val());
+                return;
+            }
+            calcRuleToQty();
+        });
 
         $('#save-rule-btn').on('click', function() {
             const $btn = $(this);
@@ -2526,9 +2543,12 @@
                     showToast('Combo needs 2 different FROM SKUs', 'error');
                     return;
                 }
-                saveFromQty = 1;
+                if (!saveFromQty || saveFromQty < 1) {
+                    showToast('FROM Qty must be at least 1', 'error');
+                    return;
+                }
                 extras = extras.map(function(item) {
-                    return { sku: item.sku, from_qty: 1 };
+                    return { sku: item.sku, from_qty: saveFromQty };
                 });
             }
 

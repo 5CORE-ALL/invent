@@ -2204,9 +2204,11 @@ class StockBalanceController extends Controller
             if (count($fromItems) !== 1) {
                 return response()->json(['error' => 'Combo needs 2 different FROM SKUs'], 422);
             }
-            $fromQty = 1;
-            $fromItems = array_map(function ($item) {
-                $item['fromQty'] = 1;
+            if (!$fromQty || $fromQty < 1) {
+                return response()->json(['error' => 'FROM Qty must be at least 1'], 422);
+            }
+            $fromItems = array_map(function ($item) use ($fromQty) {
+                $item['fromQty'] = $fromQty;
 
                 return $item;
             }, $fromItems);
