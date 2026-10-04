@@ -1,7 +1,7 @@
 {
   "id": "/chat",
-  "name": "Invent Chat",
-  "short_name": "Invent Chat",
+  "name": "5Core Chat",
+  "short_name": "5Core Chat",
   "start_url": "/chat",
   "scope": "/",
   "display": "standalone",
@@ -11,7 +11,7 @@
   "orientation": "portrait-primary",
   "lang": "en",
   "dir": "ltr",
-  "description": "5Core Invent Slack-style chat, DMs, groups, and 5 Core Bot.",
+  "description": "5Core Chat for DMs, groups, channels, and 5 Core Bot.",
   "categories": ["business", "productivity", "social"],
   "icons": [
     {

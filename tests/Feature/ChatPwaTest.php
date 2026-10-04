@@ -11,7 +11,7 @@ class ChatPwaTest extends TestCase
         $path = public_path('manifest.json');
         $this->assertFileExists($path);
         $manifest = json_decode((string) file_get_contents($path), true);
-        $this->assertSame('Invent Chat', $manifest['name'] ?? null);
+        $this->assertSame('5Core Chat', $manifest['name'] ?? null);
         $this->assertSame('/chat', $manifest['start_url'] ?? null);
         $this->assertSame('standalone', $manifest['display'] ?? null);
         $this->assertNotEmpty($manifest['icons'] ?? []);
@@ -34,7 +34,7 @@ class ChatPwaTest extends TestCase
     public function test_offline_shell_has_no_private_data(): void
     {
         $html = (string) file_get_contents(public_path('offline.html'));
-        $this->assertStringContainsString('Invent Chat', $html);
+        $this->assertStringContainsString('5Core Chat', $html);
         $this->assertStringNotContainsString('csrf', strtolower($html));
         $this->assertStringNotContainsString('/chat/sync', $html);
     }

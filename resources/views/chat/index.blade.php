@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Chat', 'sidenav' => 'full', 'skipHighcharts' => true, 'hideInventSidebar' => true])
+@extends('layouts.vertical', ['title' => '5Core Chat', 'sidenav' => 'full', 'skipHighcharts' => true, 'hideInventSidebar' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -304,8 +304,6 @@
         .slack-mention-pick button { display: block; width: 100%; border: 0; background: #fff; text-align: left; padding: 6px 10px; }
         .slack-mention-pick button:hover { background: #f8f8f8; }
         .slack-back { display: none; border: 0; background: transparent; font-weight: 800; margin-right: 8px; }
-        .slack-install { display: none; margin: 8px 12px; width: calc(100% - 24px); border: 0; border-radius: 6px; background: #1164a3; color: #fff; font-weight: 700; padding: 8px; }
-        .slack-install.is-on { display: block; }
         .slack-progress { display: none; height: 3px; background: #e8e8e8; margin: 0 16px 8px; }
         .slack-progress.is-on { display: block; }
         .slack-progress span { display: block; height: 100%; width: 0; background: #007a5a; }
@@ -365,10 +363,10 @@
 @endsection
 
 @section('content')
+    <p class="fivecore-chat-dock-note">5Core Chat is open on the right.</p>
     <div class="slack" id="slackApp">
         <aside class="slack-nav">
-            <div class="slack-nav__ws">5Core</div>
-            <button type="button" class="slack-install" id="slackInstallBtn">Install Invent Chat</button>
+            <div class="slack-nav__ws">5Core Chat</div>
             <div class="slack-status" id="slackConn">Connected</div>
             <div class="slack-nav__search">
                 <input type="search" id="slackSearch" placeholder="Find people or start a DM" autocomplete="off">
@@ -411,7 +409,7 @@
                     <div>
                     <h2 class="slack-head__name">
                         <span class="slack-presence-dot is-hidden" id="slackRoomDot" title=""></span>
-                        <span id="slackRoomName">Invent Chat</span>
+                        <span id="slackRoomName">5Core Chat</span>
                     </h2>
                     <p class="slack-head__sub" id="slackRoomSub">Pick a channel or teammate</p>
                     </div>
@@ -647,6 +645,11 @@
 <script>
 (function () {
     document.body.classList.add('invent-chat-page');
+    const docked = document.body.classList.contains('has-fivecore-chat-dock')
+        && window.matchMedia('(min-width: 993px)').matches
+        && !window.matchMedia('(display-mode: standalone)').matches
+        && !new URLSearchParams(location.search).get('embed');
+    if (docked) return;
     const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const meId = {{ (int) $meId }};
     const canAnnounce = {{ !empty($canAnnounce) ? 'true' : 'false' }};
@@ -2055,22 +2058,6 @@
             if (d.type === 'unread' && typeof d.unread === 'number') updateTopbar(d.unread);
         };
     }
-    function revealInstall() {
-        const btn = document.getElementById('slackInstallBtn');
-        if (btn && window.__inventPwaInstall && !window.matchMedia('(display-mode: standalone)').matches) {
-            btn.classList.add('is-on');
-        }
-    }
-    window.addEventListener('invent-pwa-install-ready', revealInstall);
-    revealInstall();
-    document.getElementById('slackInstallBtn').addEventListener('click', function () {
-        if (typeof installPWA === 'function') {
-            installPWA().then(function () {
-                document.getElementById('slackInstallBtn').classList.remove('is-on');
-            });
-        }
-    });
-
     function openTaskFrom(m) {
         const authorId = Number(m.user_id) || 0;
         const title = String(m.body || '').replace(/\s+/g, ' ').trim().slice(0, 1000);

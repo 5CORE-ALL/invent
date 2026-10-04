@@ -3292,6 +3292,8 @@ class CvrMasterController extends Controller
                 Log::warning('Master Analytics SKU daily snapshot save failed: ' . $e->getMessage());
             }
 
+            \App\Http\Controllers\MarketPlace\LmpOverallController::rememberCvrAvgMetrics($finalResult);
+
             return response()->json($finalResult);
             
         } catch (\Exception $e) {

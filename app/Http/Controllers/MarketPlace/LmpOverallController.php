@@ -13,6 +13,7 @@ use App\Models\TemuLmp;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -20,6 +21,8 @@ use Illuminate\View\View;
 
 class LmpOverallController extends Controller
 {
+    public const CVR_AVG_CACHE_KEY = 'lmp_overall_cvr_avg_metrics_v1';
+
     public function index(): View
     {
         return view('market-places.lmp_overall');
@@ -35,6 +38,7 @@ class LmpOverallController extends Controller
             ->get(['id', 'parent', 'sku', 'main_image']);
 
         $skus = $products->pluck('sku')->filter()->unique()->values()->all();
+        $cvrBySku = $this->pricingCvrAvgBySku();
         $shopifyBySku = ShopifySku::mapByProductSkus($skus);
 
         $groups = app(LmpSkuGroupService::class);
@@ -51,7 +55,6 @@ class LmpOverallController extends Controller
         $manual = $this->amazonManualPrices();
         $stdBySku = $manual['std'];
         $myLmpBySku = $manual['my_lmp'];
-        $cvrBySku = $this->pricingCvrAvgBySku();
 
         $rows = [];
         foreach ($products as $product) {
@@ -70,7 +73,8 @@ class LmpOverallController extends Controller
                 $members = [$sku];
             }
 
-            $cvr = $cvrBySku[$this->skuKey($sku)] ?? null;
+            $skuKey = $this->skuKey($sku);
+            $cvr = $cvrBySku[$skuKey] ?? $cvrBySku[str_replace(' ', '', $skuKey)] ?? null;
 
             $rows[] = [
                 'image' => $product->main_image ?: null,
@@ -254,11 +258,133 @@ class LmpOverallController extends Controller
     }
 
     /**
+     * Same Avg Price / Avg GROI% / Avg GPFT% / Avg NROI% / Avg NPFT% as /pricing-master-cvr.
+     * Prefer the live table payload (cached), then the daily snapshot.
+     *
+     * @param  list<array<string, mixed>|object>  $rows
+     */
+    public static function rememberCvrAvgMetrics(array $rows): void
+    {
+        $map = (new self)->mapCvrAvgRows($rows);
+        if ($map === []) {
+            return;
+        }
+
+        Cache::put(self::CVR_AVG_CACHE_KEY, $map, now()->addMinutes(30));
+    }
+
+    /**
+     * @return array<string, array{avg_price: ?float, avg_roi: ?float, avg_gpft: ?float, avg_nroi: ?float, avg_pft: ?float}>
+     */
+    private function pricingCvrAvgBySku(): array
+    {
+        $cached = Cache::get(self::CVR_AVG_CACHE_KEY);
+        if (is_array($cached) && $cached !== [] && $this->cvrMapHasProfitCols($cached)) {
+            return $cached;
+        }
+
+        $live = $this->pricingCvrAvgFromLive();
+        if ($live !== []) {
+            Cache::put(self::CVR_AVG_CACHE_KEY, $live, now()->addMinutes(30));
+
+            return $live;
+        }
+
+        return $this->pricingCvrAvgFromSnapshot();
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $map
+     */
+    private function cvrMapHasProfitCols(array $map): bool
+    {
+        foreach ($map as $row) {
+            if (array_key_exists('avg_gpft', $row) && $row['avg_gpft'] !== null) {
+                return true;
+            }
+            if (array_key_exists('avg_roi', $row) && $row['avg_roi'] !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, array{avg_price: ?float, avg_roi: ?float, avg_gpft: ?float, avg_nroi: ?float, avg_pft: ?float}>
+     */
+    private function pricingCvrAvgFromLive(): array
+    {
+        try {
+            set_time_limit(180);
+            $response = app(CvrMasterController::class)->getCvrDataJson(
+                Request::create('/cvr-master-data-json', 'GET')
+            );
+            $payload = $response->getData(true);
+            if (! is_array($payload) || isset($payload['error'])) {
+                return [];
+            }
+
+            return $this->mapCvrAvgRows($payload);
+        } catch (\Throwable $e) {
+            Log::warning('LMP Overall: live pricing-master-cvr lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>|object>  $rows
+     * @return array<string, array{avg_price: ?float, avg_roi: ?float, avg_gpft: ?float, avg_nroi: ?float, avg_pft: ?float}>
+     */
+    private function mapCvrAvgRows(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $row = (array) $row;
+            if (! empty($row['is_parent_summary'])) {
+                continue;
+            }
+            $key = $this->skuKey((string) ($row['sku'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+            $entry = [
+                'avg_price' => $this->numOrNull($row['avg_price'] ?? null, true),
+                'avg_roi' => $this->numOrNull($row['avg_roi'] ?? null),
+                'avg_gpft' => $this->numOrNull($row['avg_gpft'] ?? null),
+                'avg_nroi' => $this->numOrNull($row['avg_nroi'] ?? null),
+                'avg_pft' => $this->numOrNull($row['avg_pft'] ?? null),
+            ];
+            $out[$key] = $entry;
+            $compact = str_replace(' ', '', $key);
+            if ($compact !== '' && $compact !== $key) {
+                $out[$compact] = $entry;
+            }
+        }
+
+        return $out;
+    }
+
+    private function numOrNull(mixed $value, bool $zeroIsEmpty = false): ?float
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+        $number = round((float) $value, 2);
+        if ($zeroIsEmpty && $number <= 0) {
+            return null;
+        }
+
+        return $number;
+    }
+
+    /**
      * Latest /pricing-master-cvr SKU snapshot: Avg Price, Avg GROI%, Avg GPFT%, Avg NROI%, Avg NPFT%.
      *
      * @return array<string, array{avg_price: ?float, avg_roi: ?float, avg_gpft: ?float, avg_nroi: ?float, avg_pft: ?float}>
      */
-    private function pricingCvrAvgBySku(): array
+    private function pricingCvrAvgFromSnapshot(): array
     {
         $table = 'pricing_master_daily_snapshots_sku';
         if (! Schema::hasTable($table)) {

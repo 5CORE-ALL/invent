@@ -21,17 +21,85 @@
     
     <!-- PWA Meta Tags (single Invent PWA — reused by /chat) -->
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="{{ ($title ?? '') === 'Invent Chat' || ($title ?? '') === 'Chat' ? '#3f0e40' : '#667eea' }}">
+    <meta name="theme-color" content="{{ in_array(($title ?? ''), ['5Core Chat', 'Chat', 'Invent Chat'], true) ? '#3f0e40' : '#667eea' }}">
     <link rel="apple-touch-icon" href="{{ $appleTouchIcon ?? '/images/pwa-icon-192.png' }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Invent Chat">
+    <meta name="apple-mobile-web-app-title" content="5Core Chat">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="Invent Chat">
+    <meta name="application-name" content="5Core Chat">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    @php
+        $fivecoreChatEmbed = request()->boolean('embed');
+        $showFivecoreChatDock = auth()->check() && ! $fivecoreChatEmbed;
+        $fivecoreChatDockQuery = ['embed' => 1];
+        if (request()->routeIs('chat.index')) {
+            if (request()->filled('channel')) {
+                $fivecoreChatDockQuery['channel'] = request('channel');
+            }
+            if (request()->filled('message')) {
+                $fivecoreChatDockQuery['message'] = request('message');
+            }
+        }
+    @endphp
+    <style>
+        .fivecore-chat-dock { display: none; }
+        .fivecore-chat-dock-note { display: none; margin: 28px 8px; color: #616061; font-weight: 700; }
+        @media (min-width: 993px) {
+            body.has-fivecore-chat-dock .fivecore-chat-dock {
+                display: block;
+                position: fixed;
+                top: 0;
+                right: 0;
+                width: 25vw;
+                height: 100vh;
+                height: 100dvh;
+                z-index: 1020;
+                background: #3f0e40;
+                border-left: 1px solid rgba(0, 0, 0, .18);
+                box-shadow: -8px 0 24px rgba(0, 0, 0, .12);
+            }
+            body.has-fivecore-chat-dock .fivecore-chat-dock iframe {
+                display: block;
+                width: 100%;
+                height: 100%;
+                border: 0;
+                background: #fff;
+            }
+            body.has-fivecore-chat-dock .wrapper { margin-right: 25vw; }
+            body.has-fivecore-chat-dock.invent-chat-page #slackApp { display: none !important; }
+            body.has-fivecore-chat-dock.invent-chat-page .fivecore-chat-dock-note { display: block; }
+        }
+        @media (display-mode: standalone) {
+            .fivecore-chat-dock,
+            .fivecore-chat-dock-note { display: none !important; }
+            body.has-fivecore-chat-dock .wrapper { margin-right: 0 !important; }
+            body.invent-chat-page #slackApp { display: flex !important; }
+        }
+        body.invent-chat-embed .navbar-custom,
+        body.invent-chat-embed .leftside-menu,
+        body.invent-chat-embed .mobile-header,
+        body.invent-chat-embed .mobile-bottom-nav,
+        body.invent-chat-embed #mobile-sidebar-overlay,
+        body.invent-chat-embed .footer,
+        body.invent-chat-embed .page-title-box,
+        body.invent-chat-embed #floating-task-form { display: none !important; }
+        body.invent-chat-embed .content-page,
+        body.invent-chat-embed .content,
+        body.invent-chat-embed .container-fluid {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            min-height: 100vh;
+        }
+        body.invent-chat-embed .slack {
+            height: 100dvh !important;
+            min-height: 100dvh !important;
+        }
+    </style>
 </head>
 
-<body class="{{ ($hideInventSidebar ?? false) ? 'invent-chat-page' : '' }}">
+<body class="{{ ($hideInventSidebar ?? false) ? 'invent-chat-page' : '' }}{{ $fivecoreChatEmbed ? ' invent-chat-embed' : '' }}{{ $showFivecoreChatDock ? ' has-fivecore-chat-dock' : '' }}">
     <!-- Mobile Splash Screen -->
     @include('layouts.mobile-splash')
     
@@ -943,6 +1011,7 @@
     {{-- Shared DAR quick-entry modal (opened from the topbar on every page).
          Included after Vite so jQuery/Bootstrap are ready, and before the page's
          own script-after-vite so window.DarModal is defined first. --}}
+    @unless($fivecoreChatEmbed ?? false)
     @include('layouts.shared.dar-modal')
 
     {{-- Shared "Add Scope of Improvement" modal (opened from the topbar
@@ -950,6 +1019,7 @@
     @include('layouts.shared.scope-of-improvement-modal')
     @include('layouts.shared.announcement-board-modal')
     @include('layouts.shared.rr-topbar-modal')
+    @endunless
 
     {{-- Runs after Vite so jQuery matches head.js; DataTables and similar plugins attach here --}}
     @yield('script-after-vite')
@@ -967,7 +1037,7 @@
                         if (!worker) return;
                         worker.addEventListener('statechange', function() {
                             if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-                                if (confirm('Invent Chat has an update. Reload now?')) {
+                                if (confirm('5Core Chat has an update. Reload now?')) {
                                     worker.postMessage({ type: 'SKIP_WAITING' });
                                 }
                             }
@@ -983,24 +1053,74 @@
             });
         }
 
+        window.__inventPwaInstallStarted = false;
+
+        function installPWA() {
+            var promptEvent = window.__inventPwaInstall;
+            if (!promptEvent || window.__inventPwaInstallStarted) return Promise.resolve(false);
+            window.__inventPwaInstallStarted = true;
+            var choice;
+            try {
+                choice = promptEvent.prompt();
+            } catch (err) {
+                window.__inventPwaInstallStarted = false;
+                return Promise.resolve(false);
+            }
+            if (!choice || !choice.then) {
+                window.__inventPwaInstallStarted = false;
+                return Promise.resolve(false);
+            }
+            return choice.then(function (result) {
+                window.__inventPwaInstall = null;
+                return result.outcome === 'accepted';
+            }).catch(function () {
+                window.__inventPwaInstallStarted = false;
+                return false;
+            });
+        }
+
         window.addEventListener('beforeinstallprompt', function (e) {
             e.preventDefault();
             window.__inventPwaInstall = e;
             window.dispatchEvent(new CustomEvent('invent-pwa-install-ready'));
-        });
-
-        function installPWA() {
-            var promptEvent = window.__inventPwaInstall;
-            if (!promptEvent) return Promise.resolve(false);
-            promptEvent.prompt();
-            return promptEvent.userChoice.then(function (choice) {
-                window.__inventPwaInstall = null;
-                return choice.outcome === 'accepted';
+            if (window.top !== window.self || window.matchMedia('(display-mode: standalone)').matches) return;
+            function onGesture() {
+                document.removeEventListener('pointerdown', onGesture, true);
+                document.removeEventListener('keydown', onGesture, true);
+                installPWA();
+            }
+            document.addEventListener('pointerdown', onGesture, true);
+            document.addEventListener('keydown', onGesture, true);
+            installPWA().then(function (accepted) {
+                if (!accepted) return;
+                document.removeEventListener('pointerdown', onGesture, true);
+                document.removeEventListener('keydown', onGesture, true);
             });
-        }
+        });
     </script>
+    @if($showFivecoreChatDock ?? false)
+        <aside class="fivecore-chat-dock" id="fivecoreChatDock" aria-label="5Core Chat">
+            <iframe title="5Core Chat" data-src="{{ route('chat.index', $fivecoreChatDockQuery) }}"></iframe>
+        </aside>
+        <script>
+            (function () {
+                var frame = document.querySelector('#fivecoreChatDock iframe');
+                if (!frame) return;
+                var wide = window.matchMedia('(min-width: 993px)');
+                function syncDock() {
+                    var standalone = window.matchMedia('(display-mode: standalone)').matches;
+                    if (wide.matches && !standalone && !frame.getAttribute('src')) {
+                        frame.src = frame.getAttribute('data-src');
+                    }
+                }
+                syncDock();
+                wide.addEventListener('change', syncDock);
+            })();
+        </script>
+    @endif
     @include('partials.clear-browser-cache-on-login')
     @auth
+        @unless($fivecoreChatEmbed ?? false)
         @include('partials.user-incentives')
         @include('partials.overdue-nudge-modal')
         @include('partials.dar-logout-nudge-modal')
@@ -1010,6 +1130,7 @@
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')
         @endif
+        @endunless
     @endauth
 </body>
 

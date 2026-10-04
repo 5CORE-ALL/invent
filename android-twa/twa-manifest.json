@@ -1,8 +1,8 @@
 {
   "packageId": "com.fivecore.invent.chat",
   "host": "inventory.5coremanagement.com",
-  "name": "Invent Chat",
-  "launcherName": "Invent Chat",
+  "name": "5Core Chat",
+  "launcherName": "5Core Chat",
   "display": "standalone",
   "themeColor": "#3F0E40",
   "themeColorDark": "#3F0E40",
