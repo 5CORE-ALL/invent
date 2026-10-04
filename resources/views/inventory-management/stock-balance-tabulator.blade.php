@@ -379,7 +379,7 @@
                             </select>
                         </div>
                     </div>
-                    <div class="row g-2 mt-1">
+                    <div class="row g-2 mt-1" id="rule-from-row">
                         <div class="col-md-3">
                             <label class="form-label" for="rule-from-sku">FROM SKU</label>
                             <select id="rule-from-sku" class="form-select form-select-sm"></select>
@@ -873,11 +873,13 @@
                 }),
                 success: function(response) {
                     showToast('ACTION updated for ' + sku, 'success');
-                    // Update the row data in table
+                    const item = allTableData.find(function(i) { return i.SKU === sku; });
+                    if (item) item.ACTION = action || '';
                     const rows = table.searchRows("SKU", "=", sku);
                     if (rows.length > 0) {
                         rows[0].update({ACTION: action});
                     }
+                    if (action === 'NRB') applyAllFilters();
                 },
                 error: function(xhr) {
                     showToast('Failed to update ACTION for ' + sku, 'error');
@@ -1912,6 +1914,8 @@
                         } else if (data.ACTION !== actionVal) {
                             return false;
                         }
+                    } else if (data.ACTION === 'NRB') {
+                        return false;
                     }
 
                     if (rowSubmitBlocked(data)) return false;
@@ -2159,6 +2163,7 @@
             const item = lockedSku ? fillRuleToSkuDetails(lockedSku) : null;
             const action = (rule && rule.action) || (item && item.ACTION) || '';
             $('#rule-action').val(action);
+            syncRuleFromRow();
             if (fromSkuValue) {
                 fillRuleFromSkuDetails(fromSkuValue, fromQty != null);
                 if (fromQty != null) $('#rule-from-qty').val(fromQty);
@@ -2173,6 +2178,7 @@
                 }
             }
 
+            syncRuleFromRow();
             bootstrap.Modal.getOrCreateInstance(document.getElementById('addRuleModal')).show();
             setTimeout(function() { ruleModalFilling = false; }, 0);
         }
@@ -2222,7 +2228,14 @@
                 $('#rule-action').val((item && item.ACTION) || '');
                 $('#rule-ratio').val('1:1');
             }
+            syncRuleFromRow();
         });
+
+        function syncRuleFromRow() {
+            $('#rule-from-row').toggle($('#rule-action').val() !== 'NRB');
+        }
+
+        $('#rule-action').on('change', syncRuleFromRow);
 
         $('#rule-from-sku').on('change', function() {
             if (ruleModalFilling) return;
@@ -2244,7 +2257,7 @@
                 showToast('Select a SKU for the rule', 'error');
                 return;
             }
-            if (!fromSku) {
+            if (action !== 'NRB' && !fromSku) {
                 showToast('Select a FROM SKU', 'error');
                 return;
             }
@@ -2319,6 +2332,7 @@
                         const modalEl = document.getElementById('addRuleModal');
                         const modal = bootstrap.Modal.getInstance(modalEl);
                         if (modal) modal.hide();
+                        if (action === 'NRB') applyAllFilters();
                         showToast('Rule saved for ' + rule.toSku, 'success', 3000);
                     };
 
