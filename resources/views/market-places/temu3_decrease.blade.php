@@ -4168,7 +4168,7 @@
                         if (!meta || !(meta.sprc > 0)) return '';
                         const tip = (typeof ebayDilGroiTipText === 'function')
                             ? ebayDilGroiTipText(meta)
-                            : (('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
+                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                             + ' → ' + meta.label
                             + ' → NROI ' + meta.groi + '%'
                             + ' → $' + meta.sprc.toFixed(2));
