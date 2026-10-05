@@ -2250,11 +2250,14 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(200)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('amazon'))
+        // Runs in the scheduler, not on mm-amazon: a backed-up Amazon queue (order fetch,
+        // address jobs) kept the mismatch job waiting for hours and mismatches never cleared.
+        $schedule->command('marketplace:sync-mismatch-inventory amazon')
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('amazon-sync-mismatch-inventory')
-            ->withoutOverlapping(12)
+            ->withoutOverlapping(40)
+            ->runInBackground()
             ->appendOutputTo($log);
 
         $schedule->command('amazon:sync-zero-inventory')
