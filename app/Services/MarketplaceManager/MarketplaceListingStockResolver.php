@@ -38,6 +38,8 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_TEMU2 = 'temu2';
 
+    public const CHANNEL_TEMU3 = 'temu3';
+
     public const CHANNEL_PURCHASINGPOWER = 'purchasingpower';
 
     public const CHANNEL_WAYFAIR = 'wayfair';
@@ -1140,6 +1142,9 @@ final class MarketplaceListingStockResolver
         } elseif ($channel === self::CHANNEL_TEMU2) {
             self::hydrateFromTemu2Metrics($map, $keys);
             self::hydrateFromMappings($map, $keys, 'inventory_temu2');
+        } elseif ($channel === self::CHANNEL_TEMU3) {
+            self::hydrateFromTemu3Metrics($map, $keys);
+            self::hydrateFromMappings($map, $keys, 'inventory_temu3');
         } elseif ($channel === self::CHANNEL_PURCHASINGPOWER) {
             self::hydrateFromPurchasingPowerProducts($map, $keys);
             self::hydrateFromMappings($map, $keys, 'inventory_purchasing_power');
@@ -1335,6 +1340,12 @@ final class MarketplaceListingStockResolver
 
         if ($channel === 'temu2') {
             self::hydrateFromTemu2Metrics($map, $keys);
+
+            return;
+        }
+
+        if ($channel === 'temu3') {
+            self::hydrateFromTemu3Metrics($map, $keys);
 
             return;
         }
@@ -1624,6 +1635,25 @@ final class MarketplaceListingStockResolver
         }
 
         \App\Models\Temu2Metric::query()
+            ->whereIn('sku', $keys)
+            ->whereNotNull('quantity')
+            ->get(['sku', 'quantity'])
+            ->each(function ($row) use (&$map) {
+                self::put($map, (string) $row->sku, (int) $row->quantity);
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @param  list<string>  $keys
+     */
+    protected static function hydrateFromTemu3Metrics(array &$map, array $keys): void
+    {
+        if (! Schema::hasTable('temu3_metrics') || ! Schema::hasColumn('temu3_metrics', 'quantity')) {
+            return;
+        }
+
+        \App\Models\Temu3Metric::query()
             ->whereIn('sku', $keys)
             ->whereNotNull('quantity')
             ->get(['sku', 'quantity'])

@@ -19,6 +19,7 @@ use App\Models\PurchasingPowerSale;
 use App\Models\ReverbOrderMetric;
 use App\Models\SheinOrderMetric;
 use App\Models\Temu2Order;
+use App\Models\Temu3ApiOrder;
 use App\Models\TemuOrder;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
@@ -2180,6 +2181,7 @@ class VeeqoShopifyFulfillmentService
             'amazon' => [AmazonOrder::class, 'order_date'],
             'temu' => [TemuOrder::class, 'parent_order_time'],
             'temu2' => [Temu2Order::class, 'parent_order_time'],
+            'temu3' => [Temu3ApiOrder::class, 'parent_order_time'],
             'ebay1' => [Ebay1OrderMetric::class, 'order_date'],
             'ebay2' => [Ebay2OrderMetric::class, 'order_date'],
             'ebay3' => [Ebay3OrderMetric::class, 'order_date'],
@@ -2513,7 +2515,7 @@ class VeeqoShopifyFulfillmentService
                 $pushId((string) $po);
             }
             if ($slug === '') {
-                $slug = str_contains($hay, 'temu2') ? 'temu2' : (str_contains($hay, 'temu') ? 'temu' : $slug);
+                $slug = str_contains($hay, 'temu3') ? 'temu3' : (str_contains($hay, 'temu2') ? 'temu2' : (str_contains($hay, 'temu') ? 'temu' : $slug));
             }
         }
 
@@ -2791,7 +2793,7 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        if (in_array($marketplace, ['temu', 'temu2'], true)) {
+        if (in_array($marketplace, ['temu', 'temu2', 'temu3'], true)) {
             if (Cache::get('mm.temu.ip_blocked')) {
                 $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
 
@@ -2799,12 +2801,16 @@ class VeeqoShopifyFulfillmentService
                     ? $this->trackingFromLoadedMarketplaceModel($marketplace, $model)
                     : null;
             }
-            $svc = $marketplace === 'temu2'
-                ? app(Temu2OrderTrackingPullService::class)
-                : app(TemuOrderTrackingPullService::class);
-            $api = $marketplace === 'temu2'
-                ? app(\App\Services\Temu2ApiService::class)
-                : app(\App\Services\TemuApiService::class);
+            $svc = match ($marketplace) {
+                'temu2' => app(Temu2OrderTrackingPullService::class),
+                'temu3' => app(Temu3OrderTrackingPullService::class),
+                default => app(TemuOrderTrackingPullService::class),
+            };
+            $api = match ($marketplace) {
+                'temu2' => app(\App\Services\Temu2ApiService::class),
+                'temu3' => app(\App\Services\Temu3ApiService::class),
+                default => app(\App\Services\TemuApiService::class),
+            };
             foreach ($ids as $id) {
                 if (! preg_match('/^(PO-)?\d{3}-[\w-]+$/i', $id)) {
                     continue;
@@ -3025,6 +3031,7 @@ class VeeqoShopifyFulfillmentService
         $simple = match ($marketplace) {
             'temu' => [TemuOrder::class, ['parent_order_sn', 'order_sn']],
             'temu2' => [Temu2Order::class, ['parent_order_sn', 'order_sn']],
+            'temu3' => [Temu3ApiOrder::class, ['parent_order_sn', 'order_sn']],
             'ebay1' => [Ebay1OrderMetric::class, ['order_id', 'order_number']],
             'ebay2' => [Ebay2OrderMetric::class, ['order_id', 'order_number']],
             'ebay3' => [Ebay3OrderMetric::class, ['order_id', 'order_number']],
@@ -3299,6 +3306,7 @@ class VeeqoShopifyFulfillmentService
         $simple = match ($marketplace) {
             'temu' => [TemuOrder::class, ['parent_order_sn', 'order_sn']],
             'temu2' => [Temu2Order::class, ['parent_order_sn', 'order_sn']],
+            'temu3' => [Temu3ApiOrder::class, ['parent_order_sn', 'order_sn']],
             'ebay1' => [Ebay1OrderMetric::class, ['order_id', 'order_number']],
             'ebay2' => [Ebay2OrderMetric::class, ['order_id', 'order_number']],
             'ebay3' => [Ebay3OrderMetric::class, ['order_id', 'order_number']],
@@ -6340,6 +6348,7 @@ GQL;
         $map = [
             'temu' => [TemuOrder::class, 'parent_order_time'],
             'temu2' => [Temu2Order::class, 'parent_order_time'],
+            'temu3' => [Temu3ApiOrder::class, 'parent_order_time'],
             'ebay1' => [Ebay1OrderMetric::class, 'order_date'],
             'ebay2' => [Ebay2OrderMetric::class, 'order_date'],
             'ebay3' => [Ebay3OrderMetric::class, 'order_date'],
@@ -6403,7 +6412,7 @@ GQL;
                 'wayfair' => 'po_number',
                 'doba' => 'order_no',
                 'purchasingpower' => 'order_number',
-                'temu', 'temu2' => 'parent_order_sn',
+                'temu', 'temu2', 'temu3' => 'parent_order_sn',
                 'bestbuy', 'macy', 'aliexpress', 'alibaba', 'topdawg',
                 'newegg', 'shein', 'reverb', 'tiktok', 'tiktok2', 'faire',
                 'ebay1', 'ebay2', 'ebay3' => 'order_id',
@@ -6597,6 +6606,7 @@ GQL;
             $class = match ($marketplace) {
                 'temu' => TemuOrder::class,
                 'temu2' => Temu2Order::class,
+                'temu3' => Temu3ApiOrder::class,
                 'ebay1' => Ebay1OrderMetric::class,
                 'ebay2' => Ebay2OrderMetric::class,
                 'ebay3' => Ebay3OrderMetric::class,

@@ -561,6 +561,8 @@ class ListingManagerProductPublisher
             'temu' => 'temu',
             'temu2' => 'temu2',
             'temutwo' => 'temu2',
+            'temu3' => 'temu3',
+            'temuthree' => 'temu3',
             'tiktok' => 'tiktok',
             'tiktokshop' => 'tiktok',
             'tiktok2' => 'tiktok2',

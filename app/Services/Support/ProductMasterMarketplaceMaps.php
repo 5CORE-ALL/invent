@@ -19,6 +19,7 @@ class ProductMasterMarketplaceMaps
             'amazon' => 'amazon_metrics',
             'temu' => 'temu_metrics',
             'temu2' => 'temu2_metrics',
+            'temu3' => 'temu3_metrics',
             'wayfair' => 'wayfair_metrics',
             'bestbuy' => 'bestbuy_metrics',
             'macy' => 'macy_metrics',
@@ -53,6 +54,7 @@ class ProductMasterMarketplaceMaps
             'amazon' => \App\Services\AmazonSpApiService::class,
             'temu' => \App\Services\TemuApiService::class,
             'temu2' => \App\Services\Temu2ApiService::class,
+            'temu3' => \App\Services\Temu3ApiService::class,
             'reverb' => \App\Services\ReverbApiService::class,
             'wayfair' => \App\Services\WayfairApiService::class,
             'bestbuy' => \App\Services\BestBuyApiService::class,
@@ -82,6 +84,7 @@ class ProductMasterMarketplaceMaps
             'amazon' => [\App\Services\AmazonSpApiService::class, 'updateAplusContent'],
             'temu' => [\App\Services\TemuApiService::class, 'updateDescription'],
             'temu2' => [\App\Services\Temu2ApiService::class, 'updateDescription'],
+            'temu3' => [\App\Services\Temu3ApiService::class, 'updateDescription'],
             'reverb' => [\App\Services\ReverbApiService::class, 'updateDescription'],
             'macy' => [\App\Services\MacysApiService::class, 'updateDescription'],
             'ebay' => [\App\Services\EbayApiService::class, 'updateDescription'],
@@ -128,6 +131,7 @@ class ProductMasterMarketplaceMaps
             'amazon' => [\App\Services\AmazonSpApiService::class, 'updateImages'],
             'temu' => [\App\Services\TemuApiService::class, 'updateImages'],
             'temu2' => [\App\Services\Temu2ApiService::class, 'updateImages'],
+            'temu3' => [\App\Services\Temu3ApiService::class, 'updateImages'],
             'wayfair' => [\App\Services\WayfairApiService::class, 'updateImages'],
             'bestbuy' => [\App\Services\BestBuyApiService::class, 'updateImages'],
             'shopify_main' => [\App\Services\ShopifyApiService::class, 'updateImages'],
@@ -161,6 +165,7 @@ class ProductMasterMarketplaceMaps
             'amazon' => [\App\Services\AmazonSpApiService::class, 'updateVideos'],
             'temu' => [\App\Services\TemuApiService::class, 'updateVideos'],
             'temu2' => [\App\Services\Temu2ApiService::class, 'updateVideos'],
+            'temu3' => [\App\Services\Temu3ApiService::class, 'updateVideos'],
             'wayfair' => [\App\Services\WayfairApiService::class, 'updateVideos'],
             'bestbuy' => [\App\Services\BestBuyApiService::class, 'updateVideos'],
             'shopify_main' => [\App\Services\ShopifyApiService::class, 'updateVideos'],
@@ -188,7 +193,7 @@ class ProductMasterMarketplaceMaps
     public static function titleMarketplaces(): array
     {
         return [
-            'amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'walmart',
+            'amazon', 'temu', 'temu2', 'temu3', 'reverb', 'wayfair', 'walmart',
             'shopify_main', 'shopify_pls', 'shopify_b5c', 'doba',
             'ebay', 'ebay2', 'ebay3', 'macy', 'faire', 'bestbuy',
             'shein', 'aliexpress', 'alibaba', 'purchasing_power',

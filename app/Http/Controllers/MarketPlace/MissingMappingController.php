@@ -113,6 +113,7 @@ class MissingMappingController extends Controller
             in_array($slug, ['tiktok2', 'tiktokshop2'], true) => 'TikTok 2 inv',
             $slug === 'temu' => 'Temu Inv',
             $slug === 'temu2' => 'Temu 2 Inv',
+            $slug === 'temu3' => 'Temu 3 Inv',
             $slug === 'shein' => 'Shein Inv',
             $slug === 'pls' => 'PLS Inv',
             in_array($slug, ['b5cb2b', 'business5coreb2b'], true) => 'B2B Inv',

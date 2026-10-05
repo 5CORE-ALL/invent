@@ -136,6 +136,7 @@ class MarketplaceTrackingBatchPush
             'topdawg' => TopDawgTrackingSyncService::class,
             'temu' => TemuTrackingSyncService::class,
             'temu2' => Temu2TrackingSyncService::class,
+            'temu3' => Temu3TrackingSyncService::class,
             'ebay1' => Ebay1TrackingSyncService::class,
             'ebay2' => Ebay2TrackingSyncService::class,
             'ebay3' => Ebay3TrackingSyncService::class,

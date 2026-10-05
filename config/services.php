@@ -872,12 +872,49 @@ return [
         'currency' => env('TEMU2_CURRENCY', 'USD'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Temu 3 (separate shop / app — do not reuse TEMU_* or TEMU2_* credentials)
+    |--------------------------------------------------------------------------
+    */
     'temu3' => [
         'app_key' => env('TEMU3_APP_KEY'),
         'secret_key' => env('TEMU3_SECRET_KEY'),
         'access_token' => env('TEMU3_ACCESS_TOKEN'),
         'shop_id' => env('TEMU3_SHOP_ID'),
+        'goods_summary_field' => env('TEMU3_GOODS_SUMMARY_FIELD', 'goodsSummary'),
+        'goods_summary_format' => env('TEMU3_GOODS_SUMMARY_FORMAT', 'string'),
+        'bullet_update_include_sku_list' => filter_var(env('TEMU3_BULLET_INCLUDE_SKU_LIST', false), FILTER_VALIDATE_BOOLEAN),
+        'goods_update_type' => env('TEMU3_GOODS_UPDATE_TYPE', 'bg.local.goods.partial.update'),
+        'update_sku_list_field' => env('TEMU3_UPDATE_SKU_LIST_FIELD', 'skuList'),
+        'goods_basic_field' => env('TEMU3_GOODS_BASIC_FIELD', 'goodsBasic'),
+        'goods_desc_field' => env('TEMU3_GOODS_DESC_FIELD', 'goodsDesc'),
+        'goods_image_urls_field' => env('TEMU3_GOODS_IMAGE_URLS_FIELD', 'carouselImageUrlList'),
+        'goods_video_urls_field' => env('TEMU3_GOODS_VIDEO_URLS_FIELD', 'productVideoUrlList'),
+        'video_upload_type' => env('TEMU3_VIDEO_UPLOAD_TYPE', 'files/upload_video'),
+        'video_upload_types' => array_values(array_filter(array_map('trim', explode(',', env('TEMU3_VIDEO_UPLOAD_TYPES', 'temu.local.video.upload,bg.local.goods.video.upload'))))),
+        'video_upload_try_base64' => filter_var(env('TEMU3_VIDEO_UPLOAD_TRY_BASE64', true), FILTER_VALIDATE_BOOLEAN),
+        'video_upload_prefer_base64' => filter_var(env('TEMU3_VIDEO_UPLOAD_PREFER_BASE64', false), FILTER_VALIDATE_BOOLEAN),
+        'image_upload_type' => env('TEMU3_IMAGE_UPLOAD_TYPE', 'files/upload_image'),
+        'image_upload_types' => array_values(array_filter(array_map('trim', explode(',', env('TEMU3_IMAGE_UPLOAD_TYPES', 'temu.local.image.upload,bg.local.goods.image.upload'))))),
+        // Partner US OpenAPI path is /openapi/router (same host as Temu).
         'openapi_router_url' => env('TEMU3_OPENAPI_ROUTER_URL', 'https://openapi-b-us.temu.com/openapi/router'),
+        'self_shipping_warehouse_id' => env('TEMU3_SELF_SHIPPING_WAREHOUSE_ID', ''),
+        'image_upload_try_base64' => filter_var(env('TEMU3_IMAGE_UPLOAD_TRY_BASE64', true), FILTER_VALIDATE_BOOLEAN),
+        'image_upload_prefer_base64' => filter_var(env('TEMU3_IMAGE_UPLOAD_PREFER_BASE64', true), FILTER_VALIDATE_BOOLEAN),
+        'list_price_field' => env('TEMU3_LIST_PRICE_FIELD', 'listPrice'),
+        'sku_id_field' => env('TEMU3_SKU_ID_FIELD', 'skuId'),
+        'sku_code_field' => env('TEMU3_SKU_CODE_FIELD', 'outSkuSn'),
+        /** Create-listing API (Publish to Temu 3). v2 is recommended; v1 fallback is bg.local.goods.add. */
+        'goods_add_type' => env('TEMU3_GOODS_ADD_TYPE', 'temu.local.goods.v2.add'),
+        'cost_template_id' => env('TEMU3_COST_TEMPLATE_ID', ''),
+        'shipment_limit_day' => (int) env('TEMU3_SHIPMENT_LIMIT_DAY', 2),
+        'import_designation' => env('TEMU3_IMPORT_DESIGNATION', '4'),
+        /** English country name for goodsOriginInfo.originRegion1 (ISO-2 like CN is rejected). */
+        'origin_region1' => env('TEMU3_ORIGIN_REGION1', 'China'),
+        /** China province/region for originRegion2; required when origin_region1 is China. */
+        'origin_region2' => env('TEMU3_ORIGIN_REGION2', 'Guangdong'),
+        'currency' => env('TEMU3_CURRENCY', 'USD'),
     ],
 
     /*

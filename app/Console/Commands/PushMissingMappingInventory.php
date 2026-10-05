@@ -17,7 +17,7 @@ class PushMissingMappingInventory extends Command
     public const CHANNELS = [
         'tiktok2', 'purchasingpower', 'tiktok', 'newegg', 'aliexpress', 'amazon',
         'ebay3', 'shein', 'ebay1', 'topdawg', 'ebay2', 'reverb', 'b5cb2b',
-        'macy', 'bestbuy', 'temu', 'temu2', 'pls', 'wayfair', 'faire', 'doba', 'alibaba',
+        'macy', 'bestbuy', 'temu', 'temu2', 'temu3', 'pls', 'wayfair', 'faire', 'doba', 'alibaba',
     ];
 
     protected $signature = 'inventory:push-missing-mapping

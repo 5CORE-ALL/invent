@@ -90,6 +90,7 @@ class DispatchUnpushedMarketplaceShopifyImports extends Command
             'topdawg' => \App\Services\MarketplaceManager\TopDawgOrderSyncService::class,
             'temu' => \App\Services\MarketplaceManager\TemuOrderSyncService::class,
             'temu2' => \App\Services\MarketplaceManager\Temu2OrderSyncService::class,
+            'temu3' => \App\Services\MarketplaceManager\Temu3OrderSyncService::class,
             'purchasingpower' => \App\Services\MarketplaceManager\PurchasingPowerOrderSyncService::class,
             'wayfair' => \App\Services\MarketplaceManager\WayfairOrderSyncService::class,
             'bestbuy' => \App\Services\MarketplaceManager\BestBuyOrderSyncService::class,

@@ -764,6 +764,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/temu2/sync-inventory', [\App\Http\Controllers\MarketPlace\Temu2SyncController::class, 'syncInventoryNow'])->name('temu2.sync.inventory');
         Route::post('/temu2/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\Temu2SyncController::class, 'syncMismatchInventoryNow'])->name('temu2.sync.mismatch.inventory');
         Route::post('/temu2/sync-tracking', [\App\Http\Controllers\MarketPlace\Temu2SyncController::class, 'syncTrackingNow'])->name('temu2.sync.tracking');
+        Route::get('/temu3/connect', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'connect'])->name('temu3.connect');
+        Route::post('/temu3/test-connection', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'testConnection'])->name('temu3.test');
+        Route::post('/temu3/save-access-token', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'saveAccessToken'])->name('temu3.save.token');
+        Route::post('/temu3/test-price', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'testPriceAccess'])->name('temu3.test.price');
+        Route::post('/temu3/refresh-products', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'refreshProducts'])->name('temu3.refresh');
+        Route::get('/temu3/refresh-products/status', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'refreshProductsStatus'])->name('temu3.refresh.status');
+        Route::post('/temu3/fetch-orders', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'fetchOrders'])->name('temu3.fetch.orders');
+        Route::post('/temu3/sync-inventory', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'syncInventoryNow'])->name('temu3.sync.inventory');
+        Route::post('/temu3/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'syncMismatchInventoryNow'])->name('temu3.sync.mismatch.inventory');
+        Route::post('/temu3/sync-tracking', [\App\Http\Controllers\MarketPlace\Temu3SyncController::class, 'syncTrackingNow'])->name('temu3.sync.tracking');
         Route::get('/purchasingpower/connect', [\App\Http\Controllers\MarketPlace\PurchasingPowerSyncController::class, 'connect'])->name('purchasingpower.connect');
         Route::post('/purchasingpower/test-connection', [\App\Http\Controllers\MarketPlace\PurchasingPowerSyncController::class, 'testConnection'])->name('purchasingpower.test');
         Route::post('/purchasingpower/refresh-products', [\App\Http\Controllers\MarketPlace\PurchasingPowerSyncController::class, 'refreshProducts'])->name('purchasingpower.refresh');

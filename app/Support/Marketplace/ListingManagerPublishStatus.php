@@ -8,9 +8,11 @@ use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Pricing;
+use App\Models\Temu3Metric;
 use App\Models\TemuMetric;
 use App\Services\AmazonSpApiService;
 use App\Services\Temu2ApiService;
+use App\Services\Temu3ApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -83,6 +85,15 @@ class ListingManagerPublishStatus
             $id = $allowLiveLookup ? self::temu2LiveGoodsId($sku) : null;
 
             return ['listed' => $id !== null, 'listing_id' => $id, 'source' => $allowLiveLookup ? 'temu2_api' : 'temu2_metrics.goods_id'];
+        }
+        if (in_array($key, ['temu3', 'temuthree'], true) && Schema::hasTable('temu3_metrics')) {
+            $id = self::idFromColumn(Temu3Metric::class, $sku, 'goods_id', true);
+            if ($id !== null) {
+                return ['listed' => true, 'listing_id' => $id, 'source' => 'temu3_metrics.goods_id'];
+            }
+            $id = $allowLiveLookup ? self::temuLiveGoodsId('temu3', Temu3ApiService::class, $sku) : null;
+
+            return ['listed' => $id !== null, 'listing_id' => $id, 'source' => $allowLiveLookup ? 'temu3_api' : 'temu3_metrics.goods_id'];
         }
 
         $cfg = ChannelListingRegistry::get($key)
@@ -260,13 +271,21 @@ class ListingManagerPublishStatus
      */
     private static function temu2LiveGoodsId(string $sku): ?string
     {
-        $cacheKey = 'lm_temu2_live_gid:'.mb_strtolower(trim($sku));
+        return self::temuLiveGoodsId('temu2', Temu2ApiService::class, $sku);
+    }
+
+    /**
+     * @param  class-string  $apiClass
+     */
+    private static function temuLiveGoodsId(string $slug, string $apiClass, string $sku): ?string
+    {
+        $cacheKey = 'lm_'.$slug.'_live_gid:'.mb_strtolower(trim($sku));
         $cached = Cache::get($cacheKey);
         if (is_string($cached)) {
             return $cached !== '' ? $cached : null;
         }
         try {
-            $id = trim((string) (app(Temu2ApiService::class)->getGoodsIdBySku($sku) ?? ''));
+            $id = trim((string) (app($apiClass)->getGoodsIdBySku($sku) ?? ''));
         } catch (\Throwable) {
             return null;
         }

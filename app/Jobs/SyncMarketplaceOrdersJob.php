@@ -62,6 +62,7 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
             'topdawg' => 'topdawg:sync-orders',
             'temu' => 'temu:sync-orders',
             'temu2' => 'temu2:sync-orders',
+            'temu3' => 'temu3:sync-orders',
             'purchasingpower' => 'purchasingpower:sync-orders',
             'wayfair' => 'wayfair:sync-orders',
             'bestbuy' => 'bestbuy:sync-orders',

@@ -602,7 +602,7 @@ class ShopifyFulfillmentTrackingMatcher
     }
 
     /**
-     * Temu / Temu 2 share PO-211… ids. A Temu2 Shopify tag must still
+     * Temu / Temu 2 / Temu 3 share PO-211… ids. A Temu2 Shopify tag must still
      * accept a PO- ref classified as Temu (and the reverse).
      */
     public function slugsCompatible(string $left, string $right): bool
@@ -613,7 +613,7 @@ class ShopifyFulfillmentTrackingMatcher
             return true;
         }
 
-        $temu = ['temu', 'temu2'];
+        $temu = ['temu', 'temu2', 'temu3'];
 
         return in_array($left, $temu, true) && in_array($right, $temu, true);
     }

@@ -915,6 +915,8 @@ class MissingListingController extends Controller
             'tiktok2' => ['tiktokshop2', 'tiktok2'],
             'temu2' => ['temu2', 'temutwo'],
             'temutwo' => ['temu2', 'temutwo'],
+            'temu3' => ['temu3', 'temuthree'],
+            'temuthree' => ['temu3', 'temuthree'],
             'bestbuyusa' => ['bestbuyusa', 'bestbuy'],
             'bestbuy' => ['bestbuyusa', 'bestbuy'],
             'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],

@@ -105,7 +105,7 @@ class ChannelTrackingApiFallbackService
                 continue;
             }
             $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
-            if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
+            if ($slug === '' || in_array($slug, ['temu', 'temu2', 'temu3'], true)) {
                 continue;
             }
             if ($channelFilter !== '' && $slug !== $channelFilter) {

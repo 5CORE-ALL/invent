@@ -25,7 +25,7 @@ class MarketplacePushLog extends Model
     ];
 
     public const MARKETPLACES = [
-        'amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'walmart',
+        'amazon', 'temu', 'temu2', 'temu3', 'reverb', 'wayfair', 'walmart',
         'shopify_main', 'shopify_pls', 'shopify_b5c', 'doba',
         'ebay1', 'ebay2', 'ebay3', 'macy', 'faire',
         'bestbuy', 'newegg', 'shein', 'aliexpress', 'alibaba',

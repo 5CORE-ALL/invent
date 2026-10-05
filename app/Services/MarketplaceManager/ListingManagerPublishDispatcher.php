@@ -224,6 +224,7 @@ class ListingManagerPublishDispatcher
             'ebay3', 'ebaythree',
             'temu', 'temu1',
             'temu2', 'temutwo',
+            'temu3', 'temuthree',
             'faire',
             'reverb', 'reverbcom',
             'wayfair',

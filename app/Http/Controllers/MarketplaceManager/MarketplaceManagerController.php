@@ -21,6 +21,7 @@ use App\Models\Ebay3Metric;
 use App\Models\TopDawgProduct;
 use App\Models\TemuMetric;
 use App\Models\Temu2Metric;
+use App\Models\Temu3Metric;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\PLSProduct;
@@ -382,6 +383,9 @@ class MarketplaceManagerController extends Controller
                 : 0,
             'temu2' => Schema::hasTable('temu2_metrics')
                 ? (int) Temu2Metric::query()->whereNotNull('goods_id')->whereNotNull('sku')->where('sku', '!=', '')->whereColumn('sku', '!=', 'goods_id')->count()
+                : 0,
+            'temu3' => Schema::hasTable('temu3_metrics')
+                ? (int) Temu3Metric::query()->whereNotNull('goods_id')->whereNotNull('sku')->where('sku', '!=', '')->whereColumn('sku', '!=', 'goods_id')->count()
                 : 0,
             'ebay1' => Schema::hasTable('ebay_metrics')
                 ? (int) EbayMetric::query()->whereNotNull('sku')->whereNotNull('item_id')->whereColumn('item_id', '!=', 'sku')->count()

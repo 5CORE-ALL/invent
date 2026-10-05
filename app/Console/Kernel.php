@@ -612,6 +612,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu3', '', true, 7))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu3-sync-orders')
+            ->withoutOverlapping(55)
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('purchasingpower', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
@@ -776,6 +783,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('app:fetch-temu3-orders --days=60')
+            ->dailyAt('14:22')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-temu3-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('app:fetch-pls-sales-data --days=90')
             ->twiceDaily(9, 18)
             ->name('fetch-pls-sales-data')
@@ -796,6 +811,14 @@ class Kernel extends ConsoleKernel
             ->dailyAt('14:35')
             ->timezone('Asia/Kolkata')
             ->name('fetch-temu2-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-temu3-metrics')
+            ->dailyAt('14:45')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-temu3-metrics')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
@@ -2383,6 +2406,37 @@ class Kernel extends ConsoleKernel
             ->hourly()
             ->timezone('Asia/Kolkata')
             ->name('temu2-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Temu 3 Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->job(new \App\Jobs\SyncInventoryToTemu3)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('temu3-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('temu3'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu3-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        // Auto tracking from Shopify fulfillments (settings: push_tracking_to_temu3).
+        $schedule->job(new \App\Jobs\SyncTemu3TrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu3-sync-tracking')
+            ->withoutOverlapping(18)
+            ->appendOutputTo($log);
+
+        $schedule->command('temu3:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('temu3-sync-link-map')
             ->withoutOverlapping(55)
             ->runInBackground()
             ->appendOutputTo($log);

@@ -55,6 +55,10 @@ class MarketplaceTitlePushService
                     app(Temu2ApiService::class)->updateTitle($sku, $title),
                     'Temu2ApiService::updateTitle'
                 ),
+                'temu3' => $this->wrapArray(
+                    app(Temu3ApiService::class)->updateTitle($sku, $title),
+                    'Temu3ApiService::updateTitle'
+                ),
                 'reverb' => $this->wrapArray(
                     app(ReverbApiService::class)->updateTitle($sku, $title),
                     'ReverbApiService::updateTitle'

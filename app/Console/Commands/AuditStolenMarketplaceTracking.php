@@ -128,7 +128,7 @@ class AuditStolenMarketplaceTracking extends Command
             }
 
             $marketplaceCopy = in_array($channel, [
-                'doba', 'temu', 'temu2', 'ebay', 'ebay1', 'ebay2', 'ebay3',
+                'doba', 'temu', 'temu2', 'temu3', 'ebay', 'ebay1', 'ebay2', 'ebay3',
                 'tiktok', 'tiktok2', 'newegg', 'aliexpress', 'shein',
                 'walmart', 'faire', 'reverb',
             ], true);
@@ -529,7 +529,7 @@ GQL;
                 return 'doba';
             }
         }
-        foreach (['amazon', 'ebay2', 'ebay1', 'ebay3', 'ebay', 'newegg', 'aliexpress', 'tiktok2', 'tiktok', 'temu2', 'temu', 'shein', 'walmart', 'faire', 'reverb'] as $slug) {
+        foreach (['amazon', 'ebay2', 'ebay1', 'ebay3', 'ebay', 'newegg', 'aliexpress', 'tiktok2', 'tiktok', 'temu3', 'temu2', 'temu', 'shein', 'walmart', 'faire', 'reverb'] as $slug) {
             if (str_contains($src, $slug) || preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'-/', $tags)) {
                 return $slug;
             }

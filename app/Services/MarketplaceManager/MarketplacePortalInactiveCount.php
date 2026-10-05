@@ -79,6 +79,7 @@ final class MarketplacePortalInactiveCount
             'ebay3' => self::ebaySkus(3),
             'temu' => self::fromPortalAndJson('temu_metrics', 'listing_status', []),
             'temu2' => self::fromPortalAndJson('temu2_metrics', 'listing_status', []),
+            'temu3' => self::fromPortalAndJson('temu3_metrics', 'listing_status', []),
             'tiktok' => self::mergeUnique(
                 self::columnSkus('tiktok_products', 'listing_status', 'sku'),
                 self::jsonLiveInactiveSkus('tiktok_shop_listing_statuses')
@@ -213,6 +214,7 @@ final class MarketplacePortalInactiveCount
             'ebay3' => [['ebay_3_metrics', 'listing_status', 'sku', $ebaySkip]],
             'temu' => [['temu_metrics', 'listing_status', 'sku', $skip]],
             'temu2' => [['temu2_metrics', 'listing_status', 'sku', $skip]],
+            'temu3' => [['temu3_metrics', 'listing_status', 'sku', $skip]],
             'tiktok' => [['tiktok_products', 'listing_status', 'sku', $skip]],
             'tiktok2' => [['tiktok_products_two', 'listing_status', 'sku', $skip]],
             'amazon' => [['amazon_datsheets', 'listing_status', 'sku', $skip]],
@@ -263,6 +265,7 @@ final class MarketplacePortalInactiveCount
             'ebay3' => ['ebay_three_listing_statuses'],
             'temu' => ['temu_listing_statuses'],
             'temu2' => ['temu2_listing_statuses'],
+            'temu3' => ['temu3_listing_statuses'],
             'tiktok' => ['tiktok_shop_listing_statuses'],
             'tiktok2' => ['tiktok_two_shop_listing_statuses'],
             'amazon' => ['amazon_listing_statuses'],
@@ -299,6 +302,7 @@ final class MarketplacePortalInactiveCount
             'ebay3' => 'mm.ebay3.live_listings.v3',
             'temu' => 'mm.temu.live_listings.v2',
             'temu2' => 'mm.temu2.live_listings.v4',
+            'temu3' => 'mm.temu3.live_listings.v4',
             'amazon' => AmazonLiveListingsService::CACHE_KEY,
             'reverb' => ReverbLiveListingsService::CACHE_KEY,
             'shein' => SheinLiveListingsService::CACHE_KEY,

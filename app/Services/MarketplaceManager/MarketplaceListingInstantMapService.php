@@ -30,6 +30,8 @@ use App\Models\SheinListingStatus;
 use App\Models\SheinMmMetric;
 use App\Models\Temu2ListingStatus;
 use App\Models\Temu2Metric;
+use App\Models\Temu3ListingStatus;
+use App\Models\Temu3Metric;
 use App\Models\TemuListingStatus;
 use App\Models\TemuMetric;
 use App\Models\TikTokProduct;
@@ -220,6 +222,18 @@ class MarketplaceListingInstantMapService
                 ],
                 'writes' => [
                     ['table' => 'temu2_metrics', 'sku' => 'sku', 'id' => 'goods_id', 'model' => Temu2Metric::class],
+                ],
+            ],
+            'temu3' => [
+                'label' => 'Temu 3',
+                'id_label' => 'Temu goods ID',
+                'id_key' => 'goods_id',
+                'status_model' => Temu3ListingStatus::class,
+                'lookups' => [
+                    ['table' => 'temu3_metrics', 'sku' => 'sku', 'id' => 'goods_id'],
+                ],
+                'writes' => [
+                    ['table' => 'temu3_metrics', 'sku' => 'sku', 'id' => 'goods_id', 'model' => Temu3Metric::class],
                 ],
             ],
             'reverb' => [
@@ -642,6 +656,7 @@ class MarketplaceListingInstantMapService
                 'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify([$sku]),
                 'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify([$sku]),
                 'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'temu3' => app(Temu3InventorySyncService::class)->syncSkusFromShopify([$sku]),
                 'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify([$sku]),
                 'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify([$sku]),
                 'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify([$sku]),

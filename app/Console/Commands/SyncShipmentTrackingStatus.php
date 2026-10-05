@@ -301,6 +301,7 @@ class SyncShipmentTrackingStatus extends Command
         $sources = [
             ['temu_orders', 'carrier'],
             ['temu2_orders', 'carrier'],
+            ['temu3_api_orders', 'carrier'],
             ['purchasing_power_sales', 'carrier'], // may fall back to NULL carrier
             ['doba_daily_data', 'carrier_name'],
             ['shopify_raw_orders', 'tracking_company'], // legacy cache rows only — no Shopify API

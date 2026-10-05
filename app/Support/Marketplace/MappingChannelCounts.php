@@ -60,6 +60,7 @@ class MappingChannelCounts
         'bestbuyusa' => ['label' => 'BestBuy USA', 'mi_key' => 'bestbuy_not_map_count'],
         'temu' => ['label' => 'Temu', 'mi_key' => 'temu_not_map_count', 'loader' => 'temu'],
         'temu2' => ['label' => 'Temu 2', 'loader' => 'temu2'],
+        'temu3' => ['label' => 'Temu 3', 'loader' => 'temu3'],
         'shein' => ['label' => 'Shein', 'mi_key' => 'shein_not_map_count', 'loader' => 'shein'],
         'newegg' => ['label' => 'Newegg', 'mi_key' => 'newegg_not_map_count'],
         'neweggb2c' => ['label' => 'Newegg', 'mi_key' => 'newegg_not_map_count'],
@@ -297,7 +298,7 @@ class MappingChannelCounts
 
         $order = [
             'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
-            'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
+            'temu', 'temu2', 'temu3', 'shein', 'newegg', 'aliexpress',
             'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
             'doba', 'purchasingpower', 'alibaba', 'b5cb2b',
         ];
@@ -329,7 +330,7 @@ class MappingChannelCounts
                 'listings_url' => self::listingsUrlForSlug($slug),
                 // mi_key MapIssues channels + pricing loaders that expose SKU detail
                 'has_sku_detail' => isset(self::$sources[$slug]['mi_key'])
-                    || in_array($slug, ['tiktok', 'tiktok2', 'shein', 'pls', 'temu', 'temu2', 'b5cb2b'], true)
+                    || in_array($slug, ['tiktok', 'tiktok2', 'shein', 'pls', 'temu', 'temu2', 'temu3', 'b5cb2b'], true)
                     || MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
                 'api_status' => $api['api_status'],
                 'api_connected' => $api['api_connected'],
@@ -602,7 +603,7 @@ class MappingChannelCounts
     {
         return [
             'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
-            'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
+            'temu', 'temu2', 'temu3', 'shein', 'newegg', 'aliexpress',
             'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
             'doba', 'purchasingpower', 'alibaba', 'b5cb2b',
         ];
@@ -702,7 +703,7 @@ class MappingChannelCounts
         $rows = [];
         $order = [
             'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
-            'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
+            'temu', 'temu2', 'temu3', 'shein', 'newegg', 'aliexpress',
             'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
             'doba', 'purchasingpower', 'alibaba', 'b5cb2b',
         ];
@@ -868,6 +869,7 @@ class MappingChannelCounts
             'bestbuy' => ['bestbuy_usa_products', 'bestbuy_usa_listing_statuses'],
             'temu' => ['temu_metrics'],
             'temu2' => ['temu2_metrics', 'temu2_listing_statuses'],
+            'temu3' => ['temu3_metrics', 'temu3_listing_statuses'],
             'shein' => ['shein_metric', 'shein_pricing_prices', 'shein_listing_statuses'],
             'newegg' => ['newegg_metric', 'newegg_pricing_prices'],
             'aliexpress' => ['aliexpress_metric', 'aliexpress_pricing_prices', 'aliexpress_listing_statuses'],
