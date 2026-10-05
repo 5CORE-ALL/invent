@@ -190,14 +190,13 @@
                         </select>
 
                         {{-- LQS filter --}}
-                        <select id="amz-score-filter" class="form-select form-select-sm" style="width:168px;">
+                        <select id="amz-score-filter" class="form-select form-select-sm" style="width:140px;">
                             <option value="all" selected>All LQS</option>
-                            <option value="80-100">A (80–100)</option>
-                            <option value="70-79">B (70–79)</option>
-                            <option value="60-69">C (60–69)</option>
-                            <option value="50-59">D (50–59)</option>
-                            <option value="below-50">Poor (under 50)</option>
-                            <option value="below-80">Below 80</option>
+                            <option value="8-10">High (8-10)</option>
+                            <option value="6-7">Good (6-7)</option>
+                            <option value="4-5">Medium (4-5)</option>
+                            <option value="1-3">Low (1-3)</option>
+                            <option value="below-9">Below 9</option>
                             <option value="missing">No LQS</option>
                         </select>
 
@@ -239,18 +238,18 @@
                                   data-metric="avg_dil" style="font-weight:700;color:#111;cursor:pointer;"
                                   title="Dilution % · Click for trend">DIL: 0%</span>
                             <span class="badge bg-success fs-6 p-2 amz-badge-chart" id="amz-avg-lqs-badge"
-                                  data-metric="avg_lqs" style="font-weight:700;cursor:pointer;" title="Amazon listing completeness, 0–100. 80+ is acceptable. Click for trend">LQS: –</span>
+                                  data-metric="avg_lqs" style="font-weight:700;cursor:pointer;" title="Jungle Scout LQS, same 0–10 number. Click for trend">LQS: –</span>
                             <span class="badge bg-secondary fs-6 p-2 amz-badge-chart" id="amz-avg-rating-badge"
                                   data-metric="avg_rating" style="font-weight:700;cursor:pointer;" title="Click for trend">Rating: –</span>
                             <span class="badge fs-6 p-2 amz-badge-chart" id="amz-lqs-below9-badge"
                                   data-metric="lqs_below_9_count"
                                   style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;"
-                                  title="SKUs below Amazon's acceptable score of 80 · Click for trend">&lt; 80: –</span>
+                                  title="SKUs with LQS score below 9 · Click for trend">&lt; 9: –</span>
                             <span class="badge fs-6 p-2" id="amz-cvr-badge"
                                   style="font-weight:700;background:#146eb4;color:#fff;cursor:pointer;" title="CVR = Total Sold ÷ Total Sessions × 100 · Click for trend">CVR: –</span>
                             <span class="badge fs-6 p-2" id="amz-js-refresh-badge"
                                   style="font-weight:700;background:#198754;color:#fff;cursor:pointer;user-select:none;"
-                                  title="Refresh Jungle Scout rating and reviews. LQS is scored from the Amazon listing.">
+                                  title="Pull latest LQS data from Jungle Scout API">
                                 <i class="fas fa-sync-alt me-1" id="amz-js-refresh-icon"></i>Refresh
                             </span>
                         </div>
@@ -486,12 +485,11 @@
             const hasLqs = d.lqs !== null && d.lqs !== '' && !isNaN(lqs);
             if (lqsFilter === 'missing') return !hasLqs;
             if (!hasLqs) return false;
-            if (lqsFilter === '80-100') return lqs >= 80;
-            if (lqsFilter === '70-79')  return lqs >= 70 && lqs < 80;
-            if (lqsFilter === '60-69')  return lqs >= 60 && lqs < 70;
-            if (lqsFilter === '50-59')  return lqs >= 50 && lqs < 60;
-            if (lqsFilter === 'below-50') return lqs < 50;
-            if (lqsFilter === 'below-80') return lqs < 80;
+            if (lqsFilter === '8-10') return lqs >= 8;
+            if (lqsFilter === '6-7')  return lqs >= 6 && lqs < 8;
+            if (lqsFilter === '4-5')  return lqs >= 4 && lqs < 6;
+            if (lqsFilter === '1-3')  return lqs >= 1 && lqs < 4;
+            if (lqsFilter === 'below-9') return lqs < 9;
             return true;
         }
 
@@ -612,7 +610,7 @@
                 if (inv > 0) { dilSum += (l30 / inv) * 100; dilCount++; }
                 if (hasLqs) { lqsSum += lqs; lqsCount++; }
                 if (rating > 0) { ratingSum += rating; ratingCount++; }
-                if (hasLqs && lqs < 80) { lqsBelow9Count++; }
+                if (hasLqs && lqs < 9) { lqsBelow9Count++; }
             });
 
             const avgDil    = dilCount    > 0 ? dilSum    / dilCount    : 0;
@@ -627,7 +625,7 @@
             $('#amz-avg-lqs-badge').text('LQS: ' + (avgLqs > 0 ? avgLqs.toFixed(1) : '–'));
             $('#amz-avg-rating-badge').text('Rating: ' + (avgRating > 0 ? avgRating.toFixed(1) : '–'));
             $('#amz-cvr-badge').text('CVR: ' + (cvr !== null ? cvr.toFixed(1) + '%' : '–'));
-            $('#amz-lqs-below9-badge').text('< 80: ' + lqsBelow9Count);
+            $('#amz-lqs-below9-badge').text('< 9: ' + lqsBelow9Count);
         }
 
         $(document).ready(function() {
@@ -843,26 +841,19 @@
                         field: 'lqs',
                         sorter: 'number',
                         hozAlign: 'center',
-                        width: 62,
-                        headerTooltip: 'Amazon listing completeness, 0–100. 80 or above is acceptable.',
+                        width: 55,
+                        headerTooltip: 'Jungle Scout listing quality score, 0–10.',
                         formatter: function(cell) {
                             const d   = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const raw = cell.getValue();
-                            const lqs = parseFloat(raw);
-                            if (raw === null || raw === undefined || raw === '' || isNaN(lqs)) {
-                                return '<span style="color:#adb5bd;">–</span>';
-                            }
-                            const score = Math.round(lqs);
-                            let color = '#dc3545';
-                            if (score >= 80)      color = '#28a745';
-                            else if (score >= 70) color = '#3591dc';
-                            else if (score >= 60) color = '#ffc107';
-                            const grade = d.lqs_grade ? 'Grade ' + d.lqs_grade : 'Amazon completeness';
-                            const missing = d.lqs_missing ? '. Missing: ' + d.lqs_missing : '';
-                            const tip = (grade + ' · ' + score + '/100' + missing)
-                                .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-                            return `<span style="color:${color};font-weight:700;font-size:13px;" title="${tip}">${score}</span>`;
+                            const lqs = parseInt(cell.getValue(), 10);
+                            if (!lqs || isNaN(lqs)) return '<span style="color:#adb5bd;">–</span>';
+                            let color = '#6c757d';
+                            if (lqs >= 8)      color = '#28a745';
+                            else if (lqs >= 6) color = '#3591dc';
+                            else if (lqs >= 4) color = '#ffc107';
+                            else               color = '#dc3545';
+                            return `<span style="color:${color};font-weight:700;font-size:13px;">${lqs}</span>`;
                         }
                     },
                     {
@@ -1285,9 +1276,9 @@
                 total_l30:          'Total L30',
                 total_sessions:     'Sessions L30',
                 avg_dil:            'DIL%',
-                avg_lqs:            'LQS (0–100)',
+                avg_lqs:            'LQS',
                 avg_rating:         'Rating',
-                lqs_below_9_count:  'LQS < 80'
+                lqs_below_9_count:  'LQS < 9'
             };
 
             function amzBadgeFmt(v) {
