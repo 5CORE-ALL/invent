@@ -1966,7 +1966,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['message' => 'Hold issue updated successfully.']);
     })->name('customer.care.orders.on.hold.issues.update');
-    Route::post('/customer-care/orders-on-hold/issues/{id}/archive', function (int $id) {
+    $archiveOrdersOnHoldIssue = function (int $id) {
+        if (strtolower(trim((string) auth()->user()?->email)) !== 'president@5core.com') {
+            return response()->json(['message' => 'Only president@5core.com can archive records.'], 403);
+        }
+
         $row = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->first();
         if (! $row) {
             return response()->json(['message' => 'Record not found.'], 404);
@@ -2021,27 +2025,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         });
 
         return response()->json(['message' => 'Hold issue archived successfully.']);
-    })->name('customer.care.orders.on.hold.issues.archive');
-    Route::delete('/customer-care/orders-on-hold/issues/{id}', function (int $id) {
-        $exists = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->where('id', $id)->exists();
-        if (! $exists) {
-            return response()->json(['message' => 'Record not found.'], 404);
-        }
-
-        \Illuminate\Support\Facades\DB::transaction(function () use ($id) {
-            // Related rows first, then the issue itself. Hard delete (permanent).
-            \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
-                ->where('orders_on_hold_issue_id', $id)->delete();
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_labels')
-                ->where('issue_id', $id)->delete();
-            \Illuminate\Support\Facades\DB::table('orders_on_hold_options')
-                ->where('issue_id', $id)->delete();
-            \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
-                ->where('id', $id)->delete();
-        });
-
-        return response()->json(['message' => 'Record deleted permanently.']);
-    })->name('customer.care.orders.on.hold.issues.destroy');
+    };
+    Route::post('/customer-care/orders-on-hold/issues/{id}/archive', $archiveOrdersOnHoldIssue)
+        ->name('customer.care.orders.on.hold.issues.archive');
+    // Delete is a soft archive: the record, label, options and CC history are kept.
+    Route::delete('/customer-care/orders-on-hold/issues/{id}', $archiveOrdersOnHoldIssue)
+        ->name('customer.care.orders.on.hold.issues.destroy');
     Route::patch('/customer-care/orders-on-hold/issues/{id}/cc-action', function (\Illuminate\Http\Request $request, int $id) {
         $validated = $request->validate(['cc_action' => 'nullable|string|max:50']);
         $allowed = ['V/U Offer', 'Refunded', 'V/U Sent'];

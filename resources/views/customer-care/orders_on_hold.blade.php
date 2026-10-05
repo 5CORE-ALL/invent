@@ -221,6 +221,15 @@
             font-weight: normal;
         }
 
+        .orders-hold-toolbar > * {
+            flex: 0 0 auto;
+            margin: 0;
+        }
+
+        .orders-hold-toolbar .badge {
+            height: 31px;
+        }
+
         .rows-graph-dot {
             width: 12px;
             height: 12px;
@@ -313,6 +322,19 @@
             border-radius: 4px;
             background: #fff;
             padding: 2px;
+        }
+
+        td.hold-image-cell {
+            padding: 2px !important;
+        }
+
+        .hold-image-full {
+            display: block;
+            width: 100%;
+            min-width: 56px;
+            height: auto;
+            max-height: 80px;
+            object-fit: contain;
         }
 
         .option-zoom {
@@ -505,7 +527,7 @@
             <div class="card mt-3">
                 <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
                     <h5 class="mb-0">{{ $recordsTitle ?? 'Orders On Hold Records' }}</h5>
-                    <div class="d-flex align-items-center gap-2 ms-auto flex-wrap">
+                    <div class="d-flex align-items-center justify-content-end gap-2 ms-auto flex-wrap orders-hold-toolbar">
                         {{-- Quick search: case-insensitive substring match across SKU, parent,
                              order #, marketplaces, issue/action text, root-cause, dept and
                              created-by. Runs client-side on holdIssueRows + the dept filter. --}}
@@ -529,7 +551,7 @@
                             <span class="text-muted small">to</span>
                             <input type="date" id="orders-hold-date-to" class="form-control form-control-sm" style="width: 140px;" aria-label="To date">
                         </div>
-                        <select id="dept-filter-select" class="form-select form-select-sm" style="min-width: 180px;">
+                        <select id="dept-filter-select" class="form-select form-select-sm" style="width: 200px;">
                             <option value="">All Departments</option>
                         </select>
                         <span class="badge bg-primary fs-6 text-nowrap d-inline-flex align-items-center gap-2" title="Rows shown in the table">
@@ -1070,6 +1092,7 @@
             const skuSearchUrl = @json(route('customer.care.followups.skus'));
             const skuDetailsUrl = @json(route('customer.care.orders.on.hold.sku.details'));
             const recordsListUrl = @json(route('customer.care.orders.on.hold.issues.index'));
+            const canArchiveRecords = @json(strtolower(trim((string) auth()->user()?->email)) === 'president@5core.com');
             const recordsStoreUrl = @json(route('customer.care.orders.on.hold.issues.store'));
             const recordsUpdateBaseUrl = @json(url('/customer-care/orders-on-hold/issues'));
             const historyListUrl = @json(route('customer.care.orders.on.hold.history.index'));
@@ -1097,7 +1120,7 @@
             function skuImageHtml(row) {
                 const url = String(row?.image_url || '').trim();
                 if (!url) return '<span class="text-muted">—</span>';
-                return '<img src="' + escAttr(url) + '" alt="" class="sku-thumb option-zoom" loading="lazy">';
+                return '<img src="' + escAttr(url) + '" alt="" class="hold-image-full option-zoom" loading="lazy">';
             }
 
             function mLinkHtml(row) {
@@ -1402,7 +1425,7 @@
             }
 
             function rowDateKey(r) {
-                const raw = String(r?.order_date || r?.created_at || '').trim();
+                const raw = String(r?.order_date || r?.created_at_raw || '').trim();
                 return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : '';
             }
 
@@ -1640,12 +1663,13 @@
                         '<div class="hold-close-actions">' +
                         '<button type="button" class="btn btn-sm hold-action-btn hold-edit-btn" data-id="' + row.id +
                         '" title="Edit"><i class="bi bi-pencil-fill"></i></button>' +
-                        '<button type="button" class="btn btn-sm hold-action-btn hold-delete-btn" data-id="' + row.id +
-                        '" title="Delete permanently"><i class="bi bi-trash-fill"></i></button>' +
+                        (canArchiveRecords ?
+                            '<button type="button" class="btn btn-sm hold-action-btn hold-delete-btn" data-id="' + row.id +
+                            '" title="Archive"><i class="bi bi-trash-fill"></i></button>' : '') +
                         '</div>';
                     return '<tr>' +
                         '<td>' + escapeHtml(row.id) + '</td>' +
-                        '<td>' + skuImageHtml(row) + '</td>' +
+                        '<td class="hold-image-cell">' + skuImageHtml(row) + '</td>' +
                         '<td>' + escapeHtml(row.sku) + '</td>' +
                         '<td>' + shopifyCellHtml(row.sku) + '</td>' +
                         '<td class="order-num-cell">' + (row.order_number ?
@@ -1742,6 +1766,9 @@
                     image_url: row?.image_url ?? '',
                     m_link: row?.m_link ?? '',
                     order_number: row?.order_number ?? '',
+                    shopify_order_number: row?.shopify_order_number ?? '',
+                    order_date: row?.order_date ?? '',
+                    order_date_display: row?.order_date_display ?? '',
                     qty: row?.qty ?? 0,
                     order_qty: row?.order_qty ?? '',
                     parent: row?.parent ?? '',
@@ -1772,6 +1799,7 @@
                     },
                     created_by: row?.created_by ?? 'System',
                     created_at: formatDateToMonthDay(row?.created_at_display ?? row?.created_at ?? ''),
+                    created_at_raw: row?.created_at ?? '',
                 };
             }
 
@@ -1902,7 +1930,11 @@
             }
 
             async function archiveRecord(recordId) {
-                if (!confirm('Archive this record?')) return;
+                if (!canArchiveRecords) {
+                    showAlert('Only president@5core.com can archive records.');
+                    return;
+                }
+                if (!confirm('Archive this record?\nIt will be removed from this list but kept, along with its label, options and CC history.')) return;
                 try {
                     const response = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(recordId) + '/archive', {
                         method: 'POST',
@@ -1923,32 +1955,6 @@
                     showAlert(data?.message || 'Hold issue archived successfully.', 'success');
                 } catch (error) {
                     showAlert('Unable to archive record. Please try again.');
-                }
-            }
-
-            async function deleteRecord(recordId) {
-                if (!confirm(
-                        'Permanently delete this record and all its related data (label, options, CC history)?\nThis cannot be undone.'
-                    )) return;
-                try {
-                    const response = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(recordId), {
-                        method: 'DELETE',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'X-CSRF-TOKEN': csrfToken,
-                        },
-                    });
-                    const data = await response.json();
-                    if (!response.ok) {
-                        alert(data?.message || 'Unable to delete record.');
-                        return;
-                    }
-                    holdIssueRows = holdIssueRows.filter(r => Number(r.id) !== Number(recordId));
-                    renderRows();
-                    loadHoldIssueHistoryRows();
-                } catch (error) {
-                    alert('Unable to delete record. Please try again.');
                 }
             }
 
@@ -2198,7 +2204,7 @@
 
                 const deleteBtn = event.target.closest('.hold-delete-btn');
                 if (deleteBtn) {
-                    deleteRecord(deleteBtn.getAttribute('data-id'));
+                    archiveRecord(deleteBtn.getAttribute('data-id'));
                 }
             });
 
@@ -2767,9 +2773,8 @@
                 const graphModalEl = document.getElementById('rowsGraphModal');
                 const canvas = document.getElementById('rowsGraphCanvas');
                 const subtitle = document.getElementById('rowsGraphSubtitle');
-                if (!dot || !graphModalEl || !canvas || typeof bootstrap === 'undefined') return;
+                if (!dot || !graphModalEl || !canvas) return;
 
-                const graphModal = new bootstrap.Modal(graphModalEl);
                 let chart = null;
 
                 function ymdToDate(ymd) {
@@ -2847,8 +2852,14 @@
                 }
 
                 dot.addEventListener('click', (e) => {
+                    e.preventDefault();
                     e.stopPropagation();
-                    graphModal.show();
+                    const graphModal = window.bootstrap?.Modal?.getOrCreateInstance(graphModalEl);
+                    if (graphModal) {
+                        graphModal.show();
+                    } else {
+                        showAlert('Could not open the graph. Please reload the page.');
+                    }
                 });
                 graphModalEl.addEventListener('shown.bs.modal', render);
             })();
