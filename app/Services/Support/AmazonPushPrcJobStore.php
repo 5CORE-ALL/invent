@@ -4,6 +4,8 @@ namespace App\Services\Support;
 
 use App\Models\AmazonDatasheet;
 use App\Services\AmazonSpApiService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * File-backed Amazon Push Prc job state (survives page refresh).
@@ -465,14 +467,17 @@ class AmazonPushPrcJobStore
             }
             $sku = trim((string) ($task['sku'] ?? ''));
             $std = isset($task['std']) ? round((float) $task['std'], 2) : 0.0;
+            $effectiveIn = isset($task['effective']) && is_numeric($task['effective'])
+                ? round((float) $task['effective'], 2)
+                : null;
+            if (! ($std > 0) && $effectiveIn !== null && $effectiveIn > 0) {
+                $std = $effectiveIn;
+            }
             if ($sku === '' || ! ($std > 0)) {
                 continue;
             }
             $sale = isset($task['sale']) && is_numeric($task['sale']) ? round((float) $task['sale'], 2) : null;
             $zeroSold = ! empty($task['zero_sold']);
-            $effectiveIn = isset($task['effective']) && is_numeric($task['effective'])
-                ? round((float) $task['effective'], 2)
-                : null;
             if ($sale !== null && $sale <= 0) {
                 $sale = null;
             } elseif ($sale !== null && ! $zeroSold && $sale >= $std) {
@@ -608,13 +613,18 @@ class AmazonPushPrcJobStore
     }
 
     /**
+     * Price the blue badge compares to S PRC: Amazon's listing price when we
+     * have it, otherwise the datasheet price.
+     *
      * @param  list<string>  $skus
      * @return array<string, float>
      */
-    private function listingPricesForSkus(array $skus): array
+    public function listingPricesForSkus(array $skus): array
     {
         $out = [];
-        $skus = array_values(array_unique(array_filter($skus)));
+        $skus = array_values(array_unique(array_filter(array_map(static function ($sku) {
+            return strtoupper(trim((string) $sku));
+        }, $skus))));
         if ($skus === []) {
             return $out;
         }
@@ -622,6 +632,16 @@ class AmazonPushPrcJobStore
             foreach (AmazonDatasheet::query()->whereIn('sku', $chunk)->get(['sku', 'price']) as $row) {
                 $key = strtoupper(trim((string) $row->sku));
                 $price = (float) ($row->price ?? 0);
+                if ($key !== '' && $price > 0) {
+                    $out[$key] = $price;
+                }
+            }
+            if (! Schema::hasTable('amazon_buybox_data')) {
+                continue;
+            }
+            foreach (DB::table('amazon_buybox_data')->whereIn('sku', $chunk)->where('our_listing_price', '>', 0)->get(['sku', 'our_listing_price']) as $row) {
+                $key = strtoupper(trim((string) $row->sku));
+                $price = (float) ($row->our_listing_price ?? 0);
                 if ($key !== '' && $price > 0) {
                     $out[$key] = $price;
                 }

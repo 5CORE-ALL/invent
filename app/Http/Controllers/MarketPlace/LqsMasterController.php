@@ -13,7 +13,9 @@ use App\Models\ShopifySku;
 use App\Models\JungleScoutProductData;
 use App\Models\LqsHistory;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonListingRaw;
 use App\Models\AmazonProductReview;
+use App\Services\Lqs\AmazonListingCompletenessScorer;
 use App\Models\LqsAmzHistory;
 use App\Models\LqsAmzAction;
 use Illuminate\Http\Request;
@@ -673,7 +675,8 @@ class LqsMasterController extends Controller
      *   - ProductMaster        → parent / SKU grouping
      *   - AmazonDatasheet      → ASIN, price, units_ordered_l30, sessions_l30
      *   - ShopifySku           → inventory (inv), image_src
-     *   - JungleScoutProductData → LQS, rating, reviews (matched by ASIN first, then SKU)
+     *   - amazon_listings_raw + product A+ content → Amazon listing completeness (0–100)
+     *   - JungleScoutProductData → rating and reviews (matched by ASIN first, then SKU)
      *   - AmazonProductReview → rating and review count when Jungle Scout has none
      */
     public function getLqsAmzData(Request $request)
@@ -742,6 +745,8 @@ class LqsMasterController extends Controller
             }
 
             [$reviewsByAsin, $reviewsBySku] = $this->amazonReviewIndexes();
+            [$listingsBySku, $listingsByAsin] = $this->amazonListingIndexes($normalizeSku);
+            $lqsScorer = new AmazonListingCompletenessScorer();
 
             $rows = [];
             foreach ($productMastersBySku->keys() as $normalizedSku) {
@@ -769,8 +774,8 @@ class LqsMasterController extends Controller
                     $imageSrc = "https://images-na.ssl-images-amazon.com/images/P/{$asin}.01.THUMBZZZ.jpg";
                 }
 
-                // Resolve LQS / rating / reviews from JungleScout
-                $lqs     = null;
+                // Rating and reviews still come from Jungle Scout. LQS is Amazon's
+                // own listing-completeness score, scored below from the listing.
                 $rating  = null;
                 $reviews = null;
 
@@ -800,18 +805,7 @@ class LqsMasterController extends Controller
                     if (!empty($entry['rating']) && $entry['rating'] > 0) {
                         $rating  = (float) $entry['rating'];
                         $reviews = isset($entry['reviews']) ? (int) $entry['reviews'] : null;
-                        if (isset($entry['listing_quality_score']) && is_numeric($entry['listing_quality_score'])) {
-                            $lqs = (float) $entry['listing_quality_score'];
-                        }
                         break;
-                    }
-                }
-                if ($lqs === null) {
-                    foreach ($jsEntries as $entry) {
-                        if (isset($entry['listing_quality_score']) && is_numeric($entry['listing_quality_score']) && $entry['listing_quality_score'] !== '') {
-                            $lqs = (float) $entry['listing_quality_score'];
-                            break;
-                        }
                     }
                 }
 
@@ -829,6 +823,14 @@ class LqsMasterController extends Controller
                         $reviews = $savedCount;
                     }
                 }
+
+                $listing = $listingsBySku[$normalizedSku]
+                    ?? $listingsBySku[$amazonCompact]
+                    ?? ($asin !== '' ? ($listingsByAsin[$asin] ?? null) : null);
+                $lqsResult = $listing
+                    ? $lqsScorer->scoreStored($listing, $productMaster->amazon_aplus_content ?? null)
+                    : null;
+                $lqs = $lqsResult['score'] ?? null;
 
                 $displaySku = $productMaster->sku ?? $normalizedSku;
                 $parent     = $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null;
@@ -854,6 +856,8 @@ class LqsMasterController extends Controller
                     'reviews'            => $reviews,
                     'cvr'                => $cvr,
                     'lqs'                => $lqs,
+                    'lqs_grade'          => $lqsResult['grade'] ?? null,
+                    'lqs_missing'        => $lqsResult ? implode(', ', $lqsResult['missing']) : null,
                     'has_action'         => $hasAction,
                     'latest_action_text' => $hasAction ? $latestAction->action : null,
                     'latest_action_user' => $hasAction ? ($latestAction->user->name ?? 'Unknown') : null,
@@ -888,6 +892,8 @@ class LqsMasterController extends Controller
                     'reviews'            => null,
                     'cvr'                => $totalSess > 0 ? round(($totalL30 / $totalSess) * 100, 2) : null,
                     'lqs'                => null,
+                    'lqs_grade'          => null,
+                    'lqs_missing'        => null,
                     'has_action'         => false,
                     'latest_action_text' => null,
                     'latest_action_user' => null,
@@ -910,6 +916,36 @@ class LqsMasterController extends Controller
     }
 
     /**
+     * @param  callable(mixed): string  $normalizeSku
+     * @return array{0: array<string, AmazonListingRaw>, 1: array<string, AmazonListingRaw>}
+     */
+    private function amazonListingIndexes(callable $normalizeSku): array
+    {
+        $bySku = [];
+        $byAsin = [];
+        if (! Schema::hasTable('amazon_listings_raw')) {
+            return [$bySku, $byAsin];
+        }
+
+        foreach (AmazonListingRaw::query()->get() as $listing) {
+            foreach ([
+                $normalizeSku($listing->seller_sku),
+                AmazonDatasheet::normalizeSkuForLookup($listing->seller_sku),
+            ] as $skuKey) {
+                if ($skuKey !== '' && ! isset($bySku[$skuKey])) {
+                    $bySku[$skuKey] = $listing;
+                }
+            }
+            $asin = strtoupper(trim((string) ($listing->asin1 ?? '')));
+            if ($asin !== '' && ! isset($byAsin[$asin])) {
+                $byAsin[$asin] = $listing;
+            }
+        }
+
+        return [$bySku, $byAsin];
+    }
+
+    /**
      * Save daily LQS Amz snapshot for badge trend tracking.
      */
     private function saveLqsAmzSnapshot(array $rows): void
@@ -928,7 +964,9 @@ class LqsMasterController extends Controller
                 $inv    = (float) ($r['inv']      ?? 0);
                 $l30    = (float) ($r['l30']      ?? 0);
                 $sess   = (float) ($r['sessions'] ?? 0);
-                $lqs    = (float) ($r['lqs']      ?? 0);
+                $lqsRaw = $r['lqs'] ?? null;
+                $hasLqs = $lqsRaw !== null && $lqsRaw !== '';
+                $lqs    = $hasLqs ? (float) $lqsRaw : null;
                 $rating = (float) ($r['rating']   ?? 0);
 
                 $totalInv  += $inv;
@@ -936,9 +974,9 @@ class LqsMasterController extends Controller
                 $totalSess += $sess;
 
                 if ($inv > 0)    { $dilSum    += ($l30 / $inv) * 100; $dilCount++; }
-                if ($lqs > 0)    { $lqsSum    += $lqs;    $lqsCount++; }
+                if ($hasLqs) { $lqsSum += $lqs; $lqsCount++; }
                 if ($rating > 0) { $ratingSum += $rating; $ratingCount++; }
-                if ($lqs > 0 && $lqs < 9) { $lqsBelow9++; }
+                if ($hasLqs && $lqs < 80) { $lqsBelow9++; }
             }
 
             $avgDil    = $dilCount    > 0 ? $dilSum    / $dilCount    : 0;

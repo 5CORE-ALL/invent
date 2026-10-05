@@ -1864,7 +1864,7 @@ class OverallAmazonController extends Controller
             ];
         }
 
-        $tasks = $this->dropPushPrcTasksAlreadyAtListingPrice($tasks);
+        $tasks = $this->dropPushPrcTasksAlreadyAtListingPrice($tasks, $store);
         $blocked = 0;
         if ($request->boolean('retry_failed')) {
             $retrySkus = [];
@@ -2010,7 +2010,7 @@ class OverallAmazonController extends Controller
      * @param  list<array<string, mixed>>  $tasks
      * @return list<array<string, mixed>>
      */
-    private function dropPushPrcTasksAlreadyAtListingPrice(array $tasks): array
+    private function dropPushPrcTasksAlreadyAtListingPrice(array $tasks, AmazonPushPrcJobStore $store): array
     {
         $skus = [];
         foreach ($tasks as $task) {
@@ -2024,15 +2024,7 @@ class OverallAmazonController extends Controller
             return [];
         }
 
-        $priceBySku = [];
-        foreach (array_chunk($skus, 400) as $chunk) {
-            foreach (AmazonDatasheet::query()->whereIn('sku', $chunk)->get(['sku', 'price']) as $row) {
-                $key = strtoupper(trim((string) $row->sku));
-                if ($key !== '') {
-                    $priceBySku[$key] = (float) ($row->price ?? 0);
-                }
-            }
-        }
+        $priceBySku = $store->listingPricesForSkus($skus);
 
         $out = [];
         foreach ($tasks as $task) {
