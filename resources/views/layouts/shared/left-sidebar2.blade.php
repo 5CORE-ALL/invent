@@ -655,7 +655,15 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
+                            <a href="{{ route('customer.care.orders.on.hold') }}">
+                                Orders On Hold (CC Action)
+                                @php
+                                    $ordersOnHoldSidebarCount = \App\Support\Badges\CustomerCareBadgeCalculator::ordersOnHoldRowsCached();
+                                @endphp
+                                @if($ordersOnHoldSidebarCount > 0)
+                                    <span class="badge bg-danger rounded-pill ms-auto" title="Orders On Hold (CC Action) rows">{{ number_format($ordersOnHoldSidebarCount) }}</span>
+                                @endif
+                            </a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.qc.packing') }}">QC / Packaging</a>

@@ -332,6 +332,7 @@ class Temu3SyncController extends Controller
         $counts['mismatch_inactive'] = 0;
         $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
         $counts['linked_with_inv'] = $counts['matched'];
+        $counts['linked_mismatch'] = count($linkedMismatchQty);
 
         $portal = $this->temuPortalStatusSkuLists($liveService);
         $matchedInactive = $portal['inactive'];
@@ -344,6 +345,7 @@ class Temu3SyncController extends Controller
             'allLinkedVerified' => $allLinkedVerified,
             'matchedQty' => $matchedQty,
             'mismatchQty' => $mismatchQty,
+            'linkedMismatchQty' => $linkedMismatchQty,
             'zeroQty' => $zeroQty,
             'matchedActive' => $matchedActive,
             'matchedInactive' => $matchedInactive,
@@ -629,6 +631,7 @@ class Temu3SyncController extends Controller
         $counts = $tabs['counts'];
         $matchedQty = $tabs['matchedQty'];
         $mismatchQty = $tabs['mismatchQty'];
+        $linkedMismatchQty = $tabs['linkedMismatchQty'] ?? [];
         $zeroQty = $tabs['zeroQty'];
         $matchedActive = $tabs['matchedActive'];
         $matchedInactive = $tabs['matchedInactive'];

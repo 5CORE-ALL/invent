@@ -2260,6 +2260,7 @@
                                         <option value="Packaging">Packaging</option>
                                         <option value="Chargeback">Chargeback</option>
                                         <option value="Orders on Hold">Orders on Hold</option>
+                                        <option value="Mapping / Software">Mapping / Software</option>
                                         <option value="Other">Other</option>
                                     </select>
                                     @if (empty($lockedDepartment ?? null))

@@ -825,7 +825,7 @@
                 style="font-weight:bold;cursor:pointer;"
                 onclick="window.location.href='{{ route('customer.care.orders.on.hold') }}'"
                 role="button"
-                title="Open on hold / Mapping"
+                title="Open Orders On Hold (CC Action)"
             >On Hold</span>
             <span
                 class="badge bg-danger text-white fs-6 p-2"
