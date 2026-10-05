@@ -1,4 +1,4 @@
-# Invent Chat Android (TWA)
+# 5Core Chat Android (TWA)
 
 Package ID (locked): `com.fivecore.invent.chat`
 

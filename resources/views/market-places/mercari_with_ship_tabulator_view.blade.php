@@ -688,7 +688,7 @@
                             const comparePrice = parseFloat(d.price || 0) || 0;
                             const dot = mercWsStdPrcChangeDotHtml(std, comparePrice);
 
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
                         }
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
@@ -760,7 +760,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (L30 = 0) uses the lowest Target NROI. Dil outside the table uses the nearest slab. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
+                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. L30 = 0 still uses the Dil-matching slab. Dil outside the table uses the nearest slab. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
@@ -783,7 +783,7 @@
                         hozAlign: "center",
                         width: 92,
                         sorter: "number",
-                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. 0 Sold (L30 = 0) uses the lowest Target NROI. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. L30 = 0 still uses the Dil-matching slab. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             let value = (typeof chPromoTableSprice === 'function')

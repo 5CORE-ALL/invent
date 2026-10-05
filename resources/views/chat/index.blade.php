@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Chat', 'sidenav' => 'full', 'skipHighcharts' => true, 'hideInventSidebar' => true])
+@extends('layouts.vertical', ['title' => '5Core Chat', 'sidenav' => 'full', 'skipHighcharts' => true, 'hideInventSidebar' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -164,6 +164,13 @@
         .slack-msg__act button {
             border: 0; background: #fff; padding: 4px 8px; font-size: 12px; font-weight: 700; color: #1d1c1d;
         }
+        .slack-msg__act button.is-ack-delete {
+            color: #dc2626;
+            font-size: 16px;
+            line-height: 1;
+            padding: 4px 10px;
+        }
+        .slack-msg__act button.is-ack-delete:hover { background: #fee2e2; color: #b91c1c; }
         #slackAckDeleteModal .modal-dialog { max-width: 380px; }
         #slackAckDeleteModal .modal-content { border: none; border-radius: 16px; overflow: hidden; }
         #slackAckDeleteModal .modal-header {
@@ -367,8 +374,8 @@
 @section('content')
     <div class="slack" id="slackApp">
         <aside class="slack-nav">
-            <div class="slack-nav__ws">5Core</div>
-            <button type="button" class="slack-install" id="slackInstallBtn">Install Invent Chat</button>
+            <div class="slack-nav__ws">5Core Chat</div>
+            <button type="button" class="slack-install" id="slackInstallBtn">Install 5Core Chat</button>
             <div class="slack-status" id="slackConn">Connected</div>
             <div class="slack-nav__search">
                 <input type="search" id="slackSearch" placeholder="Find people or start a DM" autocomplete="off">
@@ -411,7 +418,7 @@
                     <div>
                     <h2 class="slack-head__name">
                         <span class="slack-presence-dot is-hidden" id="slackRoomDot" title=""></span>
-                        <span id="slackRoomName">Invent Chat</span>
+                        <span id="slackRoomName">5Core Chat</span>
                     </h2>
                     <p class="slack-head__sub" id="slackRoomSub">Pick a channel or teammate</p>
                     </div>
@@ -930,7 +937,7 @@
             '<button type="button" data-pin="' + m.id + '">' + (m.pinned ? 'Unpin' : 'Pin') + '</button>' +
             '<button type="button" data-save="' + m.id + '">' + (m.bookmarked ? 'Saved' : 'Save') + '</button>' +
             '<button type="button" data-task="' + m.id + '">Create Task</button>' +
-            '<button type="button" data-ad="' + m.id + '">A &amp; D</button>' +
+            '<button type="button" class="is-ack-delete" data-ad="' + m.id + '" title="Acknowledge and delete" aria-label="Acknowledge and delete"><i class="ri-delete-bin-fill" aria-hidden="true"></i></button>' +
             '</div>'
         );
         wrap.innerHTML = avatar + '<div style="flex:1;min-width:0">' +

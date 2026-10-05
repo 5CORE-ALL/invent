@@ -14,6 +14,7 @@ class StockBalanceTransferPreference extends Model
         'to_sku',
         'from_sku',
         'ratio',
+        'from_qty',
     ];
 
     public function user(): BelongsTo

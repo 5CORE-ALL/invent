@@ -177,6 +177,7 @@ class OverallAmazonController extends Controller
         // and "MS 080 WH 2 PCS" matches the datasheet's "MS 080 WH 2PC". Only ~1k rows.
         // Collisions (e.g. "SS ECO 2PK ORG WoB" vs "SSECO2PKORGWoB") are resolved per PM SKU.
         $amazonDatasheetsBySku = AmazonDatasheet::groupedByNormalizedSku();
+        $amazonSitePriceBySku = $this->amazonSitePriceBySku();
 
         // A L30 = real Amazon order units in the same Pacific L30 window as /amazon/daily-sales.
         $amazonL30UnitsBySku = [];
@@ -368,6 +369,14 @@ class OverallAmazonController extends Controller
                 $row['Sess7'] = $amazonSheet->sessions_l7 ?? 0;
                 $row['price'] = $amazonSheet->price;
                 $row['price_lmpa'] = $amazonSheet->price_lmpa;
+                $sitePrice = $amazonSitePriceBySku[$sku]
+                    ?? $amazonSitePriceBySku[$skuClean]
+                    ?? $amazonSitePriceBySku[$skuLookupKey]
+                    ?? $amazonSitePriceBySku[$amazonSheetKey]
+                    ?? null;
+                if ($sitePrice !== null && $sitePrice > 0) {
+                    $row['price'] = $sitePrice;
+                }
                 $row['sessions_l60'] = $amazonSheet->sessions_l60 ?? 0;
                 $row['units_ordered_l60'] = $amazonSheet->units_ordered_l60 ?? 0;
             } else {
@@ -1602,17 +1611,15 @@ class OverallAmazonController extends Controller
         if ($saleRaw !== null && $saleRaw !== '' && is_numeric($saleRaw)) {
             $saleFloat = round((float) $saleRaw, 2);
             if ($saleFloat > 0) {
-                // Amazon will not keep a Sale above Your Price. Dil S PRC is often
-                // above Std. Dropping that Sale used to push Std, write Std into
-                // amazon_datsheets.price, and the blue badge (Price != S PRC)
-                // counted the SKU again on refresh. Raise Your Price to the S PRC.
+                // Std cap: a suggested S PRC above Std stays at Std.
+                // When Std is higher, Your Price stays Std and S PRC is the Sales Price.
                 if ($saleFloat > $priceFloat) {
-                    Log::info('applyAmazonPrice: raising Your Price to S PRC', [
+                    Log::info('applyAmazonPrice: std cap — S PRC above Std', [
                         'sku' => $statusSku,
-                        'your_price_before' => $priceFloat,
+                        'std' => $priceFloat,
                         'sprice' => $saleFloat,
                     ]);
-                    $priceFloat = $saleFloat;
+                    $saleFloat = $priceFloat;
                 }
                 if ($saleFloat <= $priceFloat) {
                     $extras['sale_price'] = $saleFloat;
@@ -1726,8 +1733,8 @@ class OverallAmazonController extends Controller
                 'our_price' => $priceFloat,
                 'sale_price' => $pushedOffer['sale_price'],
                 'min_price' => $result['min_price'] ?? $pushedOffer['min_price'],
-                'max_price' => $extras['max_price']
-                    ?? ($result['max_price'] ?? round($priceFloat * 1.10, 2)),
+                'max_price' => $result['max_price']
+                    ?? AmazonSpApiService::maximumFromSale($saleBaseForDefaults, $priceFloat),
                 'business_price' => $result['business_price'] ?? $pushedOffer['business_price'],
             ]);
 
@@ -3281,6 +3288,35 @@ class OverallAmazonController extends Controller
     }
 
     /**
+     * Amazon.com listing price (our offer), keyed by SKU. This is the price
+     * customers see, which can differ from Your Price stored on the datasheet.
+     *
+     * @return array<string, float>
+     */
+    private function amazonSitePriceBySku(): array
+    {
+        if (! Schema::hasTable('amazon_buybox_data')) {
+            return [];
+        }
+
+        $map = [];
+        foreach (DB::table('amazon_buybox_data')->where('our_listing_price', '>', 0)->get(['sku', 'our_listing_price']) as $row) {
+            $sku = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $row->sku)));
+            if ($sku === '') {
+                continue;
+            }
+            $price = round((float) $row->our_listing_price, 2);
+            $map[$sku] = $price;
+            $compact = AmazonDatasheet::normalizeSkuForLookup($sku);
+            if ($compact !== '') {
+                $map[$compact] = $price;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
      * Same Price > landed LMP count as the /amazon-tabulator-view badge.
      * Lean: Product Master children + datasheet price + Shopify INV + Sku Link LMP.
      * Does not load the full tabulator payload (reviews, ads, parent summaries).
@@ -3299,6 +3335,7 @@ class OverallAmazonController extends Controller
         $this->lmpSkuGroupService->prepareForSkus($skus);
 
         $amazonDatasheetsBySku = AmazonDatasheet::groupedByNormalizedSku();
+        $amazonSitePriceBySku = $this->amazonSitePriceBySku();
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $lmpDetailsLookup = collect();
@@ -3334,6 +3371,13 @@ class OverallAmazonController extends Controller
                     ?? $amazonDatasheetsBySku->get($sku)
             );
             $price = $amazonSheet ? (float) ($amazonSheet->price ?? 0) : 0.0;
+            $sitePrice = $amazonSitePriceBySku[$sku]
+                ?? $amazonSitePriceBySku[strtoupper(str_replace("\xC2\xA0", ' ', trim((string) $pm->sku)))]
+                ?? $amazonSitePriceBySku[$amazonSheetKey]
+                ?? null;
+            if ($sitePrice !== null && $sitePrice > 0) {
+                $price = $sitePrice;
+            }
             if (! ($price > 0)) {
                 continue;
             }

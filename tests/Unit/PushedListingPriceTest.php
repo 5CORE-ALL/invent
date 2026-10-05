@@ -74,9 +74,9 @@ class PushedListingPriceTest extends TestCase
 
     public function test_amazon_live_pull_keeps_calculated_sprice_within_a_nickel(): void
     {
-        $this->assertSame(56.95, AmazonPushedPricePullService::livePriceToPersist(56.96, 56.95));
-        $this->assertSame(56.95, AmazonPushedPricePullService::livePriceToPersist(57.00, 56.95));
-        $this->assertNull(AmazonPushedPricePullService::livePriceToPersist(57.01, 56.95));
+        $this->assertSame(56.96, AmazonPushedPricePullService::livePriceToPersist(56.96, 56.95));
+        $this->assertSame(57.00, AmazonPushedPricePullService::livePriceToPersist(57.00, 56.95));
+        $this->assertSame(57.01, AmazonPushedPricePullService::livePriceToPersist(57.01, 56.95));
     }
 
     public function test_ebay_prefer_incoming_keeps_sprice_when_report_is_one_cent_off(): void

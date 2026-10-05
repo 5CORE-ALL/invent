@@ -12,7 +12,9 @@ class Announcement extends Model
     protected $fillable = [
         'user_id',
         'message',
+        'motivation',
         'images',
+        'gif_url',
         'announced_on',
         'posted_at',
         'created_by',
@@ -42,6 +44,11 @@ class Announcement extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(AnnouncementComment::class)->orderBy('id');
+    }
+
+    public function reactions(): HasMany
+    {
+        return $this->hasMany(AnnouncementReaction::class);
     }
 
     public function scopePosted(Builder $query): Builder

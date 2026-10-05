@@ -363,10 +363,13 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        // Faire has no LMP cap. Capping here was rewriting the Dil price so SNROI missed the slab.
+        // Faire has no LMP cap. Capping at LMP was rewriting the Dil price so SNROI missed the slab.
+        // No LMP still uses Std Prc as the maximum, same as every other blade.
+        $lmp = (float) ($row['lmp'] ?? 0);
+        $std = (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0);
         $sprice = $this->channel === 'faire'
-            ? round($raw, 2)
-            : AmazonDilGroiRule::capSpriceToLmp($raw, (float) ($row['lmp'] ?? 0), $lp, $ship, $margin);
+            ? AmazonDilGroiRule::capToStdWhenNoLmp(round($raw, 2), $lmp, $std)
+            : AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std);
 
         if (! empty($cfg['amz_floor'])) {
             $amz = (float) ($row['amz_price'] ?? 0);
@@ -436,6 +439,7 @@ class DilRuleSpriceApplyService
             if (! is_finite($raw) || $raw < 0.01) {
                 return null;
             }
+            $raw = AmazonDilGroiRule::capToStdWhenNoLmp($raw, $lmp, (float) ($row['std_price'] ?? 0));
             if ($this->aliexpressStopBlocks($raw, $lp, $ship, $margin)) {
                 return null;
             }
@@ -452,10 +456,14 @@ class DilRuleSpriceApplyService
             if (! is_finite($raw) || $raw < 0.01) {
                 return null;
             }
-            $sprice = $raw;
-            if ($al30 > 0) {
-                $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin);
-            }
+            $sprice = AmazonDilGroiRule::capSpriceToLmp(
+                $raw,
+                $lmp,
+                $lp,
+                $ship,
+                $margin,
+                (float) ($row['std_price'] ?? 0)
+            );
             if ($this->aliexpressStopBlocks($sprice, $lp, $ship, $margin)) {
                 return null;
             }
@@ -592,7 +600,7 @@ class DilRuleSpriceApplyService
         if (! empty($cfg['amz_floor']) || ! empty($cfg['a_l30'])) {
             $amzBySku = $this->amazonBySku($skus);
         }
-        $stdBySku = $this->channel === 'aliexpress' ? $this->amazonStdBySku($skus) : [];
+        $stdBySku = self::amazonStdBySku($skus);
         $aeLmpBySku = $this->channel === 'aliexpress' ? $this->aliexpressLmpBySku($skus) : [];
 
         $l30Overlay = [];
@@ -740,7 +748,7 @@ class DilRuleSpriceApplyService
      * @param  list<string>  $skus
      * @return array<string, float>
      */
-    protected function amazonStdBySku(array $skus): array
+    public static function amazonStdBySku(array $skus): array
     {
         if ($skus === [] || ! Schema::hasTable('amazon_data_view')) {
             return [];

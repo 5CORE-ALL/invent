@@ -3509,27 +3509,50 @@
             // 0 Sold (AL30 = 0): keep Target GROI% S PRC — do not cap at LMP.
             return !(typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d));
         }
+        /** Real Std Prc only. Listing price is not a stand-in when Std is blank. */
+        function chPromoStdCeiling(d) {
+            const raw = d && (d.STANDARD_PRICE != null && d.STANDARD_PRICE !== ''
+                ? d.STANDARD_PRICE
+                : (d.standard_price != null && d.standard_price !== ''
+                    ? d.standard_price
+                    : d.std_price));
+            const std = Number(raw);
+            return (isFinite(std) && std > 0) ? chPromoRound2(std) : 0;
+        }
+        /** Std Prc is the maximum when LMP is missing, or when LMP is above Std. */
+        function chPromoCapToStdWhenNoLmp(d, sprice) {
+            const s = chPromoRound2(sprice);
+            if (!(s > 0) || !d) return s;
+            const std = chPromoStdCeiling(d);
+            if (!(std > 0) || s + 0.0001 <= std) return s;
+            const lmp = chPromoLmp(d);
+            if (lmp > 0 && lmp + 0.0001 <= std) return s;
+            return std;
+        }
         function chPromoCapSpriceToLmp(d, sprice, extra) {
             extra = extra || {};
-            if (extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d)) {
+            if (extra.skip_lmp_cap) {
                 return chPromoRound2(sprice);
+            }
+            if (!chPromoShouldCapSpriceToLmp(d)) {
+                return chPromoCapToStdWhenNoLmp(d, sprice);
             }
             if (chPromoIsEbayChannel()) {
                 if (typeof ebayCapSpriceToLmp === 'function') return ebayCapSpriceToLmp(d, sprice);
                 if (typeof ebay2CapSpriceToLmp === 'function') return ebay2CapSpriceToLmp(d, sprice);
                 if (typeof ebay3CapSpriceToLmp === 'function') return ebay3CapSpriceToLmp(d, sprice);
-                if (!chPromoEbayShouldCapToLmp(d, sprice)) return chPromoRound2(sprice);
+                if (!chPromoEbayShouldCapToLmp(d, sprice)) return chPromoCapToStdWhenNoLmp(d, sprice);
                 const ebayLmp = chPromoLmp(d);
-                return ebayLmp > 0 ? chPromoRound2(ebayLmp) : chPromoRound2(sprice);
+                return ebayLmp > 0 ? chPromoRound2(ebayLmp) : chPromoCapToStdWhenNoLmp(d, sprice);
             }
             if (typeof chPromoIsSheinPromoChannel === 'function'
                 ? chPromoIsSheinPromoChannel()
                 : CHANNEL_PROMO_CHANNEL === 'shein') {
-                if (!chPromoEbayShouldCapToLmp(d, sprice)) return chPromoRound2(sprice);
+                if (!chPromoEbayShouldCapToLmp(d, sprice)) return chPromoCapToStdWhenNoLmp(d, sprice);
                 const sheinLmp = (typeof sheinEffectiveLmp === 'function')
                     ? sheinEffectiveLmp(d)
                     : chPromoLmp(d);
-                return sheinLmp > 0 ? chPromoRound2(sheinLmp) : chPromoRound2(sprice);
+                return sheinLmp > 0 ? chPromoRound2(sheinLmp) : chPromoCapToStdWhenNoLmp(d, sprice);
             }
             const getLmp = (typeof aeEffectiveLmp === 'function')
                 ? aeEffectiveLmp
@@ -3547,7 +3570,9 @@
                     ? chPromoIsBestbuyPromoChannel()
                     : CHANNEL_PROMO_CHANNEL === 'bestbuy') {
                     const amz = chPromoRound2(chPromoAmazonPrice(d));
-                    if (amz > 0 && capped > 0 && capped + 0.0001 < amz) return amz;
+                    if (amz > 0 && capped > 0 && capped + 0.0001 < amz) {
+                        return chPromoCapToStdWhenNoLmp(d, amz);
+                    }
                 }
                 return capped;
             }
@@ -3556,44 +3581,50 @@
             if (lmp > 0 && s + 0.0001 >= lmp) s = chPromoRound2(lmp);
             if (chPromoIsBestbuyPromoChannel()) {
                 const amz = chPromoRound2(chPromoAmazonPrice(d));
-                if (amz > 0 && s > 0 && s + 0.0001 < amz) return amz;
+                if (amz > 0 && s > 0 && s + 0.0001 < amz) s = amz;
             }
-            return s;
+            return chPromoCapToStdWhenNoLmp(d, s);
         }
         /** Discounted or LMP-capped value that must be persisted after a wipe. */
         function chPromoFinalSpriceToSave(d, fill, extra) {
             extra = extra || {};
             const requested = Number(fill);
             if (!(requested > 0)) return 0;
+            const finish = function(price) {
+                let n = chPromoRound2(price);
+                if (!(n > 0)) return 0;
+                if (!extra.skip_lmp_cap) n = chPromoCapToStdWhenNoLmp(d, n);
+                return chPromoRoundChannelSprice(n);
+            };
             if (d && chPromoIsTemuPromoChannel()) {
                 const zeroSold = typeof chPromoTemuZeroSoldSprice === 'function'
                     ? Number(chPromoTemuZeroSoldSprice(d))
                     : 0;
-                if (zeroSold > 0) return chPromoRound2(zeroSold);
+                if (zeroSold > 0) return finish(zeroSold);
                 if (typeof temuPrepareSpriceForSave === 'function') {
                     const v = Number(temuPrepareSpriceForSave(d, fill, extra));
-                    return v > 0 ? chPromoRound2(v) : 0;
+                    return v > 0 ? finish(v) : 0;
                 }
             }
             if (d && chPromoIsFairePromoChannel()) {
                 const zeroSold = typeof chPromoTemuZeroSoldSprice === 'function'
                     ? Number(chPromoTemuZeroSoldSprice(d))
                     : 0;
-                if (zeroSold > 0) return chPromoRound2(zeroSold);
+                if (zeroSold > 0) return finish(zeroSold);
                 if (typeof window.frRuleSprice === 'function') {
                     const opts = Object.assign({}, extra, {
                         candidate: requested,
                         use_passed_as_discounted: extra.use_passed_as_discounted === true || requested > 0,
                     });
                     const v = Number(window.frRuleSprice(d, opts));
-                    if (v > 0) return chPromoRound2(v);
+                    if (v > 0) return finish(v);
                 }
-                return chPromoRound2(requested);
+                return finish(requested);
             }
             if (d && (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' || CHANNEL_PROMO_CHANNEL === 'newegg')) {
                 const raw = chPromoRound2(fill);
                 const amzKeep = chPromoRound2(chPromoAmazonPrice(d));
-                if (raw > 0 && amzKeep > 0 && raw > amzKeep) return raw;
+                if (raw > 0 && amzKeep > 0 && raw > amzKeep) return finish(raw);
             }
             const skipCap = extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d);
             const afterAmz = d ? chPromoCapSpriceToAmz(d, fill) : chPromoRound2(fill);
@@ -3601,7 +3632,7 @@
                 ? chPromoRound2(afterAmz)
                 : (d ? chPromoCapSpriceToLmp(d, afterAmz, extra) : chPromoRound2(afterAmz));
             const out = d ? chPromoFloorShopifySpriceToAmz(d, capped) : capped;
-            return chPromoRoundChannelSprice(out);
+            return finish(out);
         }
         function chPromoWipeSpriceRow(row) {
             if (!row || typeof row.update !== 'function') return;

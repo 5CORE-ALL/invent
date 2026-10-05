@@ -283,7 +283,7 @@
     .amz-badge-chart,
     .tt-badge-chart,
     .pef-metric-badge,
-    .dashboard-badge-panel__badges > .badge,
+    .dashboard-badge-panel__badges .badge,
     .ebay2-summary-badge-row .badge {
         display: inline-flex;
         align-items: center;

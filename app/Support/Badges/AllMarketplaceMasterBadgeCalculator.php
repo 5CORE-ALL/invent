@@ -5,6 +5,8 @@ namespace App\Support\Badges;
 use App\Contracts\PageBadgeCalculator;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\BadgeData;
+use App\Models\ChannelMaster;
+use App\Models\ChannelMasterCalculatedData;
 use Illuminate\Support\Facades\Cache;
 
 class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
@@ -28,6 +30,63 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
     /**
      * @return array<string, int|float|string|null>
      */
+    /**
+     * COGS-weighted NROI of Active channel_master rows.
+     * Same basis as the Active Channel N ROI column (Temu is GROI% − Ads%).
+     */
+    public static function activeChannelNroiPercent(): ?float
+    {
+        $activeKeys = [];
+        foreach (ChannelMaster::query()->whereRaw('LOWER(TRIM(status)) = ?', ['active'])->pluck('channel') as $name) {
+            $key = self::snapshotKey((string) $name);
+            if ($key !== '') {
+                $activeKeys[$key] = true;
+            }
+        }
+        if ($activeKeys === []) {
+            return null;
+        }
+
+        $weighted = 0.0;
+        $weight = 0.0;
+        foreach (ChannelMasterCalculatedData::query()->get(['channel', 'n_roi', 'cogs']) as $row) {
+            $key = self::snapshotKey((string) $row->channel);
+            if ($key === '' || ! isset($activeKeys[$key])) {
+                continue;
+            }
+            $cogs = (float) $row->cogs;
+            if ($cogs <= 0) {
+                continue;
+            }
+            $weighted += (float) $row->n_roi * $cogs;
+            $weight += $cogs;
+        }
+
+        return $weight > 0 ? round($weighted / $weight, 2) : null;
+    }
+
+    /**
+     * Same channel identity as Active Channel (allMarketplaceSnapshotKey).
+     */
+    private static function snapshotKey(string $name): string
+    {
+        $key = strtolower(str_replace([' ', '-', '&', '/', '(', ')'], '', trim($name)));
+
+        return match ($key) {
+            'ebay2', 'ebaytwo' => 'ebaytwo',
+            'ebay3', 'ebaythree' => 'ebaythree',
+            'shopify', 'shopifyb2c' => 'shopifyb2c',
+            'tiktok', 'tiktokshop' => 'tiktokshop',
+            'tiktok2', 'tiktokshop2' => 'tiktokshop2',
+            'bestbuy', 'bestbuyusa' => 'bestbuyusa',
+            'facebookmarketplace', 'fbmarketplace' => 'fbmarketplace',
+            'temu3', 'temuthree' => 'temu3',
+            'temu2', 'temutwo' => 'temu2',
+            'business5coreb2b', 'b5cb2b' => 'business5coreb2b',
+            default => $key,
+        };
+    }
+
     public static function calculate(): array
     {
         $totals = app(ChannelMasterController::class)->getAllMarketplaceMasterBadgeTotals();

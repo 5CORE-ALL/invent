@@ -172,7 +172,7 @@ class InventChatBot
 
         $taskData = [
             'title' => Str::limit($title, 1000, ''),
-            'description' => 'Created from Invent Chat by '.$user->name,
+            'description' => 'Created from 5Core Chat by '.$user->name,
             'priority' => $priority,
             'assignor' => $user->email,
             'assign_to' => implode(', ', $emails),

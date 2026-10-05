@@ -3942,7 +3942,7 @@
                         const channelPrice = amzPrice > 0 ? amzPrice : temuDisplay;
                         const dot = temu2StdPrcChangeDotHtml(std, channelPrice);
 
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '') + '</span>';
                     }
                 },
                 {
@@ -4148,7 +4148,6 @@
                 {
                     title: "Sprc Dil",
                     field: "SPRC_DIL",
-                    visible: false,
                     hozAlign: "center",
                     headerSort: true,
                     sorter: function(a, b, aRow, bRow) {
@@ -4167,10 +4166,8 @@
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
                         const tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Temu L30 → min Target NROI' })
-                            : ((meta.zeroSoldMin
-                                ? '0 Sold Temu L30 → min Target NROI'
-                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
+                            ? ebayDilGroiTipText(meta)
+                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                             + ' → ' + meta.label
                             + ' → NROI ' + meta.groi + '%'
                             + ' → $' + meta.sprc.toFixed(2));
@@ -5714,7 +5711,7 @@
 
         // Columns that should ALWAYS stay hidden and stay out of the column box.
         var alwaysHiddenColumns = [
-            'cvr_45', 'profit', 'SPRC_DIL', 'spft_percent',
+            'cvr_45', 'profit', 'spft_percent',
             'missing', 'nr_req', 't_clicks', 't_clicks_growth',
             'lmp_delivery', 'lmp_diff_pct', 'spend',
             'handling_charge', 'o_size_charge', 'temu_ship', 'goods_id',
@@ -5726,6 +5723,16 @@
             alwaysHiddenColumns.forEach(function(col) {
                 try { table.hideColumn(col); } catch (e) {}
             });
+        }
+
+        /** Saved layouts hid Sprc Dil while it was forced off. Show it once, then keep the user's choice. */
+        function temu3RevealSprcDil() {
+            try {
+                if (localStorage.getItem('temu3_sprc_dil_revealed') === '1') return;
+                localStorage.setItem('temu3_sprc_dil_revealed', '1');
+            } catch (e) { /* ignore */ }
+            try { table.showColumn('SPRC_DIL'); } catch (e) {}
+            saveColumnVisibilityToServer();
         }
 
         function applyColumnVisibilityFromServer() {
@@ -5751,6 +5758,7 @@
                         });
                     }
                     enforceAlwaysHiddenColumns();
+                    temu3RevealSprcDil();
                     temu2AutofitColumns();
                 })
                 .catch(err => console.error('Error applying column visibility:', err));
@@ -5766,6 +5774,7 @@
                     temu2ApplyingColumnOrder = false;
                     buildColumnDropdown();
                     enforceAlwaysHiddenColumns();
+                    temu3RevealSprcDil();
                     if (typeof temu2AutofitColumns === 'function') temu2AutofitColumns();
                 });
         });

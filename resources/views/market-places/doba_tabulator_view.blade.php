@@ -2460,7 +2460,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ Shop INV (same as Amazon). Dil = 0 uses the 0–0 slab. 0 Sold (Doba L30 = 0, Shop INV > 0) uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100) so SNROI = target.",
+                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ Shop INV (same as Amazon). Dil = 0 uses the 0–0 slab. Doba L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100) so SNROI = target.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) return '';
@@ -2485,7 +2485,7 @@
                         sorter: dobaNumberSorter,
                         visible: true,
                         editable: false,
-                        headerTooltip: "Not editable. Auto-saved from Sprc Dil so SNROI = Dil + CVR Target NROI. Dil = OV L30 ÷ Shop INV. Dil = 0 uses the 0–0 slab. 0 Sold uses the lowest Target NROI. S PRC = (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP (no blue when red).",
+                        headerTooltip: "Not editable. Auto-saved from Sprc Dil so SNROI = Dil + CVR Target NROI. Dil = OV L30 ÷ Shop INV. Dil = 0 uses the 0–0 slab. Doba L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP (no blue when red).",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) {

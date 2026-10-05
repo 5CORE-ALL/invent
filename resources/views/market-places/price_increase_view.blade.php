@@ -5442,13 +5442,14 @@
                         if (!value || std <= 0) return '';
                         const sku = rowData.sku || '';
                         // Hold (Std Prc = Amazon price): show price only — no yellow dot
+                        const reviewTri = (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '');
                         if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
                             return '<span style="font-weight:600;" title="Hold (matches Amz price) — Std Prc">$'
-                                + std.toFixed(2) + '</span>';
+                                + std.toFixed(2) + reviewTri + '</span>';
                         }
                         const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                            dot + ('$' + std.toFixed(2)) + '</span>';
+                            dot + ('$' + std.toFixed(2)) + reviewTri + '</span>';
                     }
                 },
                 {

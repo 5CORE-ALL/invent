@@ -135,6 +135,25 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(85.0, $out['sprice'], 0.001);
     }
 
+    public function test_missing_lmp_caps_sprice_at_std(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 2.5,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 70,
+            'cvr' => 0,
+            'review_count' => 0,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertFalse($out['lmp_capped']);
+        // Dil target is $85. No LMP, so Std $70 is the maximum.
+        $this->assertEqualsWithDelta(70.0, $out['sprice'], 0.001);
+    }
+
     public function test_inv_zero_is_skipped(): void
     {
         $out = $this->compute([

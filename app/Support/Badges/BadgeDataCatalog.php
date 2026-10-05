@@ -30,6 +30,7 @@ class BadgeDataCatalog
             'purchase-contract' => 'Purchase Contract',
             'pricing-errors-fix' => 'Pricing Errors Fix',
             'compliance-master' => 'Compliance Masters',
+            'lmp-missing' => 'LMP Missing',
         ];
     }
 
@@ -188,6 +189,9 @@ class BadgeDataCatalog
                 'missing_tsp' => 'TSP',
                 'missing_batch' => 'Batch',
             ],
+            'lmp-missing' => [
+                'lmp_missing' => 'LMP M.',
+            ],
         ];
     }
 
@@ -253,8 +257,8 @@ class BadgeDataCatalog
             }
         }
 
-        // Explicit higher-is-worse fields
-        if (in_array($f, ['nmap', 'missing_l', 'missing_video'], true)) {
+        // Explicit higher-is-worse fields. TAT is months of stock (inv ÷ sales).
+        if (in_array($f, ['nmap', 'missing_l', 'missing_video', 'tat'], true)) {
             return true;
         }
 

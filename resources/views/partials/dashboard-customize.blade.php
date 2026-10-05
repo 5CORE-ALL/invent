@@ -115,7 +115,7 @@
         document.querySelectorAll('.dashboard-badge-panel[id]').forEach((card) => {
             const cardId = card.id;
             const used = new Set();
-            card.querySelectorAll('.dashboard-badge-panel__badges > .badge').forEach((badge, idx) => {
+            card.querySelectorAll('.dashboard-badge-panel__badges .badge').forEach((badge, idx) => {
                 if (badge.dataset.dashItem) {
                     used.add(badge.dataset.dashItem);
                     return;
@@ -145,7 +145,7 @@
     }
 
     function clearInjected(card) {
-        card.querySelectorAll('.dashboard-badge-panel__badges > .badge[data-dash-injected="1"]').forEach((el) => el.remove());
+        card.querySelectorAll('.dashboard-badge-panel__badges .badge[data-dash-injected="1"]').forEach((el) => el.remove());
     }
 
     function injectExtras() {
@@ -172,7 +172,8 @@
                     if (String(link.url).startsWith('http')) window.open(link.url, '_blank');
                     else window.location.href = link.url;
                 });
-                badges.appendChild(span);
+                if (window.DashBadgeSections) window.DashBadgeSections.place(span, badges);
+                else badges.appendChild(span);
             });
 
             (customKpiResolved[cardId] || []).forEach((kpi) => {
@@ -189,7 +190,8 @@
                 span.setAttribute('role', 'button');
                 span.title = kpi.label + ' — click status for rolling history';
                 span.textContent = kpi.label + ': ' + kpi.value_display;
-                badges.appendChild(span);
+                if (window.DashBadgeSections) window.DashBadgeSections.place(span, badges);
+                else badges.appendChild(span);
             });
         });
         if (window.DashKpiDots && typeof window.DashKpiDots.refresh === 'function') {
@@ -230,7 +232,7 @@
 
         const list = document.getElementById('dashCustomizeItemList');
         list.innerHTML = '';
-        card.querySelectorAll('.dashboard-badge-panel__badges > .badge:not([data-dash-injected])').forEach((badge) => {
+        card.querySelectorAll('.dashboard-badge-panel__badges .badge:not([data-dash-injected])').forEach((badge) => {
             const id = badge.dataset.dashItem;
             const label = badge.dataset.dashLabel || (badge.textContent || '').trim();
             const row = document.createElement('div');

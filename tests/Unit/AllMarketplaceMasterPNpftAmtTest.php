@@ -104,4 +104,29 @@ class AllMarketplaceMasterPNpftAmtTest extends TestCase
         // YNROI% = 60 / 190 * 100 = 31.58
         $this->assertSame(31.58, $out['y_nroi_pct']);
     }
+
+    public function test_n_roi_is_cogs_weighted_average_of_channel_nroi(): void
+    {
+        $out = AllMarketplaceMasterBadgeAggregator::aggregate([
+            [
+                'Channel ' => 'Amazon',
+                'L30 Sales' => 1000,
+                'Gprofit%' => 40,
+                'Total Ad Spend' => 100,
+                'cogs' => 200,
+                'N ROI' => 50,
+            ],
+            [
+                'Channel ' => 'Temu',
+                'L30 Sales' => 500,
+                'Gprofit%' => 20,
+                'Total Ad Spend' => 40,
+                'cogs' => 100,
+                'N ROI' => 20,
+            ],
+        ]);
+
+        // (50 × 200 + 20 × 100) / 300 = 40. Not (PFT − spend) / COGS.
+        $this->assertSame(40.0, $out['n_roi']);
+    }
 }

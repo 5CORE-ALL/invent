@@ -944,7 +944,7 @@
                         const comparePrice = amzPrice > 0 ? amzPrice : channelPrice;
                         const dot = ppStdPrcChangeDotHtml(std, comparePrice);
 
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
                     }
                 },
                 {
@@ -1055,7 +1055,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'S PRC from Dil → Target SNROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Dil-matching Target SNROI when PP L30 > 0; 0 Sold uses the lowest Target SNROI in the table. S PRC = (LP × (1 + SNROI%/100) + Ship BB) / margin so SNROI = target. If that S PRC < A Price, S PRC = A Price.',
+                    headerTooltip: 'S PRC from Dil → Target SNROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. PP L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + SNROI%/100) + Ship BB) / margin so SNROI = target. If that S PRC < A Price, S PRC = A Price.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (ppIsParentRow(rowData)) return '';
@@ -1078,7 +1078,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
                     editable: false, sorter: 'number', width: 110,
-                    headerTooltip: 'S PRC from Sprc Dil. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Dil-matching Target SNROI when PP L30 > 0; 0 Sold uses the lowest Target SNROI in the table. S PRC = (LP × (1 + SNROI%/100) + Ship BB) / margin so SNROI = target. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                    headerTooltip: 'S PRC from Sprc Dil. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. PP L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + SNROI%/100) + Ship BB) / margin so SNROI = target. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';

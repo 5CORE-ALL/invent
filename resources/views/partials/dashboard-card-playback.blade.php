@@ -151,9 +151,9 @@
         gap: 0.55rem !important;
     }
     #dashCardPlaybackStage .dashboard-badge-panel__badges .badge {
-        font-size: 1.45rem !important;
-        padding: 0.55rem 0.9rem !important;
-        border-radius: 0.4rem !important;
+        font-size: 1.595rem !important;
+        padding: 0.605rem 0.99rem !important;
+        border-radius: 0.44rem !important;
         line-height: 1.25 !important;
     }
     #dashCardPlaybackStage .kpi-status-dot {

@@ -7,12 +7,19 @@ use Tests\TestCase;
 
 class AmazonPushedPricePullServiceTest extends TestCase
 {
-    public function test_listings_report_keeps_pushed_sale_when_your_price_differs(): void
+    public function test_listings_report_keeps_amazon_price_when_it_differs_from_pushed_sale(): void
     {
         $this->assertSame(
-            56.95,
+            124.99,
             AmazonPushedPricePullService::listingsReportPriceToWrite(124.99, 56.95)
         );
+    }
+
+    public function test_customer_price_is_the_active_sale(): void
+    {
+        $this->assertSame(21.99, AmazonPushedPricePullService::customerPrice(18.06, 21.99));
+        $this->assertSame(18.06, AmazonPushedPricePullService::customerPrice(18.06, null));
+        $this->assertNull(AmazonPushedPricePullService::customerPrice(0, 0));
     }
 
     public function test_listings_report_uses_report_price_when_it_matches_sale(): void
@@ -39,9 +46,10 @@ class AmazonPushedPricePullServiceTest extends TestCase
         );
     }
 
-    public function test_live_get_ignores_your_price_when_sale_was_pushed(): void
+    public function test_live_get_stores_amazon_price_when_it_differs_from_pushed_sale(): void
     {
-        $this->assertNull(
+        $this->assertSame(
+            124.99,
             AmazonPushedPricePullService::livePriceToPersist(124.99, 56.95)
         );
     }
@@ -54,10 +62,10 @@ class AmazonPushedPricePullServiceTest extends TestCase
         );
     }
 
-    public function test_live_get_keeps_calculated_sprice_when_live_is_within_nickel(): void
+    public function test_live_get_keeps_amazon_cents_when_within_a_nickel_of_sprice(): void
     {
         $this->assertSame(
-            56.95,
+            56.97,
             AmazonPushedPricePullService::livePriceToPersist(56.97, 56.95)
         );
     }

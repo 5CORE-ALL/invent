@@ -21,13 +21,13 @@
     
     <!-- PWA Meta Tags (single Invent PWA — reused by /chat) -->
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="{{ ($title ?? '') === 'Invent Chat' || ($title ?? '') === 'Chat' ? '#3f0e40' : '#667eea' }}">
+    <meta name="theme-color" content="{{ in_array(($title ?? ''), ['5Core Chat', 'Chat', 'Invent Chat'], true) ? '#3f0e40' : '#667eea' }}">
     <link rel="apple-touch-icon" href="{{ $appleTouchIcon ?? '/images/pwa-icon-192.png' }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Invent Chat">
+    <meta name="apple-mobile-web-app-title" content="5Core Chat">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="Invent Chat">
+    <meta name="application-name" content="5Core Chat">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 </head>
 
@@ -43,7 +43,7 @@
         @unless($hideInventSidebar ?? false)
         @include('layouts.shared/left-sidebar')
         @endunless
-        
+
         <!-- Mobile Header -->
         @unless($hideInventSidebar ?? false)
         @include('layouts.mobile-header')
@@ -936,7 +936,7 @@
     {{-- Shared SP (Standard Price) box for all LMP competitor modals --}}
     <script src="{{ asset('js/lmp-modal-sp.js') }}"></script>
     {{-- Global: enlarge product thumbnails on hover --}}
-    <script src="{{ asset('js/image-hover-preview.js') }}"></script>
+    <script src="{{ asset('js/image-hover-preview.js') }}?v=20261004"></script>
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 
@@ -967,7 +967,7 @@
                         if (!worker) return;
                         worker.addEventListener('statechange', function() {
                             if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-                                if (confirm('Invent Chat has an update. Reload now?')) {
+                                if (confirm('5Core Chat has an update. Reload now?')) {
                                     worker.postMessage({ type: 'SKIP_WAITING' });
                                 }
                             }

@@ -3708,7 +3708,7 @@
                             const dot = ttStdPrcChangeDotHtml(std, channelPrice);
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + '</span>';
+                                dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '') + '</span>';
                         }
                     },
                     {
@@ -4039,7 +4039,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (TT L30 = 0, INV > 0) uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
+                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. TT L30 = 0 still uses the Dil-matching slab. CVR overlay (editable) adjusts Target NROI; Count updates live. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof ttIsParentRow === 'function' && ttIsParentRow(rowData)) return '';

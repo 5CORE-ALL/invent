@@ -3114,7 +3114,7 @@
                         const dot = shopifyB2cStdPrcChangeDotHtml(std, comparePrice);
 
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                            dot + ('$' + std.toFixed(2)) + '</span>';
+                            dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '') + '</span>';
                     }
                 },
                 {
@@ -3435,7 +3435,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. If LMP is below A Price, S PRC uses A Price. Otherwise if this is below A Price, S PRC uses A Price, and if it is above A Price, S PRC keeps this Sprc Dil, then LMP if that is lower. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. B2C L30 = 0 still uses the Dil-matching slab. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. If LMP is below A Price, S PRC uses A Price. Otherwise if this is below A Price, S PRC uses A Price, and if it is above A Price, S PRC keeps this Sprc Dil, then LMP if that is lower. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';

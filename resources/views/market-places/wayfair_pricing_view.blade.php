@@ -1489,7 +1489,7 @@
                             const dot = wfStdPrcChangeDotHtml(std, channelPrice);
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + '</span>';
+                                dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
                         }
                     },
                     {
@@ -1615,7 +1615,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: 'S PRC from Dil → Target GROI% slabs. 0 Sold (A L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100)) / margin. Ship not used.',
+                        headerTooltip: 'S PRC from Dil → Target GROI% slabs. A L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + GROI%/100)) / margin. Ship not used.',
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (isWayfairParentRow(rowData)) return '';
@@ -1634,7 +1634,7 @@
                     {
                         title: 'S PRC', field: 'sprice', sorter: 'number', hozAlign: 'right',
                         editable: false,
-                        headerTooltip: 'Not editable. S PRC from Sprc Dil. Dil-matching Target GROI when A L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                        headerTooltip: 'Not editable. S PRC from Sprc Dil. A L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';

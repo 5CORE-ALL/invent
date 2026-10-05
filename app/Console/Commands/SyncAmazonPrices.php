@@ -70,7 +70,8 @@ class SyncAmazonPrices extends Command
 
                     return DB::table('amazon_datsheets as a')
                         ->joinSub($subQuery, 'l', function ($join) {
-                            $join->on('a.sku', '=', 'l.sku');
+                            // amazon_datsheets.sku and amazon_sku_competitors.sku use different collations.
+                            $join->whereRaw('a.sku COLLATE utf8mb4_unicode_ci = l.sku COLLATE utf8mb4_unicode_ci');
                         })
                         ->where(function ($q) {
                             $q->whereColumn('a.price_lmpa', '<>', 'l.price')

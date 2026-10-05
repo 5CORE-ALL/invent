@@ -117,7 +117,19 @@ class AllMarketplaceMasterBadgeAggregator
         $avgYGroi = $totalYCogs > 0 ? ($totalYGross / $totalYCogs) * 100 : 0.0;
         $avgYNroi = $totalYCogs > 0 ? ($totalYNet / $totalYCogs) * 100 : 0.0;
         $netProfit = $totalPft - $totalAdSpend;
-        $avgNroi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0.0;
+        // Match the N ROI column on Active Channel (COGS-weighted).
+        // Temu / Temu 2 / Temu 3 store GROI% − Ads%, which is not (PFT − spend) / COGS.
+        $nroiWeighted = 0.0;
+        $nroiWeight = 0.0;
+        foreach ($rows as $row) {
+            $cogs = self::rowNumber($row, 'cogs');
+            if ($cogs <= 0) {
+                continue;
+            }
+            $nroiWeighted += self::rowNumber($row, 'N ROI', 'NROI', 'n_roi') * $cogs;
+            $nroiWeight += $cogs;
+        }
+        $avgNroi = $nroiWeight > 0 ? ($nroiWeighted / $nroiWeight) : 0.0;
         $avgPNroi = $totalPCogs > 0 ? ($totalPNet / $totalPCogs) * 100 : 0.0;
         $cvrUnits = 0.0;
         $cvrViews = 0.0;

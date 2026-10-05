@@ -123,6 +123,15 @@ class PullAmazonBuyboxCommand extends Command
                     } else {
                         $flat = $service->flattenBuyboxOffersPayload($result['payload'], $sku);
                         AmazonBuyboxData::updateOrCreate(['sku' => $sku], $flat);
+                        $sitePrice = $flat['our_listing_price'] ?? null;
+                        if (is_numeric($sitePrice) && (float) $sitePrice > 0) {
+                            AmazonDatasheet::query()
+                                ->whereRaw('UPPER(TRIM(REPLACE(sku, UNHEX(\'C2A0\'), \' \'))) = ?', [strtoupper(trim($sku))])
+                                ->update([
+                                    'price' => round((float) $sitePrice, 2),
+                                    'updated_at' => now(),
+                                ]);
+                        }
                         $ok++;
                     }
 

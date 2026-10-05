@@ -498,11 +498,13 @@ class VerificationAdjustmentController extends Controller
         if (! $shopifyController->syncLiveInventoryForSku($sku, 0)) {
             return [
                 'success' => false,
-                'message' => 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.',
+                'message' => $shopifyController->lastLiveInventorySyncMessage
+                    ?: 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.',
             ];
         }
 
-        $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        $row = ShopifySku::firstForProductSku($sku)
+            ?: ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
         if (! $row) {
             return [
                 'success' => false,

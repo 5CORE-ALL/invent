@@ -986,7 +986,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (P L30 = 0, INV > 0) uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. P L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof plsIsParentRow === 'function' && plsIsParentRow(rowData)) return '';

@@ -1303,14 +1303,33 @@
             if (sgroiAtLmp != null && sgroiAtLmp < 20) return false;
             return true;
         }
+        function amazonStdPrice(rowData) {
+            const raw = rowData && (rowData.STANDARD_PRICE != null && rowData.STANDARD_PRICE !== ''
+                ? rowData.STANDARD_PRICE
+                : (rowData.standard_price != null && rowData.standard_price !== ''
+                    ? rowData.standard_price
+                    : rowData.std_price));
+            const n = parseFloat(raw);
+            return (isFinite(n) && n > 0) ? n : 0;
+        }
+        /** Std Prc is always the maximum when it is set, including a high suggested S PRC. */
+        function amazonCapToStdWhenNoLmp(rowData, sprice) {
+            const s = parseFloat(sprice);
+            if (!(s > 0)) return s;
+            const rounded = +Number(s).toFixed(2);
+            const std = amazonStdPrice(rowData);
+            if (!(std > 0) || rounded + 0.0001 <= std) return rounded;
+            return +Number(std).toFixed(2);
+        }
         function amazonCapSpriceToLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
-            if (!amazonShouldCapSpriceToLmp(rowData, s)) {
-                return +Number(s).toFixed(2);
+            let out = +Number(s).toFixed(2);
+            if (amazonShouldCapSpriceToLmp(rowData, s)) {
+                const lmp = lmpWithShipping(rowData);
+                if (lmp > 0) out = +Number(lmp).toFixed(2);
             }
-            const lmp = lmpWithShipping(rowData);
-            return +Number(lmp).toFixed(2);
+            return amazonCapToStdWhenNoLmp(rowData, out);
         }
         window.amazonSgroiAtPrice = amazonSgroiAtPrice;
         window.amazonShouldCapSpriceToLmp = amazonShouldCapSpriceToLmp;
@@ -1386,6 +1405,33 @@
             return (typeof amazonCapSpriceToLmp === 'function')
                 ? amazonCapSpriceToLmp(rowData, raw)
                 : +Number(raw).toFixed(2);
+        }
+
+        /** S PRC the S PRC column paints, including the stored fallback. */
+        function amazonShownSprice(rowData) {
+            if (!rowData || rowData.is_parent_summary) return 0;
+            let raw = 0;
+            if (typeof computeAmzPushPrcPlan === 'function') {
+                const plan = computeAmzPushPrcPlan(rowData);
+                if (plan && plan.effective > 0) raw = Number(plan.effective);
+            }
+            if (!(raw > 0)) raw = amazonRowSprice(rowData);
+            if (!(raw > 0)) return 0;
+            const shown = (typeof amazonCapSpriceToLmp === 'function')
+                ? amazonCapSpriceToLmp(rowData, raw)
+                : raw;
+            return shown > 0 ? shown : raw;
+        }
+
+        /** Min and Business are 5% below the shown S PRC. */
+        function amazonMinBusinessPrice(rowData) {
+            const sprice = amazonShownSprice(rowData);
+            if (!(sprice > 0)) return 0;
+            if (typeof amzMinBusinessFromSprc === 'function') return amzMinBusinessFromSprc(sprice);
+            const rounded = +Number(sprice).toFixed(2);
+            let below = +Number(Math.max(0.01, rounded * 0.95)).toFixed(2);
+            if (below > rounded) below = rounded;
+            return below;
         }
 
         function amazonComputeNetSroi(rowData) {
@@ -4275,7 +4321,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: "number",
-                        headerTooltip: "Standard Price (Std Prc) — manual only (LMP modal / Std Prc editor). Blank unless filled when LMP cannot be determined. Dot vs Amz price.",
+                        headerTooltip: "Standard Price (Std Prc) — manual only (LMP modal / Std Prc editor). Blank unless filled when LMP cannot be determined. Orange triangle = LMP is above Std Prc; review Std price. Dot vs Amz price.",
                         editor: "input",
                         width: 70,
                         formatter: function(cell) {
@@ -4288,8 +4334,11 @@
                             if (!value || std <= 0) return '';
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(std, currentPrice, sku);
+                            const reviewTri = (window.SpriceLmpCap && SpriceLmpCap.reviewStdTriangleHtml)
+                                ? SpriceLmpCap.reviewStdTriangleHtml(rowData)
+                                : '';
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + '</span>';
+                                dot + ('$' + std.toFixed(2)) + reviewTri + '</span>';
                         },
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
@@ -4414,7 +4463,7 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. Live rule price. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. Red triangle stays when S PRC ≥ LMP.",
+                        headerTooltip: "Read-only. Live rule price. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. Std Prc is always the maximum: a suggested S PRC above Std is capped to Std, and when Std is higher that S PRC is the Sales Price. Red triangle stays when S PRC ≥ LMP. Orange triangle = LMP above Std, review Std price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -4430,18 +4479,24 @@
                             if (!(raw > 0)) return '';
 
                             const lmpNow = lmpWithShipping(rowData);
+                            const stdNow = amazonStdPrice(rowData);
                             const shown = amazonCapSpriceToLmp(rowData, raw);
                             const sprice = shown > 0 ? shown : raw;
                             const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                             const appliedLmp = wouldHitLmp && shown + 0.0001 <= lmpNow + 0.0001;
                             const atOrAboveLmp = wouldHitLmp;
+                            const lmpAboveStd = lmpNow > 0 && stdNow > 0 && lmpNow + 0.0001 > stdNow;
+                            const stdCappedHighLmp = lmpAboveStd && raw + 0.0001 > stdNow
+                                && shown + 0.0001 <= stdNow + 0.0001;
+                            const stdCapped = !lmpAboveStd && !appliedLmp && stdNow > 0 && raw + 0.0001 > stdNow
+                                && shown + 0.0001 <= stdNow + 0.0001;
                             const sgroiAtLmp = (typeof amazonSgroiAtPrice === 'function')
                                 ? amazonSgroiAtPrice(rowData, lmpNow)
                                 : null;
 
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
-                            const redTri = atOrAboveLmp
+                            const redTri = (atOrAboveLmp && !stdCappedHighLmp && !stdCapped)
                                 ? (appliedLmp
                                     ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
                                         + lmpNow.toFixed(2) + '"></i>'
@@ -4451,21 +4506,34 @@
                                         + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
                                         + '% (&lt; 20%)"></i>')
                                 : '';
-                            const blueTri = (!atOrAboveLmp && currentPrice > 0 && sprice > 0
+                            const reviewTri = stdCappedHighLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#fd7e14;font-size:10px;margin-left:3px;" title="LMP $'
+                                    + lmpNow.toFixed(2) + ' is above Std Prc $' + stdNow.toFixed(2)
+                                    + ' — S PRC capped at Std. Review Std price."></i>'
+                                : '';
+                            const stdTri = stdCapped
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#b45309;font-size:10px;margin-left:3px;" title="S PRC capped at Std Prc $'
+                                    + stdNow.toFixed(2) + '"></i>'
+                                : '';
+                            const blueTri = (!atOrAboveLmp && !stdCapped && !stdCappedHighLmp && currentPrice > 0 && sprice > 0
                                 && currentPrice.toFixed(2) !== sprice.toFixed(2))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Price $' + currentPrice.toFixed(2) + '"></i>'
                                 : '';
 
                             let formattedValue = '$' + sprice.toFixed(2);
-                            if (atOrAboveLmp) {
+                            if (atOrAboveLmp && !stdCappedHighLmp && !stdCapped) {
                                 formattedValue = '<span style="color: #dc3545; font-weight: 600;">' + formattedValue + '</span>';
+                            } else if (stdCappedHighLmp) {
+                                formattedValue = '<span style="color: #fd7e14; font-weight: 600;">' + formattedValue + '</span>';
+                            } else if (stdCapped) {
+                                formattedValue = '<span style="color: #b45309; font-weight: 600;">' + formattedValue + '</span>';
                             } else if (hasCustomSprice === false) {
                                 formattedValue = '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
                             }
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + blueTri + redTri + '</span>';
+                                dot + formattedValue + blueTri + redTri + reviewTri + stdTri + '</span>';
                         },
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
@@ -4474,6 +4542,44 @@
                             }
                         },
                         width: 90
+                    },
+
+                    {
+                        title: "Min",
+                        field: "MIN_PRICE",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            return (amazonMinBusinessPrice(aRow.getData()) || 0) - (amazonMinBusinessPrice(bRow.getData()) || 0);
+                        },
+                        headerTooltip: "Minimum seller price. 5% below the S PRC in this row.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const n = amazonMinBusinessPrice(rowData);
+                            if (!(n > 0)) return '';
+                            return '<span>$' + n.toFixed(2) + '</span>';
+                        },
+                        width: 70
+                    },
+
+                    {
+                        title: "Business",
+                        field: "BUSINESS_PRICE",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            return (amazonMinBusinessPrice(aRow.getData()) || 0) - (amazonMinBusinessPrice(bRow.getData()) || 0);
+                        },
+                        headerTooltip: "Amazon Business price. 5% below the S PRC in this row.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const n = amazonMinBusinessPrice(rowData);
+                            if (!(n > 0)) return '';
+                            return '<span>$' + n.toFixed(2) + '</span>';
+                        },
+                        width: 78
                     },
 
                     {
@@ -5831,6 +5937,16 @@
                 }).catch(err => console.error('Error saving column visibility:', err));
             }
 
+            /** Saved layouts hid Sprc Dil while it was forced off. Show it once, then keep the user's choice. */
+            function amazonRevealSprcDil() {
+                try {
+                    if (localStorage.getItem('amazon_sprc_dil_revealed') === '1') return;
+                    localStorage.setItem('amazon_sprc_dil_revealed', '1');
+                } catch (e) { /* ignore */ }
+                try { table.showColumn('SPRC_DIL'); } catch (e) {}
+                saveColumnVisibilityToServer();
+            }
+
             function applyColumnVisibilityFromServer() {
                 return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
@@ -5844,15 +5960,16 @@
                         if (!savedVisibility || typeof savedVisibility !== 'object' || amazonVisibilityIsStale(savedVisibility)) {
                             applyAmazonColumnDefinitionDefaults();
                             saveColumnVisibilityToServer();
-                            return;
+                        } else {
+                            table.getColumns().forEach(col => {
+                                const field = col.getDefinition().field;
+                                if (amazonSkipColVisField(field)) return;
+                                if (!savedVisibility.hasOwnProperty(field)) return;
+                                if (savedVisibility[field]) col.show();
+                                else col.hide();
+                            });
                         }
-                        table.getColumns().forEach(col => {
-                            const field = col.getDefinition().field;
-                            if (amazonSkipColVisField(field)) return;
-                            if (!savedVisibility.hasOwnProperty(field)) return;
-                            if (savedVisibility[field]) col.show();
-                            else col.hide();
-                        });
+                        amazonRevealSprcDil();
                     })
                     .catch(err => console.error('Error applying column visibility:', err));
             }

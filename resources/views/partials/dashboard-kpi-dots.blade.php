@@ -106,7 +106,7 @@
         const map = (AUTO_KPI_MAP || []).slice().sort((a, b) =>
             String(b.prefix || '').length - String(a.prefix || '').length
         );
-        document.querySelectorAll('.dashboard-badge-panel__badges > .badge').forEach((badge) => {
+        document.querySelectorAll('.dashboard-badge-panel__badges .badge').forEach((badge) => {
             if (badge.getAttribute('data-kpi-key')) return;
             // Skip pure navigation chips (no numeric value)
             const text = (badge.textContent || '').replace(/\s+/g, ' ').trim();

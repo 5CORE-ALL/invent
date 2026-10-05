@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use App\Models\StockBalance;
+use App\Models\StockBalanceRule;
 use App\Models\StockBalanceTransferPreference;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\ShopifyApiInventoryController;
@@ -447,6 +448,27 @@ class StockBalanceController extends Controller
     }
 
     /**
+     * Keep the table inventory in step with a successful Shopify adjustment.
+     */
+    private function adjustLocalShopifyInv(string $sku, int $delta): ?int
+    {
+        $row = ShopifySku::firstForProductSku($sku);
+        if (! $row) {
+            $normalized = $this->normalizeSkuKey($sku);
+            $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        }
+        if (! $row) {
+            return null;
+        }
+
+        $next = (int) $row->inv + $delta;
+        $row->inv = $next;
+        $row->save();
+
+        return $next;
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index()
@@ -673,6 +695,7 @@ class StockBalanceController extends Controller
                 'adjustment' => -$fromQty,
                 'response' => $decrease['response'] ?? null
             ]);
+            $fromInvAfter = $this->adjustLocalShopifyInv($fromSku, -$fromQty);
 
             // Step 2: Get inventory info and increase to 'to_sku'
             $toInfo = $getInventoryInfo($toSku);
@@ -710,6 +733,7 @@ class StockBalanceController extends Controller
                 );
                 
                 if ($rollback['success']) {
+                    $this->adjustLocalShopifyInv($fromSku, $fromQty);
                     Log::info("Successfully rolled back first adjustment", ['sku' => $fromSku]);
                     return response()->json([
                         'error' => ($increase['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to increase inventory in Shopify',
@@ -733,6 +757,7 @@ class StockBalanceController extends Controller
                 'adjustment' => $toQty,
                 'response' => $increase['response'] ?? null
             ]);
+            $toInvAfter = $this->adjustLocalShopifyInv($toSku, $toQty);
 
             // Step 3: Only save to database after both Shopify updates succeed
             try {
@@ -827,7 +852,11 @@ class StockBalanceController extends Controller
             }
 
             return response()->json([
-                'message' => '✓ SHOPIFY - Stock transferred successfully and saved to database'
+                'message' => '✓ SHOPIFY - Stock transferred successfully and saved to database',
+                'from_sku' => $fromSku,
+                'to_sku' => $toSku,
+                'from_inv' => $fromInvAfter,
+                'to_inv' => $toInvAfter,
             ]);
 
         } catch (\Exception $e) {
@@ -936,6 +965,7 @@ class StockBalanceController extends Controller
                         (string) $rollback['location_id'],
                         $rollback['adjust_qty']
                     );
+                    $this->adjustLocalShopifyInv($rollback['sku'], $rollback['adjust_qty']);
                 }
                 return response()->json([
                     'error' => ($decrease['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to deduct inventory from Shopify',
@@ -943,6 +973,7 @@ class StockBalanceController extends Controller
                     'is_rate_limit' => $decrease['is_rate_limit'] ?? false,
                 ], ($decrease['is_rate_limit'] ?? false) ? 429 : 500);
             }
+            $this->adjustLocalShopifyInv($from['sku'], -$from['adjust_qty']);
             $deducted[] = $from;
         }
 
@@ -954,6 +985,7 @@ class StockBalanceController extends Controller
                     (string) $rollback['location_id'],
                     $rollback['adjust_qty']
                 );
+                $this->adjustLocalShopifyInv($rollback['sku'], $rollback['adjust_qty']);
             }
             return response()->json([
                 'error' => $toInfo['error'],
@@ -975,6 +1007,7 @@ class StockBalanceController extends Controller
                     (string) $rollback['location_id'],
                     $rollback['adjust_qty']
                 );
+                $this->adjustLocalShopifyInv($rollback['sku'], $rollback['adjust_qty']);
             }
             return response()->json([
                 'error' => ($increase['is_rate_limit'] ?? false) ? 'Shopify rate limit' : 'Failed to increase inventory in Shopify',
@@ -982,6 +1015,8 @@ class StockBalanceController extends Controller
                 'is_rate_limit' => $increase['is_rate_limit'] ?? false,
             ], ($increase['is_rate_limit'] ?? false) ? 429 : 500);
         }
+
+        $toInvAfter = $this->adjustLocalShopifyInv($toSku, $toQty);
 
         try {
             DB::beginTransaction();
@@ -1017,7 +1052,11 @@ class StockBalanceController extends Controller
             ], 500);
         }
 
-        return response()->json(['message' => '✓ Combo transfer completed. ' . count($fromInfos) . ' FROM SKU(s) → 1 TO SKU, saved to database.']);
+        return response()->json([
+            'message' => '✓ Combo transfer completed. ' . count($fromInfos) . ' FROM SKU(s) → 1 TO SKU, saved to database.',
+            'to_sku' => $toSku,
+            'to_inv' => $toInvAfter,
+        ]);
     }
 
     /**
@@ -1168,33 +1207,30 @@ class StockBalanceController extends Controller
                 $dil = 0;
             }
             
-            // Format last update history
+            // Format last update history, including the quantities used to autofill the row.
             $lastUpdate = null;
             if ($lastBalance) {
-                $direction = '';
-                $otherSku = '';
-                $qty = 0;
-                
-                if ($lastBalance->from_sku === $item->sku) {
-                    $direction = 'OUT';
-                    $otherSku = $lastBalance->to_sku;
-                    $qty = $lastBalance->from_adjust_qty;
-                } else {
-                    $direction = 'IN';
-                    $otherSku = $lastBalance->from_sku;
-                    $qty = $lastBalance->to_adjust_qty;
-                }
-                
-                $transferredAt = $lastBalance->transferred_at 
+                $fromQty = (int) ($lastBalance->from_adjust_qty ?? 0);
+                $toQty = (int) ($lastBalance->to_adjust_qty ?? 0);
+                $isOut = $normalizeSku($lastBalance->from_sku ?? '') === $sku && $sku !== '';
+                $transferredAt = $lastBalance->transferred_at
                     ? Carbon::parse($lastBalance->transferred_at)->timezone('America/New_York')->format('m/d/y H:i')
                     : '';
-                
+
                 $lastUpdate = [
-                    'direction' => $direction,
-                    'other_sku' => $otherSku,
-                    'qty' => $qty,
+                    'direction' => $isOut ? 'OUT' : 'IN',
+                    'other_sku' => $isOut ? $lastBalance->to_sku : $lastBalance->from_sku,
+                    'from_sku' => $lastBalance->from_sku,
+                    'to_sku' => $lastBalance->to_sku,
+                    'from_qty' => $fromQty,
+                    'to_qty' => $toQty,
+                    'qty' => $isOut ? $fromQty : $toQty,
+                    'ratio' => $this->nearestTransferRatio(
+                        $fromQty > 0 ? $fromQty : $toQty,
+                        $toQty > 0 ? $toQty : $fromQty
+                    ),
                     'date' => $transferredAt,
-                    'by' => $lastBalance->transferred_by
+                    'by' => $lastBalance->transferred_by,
                 ];
             }
 
@@ -1285,11 +1321,13 @@ class StockBalanceController extends Controller
         if (! $shopifyController->syncLiveInventoryForSku($sku, 0)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.',
+                'message' => $shopifyController->lastLiveInventorySyncMessage
+                    ?: 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.',
             ], 422);
         }
 
-        $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        $row = ShopifySku::firstForProductSku($sku)
+            ?: ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
         if (! $row) {
             return response()->json([
                 'success' => false,
@@ -1933,6 +1971,7 @@ class StockBalanceController extends Controller
             $preferences[$row->to_sku] = [
                 'fromSku' => $row->from_sku,
                 'ratio' => $row->ratio ?? '1:1',
+                'fromQty' => $row->from_qty,
             ];
         }
         return response()->json(['preferences' => $preferences]);
@@ -1948,21 +1987,267 @@ class StockBalanceController extends Controller
             'to_sku' => 'required|string',
             'from_sku' => 'nullable|string',
             'ratio' => 'nullable|string|max:20',
+            'from_qty' => 'nullable|integer|min:0',
         ]);
         $user = Auth::user();
         if (!$user) {
             return response()->json(['error' => 'Unauthorized'], 401);
+        }
+        $payload = [
+            'from_sku' => $request->filled('from_sku') ? trim($request->from_sku) : null,
+            'ratio' => $request->input('ratio', '1:1'),
+        ];
+        if ($request->exists('from_qty')) {
+            $payload['from_qty'] = $request->filled('from_qty') ? (int) $request->from_qty : null;
         }
         StockBalanceTransferPreference::updateOrCreate(
             [
                 'user_id' => $user->id,
                 'to_sku' => trim($request->to_sku),
             ],
-            [
-                'from_sku' => $request->filled('from_sku') ? trim($request->from_sku) : null,
-                'ratio' => $request->input('ratio', '1:1'),
-            ]
+            $payload
         );
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Transfer rules keyed by destination SKU (shared across users).
+     */
+    public function getRules()
+    {
+        if (!Auth::user()) {
+            return response()->json(['rules' => []]);
+        }
+
+        $this->syncRulesFromLatestHistory(false);
+
+        $rules = [];
+        StockBalanceRule::query()
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get()
+            ->each(function ($row) use (&$rules) {
+                if (isset($rules[$row->to_sku])) {
+                    return;
+                }
+                $rules[$row->to_sku] = [
+                    'toSku' => $row->to_sku,
+                    'fromSku' => $row->from_sku,
+                    'ratio' => $row->ratio ?? '1:1',
+                    'fromQty' => $row->from_qty,
+                    'fromItems' => $row->from_items ?: [],
+                    'action' => $row->action,
+                ];
+            });
+
+        return response()->json(['rules' => $rules]);
+    }
+
+    /**
+     * Set each destination SKU's rule from its latest stock transfer.
+     * When $force is false, a rule edited after that transfer is left as saved.
+     */
+    public function syncRulesFromLatestHistory(bool $force = false): int
+    {
+        $latestIds = DB::table('stock_balances as sb')
+            ->joinSub(
+                DB::table('stock_balances')
+                    ->select('to_sku', DB::raw('MAX(transferred_at) as transferred_at'))
+                    ->whereNotNull('to_sku')
+                    ->where('to_sku', '!=', '')
+                    ->whereNotNull('from_sku')
+                    ->where('from_sku', '!=', '')
+                    ->groupBy('to_sku'),
+                'latest',
+                function ($join) {
+                    $join->on('sb.to_sku', '=', 'latest.to_sku')
+                        ->on('sb.transferred_at', '=', 'latest.transferred_at');
+                }
+            )
+            ->selectRaw('MAX(sb.id) as id')
+            ->groupBy('sb.to_sku')
+            ->pluck('id');
+
+        if ($latestIds->isEmpty()) {
+            return 0;
+        }
+
+        $updated = 0;
+        StockBalance::query()
+            ->whereIn('id', $latestIds)
+            ->orderBy('id')
+            ->chunkById(200, function ($rows) use ($force, &$updated) {
+                foreach ($rows as $transfer) {
+                    $toSku = trim((string) $transfer->to_sku);
+                    $fromSku = trim((string) $transfer->from_sku);
+                    if ($toSku === '' || $fromSku === '' || strcasecmp($toSku, $fromSku) === 0) {
+                        continue;
+                    }
+
+                    $existing = StockBalanceRule::query()->where('to_sku', $toSku)->first();
+                    $transferredAt = $transfer->transferred_at ? Carbon::parse($transfer->transferred_at) : null;
+                    if (! $force && $existing && $transferredAt && $existing->updated_at && $existing->updated_at->gt($transferredAt)) {
+                        continue;
+                    }
+                    if ($existing && strcasecmp((string) $existing->ratio, 'combo') === 0) {
+                        continue;
+                    }
+
+                    $fromQty = (int) ($transfer->from_adjust_qty ?? 0);
+                    $toQty = (int) ($transfer->to_adjust_qty ?? 0);
+                    if ($fromQty <= 0 && $toQty > 0) {
+                        $fromQty = $toQty;
+                    }
+
+                    $ratio = $this->nearestTransferRatio($fromQty, $toQty);
+                    StockBalanceRule::updateOrCreate(
+                        ['to_sku' => $toSku],
+                        [
+                            'from_sku' => $fromSku,
+                            'ratio' => $ratio,
+                            'from_qty' => $fromQty > 0 ? $fromQty : null,
+                            'action' => $existing->action ?? null,
+                            'user_id' => $existing->user_id ?? Auth::id(),
+                        ]
+                    );
+
+                    StockBalanceTransferPreference::query()
+                        ->where('to_sku', $toSku)
+                        ->update([
+                            'from_sku' => $fromSku,
+                            'ratio' => $ratio,
+                            'from_qty' => $fromQty > 0 ? $fromQty : null,
+                            'updated_at' => now(),
+                        ]);
+
+                    $updated++;
+                }
+            });
+
+        return $updated;
+    }
+
+    private function nearestTransferRatio(int $fromQty, int $toQty): string
+    {
+        $allowed = [
+            '1:4' => 4.0,
+            '1:3' => 3.0,
+            '1:2' => 2.0,
+            '1:1' => 1.0,
+            '2:1' => 0.5,
+            '3:1' => 1 / 3,
+            '4:1' => 0.25,
+        ];
+        if ($fromQty <= 0 || $toQty <= 0) {
+            return '1:1';
+        }
+
+        $actual = $toQty / $fromQty;
+        $best = '1:1';
+        $bestDiff = INF;
+        foreach ($allowed as $label => $value) {
+            $diff = abs($actual - $value);
+            if ($diff < $bestDiff) {
+                $bestDiff = $diff;
+                $best = $label;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Create or update one transfer rule, and keep the row preference in sync.
+     */
+    public function saveRule(Request $request)
+    {
+        $request->validate([
+            'to_sku' => 'required|string',
+            'from_sku' => 'required|string',
+            'ratio' => 'nullable|string|max:20',
+            'from_qty' => 'nullable|integer|min:1',
+            'action' => 'nullable|string|in:NRB,RB',
+            'from_items' => 'nullable|array',
+            'from_items.*.sku' => 'required|string',
+            'from_items.*.from_qty' => 'nullable|integer|min:1',
+        ]);
+
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $toSku = trim($request->to_sku);
+        $fromSku = trim($request->from_sku);
+        $ratio = $request->input('ratio', '1:1') ?: '1:1';
+        $fromQty = $request->filled('from_qty') ? (int) $request->from_qty : null;
+        $action = $request->filled('action') ? $request->action : null;
+        $fromItems = collect($request->input('from_items', []))
+            ->map(function ($item) use ($toSku, $fromSku) {
+                $sku = trim((string) ($item['sku'] ?? ''));
+                if ($sku === '' || strcasecmp($sku, $toSku) === 0 || strcasecmp($sku, $fromSku) === 0) {
+                    return null;
+                }
+                $qty = isset($item['from_qty']) && $item['from_qty'] !== '' ? (int) $item['from_qty'] : null;
+
+                return [
+                    'sku' => $sku,
+                    'fromQty' => $qty && $qty > 0 ? $qty : null,
+                ];
+            })
+            ->filter()
+            ->unique(fn ($item) => strtoupper($item['sku']))
+            ->values()
+            ->all();
+
+        if (strcasecmp($ratio, 'combo') === 0 && $action !== 'NRB') {
+            if (count($fromItems) !== 1) {
+                return response()->json(['error' => 'Combo needs 2 different FROM SKUs'], 422);
+            }
+            if (!$fromQty || $fromQty < 1) {
+                return response()->json(['error' => 'FROM Qty must be at least 1'], 422);
+            }
+            $fromItems = array_map(function ($item) use ($fromQty) {
+                $item['fromQty'] = $fromQty;
+
+                return $item;
+            }, $fromItems);
+        }
+
+        $rule = StockBalanceRule::updateOrCreate(
+            ['to_sku' => $toSku],
+            [
+                'from_sku' => $fromSku,
+                'ratio' => $ratio,
+                'from_qty' => $fromQty,
+                'from_items' => $fromItems ?: null,
+                'action' => $action,
+                'user_id' => $user->id,
+            ]
+        );
+
+        StockBalanceTransferPreference::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'to_sku' => $toSku,
+            ],
+            [
+                'from_sku' => $fromSku,
+                'ratio' => $ratio,
+                'from_qty' => $fromQty,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'rule' => [
+                'toSku' => $rule->to_sku,
+                'fromSku' => $rule->from_sku,
+                'ratio' => $rule->ratio ?? '1:1',
+                'fromQty' => $rule->from_qty,
+                'fromItems' => $rule->from_items ?: [],
+                'action' => $rule->action,
+            ],
+        ]);
     }
 }

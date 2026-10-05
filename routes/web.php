@@ -3408,6 +3408,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/stock-balance-search-history', [StockBalanceController::class, 'searchHistory']);
     Route::get('/stock-balance-transfer-preferences', [StockBalanceController::class, 'getTransferPreferences']);
     Route::post('/stock-balance-transfer-preferences', [StockBalanceController::class, 'saveTransferPreference']);
+    Route::get('/stock-balance-rules', [StockBalanceController::class, 'getRules']);
+    Route::post('/stock-balance-rules', [StockBalanceController::class, 'saveRule']);
     Route::get('/combo-trf', [StockBalanceController::class, 'comboTrfView'])->name('combo.trf');
     Route::post('/combo-trf-store', [StockBalanceController::class, 'storeComboTrf'])->name('combo.trf.store');
     Route::get('/combo-trf-inventory-data', [StockBalanceController::class, 'getComboTrfInventoryData']);
@@ -3545,6 +3547,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/announcements/{id}/viewers', 'viewers')->name('announcements.viewers');
         Route::get('/announcements/{id}/comments', 'comments')->name('announcements.comments');
         Route::post('/announcements/{id}/comments', 'comment')->name('announcements.comment');
+        Route::post('/announcements/{id}/react', 'react')->whereNumber('id')->name('announcements.react');
+        Route::post('/announcements/comments/{comment}/react', 'reactComment')->whereNumber('comment')->name('announcements.comments.react');
         Route::post('/announcements/store', 'store')->name('announcements.store');
         Route::post('/announcements/post/{id}', 'post')->name('announcements.post');
         Route::post('/announcements/ai', 'ai')->name('announcements.ai');
@@ -4195,6 +4199,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/missing-listing/csv-import/{channel}', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'importSheetCsv'])
         ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
         ->name('missing.listing.csv.import');
+
+    // LMP Overall — parent/SKU inventory with Amz, eBay, Temu, and Google LMP
+    Route::get('/lmp-overall', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'index'])->name('lmp.overall');
+    Route::get('/lmp-overall/data', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'data'])->name('lmp.overall.data');
+    Route::post('/lmp-overall/save', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'save'])->name('lmp.overall.save');
+
+    // Std pricing — parent/SKU inventory, ovl30, dil, and Amazon Std Price
+    Route::get('/std-pricing', [\App\Http\Controllers\MarketPlace\StdPricingController::class, 'index'])->name('std.pricing');
+    Route::get('/std-pricing/data', [\App\Http\Controllers\MarketPlace\StdPricingController::class, 'data'])->name('std.pricing.data');
+    Route::post('/std-pricing/save', [\App\Http\Controllers\MarketPlace\StdPricingController::class, 'save'])->name('std.pricing.save');
+    Route::get('/std-pricing/sprc-dil', [\App\Http\Controllers\MarketPlace\StdPricingController::class, 'sprcDilRules'])->name('std.pricing.sprc-dil');
+    Route::post('/std-pricing/sprc-dil', [\App\Http\Controllers\MarketPlace\StdPricingController::class, 'saveSprcDilRules'])->name('std.pricing.sprc-dil.save');
 
     // LMP Missing data — analytics channels + LMP M. counts
     Route::get('/lmp-missing-data', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'index'])->name('lmp.missing');

@@ -3196,7 +3196,11 @@ class CvrMasterController extends Controller
             try {
                 $today = now('America/Los_Angeles')->toDateString();
                 $snapDoneKey = 'cvr_master_sku_snapshot_done_' . $today;
-                if (! Cache::has($snapDoneKey)) {
+                $gpftRoiKey = 'cvr_master_sku_gpft_roi_done_' . $today;
+                $hasAvgGpft = Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_gpft');
+                $hasAvgRoi = Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_roi');
+                $needsGpftRoi = ($hasAvgGpft || $hasAvgRoi) && ! Cache::has($gpftRoiKey);
+                if (! Cache::has($snapDoneKey) || $needsGpftRoi) {
                     $childRows = collect($finalResult)->filter(fn ($r) => empty($r->is_parent_summary));
                     $hasAvgPft = Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_pft');
                     $hasAvgNroi = Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_nroi');
@@ -3230,6 +3234,14 @@ class CvrMasterController extends Controller
                             $payload['avg_nroi'] = isset($row->avg_nroi) && $row->avg_nroi !== null
                                 ? round((float) $row->avg_nroi, 2) : null;
                         }
+                        if ($hasAvgGpft) {
+                            $payload['avg_gpft'] = isset($row->avg_gpft) && $row->avg_gpft !== null
+                                ? round((float) $row->avg_gpft, 2) : null;
+                        }
+                        if ($hasAvgRoi) {
+                            $payload['avg_roi'] = isset($row->avg_roi) && $row->avg_roi !== null
+                                ? round((float) $row->avg_roi, 2) : null;
+                        }
                         $batch[] = $payload;
                     }
                     $updateCols = [
@@ -3241,6 +3253,12 @@ class CvrMasterController extends Controller
                     }
                     if ($hasAvgNroi) {
                         $updateCols[] = 'avg_nroi';
+                    }
+                    if ($hasAvgGpft) {
+                        $updateCols[] = 'avg_gpft';
+                    }
+                    if ($hasAvgRoi) {
+                        $updateCols[] = 'avg_roi';
                     }
                     foreach (array_chunk($batch, 500) as $chunk) {
                         PricingMasterDailySnapshotSku::upsert($chunk, ['snapshot_date', 'sku'], $updateCols);
@@ -3266,10 +3284,15 @@ class CvrMasterController extends Controller
                         );
                     }
                     Cache::put($snapDoneKey, 1, now()->endOfDay());
+                    if ($hasAvgGpft || $hasAvgRoi) {
+                        Cache::put($gpftRoiKey, 1, now()->endOfDay());
+                    }
                 }
             } catch (\Exception $e) {
                 Log::warning('Master Analytics SKU daily snapshot save failed: ' . $e->getMessage());
             }
+
+            \App\Http\Controllers\MarketPlace\LmpOverallController::rememberCvrAvgMetrics($finalResult);
 
             return response()->json($finalResult);
             

@@ -2153,7 +2153,7 @@
                         const dot = bestbuyStdPrcChangeDotHtml(std, comparePrice);
 
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                            dot + ('$' + std.toFixed(2)) + '</span>';
+                            dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '') + '</span>';
                     }
                 },
                 {
@@ -2496,7 +2496,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (BB L30 = 0, INV > 0) uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100) + Ship) / margin. If that S PRC < A Price, S PRC = A Price, then cap at LMP. If LMP is below A Price, keep A Price.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. BB L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + NROI%/100) + Ship) / margin. If that S PRC < A Price, S PRC = A Price, then cap at LMP. If LMP is below A Price, keep A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isBestbuyParentRow === 'function' && isBestbuyParentRow(rowData)) return '';
@@ -2523,7 +2523,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. Dil-matching Target NROI when BB L30 > 0; 0 Sold uses the lowest Target NROI. If that price < A Price, S PRC = A Price, then cap at LMP. If LMP is below A Price, keep A Price. Blue triangle = S PRC ≠ BB Price. Red text = S PRC capped at LMP.",
+                    headerTooltip: "Not editable. S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. BB L30 = 0 still uses the Dil-matching slab. If that price < A Price, S PRC = A Price, then cap at LMP. If LMP is below A Price, keep A Price. Blue triangle = S PRC ≠ BB Price. Red text = S PRC capped at LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {

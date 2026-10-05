@@ -198,7 +198,7 @@
             '.amz-badge-chart',
             '.tt-badge-chart',
             '.pef-metric-badge',
-            '.dashboard-badge-panel__badges > .badge',
+            '.dashboard-badge-panel__badges .badge',
             '.ebay2-summary-badge-row .badge'
         ].join(',');
         const SKIP_IDS = {

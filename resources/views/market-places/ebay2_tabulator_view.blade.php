@@ -1111,9 +1111,16 @@
         function ebay2CapSpriceToLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
-            if (!ebay2ShouldCapSpriceToLmp(rowData, s)) return +Number(s).toFixed(2);
-            const lmp = ebayEffectiveLmp(rowData);
-            return lmp > 0 ? +Number(lmp).toFixed(2) : +Number(s).toFixed(2);
+            let out = +Number(s).toFixed(2);
+            if (ebay2ShouldCapSpriceToLmp(rowData, s)) {
+                const lmp = ebayEffectiveLmp(rowData);
+                if (lmp > 0) out = +Number(lmp).toFixed(2);
+            }
+            const lmpNow = ebayEffectiveLmp(rowData);
+            if (window.SpriceLmpCap && typeof SpriceLmpCap.capToStdWhenNoLmp === 'function') {
+                return SpriceLmpCap.capToStdWhenNoLmp(out, lmpNow, SpriceLmpCap.stdOf(rowData));
+            }
+            return out;
         }
         function ebay2RawRuleSprice(rowData) {
             if (!rowData || rowData.is_parent_summary || rowData.is_parent_row) return 0;
@@ -3443,7 +3450,7 @@
                             const comparePrice = amzPrice > 0 ? amzPrice : ebayPrice;
                             const dot = ebayStdPrcChangeDotHtml(std, comparePrice, sku);
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + '</span>';
+                                dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(rowData) : '') + '</span>';
                         }
                     },
 
@@ -3720,7 +3727,7 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SGROI at that LMP is ≥ 20%; if SGROI at LMP is < 20%, Dil is kept. Red triangle stays when S PRC ≥ LMP.",
+                        headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SGROI at that LMP is ≥ 20%; if SGROI at LMP is < 20%, Dil is kept. When LMP is missing, Std Prc is the maximum. Red triangle stays when S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary || rowData.is_parent_row) return '';

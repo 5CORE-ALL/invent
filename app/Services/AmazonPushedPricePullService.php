@@ -11,9 +11,8 @@ use Illuminate\Support\Facades\Log;
  * (the pushed listing/sale price), then confirm with a live SP-API pull.
  * Cron retries leftovers every minute if Amazon's GET is still stale.
  *
- * Merchant listings sync (GET_MERCHANT_LISTINGS_ALL_DATA) often writes Your Price
- * / standard into amazon_datsheets.price. That must not clobber a Dil Sale that
- * already landed on Amazon — otherwise the blue triangle comes back with no push left.
+ * The Price column is the price Amazon.com shows: the active Sales Price when
+ * one is set, otherwise Your Price. A pushed S PRC must not replace that.
  */
 class AmazonPushedPricePullService
 {
@@ -69,15 +68,18 @@ class AmazonPushedPricePullService
             $apiSku = $seller !== ''
                 ? $seller
                 : (string) (AmazonDatasheet::resolveSellerMskuByProductKey($gridSku) ?: $gridSku);
-            $live = $this->currentListingPrice(app(AmazonSpApiService::class)->getListingsItemFullDetails($apiSku));
+            $live = $this->currentListingPrice(app(AmazonSpApiService::class)->getListingsItemFullDetails($apiSku), $listingPrice);
             $persist = self::livePriceToPersist($live, $listingPrice);
-            if ($persist !== null && abs($persist - $listingPrice) <= self::LIVE_MATCH_TOLERANCE) {
+            if ($persist !== null) {
                 $this->writeDatasheetPrice($gridSku, $apiSku, $persist);
-                $this->markPulled($gridSku, $apiSku, $persist);
                 $out['price'] = $persist;
                 $out['from_live'] = true;
+                $out['wrote'] = true;
+                if (abs($persist - $listingPrice) <= self::LIVE_MATCH_TOLERANCE) {
+                    $this->markPulled($gridSku, $apiSku, $persist);
 
-                return $out;
+                    return $out;
+                }
             }
         } catch (\Throwable $e) {
             Log::warning('Amazon immediate price pull after push failed', [
@@ -105,35 +107,47 @@ class AmazonPushedPricePullService
     }
 
     /**
-     * Merchant listings "price" is often Your Price / standard, not the Sale we pushed.
-     * Keep the pushed Sale in the Price column when the report disagrees.
+     * Price Amazon.com shows. An active Sales Price is the customer price.
+     * Your Price is only used when there is no sale.
      */
-    public static function listingsReportPriceToWrite(?float $reportPrice, ?float $pushedSale): ?float
+    public static function customerPrice(?float $yourPrice, ?float $salePrice): ?float
     {
-        return \App\Support\PushedListingPrice::prefer($reportPrice, $pushedSale);
+        $sale = ($salePrice !== null && $salePrice > 0) ? round($salePrice, 2) : 0.0;
+        $your = ($yourPrice !== null && $yourPrice > 0) ? round($yourPrice, 2) : 0.0;
+        if ($sale > 0) {
+            return $sale;
+        }
+        if ($your > 0) {
+            return $your;
+        }
+
+        return null;
     }
 
     /**
-     * Live SP-API GET: keep the calculated S PRC in the Price column.
-     * Ignore Your Price when it is not the Sale we pushed. A live price a few
-     * cents off must not replace the S PRC — the blue badge is an exact-cent
-     * compare, so writing 56.97 over a 56.95 S PRC turns the alert back on.
+     * Merchant listings "price" is Amazon's current price for that SKU.
+     * Keep it when it disagrees with the S PRC we pushed.
+     */
+    public static function listingsReportPriceToWrite(?float $reportPrice, ?float $pushedSale): ?float
+    {
+        $report = ($reportPrice !== null && $reportPrice > 0) ? round($reportPrice, 2) : null;
+        if ($report !== null) {
+            return $report;
+        }
+
+        return ($pushedSale !== null && $pushedSale > 0) ? round($pushedSale, 2) : null;
+    }
+
+    /**
+     * Persist the live Amazon customer price, including when it is not the S PRC.
      */
     public static function livePriceToPersist(?float $live, ?float $expectedPushed): ?float
     {
         if ($live === null || $live < 0.01) {
             return null;
         }
-        $live = round($live, 2);
-        if ($expectedPushed === null || $expectedPushed < 0.01) {
-            return $live;
-        }
-        $expectedPushed = round($expectedPushed, 2);
-        if (abs($live - $expectedPushed) <= self::LIVE_MATCH_TOLERANCE) {
-            return $expectedPushed;
-        }
 
-        return null;
+        return round($live, 2);
     }
 
     /**
@@ -190,98 +204,19 @@ class AmazonPushedPricePullService
     }
 
     /**
-     * Rewrite Price when listings sync (or a Your-Price GET) clobbered a Sale already on Amazon.
+     * Price stays the Amazon customer price. Do not rewrite it to S PRC.
      */
     public function repairPriceIfStale(string $gridSku, ?string $sellerSku, float $expected): bool
     {
-        $expected = round($expected, 2);
-        if ($expected < 0.01 || trim($gridSku) === '') {
-            return false;
-        }
-
-        $writeSku = trim((string) $sellerSku);
-        if ($writeSku === '') {
-            $writeSku = $gridSku;
-        }
-
-        $normGrid = strtoupper(trim(str_replace("\xc2\xa0", ' ', $gridSku)));
-        $compact = AmazonDatasheet::normalizeSkuForLookup($gridSku);
-        $candidates = AmazonDatasheet::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->where(function ($q) use ($normGrid, $compact) {
-                $q->whereRaw('UPPER(TRIM(REPLACE(sku, UNHEX(\'C2A0\'), \' \'))) = ?', [$normGrid]);
-                if ($compact !== '') {
-                    $q->orWhereRaw(
-                        "UPPER(REPLACE(REPLACE(TRIM(COALESCE(sku,'')), UNHEX('C2A0'), ' '), ' ', '')) = ?",
-                        [$compact]
-                    );
-                }
-            })
-            ->get(['id', 'sku', 'price', 'updated_at']);
-        $sheet = AmazonDatasheet::pickBestForProductSku($gridSku, $candidates);
-        if ($sheet && AmazonSpApiService::listingPriceMatchesSprice((float) ($sheet->price ?? 0), $expected)) {
-            return false;
-        }
-
-        return $this->writeDatasheetPrice($gridSku, $writeSku, $expected);
+        return false;
     }
 
     /**
-     * Self-heal Price cells where last pushed Sale ≠ datasheet.price.
+     * Price stays the Amazon customer price. Do not rewrite it to S PRC.
      */
     public function restoreClobberedPushedSales(int $limit = 250): int
     {
-        $lookup = $this->pushedSaleLookup();
-        if ($lookup === []) {
-            return 0;
-        }
-
-        $seen = [];
-        $restored = 0;
-        foreach ($lookup as $skuKey => $sale) {
-            if ($restored >= $limit) {
-                break;
-            }
-            $norm = AmazonDatasheet::normalizeSkuForLookup($skuKey);
-            $dedupe = $norm !== '' ? $norm : strtoupper($skuKey);
-            if ($dedupe === '' || isset($seen[$dedupe])) {
-                continue;
-            }
-            $seen[$dedupe] = true;
-
-            $candidates = AmazonDatasheet::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->where(function ($q) use ($skuKey, $norm) {
-                    $q->whereRaw('UPPER(TRIM(REPLACE(sku, UNHEX(\'C2A0\'), \' \'))) = ?', [strtoupper(trim($skuKey))]);
-                    if ($norm !== '') {
-                        $q->orWhereRaw(
-                            "UPPER(REPLACE(REPLACE(TRIM(COALESCE(sku,'')), UNHEX('C2A0'), ' '), ' ', '')) = ?",
-                            [$norm]
-                        );
-                    }
-                })
-                ->get(['id', 'sku', 'price', 'updated_at']);
-            $sheet = AmazonDatasheet::pickBestForProductSku($skuKey, $candidates);
-            if (! $sheet) {
-                continue;
-            }
-            if (AmazonSpApiService::listingPriceMatchesSprice((float) ($sheet->price ?? 0), $sale)) {
-                continue;
-            }
-            if ($this->writeDatasheetPrice((string) $sheet->sku, (string) $sheet->sku, $sale)) {
-                $restored++;
-            }
-        }
-
-        if ($restored > 0) {
-            Log::info('Amazon pushed-price pull: restored Sale into clobbered Price cells', [
-                'restored' => $restored,
-            ]);
-        }
-
-        return $restored;
+        return 0;
     }
 
     /**
@@ -294,7 +229,7 @@ class AmazonPushedPricePullService
             'pulled' => 0,
             'failed' => 0,
             'retried' => 0,
-            'restored' => $this->restoreClobberedPushedSales(250),
+            'restored' => 0,
         ];
 
         $due = $this->dueRows($limit);
@@ -317,11 +252,10 @@ class AmazonPushedPricePullService
 
             $expected = self::pushedSaleFromValue(is_array($value) ? $value : []);
             $details = $api->getListingsItemFullDetails($sellerSku);
-            $live = $this->currentListingPrice($details);
+            $live = $this->currentListingPrice($details, $expected);
             $price = self::livePriceToPersist($live, $expected);
 
             if ($price === null && $expected !== null) {
-                $this->writeDatasheetPrice($gridSku, $sellerSku, $expected);
                 $attempts = ((int) ($value['PRICE_PULL_ATTEMPTS'] ?? 0)) + 1;
                 $value['PRICE_PULL_ATTEMPTS'] = $attempts;
                 if ($attempts >= self::MAX_ATTEMPTS) {
@@ -427,10 +361,7 @@ class AmazonPushedPricePullService
             try {
                 $details = $api->getListingsItemFullDetails($sellerSku);
                 $expected = self::pushedSaleFromValue($value);
-                $price = self::livePriceToPersist($this->currentListingPrice($details), $expected);
-                if ($price === null && $expected !== null) {
-                    $price = $expected;
-                }
+                $price = self::livePriceToPersist($this->currentListingPrice($details, $expected), $expected);
                 if ($price === null || ! $this->writeDatasheetPrice($gridSku, $sellerSku, $price)) {
                     $out[] = [
                         'success' => false,
@@ -519,20 +450,12 @@ class AmazonPushedPricePullService
         $row->save();
     }
 
-    private function currentListingPrice(array $details): ?float
+    private function currentListingPrice(array $details, ?float $expectedSale = null): ?float
     {
-        // Your Price is the customer listing price. The sale a few cents under it
-        // is a leftover schedule, and the Business offer is 5% under.
         $your = isset($details['your_price']) ? (float) $details['your_price'] : 0;
-        if ($your > 0) {
-            return round($your, 2);
-        }
         $sale = isset($details['sale_price']) ? (float) $details['sale_price'] : 0;
-        if ($sale > 0) {
-            return round($sale, 2);
-        }
 
-        return null;
+        return self::customerPrice($your > 0 ? $your : null, $sale > 0 ? $sale : null);
     }
 
     private function writeDatasheetPrice(string $gridSku, string $sellerSku, float $price): bool

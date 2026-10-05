@@ -15,6 +15,10 @@
         'object-fit:contain;background:#fff;border-radius:10px;padding:4px;' +
         'box-shadow:0 8px 32px rgba(0,0,0,.35);border:1px solid rgba(0,0,0,.08);' +
         '}' +
+        '#global-img-hover-preview.is-large{' +
+        'max-width:min(680px,88vw)!important;max-height:min(680px,82vh)!important;' +
+        'border-radius:16px;padding:8px;' +
+        '}' +
         'img.global-img-hover-active{cursor:zoom-in;}';
 
     var styleEl = document.createElement('style');
@@ -71,12 +75,13 @@
         if (!src) return false;
         if (/^data:image\/svg/i.test(src)) return false;
 
+        var zoom = img.closest && img.closest('[data-hover-zoom]');
         var w = img.clientWidth || 0;
         var h = img.clientHeight || 0;
         // Skip tiny icons and images that are already large on screen
         if (w > 0 && h > 0) {
             if (w < 18 || h < 18) return false;
-            if (w > 180 || h > 180) return false;
+            if (!zoom && (w > 180 || h > 180)) return false;
         }
         return true;
     }
@@ -111,6 +116,7 @@
         }
         activeImg = img;
         img.classList.add('global-img-hover-active');
+        popup.classList.toggle('is-large', !!(img.closest && img.closest('[data-hover-zoom]')));
         popup.src = img.currentSrc || img.src;
         popup.style.display = 'block';
         cx = e.clientX;
