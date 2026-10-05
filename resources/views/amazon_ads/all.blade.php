@@ -1332,6 +1332,8 @@
             var cpcAvgHistoryUrl = @json(route('amazon.ads.cpc-avg-history'));
             var ltCvrHistoryUrl = @json(route('amazon.ads.lt-cvr-history'));
             var ltAcosHistoryUrl = @json(route('amazon.ads.lt-acos-history'));
+            var sbidHistoryUrl = @json(route('amazon.ads.sbid-history'));
+            var sbgtHistoryUrl = @json(route('amazon.ads.sbgt-history'));
             var u7PieDistribUrl = @json(url('/amazon-ads/u7-distribution')) + '/';
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
             window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
@@ -1351,7 +1353,7 @@
             var amzU7PieRefreshTimer = null;
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value'];
-            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert'];
+            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
             var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
@@ -1648,6 +1650,16 @@
                     + '<button type="button" class="amz-cpc-avg-history-dot" title="Daily CVR history" aria-label="Daily CVR history"'
                     + ' data-history="cvr" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '"></button>'
                     + valueHtml + '</span>';
+            }
+            function fmtMoneyHistoryDot(cell, kind, label) {
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var cid = row && row.campaign_id != null ? String(row.campaign_id) : '';
+                var name = row && row.campaignName != null ? String(row.campaignName) : '';
+                var ad = row && row.ad_type != null ? String(row.ad_type) : '';
+                return '<span class="amz-cpc-avg-cell">'
+                    + '<button type="button" class="amz-cpc-avg-history-dot" title="Daily ' + amzEsc(label) + ' history" aria-label="Daily ' + amzEsc(label) + ' history"'
+                    + ' data-history="' + amzEsc(kind) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '"></button>'
+                    + '</span>';
             }
             function fmtLtAcos(cell) {
                 var v = cell.getValue();
@@ -2139,6 +2151,15 @@
                     col.minWidth = 44;
                     return;
                 }
+                if (c === 'sbidHistory') {
+                    col.title = 'SBID History';
+                    col.headerTooltip = 'Daily SBID. Green dot opens the history chart.';
+                    col.formatter = function (cell) { return fmtMoneyHistoryDot(cell, 'sbid', 'SBID'); };
+                    col.headerSort = false;
+                    col.width = 96;
+                    col.minWidth = 88;
+                    return;
+                }
                 if (c === 'sbid') {
                     col.title = 'SBID';
                     col.formatter = fmtSbid;
@@ -2182,6 +2203,15 @@
                     col.formatter = fmtSbgt;
                     col.width = 72;
                     col.minWidth = 64;
+                    return;
+                }
+                if (c === 'sbgtHistory') {
+                    col.title = 'SBGT History';
+                    col.headerTooltip = 'Daily SBGT. Green dot opens the history chart.';
+                    col.formatter = function (cell) { return fmtMoneyHistoryDot(cell, 'sbgt', 'SBGT'); };
+                    col.headerSort = false;
+                    col.width = 96;
+                    col.minWidth = 88;
                     return;
                 }
                 if (c === 'sbgt') {
@@ -2756,7 +2786,7 @@
             function amzClassifyColumn(field, title) {
                 var f = String(field || '');
                 var t = String(title || field || '').toLowerCase();
-                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick)$/i.test(f)
+                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|sbidHistory|sbgtHistory)$/i.test(f)
                     || /\b(acos|cvr|click|impr|sold|spend|spl30|cpc|sales|u7|u2|u1)\b/i.test(t)) {
                     return 'ads';
                 }
@@ -3300,9 +3330,12 @@
             }
             function amzHistoryIsCvr() { return amzHistoryKind === 'cvr'; }
             function amzHistoryIsPercent() { return amzHistoryKind === 'cvr' || amzHistoryKind === 'acos'; }
+            function amzHistoryLowerIsBetter() { return amzHistoryKind === 'cpc' || amzHistoryKind === 'acos'; }
             function amzHistoryMetricLabel() {
                 if (amzHistoryKind === 'cvr') return 'CVR';
                 if (amzHistoryKind === 'acos') return 'ACOS';
+                if (amzHistoryKind === 'sbid') return 'SBID';
+                if (amzHistoryKind === 'sbgt') return 'SBGT';
                 return 'CPC';
             }
             function amzHistoryFmt(v) {
@@ -3318,7 +3351,7 @@
                     if (i === 0) return gray;
                     var diff = v - values[i - 1];
                     if (Math.abs(diff) <= eps) return gray;
-                    var improved = amzHistoryIsCvr() ? diff > 0 : diff < 0;
+                    var improved = amzHistoryLowerIsBetter() ? diff < 0 : diff > 0;
                     return improved ? green : red;
                 });
             }
@@ -3330,6 +3363,8 @@
                 var values = points.map(function (p) {
                     if (amzHistoryKind === 'cvr') return Number(p.cvr);
                     if (amzHistoryKind === 'acos') return Number(p.acos);
+                    if (amzHistoryKind === 'sbid') return Number(p.sbid);
+                    if (amzHistoryKind === 'sbgt') return Number(p.sbgt);
                     return Number(p.cpc);
                 });
                 var dataMin = Math.min.apply(null, values);
@@ -3496,7 +3531,11 @@
                     if (empty) empty.style.display = 'block';
                     return;
                 }
-                var historyUrl = amzHistoryKind === 'cvr' ? ltCvrHistoryUrl : (amzHistoryKind === 'acos' ? ltAcosHistoryUrl : cpcAvgHistoryUrl);
+                var historyUrl = cpcAvgHistoryUrl;
+                if (amzHistoryKind === 'cvr') historyUrl = ltCvrHistoryUrl;
+                else if (amzHistoryKind === 'acos') historyUrl = ltAcosHistoryUrl;
+                else if (amzHistoryKind === 'sbid') historyUrl = sbidHistoryUrl;
+                else if (amzHistoryKind === 'sbgt') historyUrl = sbgtHistoryUrl;
                 var qs = '?campaign_id=' + encodeURIComponent(cid)
                     + '&source=' + encodeURIComponent(activeRawSourceKey || '')
                     + '&ad_type=' + encodeURIComponent(row.ad_type != null ? String(row.ad_type) : '')
@@ -3526,7 +3565,7 @@
             }
             function amzOpenCpcAvgHistory(row) {
                 amzCpcAvgRow = row || {};
-                amzHistoryKind = (row && (row.historyKind === 'cvr' || row.historyKind === 'acos')) ? row.historyKind : 'cpc';
+                amzHistoryKind = (row && ['cvr', 'acos', 'sbid', 'sbgt'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
                 amzCpcAvgDays = 30;
                 var range = document.getElementById('amazonAdsCpcAvgRange');
                 if (range) range.value = '30';

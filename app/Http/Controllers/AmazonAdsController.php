@@ -186,6 +186,7 @@ class AmazonAdsController extends Controller
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
      * `campaignStatus` (Stat) sits immediately before `bgt` (Lbgt); `ruleStatus` follows Stat; `activeAgain` is the last column; `sbgt` and `sbgtAlert` sit beside Lbgt, then `bgtAcos`, `bgtViews`, `bgtCvr`, `bgtPrc`, `bgtReviews`, `bgtDil`.
+     * `sbidHistory` sits beside SBID and `sbgtHistory` beside SBGT. Both open the daily history chart.
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -309,6 +310,24 @@ class AmazonAdsController extends Controller
                     $budgetTail = ['sbgt', 'sbgtAlert', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil'];
                 }
                 array_splice($ordered, $idxBgtForSbgt + 1, 0, $budgetTail);
+            }
+        }
+
+        // History dots sit on the value they chart. They are not database columns.
+        if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)) {
+            if (in_array('sbid', $ordered, true)) {
+                $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'sbidHistory'));
+                $idxSbidHist = array_search('sbid', $ordered, true);
+                if ($idxSbidHist !== false) {
+                    array_splice($ordered, $idxSbidHist + 1, 0, ['sbidHistory']);
+                }
+            }
+            if (in_array('sbgt', $ordered, true)) {
+                $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'sbgtHistory'));
+                $idxSbgtHist = array_search('sbgt', $ordered, true);
+                if ($idxSbgtHist !== false) {
+                    array_splice($ordered, $idxSbgtHist + 1, 0, ['sbgtHistory']);
+                }
             }
         }
 
@@ -4262,6 +4281,200 @@ class AmazonAdsController extends Controller
         }
 
         return response()->json(['ok' => true, 'points' => $points]);
+    }
+
+    /**
+     * Daily SBID history for the SBID History dot. Stored `sbid` on each calendar report row.
+     */
+    public function sbidHistory(Request $request): JsonResponse
+    {
+        return $this->dailyStoredMoneyHistory($request, 'sbid', 'SBID');
+    }
+
+    /**
+     * Daily SBGT history for the SBGT History dot. Stored `sbgt` on each calendar report row.
+     */
+    public function sbgtHistory(Request $request): JsonResponse
+    {
+        return $this->dailyStoredMoneyHistory($request, 'sbgt', 'SBGT');
+    }
+
+    private function dailyStoredMoneyHistory(Request $request, string $column, string $label): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
+        if ($cid === '') {
+            return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
+        }
+
+        $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
+        if ($table === null || ! Schema::hasTable($table) || ! Schema::hasColumn($table, $column)) {
+            return response()->json(['ok' => false, 'message' => 'No daily '.$label.' table for this row.', 'points' => []], 404);
+        }
+
+        $days = (int) $request->query('days', 30);
+        if (! in_array($days, [0, 7, 30, 31, 32, 35, 60, 90], true)) {
+            $days = 30;
+        }
+
+        $dbColumns = Schema::getColumnListing($table);
+        $q = DB::table($table)
+            ->where('campaign_id', $cid)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+        $adType = trim((string) $request->query('ad_type', ''));
+        if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $q->where('ad_type', $adType);
+        }
+
+        $select = ['report_date_range', $column];
+        $q->orderByDesc('report_date_range');
+        if (in_array('id', $dbColumns, true)) {
+            $select[] = 'id';
+            $q->orderByDesc('id');
+        }
+        $rows = $q->limit(2000)->get($select);
+
+        $byDate = [];
+        foreach ($rows as $row) {
+            $r = (array) $row;
+            $day = trim((string) ($r['report_date_range'] ?? ''));
+            if ($day === '') {
+                continue;
+            }
+            $parsed = self::moneyHistoryValue($r[$column] ?? null);
+            if (! array_key_exists($day, $byDate)) {
+                $byDate[$day] = $parsed;
+            } elseif ($byDate[$day] === null && $parsed !== null) {
+                $byDate[$day] = $parsed;
+            }
+        }
+
+        foreach (self::moneyHistoryPushesByDate($table, $column, $cid) as $day => $pushed) {
+            if (! array_key_exists($day, $byDate) || $byDate[$day] === null) {
+                $byDate[$day] = $pushed;
+            }
+        }
+
+        return response()->json([
+            'ok' => true,
+            'points' => self::filledMoneyHistoryPoints($byDate, $days, $column),
+        ]);
+    }
+
+    /**
+     * One point per day after the first real saved or pushed amount.
+     * Later blank days keep that amount until the next real change.
+     * Earlier blank days are left off, so today's value is not copied backward.
+     *
+     * @param  array<string, float|null>  $byDate
+     * @return list<array<string, float|string>>
+     */
+    private static function filledMoneyHistoryPoints(array $byDate, int $days, string $column): array
+    {
+        $knownDates = array_keys($byDate);
+        sort($knownDates);
+        if ($knownDates === []) {
+            return [];
+        }
+
+        $end = $knownDates[count($knownDates) - 1];
+        $start = $knownDates[0];
+        if ($days !== 0) {
+            $start = Carbon::parse($end)->subDays($days - 1)->toDateString();
+            if ($start < $knownDates[0]) {
+                $start = $knownDates[0];
+            }
+        }
+
+        $carry = null;
+        foreach ($knownDates as $day) {
+            if ($day >= $start) {
+                break;
+            }
+            if ($byDate[$day] !== null) {
+                $carry = $byDate[$day];
+            }
+        }
+
+        $points = [];
+        $cursor = Carbon::parse($start);
+        $last = Carbon::parse($end);
+        while ($cursor->lte($last)) {
+            $day = $cursor->toDateString();
+            if (array_key_exists($day, $byDate) && $byDate[$day] !== null) {
+                $carry = $byDate[$day];
+            }
+            if ($carry !== null) {
+                $points[] = ['date' => $day, $column => $carry];
+            }
+            $cursor->addDay();
+        }
+
+        return $points;
+    }
+
+    /**
+     * Last successful push of this bid or budget on each day.
+     *
+     * @return array<string, float>
+     */
+    private static function moneyHistoryPushesByDate(string $table, string $column, string $campaignId): array
+    {
+        $types = self::moneyHistoryPushTypes($table, $column);
+        if ($types === [] || ! Schema::hasTable('amazon_ads_push_logs')) {
+            return [];
+        }
+
+        $rows = DB::table('amazon_ads_push_logs')
+            ->where('campaign_id', $campaignId)
+            ->whereIn('push_type', $types)
+            ->where('status', 'success')
+            ->whereNotNull('value')
+            ->orderBy('created_at')
+            ->get(['created_at', 'value']);
+
+        $tz = (string) config('app.timezone');
+        $byDate = [];
+        foreach ($rows as $row) {
+            $parsed = self::moneyHistoryValue($row->value ?? null);
+            $at = $row->created_at ?? null;
+            if ($parsed === null || $at === null || $at === '') {
+                continue;
+            }
+            $day = Carbon::parse((string) $at)->timezone($tz)->toDateString();
+            $byDate[$day] = $parsed;
+        }
+
+        return $byDate;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function moneyHistoryPushTypes(string $table, string $column): array
+    {
+        $brand = $table === 'amazon_sb_campaign_reports';
+        if ($column === 'sbid') {
+            return [$brand ? 'sb_sbid' : 'sp_sbid'];
+        }
+        if ($column === 'sbgt') {
+            return [$brand ? 'sb_sbgt' : 'sp_sbgt'];
+        }
+
+        return [];
+    }
+
+    private static function moneyHistoryValue(mixed $raw): ?float
+    {
+        if ($raw === null || $raw === '' || ! is_numeric($raw)) {
+            return null;
+        }
+        $n = round((float) $raw, 2);
+        if (! is_finite($n) || $n < 0) {
+            return null;
+        }
+
+        return $n;
     }
 
     private static function cpcHistoryTable(mixed $source, mixed $adType): ?string
