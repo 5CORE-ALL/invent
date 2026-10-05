@@ -1437,7 +1437,76 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $mLinkBySlug = [];
         }
 
-        $data = $rows->map(function ($row) use ($tz, $labelMap, $optionsMap, $imageMap, $mLinkBySlug, $mLinkSlug) {
+        // Order date: look the order # up in the local marketplace order tables (MKT1 first,
+        // then MKT2, then every channel for numbers whose marketplace is blank or unknown).
+        $orderDates = [];
+        $orderIdsToLookup = $rows->pluck('order_number')
+            ->map(fn ($n) => ltrim(trim((string) $n), '#'))
+            ->filter()
+            ->unique()
+            ->values();
+        if ($orderIdsToLookup->isNotEmpty()) {
+            $orderDates = \Illuminate\Support\Facades\Cache::remember(
+                'cc.orders_on_hold.order_dates.'.md5($orderIdsToLookup->sort()->implode('|').'|'.$rows->pluck('marketplace_1')->implode('|').'|'.$rows->pluck('marketplace_2')->implode('|')),
+                now()->addMinutes(15),
+                function () use ($rows) {
+                    $channelSlugByKey = [];
+                    foreach (\App\Services\MarketplaceManager\MarketplaceManagerRegistry::channels() as $channel) {
+                        foreach (array_merge([$channel['slug'], $channel['label'] ?? ''], $channel['mp_channel_keys'] ?? []) as $key) {
+                            $norm = strtolower((string) preg_replace('/[^a-z0-9]+/i', '', (string) $key));
+                            if ($norm !== '') {
+                                $channelSlugByKey[$norm] = $channel['slug'];
+                            }
+                        }
+                    }
+                    $slugFor = static function ($marketplace) use ($channelSlugByKey): ?string {
+                        $norm = strtolower((string) preg_replace('/[^a-z0-9]+/i', '', (string) $marketplace));
+
+                        return $norm !== '' ? ($channelSlugByKey[$norm] ?? null) : null;
+                    };
+
+                    $idsBySlug = [];
+                    foreach ($rows as $row) {
+                        $id = ltrim(trim((string) $row->order_number), '#');
+                        if ($id === '') {
+                            continue;
+                        }
+                        foreach ([$row->marketplace_1, $row->marketplace_2] as $mp) {
+                            $slug = $slugFor($mp);
+                            if ($slug !== null) {
+                                $idsBySlug[$slug][$id] = $id;
+                            }
+                        }
+                    }
+
+                    $fulfillment = app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class);
+                    $found = [];
+                    foreach ($idsBySlug as $slug => $ids) {
+                        $found += $fulfillment->orderDatesByChannelIds($slug, array_values($ids));
+                    }
+
+                    $leftover = $rows->pluck('order_number')
+                        ->map(fn ($n) => ltrim(trim((string) $n), '#'))
+                        ->filter(fn ($id) => $id !== '' && ! isset($found[$id]))
+                        ->unique()
+                        ->values()
+                        ->all();
+                    if ($leftover !== []) {
+                        foreach (\App\Services\MarketplaceManager\MarketplaceManagerRegistry::slugs() as $slug) {
+                            $found += $fulfillment->orderDatesByChannelIds($slug, $leftover);
+                            $leftover = array_values(array_filter($leftover, fn ($id) => ! isset($found[$id])));
+                            if ($leftover === []) {
+                                break;
+                            }
+                        }
+                    }
+
+                    return $found;
+                }
+            );
+        }
+
+        $data = $rows->map(function ($row) use ($tz, $labelMap, $optionsMap, $imageMap, $mLinkBySlug, $mLinkSlug, $orderDates) {
             $ccHistory = [];
             if (! empty($row->cc_action_history)) {
                 $decoded = json_decode((string) $row->cc_action_history, true);
@@ -1483,6 +1552,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
                 'order_number' => $row->order_number,
+                'order_date' => $orderDates[ltrim(trim((string) $row->order_number), '#')] ?? null,
+                'order_date_display' => ($od = $orderDates[ltrim(trim((string) $row->order_number), '#')] ?? null)
+                    ? rescue(fn () => \Carbon\Carbon::parse($od)->format('d-m-Y'), '', false)
+                    : '',
                 'department' => \App\Support\CustomerCareDepartments::label($row->department ?? null),
                 'departments' => \App\Support\CustomerCareDepartments::decode($row->department ?? null),
                 'created_by' => $row->created_by,

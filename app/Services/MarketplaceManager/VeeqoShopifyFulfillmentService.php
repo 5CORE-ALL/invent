@@ -3028,7 +3028,96 @@ class VeeqoShopifyFulfillmentService
             return AmazonOrder::query()->whereIn('amazon_order_id', $ids)->first();
         }
 
-        $simple = match ($marketplace) {
+        $simple = $this->channelOrderRefFields($marketplace);
+        if ($simple === null || $marketplace === 'amazon') {
+            return null;
+        }
+
+        [$class, $refFields] = $simple;
+
+        return $class::query()
+            ->where(function ($query) use ($refFields, $ids): void {
+                foreach ($refFields as $i => $field) {
+                    if ($i === 0) {
+                        $query->whereIn($field, $ids);
+                    } else {
+                        $query->orWhereIn($field, $ids);
+                    }
+                }
+            })
+            ->first();
+    }
+
+    /**
+     * Order create date per channel order id, read from the local marketplace order tables.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, string> channel order id => order date (Y-m-d H:i:s)
+     */
+    public function orderDatesByChannelIds(string $marketplace, array $ids): array
+    {
+        $marketplace = strtolower(trim($marketplace));
+        $ids = array_values(array_unique(array_filter(array_map(static fn ($id) => trim((string) $id), $ids))));
+        $refs = $this->channelOrderRefFields($marketplace);
+        $dateColumn = $this->localTrackedMarketplaceMap()[$marketplace][1] ?? null;
+        if ($ids === [] || $refs === null || $dateColumn === null) {
+            return [];
+        }
+
+        [$class, $refFields] = $refs;
+        try {
+            $table = (new $class)->getTable();
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $dateColumn)) {
+                return [];
+            }
+            $refFields = array_values(array_filter($refFields, static fn (string $f) => Schema::hasColumn($table, $f)));
+            if ($refFields === []) {
+                return [];
+            }
+
+            $wanted = array_flip(array_map('strtolower', $ids));
+            $out = [];
+            foreach (array_chunk($ids, 500) as $chunk) {
+                $rows = $class::query()
+                    ->where(function ($query) use ($refFields, $chunk): void {
+                        foreach ($refFields as $field) {
+                            $query->orWhereIn($field, $chunk);
+                        }
+                    })
+                    ->whereNotNull($dateColumn)
+                    ->get(array_merge($refFields, [$dateColumn]));
+                foreach ($rows as $row) {
+                    $date = (string) ($row->getRawOriginal($dateColumn) ?? '');
+                    if ($date === '') {
+                        continue;
+                    }
+                    foreach ($refFields as $field) {
+                        $ref = trim((string) ($row->getRawOriginal($field) ?? ''));
+                        if ($ref === '' || ! isset($wanted[strtolower($ref)])) {
+                            continue;
+                        }
+                        if (! isset($out[$ref]) || strcmp($date, $out[$ref]) < 0) {
+                            $out[$ref] = $date;
+                        }
+                    }
+                }
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::info('orderDatesByChannelIds failed', ['marketplace' => $marketplace, 'error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return array{0: class-string, 1: list<string>}|null
+     */
+    protected function channelOrderRefFields(string $marketplace): ?array
+    {
+        return match ($marketplace) {
+            'amazon' => [AmazonOrder::class, ['amazon_order_id']],
             'temu' => [TemuOrder::class, ['parent_order_sn', 'order_sn']],
             'temu2' => [Temu2Order::class, ['parent_order_sn', 'order_sn']],
             'temu3' => [Temu3ApiOrder::class, ['parent_order_sn', 'order_sn']],
@@ -3053,23 +3142,6 @@ class VeeqoShopifyFulfillmentService
             'b5cb2b' => [B5cB2bOrder::class, ['store_order_id']],
             default => null,
         };
-        if ($simple === null) {
-            return null;
-        }
-
-        [$class, $refFields] = $simple;
-
-        return $class::query()
-            ->where(function ($query) use ($refFields, $ids): void {
-                foreach ($refFields as $i => $field) {
-                    if ($i === 0) {
-                        $query->whereIn($field, $ids);
-                    } else {
-                        $query->orWhereIn($field, $ids);
-                    }
-                }
-            })
-            ->first();
     }
 
     /**
