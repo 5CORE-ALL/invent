@@ -65,20 +65,46 @@
     }
     .dashboard-badge-panel__badges {
         display: flex;
-        flex-wrap: wrap;
+        flex-direction: column;
+        flex-wrap: nowrap;
         align-content: flex-start;
-        gap: 0.3rem;
+        gap: 0.4rem;
         width: 100%;
         max-width: 100%;
         flex: 1 1 auto;
     }
+    .dash-badge-section {
+        border-radius: 0.4rem;
+        padding: 0.35rem 0.45rem 0.4rem;
+    }
+    .dash-badge-section--pages {
+        background: #dbeafe;
+    }
+    .dash-badge-section--kpi {
+        background: #fef9c3;
+    }
+    .dash-badge-section__label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #334155;
+        line-height: 1.2;
+        margin-bottom: 0.28rem;
+    }
+    .dash-badge-section__badges {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: flex-start;
+        gap: 0.33rem;
+    }
     .dashboard-badge-panel__badges .badge {
         white-space: nowrap;
-        font-size: 0.72rem !important;
-        padding: 0.28rem 0.45rem !important;
+        font-size: 0.792rem !important;
+        padding: 0.308rem 0.495rem !important;
         font-weight: 700 !important;
         line-height: 1.2 !important;
-        border-radius: 0.25rem !important;
+        border-radius: 0.275rem !important;
     }
     .dashboard-badge-panel__header {
         display: flex;
@@ -114,9 +140,9 @@
         border-radius: 0.35rem;
     }
     .dashboard-badge-panel__badges .lc-score-badge {
-        border-radius: 0.25rem !important;
-        font-size: 0.78rem !important;
-        padding: 0.35rem 0.55rem !important;
+        border-radius: 0.275rem !important;
+        font-size: 0.858rem !important;
+        padding: 0.385rem 0.605rem !important;
         font-weight: 700 !important;
         cursor: pointer;
         user-select: none;
@@ -221,6 +247,14 @@
     $ammCvrLabel = $amm['cvr_pct'] !== null
         ? number_format((float) $amm['cvr_pct'], 2).'%'
         : '-';
+    try {
+        $liveActiveNroi = \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::activeChannelNroiPercent();
+        if ($liveActiveNroi !== null) {
+            $amm['n_roi'] = $liveActiveNroi;
+        }
+    } catch (\Throwable $e) {
+        // Keep the saved Active Channel snapshot when the live total cannot be read.
+    }
 
     // Listing Catalogue scores — cached / badge snapshots only (never live-scan on /home).
     $lcMissingL = (int) ($amm['missing_l'] ?? 0);
@@ -623,6 +657,16 @@
                 title="Open Pricing Container"
             >Pricing Container</span>
             <span
+                class="badge fs-6 p-2"
+                style="background-color:{{ (int) $lmpMissingCount > 0 ? '#dc3545' : '#28a745' }};color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('lmp.missing') }}'"
+                role="button"
+                data-kpi-key="{{ \App\Support\Badges\BadgeDataCatalog::makeKey('lmp-missing', 'lmp_missing') }}"
+                data-kpi-label="LMP M."
+                data-kpi-value="{{ (int) $lmpMissingCount }}"
+                title="LMP M.: INV &gt; 0 SKUs with no LMP data. NR channels are left out. Green = 0 missing. Click the dot for rolling history."
+            >LMP M. {{ number_format((int) $lmpMissingCount) }}</span>
+            <span
                 class="badge bg-success text-dark fs-6 p-2"
                 style="font-weight:bold;cursor:pointer;"
                 onclick="window.location.href='{{ route('all.marketplace.master') }}'"
@@ -671,35 +715,6 @@
                 role="button"
                 title="N ROI"
             >NROI: {{ number_format((int) round((float) ($amm['n_roi'] ?? 0))) }}%</span>
-        </div>
-    </div>
-</div>
-
-<!-- LMP Missing — LMP M. total from analytics pages (NR channels left out) -->
-<div id="lmp-missing-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
-    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fecaca, #fff1f2);">
-        <a href="{{ route('lmp.missing') }}" title="Open LMP Missing data" style="color:#dc3545;font-size:1.15rem;line-height:1;">
-            <i class="ri-price-tag-3-line"></i>
-        </a>
-    </div>
-    <div class="dashboard-badge-panel__body">
-        <div class="dashboard-badge-panel__header">
-            <h6 class="mb-0">LMP Missing</h6>
-            @if ($lmpMissingRow?->updated_at)
-                <small class="dashboard-badge-panel__updated">Updated {{ $lmpMissingRow->updated_at->format('M j, g:i A') }}</small>
-            @endif
-        </div>
-        <div class="dashboard-badge-panel__badges">
-            <span
-                class="badge fs-6 p-2"
-                style="background-color:{{ (int) $lmpMissingCount > 0 ? '#dc3545' : '#28a745' }};color:#fff;font-weight:bold;cursor:pointer;"
-                onclick="window.location.href='{{ route('lmp.missing') }}'"
-                role="button"
-                data-kpi-key="{{ \App\Support\Badges\BadgeDataCatalog::makeKey('lmp-missing', 'lmp_missing') }}"
-                data-kpi-label="LMP M."
-                data-kpi-value="{{ (int) $lmpMissingCount }}"
-                title="LMP M.: INV &gt; 0 SKUs with no LMP data. NR channels are left out. Green = 0 missing. Click the dot for rolling history."
-            >LMP M. {{ number_format((int) $lmpMissingCount) }}</span>
         </div>
     </div>
 </div>
@@ -1324,6 +1339,53 @@
     </div>
 </div>
 
+<script>
+(function () {
+    function isKpiBadge(badge) {
+        if (badge.getAttribute('data-kpi-key') || badge.classList.contains('lc-score-badge')) return true;
+        return /\d/.test((badge.textContent || '').replace(/\s+/g, ' '));
+    }
+
+    function makeSection(kind, label) {
+        const section = document.createElement('div');
+        section.className = 'dash-badge-section dash-badge-section--' + kind;
+        const title = document.createElement('div');
+        title.className = 'dash-badge-section__label';
+        title.textContent = label;
+        const badges = document.createElement('div');
+        badges.className = 'dash-badge-section__badges';
+        section.appendChild(title);
+        section.appendChild(badges);
+        return section;
+    }
+
+    function splitWrap(wrap) {
+        if (!wrap || wrap.dataset.badgeSplit === '1') return;
+        const badges = [...wrap.querySelectorAll(':scope > .badge')];
+        wrap.dataset.badgeSplit = '1';
+        const pages = makeSection('pages', 'Pages');
+        const kpi = makeSection('kpi', 'KPI');
+        badges.forEach((badge) => {
+            const target = isKpiBadge(badge) ? kpi : pages;
+            target.querySelector('.dash-badge-section__badges').appendChild(badge);
+        });
+        wrap.appendChild(pages);
+        wrap.appendChild(kpi);
+    }
+
+    function place(badge, wrap) {
+        wrap = wrap || badge.closest('.dashboard-badge-panel__badges');
+        if (!wrap) return;
+        splitWrap(wrap);
+        const kind = isKpiBadge(badge) ? 'kpi' : 'pages';
+        const target = wrap.querySelector('.dash-badge-section--' + kind + ' .dash-badge-section__badges');
+        if (target && badge.parentElement !== target) target.appendChild(badge);
+    }
+
+    document.querySelectorAll('.dashboard-badge-panel__badges').forEach(splitWrap);
+    window.DashBadgeSections = { place, isKpiBadge };
+})();
+</script>
 @include('partials.dashboard-customize')
 @include('partials.dashboard-kpi-dots')
 @endsection

@@ -5191,6 +5191,8 @@
                 let groiSum = 0;
                 let npftSum = 0;
                 let nroiSum = 0;
+                let nroiWeighted = 0;
+                let nroiWeight = 0;
                 let validChannels = 0;
 
                 data.forEach(row => {
@@ -5246,6 +5248,11 @@
                     const profitAmount = (gprofitPercent / 100) * l30Sales;
                     totalPft += profitAmount;
 
+                    if (cogs > 0) {
+                        nroiWeighted += nroi * cogs;
+                        nroiWeight += cogs;
+                    }
+
                     if (l30Sales > 0) {
                         gprofitSum += gprofitPercent;
                         groiSum += groi;
@@ -5265,10 +5272,10 @@
                 // N PFT = G PFT - TAcos % (same as channel-masters)
                 const avgNpft = avgGprofit - avgAdsPercent;
 
-                // NROI% = (Net Profit / COGS) × 100 where Net Profit = Total PFT − Total Ad Spend
-                // (same as before — do not cut Ads% from GROI%).
+                // NROI% = COGS-weighted average of each active channel's N ROI column.
+                // Temu / Temu 2 / Temu 3 are GROI% − Ads%, not (PFT − Spend) / COGS.
                 const netProfit = totalPft - totalAdSpend;
-                const avgNroi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
+                const avgNroi = nroiWeight > 0 ? (nroiWeighted / nroiWeight) : 0;
 
                 // Store the exact numeric value on the badge so chart scaling matches the
                 // live table total (compact text like "326K" must not be parsed as 326).
