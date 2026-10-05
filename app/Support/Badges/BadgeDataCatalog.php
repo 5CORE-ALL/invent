@@ -257,8 +257,8 @@ class BadgeDataCatalog
             }
         }
 
-        // Explicit higher-is-worse fields
-        if (in_array($f, ['nmap', 'missing_l', 'missing_video'], true)) {
+        // Explicit higher-is-worse fields. TAT is months of stock (inv ÷ sales).
+        if (in_array($f, ['nmap', 'missing_l', 'missing_video', 'tat'], true)) {
             return true;
         }
 

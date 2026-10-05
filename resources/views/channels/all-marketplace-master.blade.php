@@ -2042,7 +2042,7 @@
         $(document).ready(function() {
             var lastDotColorByKey = {};
             var lastDotPairByKey = {};
-            var invertedDotMetrics = ['acos', 'ads_pct'];
+            var invertedDotMetrics = ['acos', 'ads_pct', 'tat'];
             var ySalesAllChartPrefetch = null;
             var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','today_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','p_nroi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
@@ -6864,8 +6864,8 @@
                     return Math.round(v).toLocaleString('en-US');
                 };
 
-                // --- Dot colors: green=UP red=DOWN, but INVERTED for ACOS & TAcos % (lower is better) ---
-                const invertedMetrics = ['acos', 'ads_pct'];
+                // --- Dot colors: green=UP red=DOWN. ACOS, TAcos %, and TAT invert (lower is better). ---
+                const invertedMetrics = ['acos', 'ads_pct', 'tat'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
 
