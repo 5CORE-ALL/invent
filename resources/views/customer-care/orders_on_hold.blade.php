@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $pageTitle ?? 'on hold / Mapping', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $pageTitle ?? 'Orders On Hold (CC Action)', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -498,7 +498,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => $pageTitle ?? 'on hold / Mapping',
+        'page_title' => $pageTitle ?? 'Orders On Hold (CC Action)',
         'sub_title' => 'Customer Care',
     ])
 
@@ -526,7 +526,7 @@
 
             <div class="card mt-3">
                 <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                    <h5 class="mb-0">{{ $recordsTitle ?? 'Orders On Hold Records' }}</h5>
+                    <h5 class="mb-0">{{ $recordsTitle ?? 'Orders On Hold (CC Action) Records' }}</h5>
                     <div class="d-flex align-items-center justify-content-end gap-2 ms-auto flex-wrap orders-hold-toolbar">
                         {{-- Quick search: case-insensitive substring match across SKU, parent,
                              order #, marketplaces, issue/action text, root-cause, dept and
@@ -890,7 +890,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">Orders On Hold Issue</h5>
+                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">Orders On Hold (CC Action) Issue</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form id="ordersOnHoldIssueForm" autocomplete="off">

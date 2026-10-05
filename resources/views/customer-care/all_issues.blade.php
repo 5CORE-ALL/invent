@@ -1334,7 +1334,8 @@
                                     <option value="QC">QC</option>
                                     <option value="Packaging">Packaging</option>
                                     <option value="Chargeback">Chargeback</option>
-                                    <option value="Orders on Hold">Orders on Hold</option>
+                                    <option value="Orders on Hold">Orders On Hold (CC Actions)</option>
+                                    <option value="Mapping / Software">Mapping / Software</option>
                                     <option value="Other">Other</option>
                                 </select>
                                 @unless(!empty($lockedDepartment))
@@ -1646,6 +1647,7 @@
                 'Carrier Issue': 'Carrier Scan Issue',
                 'Carrier and Claim': 'Carrier Claims',
                 'Carriers Claims': 'Carrier Claims',
+                'Orders on Hold': 'Orders On Hold (CC Actions)',
             };
 
             function formatDepartmentLabel(name) {

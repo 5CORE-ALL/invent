@@ -6,6 +6,7 @@ use App\Contracts\PageBadgeCalculator;
 use App\Models\CcMessagesPending;
 use App\Models\CustomerFollowup;
 use App\Support\CustomerCareDepartments;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -49,6 +50,33 @@ class CustomerCareBadgeCalculator implements PageBadgeCalculator
             'label_issues' => self::activeCount('label_issue_issues', ['Label', 'Shipping']),
             'l30_issue_rows' => self::l30IssueRows('orders_on_hold_issues'),
         ];
+    }
+
+    /**
+     * Active rows on /customer-care/orders-on-hold (same filter as its issues endpoint).
+     * Cached briefly because the sidebar renders on every page.
+     */
+    public static function ordersOnHoldRowsCached(): int
+    {
+        try {
+            return (int) Cache::remember('cc_orders_on_hold_sidebar_count_v1', 120, function () {
+                if (! Schema::hasTable('dispatch_issue_issues')) {
+                    return 0;
+                }
+
+                return (int) DB::table('dispatch_issue_issues')
+                    ->where(function ($q) {
+                        $q->whereNull('is_archived')->orWhere('is_archived', false);
+                    })
+                    ->where(function ($q) {
+                        $q->where('department', 'Orders on Hold')
+                            ->orWhere('department', 'like', '%"Orders on Hold"%');
+                    })
+                    ->count();
+            });
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 
     /**
