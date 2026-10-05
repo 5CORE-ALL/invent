@@ -46,11 +46,13 @@ class EbayListingPublishService
         string $mode = 'variation',
         string $parentHint = '',
         ?int $categoryId = null,
-        ?string $categoryName = null
+        ?string $categoryName = null,
+        array $itemSpecifics = []
     ): array {
         $channel = $this->normalizeChannel($channel);
         $label = $this->channelLabel($channel);
         $skus = $this->uniqueSkus($skus);
+        $itemSpecifics = $this->cleanSpecifics($itemSpecifics);
         if ($skus === []) {
             return ['success' => false, 'message' => 'SKU is required.'];
         }
@@ -76,7 +78,7 @@ class EbayListingPublishService
         }
 
         if ($mode === 'single' && count($publishSkus) > 1) {
-            return $this->publishEachAsSingle($publishSkus, $channel, $parentHint, $categoryId, $categoryName);
+            return $this->publishEachAsSingle($publishSkus, $channel, $parentHint, $categoryId, $categoryName, $itemSpecifics);
         }
 
         $primarySku = $publishSkus[0];
@@ -153,6 +155,12 @@ class EbayListingPublishService
             'variations' => $variations,
             'upc' => '',
         ]);
+        if ($itemSpecifics !== []) {
+            $payload['item_specifics'] = array_merge(
+                is_array($payload['item_specifics'] ?? null) ? $payload['item_specifics'] : [],
+                $itemSpecifics
+            );
+        }
         $payload = ListingManagerEbayTradingPublisher::stripUpcFromPayload($payload);
 
         Log::info('Ebay listing publish: AddFixedPriceItem', [
@@ -199,6 +207,91 @@ class EbayListingPublishService
     }
 
     /**
+     * Pre-publish check: required eBay item specifics we could not find in masters / Amazon / Shopify.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, string>  $itemSpecifics
+     * @return array{success: bool, message?: string, category_id?: string, aspects_loaded?: bool, variation_aspect?: string, missing?: list<array<string, mixed>>}
+     */
+    public function requiredSpecifics(
+        array $skus,
+        string $channel = 'ebaytwo',
+        string $mode = 'variation',
+        string $parentHint = '',
+        ?int $categoryId = null,
+        ?string $categoryName = null,
+        array $itemSpecifics = []
+    ): array {
+        $channel = $this->normalizeChannel($channel);
+        $skus = $this->uniqueSkus($skus);
+        if ($skus === [] || ! $this->isConfigured($channel)) {
+            return ['success' => true, 'missing' => [], 'aspects_loaded' => false];
+        }
+        $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
+        $publishSkus = $this->filterPublishable($skus, $channel) ?: $skus;
+        $primarySku = $publishSkus[0];
+        $product = $this->findProduct($primarySku);
+        if (! $product) {
+            return ['success' => true, 'missing' => [], 'aspects_loaded' => false];
+        }
+
+        $category = $this->resolveCategory($publishSkus, $channel, $categoryId, $categoryName);
+        if ($category['id'] === '') {
+            return ['success' => true, 'missing' => [], 'aspects_loaded' => false];
+        }
+
+        $hydrated = ListingManagerAmazonHydrator::hydrate($primarySku, false);
+        $details = ListingManagerAmazonHydrator::detailsFromHydration($hydrated, [], $channel);
+        $variations = [];
+        if ($mode === 'variation' && count($publishSkus) > 1) {
+            $variations = $this->variationRows($publishSkus, $parentHint !== '' ? $parentHint : $this->groupKey($product));
+        }
+        $specifics = is_array($details['item_specifics'] ?? null) ? $details['item_specifics'] : [];
+        $payload = array_merge($details, [
+            'sku' => $primarySku,
+            'title' => $this->clipTitle($this->resolveTitle($product, $primarySku, $hydrated)),
+            'description' => trim((string) ($details['description'] ?? $hydrated['description'] ?? '')),
+            'primary_category_id' => $category['id'],
+            'primary_category_path' => $category['path'],
+            'variations' => $variations,
+            'item_specifics' => array_merge($specifics, $this->cleanSpecifics($itemSpecifics)),
+        ]);
+
+        $check = ListingManagerEbayTradingPublisher::previewRequiredSpecifics($channel, $payload);
+
+        return [
+            'success' => true,
+            'category_id' => $category['id'],
+            'aspects_loaded' => $check['aspects_loaded'],
+            'variation_aspect' => $check['variation_aspect'],
+            'missing' => $check['missing'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function cleanSpecifics(mixed $raw): array
+    {
+        if (is_string($raw) && $raw !== '') {
+            $raw = json_decode($raw, true);
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $name => $value) {
+            $name = trim((string) $name);
+            $value = is_scalar($value) ? trim((string) $value) : '';
+            if ($name !== '' && $value !== '' && strcasecmp($name, 'UPC') !== 0 && mb_strlen($name) <= 65) {
+                $out[$name] = mb_substr($value, 0, 65);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
@@ -207,14 +300,15 @@ class EbayListingPublishService
         string $channel,
         string $parentHint,
         ?int $categoryId,
-        ?string $categoryName
+        ?string $categoryName,
+        array $itemSpecifics = []
     ): array {
         $ok = [];
         $fail = [];
         $listed = [];
         $lastId = null;
         foreach ($skus as $sku) {
-            $one = $this->publishSkus([$sku], $channel, false, 'single', $parentHint, $categoryId, $categoryName);
+            $one = $this->publishSkus([$sku], $channel, false, 'single', $parentHint, $categoryId, $categoryName, $itemSpecifics);
             if ($one['success'] ?? false) {
                 $ok[] = $one['message'] ?? ('Published '.$sku);
                 foreach ($one['skus'] ?? [$sku] as $listedSku) {

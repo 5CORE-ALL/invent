@@ -1090,5 +1090,5 @@
             publishUrl: '/listing_ebayvariation/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=6"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v={{ @filemtime(public_path('js/listing-page-tools.js')) }}"></script>
 @endsection

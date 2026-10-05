@@ -116,7 +116,16 @@ class ListingVariationPreviewService
             return $this->wayfair->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $overrides);
         }
         if ($this->isEbayChannel($channel)) {
-            return $this->ebay->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
+            return $this->ebay->publishSkus(
+                $skus,
+                $channel,
+                $expandSiblings,
+                $mode,
+                $parentHint,
+                $categoryId,
+                $categoryName,
+                is_array($overrides['item_specifics'] ?? null) ? $overrides['item_specifics'] : []
+            );
         }
         if ($this->isTiktokChannel($channel)) {
             return $this->tiktok->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb);

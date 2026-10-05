@@ -27,28 +27,39 @@ class EbayCategoryAspects
     /**
      * @return list<array{name: string, required: bool, variations: bool, free_text: bool, values: list<string>}>
      */
-    public static function forCategory(string $categoryId, string $token): array
+    public static function forCategory(string $categoryId, string $userToken, string $appId = '', string $certId = ''): array
     {
         $categoryId = trim($categoryId);
-        if ($categoryId === '' || $token === '') {
+        if ($categoryId === '') {
             return [];
         }
-        $cacheKey = 'ebay_category_aspects_v1:'.$categoryId;
+        $cacheKey = 'ebay_category_aspects_v2:'.$categoryId;
         $cached = Cache::get($cacheKey);
-        if (is_array($cached)) {
+        if (is_array($cached) && $cached !== []) {
             return $cached;
         }
 
-        try {
-            $res = Http::timeout(30)
-                ->withToken($token)
-                ->acceptJson()
-                ->get('https://api.ebay.com/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category', [
-                    'category_id' => $categoryId,
-                ]);
-            if (! $res->successful()) {
-                Log::warning('eBay taxonomy aspects failed', ['category' => $categoryId, 'status' => $res->status(), 'body' => substr($res->body(), 0, 500)]);
+        $tokens = array_values(array_filter([self::appToken($appId, $certId), $userToken]));
+        if ($tokens === []) {
+            return [];
+        }
 
+        try {
+            $res = null;
+            foreach ($tokens as $token) {
+                $res = Http::timeout(30)
+                    ->withToken($token)
+                    ->acceptJson()
+                    ->withHeaders(['Accept-Encoding' => 'gzip'])
+                    ->get('https://api.ebay.com/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category', [
+                        'category_id' => $categoryId,
+                    ]);
+                if ($res->successful()) {
+                    break;
+                }
+                Log::warning('eBay taxonomy aspects failed', ['category' => $categoryId, 'status' => $res->status(), 'body' => substr($res->body(), 0, 500)]);
+            }
+            if (! $res || ! $res->successful()) {
                 return [];
             }
             $out = [];
@@ -77,6 +88,45 @@ class EbayCategoryAspects
 
             return [];
         }
+    }
+
+    /**
+     * Application token (client credentials) — Taxonomy API needs the public api_scope,
+     * which seller user tokens often lack.
+     */
+    private static function appToken(string $appId, string $certId): string
+    {
+        $appId = trim($appId);
+        $certId = trim($certId);
+        if ($appId === '' || $certId === '') {
+            return '';
+        }
+        $cacheKey = 'ebay_app_token_v1:'.md5($appId);
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+        try {
+            $res = Http::timeout(20)
+                ->asForm()
+                ->withBasicAuth($appId, $certId)
+                ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                    'grant_type' => 'client_credentials',
+                    'scope' => 'https://api.ebay.com/oauth/api_scope',
+                ]);
+            $token = (string) ($res->json('access_token') ?? '');
+            if ($res->successful() && $token !== '') {
+                $ttl = max(300, (int) ($res->json('expires_in') ?? 7200) - 300);
+                Cache::put($cacheKey, $token, now()->addSeconds($ttl));
+
+                return $token;
+            }
+            Log::warning('eBay app token failed', ['status' => $res->status(), 'body' => substr($res->body(), 0, 300)]);
+        } catch (\Throwable $e) {
+            Log::warning('eBay app token error', ['error' => $e->getMessage()]);
+        }
+
+        return '';
     }
 
     /**
@@ -119,15 +169,17 @@ class EbayCategoryAspects
     }
 
     /**
-     * Fill missing required aspects. Returns [specifics, defaulted names => value].
+     * Fill missing required aspects. Returns [specifics, defaulted names => value, unresolved].
+     * With $useDefaults false, aspects not found anywhere are returned as unresolved instead.
      *
      * @param  array<string, mixed>  $specifics
      * @param  list<array{name: string, required: bool, variations: bool, free_text: bool, values: list<string>}>  $aspects
      * @param  list<string>  $skus
-     * @return array{0: array<string, mixed>, 1: array<string, string>}
+     * @return array{0: array<string, mixed>, 1: array<string, string>, 2: list<array{name: string, values: list<string>, free_text: bool, suggested: string}>}
      */
-    public static function fillRequired(array $specifics, array $aspects, array $skus, string $text, string $skipAspect = ''): array
+    public static function fillRequired(array $specifics, array $aspects, array $skus, string $text, string $skipAspect = '', bool $useDefaults = true): array
     {
+        $unresolved = [];
         $have = [];
         foreach ($specifics as $k => $v) {
             if (trim((string) $v) !== '') {
@@ -150,7 +202,17 @@ class EbayCategoryAspects
                 $value = self::fromText($aspect, $haystack);
             }
             if ($value === '') {
-                $value = self::fallback($aspect);
+                $fallback = self::fallback($aspect);
+                if (! $useDefaults) {
+                    $unresolved[] = [
+                        'name' => $aspect['name'],
+                        'values' => array_slice($aspect['values'], 0, 300),
+                        'free_text' => $aspect['free_text'],
+                        'suggested' => $fallback,
+                    ];
+                    continue;
+                }
+                $value = $fallback;
                 if ($value !== '') {
                     $defaulted[$aspect['name']] = $value;
                 }
@@ -160,7 +222,7 @@ class EbayCategoryAspects
             }
         }
 
-        return [$specifics, $defaulted];
+        return [$specifics, $defaulted, $unresolved];
     }
 
     private static function key(string $name): string

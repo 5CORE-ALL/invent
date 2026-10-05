@@ -1105,5 +1105,5 @@
             publishUrl: '/listing_ebaytwo/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=18"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v={{ @filemtime(public_path('js/listing-page-tools.js')) }}"></script>
 @endsection

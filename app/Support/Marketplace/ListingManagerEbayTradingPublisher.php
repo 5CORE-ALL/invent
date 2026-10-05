@@ -215,39 +215,10 @@ class ListingManagerEbayTradingPublisher
                 self::appendEbay3FallbackShippingAndReturns($item);
             }
 
-            $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
-            $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core')) ?: '5 Core';
-            $mpn = $sku;
-            $specifics = is_array($payload['item_specifics'] ?? null) ? $payload['item_specifics'] : [];
-            $specifics['Brand'] = $brand;
-            $specifics['Manufacturer'] = $manufacturer;
-            $specifics['MPN'] = $mpn;
-            $specifics = self::ensureRequiredItemSpecifics($specifics, $payload);
-            $specifics = self::withoutUpcKeys($specifics);
-
-            $aspects = EbayCategoryAspects::forCategory($categoryId, (string) ($ctx['token'] ?? ''));
-            $variationAspect = $variations !== []
-                ? EbayCategoryAspects::variationAspect($aspects, self::variationAspectName($variations))
-                : '';
-            $aspectNames = array_map(static fn ($a) => strtolower($a['name']), $aspects);
-            if (in_array('model', $aspectNames, true) && strcasecmp($variationAspect, 'Model') !== 0 && trim((string) ($specifics['Model'] ?? '')) === '') {
-                $specifics['Model'] = $sku;
-            }
-            $skusForLookup = array_values(array_unique(array_filter(array_merge([$sku], array_column($variations, 'sku')))));
-            [$specifics, $defaulted] = EbayCategoryAspects::fillRequired(
-                $specifics,
-                $aspects,
-                $skusForLookup,
-                $title.' '.strip_tags($description),
-                $variationAspect
-            );
-            if ($variationAspect !== '') {
-                foreach (array_keys($specifics) as $name) {
-                    if (strcasecmp(trim((string) $name), $variationAspect) === 0) {
-                        unset($specifics[$name]);
-                    }
-                }
-            }
+            $resolved = self::resolveSpecifics($ctx, $payload, $variations, true);
+            $specifics = $resolved['specifics'];
+            $variationAspect = $resolved['variation_aspect'];
+            $defaulted = $resolved['defaulted'];
 
             if ($specifics !== []) {
                 $itemSpecifics = $item->addChild('ItemSpecifics');
@@ -368,6 +339,83 @@ class ListingManagerEbayTradingPublisher
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Required item specifics still missing after masters / Amazon / Shopify (shown in the publish window).
+     *
+     * @param  array<string, mixed>  $payload  sku, title, description, primary_category_id, variations, item_specifics
+     * @return array{aspects_loaded: bool, variation_aspect: string, missing: list<array{name: string, values: list<string>, free_text: bool, suggested: string}>}
+     */
+    public static function previewRequiredSpecifics(string $channelKey, array $payload): array
+    {
+        $ctx = self::context(ListingChannelCounts::normalize($channelKey));
+        if (! ($ctx['configured'] ?? false)) {
+            return ['aspects_loaded' => false, 'variation_aspect' => '', 'missing' => []];
+        }
+        $variations = self::normalizeVariations($payload['variations'] ?? []);
+        $resolved = self::resolveSpecifics($ctx, self::stripUpcFromPayload($payload), $variations, false);
+
+        return [
+            'aspects_loaded' => $resolved['aspects_loaded'],
+            'variation_aspect' => $resolved['variation_aspect'],
+            'missing' => $resolved['unresolved'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ctx
+     * @param  array<string, mixed>  $payload
+     * @param  list<array{sku: string}>  $variations
+     * @return array{specifics: array<string, mixed>, variation_aspect: string, defaulted: array<string, string>, unresolved: list<array<string, mixed>>, aspects_loaded: bool}
+     */
+    private static function resolveSpecifics(array $ctx, array $payload, array $variations, bool $useDefaults): array
+    {
+        $sku = trim((string) ($payload['sku'] ?? ''));
+        $specifics = is_array($payload['item_specifics'] ?? null) ? $payload['item_specifics'] : [];
+        $specifics['Brand'] = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+        $specifics['Manufacturer'] = trim((string) config('listing_manager.default_manufacturer', '5 Core')) ?: '5 Core';
+        $specifics['MPN'] = $sku;
+        $specifics = self::ensureRequiredItemSpecifics($specifics, $payload);
+        $specifics = self::withoutUpcKeys($specifics);
+
+        $aspects = EbayCategoryAspects::forCategory(
+            (string) ($payload['primary_category_id'] ?? ''),
+            (string) ($ctx['token'] ?? ''),
+            (string) ($ctx['app_id'] ?? ''),
+            (string) ($ctx['cert_id'] ?? '')
+        );
+        $variationAspect = $variations !== []
+            ? EbayCategoryAspects::variationAspect($aspects, self::variationAspectName($variations))
+            : '';
+        $aspectNames = array_map(static fn ($a) => strtolower($a['name']), $aspects);
+        if (in_array('model', $aspectNames, true) && strcasecmp($variationAspect, 'Model') !== 0 && trim((string) ($specifics['Model'] ?? '')) === '') {
+            $specifics['Model'] = $sku;
+        }
+        $skusForLookup = array_values(array_unique(array_filter(array_merge([$sku], array_column($variations, 'sku')))));
+        [$specifics, $defaulted, $unresolved] = EbayCategoryAspects::fillRequired(
+            $specifics,
+            $aspects,
+            $skusForLookup,
+            trim((string) ($payload['title'] ?? '')).' '.strip_tags((string) ($payload['description'] ?? '')),
+            $variationAspect,
+            $useDefaults
+        );
+        if ($variationAspect !== '') {
+            foreach (array_keys($specifics) as $name) {
+                if (strcasecmp(trim((string) $name), $variationAspect) === 0) {
+                    unset($specifics[$name]);
+                }
+            }
+        }
+
+        return [
+            'specifics' => $specifics,
+            'variation_aspect' => $variationAspect,
+            'defaulted' => $defaulted,
+            'unresolved' => $unresolved,
+            'aspects_loaded' => $aspects !== [],
+        ];
     }
 
     /**

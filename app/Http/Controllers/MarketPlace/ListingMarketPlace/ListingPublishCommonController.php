@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Services\MarketplaceManager\EbayListingPublishService;
 use App\Services\MarketplaceManager\ListingVariationPreviewService;
 use Illuminate\Http\Request;
 
@@ -67,6 +68,7 @@ class ListingPublishCommonController extends Controller
         }
         $weightLb = $this->positiveFloatFromRequest($request, 'weight_lb', 'package_weight_lb');
         $weightKg = $this->positiveFloatFromRequest($request, 'weight_kg', 'package_weight_kg');
+        $itemSpecifics = $this->itemSpecificsFromRequest($request);
 
         try {
             $result = $preview->publishSkus(
@@ -79,7 +81,8 @@ class ListingPublishCommonController extends Controller
                 $categoryUuid !== '' ? $categoryUuid : null,
                 $categoryName !== '' ? $categoryName : null,
                 $weightLb,
-                $weightKg
+                $weightKg,
+                $itemSpecifics !== [] ? ['item_specifics' => $itemSpecifics] : []
             );
         } catch (\Throwable $e) {
             return response()->json([
@@ -89,6 +92,55 @@ class ListingPublishCommonController extends Controller
         }
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
+    /**
+     * eBay: required item specifics still missing before publishing (filled in the publish window).
+     */
+    public function ebayRequiredSpecifics(Request $request, EbayListingPublishService $ebay)
+    {
+        $skus = $this->skusFromRequest($request);
+        $channel = strtolower(trim((string) $request->input('channel', '')));
+        $categoryId = (int) preg_replace('/\D+/', '', (string) $request->input('category_id', ''));
+        $categoryName = trim((string) $request->input('category_name', ''));
+
+        try {
+            return response()->json($ebay->requiredSpecifics(
+                $skus,
+                $channel,
+                (string) $request->input('mode', 'variation'),
+                trim((string) $request->input('parent', '')),
+                $categoryId > 0 ? $categoryId : null,
+                $categoryName !== '' ? $categoryName : null,
+                $this->itemSpecificsFromRequest($request)
+            ));
+        } catch (\Throwable $e) {
+            return response()->json(['success' => true, 'missing' => [], 'aspects_loaded' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function itemSpecificsFromRequest(Request $request): array
+    {
+        $raw = $request->input('item_specifics', []);
+        if (is_string($raw) && $raw !== '') {
+            $raw = json_decode($raw, true);
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $name => $value) {
+            $name = trim((string) $name);
+            $value = is_scalar($value) ? trim((string) $value) : '';
+            if ($name !== '' && $value !== '') {
+                $out[$name] = $value;
+            }
+        }
+
+        return $out;
     }
 
     /**
