@@ -311,6 +311,9 @@
             width: 8px; height: 8px; border: 0; padding: 0; border-radius: 50%;
             background: #166534; cursor: pointer; flex-shrink: 0;
         }
+        .amz-cpc-avg-history-dot.is-up { background: #05bd30; }
+        .amz-cpc-avg-history-dot.is-down { background: #ff2727; }
+        .amz-cpc-avg-history-dot.is-flat { background: #9ca3af; }
         .amz-cpc-avg-history-dot:hover { transform: scale(1.35); }
         /* CPC history modal — same full-width layout as Active Channel */
         #amazonAdsCpcAvgHistoryModal.modal {
@@ -1656,8 +1659,20 @@
                 var cid = row && row.campaign_id != null ? String(row.campaign_id) : '';
                 var name = row && row.campaignName != null ? String(row.campaignName) : '';
                 var ad = row && row.ad_type != null ? String(row.ad_type) : '';
+                var trend = kind === 'sbid' ? (row.sbid_trend || 'na') : (row.sbgt_trend || 'na');
+                var current = parseFloat(kind === 'sbid' ? row.sbid : row.sbgt);
+                if (kind === 'sbgt' && isFinite(current) && current === 0) trend = 'down';
+                var cls = trend === 'up' ? 'is-up' : (trend === 'down' ? 'is-down' : 'is-flat');
+                var prev = kind === 'sbid' ? row.sbid_prev : row.sbgt_prev;
+                var prevTxt = (prev === null || prev === undefined || prev === '') ? '—' : Number(prev).toFixed(2);
+                var nowTxt = isFinite(current) ? current.toFixed(2) : '—';
+                var tip = 'Daily ' + label + ' history';
+                if (trend === 'na') tip += ' · No previous day saved yet';
+                else if (trend === 'up') tip += ' · Up vs previous day $' + prevTxt + ' → $' + nowTxt;
+                else if (trend === 'down') tip += ' · Down vs previous day $' + prevTxt + ' → $' + nowTxt;
+                else tip += ' · Same as previous day $' + prevTxt;
                 return '<span class="amz-cpc-avg-cell">'
-                    + '<button type="button" class="amz-cpc-avg-history-dot" title="Daily ' + amzEsc(label) + ' history" aria-label="Daily ' + amzEsc(label) + ' history"'
+                    + '<button type="button" class="amz-cpc-avg-history-dot ' + cls + '" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '"'
                     + ' data-history="' + amzEsc(kind) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '"></button>'
                     + '</span>';
             }

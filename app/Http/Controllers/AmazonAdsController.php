@@ -4501,6 +4501,128 @@ class AmazonAdsController extends Controller
         return null;
     }
 
+    /**
+     * History-column dots: green when today's amount is above the previous saved day,
+     * red when below, gray when unchanged or there is no prior day.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private static function attachMoneyHistoryTrends(array $rows, string $table): array
+    {
+        if (! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)) {
+            return $rows;
+        }
+        $ids = [];
+        foreach ($rows as $row) {
+            $cid = trim((string) ($row['campaign_id'] ?? ''));
+            if ($cid !== '') {
+                $ids[$cid] = true;
+            }
+        }
+        $prevSbid = self::previousDailyMoneyMap($table, array_keys($ids), 'sbid');
+        $prevSbgt = self::previousDailyMoneyMap($table, array_keys($ids), 'sbgt');
+        foreach ($rows as $i => $row) {
+            $cid = trim((string) ($row['campaign_id'] ?? ''));
+            $sbidPrev = $prevSbid[$cid] ?? null;
+            $sbgtPrev = $prevSbgt[$cid] ?? null;
+            $rows[$i]['sbid_prev'] = $sbidPrev;
+            $rows[$i]['sbgt_prev'] = $sbgtPrev;
+            $rows[$i]['sbid_trend'] = self::moneyHistoryTrend($row['sbid'] ?? null, $sbidPrev);
+            $rows[$i]['sbgt_trend'] = self::moneyHistoryTrend($row['sbgt'] ?? null, $sbgtPrev);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * All-tab page rows come from SP and SB. Color each dot from its own table.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private static function attachMoneyHistoryTrendsForMixedPage(array $rows): array
+    {
+        $groups = [];
+        foreach ($rows as $i => $row) {
+            $ad = strtoupper(trim((string) ($row['ad_type'] ?? '')));
+            $table = str_contains($ad, 'BRAND')
+                ? 'amazon_sb_campaign_reports'
+                : (str_contains($ad, 'DISPLAY') ? 'amazon_sd_campaign_reports' : 'amazon_sp_campaign_reports');
+            $groups[$table][$i] = $row;
+        }
+        foreach ($groups as $table => $subset) {
+            $updated = self::attachMoneyHistoryTrends(array_values($subset), $table);
+            $keys = array_keys($subset);
+            foreach ($updated as $n => $row) {
+                $rows[$keys[$n]] = $row;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Most recent daily amount strictly before today.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, float>
+     */
+    private static function previousDailyMoneyMap(string $table, array $campaignIds, string $column): array
+    {
+        if ($campaignIds === [] || ! Schema::hasTable($table) || ! Schema::hasColumn($table, $column)) {
+            return [];
+        }
+        $today = Carbon::now(config('app.timezone'))->toDateString();
+        $out = [];
+        foreach (array_chunk($campaignIds, 200) as $chunk) {
+            $maxes = DB::table($table)
+                ->select('campaign_id', DB::raw('MAX(report_date_range) as md'))
+                ->whereIn('campaign_id', $chunk)
+                ->where('report_date_range', '<', $today)
+                ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+                ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+                ->whereNotNull($column)
+                ->where($column, '<>', '')
+                ->groupBy('campaign_id')
+                ->get();
+            if ($maxes->isEmpty()) {
+                continue;
+            }
+            $rows = DB::table($table)
+                ->select('campaign_id', 'report_date_range', $column)
+                ->where(function ($q) use ($maxes) {
+                    foreach ($maxes as $max) {
+                        $q->orWhere(function ($w) use ($max) {
+                            $w->where('campaign_id', $max->campaign_id)
+                                ->where('report_date_range', $max->md);
+                        });
+                    }
+                })
+                ->get();
+            foreach ($rows as $row) {
+                $n = self::moneyHistoryValue($row->{$column} ?? null);
+                if ($n !== null) {
+                    $out[(string) $row->campaign_id] = $n;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    private static function moneyHistoryTrend(mixed $current, ?float $previous): string
+    {
+        $now = self::moneyHistoryValue($current);
+        if ($now === null || $previous === null) {
+            return 'na';
+        }
+        if (abs($now - $previous) < 0.005) {
+            return 'flat';
+        }
+
+        return $now > $previous ? 'up' : 'down';
+    }
 
     /**
      * Current U2%/U1% → SBID rule (Amazon Ads SBID RULE modal).
@@ -5294,6 +5416,18 @@ class AmazonAdsController extends Controller
                         'ovl30' => null,
                         'lmp_price' => null,
                     ];
+                $cidInvEarly = preg_replace('/\D+/', '', $cid) ?: '';
+                $skuInvHit = $skuInvByCid[$cidInvEarly] ?? null;
+                $nameInv = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
+                $campaignInv = (is_array($skuInvHit) && isset($skuInvHit['sum']) && is_numeric($skuInvHit['sum']))
+                    ? (float) $skuInvHit['sum']
+                    : null;
+                if ($campaignInv !== null && $campaignInv > 0 && ($nameInv === null || $nameInv <= 0)) {
+                    $mSku['inv'] = (float) $skuInvHit['sum'];
+                    if (isset($skuInvHit['ovl30']) && is_numeric($skuInvHit['ovl30'])) {
+                        $mSku['ovl30'] = (float) $skuInvHit['ovl30'];
+                    }
+                }
                 if (in_array('Inv', $columns, true)) {
                     $arr['Inv'] = $mSku['inv'];
                 }
@@ -5560,6 +5694,10 @@ class AmazonAdsController extends Controller
                 in_array('nTargets', $columns, true)
             );
         }
+        if ($forceLength === null
+            && (in_array('sbidHistory', $columns, true) || in_array('sbgtHistory', $columns, true))) {
+            $data = self::attachMoneyHistoryTrends($data, $table);
+        }
 
         $payload = [
             'draw' => $draw,
@@ -5693,7 +5831,7 @@ class AmazonAdsController extends Controller
             return $orderDir === 'asc' ? $cmp : -$cmp;
         });
 
-        $pageRows = array_slice($rows, $start, $length);
+        $pageRows = self::attachMoneyHistoryTrendsForMixedPage(array_slice($rows, $start, $length));
 
         $payload = [
             'draw' => $draw,

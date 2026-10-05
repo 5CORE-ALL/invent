@@ -81,6 +81,16 @@ final class AmazonAdsCampaignSkuMetrics
         if (! str_starts_with($fam, 'PARENT ')) {
             $candidates[] = 'PARENT '.$fam;
         }
+        foreach (self::SUFFIXES as $suf) {
+            $candidates[] = $fam.$suf;
+            if (str_ends_with($fam, $suf)) {
+                $stripped = trim(substr($fam, 0, -strlen($suf)));
+                if ($stripped !== '') {
+                    $candidates[] = $stripped;
+                }
+            }
+        }
+        $candidates = array_values(array_unique($candidates));
         $pmRows = ProductMaster::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
@@ -688,7 +698,7 @@ final class AmazonAdsCampaignSkuMetrics
      * Real ads win over name-derived rows, same as the modal.
      *
      * @param  list<string>  $campaignIds
-     * @return array<string, array{has_skus: bool, min: int|null}>
+     * @return array<string, array{has_skus: bool, min: int|null, sum: float|null, ovl30: float|null}>
      */
     public static function shopifyInvForCampaignIds(array $campaignIds): array
     {
@@ -742,22 +752,42 @@ final class AmazonAdsCampaignSkuMetrics
             ? ShopifySku::mapByProductSkus($skus)
             : collect();
 
+        $shopifyByUpper = [];
+        foreach ($shopify as $pmSku => $row) {
+            $shopifyByUpper[strtoupper(trim((string) $pmSku))] = $row;
+        }
+
         $out = [];
         foreach ($byCid as $cid => $list) {
             $min = null;
+            $sum = 0.0;
+            $ovl30 = 0.0;
+            $found = false;
             foreach ($list as $sku) {
                 $sh = $shopify->get($sku);
+                if ($sh === null) {
+                    $sh = $shopifyByUpper[strtoupper(trim((string) $sku))] ?? null;
+                }
+                if ($sh === null) {
+                    $sh = ShopifySku::firstForProductSku($sku);
+                }
                 if ($sh === null || ! is_numeric($sh->inv ?? null)) {
                     continue;
                 }
-                $inv = (int) round((float) $sh->inv);
-                if ($min === null || $inv < $min) {
-                    $min = $inv;
+                $inv = (float) $sh->inv;
+                $found = true;
+                $sum += $inv;
+                $ovl30 += (float) ($sh->quantity ?? 0);
+                $rounded = (int) round($inv);
+                if ($min === null || $rounded < $min) {
+                    $min = $rounded;
                 }
             }
             $out[$cid] = [
                 'has_skus' => true,
                 'min' => $min,
+                'sum' => $found ? $sum : null,
+                'ovl30' => $found ? $ovl30 : null,
             ];
         }
 
@@ -788,23 +818,65 @@ final class AmazonAdsCampaignSkuMetrics
      */
     public static function mapForCampaignNames(array $campaignNames): array
     {
-        $keysByName = [];
+        $plans = [];
         $uniqueKeys = [];
         foreach ($campaignNames as $name) {
             $name = is_string($name) ? $name : '';
-            $key = self::skuKeyFromCampaignName($name);
-            $keysByName[$name] = $key;
-            if ($key !== '') {
-                $uniqueKeys[$key] = true;
+            $stripped = self::skuKeyFromCampaignName($name);
+            $full = self::parentCampaignKey($name);
+            $plans[] = ['name' => $name, 'full' => $full, 'stripped' => $stripped];
+            if ($full !== '') {
+                $uniqueKeys[$full] = true;
+            }
+            if ($stripped !== '') {
+                $uniqueKeys[$stripped] = true;
             }
         }
         $metricsByKey = self::metricsForSkuKeys(array_keys($uniqueKeys));
         $out = [];
-        foreach ($keysByName as $name => $key) {
-            $out[$name] = $metricsByKey[$key] ?? self::emptyMetrics($key);
+        foreach ($plans as $plan) {
+            $fullM = ($plan['full'] !== '' && isset($metricsByKey[$plan['full']]))
+                ? $metricsByKey[$plan['full']]
+                : null;
+            $stripM = ($plan['stripped'] !== '' && isset($metricsByKey[$plan['stripped']]))
+                ? $metricsByKey[$plan['stripped']]
+                : null;
+            if (self::metricsHaveInventory($fullM)) {
+                $out[$plan['name']] = $fullM;
+            } elseif (self::metricsHaveInventory($stripM)) {
+                $out[$plan['name']] = $stripM;
+            } elseif (is_array($fullM) && isset($fullM['inv']) && is_numeric($fullM['inv'])) {
+                $out[$plan['name']] = $fullM;
+            } elseif (is_array($stripM)) {
+                $out[$plan['name']] = $stripM;
+            } else {
+                $out[$plan['name']] = self::emptyMetrics($plan['stripped'] !== '' ? $plan['stripped'] : $plan['full']);
+            }
         }
 
         return $out;
+    }
+
+    /**
+     * Campaign name kept whole when it is a PARENT row, so "PARENT SS HD 2 PK HEAD"
+     * can match product_master.parent "SS HD 2 PK HEAD" before the HEAD suffix is stripped.
+     */
+    private static function parentCampaignKey(string $name): string
+    {
+        $n = preg_replace('/\s+/u', ' ', strtoupper(trim(str_replace("\xC2\xA0", ' ', $name)))) ?? '';
+
+        return str_starts_with($n, 'PARENT ') ? $n : '';
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $metrics
+     */
+    private static function metricsHaveInventory(?array $metrics): bool
+    {
+        return is_array($metrics)
+            && isset($metrics['inv'])
+            && is_numeric($metrics['inv'])
+            && (float) $metrics['inv'] > 0;
     }
 
     /**
@@ -971,14 +1043,38 @@ final class AmazonAdsCampaignSkuMetrics
             }
         }
         $childSkusByFamily = [];
+        $childSkusByCompact = [];
         if ($parentFamilyKeys !== [] && Schema::hasTable('product_master')) {
-            $families = array_values(array_unique(array_values($parentFamilyKeys)));
+            $families = [];
+            foreach (array_values(array_unique(array_values($parentFamilyKeys))) as $fam) {
+                $families[$fam] = true;
+                if (! str_starts_with($fam, 'PARENT ')) {
+                    $families['PARENT '.$fam] = true;
+                }
+                foreach (self::SUFFIXES as $suf) {
+                    $families[$fam.$suf] = true;
+                    if (str_ends_with($fam, $suf)) {
+                        $stripped = trim(substr($fam, 0, -strlen($suf)));
+                        if ($stripped !== '') {
+                            $families[$stripped] = true;
+                        }
+                    }
+                }
+            }
+            $families = array_keys($families);
             $pmRows = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
                 ->where(function ($q) use ($families) {
                     foreach ($families as $fam) {
                         $q->orWhereRaw('UPPER(TRIM(parent)) = ?', [strtoupper($fam)]);
+                        $compact = strtoupper((string) preg_replace('/[^A-Z0-9]+/', '', $fam));
+                        if ($compact !== '') {
+                            $q->orWhereRaw(
+                                'UPPER(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(parent), " ", ""), "-", ""), "_", ""), ".", "")) = ?',
+                                [$compact]
+                            );
+                        }
                     }
                 })
                 ->get(['sku', 'parent']);
@@ -992,6 +1088,10 @@ final class AmazonAdsCampaignSkuMetrics
                     continue;
                 }
                 $childSkusByFamily[$fam][] = $sku;
+                $compact = strtoupper((string) preg_replace('/[^A-Z0-9]+/', '', $fam));
+                if ($compact !== '') {
+                    $childSkusByCompact[$compact][] = $sku;
+                }
             }
         }
 
@@ -1013,13 +1113,40 @@ final class AmazonAdsCampaignSkuMetrics
             if (isset($parentFamilyKeys[$key])) {
                 $fam = strtoupper($parentFamilyKeys[$key]);
                 $kids = $childSkusByFamily[$fam] ?? [];
+                if ($kids === []) {
+                    foreach (self::SUFFIXES as $suf) {
+                        $alt = $childSkusByFamily[$fam.$suf] ?? [];
+                        if ($alt !== []) {
+                            $kids = $alt;
+                            break;
+                        }
+                    }
+                }
+                if ($kids === []) {
+                    $compact = strtoupper((string) preg_replace('/[^A-Z0-9]+/', '', $fam));
+                    $kids = $compact !== '' ? ($childSkusByCompact[$compact] ?? []) : [];
+                    if ($kids === []) {
+                        foreach (self::SUFFIXES as $suf) {
+                            $altCompact = strtoupper((string) preg_replace('/[^A-Z0-9]+/', '', $fam.$suf));
+                            $alt = $altCompact !== '' ? ($childSkusByCompact[$altCompact] ?? []) : [];
+                            if ($alt !== []) {
+                                $kids = $alt;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if ($kids === []) {
+                    $out[$key] = self::emptyMetrics($key);
+                    continue;
+                }
                 $inv = 0.0;
                 $ovl30 = 0.0;
                 $l30 = 0.0;
                 $price = null;
                 $lmpPrice = null;
                 foreach ($kids as $sku) {
-                    $sh = $shopifyByPm->get($sku);
+                    $sh = $shopifyByPm->get($sku) ?? ShopifySku::firstForProductSku($sku);
                     $inv += (float) ($sh?->inv ?? 0);
                     $ovl30 += (float) ($sh?->quantity ?? 0);
                     $sheet = $sheetByCompact[AmazonDatasheet::normalizeSkuForLookup($sku)] ?? null;
