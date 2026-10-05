@@ -42,6 +42,17 @@ class AmazonSaleBusinessMinTest extends TestCase
         $this->assertTrue($offer['send_sale']);
     }
 
+    public function test_maximum_is_ten_percent_above_sale(): void
+    {
+        $this->assertSame(110.0, AmazonSpApiService::maximumFromSale(100));
+        $this->assertSame(88.0, AmazonSpApiService::maximumFromSale(80, 50));
+    }
+
+    public function test_maximum_stays_at_your_price_when_sale_plus_ten_is_lower(): void
+    {
+        $this->assertSame(100.0, AmazonSpApiService::maximumFromSale(80, 100));
+    }
+
     public function test_suggestion_above_std_is_capped_and_is_not_a_separate_sale(): void
     {
         $offer = AmazonSpApiService::resolveYourAndSale(50.0, 80.0);

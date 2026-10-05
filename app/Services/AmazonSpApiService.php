@@ -286,6 +286,25 @@ class AmazonSpApiService
     }
 
     /**
+     * Maximum seller price is the sale price plus 10%.
+     * Amazon rejects a ceiling under Your Price, so a higher Std stays the floor.
+     */
+    public static function maximumFromSale(float $salePrice, float $yourPrice = 0): float
+    {
+        $sale = round($salePrice, 2);
+        $your = round($yourPrice, 2);
+        $max = $sale > 0 ? round($sale * 1.10, 2) : 0.0;
+        if ($max < 0.01) {
+            $max = $your > 0 ? round($your * 1.10, 2) : 0.01;
+        }
+        if ($your > 0 && $max < $your) {
+            $max = $your;
+        }
+
+        return $max;
+    }
+
+    /**
      * Price Amazon shows on the listing when there is no separate Sales Price.
      * S PRC wins over the old Your Price.
      */
@@ -520,7 +539,7 @@ class AmazonSpApiService
      *     Your Price and S PRC is the Sales Price. A suggestion above Std is capped to Std.
      *     Business and Min = S PRC × 0.95. A sale schedule is sent only when it is strictly below Your Price.
      *   - min_price / business_price: ignored — always derived from Sale.
-     *   - max_price (float): maximum_seller_allowed_price (defaults to our_price × 1.10)
+     *   - max_price (float): ignored. Maximum is always the sale price plus 10%, and at least Your Price.
      *   - push_reason (string): optional log reason
      */
     public function updateAmazonPriceUS($sku, $price, $maxRetries = 3, ?array $extras = null)
@@ -570,13 +589,7 @@ class AmazonSpApiService
             $pushReason = 'price push';
         }
 
-        $maxPrice = isset($extras['max_price']) && is_numeric($extras['max_price']) && (float) $extras['max_price'] > 0
-            ? round((float) $extras['max_price'], 2)
-            : round($price * 1.10, 2);
-        // Ceiling must be at least Your Price
-        if ($maxPrice < $price) {
-            $maxPrice = round($price * 1.10, 2);
-        }
+        $maxPrice = self::maximumFromSale($salePrice, $price);
 
         if ($salePrice < 0.01 || (int) round($minPrice * 100) > (int) round($salePrice * 100)) {
             Log::error('Amazon push failed', [

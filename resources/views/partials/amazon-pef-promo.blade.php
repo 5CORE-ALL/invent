@@ -2967,7 +2967,7 @@
          * Push Prc plan per SKU:
          *  Sprc Dil (Dil in slab, including 0 Sold) → Sale = Dil→NROI target, then CVR Down < 7% -10 / Up > 10% +10 (does not stack discounts)
          *  Other  → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
-         *  Site / Your Price = S PRC; Min and Business = S PRC × 0.95
+         *  Site / Your Price = S PRC; Min and Business = S PRC × 0.95; Max = S PRC × 1.10
          */
         function amzMinBusinessFromSprc(sprc) {
             const base = amzPefRound2(sprc);
@@ -2975,6 +2975,11 @@
             let below = amzPefRound2(Math.max(0.01, base * 0.95));
             if (below > base) below = base;
             return below;
+        }
+        function amzMaxFromSale(sprc) {
+            const base = amzPefRound2(sprc);
+            if (!(base > 0)) return 0;
+            return amzPefRound2(base * 1.10);
         }
         function computeAmzTDiscountsPct(d) {
             const stack = computeAmzRuleStack(d);
@@ -2998,7 +3003,7 @@
             if (!(saleBase > 0)) return null;
             const effective = sale != null ? sale : std;
             if (!(effective > 0)) return null;
-            const max = std > 0 ? amzPefRound2(std * 1.10) : saleBase;
+            const max = amzMaxFromSale(effective);
             return {
                 std: std > 0 ? amzPefRound2(std) : saleBase,
                 sale: sale,
@@ -3046,6 +3051,7 @@
             const saleBase = plan.sale != null ? plan.sale : capped;
             plan.min = amzMinBusinessFromSprc(saleBase);
             plan.business = amzMinBusinessFromSprc(saleBase);
+            plan.max = amzMaxFromSale(saleBase);
             const lmpNow = (typeof amzPefLmp === 'function') ? amzPefLmp(d) : 0;
             const stdNow = Number(d && (d.STANDARD_PRICE || d.standard_price || d.std_price)) || 0;
             const dropped = (origEffective - capped) > 0.009;
