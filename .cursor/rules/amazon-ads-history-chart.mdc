@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Amazon Ads history charts
 
-History charts opened from a dot on `/amazon-ads/all` (CPC Avg, LT CVR, LT ACOS, and any later metric history) use the Active Channel chart, not a plain Highcharts line.
+History charts opened from a dot on `/amazon-ads/all` (CPC Avg, LT CVR, LT ACOS, SBID History, SBGT History, and any later metric history) use the Active Channel chart, not a plain Highcharts line.
 
 Match `#adBreakdownChartModal` in `resources/views/channels/all-marketplace-master.blade.php`:
 
