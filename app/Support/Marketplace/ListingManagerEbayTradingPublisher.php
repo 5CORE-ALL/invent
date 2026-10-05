@@ -225,6 +225,30 @@ class ListingManagerEbayTradingPublisher
             $specifics = self::ensureRequiredItemSpecifics($specifics, $payload);
             $specifics = self::withoutUpcKeys($specifics);
 
+            $aspects = EbayCategoryAspects::forCategory($categoryId, (string) ($ctx['token'] ?? ''));
+            $variationAspect = $variations !== []
+                ? EbayCategoryAspects::variationAspect($aspects, self::variationAspectName($variations))
+                : '';
+            $aspectNames = array_map(static fn ($a) => strtolower($a['name']), $aspects);
+            if (in_array('model', $aspectNames, true) && strcasecmp($variationAspect, 'Model') !== 0 && trim((string) ($specifics['Model'] ?? '')) === '') {
+                $specifics['Model'] = $sku;
+            }
+            $skusForLookup = array_values(array_unique(array_filter(array_merge([$sku], array_column($variations, 'sku')))));
+            [$specifics, $defaulted] = EbayCategoryAspects::fillRequired(
+                $specifics,
+                $aspects,
+                $skusForLookup,
+                $title.' '.strip_tags($description),
+                $variationAspect
+            );
+            if ($variationAspect !== '') {
+                foreach (array_keys($specifics) as $name) {
+                    if (strcasecmp(trim((string) $name), $variationAspect) === 0) {
+                        unset($specifics[$name]);
+                    }
+                }
+            }
+
             if ($specifics !== []) {
                 $itemSpecifics = $item->addChild('ItemSpecifics');
                 foreach ($specifics as $name => $value) {
@@ -271,7 +295,7 @@ class ListingManagerEbayTradingPublisher
             }
 
             if ($variations !== []) {
-                self::appendVariations($item, $variations);
+                self::appendVariations($item, $variations, $variationAspect);
             }
 
             $headers = [
@@ -306,12 +330,20 @@ class ListingManagerEbayTradingPublisher
             $ack = $data['Ack'] ?? 'Failure';
             if ($ack === 'Success' || $ack === 'Warning') {
                 $itemId = trim((string) ($data['ItemID'] ?? ''));
+                $note = '';
+                if ($defaulted !== []) {
+                    $note = ' Defaulted: '.implode(', ', array_map(
+                        static fn ($n, $v) => $n.'='.$v,
+                        array_keys($defaulted),
+                        $defaulted
+                    )).'.';
+                }
 
                 return [
                     'success' => true,
-                    'message' => $itemId !== ''
+                    'message' => ($itemId !== ''
                         ? "Published to {$label} (ItemID {$itemId})."
-                        : "Published to {$label}.",
+                        : "Published to {$label}.").$note,
                     'item_id' => $itemId !== '' ? $itemId : null,
                     'raw' => $body,
                 ];
@@ -379,10 +411,10 @@ class ListingManagerEbayTradingPublisher
     /**
      * @param  list<array{sku: string, price: float, quantity: int, variation_label: string, upc?: string}>  $variations
      */
-    private static function appendVariations(SimpleXMLElement $item, array $variations): void
+    private static function appendVariations(SimpleXMLElement $item, array $variations, string $aspect = ''): void
     {
         $block = $item->addChild('Variations');
-        $aspect = self::variationAspectName($variations);
+        $aspect = $aspect !== '' ? $aspect : self::variationAspectName($variations);
         $labels = [];
         foreach ($variations as $row) {
             $variation = $block->addChild('Variation');
