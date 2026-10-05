@@ -1434,6 +1434,14 @@
             return below;
         }
 
+        /** Max is 10% above the shown S PRC. */
+        function amazonMaxPrice(rowData) {
+            const sprice = amazonShownSprice(rowData);
+            if (!(sprice > 0)) return 0;
+            if (typeof amzMaxFromSale === 'function') return amzMaxFromSale(sprice);
+            return +Number(sprice * 1.10).toFixed(2);
+        }
+
         function amazonComputeNetSroi(rowData) {
             if (!rowData) return null;
             const sprice = amazonRowSprice(rowData);
@@ -4583,6 +4591,25 @@
                     },
 
                     {
+                        title: "Max",
+                        field: "MAX_PRICE",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            return (amazonMaxPrice(aRow.getData()) || 0) - (amazonMaxPrice(bRow.getData()) || 0);
+                        },
+                        headerTooltip: "Maximum seller price. 10% above the S PRC in this row.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const n = amazonMaxPrice(rowData);
+                            if (!(n > 0)) return '';
+                            return '<span>$' + n.toFixed(2) + '</span>';
+                        },
+                        width: 70
+                    },
+
+                    {
                         title: "LMP",
                         field: "lmp_price",
                         hozAlign: "center",
@@ -5693,7 +5720,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|push_prc|cvr_discount|review_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|min_price|business_price|max_price|push_prc|cvr_discount|review_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
