@@ -5937,6 +5937,16 @@
                 }).catch(err => console.error('Error saving column visibility:', err));
             }
 
+            /** Saved layouts hid Sprc Dil while it was forced off. Show it once, then keep the user's choice. */
+            function amazonRevealSprcDil() {
+                try {
+                    if (localStorage.getItem('amazon_sprc_dil_revealed') === '1') return;
+                    localStorage.setItem('amazon_sprc_dil_revealed', '1');
+                } catch (e) { /* ignore */ }
+                try { table.showColumn('SPRC_DIL'); } catch (e) {}
+                saveColumnVisibilityToServer();
+            }
+
             function applyColumnVisibilityFromServer() {
                 return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
@@ -5950,15 +5960,16 @@
                         if (!savedVisibility || typeof savedVisibility !== 'object' || amazonVisibilityIsStale(savedVisibility)) {
                             applyAmazonColumnDefinitionDefaults();
                             saveColumnVisibilityToServer();
-                            return;
+                        } else {
+                            table.getColumns().forEach(col => {
+                                const field = col.getDefinition().field;
+                                if (amazonSkipColVisField(field)) return;
+                                if (!savedVisibility.hasOwnProperty(field)) return;
+                                if (savedVisibility[field]) col.show();
+                                else col.hide();
+                            });
                         }
-                        table.getColumns().forEach(col => {
-                            const field = col.getDefinition().field;
-                            if (amazonSkipColVisField(field)) return;
-                            if (!savedVisibility.hasOwnProperty(field)) return;
-                            if (savedVisibility[field]) col.show();
-                            else col.hide();
-                        });
+                        amazonRevealSprcDil();
                     })
                     .catch(err => console.error('Error applying column visibility:', err));
             }

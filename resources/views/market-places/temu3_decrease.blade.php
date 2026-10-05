@@ -4148,7 +4148,6 @@
                 {
                     title: "Sprc Dil",
                     field: "SPRC_DIL",
-                    visible: false,
                     hozAlign: "center",
                     headerSort: true,
                     sorter: function(a, b, aRow, bRow) {
@@ -5712,7 +5711,7 @@
 
         // Columns that should ALWAYS stay hidden and stay out of the column box.
         var alwaysHiddenColumns = [
-            'cvr_45', 'profit', 'SPRC_DIL', 'spft_percent',
+            'cvr_45', 'profit', 'spft_percent',
             'missing', 'nr_req', 't_clicks', 't_clicks_growth',
             'lmp_delivery', 'lmp_diff_pct', 'spend',
             'handling_charge', 'o_size_charge', 'temu_ship', 'goods_id',
@@ -5724,6 +5723,16 @@
             alwaysHiddenColumns.forEach(function(col) {
                 try { table.hideColumn(col); } catch (e) {}
             });
+        }
+
+        /** Saved layouts hid Sprc Dil while it was forced off. Show it once, then keep the user's choice. */
+        function temu3RevealSprcDil() {
+            try {
+                if (localStorage.getItem('temu3_sprc_dil_revealed') === '1') return;
+                localStorage.setItem('temu3_sprc_dil_revealed', '1');
+            } catch (e) { /* ignore */ }
+            try { table.showColumn('SPRC_DIL'); } catch (e) {}
+            saveColumnVisibilityToServer();
         }
 
         function applyColumnVisibilityFromServer() {
@@ -5749,6 +5758,7 @@
                         });
                     }
                     enforceAlwaysHiddenColumns();
+                    temu3RevealSprcDil();
                     temu2AutofitColumns();
                 })
                 .catch(err => console.error('Error applying column visibility:', err));
@@ -5764,6 +5774,7 @@
                     temu2ApplyingColumnOrder = false;
                     buildColumnDropdown();
                     enforceAlwaysHiddenColumns();
+                    temu3RevealSprcDil();
                     if (typeof temu2AutofitColumns === 'function') temu2AutofitColumns();
                 });
         });
