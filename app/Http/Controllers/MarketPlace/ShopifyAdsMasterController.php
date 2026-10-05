@@ -396,7 +396,7 @@ class ShopifyAdsMasterController extends Controller
      * Tag every row (and nested child) with a `trend` map — one direction per
      * metric ('up' | 'down' | 'flat') comparing the current value to the
      * previous Pacific-day snapshot for that channel. Channels with no prior
-     * snapshot get an empty map (no dot shown).
+     * snapshot get a flat (gray) dot so the cell is not blank.
      *
      * @param  array<int, array<string, mixed>>  $rows
      * @param  array<string, array<string, float>>  $endByChannel
@@ -436,7 +436,15 @@ class ShopifyAdsMasterController extends Controller
     private function computeTrend(array $row, ?array $end, ?array $prior): array
     {
         if ($end === null && $prior === null) {
-            return [];
+            return [
+                'spend' => 'flat',
+                'clicks' => 'flat',
+                'sold' => 'flat',
+                'sales' => 'flat',
+                'active' => 'flat',
+                'cvr' => 'flat',
+                'acos' => 'flat',
+            ];
         }
 
         $dir = static function (float $cur, float $was, int $precision = 0): string {

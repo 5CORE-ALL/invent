@@ -1436,6 +1436,20 @@
             if (!(price > 0) || !isFinite(lp) || lp <= 0) return sgroi;
             return sgroi - (price * (ads / 100) / lp) * 100;
         }
+        /** NROI = (gross PFT$ − live TT Price × Ads%/100) / LP × 100 — same Ads% as SNROI. */
+        function ttComputeNroi(rowData) {
+            if (!rowData || ttIsParentRow(rowData)) return null;
+            const price = ttLivePrice(rowData);
+            const lp = parseFloat(rowData.LP_productmaster);
+            if (!(price > 0) || !isFinite(lp) || lp <= 0) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const margin = getRowMarginFactor(rowData);
+            const groi = (((price * margin) - ship - lp) / lp) * 100;
+            if (!isFinite(groi)) return null;
+            const ads = ttDilAdsPct(rowData);
+            if (!(ads > 0)) return groi;
+            return groi - (price * (ads / 100) / lp) * 100;
+        }
         /** SNPFT = live S GPFT − Dil Ads% (TikTok 2 Ads% = 0 → SNPFT = SGPFT). */
         function ttComputeSgpft(rowData) {
             const price = ttSnroiPrice(rowData);
@@ -3887,6 +3901,29 @@
                         width: 50
                     },
                     {
+                        title: "NROI%",
+                        field: "NROI",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aNet = ttComputeNroi(aRow.getData());
+                            const bNet = ttComputeNroi(bRow.getData());
+                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                        },
+                        headerTooltip: (TTP_CFG.summaryChannel === 'tiktok2')
+                            ? "NROI% on current TT Price. TikTok 2 Ads% = 0, so NROI = GROI."
+                            : "NROI% on current TT Price: (gross PFT$ − TT Price × TACOS%/100) / LP × 100. Same formula as SNROI.",
+                        formatter: function(cell) {
+                            const percent = ttComputeNroi(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 58
+                    },
+                    {
                         title: "TACOS",
                         field: "TACOS%",
                         hozAlign: "center",
@@ -5646,7 +5683,7 @@
 
                 // pricing
                 if (
-                    /^(TT Price|lmp_price|lmp_diff_pct|GPFT%|PFT %|ROI%|Profit|T Profit|Sales L30|LP_productmaster|SPRICE|SGPFT|SPFT|SROI|SNROI|SNPFT|linked_lmp_skus|linked_lmp_sku_add)$/i.test(f) ||
+                    /^(TT Price|lmp_price|lmp_diff_pct|GPFT%|PFT %|ROI%|NROI|Profit|T Profit|Sales L30|LP_productmaster|SPRICE|SGPFT|SPFT|SROI|SNROI|SNPFT|linked_lmp_skus|linked_lmp_sku_add)$/i.test(f) ||
                     /\b(prc|lmp|^diff$|gpft|pft|roi|profit|sales|^lp$|sprice|sgpft|spft|sroi|sku\s*link)\b/i.test(tl) ||
                     /^\+$/.test(t)
                 ) {
@@ -5963,7 +6000,10 @@
                         const field = col.getField();
                         let value = row[field];
 
-                        if (value === null || value === undefined) {
+                        if (field === 'NROI') {
+                            const nroi = ttComputeNroi(row);
+                            value = (nroi == null || !isFinite(nroi)) ? '' : Math.round(nroi);
+                        } else if (value === null || value === undefined) {
                             value = '';
                         } else if (typeof value === 'number') {
                             value = parseFloat(value.toFixed(2));

@@ -249,8 +249,13 @@
             margin-left: 5px;
             vertical-align: middle;
             background: #9ca3af;
-            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+            border: 1px solid rgba(15, 23, 42, 0.35);
+            box-sizing: border-box;
             flex-shrink: 0;
+        }
+        #advertisement-master-wrap .tabulator .tabulator-row .tabulator-cell.adm-metric-cell {
+            overflow: visible;
+            white-space: nowrap;
         }
         .adm-stat-badge .adm-trend-dot {
             margin-left: 0;
@@ -2043,11 +2048,11 @@
                             fill: true,
                             spanGaps: true,
                             tension: 0.3,
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
                             pointBackgroundColor: dotColors,
-                            pointBorderColor: dotColors,
-                            pointBorderWidth: 1.5,
+                            pointBorderColor: '#ffffff',
+                            pointBorderWidth: 2,
                         }],
                     },
                     options: {

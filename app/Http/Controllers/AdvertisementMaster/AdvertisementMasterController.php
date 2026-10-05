@@ -24,6 +24,7 @@ use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
 use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Channels\ChannelMasterController;
+use App\Http\Controllers\MarketPlace\ReverbController;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Support\Badges\AllMarketplaceMasterBadgeAggregator;
@@ -246,6 +247,7 @@ class AdvertisementMasterController extends Controller
 
         $agg = AllMarketplaceMasterBadgeAggregator::aggregate($rows);
         $spend = round((float) ($agg['ad_spend'] ?? 0), 2);
+        $spend = round($spend + $this->missingReverbBumpSpend($rows), 2);
         $l30 = (float) ($agg['l30_sales'] ?? 0);
         $tcos = $l30 > 0 ? round(($spend / $l30) * 100, 1) : 0.0;
         $adSales = 0.0;
@@ -849,6 +851,12 @@ class AdvertisementMasterController extends Controller
             $this->clearTypeRowChannelMetrics($rows);
             $this->attachTotalRowAcos($rows, $prevByChannel);
             $this->attachMissingAds($rows);
+            try {
+                $this->seedMissingPriorSnapshots($rows, $pacificToday, $prevByChannel);
+            } catch (\Throwable $e) {
+                \Log::warning('Advertisement Master prior-day seed failed: '.$e->getMessage());
+            }
+            $this->attachTrends($rows, $prevByChannel);
             $this->attachMissingAdsTrends($rows, $prevByChannel);
             $this->applyActiveChannelAds($rows);
             try {
@@ -1981,7 +1989,86 @@ class AdvertisementMasterController extends Controller
             }
         }
 
+        if (isset($active['reverb'])) {
+            $map['reverb'] = $this->withReverbBumpSpend($map['reverb'] ?? null);
+        }
+
         return $map;
+    }
+
+    /**
+     * Reverb ads are bump fees. Saved spend is often 0 while Ads% or
+     * reverb_daily_data.bump_fee still has the L30 total.
+     *
+     * @param  array<string, float|int>|null  $metrics
+     * @return array<string, float|int>
+     */
+    private function withReverbBumpSpend(?array $metrics): array
+    {
+        $metrics = $metrics ?? [
+            'spend' => 0.0,
+            'clicks' => 0,
+            'sold' => 0,
+            'sales' => 0.0,
+            'acos' => 0.0,
+            'cvr' => 0.0,
+            'tcos' => 0.0,
+            'l30_sales' => 0.0,
+        ];
+        $spend = (float) ($metrics['spend'] ?? 0);
+        $pct = (float) ($metrics['tcos'] ?? 0);
+        $l30 = (float) ($metrics['l30_sales'] ?? 0);
+        if ($spend <= 0 && $pct > 0 && $l30 > 0) {
+            $spend = round(($pct / 100) * $l30, 2);
+        }
+        if ($spend <= 0 || $pct <= 0) {
+            $live = ReverbController::l30BumpAds();
+            if ($spend <= 0 && $live['spend'] > 0) {
+                $spend = $live['spend'];
+            }
+            if ($l30 <= 0 && $live['sales'] > 0) {
+                $l30 = $live['sales'];
+            }
+            if ($pct <= 0 && $live['ads_percent'] > 0) {
+                $pct = $live['ads_percent'];
+            }
+        }
+        $metrics['spend'] = round($spend, 2);
+        $metrics['tcos'] = round($pct, 2);
+        $metrics['l30_sales'] = round($l30, 2);
+
+        return $metrics;
+    }
+
+    /**
+     * Grid Total Ad Spend misses Reverb when bump fees were not saved.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function missingReverbBumpSpend(array $rows): float
+    {
+        foreach ($rows as $row) {
+            $key = strtolower((string) preg_replace('/[^a-z0-9]/', '', (string) ($row['Channel '] ?? $row['Channel'] ?? '')));
+            if ($key !== 'reverb') {
+                continue;
+            }
+            if ($this->gridNumber($row, 'Total Ad Spend') > 0) {
+                return 0.0;
+            }
+            $l30 = $this->gridNumber($row, 'L30 Sales');
+            $pct = $this->gridNumber($row, 'Ads%');
+            if ($pct <= 0) {
+                $pct = $this->gridNumber($row, 'TACOS %');
+            }
+            // Badge aggregator already turns Ads% × L30 into spend.
+            if ($pct > 0 && $l30 > 0) {
+                return 0.0;
+            }
+
+            return ReverbController::l30BumpAds()['spend'];
+        }
+
+        return 0.0;
     }
 
     /**
@@ -2016,6 +2103,11 @@ class AdvertisementMasterController extends Controller
             }
             if (! empty($row['is_group_total'])) {
                 $this->sumGroupAdsFromChildren($row);
+                // Reverb bump fees are not campaign sales, so ACOS stays the
+                // saved rate instead of becoming 100% when Ads Sales is 0.
+                if ($this->adsParentKey($row) === 'reverb' && (float) ($row['sales'] ?? 0) <= 0) {
+                    $row['acos'] = round((float) ($byChannel['reverb']['acos'] ?? 0), 1);
+                }
                 continue;
             }
 
@@ -2042,6 +2134,11 @@ class AdvertisementMasterController extends Controller
     private function adsParentKey(array $row): string
     {
         $name = (string) ($row['channel_key'] ?? $row['channel'] ?? '');
+        if (str_starts_with(strtolower($name), 'default-type:')) {
+            $name = substr($name, strlen('default-type:'));
+        } elseif (! empty($row['is_default_type'])) {
+            $name = (string) ($row['channel_group'] ?? $name);
+        }
         if (str_contains($name, self::SUBROW_SEPARATOR)) {
             $name = trim(explode(self::SUBROW_SEPARATOR, $name)[0]);
         }
@@ -2604,11 +2701,22 @@ class AdvertisementMasterController extends Controller
         $now = Carbon::now(self::SNAPSHOT_TIMEZONE);
 
         foreach ($this->flattenRows($rows) as $row) {
-            $channel = (string) ($row['channel'] ?? '');
-            if ($channel === '' || isset($prevByChannel[$channel])) {
+            $keys = $this->trendChannelKeys($row);
+            if ($keys === []) {
+                continue;
+            }
+            $already = false;
+            foreach ($keys as $key) {
+                if (isset($prevByChannel[$key])) {
+                    $already = true;
+                    break;
+                }
+            }
+            if ($already) {
                 continue;
             }
 
+            $channel = $keys[0];
             $measures = $this->snapshotMeasures($row);
 
             try {
@@ -2657,7 +2765,7 @@ class AdvertisementMasterController extends Controller
      * Tag every row (and nested child) with a `trend` map — one direction per
      * metric ('up' | 'down' | 'flat') comparing the current value to the
      * previous Pacific-day snapshot for that channel. Channels with no prior
-     * snapshot get an empty map (no dot shown).
+     * snapshot still get a flat dot so the cell is not blank.
      *
      * @param  array<int, array<string, mixed>>  $rows
      * @param  array<string, array<string, float>>  $prevByChannel
@@ -2665,8 +2773,14 @@ class AdvertisementMasterController extends Controller
     private function attachTrends(array &$rows, array $prevByChannel): void
     {
         foreach ($rows as &$row) {
-            $channel = (string) ($row['channel'] ?? '');
-            $row['trend'] = $this->computeTrend($row, $prevByChannel[$channel] ?? null);
+            $prev = null;
+            foreach ($this->trendChannelKeys($row) as $channel) {
+                if (isset($prevByChannel[$channel])) {
+                    $prev = $prevByChannel[$channel];
+                    break;
+                }
+            }
+            $row['trend'] = $this->computeTrend($row, $prev);
 
             if (! empty($row['_children']) && is_array($row['_children'])) {
                 $this->attachTrends($row['_children'], $prevByChannel);
@@ -2676,10 +2790,31 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
+     * Snapshot names that can carry this row's prior day.
+     *
+     * @param  array<string, mixed>  $row
+     * @return list<string>
+     */
+    private function trendChannelKeys(array $row): array
+    {
+        $keys = [];
+        foreach ([(string) ($row['channel_key'] ?? ''), (string) ($row['channel'] ?? '')] as $key) {
+            $key = trim($key);
+            if ($key === '' || str_starts_with($key, 'default-type:')) {
+                continue;
+            }
+            $keys[] = $key;
+        }
+
+        return array_values(array_unique($keys));
+    }
+
+    /**
      * Direction of each displayed metric vs the previous day. CVR / ACOS are
      * re-derived from the previous day's raw measures exactly like the current
      * row so the comparison is apples-to-apples. The colour meaning (which way
      * is "good") is applied on the frontend, where Spend + ACOS are inverted.
+     * No prior snapshot is flat (gray), so the dot still shows.
      *
      * @param  array<string, mixed>  $row
      * @param  array<string, float>|null  $prev
@@ -2688,7 +2823,16 @@ class AdvertisementMasterController extends Controller
     private function computeTrend(array $row, ?array $prev): array
     {
         if ($prev === null) {
-            return [];
+            return [
+                'spend' => 'flat',
+                'clicks' => 'flat',
+                'sold' => 'flat',
+                'sales' => 'flat',
+                'active' => 'flat',
+                'cvr' => 'flat',
+                'acos' => 'flat',
+                'missing_ads' => 'flat',
+            ];
         }
 
         $prevSpend  = (float) ($prev['spend'] ?? 0);

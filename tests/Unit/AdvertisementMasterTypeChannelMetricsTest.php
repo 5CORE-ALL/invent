@@ -105,6 +105,46 @@ class AdvertisementMasterTypeChannelMetricsTest extends TestCase
         $this->assertFalse($type['has_t_sales']);
     }
 
+    public function test_reverb_default_type_row_shows_bump_ad_spend(): void
+    {
+        $rows = [[
+            'channel' => 'Reverb Total',
+            'channel_key' => 'Reverb Total',
+            'channel_group' => 'Reverb',
+            'marketplace' => 'reverb',
+            'is_sum_row' => true,
+            'is_group_total' => true,
+            'spend' => 0,
+            '_children' => [[
+                'channel' => 'Reverb',
+                'channel_key' => 'default-type:reverb',
+                'channel_group' => 'Reverb',
+                'marketplace' => 'reverb',
+                'is_sub_row' => true,
+                'is_default_type' => true,
+                'spend' => 0,
+            ]],
+        ]];
+
+        $this->invoke('applyActiveChannelAdsWalk', $rows, [
+            'reverb' => [
+                'spend' => 420.5,
+                'clicks' => 12,
+                'sold' => 3,
+                'sales' => 900.0,
+                'acos' => 46.7,
+                'cvr' => 25.0,
+                'tcos' => 4.2,
+                'l30_sales' => 10012.0,
+            ],
+        ]);
+
+        $this->assertEqualsWithDelta(420.5, $rows[0]['_children'][0]['spend'], 0.001);
+        $this->assertEqualsWithDelta(420.5, $rows[0]['spend'], 0.001);
+        $this->assertSame(12, $rows[0]['clicks']);
+        $this->assertEqualsWithDelta(4.2, $rows[0]['tcos'], 0.05);
+    }
+
     public function test_channel_with_type_rows_is_not_given_an_extra_default_type(): void
     {
         $rows = [[

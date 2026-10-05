@@ -301,25 +301,25 @@
             const SAM_INVERTED_METRICS = { acos: true, tcos: true };
 
             // Day-over-day trend dot for a metric cell. Green = improvement,
-            // red = decline, grey = no change; nothing when there's no prior
-            // day to compare against. Direction ('up'|'down'|'flat') is
-            // supplied per-row by the backend in `row.trend`.
+            // red = decline, grey = no change or no prior day. Direction
+            // ('up'|'down'|'flat') is supplied per-row by the backend in `row.trend`.
             function samTrendDot(cell) {
                 const field = cell.getField();
                 const data  = cell.getRow().getData() || {};
                 const dir   = (data.trend || {})[field];
-                if (!dir) return '';
 
                 let color;
-                if (dir === 'flat') {
+                if (!dir || dir === 'flat') {
                     color = '#9ca3af';
                 } else {
                     const inverted = !!SAM_INVERTED_METRICS[field];
                     const improved = inverted ? (dir === 'down') : (dir === 'up');
                     color = improved ? '#28a745' : '#dc3545';
                 }
-                return '<span title="vs previous day" style="display:inline-block;width:8px;height:8px;'
-                    + 'border-radius:50%;background:' + color + ';margin-left:5px;vertical-align:middle;"></span>';
+                const title = dir ? 'vs previous day' : 'No previous day yet';
+                return '<span title="' + title + '" style="display:inline-block;width:8px;height:8px;'
+                    + 'border-radius:50%;background:' + color + ';margin-left:5px;vertical-align:middle;'
+                    + 'border:1px solid rgba(15,23,42,0.35);box-sizing:border-box;"></span>';
             }
 
             function wholeMoneyFormatter(cell) {
@@ -798,10 +798,11 @@
                             fill:            true,
                             tension:         0.3,
                             spanGaps:        true,
-                            pointRadius:      (ctx) => values[ctx.dataIndex] === null ? 0 : 3,
-                            pointHoverRadius: (ctx) => values[ctx.dataIndex] === null ? 0 : 5,
+                            pointRadius:      (ctx) => values[ctx.dataIndex] === null ? 0 : 4,
+                            pointHoverRadius: (ctx) => values[ctx.dataIndex] === null ? 0 : 6,
                             pointBackgroundColor: dotColors,
-                            pointBorderColor:     dotColors,
+                            pointBorderColor:     '#ffffff',
+                            pointBorderWidth:     2,
                         }],
                     },
                     options: {

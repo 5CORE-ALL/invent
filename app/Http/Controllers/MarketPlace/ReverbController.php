@@ -734,12 +734,64 @@ class ReverbController extends Controller
      */
     private function getReverbChannelAdsPercent(): float
     {
-        $ads = ChannelMasterCalculatedData::where('channel', 'Reverb')->value('ads_percentage');
-        if ($ads === null) {
-            $ads = ChannelMasterCalculatedData::where('channel', 'like', 'Reverb%')->value('ads_percentage');
+        $ads = null;
+        if (Schema::hasTable('channel_master_calculated_data')) {
+            $ads = ChannelMasterCalculatedData::where('channel', 'Reverb')->value('ads_percentage');
+            if ($ads === null) {
+                $ads = ChannelMasterCalculatedData::where('channel', 'like', 'Reverb%')->value('ads_percentage');
+            }
+        }
+        $pct = (float) ($ads ?? 0);
+        if ($pct > 0) {
+            return $pct;
         }
 
-        return (float) ($ads ?? 0);
+        return self::l30BumpAds()['ads_percent'];
+    }
+
+    /**
+     * L30 bump-fee ads: spend and Ads% (bump fees ÷ L30 sales).
+     * Same window as /reverb-pricing daily totals and Reverb channel Ads%.
+     *
+     * @return array{spend: float, sales: float, ads_percent: float}
+     */
+    public static function l30BumpAds(): array
+    {
+        $empty = ['spend' => 0.0, 'sales' => 0.0, 'ads_percent' => 0.0];
+        if (! Schema::hasTable('reverb_daily_data') || ! Schema::hasColumn('reverb_daily_data', 'bump_fee')) {
+            return $empty;
+        }
+
+        try {
+            $end = Carbon::now('UTC')->toDateString();
+            $start = Carbon::now('UTC')->subDays(30)->toDateString();
+            $agg = DB::table('reverb_daily_data')
+                ->whereNotNull('order_date')
+                ->whereBetween('order_date', [$start, $end])
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereNotNull('order_number')
+                ->where('order_number', '!=', '')
+                ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
+                ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
+                ->selectRaw('COALESCE(SUM(COALESCE(bump_fee, 0)), 0) as bump_fees')
+                ->selectRaw('COALESCE(SUM(CASE WHEN COALESCE(amount, 0) > 0 THEN amount ELSE COALESCE(product_subtotal, 0) END), 0) as sales')
+                ->first();
+        } catch (\Throwable $e) {
+            Log::warning('Reverb L30 bump ads lookup failed: '.$e->getMessage());
+
+            return $empty;
+        }
+
+        $spend = round((float) ($agg->bump_fees ?? 0), 2);
+        $sales = round((float) ($agg->sales ?? 0), 2);
+        $pct = $sales > 0 ? round(($spend / $sales) * 100, 2) : 0.0;
+
+        return [
+            'spend' => $spend,
+            'sales' => $sales,
+            'ads_percent' => $pct,
+        ];
     }
 
     /**
