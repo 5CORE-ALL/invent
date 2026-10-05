@@ -16,6 +16,9 @@ use SimpleXMLElement;
  */
 class ListingManagerEbayTradingPublisher
 {
+    /** eBay's exemption value: we never send real UPCs, but some categories require the field. */
+    private const NO_UPC = 'Does not apply';
+
     /**
      * @param  array<string, mixed>  $payload
      * @return array{success: bool, message: string, item_id?: string|null, raw?: string}
@@ -147,6 +150,7 @@ class ListingManagerEbayTradingPublisher
             if ($variations === []) {
                 $item->addChild('StartPrice', number_format($price, 2, '.', ''));
                 $item->addChild('Quantity', (string) max(0, $quantity));
+                $item->addChild('ProductListingDetails')->addChild('UPC', self::NO_UPC);
             }
 
             $city = trim((string) ($payload['location_city'] ?? ''));
@@ -389,6 +393,7 @@ class ListingManagerEbayTradingPublisher
             $nvl = $vs->addChild('NameValueList');
             $nvl->addChild('Name', $aspect);
             $nvl->addChild('Value', htmlspecialchars($row['variation_label'], ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            $variation->addChild('VariationProductListingDetails')->addChild('UPC', self::NO_UPC);
             $labels[] = $row['variation_label'];
         }
 
