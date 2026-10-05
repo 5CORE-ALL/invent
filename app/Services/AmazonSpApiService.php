@@ -3363,14 +3363,78 @@ class AmazonSpApiService
     }
 
     /**
+     * Product SKUs such as "CAPO BLUE 1Pc" are not always the seller SKU in the listings report.
+     */
+    private function findListingRawForEnrich(string $input): ?AmazonListingRaw
+    {
+        $input = trim(str_replace("\xc2\xa0", ' ', $input));
+        if ($input === '' || ! Schema::hasTable('amazon_listings_raw')) {
+            return null;
+        }
+
+        $exact = AmazonListingRaw::query()->where('seller_sku', $input)->first();
+        if ($exact) {
+            return $exact;
+        }
+
+        $compact = $this->compactSkuKey($input);
+        if ($compact !== '') {
+            $bySku = AmazonListingRaw::query()
+                ->whereRaw($this->compactSkuSql('seller_sku').' = ?', [$compact])
+                ->orderByRaw('CASE WHEN seller_sku = ? THEN 0 ELSE 1 END', [$input])
+                ->first();
+            if ($bySku) {
+                return $bySku;
+            }
+        }
+
+        if (preg_match('/^B0[A-Z0-9]{8}$/i', $input)) {
+            return AmazonListingRaw::query()->where('asin1', strtoupper($input))->first();
+        }
+
+        $asin = '';
+        if (Schema::hasTable('amazon_datsheets')) {
+            $sheet = DB::table('amazon_datsheets')
+                ->where(function ($query) use ($input, $compact) {
+                    $query->where('sku', $input)
+                        ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($input)]);
+                    if ($compact !== '') {
+                        $query->orWhereRaw($this->compactSkuSql('sku').' = ?', [$compact]);
+                    }
+                })
+                ->whereNotNull('asin')
+                ->where('asin', '!=', '')
+                ->first(['asin']);
+            $asin = strtoupper(trim((string) ($sheet->asin ?? '')));
+        }
+
+        if ($asin === '') {
+            return null;
+        }
+
+        return AmazonListingRaw::query()->where('asin1', $asin)->first();
+    }
+
+    private function compactSkuKey(string $sku): string
+    {
+        $compact = strtoupper(str_replace([' ', "\xc2\xa0", '-', '_'], '', trim($sku)));
+
+        return preg_replace('/(\d+)(PCS?|PIECES?)$/', '$1PC', $compact) ?? $compact;
+    }
+
+    private function compactSkuSql(string $column): string
+    {
+        return 'REGEXP_REPLACE(UPPER(REPLACE(REPLACE(REPLACE(REPLACE('.$column.', CHAR(160), ""), " ", ""), "-", ""), "_", "")), "([0-9]+)(PCS?|PIECES?)$", "$1PC")';
+    }
+
+    /**
      * Enrich a single SKU and return updates. For testing (e.g. 3501 USB).
      */
     public function enrichSingleSku(string $sellerSku, bool $debug = true): array
     {
-        $listing = AmazonListingRaw::where('seller_sku', $sellerSku)->first()
-            ?? AmazonListingRaw::where('seller_sku', 'like', '%' . str_replace(['%', '_'], ['\\%', '\\_'], $sellerSku) . '%')->first();
+        $listing = $this->findListingRawForEnrich($sellerSku);
         if (! $listing) {
-            return ['error' => "SKU '{$sellerSku}' not found in amazon_listings_raw. Run report import first."];
+            return ['error' => "SKU '{$sellerSku}' not found in amazon_listings_raw. The product SKU often differs from Amazon's seller SKU. Import the listings report, or pass the ASIN."];
         }
         $asin = $listing->asin1;
         if (empty($asin)) {
