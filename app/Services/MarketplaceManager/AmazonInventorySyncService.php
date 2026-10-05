@@ -443,12 +443,28 @@ class AmazonInventorySyncService
             }
 
             if (Schema::hasTable('amazon_listings_raw') && Schema::hasColumn('amazon_listings_raw', 'quantity')) {
+                $hasRawData = Schema::hasColumn('amazon_listings_raw', 'raw_data');
                 DB::table('amazon_listings_raw')
                     ->where(function ($q) use ($sku, $upper) {
                         $q->where('seller_sku', $sku)
                             ->orWhereRaw('UPPER(TRIM(seller_sku)) = ?', [$upper]);
                     })
-                    ->update(['quantity' => $qty]);
+                    ->get($hasRawData ? ['id', 'raw_data'] : ['id'])
+                    ->each(function ($raw) use ($qty, $hasRawData) {
+                        $patch = ['quantity' => $qty];
+                        // Listings Amz Qty reads raw_data.quantity (report snapshot) before the column,
+                        // so update it too or the SKU stays in Inv SKU Mismatch until the next report import.
+                        $data = $hasRawData && is_string($raw->raw_data) ? json_decode($raw->raw_data, true) : null;
+                        if (is_array($data)) {
+                            foreach (['quantity', 'Quantity'] as $key) {
+                                if (array_key_exists($key, $data)) {
+                                    $data[$key] = is_string($data[$key]) ? (string) $qty : $qty;
+                                }
+                            }
+                            $patch['raw_data'] = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                        }
+                        DB::table('amazon_listings_raw')->where('id', $raw->id)->update($patch);
+                    });
             }
         }
     }
