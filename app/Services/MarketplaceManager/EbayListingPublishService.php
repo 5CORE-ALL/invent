@@ -95,7 +95,10 @@ class EbayListingPublishService
         }
         $title = $this->clipTitle($title);
 
-        $description = trim((string) ($details['description'] ?? $hydrated['description'] ?? ''));
+        $description = $this->aplusDescription($product);
+        if ($description === '') {
+            $description = trim((string) ($details['description'] ?? $hydrated['description'] ?? ''));
+        }
         if ($description === '') {
             $description = '<p>'.e($title).'</p>';
         }
@@ -153,6 +156,7 @@ class EbayListingPublishService
             'payment_policy_id' => $policies['payment'],
             'return_policy_id' => $policies['return'],
             'variations' => $variations,
+            'parent_sku' => $variations !== [] ? $this->parentListingSku($parentHint !== '' ? $parentHint : $this->groupKey($product)) : '',
             'upc' => '',
         ]);
         if ($itemSpecifics !== []) {
@@ -646,11 +650,46 @@ class EbayListingPublishService
                 'price' => $price,
                 'quantity' => $this->resolveQuantity($sku, $hydrated),
                 'variation_label' => ListingManagerFamily::variationLabel($sku, $parent),
+                'images' => ListingManagerAmazonHydrator::publishImageUrls($sku, $parent, 12),
                 'upc' => '',
             ];
         }
 
         return count($rows) > 1 ? $rows : [];
+    }
+
+    /**
+     * Description Master A+ (Shopify A+ snapshot, then Amazon A+).
+     */
+    private function aplusDescription(ProductMaster $product): string
+    {
+        foreach (['shopify_aplus_content', 'amazon_aplus_content'] as $col) {
+            $html = trim((string) ($product->{$col} ?? ''));
+            if (mb_strlen(trim(strip_tags($html))) > 40 || ($html !== '' && preg_match('/<img\b/i', $html))) {
+                return $html;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Listing-level Custom label for a variation listing: the "PARENT …" row in Product Master.
+     */
+    private function parentListingSku(string $parent): string
+    {
+        $parent = trim($parent);
+        if ($parent === '') {
+            return '';
+        }
+        if (stripos($parent, 'PARENT ') === 0) {
+            return $parent;
+        }
+        $row = ProductMaster::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', ['PARENT '.strtoupper($parent)])
+            ->value('sku');
+
+        return trim((string) ($row ?: 'PARENT '.$parent));
     }
 
     /**
