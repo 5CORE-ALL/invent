@@ -3533,6 +3533,7 @@
         let amzPushPrcPollTimer = null;
         let amzPushPrcLastToastKey = '';
         let amzPushPrcPulledKey = '';
+        let amzPushPrcSawActive = false;
 
         function planToAmzPushPrcQueueItem(d, plan) {
             const asin = (d.asin && String(d.asin).trim() !== '') ? String(d.asin).trim() : null;
@@ -3812,10 +3813,22 @@
                 }
                 applyAmzPushPrcTaskStatusesToTable(resp.tasks || []);
 
+                if (active) amzPushPrcSawActive = true;
+
                 if (!active) {
                     stopAmzPushPrcPoll();
                     const toastKey = jobStatus + '|' + ok + '|' + fail + '|' + total;
-                    if (total > 0 && toastKey !== amzPushPrcLastToastKey
+                    let queuedNext = false;
+                    if (amzPushPrcSawActive && jobStatus === 'completed' && amzPageReloadPushAllowed()) {
+                        amzPushPrcSawActive = false;
+                        window._amzReloadPushQueued = false;
+                        const more = collectAmzReloadPushItems();
+                        if (more.length) {
+                            queuedNext = true;
+                            queueAmzPushPrcItems(more, { silent: true });
+                        }
+                    }
+                    if (!queuedNext && total > 0 && toastKey !== amzPushPrcLastToastKey
                         && (jobStatus === 'completed' || jobStatus === 'failed')) {
                         amzPushPrcLastToastKey = toastKey;
                         amzPefToast(
@@ -3823,7 +3836,7 @@
                             resp.message || ('Push Prc: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''))
                         );
                     }
-                    if (jobStatus === 'completed' && ok > 0 && toastKey !== amzPushPrcPulledKey) {
+                    if (!queuedNext && jobStatus === 'completed' && ok > 0 && toastKey !== amzPushPrcPulledKey) {
                         amzPushPrcPulledKey = toastKey;
                         queueAmzPostPushPull(amzOkSkusFromPushTasks(resp.tasks || []));
                     }
@@ -3859,12 +3872,12 @@
             return $.ajax({
                 url: '/amazon-push-prc',
                 method: 'POST',
+                contentType: 'application/json',
                 headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                data: {
-                    _token: amzPefCsrf(),
+                data: JSON.stringify({
                     items: items,
                     retry_failed: opts.retryFailed ? 1 : 0,
-                },
+                }),
                 timeout: 60000,
             }).done(function(resp) {
                 if (!opts.silent) {

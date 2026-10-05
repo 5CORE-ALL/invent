@@ -3,7 +3,6 @@
 namespace App\Services\Support;
 
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
-use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Services\AmazonSpApiService;
 use Illuminate\Http\Request;
@@ -127,9 +126,8 @@ class AmazonPushPrcRunner
             $skipMsg = null;
             $target = $task['effective'] ?? $task['sale'] ?? $task['std'] ?? 0;
             try {
-                $livePrice = (float) (AmazonDatasheet::query()
-                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
-                    ->value('price') ?? 0);
+                $skuKey = strtoupper(trim($sku));
+                $livePrice = (float) ($this->store->listingPricesForSkus([$skuKey])[$skuKey] ?? 0);
                 if (AmazonSpApiService::listingPriceMatchesSprice($livePrice, $target)) {
                     $ok = true;
                     $skipMsg = 'skipped — Price already = S PRC';

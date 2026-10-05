@@ -256,7 +256,7 @@ class SyncAmazonProducts extends Command
             ]);
             return false;
         }
-        $this->info("Enriched SKU {$sku}: " . ($result['updates_count'] ?? 0) . ' fields saved.');
+        $this->info('Enriched seller SKU '.($result['sku'] ?? $sku).': '.($result['updates_count'] ?? 0).' fields saved.');
         if (! empty($result['warnings'])) {
             foreach ($result['warnings'] as $w) {
                 $this->warn($w);
