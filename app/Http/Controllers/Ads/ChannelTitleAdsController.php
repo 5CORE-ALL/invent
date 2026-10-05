@@ -20,6 +20,10 @@ class ChannelTitleAdsController extends Controller
 
         return view('ads.channel-title', [
             'title' => $title,
+            'channel' => $channel,
+            'missingAdsUrl' => \App\Support\Ads\ChannelListingMissingAds::find($channel)
+                ? route('channel.ads.missing', ['channel' => strtolower($channel)])
+                : null,
         ]);
     }
 }

@@ -639,6 +639,9 @@ class ChannelPushedPricePullService
         if (Schema::hasColumn('shopify_skus', 'b2c_price')) {
             $row->b2c_price = $price;
         }
+        if (Schema::hasColumn('shopify_skus', 'price_updated_manually_at')) {
+            $row->price_updated_manually_at = now();
+        }
         $row->save();
     }
 

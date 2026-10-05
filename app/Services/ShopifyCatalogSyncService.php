@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ShopifyCatalogProduct;
 use App\Models\ShopifyCatalogVariant;
 use App\Models\ShopifySku;
+use App\Support\Shopify\ShopifySkuPriceSync;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -153,16 +154,15 @@ class ShopifyCatalogSyncService
                     $sku = isset($variant['sku']) ? trim((string) $variant['sku']) : '';
                     if ($store === 'main' && $sku !== '' && stripos($sku, 'PARENT') === false) {
                         $qty = (int) ($variant['inventory_quantity'] ?? 0);
-                        $skuPayload = [
+                        $skuPayload = array_merge([
                             'variant_id' => (string) $vid,
                             'available_to_sell' => $qty,
                             'inv' => $qty,
                             'on_hand' => $qty,
                             'product_title' => $product['title'] ?? null,
                             'variant_title' => $variant['title'] ?? null,
-                            'price' => isset($variant['price']) ? (float) $variant['price'] : null,
                             'updated_at' => $now,
-                        ];
+                        ], $this->shopifySkuPricePayload($variant));
                         if ($imageUrl !== '') {
                             $skuPayload['image_src'] = $imageUrl;
                         }
@@ -209,6 +209,35 @@ class ShopifyCatalogSyncService
             'pruned_variants' => $prunedVariants,
             'completed' => $completedFully,
         ];
+    }
+
+    /**
+     * Live variant price for shopify_skus. Stamped so a product crawl that
+     * started earlier cannot write its older price back over this one.
+     *
+     * @param  array<string, mixed>  $variant
+     * @return array<string, mixed>
+     */
+    private function shopifySkuPricePayload(array $variant): array
+    {
+        $cols = ShopifySkuPriceSync::columnsFromVariant(
+            $variant['price'] ?? null,
+            $variant['compare_at_price'] ?? null
+        );
+        if ($cols === []) {
+            return [];
+        }
+        if (! Schema::hasColumn('shopify_skus', 'b2c_price')) {
+            unset($cols['b2c_price']);
+        }
+        if (! Schema::hasColumn('shopify_skus', 'b2b_price')) {
+            unset($cols['b2b_price']);
+        }
+        if (isset($cols['price']) && Schema::hasColumn('shopify_skus', 'price_updated_manually_at')) {
+            $cols['price_updated_manually_at'] = now();
+        }
+
+        return $cols;
     }
 
     /**

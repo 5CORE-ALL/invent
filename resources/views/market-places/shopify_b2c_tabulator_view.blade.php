@@ -1778,11 +1778,22 @@
 
     function shopifyB2cApplyLivePriceToRow(row, price, extra) {
         if (!row || typeof row.update !== 'function') return;
+        const p = Math.round((parseFloat(price) || 0) * 100) / 100;
+        if (!(p > 0)) return;
         const data = row.getData() || {};
         const patch = Object.assign(
-            shopifyB2cComputeLivePriceMetrics(data, price),
+            shopifyB2cComputeLivePriceMetrics(data, p),
             extra || {}
         );
+        const sku = String(data['(Child) sku'] || data.sku || '').trim().toUpperCase();
+        function patchTree(d) {
+            if (!d) return;
+            if (sku && String(d['(Child) sku'] || d.sku || '').trim().toUpperCase() === sku) {
+                Object.assign(d, patch);
+            }
+            if (Array.isArray(d._children)) d._children.forEach(patchTree);
+        }
+        try { (allTableData || []).forEach(patchTree); } catch (e) { /* ignore */ }
         row.update(patch);
         try { row.reformat(); } catch (e) { /* ignore */ }
         if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
@@ -2301,27 +2312,25 @@
                 data: { sku: sku, price: price },
                 success: function(response) {
                     const shopifyPush = response.shopify_push || {};
-                    let finalStatus = 'error';
-                    if (response.errors && response.errors.length > 0) {
-                        showToast('Shopify push failed: ' + (response.errors[0].message || 'Unknown error'), 'error');
-                    } else if (shopifyPush.ok) {
-                        finalStatus = 'pushed';
-                        if (response.price > 0) price = response.price;
-                        showToast('Shopify: ' + (shopifyPush.message || 'Pushed successfully') + ' for SKU: ' + sku, 'success');
-                    } else {
-                        showToast('Shopify: ' + (shopifyPush.message || 'Push failed'), 'error');
-                    }
-
-                    if (row) {
-                        if (finalStatus === 'pushed') {
-                            shopifyB2cApplyLivePriceToRow(row, price, { SPRICE_STATUS: 'pushed' });
-                            shopifyB2cPullAfterPush([sku]);
-                        } else {
-                            row.update({ SPRICE_STATUS: finalStatus });
+                    const pushedOk = !!(shopifyPush.ok || response.success || response.S_STATUS === 'pushed')
+                        && !(response.errors && response.errors.length);
+                    const verified = pushedOk
+                        ? (Number(response.price) > 0 ? Number(response.price) : Number(price))
+                        : 0;
+                    if (!pushedOk) {
+                        const failMsg = (response.errors && response.errors[0] && response.errors[0].message)
+                            || shopifyPush.message
+                            || 'Push failed';
+                        showToast('Shopify push failed: ' + failMsg, 'error');
+                        if (row) {
+                            row.update({ SPRICE_STATUS: 'error' });
                             row.reformat();
                         }
-                    } else if (finalStatus === 'pushed') {
-                        shopifyB2cPullAfterPush([sku]);
+                    } else {
+                        showToast('Shopify: ' + (shopifyPush.message || 'Pushed successfully') + ' for SKU: ' + sku, 'success');
+                        if (row && verified > 0) {
+                            shopifyB2cApplyLivePriceToRow(row, verified, { SPRICE_STATUS: 'pushed' });
+                        }
                     }
                     if ($btn && $btn.length) {
                         $btn.prop('disabled', false);
@@ -2379,14 +2388,12 @@
             let idx = 0;
             let okCount = 0;
             let failCount = 0;
-            const okSkus = [];
 
             function next() {
                 if (idx >= toPush.length) {
                     $btns.prop('disabled', false);
                     $('#push-shopify-prices-btn').html(originalHtml);
                     showToast('Push done: ' + okCount + ' ok, ' + failCount + ' failed', failCount ? 'warning' : 'success');
-                    if (okSkus.length) shopifyB2cPullAfterPush(okSkus);
                     if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
                     return;
                 }
@@ -2402,16 +2409,15 @@
                     data: { sku: item.sku, price: item.price },
                     success: function(response) {
                         const shopifyPush = response.shopify_push || {};
-                        if (response.errors && response.errors.length > 0) {
+                        const pushedOk = !!(shopifyPush.ok || response.success || response.S_STATUS === 'pushed')
+                            && !(response.errors && response.errors.length);
+                        if (!pushedOk) {
                             failCount++;
                             item.row.update({ SPRICE_STATUS: 'error' });
-                        } else if (shopifyPush.ok) {
-                            okCount++;
-                            okSkus.push(item.sku);
-                            shopifyB2cApplyLivePriceToRow(item.row, item.price, { SPRICE_STATUS: 'pushed' });
                         } else {
-                            failCount++;
-                            item.row.update({ SPRICE_STATUS: 'error' });
+                            okCount++;
+                            const verified = Number(response.price) > 0 ? Number(response.price) : item.price;
+                            shopifyB2cApplyLivePriceToRow(item.row, verified, { SPRICE_STATUS: 'pushed' });
                         }
                         item.row.reformat();
                         setTimeout(next, 700);

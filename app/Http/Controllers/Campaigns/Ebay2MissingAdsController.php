@@ -2,110 +2,61 @@
 
 namespace App\Http\Controllers\Campaigns;
 
-use App\Http\Controllers\Controller;
-use App\Models\EbayTwoDataView;
-use Illuminate\Http\Request;
-use App\Models\ProductMaster;
-use App\Models\ShopifySku;
-use App\Models\Ebay2Metric;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use App\Support\Ads\EbayMissingListingQuery;
+use Illuminate\Support\Collection;
 
-class Ebay2MissingAdsController extends Controller
+/**
+ * eBay 2 listings with no campaign, a price, and Shopify Inv > 0.
+ */
+class Ebay2MissingAdsController extends ListingMissingAdsController
 {
-    public function index()
+    protected function cacheKey(): string
     {
-        return view('campaign.ebay-two.ebay2_missing_ads');
+        return 'ebay2_ads_missing_sidebar_count';
     }
 
-    public function getEbay2MissingAdsData()
+    protected function pageTitle(): string
     {
-        try {
-            $normalizeSku = fn($sku) => strtoupper(trim($sku));
+        return 'eBay 2 Missing Ads';
+    }
 
-            $productMasters = ProductMaster::orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
-                ->get();
+    protected function pageSubtitle(): string
+    {
+        return 'eBay 2 listings not in a campaign, with a price and Inv > 0.';
+    }
 
-            if ($productMasters->isEmpty()) {
-                return response()->json([
-                    'message' => 'No product masters found',
-                    'data'    => [],
-                    'status'  => 200,
-                ]);
-            }
+    protected function adsUrl(): string
+    {
+        return route('ebay2.campaign.ads');
+    }
 
-            $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
+    protected function adsLabel(): string
+    {
+        return 'eBay 2 Campaign Ads';
+    }
 
-            // Fetch all required data
-            $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
-            $nrValues = EbayTwoDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-            $ebayMetricData = Ebay2Metric::select('sku', 'ebay_price', 'item_id')
-                ->whereIn('sku', $skus)
-                ->get()
-                ->keyBy(fn($item) => $normalizeSku($item->sku));
+    protected function idField(): string
+    {
+        return 'listing_id';
+    }
 
-            $campaignListings = DB::table('ebay2_campaign_ads as t')
-                ->join(DB::raw('(SELECT listing_id,
-                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
-                                        MAX(id) AS max_id
-                                 FROM ebay2_campaign_ads
-                                 GROUP BY listing_id) x'),
-                    function ($join) {
-                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
-                    })
-                ->select('t.listing_id', 't.bid_percentage')
-                ->get()
-                ->keyBy('listing_id')
-                ->toArray();
+    protected function idLabel(): string
+    {
+        return 'Listing ID';
+    }
 
-            $result = [];
+    public static function dataRouteName(): string
+    {
+        return 'ebay2.ads.missing.data';
+    }
 
-            foreach ($productMasters as $pm) {
-                $sku = strtoupper($pm->sku);
-                $shopify = $shopifyData->get($pm->sku);
-                $ebayMetric = $ebayMetricData->get($sku);
-                
-                $nrActual = null;
-                if (isset($nrValues[$pm->sku])) {
-                    $raw = $nrValues[$pm->sku];
-                    if (!is_array($raw)) {
-                        $raw = json_decode($raw, true);
-                    }
-                    if (is_array($raw)) {
-                        $nrActual = $raw['NRA'] ?? null;
-                    }
-                }
+    protected function countMissing(): int
+    {
+        return EbayMissingListingQuery::count('ebay2_campaign_ads', 'ebay_2_metrics');
+    }
 
-                $result[] = [
-                    'sku' => $sku,
-                    'parent' => $pm->parent,
-                    'INV' => $shopify->inv ?? 0,
-                    'L30' => $shopify->quantity ?? 0,
-                    'NRA' => $nrActual,
-                    'pmt_bid_percentage' => ($ebayMetric && isset($ebayMetric->item_id) && isset($campaignListings[$ebayMetric->item_id])) 
-                        ? $campaignListings[$ebayMetric->item_id]->bid_percentage 
-                        : null,
-                ];
-            }
-
-            return response()->json([
-                'message' => 'Data fetched successfully',
-                'data'    => $result,
-                'status'  => 200,
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('EbayMissingAdsController error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
-            ]);
-            
-            return response()->json([
-                'message' => 'Error fetching data: ' . $e->getMessage(),
-                'data'    => [],
-                'status'  => 500,
-            ]);
-        }
+    protected function collectMissingRows(bool $withImages = true): Collection
+    {
+        return EbayMissingListingQuery::rows('ebay2_campaign_ads', 'ebay_2_metrics', $withImages);
     }
 }

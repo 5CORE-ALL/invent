@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use App\Models\ShopifySku;
 use App\Services\ShopifyAdminCallGate;
 use App\Services\ShopifyOhioLocationResolver;
+use App\Support\Shopify\ShopifySkuPriceSync;
 
 class ShopifyApiInventoryController extends Controller
 {
@@ -164,8 +165,16 @@ class ShopifyApiInventoryController extends Controller
 
     public function saveDailyInventory()
     {
+        $lock = $this->acquireDailyInventoryLock();
+        if ($lock === null) {
+            Log::warning('saveDailyInventory skipped because another run is still active');
+
+            return true;
+        }
+
         try {
             $startTime = microtime(true);
+            $priceSyncStartedAt = now()->toDateTimeString();
             Log::info('Starting Shopify inventory sync');
 
             $endDate = Carbon::now()->endOfDay();
@@ -214,7 +223,7 @@ class ShopifyApiInventoryController extends Controller
                 return false;
             }
             
-            $this->saveSkus($simplifiedData);
+            $this->saveSkus($simplifiedData, $priceSyncStartedAt);
 
             // NOTE: on_hand, available_to_sell, committed, unavailable, incoming are intentionally NOT updated here.
             // The products API returns inventory_quantity as a total across ALL Shopify locations.
@@ -226,7 +235,36 @@ class ShopifyApiInventoryController extends Controller
         } catch (\Exception $e) {
             Log::error('Shopify Inventory Error: ' . $e->getMessage());
             return false;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
         }
+    }
+
+    /**
+     * Cron starts this command directly, so the shell lock is not enough.
+     * One run holds the file lock; the next start exits instead of stacking
+     * another full Shopify crawl on the same 2-calls-per-second bucket.
+     *
+     * @return resource|null
+     */
+    private function acquireDailyInventoryLock()
+    {
+        $path = storage_path('framework/shopify-save-daily-inventory.lock');
+        $dir = dirname($path);
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        $handle = @fopen($path, 'c');
+        if (! $handle || ! flock($handle, LOCK_EX | LOCK_NB)) {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+
+            return null;
+        }
+
+        return $handle;
     }
 
     protected function getAllInventoryData(): array
@@ -498,6 +536,35 @@ class ShopifyApiInventoryController extends Controller
     }
 
     /**
+     * Selling price from the same InventoryItem query as the quantities.
+     * Omitted when Shopify did not return a price, so a qty-only payload cannot blank Price.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function shopifySkuPriceColumnsFromGraphQlRow(array $data): array
+    {
+        $cols = ShopifySkuPriceSync::columnsFromVariant(
+            $data['price'] ?? null,
+            $data['compare_at_price'] ?? null
+        );
+        if ($cols === []) {
+            return [];
+        }
+        if (! Schema::hasColumn('shopify_skus', 'b2c_price')) {
+            unset($cols['b2c_price']);
+        }
+        if (! Schema::hasColumn('shopify_skus', 'b2b_price')) {
+            unset($cols['b2b_price']);
+        }
+        if (Schema::hasColumn('shopify_skus', 'price_updated_manually_at')) {
+            $cols['price_updated_manually_at'] = now();
+        }
+
+        return $cols;
+    }
+
+    /**
      * Per-location quantities matching Shopify Admin: available, committed, on_hand, incoming,
      * and unavailable (reserved + damaged + safety_stock + quality_control per Shopify docs).
      */
@@ -556,6 +623,10 @@ query InventoryDashboardQuantities($locationId: ID!, $itemIds: [ID!]!) {
   nodes(ids: $itemIds) {
     ... on InventoryItem {
       id
+      variant {
+        price
+        compareAtPrice
+      }
       inventoryLevel(locationId: $locationId) {
         quantities(names: ["available", "committed", "on_hand", "incoming", "reserved", "damaged", "safety_stock", "quality_control"]) {
           name
@@ -645,6 +716,13 @@ GQL;
                     'unavailable' => $unavailable,
                     'incoming' => $incoming,
                 ];
+                $variant = is_array($node['variant'] ?? null) ? $node['variant'] : [];
+                if (isset($variant['price']) && is_numeric($variant['price'])) {
+                    $payload['price'] = $variant['price'];
+                }
+                if (isset($variant['compareAtPrice']) && is_numeric($variant['compareAtPrice'])) {
+                    $payload['compare_at_price'] = $variant['compareAtPrice'];
+                }
 
                 foreach ($skusForIid as $sku) {
                     if (! isset($final[$sku])) {
@@ -1317,9 +1395,9 @@ GQL;
         return true;
     }
 
-    protected function saveSkus(array $simplifiedData)
+    protected function saveSkus(array $simplifiedData, ?string $priceSyncStartedAt = null)
     {
-        DB::transaction(function () use ($simplifiedData) {
+        DB::transaction(function () use ($simplifiedData, $priceSyncStartedAt) {
             $skusToUpdate = [];
             
             // Collect all SKUs we're about to update
@@ -1329,16 +1407,18 @@ GQL;
                     $skusToUpdate[] = $sku;
                 }
             }
-            
-            // Do not blank `quantity` first. Each row below writes its own sold count.
-            // A zero-all update is what stored 0 for SKUs whose orders were never fetched.
-            // Do not reset `inv` / GraphQL quantity columns — those match Shopify Admin via syncLiveInventoryToDb().
-            if (!empty($skusToUpdate)) {
-                ShopifySku::whereIn('sku', $skusToUpdate)->update([
-                    'price' => null,
-                    'b2b_price' => null,
-                    'b2c_price' => null,
-                ]);
+
+            // Do not blank prices first. This crawl can run for a long time; a push or
+            // live pull that lands while it is running must keep the newer Shopify price.
+            $keepNewerPrice = [];
+            if ($priceSyncStartedAt && Schema::hasColumn('shopify_skus', 'price_updated_manually_at')) {
+                $keepNewerPrice = array_fill_keys(
+                    ShopifySku::query()
+                        ->where('price_updated_manually_at', '>=', $priceSyncStartedAt)
+                        ->pluck('sku')
+                        ->all(),
+                    true
+                );
             }
 
             // Batch processing for better performance
@@ -1377,15 +1457,17 @@ GQL;
                     $attributes = [
                         'sku' => $sku,
                         'variant_id' => $item['variant_id'],
-                        'price' => $item['price'],
-                        'b2b_price' => $item['b2b_price'] ?? null,
-                        'b2c_price' => $item['b2c_price'] ?? null,
                         'image_src' => $item['image_src'],
                         'product_title' => $item['product_title'] ?? null,
                         'variant_title' => $item['variant_title'] ?? null,
                         'product_link' => $item['product_link'] ?? null,
                         'updated_at' => now(),
                     ];
+                    if (! isset($keepNewerPrice[$sku])) {
+                        $attributes['price'] = $item['price'];
+                        $attributes['b2b_price'] = $item['b2b_price'] ?? null;
+                        $attributes['b2c_price'] = $item['b2c_price'] ?? null;
+                    }
                     // Every SKU starts this run at 0. Writing that 0 is what wiped a real
                     // OV L30 when the order pages or the SKU match never arrived.
                     $sold = (int) ($item['quantity'] ?? 0);
@@ -1464,7 +1546,11 @@ GQL;
             }
 
             $qty = $this->shopifySkuQuantitiesFromGraphQlRow($data);
-            ShopifySku::where('sku', $exactSku)->update(array_merge($qty, ['updated_at' => now()]));
+            ShopifySku::where('sku', $exactSku)->update(array_merge(
+                $qty,
+                $this->shopifySkuPriceColumnsFromGraphQlRow($data),
+                ['updated_at' => now()]
+            ));
 
             $this->logShopifyLiveInventory('single_sku_sync_ok', [
                 'sku' => $exactSku,
@@ -1621,7 +1707,11 @@ GQL;
                 }
 
                 $qty = $this->shopifySkuQuantitiesFromGraphQlRow($data);
-                ShopifySku::where('sku', $exactSku)->update(array_merge($qty, ['updated_at' => now()]));
+                ShopifySku::where('sku', $exactSku)->update(array_merge(
+                    $qty,
+                    $this->shopifySkuPriceColumnsFromGraphQlRow($data),
+                    ['updated_at' => now()]
+                ));
                 $updated[$exactSku] = $qty;
             }
 
@@ -1704,6 +1794,7 @@ GQL;
                             ['sku' => $sku],
                             array_merge(
                                 $this->shopifySkuQuantitiesFromGraphQlRow($data),
+                                $this->shopifySkuPriceColumnsFromGraphQlRow($data),
                                 [
                                     'image_src' => $data['image_url'] ?? null,
                                     'updated_at' => now(),

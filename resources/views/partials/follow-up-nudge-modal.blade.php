@@ -88,19 +88,118 @@
     if (!cfg.userId) return;
 
     var timer = null;
+    var waiting = true;
+    var onVisible = null;
+    var bus = null;
+    var tabId = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
     function storageKey() {
         return 'follow-up-nudge:' + cfg.userId + ':' + cfg.today;
     }
+    function lockKey() {
+        return 'follow-up-nudge-lock:' + cfg.userId + ':' + cfg.today;
+    }
+    function cookieName() {
+        return 'fu_nudge_' + cfg.userId;
+    }
+    function readCookie() {
+        var prefix = cookieName() + '=';
+        var parts = String(document.cookie || '').split(';');
+        for (var i = 0; i < parts.length; i++) {
+            var part = parts[i].replace(/^\s+/, '');
+            if (part.indexOf(prefix) === 0) return decodeURIComponent(part.slice(prefix.length));
+        }
+        return '';
+    }
     function alreadyShown() {
-        try { return localStorage.getItem(storageKey()) === '1'; } catch (e) { return false; }
+        if (readCookie() === cfg.today) return true;
+        try {
+            var v = localStorage.getItem(storageKey());
+            return v === '1' || (typeof v === 'string' && v.indexOf('off:') === 0);
+        } catch (e) {
+            return false;
+        }
+    }
+    function writeCookie() {
+        document.cookie = cookieName() + '=' + encodeURIComponent(cfg.today) + '; path=/; max-age=172800; SameSite=Lax';
+    }
+    function notifyTabs() {
+        try { if (bus) bus.postMessage('off'); } catch (e) {}
     }
     function markShown() {
         try { localStorage.setItem(storageKey(), '1'); } catch (e) {}
+        writeCookie();
+        notifyTabs();
     }
+    function markDismissed() {
+        try { localStorage.setItem(storageKey(), 'off:' + Date.now()); } catch (e) {}
+        writeCookie();
+        notifyTabs();
+    }
+    function stopWaiting() {
+        waiting = false;
+        if (timer) clearTimeout(timer);
+        timer = null;
+        if (onVisible) {
+            document.removeEventListener('visibilitychange', onVisible);
+            onVisible = null;
+        }
+    }
+    function hideIfOpen() {
+        var modalEl = document.getElementById('followUpNudgeModal');
+        if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+        if (!modalEl.classList.contains('show')) return;
+        var inst = bootstrap.Modal.getInstance(modalEl);
+        if (inst) inst.hide();
+    }
+    function claimShow(done) {
+        if (!waiting || alreadyShown()) {
+            done(false);
+            return;
+        }
+        var key = lockKey();
+        var token = tabId + ':' + Date.now();
+        try {
+            var existing = localStorage.getItem(key);
+            if (existing) {
+                var at = parseInt(String(existing).split(':').pop(), 10);
+                if (at && (Date.now() - at) < 15000) {
+                    done(false);
+                    return;
+                }
+            }
+            localStorage.setItem(key, token);
+        } catch (e) {
+            done(true);
+            return;
+        }
+        setTimeout(function () {
+            try {
+                done(waiting && !alreadyShown() && localStorage.getItem(key) === token);
+            } catch (e) {
+                done(waiting && !alreadyShown());
+            }
+        }, 60);
+    }
+    window.addEventListener('storage', function (e) {
+        if (!e || e.key !== storageKey() || !e.newValue) return;
+        stopWaiting();
+        hideIfOpen();
+    });
+    try {
+        bus = new BroadcastChannel('follow-up-nudge:' + cfg.userId + ':' + cfg.today);
+        bus.onmessage = function () {
+            stopWaiting();
+            hideIfOpen();
+        };
+    } catch (e) {}
     function waitUntilHidden(el, then) {
+        if (!waiting || alreadyShown()) return;
         if (el && el.classList.contains('show')) {
-            el.addEventListener('hidden.bs.modal', function () { then(); }, { once: true });
+            el.addEventListener('hidden.bs.modal', function () {
+                if (!waiting || alreadyShown()) return;
+                then();
+            }, { once: true });
             return;
         }
         then();
@@ -108,15 +207,43 @@
     function whenReady(cb) {
         waitUntilHidden(document.getElementById('overdueNudgeModal'), function () {
             setTimeout(function () {
+                if (!waiting || alreadyShown()) return;
                 waitUntilHidden(document.getElementById('tatNudgeModal'), cb);
             }, 400);
         });
     }
     function showModal() {
+        if (!waiting || alreadyShown()) return;
         var modalEl = document.getElementById('followUpNudgeModal');
         if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
         markShown();
+        stopWaiting();
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+    function present() {
+        if (!waiting || alreadyShown()) return;
+        if (document.visibilityState !== 'visible') {
+            if (onVisible) return;
+            onVisible = function () {
+                if (document.visibilityState !== 'visible') return;
+                document.removeEventListener('visibilitychange', onVisible);
+                onVisible = null;
+                present();
+            };
+            document.addEventListener('visibilitychange', onVisible);
+            return;
+        }
+        claimShow(function (won) {
+            if (!won || !waiting || alreadyShown()) return;
+            whenReady(showModal);
+        });
+    }
+
+    var modalEl = document.getElementById('followUpNudgeModal');
+    if (modalEl) {
+        modalEl.addEventListener('hide.bs.modal', function () {
+            markDismissed();
+        });
     }
 
     if (alreadyShown()) return;
@@ -124,7 +251,8 @@
     var wait = parseInt(cfg.waitMs, 10);
     if (!(wait >= 0)) wait = 0;
     timer = setTimeout(function () {
-        whenReady(showModal);
+        timer = null;
+        present();
     }, wait);
 })();
 </script>

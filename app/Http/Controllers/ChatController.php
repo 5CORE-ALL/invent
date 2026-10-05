@@ -73,6 +73,22 @@ class ChatController extends Controller
         ]);
     }
 
+    public function archived(): JsonResponse
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+
+        if (! ChatWorkspace::tablesReady()) {
+            return response()->json(['channels' => []]);
+        }
+
+        $this->releaseSessionLock();
+
+        return response()->json([
+            'channels' => ChatWorkspace::inboxFor($user, false, true),
+        ]);
+    }
+
     public function unread(): JsonResponse
     {
         $user = Auth::user();
@@ -242,6 +258,7 @@ class ChatController extends Controller
         abort_unless($user, 403);
         $this->releaseSessionLock();
         $row = ChatWorkspace::memberOrFail($user, $channel);
+        abort_if($row->is_archived, 422, 'This chat is archived.');
 
         $validated = $request->validate([
             'body' => 'nullable|string|max:8000',
@@ -1025,6 +1042,7 @@ class ChatController extends Controller
             'notify_pref' => $member->notify_pref ?? 'all',
             'can_manage_members' => ChatWorkspace::canManageMembers($user, $channel),
             'can_delete' => ChatWorkspace::canDeleteChannel($user, $channel),
+            'archived' => (bool) $channel->is_archived,
             'pinned' => (bool) ($member && Schema::hasColumn('chat_channel_members', 'pinned_at') && $member->pinned_at),
         ];
     }

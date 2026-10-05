@@ -327,4 +327,39 @@ class ChatProductionTest extends TestCase
             ->assertOk()
             ->assertJson(['mode' => 'mentions', 'tone' => 'knock']);
     }
+
+    public function test_archived_chats_stay_readable_and_out_of_the_live_inbox(): void
+    {
+        [$a, $b, $channel] = $this->dmPair();
+        $this->actingAs($a)->postJson('/chat/channels/'.$channel->id.'/messages', [
+            'body' => 'keep this history',
+            'client_id' => 'cid-arch-'.uniqid(),
+        ])->assertOk();
+
+        $channel->is_archived = true;
+        $channel->save();
+
+        $live = collect($this->actingAs($a)->getJson('/chat/inbox')->assertOk()->json('channels'));
+        $this->assertFalse($live->contains(fn ($row) => (int) $row['id'] === (int) $channel->id));
+
+        $archived = $this->actingAs($a)->getJson('/chat/archived')->assertOk();
+        $row = collect($archived->json('channels'))->first(fn ($item) => (int) $item['id'] === (int) $channel->id);
+        $this->assertNotNull($row);
+        $this->assertTrue($row['archived']);
+
+        $outsider = ChatWorkspace::activeUsersQuery()->whereNotIn('id', [$a->id, $b->id])->orderBy('id')->first();
+        if ($outsider) {
+            $hidden = collect($this->actingAs($outsider)->getJson('/chat/archived')->assertOk()->json('channels'));
+            $this->assertFalse($hidden->contains(fn ($item) => (int) $item['id'] === (int) $channel->id));
+        }
+
+        $messages = $this->actingAs($a)->getJson('/chat/channels/'.$channel->id.'/messages');
+        $messages->assertOk()->assertJsonPath('channel.archived', true);
+        $this->assertTrue(collect($messages->json('messages'))->contains(fn ($item) => ($item['body'] ?? '') === 'keep this history'));
+
+        $this->actingAs($a)->postJson('/chat/channels/'.$channel->id.'/messages', [
+            'body' => 'should not send',
+            'client_id' => 'cid-arch-send-'.uniqid(),
+        ])->assertStatus(422);
+    }
 }

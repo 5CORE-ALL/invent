@@ -164,6 +164,12 @@ class ChannelLivePriceSync
             return;
         }
 
+        if (in_array($channel, ['shopify', 'shopifyb2c', 'shopify_b2c', 'sb2c'], true)) {
+            self::writeShopifyB2cPrice($sku, $sprice);
+
+            return;
+        }
+
         $value = $sprice;
         if (in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
             $base = TemuShopifySalesService::computePushBaseFromSprice($sprice);
@@ -185,6 +191,27 @@ class ChannelLivePriceSync
                 ]);
             }
         }
+    }
+
+    /**
+     * Price column on /shopify-b2c-pricing. A successful push must land here
+     * even when the job store times out after Shopify has already accepted it.
+     */
+    private static function writeShopifyB2cPrice(string $sku, float $price): void
+    {
+        if (! Schema::hasTable('shopify_skus')) {
+            return;
+        }
+        $payload = ['price' => $price];
+        if (Schema::hasColumn('shopify_skus', 'b2c_price')) {
+            $payload['b2c_price'] = $price;
+        }
+        if (Schema::hasColumn('shopify_skus', 'price_updated_manually_at')) {
+            $payload['price_updated_manually_at'] = now();
+        }
+        ShopifySku::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+            ->update($payload);
     }
 
     /**

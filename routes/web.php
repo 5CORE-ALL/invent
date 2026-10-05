@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdsMaster\AdsMasterController;
 use App\Http\Controllers\Ads\ChannelTitleAdsController;
+use App\Http\Controllers\Campaigns\ChannelMissingAdsController;
 use App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController;
 use App\Http\Controllers\AdvertisementMaster\VariationsAdsController;
 use App\Http\Controllers\AmazonAdsController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Campaigns\AmzCorrectlyUtilizedController;
 use App\Http\Controllers\Campaigns\AmzUnderUtilizedBgtController;
 use App\Http\Controllers\Campaigns\CampaignImportController;
 use App\Http\Controllers\Campaigns\Ebay2MissingAdsController;
+use App\Http\Controllers\Campaigns\Ebay3MissingAdsController;
 use App\Http\Controllers\Campaigns\Ebay2PMTAdController;
 use App\Http\Controllers\Campaigns\Ebay2RunningAdsController;
 use App\Http\Controllers\Campaigns\Ebay2UtilizedAdsController;
@@ -57,6 +59,8 @@ use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
+use App\Http\Controllers\Campaigns\Tiktok1MissingAdsController;
+use App\Http\Controllers\Campaigns\Tiktok2MissingAdsController;
 use App\Http\Controllers\Campaigns\TiktokVideoQualityController;
 use App\Http\Controllers\Campaigns\TiktokGmvAdsRawDataController;
 use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
@@ -3500,6 +3504,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(\App\Http\Controllers\ChatController::class)->middleware('auth')->group(function () {
         Route::get('/chat', 'index')->name('chat.index');
         Route::get('/chat/inbox', 'inbox')->name('chat.inbox');
+        Route::get('/chat/archived', 'archived')->name('chat.archived');
         Route::get('/chat/sync', 'sync')->name('chat.sync');
         Route::post('/chat/presence', 'presence')->name('chat.presence');
         Route::get('/chat/unread', 'unread')->name('chat.unread');
@@ -5324,6 +5329,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-pricing/save-starget', [TemuController::class, 'saveStarget'])->name('temu.save.starget');
 
     // Title-only ads page for channels that do not have their own ads screen.
+    Route::get('/channel-ads/{channel}/missing', [ChannelMissingAdsController::class, 'index'])
+        ->where('channel', '[A-Za-z0-9]+')
+        ->name('channel.ads.missing');
+    Route::get('/channel-ads/{channel}/missing/data', [ChannelMissingAdsController::class, 'data'])
+        ->where('channel', '[A-Za-z0-9]+')
+        ->name('channel.ads.missing.data');
     Route::get('/channel-ads/{channel}', [ChannelTitleAdsController::class, 'show'])
         ->where('channel', '[A-Za-z0-9]+')
         ->name('channel.title.ads');
@@ -6840,9 +6851,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::controller(EbayMissingAdsController::class)->group(function () {
+        Route::get('/ebay/ads/missing', 'index')->name('ebay.ads.missing');
+        Route::get('/ebay/ads/missing/data', 'data')->name('ebay.ads.missing.data');
         Route::get('/ebay/ad-missing/list', 'index')->name('ebay.missing.ads');
         Route::get('/ebay/ad-missing/data', 'getEbayMissingAdsData');
         Route::post('/update-ebay-nrl-data', 'updateNrlData');
+    });
+
+    Route::controller(Ebay2MissingAdsController::class)->group(function () {
+        Route::get('/ebay2/ads/missing', 'index')->name('ebay2.ads.missing');
+        Route::get('/ebay2/ads/missing/data', 'data')->name('ebay2.ads.missing.data');
+    });
+
+    Route::controller(Ebay3MissingAdsController::class)->group(function () {
+        Route::get('/ebay3/ads/missing', 'index')->name('ebay3.ads.missing');
+        Route::get('/ebay3/ads/missing/data', 'data')->name('ebay3.ads.missing.data');
     });
 
     Route::controller(EbayViewsController::class)->group(function () {
@@ -6923,7 +6946,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(WalmartMissingAdsController::class)->group(function () {
         Route::get('/walmart/missing/ads', 'index')->name('walmart.missing.ads');
-        Route::get('/walmart/missing/ads/data', 'getWalmartMissingAdsData');
+        Route::get('/walmart/missing/ads/data', 'data')->name('walmart.missing.ads.data');
     });
 
     Route::controller(WalmartRunningAdsController::class)->group(function () {
@@ -7085,6 +7108,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tiktok-1-ads-raw-data', 'index')->name('tiktok1.ads.raw');
         Route::get('/tt1-ads', 'index')->name('tt1.ads');
         Route::get('/tiktok-1-ads-raw-data/data', 'getData')->name('tiktok1.ads.raw.data');
+    });
+
+    Route::controller(Tiktok1MissingAdsController::class)->group(function () {
+        Route::get('/tiktok-1/ads/missing', 'index')->name('tiktok1.ads.missing');
+        Route::get('/tiktok-1/ads/missing/data', 'data')->name('tiktok1.ads.missing.data');
+    });
+
+    Route::controller(Tiktok2MissingAdsController::class)->group(function () {
+        Route::get('/tiktok-2/ads/missing', 'index')->name('tiktok2.ads.missing');
+        Route::get('/tiktok-2/ads/missing/data', 'data')->name('tiktok2.ads.missing.data');
     });
 
     Route::controller(TiktokGmvAdsRawDataController::class)->group(function () {

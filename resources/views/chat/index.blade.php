@@ -61,6 +61,16 @@
             line-height: 1;
             padding: 0;
         }
+        .slack-sec .slack-archived-btn {
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            line-height: 1.2;
+        }
+        .slack-sec .slack-archived-btn.is-on { color: #fff; }
+        .slack-item.is-archived { opacity: .8; }
+        .slack-archived-empty { padding: 2px 16px 8px; color: #ab9bab; font-size: 12px; }
         .slack-item {
             display: flex;
             align-items: center;
@@ -407,6 +417,10 @@
                 </div>
                 <div id="slackDmList"></div>
                 <div class="slack-sec">
+                    <button type="button" id="slackArchivedBtn" class="slack-archived-btn">Show archived</button>
+                </div>
+                <div id="slackArchivedList" hidden></div>
+                <div class="slack-sec">
                     <button type="button" id="slackMarkAllBtn" style="font-size:12px;padding:8px 16px;">Mark all as read</button>
                 </div>
             </div>
@@ -683,6 +697,8 @@
     const searchEl = document.getElementById('slackSearch');
     const peopleList = document.getElementById('slackPeopleList');
     let channels = [];
+    let archivedChannels = [];
+    let showArchived = false;
     let directory = [];
     let activeId = 0;
     let lastId = 0;
@@ -830,6 +846,46 @@
         });
         updateTopbar(channels.reduce(function (n, ch) { return n + (ch.unread || 0); }, 0));
         fillForwardTargets();
+        renderArchived();
+    }
+
+    function channelById(id) {
+        return channels.find(function (c) { return c.id === id; })
+            || archivedChannels.find(function (c) { return c.id === id; })
+            || null;
+    }
+
+    function renderArchived() {
+        const list = document.getElementById('slackArchivedList');
+        const btn = document.getElementById('slackArchivedBtn');
+        if (!list) return;
+        if (btn) {
+            btn.textContent = showArchived ? 'Hide archived' : 'Show archived';
+            btn.classList.toggle('is-on', showArchived);
+        }
+        if (!showArchived) {
+            list.hidden = true;
+            list.innerHTML = '';
+            return;
+        }
+        list.hidden = false;
+        list.innerHTML = '';
+        if (!archivedChannels.length) {
+            list.innerHTML = '<div class="slack-archived-empty">No archived chats</div>';
+            return;
+        }
+        archivedChannels.forEach(function (ch) {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'slack-item is-archived' + (ch.id === activeId ? ' is-active' : '');
+            const prefix = (ch.type === 'public' || ch.type === 'private') ? '<span class="slack-item__hash">#</span>' : '';
+            const avatar = ch.avatar
+                ? '<img class="' + (ch.type === 'bot' ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
+                : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : (ch.type === 'task' ? '<i class="ri-task-line"></i>' : '<i class="ri-archive-line"></i>'));
+            item.innerHTML = avatar + prefix + '<span class="slack-item__name">' + esc(ch.name) + '</span>';
+            item.addEventListener('click', function () { openChannel(ch.id); });
+            list.appendChild(item);
+        });
     }
 
     async function toggleRoomPin(id) {
@@ -1073,6 +1129,7 @@
         const name = ch ? ((ch.type === 'public' || ch.type === 'private') ? '#' + ch.name : ch.name) : 'Slack';
         document.getElementById('slackRoomName').textContent = name;
         const src = detail || ch || {};
+        const archived = !!((src && src.archived) || (ch && ch.archived));
         let sub = 'Message';
         const rosterTypes = { group: 1, public: 1, private: 1, task: 1 };
         if (src.member_names && src.member_names.length && ch && rosterTypes[ch.type]) {
@@ -1086,7 +1143,9 @@
         } else if (ch && ch.type === 'bot') {
             sub = 'Create a task, or check overdue, DAR, and SI';
         }
+        if (archived) sub = sub && sub !== 'Message' ? ('Archived · ' + sub) : 'Archived';
         document.getElementById('slackRoomSub').textContent = sub;
+        composer.hidden = !ch || archived;
         const dot = document.getElementById('slackRoomDot');
         if (dot) {
             const isDm = !!(ch && ch.type === 'dm');
@@ -1098,15 +1157,15 @@
         const delBtn = document.getElementById('slackDeleteRoomBtn');
         const canAdd = !!(src.can_manage_members || (ch && ch.can_manage_members));
         const canDel = !!(src.can_delete || (ch && ch.can_delete));
-        if (addBtn) addBtn.hidden = !canAdd;
+        if (addBtn) addBtn.hidden = archived || !canAdd;
         if (delBtn) {
-            delBtn.hidden = !canDel;
+            delBtn.hidden = archived || !canDel;
             delBtn.textContent = (ch && ch.type === 'group') ? 'Delete group' : ((ch && (ch.type === 'dm' || ch.type === 'task')) ? 'Delete chat' : 'Delete channel');
         }
         const pinRoomBtn = document.getElementById('slackPinRoomBtn');
         if (pinRoomBtn) {
             const pinned = !!(ch && (src.pinned || ch.pinned));
-            pinRoomBtn.hidden = !ch;
+            pinRoomBtn.hidden = !ch || archived;
             pinRoomBtn.textContent = pinned ? 'Remove pin' : 'Pin';
             pinRoomBtn.classList.toggle('is-pinned', pinned);
             const roomName = document.getElementById('slackRoomName');
@@ -1174,9 +1233,10 @@
         activeId = id;
         lastId = 0;
         oldestId = 0;
-        const ch = channels.find(function (c) { return c.id === id; }) || {};
+        const found = channelById(id);
+        const ch = found || {};
         firstUnreadId = ch.unread > 0 ? (ch.first_unread_id || 0) : 0;
-        composer.hidden = false;
+        composer.hidden = !found || !!ch.archived;
         renderNav();
         setHead(ch);
         const draft = localStorage.getItem(DRAFT_KEY + id);
@@ -1187,6 +1247,8 @@
             Object.assign(ch, data.channel);
             const idx = channels.findIndex(function (c) { return c.id === id; });
             if (idx >= 0) Object.assign(channels[idx], data.channel);
+            const archivedIdx = archivedChannels.findIndex(function (c) { return c.id === id; });
+            if (archivedIdx >= 0) Object.assign(archivedChannels[archivedIdx], data.channel);
             setHead(ch, data.channel);
         }
         appendMessages(data.messages || [], true, false);
@@ -1782,6 +1844,9 @@
         const inbox = await api('/chat/inbox');
         channels = inbox.channels || [];
         if (inbox.directory) directory = inbox.directory;
+        if (showArchived) {
+            try { await loadArchived(); } catch (e) {}
+        }
         renderNav();
         const next = channels.find(function (c) { return c.type === 'bot'; }) || channels[0];
         if (next) openChannel(next.id);
@@ -1966,6 +2031,30 @@
         if (ch) ch.unread = 0;
         renderNav();
     });
+    async function loadArchived() {
+        const data = await api('/chat/archived');
+        archivedChannels = data.channels || [];
+        renderArchived();
+    }
+    document.getElementById('slackArchivedBtn').addEventListener('click', async function () {
+        const btn = this;
+        if (showArchived) {
+            showArchived = false;
+            renderArchived();
+            return;
+        }
+        btn.disabled = true;
+        try {
+            showArchived = true;
+            await loadArchived();
+        } catch (err) {
+            showArchived = false;
+            renderArchived();
+            alert(err.message || 'Could not load archived chats.');
+        } finally {
+            btn.disabled = false;
+        }
+    });
     document.getElementById('slackMarkAllBtn').addEventListener('click', async function () {
         await api('/chat/read-all', { method: 'POST' });
         channels.forEach(function (c) { c.unread = 0; });
@@ -2129,10 +2218,21 @@
         navigator.sendBeacon && navigator.sendBeacon('/chat/presence', new Blob([JSON.stringify({ typing_channel_id: 0 })], { type: 'application/json' }));
     });
 
-    api('/chat/inbox').then(function (data) {
+    api('/chat/inbox').then(async function (data) {
         channels = data.channels || [];
         directory = data.directory || [];
         renderNav();
+        if (startChannel && !channels.find(function (c) { return c.id === startChannel; })) {
+            try {
+                const archived = await api('/chat/archived');
+                archivedChannels = archived.channels || [];
+                if (archivedChannels.find(function (c) { return c.id === startChannel; })) {
+                    showArchived = true;
+                    renderArchived();
+                    return openChannel(startChannel, startMessage || 0);
+                }
+            } catch (e) {}
+        }
         const preferred = channels.find(function (c) { return c.id === startChannel; })
             || channels.find(function (c) { return c.unread > 0; })
             || channels.find(function (c) { return c.type === 'bot'; })

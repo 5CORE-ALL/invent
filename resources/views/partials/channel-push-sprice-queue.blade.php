@@ -452,6 +452,13 @@
                             if (CH_PUSH_SPRICE_CHANNEL === 'shein' && typeof window.sheinApplyPushPatchToSku === 'function') {
                                 window.sheinApplyPushPatchToSku(t.sku, result.patch);
                             }
+                            if (CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c' && result.kind === 'price'
+                                && typeof global.shopifyB2cApplyLivePriceToRow === 'function') {
+                                const livePrice = Number(t.price || t.ebay_price) || 0;
+                                if (livePrice > 0) {
+                                    global.shopifyB2cApplyLivePriceToRow(row, livePrice, { SPRICE_STATUS: 'pushed' });
+                                }
+                            }
                             if (CH_PUSH_SPRICE_IS_MACYS && result.kind === 'price'
                                 && typeof global.macysApplyLivePriceToRow === 'function') {
                                 const livePrice = Number((result.patch && (result.patch['MC Price'] || result.patch.price))
@@ -944,7 +951,12 @@
                     chPushClientPatchDatasets(item.sku, patch);
                     return;
                 }
-                if (row && typeof row.update === 'function') {
+                if (ok && CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c'
+                    && live > 0
+                    && row
+                    && typeof global.shopifyB2cApplyLivePriceToRow === 'function') {
+                    global.shopifyB2cApplyLivePriceToRow(row, live, { SPRICE_STATUS: 'pushed' });
+                } else if (row && typeof row.update === 'function') {
                     chPushSafeRowUpdate(row, patch);
                 } else if (d) {
                     Object.assign(d, patch);

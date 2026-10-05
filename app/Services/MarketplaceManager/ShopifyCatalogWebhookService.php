@@ -6,7 +6,9 @@ use App\Models\MmInventoryLedger;
 use App\Models\ShopifyCatalogProduct;
 use App\Models\ShopifyCatalogVariant;
 use App\Models\ShopifySku;
+use App\Support\Shopify\ShopifySkuPriceSync;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Apply Shopify products/* webhook payloads onto shopify_catalog_* (+ light shopify_skus / ledger).
@@ -96,18 +98,30 @@ class ShopifyCatalogWebhookService
             }
 
             try {
+                $priceCols = ShopifySkuPriceSync::columnsFromVariant(
+                    $variant['price'] ?? null,
+                    $variant['compare_at_price'] ?? null
+                );
+                if (! Schema::hasColumn('shopify_skus', 'b2c_price')) {
+                    unset($priceCols['b2c_price']);
+                }
+                if (! Schema::hasColumn('shopify_skus', 'b2b_price')) {
+                    unset($priceCols['b2b_price']);
+                }
+                if (isset($priceCols['price']) && Schema::hasColumn('shopify_skus', 'price_updated_manually_at')) {
+                    $priceCols['price_updated_manually_at'] = $now;
+                }
                 ShopifySku::query()->updateOrCreate(
                     ['sku' => $sku],
-                    [
+                    array_merge([
                         'variant_id' => (string) $vid,
                         'available_to_sell' => $qty ?? 0,
                         'inv' => $qty ?? 0,
                         'on_hand' => $qty ?? 0,
                         'product_title' => $product['title'] ?? null,
                         'variant_title' => $variant['title'] ?? null,
-                        'price' => isset($variant['price']) ? (float) $variant['price'] : null,
                         'updated_at' => $now,
-                    ]
+                    ], $priceCols)
                 );
             } catch (\Throwable $e) {
                 // non-fatal

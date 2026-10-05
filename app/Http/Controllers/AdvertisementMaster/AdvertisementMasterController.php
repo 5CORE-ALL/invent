@@ -5,8 +5,11 @@ namespace App\Http\Controllers\AdvertisementMaster;
 use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\AmazonAdsMissingController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
+use App\Http\Controllers\Campaigns\Ebay2MissingAdsController;
 use App\Http\Controllers\Campaigns\Ebay3CampaignAdsController;
+use App\Http\Controllers\Campaigns\Ebay3MissingAdsController;
 use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
+use App\Http\Controllers\Campaigns\EbayMissingAdsController;
 use App\Http\Controllers\Campaigns\GoogleSerpAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleShoppingAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleYoutubeAdsMissingController;
@@ -15,7 +18,10 @@ use App\Http\Controllers\Campaigns\Temu2AdsController;
 use App\Http\Controllers\Campaigns\Temu2MissingAdsController;
 use App\Http\Controllers\Campaigns\TemuAdsController;
 use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
+use App\Http\Controllers\Campaigns\Tiktok1MissingAdsController;
+use App\Http\Controllers\Campaigns\Tiktok2MissingAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
+use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
@@ -32,6 +38,7 @@ use App\Models\ChannelMaster;
 use App\Models\ChannelMasterSummary;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\ChannelMasterCalculatedData;
+use App\Support\Ads\ChannelListingMissingAds;
 use App\Support\AmazonAdsAdvertisementMasterHistory;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -1403,6 +1410,7 @@ class AdvertisementMasterController extends Controller
             'tiktoks' => 'tiktok1',
             'tiktok' => 'tiktok1',
             'temuone' => 'temu1',
+            'temuthree' => 'temu3',
         ];
 
         return $aliases[$n] ?? $n;
@@ -2957,6 +2965,13 @@ class AdvertisementMasterController extends Controller
             return null;
         }
         $norm = $this->normalizeChannelMatchKey($channel);
+        if (str_starts_with(strtolower(trim($channel)), 'default-type:')) {
+            $norm = $this->normalizeChannelMatchKey(substr(trim($channel), strlen('default-type:')));
+        }
+        $listing = ChannelListingMissingAds::canonical($norm);
+        if ($listing !== null) {
+            return $listing;
+        }
 
         return match ($norm) {
             'amazonkw', 'amzkw' => 'amazonkw',
@@ -2969,6 +2984,8 @@ class AdvertisementMasterController extends Controller
             'temu2' => 'temu2',
             'ebay' => 'ebay',
             'ebay2' => 'ebay2',
+            'ebay3' => 'ebay3',
+            'tiktok1' => 'tiktok1',
             default => null,
         };
     }
@@ -3407,8 +3424,9 @@ class AdvertisementMasterController extends Controller
 
     /**
      * Missing-ad counts from the same pages as the sidebar:
-     * Ads Missing Amz, Temu 1 Missing Ads, Temu 2 Missing Ads, Missing Google Shopping / SERP,
-     * YouTube Missing Ads, TikTok Missing Ads.
+     * Ads Missing Amz, Temu 1 / Temu 2 Missing Ads, Missing Google Shopping / SERP,
+     * YouTube Missing Ads, TikTok Video Missing Ads, eBay 1 / 2 / 3 Missing Ads,
+     * TikTok 1 / TikTok 2 Missing Ads, Walmart Missing Ads.
      *
      * @param  array<int, array<string, mixed>>  $rows
      */
@@ -3498,14 +3516,56 @@ class AdvertisementMasterController extends Controller
         );
         $put(
             ['ebay', 'ebay1'],
-            $safeCount(static fn () => EbayCampaignAdsController::missingAdsTotalCount()),
-            $this->namedHref('ebay.campaign.ads')
+            $safeCount(static fn () => EbayMissingAdsController::missingTotalCount()),
+            $this->namedHref('ebay.ads.missing')
         );
         $put(
             ['ebay2'],
-            $safeCount(static fn () => Ebay2CampaignAdsController::missingAdsTotalCount()),
-            $this->namedHref('ebay2.campaign.ads')
+            $safeCount(static fn () => Ebay2MissingAdsController::missingTotalCount()),
+            $this->namedHref('ebay2.ads.missing')
         );
+        $put(
+            ['ebay3'],
+            $safeCount(static fn () => Ebay3MissingAdsController::missingTotalCount()),
+            $this->namedHref('ebay3.ads.missing')
+        );
+        $put(
+            ['tiktok1'],
+            $safeCount(static fn () => Tiktok1MissingAdsController::missingTotalCount()),
+            $this->namedHref('tiktok1.ads.missing')
+        );
+        $put(
+            ['tiktok2', 'gmvtiktok', 'tiktokgmv'],
+            $safeCount(static fn () => Tiktok2MissingAdsController::missingTotalCount()),
+            $this->namedHref('tiktok2.ads.missing')
+        );
+        $put(
+            ['walmart'],
+            $safeCount(static fn () => WalmartMissingAdsController::missingTotalCount()),
+            $this->namedHref('walmart.missing.ads')
+        );
+
+        try {
+            $listingCounts = ChannelListingMissingAds::countsBySlug();
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master channel missing-ads counts failed: '.$e->getMessage());
+            $listingCounts = [];
+        }
+        foreach (ChannelListingMissingAds::channels() as $channel) {
+            $href = null;
+            try {
+                if (Route::has('channel.ads.missing')) {
+                    $href = route('channel.ads.missing', ['channel' => $channel['slug']]);
+                }
+            } catch (\Throwable $e) {
+                $href = null;
+            }
+            $put(
+                $channel['keys'],
+                (int) ($listingCounts[$channel['slug']] ?? 0),
+                $href
+            );
+        }
 
         return $map;
     }
@@ -3564,8 +3624,12 @@ class AdvertisementMasterController extends Controller
             return null;
         }
 
-        foreach (['channel_key', 'channel', 'source'] as $field) {
-            $norm = $this->normalizeChannelMatchKey((string) ($row[$field] ?? ''));
+        foreach (['channel_key', 'channel', 'source', 'marketplace'] as $field) {
+            $raw = (string) ($row[$field] ?? '');
+            if (str_starts_with(strtolower($raw), 'default-type:')) {
+                $raw = substr($raw, strlen('default-type:'));
+            }
+            $norm = $this->normalizeChannelMatchKey($raw);
             if ($norm !== '' && isset($sources[$norm])) {
                 return $sources[$norm];
             }

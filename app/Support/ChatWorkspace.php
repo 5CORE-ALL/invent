@@ -589,9 +589,9 @@ class ChatWorkspace
     /**
      * @return list<array<string, mixed>>
      */
-    public static function inboxFor(User $user, bool $bootstrap = true): array
+    public static function inboxFor(User $user, bool $bootstrap = true, bool $archivedOnly = false): array
     {
-        if ($bootstrap) {
+        if ($bootstrap && ! $archivedOnly) {
             self::bootstrap($user);
             Cache::remember('chat_public_member_sync', now()->addHour(), function () {
                 self::syncPublicMembers();
@@ -608,7 +608,7 @@ class ChatWorkspace
 
         $channels = ChatChannel::query()
             ->whereIn('id', $memberChannelIds)
-            ->where('is_archived', false)
+            ->where('is_archived', $archivedOnly)
             ->orderByRaw("FIELD(type, 'bot', 'public', 'private', 'group', 'task', 'dm')")
             ->orderBy('name')
             ->get();
@@ -696,6 +696,7 @@ class ChatWorkspace
                 'last_seen_label' => $peerPresence['last_seen_label'] ?? null,
                 'can_manage_members' => self::canManageMembers($user, $channel),
                 'can_delete' => self::canDeleteChannel($user, $channel),
+                'archived' => (bool) $channel->is_archived,
                 'pinned' => isset($pinnedLookup[(int) $channel->id]),
                 'task_id' => $channel->isTask() ? (int) $channel->task_id : null,
                 'task_url' => $channel->isTask() && $channel->task_id ? url('/tasks?highlight='.(int) $channel->task_id) : null,

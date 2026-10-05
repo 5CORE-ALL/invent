@@ -8627,6 +8627,9 @@ class CvrMasterController extends Controller
                 if (Schema::hasColumn('shopify_skus', 'b2c_price')) {
                     $shopifyRecord->b2c_price = $verifiedPrice;
                 }
+                if (Schema::hasColumn('shopify_skus', 'price_updated_manually_at')) {
+                    $shopifyRecord->price_updated_manually_at = now();
+                }
                 $shopifyRecord->save();
                 $this->savePricePushStatus($sku, 'shopifyb2c', 'pushed', $verifiedPrice);
                 
