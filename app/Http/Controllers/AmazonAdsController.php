@@ -4318,33 +4318,107 @@ class AmazonAdsController extends Controller
 
         $dbColumns = Schema::getColumnListing($table);
         $q = DB::table($table)
-            ->select(['report_date_range', $column])
             ->where('campaign_id', $cid)
             ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
-            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
-            ->orderBy('report_date_range', 'desc')
-            ->limit($days === 0 ? 2000 : $days);
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
         $adType = trim((string) $request->query('ad_type', ''));
         if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
             $q->where('ad_type', $adType);
         }
 
-        $points = [];
-        foreach ($q->get()->reverse()->values() as $row) {
+        $select = ['report_date_range', $column];
+        $q->orderByDesc('report_date_range');
+        if (in_array('id', $dbColumns, true)) {
+            $select[] = 'id';
+            $q->orderByDesc('id');
+        }
+        $rows = $q->limit(2000)->get($select);
+
+        $byDate = [];
+        foreach ($rows as $row) {
             $r = (array) $row;
             $day = trim((string) ($r['report_date_range'] ?? ''));
-            $raw = $r[$column] ?? null;
-            if ($day === '' || $raw === null || $raw === '' || ! is_numeric($raw)) {
+            if ($day === '') {
                 continue;
             }
-            $n = round((float) $raw, 2);
-            if (! is_finite($n) || $n < 0) {
-                continue;
+            $parsed = self::moneyHistoryValue($r[$column] ?? null);
+            if (! array_key_exists($day, $byDate)) {
+                $byDate[$day] = $parsed;
+            } elseif ($byDate[$day] === null && $parsed !== null) {
+                $byDate[$day] = $parsed;
             }
-            $points[] = ['date' => $day, $column => $n];
         }
 
-        return response()->json(['ok' => true, 'points' => $points]);
+        return response()->json([
+            'ok' => true,
+            'points' => self::filledMoneyHistoryPoints($byDate, $days, $column),
+        ]);
+    }
+
+    /**
+     * One point per report day in the range. A day with no saved value keeps the
+     * previous day's amount, because SBID and SBGT are written only when they change.
+     *
+     * @param  array<string, float|null>  $byDate
+     * @return list<array<string, float|string>>
+     */
+    private static function filledMoneyHistoryPoints(array $byDate, int $days, string $column): array
+    {
+        $allDates = array_keys($byDate);
+        sort($allDates);
+        if ($allDates === []) {
+            return [];
+        }
+
+        $windowDates = ($days !== 0 && count($allDates) > $days)
+            ? array_slice($allDates, -$days)
+            : $allDates;
+        $inWindow = array_fill_keys($windowDates, true);
+
+        $carry = null;
+        $series = [];
+        foreach ($allDates as $day) {
+            if ($byDate[$day] !== null) {
+                $carry = $byDate[$day];
+            }
+            if (isset($inWindow[$day])) {
+                $series[$day] = $carry;
+            }
+        }
+
+        $first = null;
+        foreach ($windowDates as $day) {
+            if (($series[$day] ?? null) !== null) {
+                $first = $series[$day];
+                break;
+            }
+        }
+        if ($first === null) {
+            return [];
+        }
+
+        $points = [];
+        foreach ($windowDates as $day) {
+            $points[] = [
+                'date' => $day,
+                $column => $series[$day] ?? $first,
+            ];
+        }
+
+        return $points;
+    }
+
+    private static function moneyHistoryValue(mixed $raw): ?float
+    {
+        if ($raw === null || $raw === '' || ! is_numeric($raw)) {
+            return null;
+        }
+        $n = round((float) $raw, 2);
+        if (! is_finite($n) || $n < 0) {
+            return null;
+        }
+
+        return $n;
     }
 
     private static function cpcHistoryTable(mixed $source, mixed $adType): ?string
