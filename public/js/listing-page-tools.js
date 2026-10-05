@@ -1115,6 +1115,7 @@
         }
         previewSeedSkus = unique.slice();
         resetAliexpressWeightInput();
+        resetEbaySpecifics();
         applyPublishModeUi();
         const box = document.getElementById('listing-publish-groups');
         if (box) box.innerHTML = '<p class="text-muted mb-0">Loading listing preview…</p>';
@@ -1173,6 +1174,117 @@
         if (typeof calculateTotals === 'function') calculateTotals();
     }
 
+    function ebaySpecificsBox() {
+        let box = document.getElementById('listing-publish-ebay-specifics');
+        if (box) return box;
+        const anchor = document.getElementById('listing-publish-ebay-category');
+        const groupsBox = document.getElementById('listing-publish-groups');
+        if ((!anchor || !anchor.parentNode) && (!groupsBox || !groupsBox.parentNode)) return null;
+        box = document.createElement('div');
+        box.id = 'listing-publish-ebay-specifics';
+        box.className = 'border rounded p-2 mb-2';
+        box.style.background = '#fff8e6';
+        box.hidden = true;
+        if (anchor && anchor.parentNode) {
+            anchor.parentNode.insertBefore(box, anchor.nextSibling);
+        } else {
+            groupsBox.parentNode.insertBefore(box, groupsBox);
+        }
+        return box;
+    }
+
+    function resetEbaySpecifics() {
+        const box = document.getElementById('listing-publish-ebay-specifics');
+        if (box) {
+            box.innerHTML = '';
+            box.hidden = true;
+        }
+    }
+
+    function collectEbaySpecifics() {
+        const out = {};
+        $('#listing-publish-ebay-specifics [data-aspect]').each(function () {
+            const name = String(this.getAttribute('data-aspect') || '').trim();
+            const value = String(this.value || '').trim();
+            if (name && value) out[name] = value;
+        });
+        return out;
+    }
+
+    function renderEbaySpecifics(missing) {
+        const box = ebaySpecificsBox();
+        if (!box) return;
+        const current = collectEbaySpecifics();
+        let html = '<div class="fw-semibold mb-1">eBay needs these fields for this category</div>' +
+            '<div class="small text-muted mb-2">Not found in our masters, Amazon listing or Shopify. Pick or type a value, then click Publish again.</div>';
+        missing.forEach(function (m, i) {
+            const name = String(m.name || '');
+            const id = 'listing-publish-ebay-spec-' + i;
+            const values = Array.isArray(m.values) ? m.values : [];
+            const val = current[name] || '';
+            const hint = m.suggested ? 'e.g. ' + m.suggested : 'Enter ' + name;
+            html += '<div class="mb-2"><label class="form-label small mb-1" for="' + id + '">' + escapeHtml(name) + ' <span class="text-danger">*</span></label>';
+            if (values.length && m.free_text === false) {
+                html += '<select class="form-select form-select-sm" id="' + id + '" data-aspect="' + escapeHtml(name) + '">' +
+                    '<option value="">Select ' + escapeHtml(name) + '</option>';
+                values.forEach(function (v) {
+                    html += '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+                });
+                html += '</select>';
+            } else {
+                html += '<input type="text" class="form-control form-control-sm" id="' + id + '" data-aspect="' + escapeHtml(name) + '"' +
+                    ' value="' + escapeHtml(val) + '" placeholder="' + escapeHtml(hint) + '"' +
+                    (values.length ? ' list="' + id + '-list"' : '') + '>';
+                if (values.length) {
+                    html += '<datalist id="' + id + '-list">';
+                    values.forEach(function (v) { html += '<option value="' + escapeHtml(v) + '">'; });
+                    html += '</datalist>';
+                }
+            }
+            html += '</div>';
+        });
+        box.innerHTML = html;
+        box.hidden = false;
+        const first = box.querySelector('[data-aspect]');
+        if (first) first.focus();
+    }
+
+    function checkEbaySpecifics(groups) {
+        const c = cfg();
+        const specifics = collectEbaySpecifics();
+        const requests = groups.map(function (group) {
+            return $.ajax({
+                url: actionUrl(),
+                type: 'POST',
+                data: {
+                    action: 'ebay_required_specifics',
+                    skus: group.skus,
+                    channel: c.channel || '',
+                    mode: selectedPublishMode(),
+                    parent: group.parent || '',
+                    category_id: selectedCategoryId(),
+                    category_name: selectedCategoryName(),
+                    item_specifics: specifics
+                },
+                headers: { 'X-CSRF-TOKEN': csrf() },
+                timeout: 120000
+            });
+        });
+        const done = $.Deferred();
+        $.when.apply($, requests).always(function () {
+            const responses = requests.length === 1 ? [arguments] : Array.prototype.slice.call(arguments);
+            const byName = {};
+            responses.forEach(function (args) {
+                const res = args && args[0];
+                ((res && res.missing) || []).forEach(function (m) {
+                    if (m && m.name && !specifics[m.name]) byName[m.name] = m;
+                });
+            });
+            done.resolve(Object.keys(byName).map(function (k) { return byName[k]; }));
+        });
+        return done.promise();
+    }
+
     function publishGroup(skus, parent) {
         const c = cfg();
         return $.ajax({
@@ -1188,7 +1300,8 @@
                 category_id: (isAliexpressChannel() || isWayfairChannel() || isEbayChannel() || isTiktokChannel() || isSheinChannel()) ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
                 category_name: selectedCategoryName(),
                 category_uuid: selectedCategoryUuid(),
-                weight_lb: (isAliexpressChannel() || isTiktokChannel() || isSheinChannel()) ? selectedWeightLb() : ''
+                weight_lb: (isAliexpressChannel() || isTiktokChannel() || isSheinChannel()) ? selectedWeightLb() : '',
+                item_specifics: isEbayChannel() ? collectEbaySpecifics() : {}
             },
             headers: { 'X-CSRF-TOKEN': csrf() },
             timeout: 300000
@@ -1323,6 +1436,22 @@
                 if (weightEl) weightEl.focus();
                 return;
             }
+            if (isEbayChannel() && !$btn.data('specificsChecked')) {
+                const checkHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Checking eBay fields');
+                checkEbaySpecifics(groups).then(function (missing) {
+                    $btn.prop('disabled', false).html(checkHtml);
+                    if (missing.length) {
+                        renderEbaySpecifics(missing);
+                        notify('danger', 'Fill the required eBay field(s): ' + missing.map(function (m) { return m.name; }).join(', ') + '.');
+                        return;
+                    }
+                    $btn.data('specificsChecked', true);
+                    $btn.trigger('click');
+                });
+                return;
+            }
+            $btn.data('specificsChecked', false);
             const originalHtml = $btn.html();
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Publishing');
             $('#listingPublishModal .btn-close, #listingPublishModal [data-bs-dismiss="modal"]').prop('disabled', true);

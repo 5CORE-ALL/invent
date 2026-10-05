@@ -18,6 +18,17 @@ trait HandlesListingPublishActions
 
     protected function listingPublishResponse(Request $request)
     {
+        if ($request->input('action') === 'ebay_required_specifics') {
+            if (trim((string) $request->input('channel', '')) === '' && trim($this->listingPublishChannel()) !== '') {
+                $request->merge(['channel' => trim($this->listingPublishChannel())]);
+            }
+
+            return app(ListingPublishCommonController::class)->ebayRequiredSpecifics(
+                $request,
+                app(\App\Services\MarketplaceManager\EbayListingPublishService::class)
+            );
+        }
+
         $isPreview = $request->boolean('preview') || $request->input('action') === 'preview';
         $isPublish = $request->boolean('publish') || $request->input('action') === 'publish';
         if (! $isPreview && ! $isPublish) {
