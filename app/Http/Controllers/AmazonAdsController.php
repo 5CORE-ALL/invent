@@ -4349,6 +4349,12 @@ class AmazonAdsController extends Controller
             }
         }
 
+        foreach (self::moneyHistoryPushesByDate($table, $column, $cid) as $day => $pushed) {
+            if (! array_key_exists($day, $byDate) || $byDate[$day] === null) {
+                $byDate[$day] = $pushed;
+            }
+        }
+
         return response()->json([
             'ok' => true,
             'points' => self::filledMoneyHistoryPoints($byDate, $days, $column),
@@ -4356,56 +4362,106 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * One point per report day in the range. A day with no saved value keeps the
-     * previous day's amount, because SBID and SBGT are written only when they change.
+     * One point per day after the first real saved or pushed amount.
+     * Later blank days keep that amount until the next real change.
+     * Earlier blank days are left off, so today's value is not copied backward.
      *
      * @param  array<string, float|null>  $byDate
      * @return list<array<string, float|string>>
      */
     private static function filledMoneyHistoryPoints(array $byDate, int $days, string $column): array
     {
-        $allDates = array_keys($byDate);
-        sort($allDates);
-        if ($allDates === []) {
+        $knownDates = array_keys($byDate);
+        sort($knownDates);
+        if ($knownDates === []) {
             return [];
         }
 
-        $windowDates = ($days !== 0 && count($allDates) > $days)
-            ? array_slice($allDates, -$days)
-            : $allDates;
-        $inWindow = array_fill_keys($windowDates, true);
+        $end = $knownDates[count($knownDates) - 1];
+        $start = $knownDates[0];
+        if ($days !== 0) {
+            $start = Carbon::parse($end)->subDays($days - 1)->toDateString();
+            if ($start < $knownDates[0]) {
+                $start = $knownDates[0];
+            }
+        }
 
         $carry = null;
-        $series = [];
-        foreach ($allDates as $day) {
+        foreach ($knownDates as $day) {
+            if ($day >= $start) {
+                break;
+            }
             if ($byDate[$day] !== null) {
                 $carry = $byDate[$day];
             }
-            if (isset($inWindow[$day])) {
-                $series[$day] = $carry;
-            }
-        }
-
-        $first = null;
-        foreach ($windowDates as $day) {
-            if (($series[$day] ?? null) !== null) {
-                $first = $series[$day];
-                break;
-            }
-        }
-        if ($first === null) {
-            return [];
         }
 
         $points = [];
-        foreach ($windowDates as $day) {
-            $points[] = [
-                'date' => $day,
-                $column => $series[$day] ?? $first,
-            ];
+        $cursor = Carbon::parse($start);
+        $last = Carbon::parse($end);
+        while ($cursor->lte($last)) {
+            $day = $cursor->toDateString();
+            if (array_key_exists($day, $byDate) && $byDate[$day] !== null) {
+                $carry = $byDate[$day];
+            }
+            if ($carry !== null) {
+                $points[] = ['date' => $day, $column => $carry];
+            }
+            $cursor->addDay();
         }
 
         return $points;
+    }
+
+    /**
+     * Last successful push of this bid or budget on each day.
+     *
+     * @return array<string, float>
+     */
+    private static function moneyHistoryPushesByDate(string $table, string $column, string $campaignId): array
+    {
+        $types = self::moneyHistoryPushTypes($table, $column);
+        if ($types === [] || ! Schema::hasTable('amazon_ads_push_logs')) {
+            return [];
+        }
+
+        $rows = DB::table('amazon_ads_push_logs')
+            ->where('campaign_id', $campaignId)
+            ->whereIn('push_type', $types)
+            ->where('status', 'success')
+            ->whereNotNull('value')
+            ->orderBy('created_at')
+            ->get(['created_at', 'value']);
+
+        $tz = (string) config('app.timezone');
+        $byDate = [];
+        foreach ($rows as $row) {
+            $parsed = self::moneyHistoryValue($row->value ?? null);
+            $at = $row->created_at ?? null;
+            if ($parsed === null || $at === null || $at === '') {
+                continue;
+            }
+            $day = Carbon::parse((string) $at)->timezone($tz)->toDateString();
+            $byDate[$day] = $parsed;
+        }
+
+        return $byDate;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function moneyHistoryPushTypes(string $table, string $column): array
+    {
+        $brand = $table === 'amazon_sb_campaign_reports';
+        if ($column === 'sbid') {
+            return [$brand ? 'sb_sbid' : 'sp_sbid'];
+        }
+        if ($column === 'sbgt') {
+            return [$brand ? 'sb_sbgt' : 'sp_sbgt'];
+        }
+
+        return [];
     }
 
     private static function moneyHistoryValue(mixed $raw): ?float
