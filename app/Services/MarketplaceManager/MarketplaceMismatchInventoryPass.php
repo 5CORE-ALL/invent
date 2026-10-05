@@ -40,7 +40,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon', 'tiktok', 'tiktok2', 'pls', 'b5cb2b'], true)) {
+        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'temu3', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon', 'tiktok', 'tiktok2', 'pls', 'b5cb2b'], true)) {
             return $empty;
         }
 
@@ -184,6 +184,7 @@ final class MarketplaceMismatchInventoryPass
             'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
             'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
             'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($skus, null, true),
+            'temu3' => app(Temu3InventorySyncService::class)->syncSkusFromShopify($skus, null, true),
             'pls' => app(PlsInventorySyncService::class)->syncSkusFromShopify($skus),
             'b5cb2b' => app(B5cB2bInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
             'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($skus, null, true),
@@ -238,6 +239,7 @@ final class MarketplaceMismatchInventoryPass
             'topdawg' => 'topdawg_products',
             'temu' => 'temu_metrics',
             'temu2' => 'temu2_metrics',
+            'temu3' => 'temu3_metrics',
             'purchasingpower' => 'purchasing_power_products',
             'wayfair' => 'wayfair_pricing_prices',
             'bestbuy' => 'bestbuy_usa_products',
@@ -293,8 +295,10 @@ final class MarketplaceMismatchInventoryPass
                 ->all();
         }
 
-        if ($channel === 'temu2') {
-            return \App\Models\Temu2Metric::query()
+        if ($channel === 'temu2' || $channel === 'temu3') {
+            $metricModel = $channel === 'temu3' ? \App\Models\Temu3Metric::class : \App\Models\Temu2Metric::class;
+
+            return $metricModel::query()
                 ->whereNotNull('sku')
                 ->whereNotNull('goods_id')
                 ->where('sku', '!=', '')
@@ -477,6 +481,7 @@ final class MarketplaceMismatchInventoryPass
             'topdawg' => MarketplaceListingStockResolver::CHANNEL_TOPDAWG,
             'temu' => MarketplaceListingStockResolver::CHANNEL_TEMU,
             'temu2' => MarketplaceListingStockResolver::CHANNEL_TEMU2,
+            'temu3' => MarketplaceListingStockResolver::CHANNEL_TEMU3,
             'purchasingpower' => MarketplaceListingStockResolver::CHANNEL_PURCHASINGPOWER,
             'wayfair' => MarketplaceListingStockResolver::CHANNEL_WAYFAIR,
             'bestbuy' => MarketplaceListingStockResolver::CHANNEL_BESTBUY,
@@ -522,6 +527,7 @@ final class MarketplaceMismatchInventoryPass
             'topdawg' => app(TopDawgLiveListingsService::class)->peekCached(),
             'temu' => app(TemuLiveListingsService::class)->peekCached(),
             'temu2' => app(Temu2LiveListingsService::class)->peekCached(),
+            'temu3' => app(Temu3LiveListingsService::class)->peekCached(),
             'purchasingpower' => app(PurchasingPowerLiveListingsService::class)->peekCached(),
             'wayfair' => app(WayfairLiveListingsService::class)->peekCached(),
             'bestbuy' => app(BestBuyLiveListingsService::class)->peekCached(),
@@ -590,6 +596,7 @@ final class MarketplaceMismatchInventoryPass
                 'topdawg' => app(TopDawgLiveListingsService::class)->all(),
                 'temu' => app(TemuLiveListingsService::class)->all(),
                 'temu2' => app(Temu2LiveListingsService::class)->all(),
+                'temu3' => app(Temu3LiveListingsService::class)->all(),
                 'purchasingpower' => app(PurchasingPowerLiveListingsService::class)->all(),
                 'wayfair' => app(WayfairLiveListingsService::class)->all(),
                 'bestbuy' => app(BestBuyLiveListingsService::class)->all(),

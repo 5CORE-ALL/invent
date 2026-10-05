@@ -371,7 +371,7 @@ class ListingManagerEditorProfile
         if (in_array($normalizedKey, ['tiktok', 'tiktokshop', 'tiktok2', 'tiktokshop2', 'tiktoktwo'], true)) {
             return 'tiktok';
         }
-        if (in_array($normalizedKey, ['temu', 'temu1', 'temu2', 'temutwo'], true)) {
+        if (in_array($normalizedKey, ['temu', 'temu1', 'temu2', 'temutwo', 'temu3', 'temuthree'], true)) {
             return 'temu';
         }
         if ($normalizedKey === 'faire') {

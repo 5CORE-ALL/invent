@@ -20,6 +20,7 @@ use App\Http\Controllers\MarketPlace\MacySyncController;
 use App\Http\Controllers\MarketPlace\DobaSyncController;
 use App\Http\Controllers\MarketPlace\TemuSyncController;
 use App\Http\Controllers\MarketPlace\Temu2SyncController;
+use App\Http\Controllers\MarketPlace\Temu3SyncController;
 use App\Http\Controllers\MarketPlace\TikTokSyncController;
 use App\Http\Controllers\MarketPlace\TikTok2SyncController;
 use App\Http\Controllers\MarketPlace\PlsSyncController;
@@ -46,7 +47,7 @@ use Illuminate\View\View;
 class MarketplaceController extends Controller
 {
     /** Supported marketplace slugs (lowercase). */
-    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2', 'pls', 'b5cb2b'];
+    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'temu', 'temu2', 'temu3', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2', 'pls', 'b5cb2b'];
 
     protected function getController(string $marketplace): ?object
     {
@@ -55,6 +56,7 @@ class MarketplaceController extends Controller
             'topdawg' => app(TopDawgSyncController::class),
             'temu' => app(TemuSyncController::class),
             'temu2' => app(Temu2SyncController::class),
+            'temu3' => app(Temu3SyncController::class),
             'purchasingpower' => app(PurchasingPowerSyncController::class),
             'wayfair' => app(WayfairSyncController::class),
             'bestbuy' => app(BestBuySyncController::class),
@@ -135,6 +137,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'temu2') {
             return app(Temu2SyncController::class)->pullProductFromTemu($shopifySku);
         }
+        if ($marketplace === 'temu3') {
+            return app(Temu3SyncController::class)->pullProductFromTemu($shopifySku);
+        }
         if ($marketplace === 'purchasingpower') {
             return app(PurchasingPowerSyncController::class)->pullProductFromPurchasingPower($shopifySku);
         }
@@ -201,6 +206,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'temu2') {
             return app(Temu2SyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'temu3') {
+            return app(Temu3SyncController::class)->pushProductInventory($shopifySku);
         }
         if ($marketplace === 'purchasingpower') {
             return app(PurchasingPowerSyncController::class)->pushProductInventory($shopifySku);
@@ -358,6 +366,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'temu2') {
             return app(Temu2SyncController::class)->pullOrderFromTemu($order);
         }
+        if ($marketplace === 'temu3') {
+            return app(Temu3SyncController::class)->pullOrderFromTemu($order);
+        }
         if ($marketplace === 'purchasingpower') {
             return app(PurchasingPowerSyncController::class)->pullOrderFromPurchasingPower($order);
         }
@@ -425,6 +436,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'temu2') {
             return app(Temu2SyncController::class)->pushTrackingToTemu($order);
+        }
+        if ($marketplace === 'temu3') {
+            return app(Temu3SyncController::class)->pushTrackingToTemu($order);
         }
         if ($marketplace === 'purchasingpower') {
             return app(PurchasingPowerSyncController::class)->pushTrackingToPurchasingPower($order);
@@ -633,6 +647,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'temu2') {
             return app(Temu2SyncController::class)->saveSettings($request);
         }
+        if ($marketplace === 'temu3') {
+            return app(Temu3SyncController::class)->saveSettings($request);
+        }
         if ($marketplace === 'purchasingpower') {
             return app(PurchasingPowerSyncController::class)->saveSettings($request);
         }
@@ -716,6 +733,9 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'temu2') {
             return app(Temu2SyncController::class)->pushOrderToShopify($request);
         }
+        if (strtolower($marketplace) === 'temu3') {
+            return app(Temu3SyncController::class)->pushOrderToShopify($request);
+        }
         if (strtolower($marketplace) === 'purchasingpower') {
             return app(PurchasingPowerSyncController::class)->pushOrderToShopify($request);
         }
@@ -777,6 +797,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'temu2') {
             return app(Temu2SyncController::class)->bulkPushOrdersToShopify($request);
         }
+        if ($marketplace === 'temu3') {
+            return app(Temu3SyncController::class)->bulkPushOrdersToShopify($request);
+        }
 
         return response()->json([
             'success' => false,
@@ -792,6 +815,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'temu2') {
             return app(Temu2SyncController::class)->reversePushOrders($request);
+        }
+        if ($marketplace === 'temu3') {
+            return app(Temu3SyncController::class)->reversePushOrders($request);
         }
 
         return response()->json([
@@ -825,6 +851,9 @@ class MarketplaceController extends Controller
         }
         if (strtolower($marketplace) === 'temu2') {
             return app(Temu2SyncController::class)->deleteReadyOrder($request);
+        }
+        if (strtolower($marketplace) === 'temu3') {
+            return app(Temu3SyncController::class)->deleteReadyOrder($request);
         }
         if (strtolower($marketplace) === 'purchasingpower') {
             return app(PurchasingPowerSyncController::class)->deleteReadyOrder($request);
@@ -871,6 +900,7 @@ class MarketplaceController extends Controller
             'topdawg' => app(TopDawgSyncController::class)->markOrderAlreadyImported($request),
             'temu' => app(TemuSyncController::class)->markOrderAlreadyImported($request),
             'temu2' => app(Temu2SyncController::class)->markOrderAlreadyImported($request),
+            'temu3' => app(Temu3SyncController::class)->markOrderAlreadyImported($request),
             'purchasingpower' => app(PurchasingPowerSyncController::class)->markOrderAlreadyImported($request),
             'wayfair' => app(WayfairSyncController::class)->markOrderAlreadyImported($request),
             'bestbuy' => app(BestBuySyncController::class)->markOrderAlreadyImported($request),
@@ -888,7 +918,7 @@ class MarketplaceController extends Controller
     public function queueStatus(string $marketplace): JsonResponse
     {
         $marketplace = strtolower($marketplace);
-        if (! in_array($marketplace, ['reverb', 'aliexpress', 'alibaba', 'newegg', 'shein', 'amazon', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2'], true)) {
+        if (! in_array($marketplace, ['reverb', 'aliexpress', 'alibaba', 'newegg', 'shein', 'amazon', 'topdawg', 'temu', 'temu2', 'temu3', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2'], true)) {
             return response()->json(['success' => false, 'message' => 'Queue status not available for this marketplace.'], 404);
         }
 

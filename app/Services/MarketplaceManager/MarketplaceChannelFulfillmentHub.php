@@ -17,6 +17,7 @@ use App\Jobs\SyncPurchasingPowerTrackingJob;
 use App\Jobs\SyncReverbTrackingJob;
 use App\Jobs\SyncSheinTrackingJob;
 use App\Jobs\SyncTemu2TrackingJob;
+use App\Jobs\SyncTemu3TrackingJob;
 use App\Jobs\SyncTemuTrackingJob;
 use App\Jobs\SyncTikTok2TrackingJob;
 use App\Jobs\SyncTikTokTrackingJob;
@@ -39,6 +40,7 @@ use App\Models\PurchasingPowerSale;
 use App\Models\ReverbOrderMetric;
 use App\Models\SheinOrderMetric;
 use App\Models\Temu2Order;
+use App\Models\Temu3ApiOrder;
 use App\Models\TemuOrder;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
@@ -68,6 +70,7 @@ class MarketplaceChannelFulfillmentHub
             'topdawg' => [TopDawgOrderMetric::class, TopDawgTrackingSyncService::class, ['order_id', 'order_number']],
             'temu' => [TemuOrder::class, TemuTrackingSyncService::class, ['parent_order_sn', 'order_sn']],
             'temu2' => [Temu2Order::class, Temu2TrackingSyncService::class, ['parent_order_sn', 'order_sn']],
+            'temu3' => [Temu3ApiOrder::class, Temu3TrackingSyncService::class, ['parent_order_sn', 'order_sn']],
             'purchasingpower' => [PurchasingPowerSale::class, PurchasingPowerTrackingSyncService::class, ['order_id', 'order_number']],
             'wayfair' => [WayfairDailyData::class, WayfairTrackingSyncService::class, ['po_number']],
             'bestbuy' => [BestBuyOrderMetric::class, BestBuyTrackingSyncService::class, ['order_id', 'channel_order_id', 'order_line_id']],
@@ -186,6 +189,7 @@ class MarketplaceChannelFulfillmentHub
             'topdawg' => new SyncTopDawgTrackingJob(true, $limit),
             'temu' => new SyncTemuTrackingJob(true, $limit),
             'temu2' => new SyncTemu2TrackingJob(true, $limit),
+            'temu3' => new SyncTemu3TrackingJob(true, $limit),
             'purchasingpower' => new SyncPurchasingPowerTrackingJob(true, $limit),
             'wayfair' => new SyncWayfairTrackingJob(true, $limit),
             'bestbuy' => new SyncBestBuyTrackingJob(true, $limit),

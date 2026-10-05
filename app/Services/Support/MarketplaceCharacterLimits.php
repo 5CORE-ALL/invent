@@ -54,7 +54,7 @@ class MarketplaceCharacterLimits
         $key = self::normalizeMarketplaceKey($marketplace);
 
         return match ($key) {
-            'amazon', 'temu', 'temu2', 'walmart', 'shein', 'aliexpress', 'wayfair' => 2000,
+            'amazon', 'temu', 'temu2', 'temu3', 'walmart', 'shein', 'aliexpress', 'wayfair' => 2000,
             'shopify_main', 'shopify_pls', 'shopify', 'ebay', 'ebay1', 'ebay2', 'ebay3' => 500000,
             'reverb', 'bestbuy', 'doba' => 1500,
             'macy', 'faire' => 600,

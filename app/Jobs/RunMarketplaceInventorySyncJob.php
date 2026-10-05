@@ -72,6 +72,7 @@ class RunMarketplaceInventorySyncJob implements ShouldQueue, ShouldBeUnique
                 'ebay3' => app(\App\Services\MarketplaceManager\Ebay3InventorySyncService::class)->syncFromShopify(false),
                 'temu' => app(\App\Services\MarketplaceManager\TemuInventorySyncService::class)->syncFromShopify(false),
                 'temu2' => app(\App\Services\MarketplaceManager\Temu2InventorySyncService::class)->syncFromShopify(false),
+                'temu3' => app(\App\Services\MarketplaceManager\Temu3InventorySyncService::class)->syncFromShopify(false),
                 'topdawg' => app(\App\Services\MarketplaceManager\TopDawgInventorySyncService::class)->syncFromShopify(false),
                 'purchasingpower' => app(\App\Services\MarketplaceManager\PurchasingPowerInventorySyncService::class)->syncFromShopify(false),
                 'pls' => app(\App\Services\MarketplaceManager\PlsInventorySyncService::class)->syncFromShopify(false),

@@ -13,6 +13,7 @@ class ListingVariationPreviewService
 {
     public function __construct(
         private Temu2ListingPublishService $temu2,
+        private Temu3ListingPublishService $temu3,
         private TemuListingPublishService $temu,
         private FaireListingPublishService $faire,
         private AliexpressListingPublishService $aliexpress,
@@ -38,6 +39,9 @@ class ListingVariationPreviewService
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
             return $this->temu2->previewFromSkus($seedSkus, $skuParents, $mode);
+        }
+        if (in_array($channel, ['temu3', 'temuthree'], true)) {
+            return $this->temu3->previewFromSkus($seedSkus, $skuParents, $mode);
         }
 
         $seeds = [];
@@ -99,6 +103,9 @@ class ListingVariationPreviewService
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
             return $this->temu2->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
+        }
+        if (in_array($channel, ['temu3', 'temuthree'], true)) {
+            return $this->temu3->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
         }
         if (in_array($channel, ['temu', 'temu1'], true)) {
             return $this->temu->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
@@ -361,6 +368,7 @@ class ListingVariationPreviewService
             'ebayvariation' => 'eBay Variation',
             'temu' => 'Temu',
             'temu2' => 'Temu 2',
+            'temu3' => 'Temu 3',
             'shein' => 'Shein',
             'amazon' => 'Amazon',
             'aliexpress' => 'AliExpress',

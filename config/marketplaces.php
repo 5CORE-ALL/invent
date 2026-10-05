@@ -5,6 +5,7 @@ return [
     'amazon' => 75,
     'temu' => 150,
     'temu2' => 150,
+    'temu3' => 150,
     'reverb' => 150,
     'wayfair' => 150,
     'walmart' => 150,
@@ -145,7 +146,7 @@ return [
    * Marketplaces with live API title push (see MarketplaceTitlePushService).
    */
   'api_title_push' => [
-    'amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'walmart',
+    'amazon', 'temu', 'temu2', 'temu3', 'reverb', 'wayfair', 'walmart',
     'shopify', 'shopify_main', 'shopify_pls', 'shopify_b5c', 'doba',
     'ebay', 'ebay1', 'ebay2', 'ebay3', 'macy', 'faire', 'bestbuy',
     'shein', 'aliexpress', 'alibaba', 'purchasing_power',

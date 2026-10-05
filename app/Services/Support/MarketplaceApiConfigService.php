@@ -68,6 +68,8 @@ class MarketplaceApiConfigService
         'temu' => 'temu',
         'temu2' => 'temu2',
         'temutwo' => 'temu2',
+        'temu3' => 'temu3',
+        'temuthree' => 'temu3',
         'walmart' => 'walmart',
         'pls' => 'shopify_pls',
         'shopifypls' => 'shopify_pls',
@@ -112,7 +114,7 @@ class MarketplaceApiConfigService
 
     /** @var list<string> Keys used by Bullet / Description / Image / Video / Title masters */
     private const MASTER_MARKETPLACE_KEYS = [
-        'ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'amazon_fba', 'temu', 'temu2',
+        'ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'amazon_fba', 'temu', 'temu2', 'temu3',
         'reverb', 'wayfair', 'bestbuy', 'walmart', 'doba', 'faire',
         'shein', 'aliexpress', 'alibaba', 'shopify_main', 'shopify_pls', 'shopify_b5c', 'shopify_b2b',
         'tiktok', 'tiktok2', 'newegg', 'topdawg',
@@ -266,6 +268,11 @@ class MarketplaceApiConfigService
                 'services.temu2.app_key',
                 'services.temu2.secret_key',
                 'services.temu2.access_token',
+            ]),
+            'temu3' => $this->filledAll([
+                'services.temu3.app_key',
+                'services.temu3.secret_key',
+                'services.temu3.access_token',
             ]),
             'macy' => $this->filledAll([
                 'services.macy.client_id',

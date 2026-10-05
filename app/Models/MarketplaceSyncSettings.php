@@ -160,6 +160,7 @@ class MarketplaceSyncSettings extends Model
         $isTopDawg = $marketplace === 'topdawg';
         $isTemu = $marketplace === 'temu';
         $isTemu2 = $marketplace === 'temu2';
+        $isTemu3 = $marketplace === 'temu3';
         $isPurchasingPower = $marketplace === 'purchasingpower';
         $isWayfair = $marketplace === 'wayfair';
         $isBestBuy = $marketplace === 'bestbuy';
@@ -187,6 +188,9 @@ class MarketplaceSyncSettings extends Model
         } elseif ($isTemu2) {
             $sourceName = 'temu2';
             $sourceDisplay = 'Temu 2';
+        } elseif ($isTemu3) {
+            $sourceName = 'temu3';
+            $sourceDisplay = 'Temu 3';
         } elseif ($isPurchasingPower) {
             $sourceName = 'purchasingpower';
             $sourceDisplay = 'Purchasing Power';
@@ -259,7 +263,7 @@ class MarketplaceSyncSettings extends Model
                 // All MM channels create Shopify drafts for new orders (Amazon FBM only; pre-cutoff skipped in the sync service).
                 'auto_import_to_shopify' => in_array($marketplace, [
                     'amazon', 'aliexpress', 'alibaba', 'reverb', 'newegg', 'shein', 'topdawg',
-                    'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba',
+                    'temu', 'temu2', 'temu3', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba',
                     'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2', 'b5cb2b',
                 ], true),
                 'import_paid_orders_only' => false,
@@ -275,6 +279,7 @@ class MarketplaceSyncSettings extends Model
                 'push_tracking_to_topdawg' => $isTopDawg,
                 'push_tracking_to_temu' => $isTemu,
                 'push_tracking_to_temu2' => $isTemu2,
+                'push_tracking_to_temu3' => $isTemu3,
                 'push_tracking_to_purchasingpower' => $isPurchasingPower,
                 'push_tracking_to_wayfair' => $isWayfair,
                 'push_tracking_to_bestbuy' => $isBestBuy,
@@ -289,7 +294,7 @@ class MarketplaceSyncSettings extends Model
                 'push_tracking_to_b5cb2b' => $isB5cB2b,
                 'push_tracking_to_amazon' => $isAmazon,
                 // Marketplace address → fill missing Shopify shipping + customer fields.
-                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'tiktok2', 'tiktok', 'amazon', 'b5cb2b'], true),
+                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'temu3', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'tiktok2', 'tiktok', 'amazon', 'b5cb2b'], true),
                 // Shein: Pending → To Be Shipped via export-address handleType=2 (ON so Shopify gets ship-to).
                 'auto_accept_on_shein' => true,
                 'tracking_send_notification' => false,
@@ -308,6 +313,7 @@ class MarketplaceSyncSettings extends Model
                 'create_products_on_topdawg' => false,
                 'create_products_on_temu' => false,
                 'create_products_on_temu2' => false,
+                'create_products_on_temu3' => false,
                 'create_products_on_purchasingpower' => false,
                 'create_products_on_wayfair' => false,
                 'create_products_on_bestbuy' => false,

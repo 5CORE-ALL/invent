@@ -32,7 +32,7 @@ final class MarketplaceListingQtyMatchService
             'tiktok2', 'tiktokshop2' => 'tiktok2',
             'newegg', 'neweggb2c' => 'newegg',
             'b5cb2b', 'business5coreb2b' => 'b5cb2b',
-            'temu', 'temu2', 'shein', 'aliexpress', 'pls', 'wayfair', 'faire',
+            'temu', 'temu2', 'temu3', 'shein', 'aliexpress', 'pls', 'wayfair', 'faire',
             'topdawg', 'amazon', 'reverb', 'doba', 'purchasingpower', 'alibaba' => $slug,
             default => null,
         };
@@ -171,8 +171,8 @@ final class MarketplaceListingQtyMatchService
     protected function portalInactiveRows(string $mmChannel, bool $fetchLiveIfCold): array
     {
         $pass = app(MarketplaceMismatchInventoryPass::class);
-        if ($mmChannel === 'temu2') {
-            $live = app(Temu2LiveListingsService::class);
+        if ($mmChannel === 'temu2' || $mmChannel === 'temu3') {
+            $live = $mmChannel === 'temu3' ? app(Temu3LiveListingsService::class) : app(Temu2LiveListingsService::class);
             $cached = $live->peekCached();
             if ((! is_array($cached) || $cached === []) && $fetchLiveIfCold) {
                 $cached = $live->all(false);
@@ -550,6 +550,7 @@ final class MarketplaceListingQtyMatchService
             'topdawg' => MarketplaceListingStockResolver::CHANNEL_TOPDAWG,
             'temu' => MarketplaceListingStockResolver::CHANNEL_TEMU,
             'temu2' => MarketplaceListingStockResolver::CHANNEL_TEMU2,
+            'temu3' => MarketplaceListingStockResolver::CHANNEL_TEMU3,
             'purchasingpower' => MarketplaceListingStockResolver::CHANNEL_PURCHASINGPOWER,
             'wayfair' => MarketplaceListingStockResolver::CHANNEL_WAYFAIR,
             'bestbuy' => MarketplaceListingStockResolver::CHANNEL_BESTBUY,

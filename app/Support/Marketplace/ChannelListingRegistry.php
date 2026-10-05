@@ -173,6 +173,14 @@ class ChannelListingRegistry
                 'buyer_tpl' => 'https://www.temu.com/goods.html?_bg_fs=1&goods_id={id}',
                 'seller_tpl' => 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={id}',
             ],
+            'temu3' => [
+                'dataView' => \App\Models\Temu3DataView::class,
+                'status' => \App\Models\Temu3ListingStatus::class,
+                'listed' => ['type' => 'column', 'model' => \App\Models\Temu3Metric::class, 'column' => 'goods_id', 'reject_sku' => true],
+                'id_field' => 'goods_id',
+                'buyer_tpl' => 'https://www.temu.com/goods.html?_bg_fs=1&goods_id={id}',
+                'seller_tpl' => 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={id}',
+            ],
             'macys' => [
                 'dataView' => \App\Models\MacyDataView::class,
                 'status' => \App\Models\MacysListingStatus::class,
@@ -436,6 +444,7 @@ class ChannelListingRegistry
             'bestbuy' => 'bestbuyusa',
             'macy' => 'macys',
             'temutwo' => 'temu2',
+            'temuthree' => 'temu3',
             'facebookmarketplace' => 'fbmarketplace',
             'shopifyb2b' => 'shopifywholesale',
             'shopifywholesaleds' => 'shopifywholesale',

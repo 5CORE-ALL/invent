@@ -26,6 +26,7 @@ use App\Services\MarketplaceManager\MiraklListingPublishService;
 use App\Services\MarketplaceManager\SheinListingPublishService;
 use App\Services\MarketplaceManager\WayfairListingPublishService;
 use App\Services\MarketplaceManager\Temu2ListingPublishService;
+use App\Services\MarketplaceManager\Temu3ListingPublishService;
 use App\Services\MarketplaceManager\TemuListingPublishService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyCatalogSyncService;
@@ -2291,9 +2292,11 @@ class ListingManagerController extends Controller
 
         if ($family === 'temu') {
             $key = ListingChannelCounts::normalize($channel);
-            $svc = in_array($key, ['temu2', 'temutwo'], true)
-                ? app(Temu2ListingPublishService::class)
-                : app(TemuListingPublishService::class);
+            $svc = match (true) {
+                in_array($key, ['temu2', 'temutwo'], true) => app(Temu2ListingPublishService::class),
+                in_array($key, ['temu3', 'temuthree'], true) => app(Temu3ListingPublishService::class),
+                default => app(TemuListingPublishService::class),
+            };
             $result = $svc->searchListingCategories($q, $title);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);

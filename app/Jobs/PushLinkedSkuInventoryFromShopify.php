@@ -176,6 +176,7 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUniqueUn
             'tiktok' => $tiktok,
             'temu' => app(\App\Services\MarketplaceManager\TemuInventorySyncService::class),
             'temu2' => app(\App\Services\MarketplaceManager\Temu2InventorySyncService::class),
+            'temu3' => app(\App\Services\MarketplaceManager\Temu3InventorySyncService::class),
             'topdawg' => app(\App\Services\MarketplaceManager\TopDawgInventorySyncService::class),
             'purchasingpower' => app(\App\Services\MarketplaceManager\PurchasingPowerInventorySyncService::class),
             'wayfair' => app(\App\Services\MarketplaceManager\WayfairInventorySyncService::class),

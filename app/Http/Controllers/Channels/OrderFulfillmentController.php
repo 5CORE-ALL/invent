@@ -399,7 +399,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $slug === 'newegg' => $raw === '0',
             $slug === 'reverb' => $lower === 'paid',
             $slug === 'shein' => in_array($lower, ['pending', 'to be shipped'], true),
-            in_array($slug, ['temu', 'temu2'], true) => in_array($upper, ['UN_SHIPPING', 'PENDING'], true),
+            in_array($slug, ['temu', 'temu2', 'temu3'], true) => in_array($upper, ['UN_SHIPPING', 'PENDING'], true),
             in_array($slug, ['aliexpress', 'alibaba'], true) => $compact === 'WAIT_SELLER_SEND_GOODS',
             $slug === 'faire' => in_array($upper, ['PROCESSING', 'NEW'], true),
             in_array($slug, ['purchasingpower', 'bestbuy', 'macy'], true) => in_array($compact, ['SHIPPING', 'TO_COLLECT', 'AWAITING_SHIPMENT'], true)
@@ -1304,7 +1304,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $table = $query->getModel()->getTable();
         $wanted = match ($slug) {
             'amazon' => ['id', 'amazon_order_id', 'order_date', 'status'],
-            'temu', 'temu2' => ['id', 'parent_order_status_text', 'order_status_text', 'parent_order_time', 'parent_order_sn', 'order_sn', 'display_sku', 'ext_code', 'product_sku_id'],
+            'temu', 'temu2', 'temu3' => ['id', 'parent_order_status_text', 'order_status_text', 'parent_order_time', 'parent_order_sn', 'order_sn', 'display_sku', 'ext_code', 'product_sku_id'],
             'tiktok', 'tiktok2' => ['id', 'order_id', 'order_status', 'line_status', 'order_created_at', 'seller_sku', 'sku_id'],
             'bestbuy', 'macy' => ['id', 'status', 'order_created_at', 'sku', 'order_id', 'channel_order_id'],
             'purchasingpower' => ['id', 'status', 'date_created', 'offer_sku', 'product_sku', 'order_id', 'order_number'],
@@ -1421,7 +1421,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'order_number' => (string) ($order->amazon_order_id ?? ''),
                 'sku' => '',
             ],
-            'temu', 'temu2' => [
+            'temu', 'temu2', 'temu3' => [
                 'status' => (string) ($order->parent_order_status_text ?: $order->order_status_text ?: ''),
                 'order_date' => $order->parent_order_time ?? null,
                 'order_id' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
@@ -1896,7 +1896,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         foreach ($missing as $key => $group) {
             $bySlug[$group['mm_slug']][$group['order_id']] = $key;
         }
-        uksort($bySlug, static fn ($a, $b): int => (int) in_array($a, ['temu', 'temu2'], true) <=> (int) in_array($b, ['temu', 'temu2'], true));
+        uksort($bySlug, static fn ($a, $b): int => (int) in_array($a, ['temu', 'temu2', 'temu3'], true) <=> (int) in_array($b, ['temu', 'temu2', 'temu3'], true));
 
         $lookup = app(ChannelBatchTrackingLookup::class);
         $found = [];

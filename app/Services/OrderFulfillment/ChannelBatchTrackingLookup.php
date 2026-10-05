@@ -6,6 +6,7 @@ use App\Models\SheinOrderMetric;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Services\SheinApiService;
 use App\Services\Temu2ApiService;
+use App\Services\Temu3ApiService;
 use App\Services\TemuApiService;
 use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
@@ -70,7 +71,7 @@ class ChannelBatchTrackingLookup
         $fromApi = match ($slug) {
             'tiktok', 'tiktok2' => $this->tiktok($slug, $pending, $deadline),
             'shein' => $this->shein($pending, $deadline),
-            'temu', 'temu2' => $this->temu($slug, $pending, $deadline),
+            'temu', 'temu2', 'temu3' => $this->temu($slug, $pending, $deadline),
             default => [],
         };
         foreach ($fromApi as $id => $hit) {
@@ -191,7 +192,11 @@ class ChannelBatchTrackingLookup
         if (Cache::get('mm.temu.ip_blocked')) {
             return [];
         }
-        $api = $slug === 'temu2' ? app(Temu2ApiService::class) : app(TemuApiService::class);
+        $api = match ($slug) {
+            'temu2' => app(Temu2ApiService::class),
+            'temu3' => app(Temu3ApiService::class),
+            default => app(TemuApiService::class),
+        };
         if (! $api->isConfigured()) {
             return [];
         }
