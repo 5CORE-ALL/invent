@@ -1,11 +1,11 @@
-@extends('layouts.vertical', ['title' => 'Instagram Shop Sold'])
+@extends('layouts.vertical', ['title' => 'Instagram Shop Sales', 'sidenav' => 'condensed'])
 
 @section('css')
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
 @endsection
 
 @section('content')
-@include('layouts.shared.page-title', ['page_title' => 'Instagram Shop Sold', 'sub_title' => 'Facebook & Instagram'])
+@include('layouts.shared.page-title', ['page_title' => 'Instagram Shop Sales', 'sub_title' => 'Sales'])
 
 <div class="row">
     <div class="col-12">

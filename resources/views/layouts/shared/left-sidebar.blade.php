@@ -2501,7 +2501,7 @@
                             <a href="{{ route('instagram.analytics') }}">Instagram Shop - Analytics</a>
                         </li>
                         <li>
-                            <a href="{{ route('instagram.shop.sold') }}">Instagram Shop Sold</a>
+                            <a href="{{ route('instagram.shop.sold') }}">Instagram Shop Sales</a>
                         </li>
                         <li>
                             <a href="{{ route('zero.instagramshop') }}">Instagram Shop 0
@@ -3179,7 +3179,7 @@
 
                         <li><a href="{{ route('facebook.marketplace') }}">FB Sales</a></li>
 
-                        <li><a href="{{ route('instagram.shop.sold') }}">Instagram Shop Sold</a></li>
+                        <li><a href="{{ route('instagram.shop.sold') }}">Instagram Shop Sales</a></li>
                     </ul>
                 </div>
             </li>
