@@ -137,7 +137,8 @@ class ListingManagerEbayTradingPublisher
             $item = $xml->addChild('Item');
             $item->addChild('Title', htmlspecialchars($title, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
             $item->addChild('Description', htmlspecialchars($description, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
-            $item->addChild('SKU', htmlspecialchars($sku, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            $parentSku = trim((string) ($payload['parent_sku'] ?? ''));
+            $item->addChild('SKU', htmlspecialchars($variations !== [] && $parentSku !== '' ? $parentSku : $sku, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
             $item->addChild('Currency', 'USD');
             $item->addChild('Country', trim((string) ($payload['location_country'] ?? 'US')) ?: 'US');
             $item->addChild('ListingDuration', trim((string) ($payload['duration'] ?? 'GTC')) ?: 'GTC');
@@ -444,11 +445,13 @@ class ListingManagerEbayTradingPublisher
                 $label = $sku;
             }
             $seen[strtolower($label)] = true;
+            $images = is_array($row['images'] ?? null) ? $row['images'] : [];
             $out[] = [
                 'sku' => $sku,
                 'price' => (float) ($row['price'] ?? 0),
                 'quantity' => (int) ($row['quantity'] ?? 0),
                 'variation_label' => $label,
+                'images' => array_values(array_filter(array_map(static fn ($u) => trim((string) $u), $images), static fn ($u) => preg_match('#^https?://#i', $u) === 1)),
                 'upc' => '',
             ];
         }
@@ -475,6 +478,19 @@ class ListingManagerEbayTradingPublisher
             $nvl->addChild('Value', htmlspecialchars($row['variation_label'], ENT_XML1 | ENT_COMPAT, 'UTF-8'));
             $variation->addChild('VariationProductListingDetails')->addChild('UPC', self::NO_UPC);
             $labels[] = $row['variation_label'];
+        }
+
+        $withImages = array_filter($variations, static fn ($row) => ! empty($row['images']));
+        if ($withImages !== []) {
+            $pictures = $block->addChild('Pictures');
+            $pictures->addChild('VariationSpecificName', htmlspecialchars($aspect, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            foreach ($withImages as $row) {
+                $set = $pictures->addChild('VariationSpecificPictureSet');
+                $set->addChild('VariationSpecificValue', htmlspecialchars($row['variation_label'], ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+                foreach (array_slice(array_values(array_unique($row['images'])), 0, 12) as $url) {
+                    $set->addChild('PictureURL', htmlspecialchars($url, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+                }
+            }
         }
 
         $set = $block->addChild('VariationSpecificsSet');

@@ -213,6 +213,32 @@
             position: relative;
         }
 
+        .orders-hold-channel-filter {
+            min-width: 110px;
+            font-size: 11px;
+            padding-top: 2px;
+            padding-bottom: 2px;
+            font-weight: normal;
+        }
+
+        .rows-graph-dot {
+            width: 12px;
+            height: 12px;
+            padding: 0;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            background: #ffc107;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .rows-graph-dot:hover,
+        .rows-graph-dot:focus-visible {
+            transform: scale(1.25);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, .45);
+        }
+
         .order-num-short {
             display: inline-block;
             max-width: 0;
@@ -479,7 +505,7 @@
             <div class="card mt-3">
                 <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
                     <h5 class="mb-0">{{ $recordsTitle ?? 'Orders On Hold Records' }}</h5>
-                    <div class="d-flex align-items-center gap-2 ms-auto">
+                    <div class="d-flex align-items-center gap-2 ms-auto flex-wrap">
                         {{-- Quick search: case-insensitive substring match across SKU, parent,
                              order #, marketplaces, issue/action text, root-cause, dept and
                              created-by. Runs client-side on holdIssueRows + the dept filter. --}}
@@ -492,10 +518,25 @@
                                 aria-label="Search records" aria-describedby="orders-hold-search-icon"
                                 autocomplete="off">
                         </div>
+                        <select id="orders-hold-date-range" class="form-select form-select-sm" style="width: 150px;"
+                            title="Filter by Order Date (Created date when the order date is unknown)">
+                            <option value="">All dates</option>
+                            <option value="l30">L30</option>
+                            <option value="custom">Custom range</option>
+                        </select>
+                        <div id="orders-hold-date-custom" class="d-none align-items-center gap-1">
+                            <input type="date" id="orders-hold-date-from" class="form-control form-control-sm" style="width: 140px;" aria-label="From date">
+                            <span class="text-muted small">to</span>
+                            <input type="date" id="orders-hold-date-to" class="form-control form-control-sm" style="width: 140px;" aria-label="To date">
+                        </div>
                         <select id="dept-filter-select" class="form-select form-select-sm" style="min-width: 180px;">
                             <option value="">All Departments</option>
                         </select>
-                        <span class="badge bg-light text-dark" id="hold_issue_total_count">0</span>
+                        <span class="badge bg-primary fs-6 text-nowrap d-inline-flex align-items-center gap-2" title="Rows shown in the table">
+                            <span>Rows: <span id="hold_issue_total_count">0</span></span>
+                            <button type="button" class="rows-graph-dot" id="rowsGraphDot"
+                                title="Show rows per day graph" aria-label="Show rows per day graph"></button>
+                        </span>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -508,10 +549,17 @@
                                     <th class="orders-hold-col-sku">SKU</th>
                                     <th class="orders-hold-col-qty">Shopify</th>
                                     <th class="orders-hold-col-action">Ord</th>
+                                    <th class="orders-hold-col-created-at" title="Date the order was placed on the marketplace">Order Date</th>
                                     <th class="orders-hold-col-qty">Qty Avl</th>
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent parent-col">Parent</th>
-                                    <th class="orders-hold-col-mp">MKT1</th>
+                                    <th class="orders-hold-col-mp">
+                                        <div>MKT1</div>
+                                        <select id="channel-filter-select" class="form-select form-select-sm mt-1 orders-hold-channel-filter"
+                                            title="Filter by channel (MKT1)" aria-label="Filter by channel">
+                                            <option value="">All</option>
+                                        </select>
+                                    </th>
                                     <th class="orders-hold-col-mp">MKT2</th>
                                     <th class="orders-hold-col-qty">M link</th>
                                     <th class="orders-hold-col-what">Issue?</th>
@@ -529,7 +577,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="21" class="text-center text-muted py-4">No records found.</td>
+                                    <td colspan="22" class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -996,9 +1044,27 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="rowsGraphModal" tabindex="-1" aria-labelledby="rowsGraphModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="rowsGraphModalLabel">Rows per day</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2" id="rowsGraphSubtitle"></p>
+                    <div style="position: relative; height: 360px;">
+                        <canvas id="rowsGraphCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
+    @include('partials.lazy-chart-js')
     <script>
         (function() {
             const skuSearchUrl = @json(route('customer.care.followups.skus'));
@@ -1306,7 +1372,7 @@
             function rowSearchHaystack(r) {
                 if (!r) return '';
                 const parts = [
-                    r.sku, r.parent, r.order_number, r.shopify_order_number,
+                    r.sku, r.parent, r.order_number, r.shopify_order_number, r.order_date_display,
                     r.marketplace_1, r.marketplace_2,
                     r.what_happened, r.issue, r.issue_remark,
                     r.action_1, r.action_1_remark,
@@ -1326,10 +1392,70 @@
                 return rowSearchHaystack(r).includes(activeSearchQuery);
             }
 
+            // Date range filter on Order Date (falls back to Created date). Bounds are
+            // inclusive 'YYYY-MM-DD' strings so plain string comparison works.
+            let activeDateRange = { from: '', to: '' };
+
+            function localYmd(d) {
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0');
+            }
+
+            function rowDateKey(r) {
+                const raw = String(r?.order_date || r?.created_at || '').trim();
+                return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : '';
+            }
+
+            function rowMatchesDateRange(r) {
+                const key = rowDateKey(r);
+                if (!key) return false;
+                if (activeDateRange.from && key < activeDateRange.from) return false;
+                if (activeDateRange.to && key > activeDateRange.to) return false;
+                return true;
+            }
+
+            let activeChannelFilter = '';
+
+            function rowChannel(r) {
+                return String(r?.marketplace_1 || '').trim();
+            }
+
+            function buildChannelFilter() {
+                const select = document.getElementById('channel-filter-select');
+                if (!select) return;
+                const counts = {};
+                const labels = {};
+                holdIssueRows.forEach(r => {
+                    const ch = rowChannel(r);
+                    const key = ch.toLowerCase();
+                    counts[key] = (counts[key] || 0) + 1;
+                    if (!labels[key]) labels[key] = ch || '(blank)';
+                });
+                const keys = Object.keys(counts).sort((a, b) => labels[a].localeCompare(labels[b]));
+                select.innerHTML = '<option value="">All (' + holdIssueRows.length + ')</option>';
+                keys.forEach(key => {
+                    const opt = document.createElement('option');
+                    opt.value = key === '' ? '__blank__' : key;
+                    opt.textContent = labels[key] + ' (' + counts[key] + ')';
+                    select.appendChild(opt);
+                });
+                const stillThere = activeChannelFilter === '' ||
+                    Array.from(select.options).some(o => o.value === activeChannelFilter);
+                if (!stillThere) activeChannelFilter = '';
+                select.value = activeChannelFilter;
+            }
+
+            function rowMatchesChannelFilter(r) {
+                const key = rowChannel(r).toLowerCase();
+                return activeChannelFilter === '__blank__' ? key === '' : key === activeChannelFilter;
+            }
+
             function getFilteredRows() {
                 let rows = holdIssueRows;
+                if (activeChannelFilter) rows = rows.filter(rowMatchesChannelFilter);
                 if (activeDeptFilter) rows = rows.filter(rowMatchesActiveDeptFilter);
                 if (activeSearchQuery) rows = rows.filter(rowMatchesSearchQuery);
+                if (activeDateRange.from || activeDateRange.to) rows = rows.filter(rowMatchesDateRange);
                 return rows;
             }
 
@@ -1485,14 +1611,17 @@
                 }
             }
 
-            function updateTotalCount() {
-                totalCountEl.textContent = String(holdIssueRows.length);
+            function updateTotalCount(shown = holdIssueRows.length) {
+                if (!totalCountEl) return;
+                const total = holdIssueRows.length;
+                totalCountEl.textContent = shown === total ? String(total) : shown + ' / ' + total;
             }
 
             function renderRows() {
                 if (!tableBody) return;
 
                 buildDeptFilters();
+                buildChannelFilter();
                 const rows = getFilteredRows();
 
                 if (!rows.length) {
@@ -1500,7 +1629,7 @@
                     tableBody.innerHTML = emptyRow ? emptyRow.outerHTML : '';
                     const e = document.getElementById('hold_issue_empty_row');
                     if (e) e.classList.remove('d-none');
-                    updateTotalCount();
+                    updateTotalCount(0);
                     return;
                 }
 
@@ -1524,6 +1653,7 @@
                             '" title="' + escAttr(row.order_number) +
                             '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' +
                             escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
+                        '<td class="text-nowrap">' + (row.order_date_display ? escapeHtml(row.order_date_display) : '—') + '</td>' +
                         '<td>' + escapeHtml(row.qty) + '</td>' +
                         '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td class="parent-col">' + escapeHtml(row.parent) + '</td>' +
@@ -1545,7 +1675,7 @@
                 tableBody.innerHTML = (emptyRow ? emptyRow.outerHTML : '') + dataRowsHtml;
                 const nextEmpty = document.getElementById('hold_issue_empty_row');
                 if (nextEmpty) nextEmpty.classList.add('d-none');
-                updateTotalCount();
+                updateTotalCount(rows.length);
             }
 
             function updateHistoryTotalCount() {
@@ -2581,6 +2711,148 @@
                 searchInput.addEventListener('search', apply);
             })();
 
+            (function initChannelFilter() {
+                const select = document.getElementById('channel-filter-select');
+                if (!select) return;
+                select.addEventListener('click', e => e.stopPropagation());
+                select.addEventListener('change', () => {
+                    activeChannelFilter = select.value;
+                    renderRows();
+                });
+            })();
+
+            (function initDateRangeFilter() {
+                const rangeSelect = document.getElementById('orders-hold-date-range');
+                const customWrap = document.getElementById('orders-hold-date-custom');
+                const fromInput = document.getElementById('orders-hold-date-from');
+                const toInput = document.getElementById('orders-hold-date-to');
+                if (!rangeSelect || !customWrap || !fromInput || !toInput) return;
+
+                const apply = () => {
+                    const mode = rangeSelect.value;
+                    customWrap.classList.toggle('d-none', mode !== 'custom');
+                    customWrap.classList.toggle('d-flex', mode === 'custom');
+                    if (mode === 'l30') {
+                        const today = new Date();
+                        const start = new Date(today);
+                        start.setDate(today.getDate() - 29);
+                        activeDateRange = { from: localYmd(start), to: localYmd(today) };
+                    } else if (mode === 'custom') {
+                        let from = fromInput.value || '';
+                        let to = toInput.value || '';
+                        if (from && to && from > to) [from, to] = [to, from];
+                        activeDateRange = { from, to };
+                    } else {
+                        activeDateRange = { from: '', to: '' };
+                    }
+                    renderRows();
+                };
+
+                rangeSelect.addEventListener('change', () => {
+                    if (rangeSelect.value === 'custom' && !fromInput.value && !toInput.value) {
+                        const today = new Date();
+                        const start = new Date(today);
+                        start.setDate(today.getDate() - 29);
+                        fromInput.value = localYmd(start);
+                        toInput.value = localYmd(today);
+                    }
+                    apply();
+                });
+                fromInput.addEventListener('change', apply);
+                toInput.addEventListener('change', apply);
+            })();
+
+            (function initRowsGraph() {
+                const dot = document.getElementById('rowsGraphDot');
+                const graphModalEl = document.getElementById('rowsGraphModal');
+                const canvas = document.getElementById('rowsGraphCanvas');
+                const subtitle = document.getElementById('rowsGraphSubtitle');
+                if (!dot || !graphModalEl || !canvas || typeof bootstrap === 'undefined') return;
+
+                const graphModal = new bootstrap.Modal(graphModalEl);
+                let chart = null;
+
+                function ymdToDate(ymd) {
+                    const [y, m, d] = ymd.split('-').map(Number);
+                    return new Date(y, m - 1, d);
+                }
+
+                function buildSeries() {
+                    const rows = getFilteredRows();
+                    const counts = {};
+                    rows.forEach(r => {
+                        const key = rowDateKey(r);
+                        if (key) counts[key] = (counts[key] || 0) + 1;
+                    });
+
+                    // Range: active date filter, else last 30 days ending today.
+                    const today = localYmd(new Date());
+                    let from = activeDateRange.from;
+                    let to = activeDateRange.to || today;
+                    if (!from) {
+                        const start = ymdToDate(to);
+                        start.setDate(start.getDate() - 29);
+                        from = localYmd(start);
+                    }
+
+                    const labels = [];
+                    const values = [];
+                    for (let d = ymdToDate(from), end = ymdToDate(to); d <= end; d.setDate(d.getDate() + 1)) {
+                        const key = localYmd(d);
+                        labels.push(key.slice(8, 10) + '-' + key.slice(5, 7));
+                        values.push(counts[key] || 0);
+                    }
+
+                    return {
+                        labels,
+                        values,
+                        from,
+                        to,
+                        total: values.reduce((a, b) => a + b, 0),
+                    };
+                }
+
+                function render() {
+                    const s = buildSeries();
+                    const fmt = ymd => ymd.slice(8, 10) + '-' + ymd.slice(5, 7) + '-' + ymd.slice(0, 4);
+                    subtitle.textContent = s.total + ' row(s) from ' + fmt(s.from) + ' to ' + fmt(s.to) +
+                        ' by Order Date (Created date when the order date is unknown). Search and department filters apply.';
+
+                    window.loadChartJs().then(Chart => {
+                        if (chart) chart.destroy();
+                        chart = new Chart(canvas.getContext('2d'), {
+                            type: 'bar',
+                            data: {
+                                labels: s.labels,
+                                datasets: [{
+                                    label: 'Rows',
+                                    data: s.values,
+                                    backgroundColor: 'rgba(13, 110, 253, 0.6)',
+                                    borderColor: 'rgba(13, 110, 253, 1)',
+                                    borderWidth: 1,
+                                }],
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { display: false } },
+                                scales: {
+                                    y: { beginAtZero: true, ticks: { precision: 0 } },
+                                },
+                            },
+                        });
+                    }).catch(() => {
+                        subtitle.textContent = 'Could not load the chart library. Check your connection and try again.';
+                    });
+                }
+
+                dot.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    graphModal.show();
+                });
+                graphModalEl.addEventListener('shown.bs.modal', render);
+            })();
+
             btnShowHistory.addEventListener('click', () => {
                 historyCard.classList.remove('d-none');
                 loadHoldIssueHistoryRows();
@@ -2614,12 +2886,12 @@
                     URL.revokeObjectURL(url);
                 }
 
-                const activeHeaders = ['#', 'SKU', 'Ord', 'QTY', 'Order QTY', 'Parent', 'MKT1', 'MKT2',
+                const activeHeaders = ['#', 'SKU', 'Ord', 'Order Date', 'QTY', 'Order QTY', 'Parent', 'MKT1', 'MKT2',
                     'Issue?', 'CC Action', 'CC History', 'Action Remark', 'Replacement Tracking',
                     'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
                     'Root Cause Fixed Remark', 'Department', 'Created By', 'Created At'];
                 const activeData = getFilteredRows().map(r => [
-                    r.id, r.sku, r.order_number, r.qty, r.order_qty, r.parent,
+                    r.id, r.sku, r.order_number, r.order_date_display || '', r.qty, r.order_qty, r.parent,
                     r.marketplace_1, r.marketplace_2, r.what_happened,
                     ccActionValue(r),
                     (Array.isArray(r.cc_action_history) ? r.cc_action_history : []).map(h => (h.value || '') +
