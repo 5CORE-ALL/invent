@@ -122,7 +122,7 @@ class AmazonDilPrmtAutoPushService
                     $plan['business_price'],
                     $plan['min_price']
                 );
-                $ok = $this->pushSprice($api, $row['sku'], $row['seller_sku'], $computed['sprice'], $reason);
+                $ok = $this->pushSprice($api, $row['sku'], $row['seller_sku'], $computed['sprice'], $reason, (float) ($row['standard_price'] ?? 0));
                 if ($ok) {
                     $stats['pushed']++;
                 } else {
@@ -377,7 +377,7 @@ class AmazonDilPrmtAutoPushService
         }
     }
 
-    protected function pushSprice(AmazonSpApiService $api, string $statusSku, string $sellerSku, float $sprice, string $reason = 'price push'): bool
+    protected function pushSprice(AmazonSpApiService $api, string $statusSku, string $sellerSku, float $sprice, string $reason = 'price push', float $std = 0): bool
     {
         $price = round($sprice, 2);
         if ($price < 0.01 || $price > 999999.99) {
@@ -387,9 +387,12 @@ class AmazonDilPrmtAutoPushService
         }
 
         $apiSku = $sellerSku !== '' ? $sellerSku : $statusSku;
+        $stdPrice = round($std, 2);
+        $your = ($stdPrice > $price) ? $stdPrice : $price;
         $matched = $api->matchingSaleAndMinFromSprice($price);
+        $matched['sale_price'] = $price;
         $matched['push_reason'] = $reason;
-        $result = $api->updateAmazonPriceUS($apiSku, $price, 3, $matched);
+        $result = $api->updateAmazonPriceUS($apiSku, $your, 3, $matched);
 
         if (isset($result['errors']) && ! empty($result['errors'])) {
             $err = (string) ($result['errors'][0]['message'] ?? 'Amazon push failed');

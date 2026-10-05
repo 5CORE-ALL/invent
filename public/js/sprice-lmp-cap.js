@@ -38,17 +38,15 @@
     }
 
     /**
-     * Std Prc is the maximum when LMP is missing, or when LMP is above Std.
-     * Blank Std Prc does not cap. LMP at or below Std leaves the price unchanged.
+     * Std Prc is always the maximum when it is set.
+     * Blank Std Prc does not cap. LMP does not lift this ceiling.
      */
     function capToStdWhenNoLmp(sprice, lmp, std) {
         var s = num(sprice);
-        var l = num(lmp);
         var t = num(std);
         if (!(isFinite(s) && s > 0)) return isFinite(s) ? +Number(s).toFixed(2) : s;
         s = +Number(s).toFixed(2);
         if (!(isFinite(t) && t > 0) || s + 0.0001 <= t) return s;
-        if (isFinite(l) && l > 0 && l + 0.0001 <= t) return s;
         return +Number(t).toFixed(2);
     }
 
@@ -89,7 +87,7 @@
     function stdTriangleHtml(std) {
         var t = num(std);
         if (!(isFinite(t) && t > 0)) return '';
-        return '<i class="fas fa-exclamation-triangle sprice-std-cap" style="color:#b45309;font-size:10px;margin-left:3px;" title="No LMP — S PRC capped at Std Prc $'
+        return '<i class="fas fa-exclamation-triangle sprice-std-cap" style="color:#b45309;font-size:10px;margin-left:3px;" title="S PRC capped at Std Prc $'
             + t.toFixed(2) + '"></i>';
     }
 
@@ -114,10 +112,11 @@
             && isFinite(std) && raw + 0.0001 > std
             && isFinite(shown) && shown + 0.0001 <= std + 0.0001;
         var stdCapped = !review
-            && !(isFinite(lmp) && lmp > 0)
             && isFinite(std) && std > 0
             && isFinite(raw) && raw > 0
-            && raw + 0.0001 > std;
+            && raw + 0.0001 > std
+            && isFinite(shown) && shown + 0.0001 <= std + 0.0001
+            && !(isFinite(lmp) && lmp > 0 && shown + 0.0001 <= lmp + 0.0001 && raw + 0.0001 >= lmp);
         var tri = '';
         if (stdCappedHighLmp) tri = reviewStdTriangleHtml(row);
         else if (alert) tri = triangleHtml(lmp);

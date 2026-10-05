@@ -1312,15 +1312,13 @@
             const n = parseFloat(raw);
             return (isFinite(n) && n > 0) ? n : 0;
         }
-        /** Std Prc is the maximum when LMP is missing, or when LMP is above Std. */
+        /** Std Prc is always the maximum when it is set, including a high suggested S PRC. */
         function amazonCapToStdWhenNoLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
             const rounded = +Number(s).toFixed(2);
             const std = amazonStdPrice(rowData);
             if (!(std > 0) || rounded + 0.0001 <= std) return rounded;
-            const lmp = lmpWithShipping(rowData);
-            if (lmp > 0 && lmp + 0.0001 <= std) return rounded;
             return +Number(std).toFixed(2);
         }
         function amazonCapSpriceToLmp(rowData, sprice) {
@@ -1407,6 +1405,33 @@
             return (typeof amazonCapSpriceToLmp === 'function')
                 ? amazonCapSpriceToLmp(rowData, raw)
                 : +Number(raw).toFixed(2);
+        }
+
+        /** S PRC the S PRC column paints, including the stored fallback. */
+        function amazonShownSprice(rowData) {
+            if (!rowData || rowData.is_parent_summary) return 0;
+            let raw = 0;
+            if (typeof computeAmzPushPrcPlan === 'function') {
+                const plan = computeAmzPushPrcPlan(rowData);
+                if (plan && plan.effective > 0) raw = Number(plan.effective);
+            }
+            if (!(raw > 0)) raw = amazonRowSprice(rowData);
+            if (!(raw > 0)) return 0;
+            const shown = (typeof amazonCapSpriceToLmp === 'function')
+                ? amazonCapSpriceToLmp(rowData, raw)
+                : raw;
+            return shown > 0 ? shown : raw;
+        }
+
+        /** Min and Business are 5% below the shown S PRC. */
+        function amazonMinBusinessPrice(rowData) {
+            const sprice = amazonShownSprice(rowData);
+            if (!(sprice > 0)) return 0;
+            if (typeof amzMinBusinessFromSprc === 'function') return amzMinBusinessFromSprc(sprice);
+            const rounded = +Number(sprice).toFixed(2);
+            let below = +Number(Math.max(0.01, rounded * 0.95)).toFixed(2);
+            if (below > rounded) below = rounded;
+            return below;
         }
 
         function amazonComputeNetSroi(rowData) {
@@ -4438,7 +4463,7 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. Live rule price. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. When LMP is missing, or LMP is above Std Prc, Std Prc is the maximum. Red triangle stays when S PRC ≥ LMP. Orange triangle = LMP above Std, review Std price.",
+                        headerTooltip: "Read-only. Live rule price. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. Std Prc is always the maximum: a suggested S PRC above Std is capped to Std, and when Std is higher that S PRC is the Sales Price. Red triangle stays when S PRC ≥ LMP. Orange triangle = LMP above Std, review Std price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -4463,7 +4488,7 @@
                             const lmpAboveStd = lmpNow > 0 && stdNow > 0 && lmpNow + 0.0001 > stdNow;
                             const stdCappedHighLmp = lmpAboveStd && raw + 0.0001 > stdNow
                                 && shown + 0.0001 <= stdNow + 0.0001;
-                            const stdCapped = !lmpAboveStd && !(lmpNow > 0) && stdNow > 0 && raw + 0.0001 > stdNow
+                            const stdCapped = !lmpAboveStd && !appliedLmp && stdNow > 0 && raw + 0.0001 > stdNow
                                 && shown + 0.0001 <= stdNow + 0.0001;
                             const sgroiAtLmp = (typeof amazonSgroiAtPrice === 'function')
                                 ? amazonSgroiAtPrice(rowData, lmpNow)
@@ -4471,7 +4496,7 @@
 
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
-                            const redTri = (atOrAboveLmp && !stdCappedHighLmp)
+                            const redTri = (atOrAboveLmp && !stdCappedHighLmp && !stdCapped)
                                 ? (appliedLmp
                                     ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
                                         + lmpNow.toFixed(2) + '"></i>'
@@ -4487,7 +4512,7 @@
                                     + ' — S PRC capped at Std. Review Std price."></i>'
                                 : '';
                             const stdTri = stdCapped
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#b45309;font-size:10px;margin-left:3px;" title="No LMP — S PRC capped at Std Prc $'
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#b45309;font-size:10px;margin-left:3px;" title="S PRC capped at Std Prc $'
                                     + stdNow.toFixed(2) + '"></i>'
                                 : '';
                             const blueTri = (!atOrAboveLmp && !stdCapped && !stdCappedHighLmp && currentPrice > 0 && sprice > 0
@@ -4497,7 +4522,7 @@
                                 : '';
 
                             let formattedValue = '$' + sprice.toFixed(2);
-                            if (atOrAboveLmp && !stdCappedHighLmp) {
+                            if (atOrAboveLmp && !stdCappedHighLmp && !stdCapped) {
                                 formattedValue = '<span style="color: #dc3545; font-weight: 600;">' + formattedValue + '</span>';
                             } else if (stdCappedHighLmp) {
                                 formattedValue = '<span style="color: #fd7e14; font-weight: 600;">' + formattedValue + '</span>';
@@ -4517,6 +4542,44 @@
                             }
                         },
                         width: 90
+                    },
+
+                    {
+                        title: "Min",
+                        field: "MIN_PRICE",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            return (amazonMinBusinessPrice(aRow.getData()) || 0) - (amazonMinBusinessPrice(bRow.getData()) || 0);
+                        },
+                        headerTooltip: "Minimum seller price. 5% below the S PRC in this row.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const n = amazonMinBusinessPrice(rowData);
+                            if (!(n > 0)) return '';
+                            return '<span>$' + n.toFixed(2) + '</span>';
+                        },
+                        width: 70
+                    },
+
+                    {
+                        title: "Business",
+                        field: "BUSINESS_PRICE",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            return (amazonMinBusinessPrice(aRow.getData()) || 0) - (amazonMinBusinessPrice(bRow.getData()) || 0);
+                        },
+                        headerTooltip: "Amazon Business price. 5% below the S PRC in this row.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const n = amazonMinBusinessPrice(rowData);
+                            if (!(n > 0)) return '';
+                            return '<span>$' + n.toFixed(2) + '</span>';
+                        },
+                        width: 78
                     },
 
                     {

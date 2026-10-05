@@ -69,7 +69,7 @@ class AmazonPushedPricePullService
             $apiSku = $seller !== ''
                 ? $seller
                 : (string) (AmazonDatasheet::resolveSellerMskuByProductKey($gridSku) ?: $gridSku);
-            $live = $this->currentListingPrice(app(AmazonSpApiService::class)->getListingsItemFullDetails($apiSku));
+            $live = $this->currentListingPrice(app(AmazonSpApiService::class)->getListingsItemFullDetails($apiSku), $listingPrice);
             $persist = self::livePriceToPersist($live, $listingPrice);
             if ($persist !== null && abs($persist - $listingPrice) <= self::LIVE_MATCH_TOLERANCE) {
                 $this->writeDatasheetPrice($gridSku, $apiSku, $persist);
@@ -317,7 +317,7 @@ class AmazonPushedPricePullService
 
             $expected = self::pushedSaleFromValue(is_array($value) ? $value : []);
             $details = $api->getListingsItemFullDetails($sellerSku);
-            $live = $this->currentListingPrice($details);
+            $live = $this->currentListingPrice($details, $expected);
             $price = self::livePriceToPersist($live, $expected);
 
             if ($price === null && $expected !== null) {
@@ -427,7 +427,7 @@ class AmazonPushedPricePullService
             try {
                 $details = $api->getListingsItemFullDetails($sellerSku);
                 $expected = self::pushedSaleFromValue($value);
-                $price = self::livePriceToPersist($this->currentListingPrice($details), $expected);
+                $price = self::livePriceToPersist($this->currentListingPrice($details, $expected), $expected);
                 if ($price === null && $expected !== null) {
                     $price = $expected;
                 }
@@ -519,15 +519,20 @@ class AmazonPushedPricePullService
         $row->save();
     }
 
-    private function currentListingPrice(array $details): ?float
+    private function currentListingPrice(array $details, ?float $expectedSale = null): ?float
     {
-        // Your Price is the customer listing price. The sale a few cents under it
-        // is a leftover schedule, and the Business offer is 5% under.
+        // Your Price is the regular price. When we pushed S PRC as Sales Price under
+        // a higher Std, the live sale is the customer price. A leftover sale that
+        // is not the price we pushed is ignored.
         $your = isset($details['your_price']) ? (float) $details['your_price'] : 0;
+        $sale = isset($details['sale_price']) ? (float) $details['sale_price'] : 0;
+        if ($expectedSale !== null && $expectedSale > 0 && $sale > 0
+            && abs(round($sale, 2) - round($expectedSale, 2)) <= self::LIVE_MATCH_TOLERANCE) {
+            return round($sale, 2);
+        }
         if ($your > 0) {
             return round($your, 2);
         }
-        $sale = isset($details['sale_price']) ? (float) $details['sale_price'] : 0;
         if ($sale > 0) {
             return round($sale, 2);
         }

@@ -2952,14 +2952,14 @@
                 }
                 parts.push(groiNote + (plan.dilGroiLabel ? (' · ' + plan.dilGroiLabel) : ''));
                 if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
-                else if (plan.stdCapped) parts.push('Std cap (no LMP)');
+                else if (plan.stdCapped) parts.push('Std cap');
                 if (plan.lmpCapped) parts.push('LMP cap');
                 return parts.length ? ' (' + parts.join(' + ') + ')' : '';
             }
             if (plan.cvrDisc) parts.push('CVR Disc ' + plan.cvrDisc + '%');
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
             if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
-            else if (plan.stdCapped) parts.push('Std cap (no LMP)');
+            else if (plan.stdCapped) parts.push('Std cap');
             if (plan.lmpCapped) parts.push('LMP cap');
             return parts.length ? ' (' + parts.join(' + ') + ')' : '';
         }
@@ -3052,7 +3052,8 @@
             plan.lmpAboveStd = dropped && lmpNow > 0 && stdNow > 0 && lmpNow + 0.0001 > stdNow
                 && capped + 0.0001 <= stdNow + 0.0001;
             plan.lmpCapped = dropped && lmpNow > 0 && !plan.lmpAboveStd && capped + 0.0001 <= lmpNow + 0.0001;
-            plan.stdCapped = dropped && !(lmpNow > 0);
+            plan.stdCapped = dropped && !plan.lmpAboveStd && !plan.lmpCapped && stdNow > 0
+                && capped + 0.0001 <= stdNow + 0.0001;
             return plan;
         }
         function amzPushPrcPlanForQueue(d) {

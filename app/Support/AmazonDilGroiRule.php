@@ -341,16 +341,13 @@ class AmazonDilGroiRule
     }
 
     /**
-     * Std Prc is the maximum when LMP is missing, or when LMP is above Std Prc.
-     * A blank Std Prc does not cap. LMP at or below Std leaves the price unchanged here.
+     * Std Prc is always the maximum when it is set.
+     * A blank Std Prc does not cap. LMP does not lift this ceiling.
      */
     public static function capToStdWhenNoLmp(float $sprice, float $lmp, float $std): float
     {
         $s = round($sprice, 2);
         if (! ($std > 0) || ! ($s > 0) || ($s + 0.0001) <= $std) {
-            return $s;
-        }
-        if ($lmp > 0 && ($lmp + 0.0001) <= $std) {
             return $s;
         }
 
@@ -359,10 +356,10 @@ class AmazonDilGroiRule
 
     /**
      * Amazon LMP cap (eBay 1–3 cron + tabulator use the same rule):
-     *  Dil below LMP → keep Dil (no cap).
+     *  Dil below LMP → keep Dil (no LMP cap).
      *  Dil at/above LMP and SGROI at LMP ≥ 20% → S PRC = LMP.
-     *  Dil at/above LMP and SGROI at LMP < 20% → keep Dil (no cap).
-     *  No LMP, or LMP above Std Prc → Std Prc is the maximum.
+     *  Dil at/above LMP and SGROI at LMP < 20% → keep Dil (no LMP cap).
+     *  Std Prc is always the maximum after that, including when the suggestion is above Std.
      * Never raises Dil up to LMP or Std Prc.
      */
     public static function capSpriceToLmp(

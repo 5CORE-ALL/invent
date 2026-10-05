@@ -286,7 +286,8 @@ class AmazonSpApiService
     }
 
     /**
-     * Price Amazon shows on the listing. S PRC wins over the old Your Price.
+     * Price Amazon shows on the listing when there is no separate Sales Price.
+     * S PRC wins over the old Your Price.
      */
     public static function listingPriceForSite(float $yourPrice, float $sprc): float
     {
@@ -296,6 +297,35 @@ class AmazonSpApiService
         }
 
         return $sale;
+    }
+
+    /**
+     * High Std stays Your Price. A suggested S PRC above Std is capped to Std.
+     * S PRC goes in Sales Price only when it is strictly below that Your Price.
+     *
+     * @return array{your_price: float, sale_price: float, send_sale: bool}
+     */
+    public static function resolveYourAndSale(float $yourPrice, float $salePrice): array
+    {
+        $your = round($yourPrice, 2);
+        $sale = round($salePrice, 2);
+        if ($sale < 0.01) {
+            $sale = $your;
+        }
+        if ($your > 0 && $sale > $your) {
+            $sale = $your;
+        }
+        $sendSale = $your > 0 && $sale > 0
+            && (int) round($sale * 100) < (int) round($your * 100);
+        if (! $sendSale) {
+            $your = self::listingPriceForSite($your, $sale);
+        }
+
+        return [
+            'your_price' => $your,
+            'sale_price' => $sale,
+            'send_sale' => $sendSale,
+        ];
     }
 
     /**
@@ -486,7 +516,8 @@ class AmazonSpApiService
      * @param  float|int|string  $price  Your Price (our_price)
      * @param  int  $maxRetries
      * @param  array|null  $extras  Optional:
-     *   - sale_price (float): calculated S PRC. The listing price on Amazon (our_price) is S PRC.
+     *   - sale_price (float): calculated S PRC. When Std / Your Price is higher, it stays
+     *     Your Price and S PRC is the Sales Price. A suggestion above Std is capped to Std.
      *     Business and Min = S PRC × 0.95. A sale schedule is sent only when it is strictly below Your Price.
      *   - min_price / business_price: ignored — always derived from Sale.
      *   - max_price (float): maximum_seller_allowed_price (defaults to our_price × 1.10)
@@ -527,14 +558,13 @@ class AmazonSpApiService
         if ($salePrice === null) {
             $salePrice = $this->matchingSaleAndMinFromSprice($price)['sale_price'];
         }
+        $resolved = self::resolveYourAndSale($price, $salePrice);
+        $price = $resolved['your_price'];
+        $salePrice = $resolved['sale_price'];
         $fromSale = self::computeSaleBusinessMin($salePrice);
         $salePrice = $fromSale['sale_price'];
         $businessPrice = $fromSale['business_price'];
         $minPrice = $fromSale['min_price'];
-        // Amazon.com shows our_price. Writing S PRC only as discounted_price left the
-        // site on the old Your Price: Amazon drops a sale that is not strictly lower,
-        // and a date-only sale schedule is often ignored. The listing price is S PRC.
-        $price = self::listingPriceForSite($price, $salePrice);
         $pushReason = trim((string) ($extras['push_reason'] ?? 'price push'));
         if ($pushReason === '') {
             $pushReason = 'price push';
@@ -715,7 +745,7 @@ class AmazonSpApiService
                     "minimum_seller_allowed_price" => $minPriceSchedule,
                     "maximum_seller_allowed_price" => $maxPriceSchedule,
                 ];
-                // Optional sale. Amazon requires a full timestamp and a price strictly below Your Price.
+                // High Std stays Your Price. S PRC is Sales Price only when strictly below it.
                 $sendDiscounted = (int) round($salePrice * 100) < (int) round($price * 100);
                 if ($sendDiscounted) {
                     $startAt = now('UTC')->subDay()->startOfDay()->format('Y-m-d\TH:i:s\Z');
@@ -901,7 +931,12 @@ class AmazonSpApiService
                     return $patchFailure;
                 }
 
-                $confirmFailure = $this->confirmPriceAfterListingsPatch($amazonSku, $price, $accessToken);
+                $confirmFailure = $this->confirmPriceAfterListingsPatch(
+                    $amazonSku,
+                    $price,
+                    $accessToken,
+                    $sendDiscounted ? $salePrice : null
+                );
                 if ($confirmFailure !== null) {
                     $lastError = $confirmFailure;
                     Log::warning("Amazon Price Update: post-patch verification did not succeed (Attempt {$attempt}/{$maxRetries})", [
@@ -1175,7 +1210,7 @@ class AmazonSpApiService
      *
      * @return array{errors: array<int, array{code?: string, message?: string}>}|null  Null when price matches
      */
-    private function confirmPriceAfterListingsPatch(string $amazonSku, float $price, string $accessToken): ?array
+    private function confirmPriceAfterListingsPatch(string $amazonSku, float $price, string $accessToken, ?float $salePrice = null): ?array
     {
         $anyFalse = false;
         $attempts = 6;
@@ -1187,7 +1222,7 @@ class AmazonSpApiService
                 usleep(1000000);
             }
 
-            $v = $this->verifyPriceUpdate($amazonSku, $price, $accessToken);
+            $v = $this->verifyPriceUpdate($amazonSku, $price, $accessToken, $salePrice);
             if ($v === true) {
                 return null;
             }
@@ -1270,6 +1305,55 @@ class AmazonSpApiService
         return null;
     }
 
+    /**
+     * Sales Price (discounted_price) on the customer offer.
+     *
+     * @param  array<string,mixed>  $data
+     */
+    private function extractListingsItemDiscountedPrice(array $data): ?float
+    {
+        $fromSchedule = function ($v): ?float {
+            if ($v === null) {
+                return null;
+            }
+            if (is_array($v) && isset($v[0]['schedule'][0]['value_with_tax'])) {
+                return (float) $v[0]['schedule'][0]['value_with_tax'];
+            }
+            if (is_array($v) && isset($v[0]['value_with_tax'])) {
+                return (float) $v[0]['value_with_tax'];
+            }
+
+            return null;
+        };
+
+        $groups = [];
+        $purchasable = $data['attributes']['purchasable_offer'] ?? null;
+        if (is_array($purchasable)) {
+            $groups[] = $purchasable;
+        }
+        if (is_array($data['offers'] ?? null)) {
+            $groups[] = $data['offers'];
+        }
+
+        foreach ($groups as $rows) {
+            $customer = $this->customerListingOffer($rows);
+            if ($customer === null) {
+                continue;
+            }
+            foreach (['discountedPrice', 'discounted_price'] as $k) {
+                if (! isset($customer[$k])) {
+                    continue;
+                }
+                $p = $fromSchedule($customer[$k]);
+                if ($p !== null) {
+                    return $p;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private function amazonAudienceIsBusiness(mixed $audience): bool
     {
         if (is_array($audience)) {
@@ -1306,7 +1390,7 @@ class AmazonSpApiService
      * Verify that the price was actually updated on Amazon
      * Returns: true if verified, false if price doesn't match, null if unable to verify
      */
-    private function verifyPriceUpdate($amazonSku, $expectedPrice, $accessToken = null)
+    private function verifyPriceUpdate($amazonSku, $expectedPrice, $accessToken = null, $expectedSale = null)
     {
         try {
             $sellerId = config('services.amazon_sp.seller_id');
@@ -1355,6 +1439,7 @@ class AmazonSpApiService
             }
 
             $currentPrice = $this->extractListingsItemYourPrice($data);
+            $currentSale = $this->extractListingsItemDiscountedPrice($data);
             
             if ($currentPrice === null) {
                 Log::warning("Could not extract price from verification response", [
@@ -1370,12 +1455,21 @@ class AmazonSpApiService
             // Compare prices (allow 0.02 difference for rounding)
             $priceDiff = abs($currentPrice - $expectedPrice);
             $verified = $priceDiff < 0.02;
+            $saleDiff = null;
+            if ($expectedSale !== null && (float) $expectedSale > 0
+                && (int) round((float) $expectedSale * 100) < (int) round((float) $expectedPrice * 100)) {
+                $saleDiff = $currentSale === null ? null : abs($currentSale - (float) $expectedSale);
+                $verified = $verified && $saleDiff !== null && $saleDiff < 0.02;
+            }
             
             Log::info("Price verification result", [
                 'sku' => $amazonSku,
                 'expected_price' => $expectedPrice,
                 'current_price' => $currentPrice,
+                'expected_sale' => $expectedSale,
+                'current_sale' => $currentSale,
                 'difference' => $priceDiff,
+                'sale_difference' => $saleDiff,
                 'verified' => $verified ? 'YES' : 'NO'
             ]);
             

@@ -312,9 +312,9 @@ class AmazonDilGroiRuleTest extends TestCase
             0.001
         );
 
-        // LMP is present and SGROI at LMP is under 20 → keep Dil, even when Std is lower.
+        // LMP is present and SGROI at LMP is under 20, but Dil is above Std → Std cap.
         $this->assertEqualsWithDelta(
-            50.0,
+            20.0,
             AmazonDilGroiRule::capSpriceToLmp(50, 12, 10, 0, 0.80, 20),
             0.001
         );

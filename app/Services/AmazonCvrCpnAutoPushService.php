@@ -138,7 +138,7 @@ class AmazonCvrCpnAutoPushService
                     $plan['business_price'],
                     $plan['min_price']
                 );
-                $ok = $this->pushSprice($api, $row['sku'], $row['seller_sku'], $computed['sprice'], $computed['cpn'], $reason);
+                $ok = $this->pushSprice($api, $row['sku'], $row['seller_sku'], $computed['sprice'], $computed['cpn'], $reason, (float) ($row['standard_price'] ?? 0));
                 if ($ok) {
                     $stats['pushed']++;
                 } else {
@@ -430,7 +430,7 @@ class AmazonCvrCpnAutoPushService
         }
     }
 
-    protected function pushSprice(AmazonSpApiService $api, string $statusSku, string $sellerSku, float $sprice, int $cpn, string $reason = 'price push'): bool
+    protected function pushSprice(AmazonSpApiService $api, string $statusSku, string $sellerSku, float $sprice, int $cpn, string $reason = 'price push', float $std = 0): bool
     {
         $price = round($sprice, 2);
         if ($price < 0.01 || $price > 999999.99) {
@@ -440,9 +440,12 @@ class AmazonCvrCpnAutoPushService
         }
 
         $apiSku = $sellerSku !== '' ? $sellerSku : $statusSku;
+        $stdPrice = round($std, 2);
+        $your = ($stdPrice > $price) ? $stdPrice : $price;
         $matched = $api->matchingSaleAndMinFromSprice($price);
+        $matched['sale_price'] = $price;
         $matched['push_reason'] = $reason;
-        $result = $api->updateAmazonPriceUS($apiSku, $price, 3, $matched);
+        $result = $api->updateAmazonPriceUS($apiSku, $your, 3, $matched);
 
         if (isset($result['errors']) && ! empty($result['errors'])) {
             $err = (string) ($result['errors'][0]['message'] ?? 'Amazon push failed');

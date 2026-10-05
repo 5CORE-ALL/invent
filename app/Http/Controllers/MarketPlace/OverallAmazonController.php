@@ -1602,17 +1602,15 @@ class OverallAmazonController extends Controller
         if ($saleRaw !== null && $saleRaw !== '' && is_numeric($saleRaw)) {
             $saleFloat = round((float) $saleRaw, 2);
             if ($saleFloat > 0) {
-                // Amazon will not keep a Sale above Your Price. Dil S PRC is often
-                // above Std. Dropping that Sale used to push Std, write Std into
-                // amazon_datsheets.price, and the blue badge (Price != S PRC)
-                // counted the SKU again on refresh. Raise Your Price to the S PRC.
+                // Std cap: a suggested S PRC above Std stays at Std.
+                // When Std is higher, Your Price stays Std and S PRC is the Sales Price.
                 if ($saleFloat > $priceFloat) {
-                    Log::info('applyAmazonPrice: raising Your Price to S PRC', [
+                    Log::info('applyAmazonPrice: std cap — S PRC above Std', [
                         'sku' => $statusSku,
-                        'your_price_before' => $priceFloat,
+                        'std' => $priceFloat,
                         'sprice' => $saleFloat,
                     ]);
-                    $priceFloat = $saleFloat;
+                    $saleFloat = $priceFloat;
                 }
                 if ($saleFloat <= $priceFloat) {
                     $extras['sale_price'] = $saleFloat;
