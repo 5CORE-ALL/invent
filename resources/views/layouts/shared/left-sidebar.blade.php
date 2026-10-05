@@ -2501,6 +2501,9 @@
                             <a href="{{ route('instagram.analytics') }}">Instagram Shop - Analytics</a>
                         </li>
                         <li>
+                            <a href="{{ route('instagram.shop.sold') }}">Instagram Shop Sold</a>
+                        </li>
+                        <li>
                             <a href="{{ route('zero.instagramshop') }}">Instagram Shop 0
                                 view</a>
                         </li>
@@ -3175,6 +3178,8 @@
                         <li><a href="{{ route('wayfair.daily.sales') }}">Wayfair Sales Data</a></li>
 
                         <li><a href="{{ route('facebook.marketplace') }}">FB Sales</a></li>
+
+                        <li><a href="{{ route('instagram.shop.sold') }}">Instagram Shop Sold</a></li>
                     </ul>
                 </div>
             </li>

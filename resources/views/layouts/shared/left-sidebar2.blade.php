@@ -1921,6 +1921,9 @@
                                 <div class="collapse" id="sidebarInstagramShop">
                                     <ul class="side-nav-third-level">
                                             <li>
+                                                <a href="{{ route('instagram.shop.sold') }}">Instagram Shop Sold</a>
+                                            </li>
+                                            <li>
                                                 <a href="{{ route('zero.instagramshop') }}">Instagram Shop 0
                                                     view</a>
                                             </li>
