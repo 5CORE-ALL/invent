@@ -235,6 +235,26 @@
     $lcUpdatedAt = now('America/Los_Angeles');
 
     $amzAdsMissingCount = \App\Http\Controllers\AmazonAdsMissingController::missingTotalCount(false);
+    // Same cached LMP M. total as /lmp-missing-data and the sidebar (NR channels left out).
+    $lmpMissingCount = \App\Support\Marketplace\LmpMissingChannelCounts::cachedTotalOrZero();
+    $lmpMissingRow = null;
+    try {
+        $lmpCached = \Illuminate\Support\Facades\Cache::get(
+            \App\Support\Marketplace\LmpMissingChannelCounts::TOTAL_CACHE_KEY
+        );
+        if ($lmpCached !== null) {
+            $lmpMissingRow = BadgeData::forPage('lmp-missing');
+            $storedLmpMissing = $lmpMissingRow?->data['lmp_missing'] ?? null;
+            if (! is_numeric($storedLmpMissing) || (int) $storedLmpMissing !== (int) $lmpCached) {
+                $lmpMissingRow = BadgeData::saveForPage('lmp-missing', [
+                    'lmp_missing' => (int) $lmpCached,
+                ]);
+            }
+        }
+        $lmpMissingRow ??= BadgeData::forPage('lmp-missing');
+    } catch (\Throwable $e) {
+        $lmpMissingRow = null;
+    }
     $adm = \App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController::dashboardBadgeTotals();
     $fmtAdmDollar = static fn ($value): string => '$'.number_format((int) round((float) $value));
     $fmtAdmInt = static fn ($value): string => number_format((int) round((float) $value));
@@ -398,6 +418,7 @@
         $kpi('MAP:', 'all-marketplace-master', 'map', $amm['map'] ?? null, 'Map'),
         $kpi('N MAP:', 'all-marketplace-master', 'nmap', $amm['nmap'] ?? null, 'N Map'),
         $kpi('MISSING L:', 'all-marketplace-master', 'missing_l', $amm['missing_l'] ?? null, 'Missing L'),
+        $kpi('LMP M.', 'lmp-missing', 'lmp_missing', $lmpMissingCount ?? null, 'LMP M.'),
     ];
 
 @endphp
@@ -650,6 +671,35 @@
                 role="button"
                 title="N ROI"
             >NROI: {{ number_format((int) round((float) ($amm['n_roi'] ?? 0))) }}%</span>
+        </div>
+    </div>
+</div>
+
+<!-- LMP Missing — LMP M. total from analytics pages (NR channels left out) -->
+<div id="lmp-missing-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fecaca, #fff1f2);">
+        <a href="{{ route('lmp.missing') }}" title="Open LMP Missing data" style="color:#dc3545;font-size:1.15rem;line-height:1;">
+            <i class="ri-price-tag-3-line"></i>
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">LMP Missing</h6>
+            @if ($lmpMissingRow?->updated_at)
+                <small class="dashboard-badge-panel__updated">Updated {{ $lmpMissingRow->updated_at->format('M j, g:i A') }}</small>
+            @endif
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:{{ (int) $lmpMissingCount > 0 ? '#dc3545' : '#28a745' }};color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('lmp.missing') }}'"
+                role="button"
+                data-kpi-key="{{ \App\Support\Badges\BadgeDataCatalog::makeKey('lmp-missing', 'lmp_missing') }}"
+                data-kpi-label="LMP M."
+                data-kpi-value="{{ (int) $lmpMissingCount }}"
+                title="LMP M.: INV &gt; 0 SKUs with no LMP data. NR channels are left out. Green = 0 missing. Click the dot for rolling history."
+            >LMP M. {{ number_format((int) $lmpMissingCount) }}</span>
         </div>
     </div>
 </div>

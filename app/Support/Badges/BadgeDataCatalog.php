@@ -30,6 +30,7 @@ class BadgeDataCatalog
             'purchase-contract' => 'Purchase Contract',
             'pricing-errors-fix' => 'Pricing Errors Fix',
             'compliance-master' => 'Compliance Masters',
+            'lmp-missing' => 'LMP Missing',
         ];
     }
 
@@ -187,6 +188,9 @@ class BadgeDataCatalog
                 'missing_graph' => 'Graph',
                 'missing_tsp' => 'TSP',
                 'missing_batch' => 'Batch',
+            ],
+            'lmp-missing' => [
+                'lmp_missing' => 'LMP M.',
             ],
         ];
     }

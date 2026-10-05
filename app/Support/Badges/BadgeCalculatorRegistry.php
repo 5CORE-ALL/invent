@@ -29,6 +29,7 @@ class BadgeCalculatorRegistry
             InventoryVerifyBadgeCalculator::class,
             PurchaseContractBadgeCalculator::class,
             ComplianceMasterBadgeCalculator::class,
+            LmpMissingBadgeCalculator::class,
         ];
     }
 
