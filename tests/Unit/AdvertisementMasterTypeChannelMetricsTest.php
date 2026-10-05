@@ -136,13 +136,41 @@ class AdvertisementMasterTypeChannelMetricsTest extends TestCase
                 'cvr' => 25.0,
                 'tcos' => 4.2,
                 'l30_sales' => 10012.0,
+                'active' => 2206,
             ],
         ]);
 
         $this->assertEqualsWithDelta(420.5, $rows[0]['_children'][0]['spend'], 0.001);
         $this->assertEqualsWithDelta(420.5, $rows[0]['spend'], 0.001);
         $this->assertSame(12, $rows[0]['clicks']);
+        $this->assertSame(2206, $rows[0]['_children'][0]['active']);
+        $this->assertSame(2206, $rows[0]['active']);
         $this->assertEqualsWithDelta(4.2, $rows[0]['tcos'], 0.05);
+    }
+
+    public function test_reverb_bump_volumes_fill_clicks_sold_sales_cvr_and_acos(): void
+    {
+        $controller = new AdvertisementMasterController;
+        $ref = new ReflectionMethod($controller, 'fillReverbBumpVolumes');
+        $out = $ref->invoke($controller, [
+            'spend' => 193.98,
+            'clicks' => 0,
+            'sold' => 0,
+            'sales' => 0.0,
+            'acos' => 0.0,
+            'cvr' => 0.0,
+            'tcos' => 3.03,
+            'l30_sales' => 6408.0,
+            'total_views' => 8585422,
+            'l30_orders' => 209,
+            'total_quantity' => 209,
+        ]);
+
+        $this->assertSame(8585, $out['clicks']);
+        $this->assertSame(209, $out['sold']);
+        $this->assertEqualsWithDelta(6408.0, $out['sales'], 0.01);
+        $this->assertEqualsWithDelta(2.4, $out['cvr'], 0.05);
+        $this->assertEqualsWithDelta(3.0, $out['acos'], 0.05);
     }
 
     public function test_channel_with_type_rows_is_not_given_an_extra_default_type(): void

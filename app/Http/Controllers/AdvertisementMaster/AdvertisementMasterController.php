@@ -28,6 +28,7 @@ use App\Http\Controllers\MarketPlace\ReverbController;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Support\Badges\AllMarketplaceMasterBadgeAggregator;
+use App\Support\ReverbPricingViews;
 use App\Models\AdvertisementMasterChannelLabel;
 use App\Models\BadgeData;
 use App\Models\BadgeDataHistory;
@@ -1927,7 +1928,7 @@ class AdvertisementMasterController extends Controller
         try {
             $rows = ChannelMasterCalculatedData::query()->get([
                 'channel', 'total_ad_spend', 'clicks', 'ad_sold', 'ad_sales', 'acos', 'cvr',
-                'ads_percentage', 'l30_sales',
+                'ads_percentage', 'l30_sales', 'l30_orders', 'total_quantity', 'total_views',
                 'kw_clicks', 'pt_clicks', 'hl_clicks', 'pmt_clicks', 'shopping_clicks', 'serp_clicks',
                 'kw_sales', 'pt_sales', 'hl_sales', 'pmt_sales', 'shopping_sales', 'serp_sales',
                 'kw_sold', 'pt_sold', 'hl_sold', 'pmt_sold', 'shopping_sold', 'serp_sold',
@@ -1950,6 +1951,9 @@ class AdvertisementMasterController extends Controller
                 'cvr' => (float) ($row->cvr ?? 0),
                 'tcos' => (float) ($row->ads_percentage ?? 0),
                 'l30_sales' => (float) ($row->l30_sales ?? 0),
+                'l30_orders' => (int) ($row->l30_orders ?? 0),
+                'total_quantity' => (int) ($row->total_quantity ?? 0),
+                'total_views' => (float) ($row->total_views ?? 0),
                 'kw_clicks' => (int) ($row->kw_clicks ?? 0),
                 'pt_clicks' => (int) ($row->pt_clicks ?? 0),
                 'hl_clicks' => (int) ($row->hl_clicks ?? 0),
@@ -2036,8 +2040,68 @@ class AdvertisementMasterController extends Controller
         $metrics['spend'] = round($spend, 2);
         $metrics['tcos'] = round($pct, 2);
         $metrics['l30_sales'] = round($l30, 2);
+        $metrics = $this->fillReverbBumpVolumes($metrics);
+        if ((int) ($metrics['active'] ?? 0) <= 0) {
+            $metrics['active'] = $this->reverbActiveBumpCount();
+        }
 
         return $metrics;
+    }
+
+    /**
+     * Reverb has no campaign-report clicks or ad sales. Use bump impressions
+     * (same ÷1000 Views as /reverb-pricing), L30 units, and L30 sales so
+     * CVR and ACOS match the bump Ads%.
+     *
+     * @param  array<string, float|int>  $metrics
+     * @return array<string, float|int>
+     */
+    private function fillReverbBumpVolumes(array $metrics): array
+    {
+        if ((int) ($metrics['clicks'] ?? 0) <= 0) {
+            $metrics['clicks'] = (int) round(ReverbPricingViews::scale((float) ($metrics['total_views'] ?? 0)));
+        }
+        if ((int) ($metrics['sold'] ?? 0) <= 0) {
+            $sold = (int) ($metrics['total_quantity'] ?? 0);
+            if ($sold <= 0) {
+                $sold = (int) ($metrics['l30_orders'] ?? 0);
+            }
+            $metrics['sold'] = $sold;
+        }
+        if ((float) ($metrics['sales'] ?? 0) <= 0) {
+            $metrics['sales'] = round((float) ($metrics['l30_sales'] ?? 0), 2);
+        }
+        $clicks = (int) ($metrics['clicks'] ?? 0);
+        $sold = (int) ($metrics['sold'] ?? 0);
+        $sales = (float) ($metrics['sales'] ?? 0);
+        $spend = (float) ($metrics['spend'] ?? 0);
+        if ((float) ($metrics['cvr'] ?? 0) <= 0 && $clicks > 0) {
+            $metrics['cvr'] = round(($sold / $clicks) * 100, 1);
+        }
+        if ((float) ($metrics['acos'] ?? 0) <= 0 && $sales > 0) {
+            $metrics['acos'] = round(($spend / $sales) * 100, 1);
+        }
+
+        return $metrics;
+    }
+
+    private function reverbActiveBumpCount(): int
+    {
+        if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'bump_bid')) {
+            return 0;
+        }
+
+        try {
+            return (int) DB::table('reverb_products')
+                ->whereNotNull('bump_bid')
+                ->whereRaw('TRIM(bump_bid) <> ""')
+                ->whereRaw('TRIM(bump_bid) NOT IN ("0", "0%", "0.0", "0.00")')
+                ->count();
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master Reverb active bump count failed: '.$e->getMessage());
+
+            return 0;
+        }
     }
 
     /**
@@ -2103,10 +2167,15 @@ class AdvertisementMasterController extends Controller
             }
             if (! empty($row['is_group_total'])) {
                 $this->sumGroupAdsFromChildren($row);
-                // Reverb bump fees are not campaign sales, so ACOS stays the
-                // saved rate instead of becoming 100% when Ads Sales is 0.
-                if ($this->adsParentKey($row) === 'reverb' && (float) ($row['sales'] ?? 0) <= 0) {
-                    $row['acos'] = round((float) ($byChannel['reverb']['acos'] ?? 0), 1);
+                if ($this->adsParentKey($row) === 'reverb') {
+                    $bump = $byChannel['reverb'] ?? [];
+                    $active = (int) ($bump['active'] ?? 0);
+                    if ($active > 0) {
+                        $row['active'] = $active;
+                    }
+                    if ((float) ($row['sales'] ?? 0) <= 0) {
+                        $row['acos'] = round((float) ($bump['acos'] ?? 0), 1);
+                    }
                 }
                 continue;
             }
@@ -2179,6 +2248,9 @@ class AdvertisementMasterController extends Controller
         $row['sales'] = round((float) $metrics['sales'], 2);
         $row['acos'] = round((float) $metrics['acos'], 1);
         $row['cvr'] = round((float) $metrics['cvr'], 1);
+        if (array_key_exists('active', $metrics)) {
+            $row['active'] = (int) $metrics['active'];
+        }
         $row['tcos'] = round((float) $metrics['tcos'], 1);
         $row['has_tcos'] = ((float) $metrics['l30_sales']) > 0 || ((float) $metrics['spend']) > 0;
         $row['t_sales'] = round((float) $metrics['l30_sales'], 2);
