@@ -2452,7 +2452,14 @@ class AmazonSpApiService
                     $skippedInvalid++;
                     continue;
                 }
+                if (count($row) > count($headers)) {
+                    $row = array_slice($row, 0, count($headers));
+                }
                 $data = array_combine($headers, $row);
+                if ($data === false) {
+                    $skippedInvalid++;
+                    continue;
+                }
                 $sellerSku = isset($data['seller-sku']) ? preg_replace('/[^\x20-\x7E]/', '', trim($data['seller-sku'])) : null;
                 $asin1 = isset($data['asin1']) ? trim($data['asin1']) : null;
 
@@ -2509,30 +2516,27 @@ class AmazonSpApiService
                         }
                     }
                 }
-                if (Schema::hasColumn($tableName, 'thumbnail_image') && $thumbnailUrl !== null) {
+                if (Schema::hasColumn($tableName, 'thumbnail_image')) {
                     $rowData['thumbnail_image'] = $thumbnailUrl;
-                    if ($inserted < 3) {
-                        Log::debug('Amazon Listings Report: thumbnail from report', [
-                            'seller_sku' => $sellerSku,
-                            'thumbnail_image' => substr($thumbnailUrl, 0, 80) . '...',
-                        ]);
-                    }
                 }
 
-                if (Schema::hasColumn($tableName, 'list_price') && $listPrice !== null) {
+                if (Schema::hasColumn($tableName, 'list_price')) {
                     $rowData['list_price'] = $listPrice;
                 }
-                if (Schema::hasColumn($tableName, 'minimum_advertised_price') && $minAdvertisedPrice !== null) {
+                if (Schema::hasColumn($tableName, 'minimum_advertised_price')) {
                     $rowData['minimum_advertised_price'] = $minAdvertisedPrice;
                 }
                 $condType = $data['condition-type'] ?? $data['condition_type'] ?? null;
-                if (Schema::hasColumn($tableName, 'condition_type') && $condType !== null && $condType !== '') {
-                    $rowData['condition_type'] = trim((string) $condType);
-                    $rowData['condition_type_display'] = self::mapConditionType($rowData['condition_type']);
+                if (Schema::hasColumn($tableName, 'condition_type')) {
+                    $condType = ($condType !== null && $condType !== '') ? trim((string) $condType) : null;
+                    $rowData['condition_type'] = $condType;
+                    $rowData['condition_type_display'] = $condType !== null ? self::mapConditionType($condType) : null;
                 }
                 $reportQty = $data['quantity'] ?? $data['Quantity'] ?? null;
-                if (Schema::hasColumn($tableName, 'quantity') && $reportQty !== null && $reportQty !== '' && is_numeric($reportQty)) {
-                    $rowData['quantity'] = (int) $reportQty;
+                if (Schema::hasColumn($tableName, 'quantity')) {
+                    $rowData['quantity'] = ($reportQty !== null && $reportQty !== '' && is_numeric($reportQty))
+                        ? (int) $reportQty
+                        : null;
                 }
                 $batch[] = $rowData;
                 if (count($batch) >= $batchSize) {

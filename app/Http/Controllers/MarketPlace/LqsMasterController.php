@@ -13,9 +13,7 @@ use App\Models\ShopifySku;
 use App\Models\JungleScoutProductData;
 use App\Models\LqsHistory;
 use App\Models\AmazonDatasheet;
-use App\Models\AmazonListingRaw;
 use App\Models\AmazonProductReview;
-use App\Services\Lqs\AmazonListingCompletenessScorer;
 use App\Models\LqsAmzHistory;
 use App\Models\LqsAmzAction;
 use Illuminate\Http\Request;
@@ -675,8 +673,8 @@ class LqsMasterController extends Controller
      *   - ProductMaster        → parent / SKU grouping
      *   - AmazonDatasheet      → ASIN, price, units_ordered_l30, sessions_l30
      *   - ShopifySku           → inventory (inv), image_src
-     *   - amazon_listings_raw + product A+ content → Amazon listing completeness (0–100)
-     *   - JungleScoutProductData → rating and reviews (matched by ASIN first, then SKU)
+     *   - JungleScoutProductData → LQS (listing_quality_score), rating, reviews
+     *     Newest row for the exact ASIN. Same 0–10 number Jungle Scout shows.
      *   - AmazonProductReview → rating and review count when Jungle Scout has none
      */
     public function getLqsAmzData(Request $request)
@@ -719,34 +717,26 @@ class LqsMasterController extends Controller
                 ->groupBy(fn ($r) => strtoupper(trim($r->sku)))
                 ->map(fn ($group) => $group->first());
 
-            // JungleScout: ASIN lives on the asin column (not data.asin). Also
-            // index compact SKUs so "MS 080 WH 2 PCS" matches "MS 080 WH 2PC".
-            $jsAll = JungleScoutProductData::all();
-            $jsByAsin = [];
-            $jsBySku  = [];
-            foreach ($jsAll as $jsRow) {
+            // Newest Jungle Scout row per ASIN and per SKU. The LQS column in
+            // Jungle Scout is listing_quality_score, shown as a whole number.
+            $jsLatestByAsin = [];
+            $jsLatestBySku = [];
+            foreach (JungleScoutProductData::query()->orderBy('updated_at')->get() as $jsRow) {
                 foreach ([
                     $normalizeSku($jsRow->sku),
                     AmazonDatasheet::normalizeSkuForLookup($jsRow->sku),
                 ] as $jsSkuKey) {
                     if ($jsSkuKey !== '') {
-                        $jsBySku[$jsSkuKey][] = $jsRow;
+                        $jsLatestBySku[$jsSkuKey] = $jsRow;
                     }
                 }
-                $asinCandidates = [
-                    strtoupper(trim((string) ($jsRow->asin ?? ''))),
-                    is_array($jsRow->data) ? strtoupper(trim((string) ($jsRow->data['asin'] ?? ''))) : '',
-                ];
-                foreach ($asinCandidates as $jsAsin) {
-                    if ($jsAsin !== '') {
-                        $jsByAsin[$jsAsin][] = $jsRow;
-                    }
+                $jsAsin = strtoupper(trim((string) ($jsRow->asin ?? '')));
+                if ($jsAsin !== '') {
+                    $jsLatestByAsin[$jsAsin] = $jsRow;
                 }
             }
 
             [$reviewsByAsin, $reviewsBySku] = $this->amazonReviewIndexes();
-            [$listingsBySku, $listingsByAsin] = $this->amazonListingIndexes($normalizeSku);
-            $lqsScorer = new AmazonListingCompletenessScorer();
 
             $rows = [];
             foreach ($productMastersBySku->keys() as $normalizedSku) {
@@ -774,38 +764,25 @@ class LqsMasterController extends Controller
                     $imageSrc = "https://images-na.ssl-images-amazon.com/images/P/{$asin}.01.THUMBZZZ.jpg";
                 }
 
-                // Rating and reviews still come from Jungle Scout. LQS is Amazon's
-                // own listing-completeness score, scored below from the listing.
                 $rating  = null;
                 $reviews = null;
+                $lqs     = null;
 
-                $jsEntries = [];
-                $jsBuckets = [];
-                if ($asin !== '') {
-                    $jsBuckets[] = $jsByAsin[$asin] ?? [];
-                }
-                foreach (array_unique(array_filter([$normalizedSku, $amazonCompact])) as $jsSkuKey) {
-                    $jsBuckets[] = $jsBySku[$jsSkuKey] ?? [];
-                }
-                foreach ($jsBuckets as $bucket) {
-                    foreach ($bucket as $jsRow) {
-                        if (! is_array($jsRow->data)) {
-                            continue;
-                        }
-                        $payload = array_is_list($jsRow->data) ? $jsRow->data : [$jsRow->data];
-                        foreach ($payload as $entry) {
-                            if (is_array($entry)) {
-                                $jsEntries[] = $entry;
-                            }
-                        }
+                $jsRow = ($asin !== '' ? ($jsLatestByAsin[$asin] ?? null) : null)
+                    ?? $jsLatestBySku[$normalizedSku]
+                    ?? $jsLatestBySku[$amazonCompact]
+                    ?? null;
+                $jsEntry = $this->jungleScoutEntryForAsin(is_object($jsRow) ? $jsRow->data : null, $asin);
+                if (is_array($jsEntry)) {
+                    if (! empty($jsEntry['rating']) && is_numeric($jsEntry['rating']) && (float) $jsEntry['rating'] > 0) {
+                        $rating = (float) $jsEntry['rating'];
+                        $reviews = isset($jsEntry['reviews']) && is_numeric($jsEntry['reviews'])
+                            ? (int) $jsEntry['reviews']
+                            : null;
                     }
-                }
-
-                foreach ($jsEntries as $entry) {
-                    if (!empty($entry['rating']) && $entry['rating'] > 0) {
-                        $rating  = (float) $entry['rating'];
-                        $reviews = isset($entry['reviews']) ? (int) $entry['reviews'] : null;
-                        break;
+                    $rawLqs = $jsEntry['listing_quality_score'] ?? null;
+                    if (is_numeric($rawLqs) && (string) $rawLqs !== '') {
+                        $lqs = (int) round((float) $rawLqs);
                     }
                 }
 
@@ -823,14 +800,6 @@ class LqsMasterController extends Controller
                         $reviews = $savedCount;
                     }
                 }
-
-                $listing = $listingsBySku[$normalizedSku]
-                    ?? $listingsBySku[$amazonCompact]
-                    ?? ($asin !== '' ? ($listingsByAsin[$asin] ?? null) : null);
-                $lqsResult = $listing
-                    ? $lqsScorer->scoreStored($listing, $productMaster->amazon_aplus_content ?? null)
-                    : null;
-                $lqs = $lqsResult['score'] ?? null;
 
                 $displaySku = $productMaster->sku ?? $normalizedSku;
                 $parent     = $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null;
@@ -856,8 +825,6 @@ class LqsMasterController extends Controller
                     'reviews'            => $reviews,
                     'cvr'                => $cvr,
                     'lqs'                => $lqs,
-                    'lqs_grade'          => $lqsResult['grade'] ?? null,
-                    'lqs_missing'        => $lqsResult ? implode(', ', $lqsResult['missing']) : null,
                     'has_action'         => $hasAction,
                     'latest_action_text' => $hasAction ? $latestAction->action : null,
                     'latest_action_user' => $hasAction ? ($latestAction->user->name ?? 'Unknown') : null,
@@ -892,8 +859,6 @@ class LqsMasterController extends Controller
                     'reviews'            => null,
                     'cvr'                => $totalSess > 0 ? round(($totalL30 / $totalSess) * 100, 2) : null,
                     'lqs'                => null,
-                    'lqs_grade'          => null,
-                    'lqs_missing'        => null,
                     'has_action'         => false,
                     'latest_action_text' => null,
                     'latest_action_user' => null,
@@ -916,33 +881,27 @@ class LqsMasterController extends Controller
     }
 
     /**
-     * @param  callable(mixed): string  $normalizeSku
-     * @return array{0: array<string, AmazonListingRaw>, 1: array<string, AmazonListingRaw>}
+     * @return array<string, mixed>|null
      */
-    private function amazonListingIndexes(callable $normalizeSku): array
+    private function jungleScoutEntryForAsin(mixed $data, string $asin): ?array
     {
-        $bySku = [];
-        $byAsin = [];
-        if (! Schema::hasTable('amazon_listings_raw')) {
-            return [$bySku, $byAsin];
+        if (! is_array($data)) {
+            return null;
+        }
+        $entries = array_is_list($data) ? $data : [$data];
+        $fallback = null;
+        foreach ($entries as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $entryAsin = strtoupper(str_replace('us/', '', trim((string) ($entry['id'] ?? $entry['asin'] ?? ''))));
+            if ($asin !== '' && $entryAsin === $asin) {
+                return $entry;
+            }
+            $fallback ??= $entry;
         }
 
-        foreach (AmazonListingRaw::query()->get() as $listing) {
-            foreach ([
-                $normalizeSku($listing->seller_sku),
-                AmazonDatasheet::normalizeSkuForLookup($listing->seller_sku),
-            ] as $skuKey) {
-                if ($skuKey !== '' && ! isset($bySku[$skuKey])) {
-                    $bySku[$skuKey] = $listing;
-                }
-            }
-            $asin = strtoupper(trim((string) ($listing->asin1 ?? '')));
-            if ($asin !== '' && ! isset($byAsin[$asin])) {
-                $byAsin[$asin] = $listing;
-            }
-        }
-
-        return [$bySku, $byAsin];
+        return $fallback;
     }
 
     /**
@@ -965,8 +924,8 @@ class LqsMasterController extends Controller
                 $l30    = (float) ($r['l30']      ?? 0);
                 $sess   = (float) ($r['sessions'] ?? 0);
                 $lqsRaw = $r['lqs'] ?? null;
-                $hasLqs = $lqsRaw !== null && $lqsRaw !== '';
-                $lqs    = $hasLqs ? (float) $lqsRaw : null;
+                $hasLqs = is_numeric($lqsRaw) && (float) $lqsRaw > 0;
+                $lqs    = $hasLqs ? (float) $lqsRaw : 0;
                 $rating = (float) ($r['rating']   ?? 0);
 
                 $totalInv  += $inv;
@@ -976,7 +935,7 @@ class LqsMasterController extends Controller
                 if ($inv > 0)    { $dilSum    += ($l30 / $inv) * 100; $dilCount++; }
                 if ($hasLqs) { $lqsSum += $lqs; $lqsCount++; }
                 if ($rating > 0) { $ratingSum += $rating; $ratingCount++; }
-                if ($hasLqs && $lqs < 80) { $lqsBelow9++; }
+                if ($hasLqs && $lqs < 9) { $lqsBelow9++; }
             }
 
             $avgDil    = $dilCount    > 0 ? $dilSum    / $dilCount    : 0;
