@@ -213,6 +213,14 @@
             position: relative;
         }
 
+        .orders-hold-channel-filter {
+            min-width: 110px;
+            font-size: 11px;
+            padding-top: 2px;
+            padding-bottom: 2px;
+            font-weight: normal;
+        }
+
         .rows-graph-dot {
             width: 12px;
             height: 12px;
@@ -545,7 +553,13 @@
                                     <th class="orders-hold-col-qty">Qty Avl</th>
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent parent-col">Parent</th>
-                                    <th class="orders-hold-col-mp">MKT1</th>
+                                    <th class="orders-hold-col-mp">
+                                        <div>MKT1</div>
+                                        <select id="channel-filter-select" class="form-select form-select-sm mt-1 orders-hold-channel-filter"
+                                            title="Filter by channel (MKT1)" aria-label="Filter by channel">
+                                            <option value="">All</option>
+                                        </select>
+                                    </th>
                                     <th class="orders-hold-col-mp">MKT2</th>
                                     <th class="orders-hold-col-qty">M link</th>
                                     <th class="orders-hold-col-what">Issue?</th>
@@ -1400,8 +1414,45 @@
                 return true;
             }
 
+            let activeChannelFilter = '';
+
+            function rowChannel(r) {
+                return String(r?.marketplace_1 || '').trim();
+            }
+
+            function buildChannelFilter() {
+                const select = document.getElementById('channel-filter-select');
+                if (!select) return;
+                const counts = {};
+                const labels = {};
+                holdIssueRows.forEach(r => {
+                    const ch = rowChannel(r);
+                    const key = ch.toLowerCase();
+                    counts[key] = (counts[key] || 0) + 1;
+                    if (!labels[key]) labels[key] = ch || '(blank)';
+                });
+                const keys = Object.keys(counts).sort((a, b) => labels[a].localeCompare(labels[b]));
+                select.innerHTML = '<option value="">All (' + holdIssueRows.length + ')</option>';
+                keys.forEach(key => {
+                    const opt = document.createElement('option');
+                    opt.value = key === '' ? '__blank__' : key;
+                    opt.textContent = labels[key] + ' (' + counts[key] + ')';
+                    select.appendChild(opt);
+                });
+                const stillThere = activeChannelFilter === '' ||
+                    Array.from(select.options).some(o => o.value === activeChannelFilter);
+                if (!stillThere) activeChannelFilter = '';
+                select.value = activeChannelFilter;
+            }
+
+            function rowMatchesChannelFilter(r) {
+                const key = rowChannel(r).toLowerCase();
+                return activeChannelFilter === '__blank__' ? key === '' : key === activeChannelFilter;
+            }
+
             function getFilteredRows() {
                 let rows = holdIssueRows;
+                if (activeChannelFilter) rows = rows.filter(rowMatchesChannelFilter);
                 if (activeDeptFilter) rows = rows.filter(rowMatchesActiveDeptFilter);
                 if (activeSearchQuery) rows = rows.filter(rowMatchesSearchQuery);
                 if (activeDateRange.from || activeDateRange.to) rows = rows.filter(rowMatchesDateRange);
@@ -1570,6 +1621,7 @@
                 if (!tableBody) return;
 
                 buildDeptFilters();
+                buildChannelFilter();
                 const rows = getFilteredRows();
 
                 if (!rows.length) {
@@ -2657,6 +2709,16 @@
                     searchTimer = setTimeout(apply, 120);
                 });
                 searchInput.addEventListener('search', apply);
+            })();
+
+            (function initChannelFilter() {
+                const select = document.getElementById('channel-filter-select');
+                if (!select) return;
+                select.addEventListener('click', e => e.stopPropagation());
+                select.addEventListener('change', () => {
+                    activeChannelFilter = select.value;
+                    renderRows();
+                });
             })();
 
             (function initDateRangeFilter() {
