@@ -298,18 +298,29 @@ class FetchTemu3Metrics extends Command
             foreach ($data['result']['goodsList'] ?? [] as $good) {
                 $goodsId = $good['goodsId'] ?? null;
                 foreach ($good['skuInfoList'] ?? [] as $sku) {
-                    $skuSn = $sku['skuSn'] ?? null;
-                    if (! $skuSn || ! $goodsId) {
+                    $skuSn = trim((string) ($sku['skuSn'] ?? $sku['outSkuSn'] ?? ''));
+                    $skuId = trim((string) ($sku['skuId'] ?? ''));
+                    if (! $goodsId || ($skuSn === '' && $skuId === '')) {
                         continue;
                     }
 
-                    $skuSnKey = (string) $skuSn;
-                    $updated = Temu3Metric::where('sku', $skuSnKey)
-                        ->orWhere('sku_id', $skuSnKey)
-                        ->update(['goods_id' => $goodsId]);
-                    if ($updated) {
-                        $updatedCount += $updated;
+                    $patch = ['goods_id' => (string) $goodsId];
+                    if ($skuId !== '') {
+                        $patch['sku_id'] = $skuId;
                     }
+
+                    // skuId is the stable key; the seller SKU (skuSn) can differ in case/spacing from outSkuSn.
+                    $updated = $skuId !== '' ? Temu3Metric::where('sku_id', $skuId)->update($patch) : 0;
+                    if (! $updated && $skuSn !== '') {
+                        $updated = Temu3Metric::where('sku', $skuSn)->update($patch);
+                    }
+                    if (! $updated && $skuSn !== '') {
+                        // Listing missing from the SKU list: add it so it can be linked to Shopify.
+                        Temu3Metric::create(array_merge(['sku' => $skuSn], $patch));
+                        $this->mirrorPricingCache($skuSn, $patch);
+                        $updated = 1;
+                    }
+                    $updatedCount += $updated;
                 }
             }
 

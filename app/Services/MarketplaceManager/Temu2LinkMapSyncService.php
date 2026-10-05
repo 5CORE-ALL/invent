@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class Temu2LinkMapSyncService
 {
-    private const CACHE_KEY = 'temu_link_map_sync';
+    private const CACHE_KEY = 'temu2_link_map_sync';
 
     public function __construct(
         protected Temu2ApiService $temuApi
@@ -156,11 +156,13 @@ class Temu2LinkMapSyncService
         ]);
 
         try {
-            Artisan::call('app:fetch-temu-metrics');
-            $output = trim(Artisan::output());
-            Log::info('Temu2LinkMapSyncService: fetch-temu-metrics', ['output' => $output]);
+            // SKUs first (seller SKU + skuId), then goods (goods_id) - the two steps that build the link map.
+            foreach (['skus', 'goods'] as $step) {
+                Artisan::call('app:fetch-temu2-metrics', ['--only' => $step]);
+                Log::info('Temu2LinkMapSyncService: fetch-temu2-metrics', ['step' => $step, 'output' => trim(Artisan::output())]);
+            }
         } catch (\Throwable $e) {
-            Log::warning('Temu2LinkMapSyncService: fetch-temu-metrics failed, trying getInventory', [
+            Log::warning('Temu2LinkMapSyncService: fetch-temu2-metrics failed, trying getInventory', [
                 'error' => $e->getMessage(),
             ]);
             try {

@@ -1259,7 +1259,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.faq.customers.resolve');
     Route::post('/customer-care/faq-customers/{customer_faq}/status', [CustomerFaqController::class, 'updateStatus'])
         ->name('customer.care.faq.customers.status');
-    Route::get('/customer-care/orders-on-hold', function () {
+    // The Orders On Hold page also serves the Mapping / Software board (?board=mapping-software):
+    // same table and actions, scoped to rows whose department includes that board's department.
+    $holdBoardDepartment = static fn (): string => request()->input('board') === 'mapping-software'
+        ? 'Mapping / Software'
+        : 'Orders on Hold';
+    $whereHoldBoardDepartment = static function ($q, string $department): void {
+        // json_encode stores "/" as "\/", so also match the escaped form.
+        $q->where('department', $department)
+            ->orWhere('department', 'like', '%"'.$department.'"%')
+            ->orWhere('department', 'like', '%"'.str_replace('/', '\\\\/', $department).'"%');
+    };
+    $ordersOnHoldPage = static function (?string $board = null) {
         $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
             ->whereNotNull('marketplace')
             ->where('marketplace', '!=', '')
@@ -1270,8 +1281,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ->unique()
             ->values();
 
+        if ($board === 'mapping-software') {
+            return view('customer-care.orders_on_hold', [
+                'marketplaces' => $marketplaces,
+                'holdBoard' => 'mapping-software',
+                'holdBoardDepartment' => 'Mapping / Software',
+                'pageTitle' => 'Mapping / Software',
+                'recordsTitle' => 'Mapping / Software Records',
+            ]);
+        }
+
         return view('customer-care.orders_on_hold', compact('marketplaces'));
-    })->name('customer.care.orders.on.hold');
+    };
+    Route::get('/customer-care/orders-on-hold', fn () => $ordersOnHoldPage())
+        ->name('customer.care.orders.on.hold');
+    Route::get('/customer-care/mapping-software', fn () => $ordersOnHoldPage('mapping-software'))
+        ->name('customer.care.mapping.software');
     Route::get('/customer-care/orders-on-hold/sku-details', function (\Illuminate\Http\Request $request) {
         $sku = trim((string) $request->query('sku', ''));
         if ($sku === '') {
@@ -1325,15 +1350,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'image_url' => $imageUrl,
         ]);
     })->name('customer.care.orders.on.hold.sku.details');
-    Route::get('/customer-care/orders-on-hold/issues', function () {
+    Route::get('/customer-care/orders-on-hold/issues', function () use ($holdBoardDepartment, $whereHoldBoardDepartment) {
+        $boardDepartment = $holdBoardDepartment();
         $query = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             })
-            ->where(function ($q) {
-                $q->where('department', 'Orders on Hold')
-                    ->orWhere('department', 'like', '%"Orders on Hold"%');
-            });
+            ->where(fn ($q) => $whereHoldBoardDepartment($q, $boardDepartment));
         $rows = $query
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -1568,12 +1591,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['data' => $data]);
     })->name('customer.care.orders.on.hold.issues.index');
-    Route::get('/customer-care/orders-on-hold/history', function () {
+    Route::get('/customer-care/orders-on-hold/history', function () use ($holdBoardDepartment, $whereHoldBoardDepartment) {
+        $boardDepartment = $holdBoardDepartment();
         $historyQuery = \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')
-            ->where(function ($q) {
-                $q->where('department', 'Orders on Hold')
-                    ->orWhere('department', 'like', '%"Orders on Hold"%');
-            });
+            ->where(fn ($q) => $whereHoldBoardDepartment($q, $boardDepartment));
         $rows = $historyQuery
             ->orderByDesc('id')
             ->limit(1000)
@@ -1643,7 +1664,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['data' => $data]);
     })->name('customer.care.orders.on.hold.history.index');
-    Route::post('/customer-care/orders-on-hold/issues', function (\Illuminate\Http\Request $request) {
+    Route::post('/customer-care/orders-on-hold/issues', function (\Illuminate\Http\Request $request) use ($holdBoardDepartment) {
         $validated = $request->validate([
             'sku' => 'required|string|max:128',
             'qty' => 'required|numeric|min:0',
@@ -1704,7 +1725,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $createdBy = 'System';
         }
 
-        $departments = \App\Support\CustomerCareDepartments::normalizeStringList(array_merge((array) ($validated['department'] ?? []), ['Orders on Hold']));
+        $departments = \App\Support\CustomerCareDepartments::normalizeStringList(array_merge((array) ($validated['department'] ?? []), [$holdBoardDepartment()]));
         $departmentEncoded = \App\Support\CustomerCareDepartments::encode($departments);
 
         $id = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $createdBy, $user, $departmentEncoded) {
@@ -1838,7 +1859,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ],
         ], 201);
     })->name('customer.care.orders.on.hold.issues.store');
-    Route::put('/customer-care/orders-on-hold/issues/{id}', function (\Illuminate\Http\Request $request, int $id) {
+    Route::put('/customer-care/orders-on-hold/issues/{id}', function (\Illuminate\Http\Request $request, int $id) use ($holdBoardDepartment) {
         $validated = $request->validate([
             'sku' => 'required|string|max:128',
             'qty' => 'required|numeric|min:0',
@@ -1904,7 +1925,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $actorName = 'System';
         }
 
-        $departments = \App\Support\CustomerCareDepartments::normalizeStringList(array_merge((array) ($validated['department'] ?? []), ['Orders on Hold']));
+        $departments = \App\Support\CustomerCareDepartments::normalizeStringList(array_merge((array) ($validated['department'] ?? []), [$holdBoardDepartment()]));
         $departmentEncoded = \App\Support\CustomerCareDepartments::encode($departments);
 
         \Illuminate\Support\Facades\DB::transaction(function () use ($id, $validated, $actorName, $user, $departmentEncoded) {
@@ -2241,7 +2262,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ]);
     })->name('customer.care.orders.on.hold.issues.options');
 
-    Route::post('/customer-care/orders-on-hold/import-csv', function (\Illuminate\Http\Request $request) {
+    Route::post('/customer-care/orders-on-hold/import-csv', function (\Illuminate\Http\Request $request) use ($holdBoardDepartment) {
         $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
         $file = $request->file('file');
         $handle = fopen($file->getRealPath(), 'r');
@@ -2251,6 +2272,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         $errors = [];
         $user = auth()->user();
         $createdBy = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $boardDepartment = $holdBoardDepartment();
         $map = ['sku' => ['sku'], 'qty' => ['qty', 'quantity'], 'order_qty' => ['order_qty', 'order qty'], 'parent' => ['parent'], 'marketplace_1' => ['marketplace_1', 'mkt1'], 'marketplace_2' => ['marketplace_2', 'mkt2'], 'what_happened' => ['what_happened', 'what?', 'what happened'], 'action_1' => ['action_1', 'action', 'action 1'], 'action_1_remark' => ['action_1_remark', 'action remark'], 'replacement_tracking' => ['replacement_tracking', 'replacement tracking'], 'issue' => ['issue', 'root_cause_found', 'root cause found'], 'issue_remark' => ['issue_remark', 'root cause remark'], 'c_action_1' => ['c_action_1', 'root_cause_fixed', 'root cause fixed'], 'c_action_1_remark' => ['c_action_1_remark', 'root cause fixed remark']];
         while (($row = fgetcsv($handle)) !== false) {
             if ($headers === null) {
@@ -2294,7 +2316,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             }
             try {
                 $now = now();
-                $payload = ['sku' => $sku, 'qty' => (float) $qty, 'order_qty' => $get('order_qty') !== null ? (float) $get('order_qty') : null, 'parent' => $get('parent'), 'marketplace_1' => $get('marketplace_1'), 'marketplace_2' => $get('marketplace_2'), 'what_happened' => $get('what_happened'), 'issue' => $issue, 'issue_remark' => $get('issue_remark'), 'action_1' => $get('action_1'), 'action_1_remark' => $get('action_1_remark'), 'replacement_tracking' => $get('replacement_tracking'), 'c_action_1' => $get('c_action_1'), 'c_action_1_remark' => $get('c_action_1_remark'), 'department' => \App\Support\CustomerCareDepartments::encode(['Orders on Hold']), 'created_by' => $createdBy, 'created_by_user_id' => $user?->id, 'created_at' => $now, 'updated_at' => $now];
+                $payload = ['sku' => $sku, 'qty' => (float) $qty, 'order_qty' => $get('order_qty') !== null ? (float) $get('order_qty') : null, 'parent' => $get('parent'), 'marketplace_1' => $get('marketplace_1'), 'marketplace_2' => $get('marketplace_2'), 'what_happened' => $get('what_happened'), 'issue' => $issue, 'issue_remark' => $get('issue_remark'), 'action_1' => $get('action_1'), 'action_1_remark' => $get('action_1_remark'), 'replacement_tracking' => $get('replacement_tracking'), 'c_action_1' => $get('c_action_1'), 'c_action_1_remark' => $get('c_action_1_remark'), 'department' => \App\Support\CustomerCareDepartments::encode([$boardDepartment]), 'created_by' => $createdBy, 'created_by_user_id' => $user?->id, 'created_at' => $now, 'updated_at' => $now];
                 \Illuminate\Support\Facades\DB::transaction(function () use ($payload, $now) {
                     $id = \Illuminate\Support\Facades\DB::table('dispatch_issue_issues')->insertGetId($payload);
                     \Illuminate\Support\Facades\DB::table('dispatch_issue_issue_histories')->insert(array_merge($payload, ['orders_on_hold_issue_id' => $id, 'event_type' => 'created', 'revision_no' => 0, 'logged_at' => $now]));

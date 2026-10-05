@@ -632,6 +632,10 @@
                             </a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.mapping.software') }}"
+                               class="{{ request()->routeIs('customer.care.mapping.software') ? 'active' : '' }}">Mapping / Software</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.qc.packing') }}">QC / Packaging</a>
                         </li>
                         <li>

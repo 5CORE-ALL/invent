@@ -890,7 +890,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">Orders On Hold (CC Action) Issue</h5>
+                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">{{ $pageTitle ?? 'Orders On Hold (CC Action)' }} Issue</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form id="ordersOnHoldIssueForm" autocomplete="off">
@@ -1052,6 +1052,7 @@
                                     <option value="QC">QC</option>
                                     <option value="Packaging">Packaging</option>
                                     <option value="Orders on Hold">Orders on Hold</option>
+                                    <option value="Mapping / Software">Mapping / Software</option>
                                 </select>
                                 <div class="form-text">Select one or more.</div>
                             </div>
@@ -1087,15 +1088,20 @@
 
 @section('script')
     @include('partials.lazy-chart-js')
+    @php($holdBoardQuery = ! empty($holdBoard) ? ['board' => $holdBoard] : [])
     <script>
         (function() {
             const skuSearchUrl = @json(route('customer.care.followups.skus'));
             const skuDetailsUrl = @json(route('customer.care.orders.on.hold.sku.details'));
-            const recordsListUrl = @json(route('customer.care.orders.on.hold.issues.index'));
+            const holdBoard = @json($holdBoard ?? '');
+            const holdBoardParams = holdBoard ? { board: holdBoard } : {};
+            const holdBoardDepartment = @json($holdBoardDepartment ?? '');
+            const recordsListUrl = @json(route('customer.care.orders.on.hold.issues.index', $holdBoardQuery));
             const canArchiveRecords = @json(strtolower(trim((string) auth()->user()?->email)) === 'president@5core.com');
             const recordsStoreUrl = @json(route('customer.care.orders.on.hold.issues.store'));
             const recordsUpdateBaseUrl = @json(url('/customer-care/orders-on-hold/issues'));
-            const historyListUrl = @json(route('customer.care.orders.on.hold.history.index'));
+            const historyListUrl = @json(route('customer.care.orders.on.hold.history.index', $holdBoardQuery));
+            const importCsvUrl = @json(route('customer.care.orders.on.hold.issues.import', $holdBoardQuery));
             const shopifyStoreUrl = @json(config('services.shopify.store_url'));
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
@@ -1319,7 +1325,7 @@
             function clearDepartmentMultiSelect() {
                 if (!departmentInput) return;
                 Array.from(departmentInput.options).forEach(o => {
-                    o.selected = false;
+                    o.selected = holdBoardDepartment !== '' && o.value === holdBoardDepartment;
                 });
                 syncDepartmentDropdownFromSelect();
             }
@@ -2092,6 +2098,7 @@
                         c_action_1: cAction1Input.value.trim(),
                         c_action_1_remark: cAction1RemarkInput.value.trim(),
                         department: getDepartmentPayload(),
+                        ...holdBoardParams,
                     };
 
                     const isEdit = editingIssueId !== null;
@@ -2962,7 +2969,7 @@
                 document.getElementById('importCsvSubmitBtn').disabled = true;
 
                 try {
-                    const res  = await fetch('{{ route("customer.care.orders.on.hold.issues.import") }}', { method: 'POST', body: formData });
+                    const res  = await fetch(importCsvUrl, { method: 'POST', body: formData });
                     const data = await res.json();
                     progressEl.classList.add('d-none');
                     if (res.ok) {
