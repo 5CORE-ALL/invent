@@ -5,12 +5,10 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\MapIssuesController;
 use App\Models\ChannelMaster;
-use App\Support\Badges\AllMarketplaceMasterBadgeCalculator;
 use App\Support\Marketplace\MappingChannelCounts;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\ShopifyPlsTokenService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -59,7 +57,6 @@ class MissingMappingController extends Controller
             $totalTitas = (int) $data->sum('missing_mapping_titas');
 
             MappingChannelCounts::storeTotalTitas($totalTitas);
-            Cache::put(AllMarketplaceMasterBadgeCalculator::NMAP_CACHE_KEY, $totalTitas, now()->addDay());
 
             return response()->json([
                 'success' => true,

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceMismatchInventoryPass;
+use App\Support\Marketplace\MappingChannelCounts;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -29,6 +30,25 @@ class PushMissingMappingInventory extends Command
     protected $description = 'Push Shopify qty for every Missing Mapping (/map-issues) SKU, then retry the ones still mismatched';
 
     public const LAST_RUN_CACHE_PREFIX = 'mm_push_missing_mapping_last:';
+
+    /**
+     * Same batch size as each marketplace's Push Shopify inventory button.
+     * A larger batch was failing the whole call, so those SKUs stayed on /map-issues.
+     *
+     * @var array<string, int>
+     */
+    private const CHANNEL_CHUNK = [
+        'tiktok' => 1,
+        'tiktok2' => 1,
+        'shein' => 1,
+        'topdawg' => 1,
+        'ebay2' => 4,
+        'pls' => 5,
+        'b5cb2b' => 5,
+        'ebay1' => 10,
+        'ebay3' => 10,
+        'alibaba' => 10,
+    ];
 
     public function handle(MarketplaceMismatchInventoryPass $pass, MarketplaceListingQtyMatchService $match): int
     {
@@ -98,10 +118,12 @@ class PushMissingMappingInventory extends Command
     ): array {
         $row = ['channel' => $channel, 'skus' => 0, 'fixed' => 0, 'still' => [], 'note' => ''];
         if (! MarketplaceMismatchInventoryPass::syncEnabled($channel)) {
-            $row['note'] = 'skipped: inventory and price sync are both off in this channel\'s settings';
-
-            return $row;
+            $row['note'] = 'channel sync toggle is off; pushing the Missing Mapping list anyway';
         }
+
+        $chunk = min($chunk, self::CHANNEL_CHUNK[$channel] ?? $chunk);
+        $started = time();
+        $budgetSeconds = 1500;
 
         Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.$channel);
         $skus = $pass->pageMismatchSkus($channel);
@@ -111,25 +133,33 @@ class PushMissingMappingInventory extends Command
         }
         if ($dryRun) {
             $row['still'] = $skus;
-            $row['note'] = 'dry run';
+            $row['note'] = trim($row['note'].' dry run');
 
             return $row;
         }
 
         $errors = [];
-        $this->pushInChunks($pass, $channel, $skus, $chunk, $errors);
-        $still = $match->stillMismatched($channel, $skus);
-
-        if ($still !== []) {
-            sleep(5);
+        $still = $skus;
+        $round = 0;
+        while ($still !== [] && $round < 4 && (time() - $started) < $budgetSeconds) {
+            $before = count($still);
             $this->pushInChunks($pass, $channel, $still, $chunk, $errors);
             $still = $match->stillMismatched($channel, $still);
+            $round++;
+            if (count($still) >= $before) {
+                break;
+            }
+            if ($still !== [] && (time() - $started) < $budgetSeconds) {
+                sleep(8);
+            }
         }
 
         $row['still'] = array_values($still);
-        $row['fixed'] = $row['skus'] - count($still);
+        $row['fixed'] = max(0, $row['skus'] - count($still));
+        MappingChannelCounts::rememberMmChannelCount($channel, count($still));
         if ($still !== [] && $errors !== []) {
-            $row['note'] = 'push errors: '.mb_substr(implode(' | ', array_slice(array_unique($errors), 0, 3)), 0, 500);
+            $extra = 'push errors: '.mb_substr(implode(' | ', array_slice(array_unique($errors), 0, 3)), 0, 500);
+            $row['note'] = trim($row['note'].' '.$extra);
         }
 
         return $row;
