@@ -125,6 +125,19 @@ class AmazonPushedPricePullService
     }
 
     /**
+     * Price the tabulator should show after a refresh.
+     * Buy Box / datasheet often keep Your Price. After a push the customer
+     * price is the Sale. Use that Sale so Price = S PRC and the blue badge
+     * does not come back.
+     */
+    public static function tabulatorPriceAfterPush(?float $sheetOrSite, ?float $pushedSale): float
+    {
+        $shown = self::customerPrice($sheetOrSite, $pushedSale);
+
+        return $shown !== null ? $shown : 0.0;
+    }
+
+    /**
      * Merchant listings "price" is Amazon's current price for that SKU.
      * Keep it when it disagrees with the S PRC we pushed.
      */

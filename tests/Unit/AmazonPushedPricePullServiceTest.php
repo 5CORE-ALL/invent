@@ -22,6 +22,12 @@ class AmazonPushedPricePullServiceTest extends TestCase
         $this->assertNull(AmazonPushedPricePullService::customerPrice(0, 0));
     }
 
+    public function test_tabulator_price_stays_on_pushed_sale_not_your_price(): void
+    {
+        $this->assertSame(34.03, AmazonPushedPricePullService::tabulatorPriceAfterPush(36.99, 34.03));
+        $this->assertSame(36.99, AmazonPushedPricePullService::tabulatorPriceAfterPush(36.99, null));
+    }
+
     public function test_listings_report_uses_report_price_when_it_matches_sale(): void
     {
         $this->assertSame(

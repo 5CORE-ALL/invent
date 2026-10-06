@@ -1597,12 +1597,17 @@
             if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) return false;
             const price = parseFloat(data.price) || 0;
             const sprice = amazonVisibleSprice(data);
-            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+            if (!(sprice > 0)) return false;
+            const pushed = parseFloat(data.AMAZON_PUSHED_SALE || data.SPRICE_PUSHED_VALUE) || 0;
+            if (pushed > 0 && Math.round(sprice * 100) === Math.round(pushed * 100)) return false;
+            return price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
         function amazonListingPriceEqualsSprice(data, spriceOverride) {
             const price = parseFloat(data && data.price) || 0;
             const sprice = spriceOverride != null ? (parseFloat(spriceOverride) || 0) : amazonRowSprice(data);
-            return price > 0 && sprice > 0 && Math.round(price * 100) === Math.round(sprice * 100);
+            if (price > 0 && sprice > 0 && Math.round(price * 100) === Math.round(sprice * 100)) return true;
+            const pushed = parseFloat(data && (data.AMAZON_PUSHED_SALE || data.SPRICE_PUSHED_VALUE)) || 0;
+            return pushed > 0 && sprice > 0 && Math.round(pushed * 100) === Math.round(sprice * 100);
         }
         function syncAmazonBlueTriangleBadgeState() {
             $('#amazon-blue-triangle-badge').css({
@@ -4540,8 +4545,8 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#b45309;font-size:10px;margin-left:3px;" title="S PRC capped at Std Prc $'
                                     + stdNow.toFixed(2) + '"></i>'
                                 : '';
-                            const blueTri = (!atOrAboveLmp && !stdCapped && !stdCappedHighLmp && currentPrice > 0 && sprice > 0
-                                && currentPrice.toFixed(2) !== sprice.toFixed(2))
+                            const blueTri = (!atOrAboveLmp && !stdCapped && !stdCappedHighLmp
+                                && amazonHasBlueTriangle(rowData))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Price $' + currentPrice.toFixed(2) + '"></i>'
                                 : '';
