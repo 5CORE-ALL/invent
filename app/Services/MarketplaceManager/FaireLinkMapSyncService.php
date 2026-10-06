@@ -7,6 +7,7 @@ use App\Services\ChannelLivePriceSync;
 use App\Services\FaireApiService;
 use App\Support\Marketplace\FaireDuplicateSkuListing;
 use App\Support\Marketplace\MappingChannelCounts;
+use App\Support\Marketplace\MarketplaceListingPresence;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -282,6 +283,10 @@ class FaireLinkMapSyncService
                 'product_name' => $name !== '' ? $name : null,
             ];
             $listingStatus = $this->listingStatusFromProduct($product);
+            if (MarketplaceListingPresence::isAbsent($listingStatus)) {
+                FaireMetric::query()->where('sku', $sku)->delete();
+                continue;
+            }
             if ($listingStatus !== null && Schema::hasColumn('faire_metric', 'listing_status')) {
                 $payload['listing_status'] = $listingStatus;
             }
@@ -383,6 +388,12 @@ class FaireLinkMapSyncService
                         if ($existingPid !== '' && $productId !== '' && $existingPid !== $productId) {
                             continue;
                         }
+                        if (MarketplaceListingPresence::isAbsent($status)) {
+                            FaireMetric::query()->where('sku', $sku)->where(function ($q) use ($productId) {
+                                $q->where('product_id', $productId)->orWhereNull('product_id')->orWhere('product_id', '');
+                            })->delete();
+                            continue;
+                        }
                         FaireMetric::updateOrCreate(
                             ['sku' => $sku],
                             array_filter([
@@ -434,8 +445,11 @@ class FaireLinkMapSyncService
         if (in_array($s, ['published', 'live', 'active', 'for_sale'], true)) {
             return 'active';
         }
-        if (in_array($s, ['draft', 'unpublished', 'retired', 'deleted', 'archived', 'inactive'], true)) {
+        if ($s === 'inactive') {
             return 'inactive';
+        }
+        if (MarketplaceListingPresence::isAbsent($s)) {
+            return $s;
         }
         $bucket = MarketplacePortalStatusTabs::bucket($s);
 

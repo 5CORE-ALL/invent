@@ -164,12 +164,8 @@
                                             <span class="text-muted">—</span>
                                         @endif
                                     </td>
-                                    <td>
-                                        @if($detailUrl)
-                                            <a href="{{ $detailUrl }}" class="text-decoration-none" onclick="event.stopPropagation();"><code>{{ $p->sku }}</code></a>
-                                        @else
-                                            <code>{{ $p->sku }}</code>
-                                        @endif
+                                    <td class="sku-cell">
+                                        @include('marketplace._sku-copy', ['sku' => $p->sku, 'detailUrl' => $detailUrl ?? null])
                                     </td>
                                     <td>
                                         @if($detailUrl)

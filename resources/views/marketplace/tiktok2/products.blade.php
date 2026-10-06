@@ -167,11 +167,7 @@
                                         @endif
                                     </td>
                                     <td class="sku-cell">
-                                        @if($detailUrl)
-                                            <a href="{{ $detailUrl }}" class="text-decoration-none" onclick="event.stopPropagation();"><code>{{ $p->sku }}</code></a>
-                                        @else
-                                            <code>{{ $p->sku }}</code>
-                                        @endif
+                                        @include('marketplace._sku-copy', ['sku' => $p->sku, 'detailUrl' => $detailUrl ?? null])
                                     </td>
                                     <td>{{ \Illuminate\Support\Str::limit($p->title ?? '—', 50) }}</td>
                                     <td class="small">{{ $p->product_id ?? '—' }}</td>
