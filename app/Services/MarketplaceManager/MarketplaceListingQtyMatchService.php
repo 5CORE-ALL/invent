@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
  */
 final class MarketplaceListingQtyMatchService
 {
-    public const CACHE_PREFIX = 'mm_listing_mismatch_v5:';
+    public const CACHE_PREFIX = 'mm_listing_mismatch_v6:';
 
     /**
      * /map-issues slug → Marketplace Manager channel.
@@ -81,9 +81,13 @@ final class MarketplaceListingQtyMatchService
             return [];
         }
 
-        // Drop equal-qty rows (ND 58 288=288) that listings still had in mismatch.
+        // Same qty the listings tab shows. A local mapping qty here kept SKUs on
+        // /map-issues after the marketplace page had already matched them.
         $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($out);
-        $mp = $this->localStockMap($mmChannel, $out);
+        $mp = $this->liveListingQtyMap($mmChannel);
+        if ($mp === []) {
+            $mp = $this->localStockMap($mmChannel, $out);
+        }
         $real = [];
         foreach ($out as $sku) {
             $shopifyQty = MarketplaceListingStockResolver::qtyFromMap($shopify, (string) $sku);
@@ -443,6 +447,49 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
+     * Re-check mismatch SKUs with the qty the listings table shows.
+     * Every linked SKU is included. The listings page used to stop after 80
+     * item ids, so /map-issues kept counting the rest.
+     *
+     * @param  list<string>  $matched
+     * @param  list<string>  $mismatch
+     * @param  list<string>  $zero
+     * @return array{matched: list<string>, mismatch: list<string>, linked_mismatch: list<string>, zero: list<string>}
+     */
+    public function reconcileToListingTab(string $mmChannel, array $matched, array $mismatch, array $zero): array
+    {
+        $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatch);
+        if ($liveShopify === []) {
+            $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatch);
+        }
+        $liveMp = $this->liveListingQtyMap($mmChannel);
+        if ($liveMp === []) {
+            $liveMp = $this->localStockMap($mmChannel, $mismatch);
+        }
+
+        return MarketplaceListingStockResolver::reconcileLinkedTabsWithLiveQty(
+            $matched,
+            $mismatch,
+            $zero,
+            $liveShopify,
+            $liveMp,
+            $mmChannel
+        );
+    }
+
+    /**
+     * Per-SKU qty from the same live-listings cache the marketplace page renders.
+     *
+     * @return array<string, int>
+     */
+    public function liveListingQtyMap(string $mmChannel): array
+    {
+        $rows = app(MarketplaceMismatchInventoryPass::class)->localRowsForStateSplit($mmChannel, false);
+
+        return MarketplaceListingStockResolver::stockMapFromLiveListingRows(is_array($rows) ? $rows : null);
+    }
+
+    /**
      * @return array{matched: list<string>, mismatch: list<string>, linked_mismatch: list<string>, zero: list<string>}
      */
     protected function classifyFresh(string $mmChannel): array
@@ -472,19 +519,7 @@ final class MarketplaceListingQtyMatchService
             ];
         }
 
-        $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatch);
-        if ($liveShopify === []) {
-            $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatch);
-        }
-        $localMp = $this->localStockMap($mmChannel, $mismatch);
-        $reconciled = MarketplaceListingStockResolver::reconcileLinkedTabsWithLiveQty(
-            $matched,
-            $mismatch,
-            $zero,
-            $liveShopify,
-            $localMp,
-            $mmChannel
-        );
+        $reconciled = $this->reconcileToListingTab($mmChannel, $matched, $mismatch, $zero);
 
         return [
             'matched' => $reconciled['matched'],

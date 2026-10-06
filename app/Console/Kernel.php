@@ -1418,18 +1418,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Missing Mapping (/map-issues): push every listed SKU's Shopify qty, retry leftovers.
+        // Missing Mapping (/map-issues): push every listed SKU's Shopify qty, then retry leftovers.
         // In-process (not queued) so it still runs when an mm-* worker is down. One process per
-        // channel so a crash or hang on one marketplace cannot stop the others; start minutes are
-        // staggered to keep load spread, and the 3-hourly cadence (07:00–22:00 IST) includes a
-        // pass that finishes before the 15:00 task is assigned.
+        // channel so a hang on one marketplace cannot stop the others. Hourly 07:00–22:00 IST,
+        // start minutes staggered. A channel with nothing to push exits immediately.
         foreach (\App\Console\Commands\PushMissingMappingInventory::CHANNELS as $i => $mmChannel) {
             $minute = ($i * 2) % 60;
             $schedule->command('inventory:push-missing-mapping', ['--channel' => [$mmChannel]])
-                ->cron($minute.' 7,10,13,16,19,22 * * *')
+                ->cron($minute.' 7-22 * * *')
                 ->timezone('Asia/Kolkata')
                 ->name('push-missing-mapping-inventory-'.$mmChannel)
-                ->withoutOverlapping(170)
+                ->withoutOverlapping(70)
                 ->runInBackground()
                 ->appendOutputTo($log);
         }

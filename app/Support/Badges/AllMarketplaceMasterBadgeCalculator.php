@@ -172,22 +172,19 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
         }
     }
 
-    /** Sidebar Missing Mapping badge — cached N Map only (never live pricing-page scans). */
+    /**
+     * All Marketplace Master N Map total. The Missing Mapping sidebar uses
+     * MappingChannelCounts::cachedTotalOrZero() so the two numbers stay separate.
+     */
     public static function nmapCountForSidebar(): int
     {
-        foreach ([
-            \App\Support\Marketplace\MappingChannelCounts::TOTAL_TITAS_CACHE_KEY,
-            \App\Support\Marketplace\MappingChannelCounts::TOTAL_CACHE_KEY,
-            self::NMAP_CACHE_KEY,
-        ] as $key) {
-            try {
-                $cached = Cache::get($key);
-                if ($cached !== null) {
-                    return (int) $cached;
-                }
-            } catch (\Throwable $e) {
-                // File cache dirs may be missing mid-request after optimize:clear.
+        try {
+            $cached = Cache::get(self::NMAP_CACHE_KEY);
+            if ($cached !== null) {
+                return (int) $cached;
             }
+        } catch (\Throwable $e) {
+            // File cache dirs may be missing mid-request after optimize:clear.
         }
 
         try {

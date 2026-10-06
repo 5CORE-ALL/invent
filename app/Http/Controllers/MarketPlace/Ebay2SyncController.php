@@ -18,6 +18,7 @@ use App\Services\MarketplaceManager\Ebay2OrderDetailService;
 use App\Services\MarketplaceManager\Ebay2OrderPushService;
 use App\Services\MarketplaceManager\Ebay2OrderSyncService;
 use App\Services\MarketplaceManager\Ebay2TrackingSyncService;
+use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
@@ -197,61 +198,19 @@ class Ebay2SyncController extends Controller
         $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
 
-        if ($mismatchQty !== []) {
-            $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatchQty);
-            if ($liveShopify === []) {
-                $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
-            }
-            $metricMap = $this->ebay2MetricMapForSkus($mismatchQty);
-            $productIds = [];
-            foreach ($mismatchQty as $sku) {
-                $metric = $metricMap[$sku] ?? null;
-                if (! $this->isShopifySkuLinkedOnEbay2($metric, (string) $sku)) {
-                    continue;
-                }
-                $pid = (string) ($metric->product_id ?? '');
-                if ($pid === '') {
-                    continue;
-                }
-                $productIds[] = $pid;
-            }
-            $liveMpByUpper = [];
-            if ($productIds !== []) {
-                foreach ($liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($productIds)), 0, 80)) as $pid => $row) {
-                    $sku = trim((string) ($row['sku'] ?? ''));
-                    if ($sku === '' || ! EbayLiveListingMapper::skuEquals($sku, (string) $pid)) {
-                        continue;
-                    }
-                    if (! array_key_exists('inventory', $row) || $row['inventory'] === null) {
-                        continue;
-                    }
-                    $qty = (int) $row['inventory'];
-                    $liveMpByUpper[strtoupper($sku)] = $qty;
-                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                    if ($norm !== '') {
-                        $liveMpByUpper[$norm] = $qty;
-                    }
-                }
-            }
-            $reconciled = MarketplaceListingStockResolver::reconcileLinkedTabsWithLiveQty(
-                $matchedQty,
-                $mismatchQty,
-                $zeroQty,
-                $liveShopify,
-                $liveMpByUpper,
-                'ebay2'
-            );
-            $matchedQty = $reconciled['matched'];
-            $mismatchQty = $reconciled['mismatch'];
-            $linkedMismatchQty = $reconciled['linked_mismatch'] ?? $linkedMismatchQty;
-            $zeroQty = $reconciled['zero'];
-            $counts['matched'] = count($matchedQty);
-            $counts['mismatch'] = count($mismatchQty);
-            $counts['zero'] = count($zeroQty);
-            $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
-            $counts['linked_with_inv'] = $counts['matched'];
-            $counts['linked_zero_inv'] = $counts['zero'];
-        }
+        // Same SKU list /map-issues counts for this channel.
+        $listingMatch = app(MarketplaceListingQtyMatchService::class);
+        $listingClassified = $listingMatch->classify('ebay2');
+        $matchedQty = $listingClassified['matched'] ?? $matchedQty;
+        $mismatchQty = $listingMatch->activeMismatchSkus('ebay2', false);
+        $linkedMismatchQty = $listingClassified['linked_mismatch'] ?? $linkedMismatchQty;
+        $zeroQty = $listingClassified['zero'] ?? $zeroQty;
+        $counts['matched'] = count($matchedQty);
+        $counts['mismatch'] = count($mismatchQty);
+        $counts['zero'] = count($zeroQty);
+        $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
+        $counts['linked_with_inv'] = $counts['matched'];
+        $counts['linked_zero_inv'] = $counts['zero'];
 
         $liveRows = $liveService->peekCached();
         if (! is_array($liveRows) || $liveRows === []) {

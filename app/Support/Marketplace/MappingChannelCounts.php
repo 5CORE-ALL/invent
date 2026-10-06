@@ -23,7 +23,9 @@ class MappingChannelCounts
 
     public const TOTAL_TITAS_CACHE_KEY = 'mapping_pages_titas_total_v2';
 
-    public const MASTER_ROWS_CACHE_KEY = 'mapping_pages_master_rows_v3';
+    public const CHANNEL_TITAS_CACHE_KEY = 'mapping_pages_titas_by_channel_v1';
+
+    public const MASTER_ROWS_CACHE_KEY = 'mapping_pages_master_rows_v4';
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v2';
 
@@ -108,14 +110,9 @@ class MappingChannelCounts
             }
         }
 
-        $rows = self::masterRows(true);
+        $rows = self::masterRows($useCache);
         $total = (int) collect($rows)->sum('missing_mapping_titas');
-
-        try {
-            Cache::put(self::TOTAL_TITAS_CACHE_KEY, $total, now()->addMinutes(10));
-        } catch (\Throwable $e) {
-            // ignore
-        }
+        self::storeTotalTitas($total);
 
         return $total;
     }
@@ -123,8 +120,70 @@ class MappingChannelCounts
     public static function storeTotalTitas(int $total): void
     {
         try {
-            Cache::put(self::TOTAL_TITAS_CACHE_KEY, $total, now()->addMinutes(30));
-            Cache::put(self::TOTAL_CACHE_KEY, $total, now()->addMinutes(30));
+            Cache::put(self::TOTAL_TITAS_CACHE_KEY, $total, now()->addHours(6));
+            Cache::put(self::TOTAL_CACHE_KEY, $total, now()->addHours(6));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
+     * Write one marketplace's Missing Mapping count into the cached page rows
+     * and refresh the sidebar total. No full rescan.
+     */
+    public static function rememberMmChannelCount(string $mmChannel, int $count): void
+    {
+        $slug = match (strtolower(trim($mmChannel))) {
+            'ebay1' => 'ebay',
+            'macy' => 'macys',
+            default => strtolower(trim($mmChannel)),
+        };
+        if ($slug === '' || ! isset(self::$sources[$slug])) {
+            return;
+        }
+
+        $count = max(0, $count);
+        $want = self::normalize($slug);
+
+        try {
+            $byChannel = Cache::get(self::CHANNEL_TITAS_CACHE_KEY);
+            if (! is_array($byChannel) || $byChannel === []) {
+                $byChannel = [];
+                $rows = Cache::get(self::MASTER_ROWS_CACHE_KEY);
+                if (is_array($rows)) {
+                    foreach ($rows as $row) {
+                        if (! is_array($row)) {
+                            continue;
+                        }
+                        $rowSlug = self::normalize((string) ($row['channel_slug'] ?? ''));
+                        if ($rowSlug !== '') {
+                            $byChannel[$rowSlug] = (int) ($row['missing_mapping_titas'] ?? 0);
+                        }
+                    }
+                }
+            }
+            if ($byChannel === [] || ! array_key_exists($want, $byChannel)) {
+                return;
+            }
+            $byChannel[$want] = $count;
+            Cache::put(self::CHANNEL_TITAS_CACHE_KEY, $byChannel, now()->addHours(6));
+            self::storeTotalTitas((int) array_sum($byChannel));
+
+            $rows = Cache::get(self::MASTER_ROWS_CACHE_KEY);
+            if (! is_array($rows) || $rows === []) {
+                return;
+            }
+            foreach ($rows as $i => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                if (self::normalize((string) ($row['channel_slug'] ?? '')) !== $want) {
+                    continue;
+                }
+                $rows[$i]['missing_mapping_titas'] = $count;
+                Cache::put(self::MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(30));
+                break;
+            }
         } catch (\Throwable $e) {
             // ignore
         }
@@ -213,6 +272,7 @@ class MappingChannelCounts
         try {
             Cache::forget(self::TOTAL_TITAS_CACHE_KEY);
             Cache::forget(self::TOTAL_CACHE_KEY);
+            Cache::forget(self::CHANNEL_TITAS_CACHE_KEY);
             Cache::forget(self::MASTER_ROWS_CACHE_KEY);
             Cache::forget(self::API_STATUS_CACHE_KEY);
             Cache::forget(self::INACTIVE_TOTAL_CACHE_KEY);
@@ -340,8 +400,20 @@ class MappingChannelCounts
         }
 
         try {
-            Cache::put(self::MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(10));
-            self::storeTotalTitas((int) collect($rows)->sum('missing_mapping_titas'));
+            Cache::put(self::MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(30));
+            $byChannel = [];
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $rowSlug = self::normalize((string) ($row['channel_slug'] ?? ''));
+                if ($rowSlug === '') {
+                    continue;
+                }
+                $byChannel[$rowSlug] = (int) ($row['missing_mapping_titas'] ?? 0);
+            }
+            Cache::put(self::CHANNEL_TITAS_CACHE_KEY, $byChannel, now()->addHours(6));
+            self::storeTotalTitas((int) array_sum($byChannel));
         } catch (\Throwable $e) {
             // ignore
         }

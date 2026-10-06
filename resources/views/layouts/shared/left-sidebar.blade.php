@@ -339,11 +339,9 @@
                     <i class="ri-node-tree"></i>
                     <span>Missing Mapping</span>
                     @php
-                        $mapIssuesNmapCount = \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::nmapCountForSidebar();
+                        $mapIssuesNmapCount = \App\Support\Marketplace\MappingChannelCounts::cachedTotalOrZero();
                     @endphp
-                    @if($mapIssuesNmapCount > 0)
-                        <span class="badge rounded-pill ms-auto map-issues-nmap-badge" title="N Map total from each channel pricing page (Missing Mapping)">{{ number_format($mapIssuesNmapCount) }}</span>
-                    @endif
+                    <span class="badge rounded-pill ms-auto map-issues-nmap-badge" title="Same total as the Missing Mapping page" @if($mapIssuesNmapCount <= 0) style="display:none" @endif>{{ number_format($mapIssuesNmapCount) }}</span>
                 </a>
             </li>
 
@@ -3474,7 +3472,7 @@
         transform: none !important;
     }
 
-    /* Map Issues — N Map count (same total as /all-marketplace-master). */
+    /* Map Issues — same total as the Missing Mapping page badge. */
     .side-nav a.map-issues-nav > .map-issues-nmap-badge {
         background-color: #a71d2a !important;
         color: #fff !important;

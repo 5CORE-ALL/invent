@@ -104,13 +104,25 @@
 <script>
     let table = null;
 
+    function syncSidebarMissingMapping(total) {
+        const n = Number(total);
+        if (!isFinite(n) || n < 0) return;
+        const badge = document.querySelector('.map-issues-nmap-badge');
+        if (!badge) return;
+        badge.textContent = n.toLocaleString('en-US');
+        badge.style.display = n > 0 ? '' : 'none';
+    }
+
     function updateStats(rows, totalTitas) {
         if (totalTitas !== undefined && totalTitas !== null && !isNaN(Number(totalTitas))) {
-            $('#total-missing-mapping').text(Number(totalTitas).toLocaleString('en-US'));
+            const n = Number(totalTitas);
+            $('#total-missing-mapping').text(n.toLocaleString('en-US'));
+            syncSidebarMissingMapping(n);
             return;
         }
         const total = (rows || []).reduce((sum, r) => sum + Number(r.missing_mapping_titas || 0), 0);
         $('#total-missing-mapping').text(total.toLocaleString('en-US'));
+        syncSidebarMissingMapping(total);
     }
 
     function escapeHtml(s) {
