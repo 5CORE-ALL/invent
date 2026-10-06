@@ -507,10 +507,19 @@ class VeeqoShopifyFulfillmentService
             }
             if ($sku !== '' && ! app(ShopifyFulfillmentTrackingMatcher::class)->orderHasSku($orderCheck, $sku)) {
                 $lineSkus = $this->skusFromShopifyOrder($orderCheck);
-                // Wayfair supplier part numbers often differ from the Shopify catalog SKU.
-                // The PO tag already matched this order, so a one-line copy can still be fulfilled.
-                if ($marketplace === 'wayfair' && count($lineSkus) === 1) {
+                $productLines = 0;
+                foreach ($orderCheck['line_items'] ?? [] as $line) {
+                    if (is_array($line)) {
+                        $productLines++;
+                    }
+                }
+                // The marketplace order id already matched. A one-line Shopify
+                // copy is this order even when the seller label text differs
+                // (eBay custom label vs catalog SKU). Multi-line orders stay strict.
+                if (count($lineSkus) === 1) {
                     $sku = $lineSkus[0];
+                } elseif ($productLines === 1) {
+                    $sku = '';
                 } else {
                     Log::info('VeeqoShopifyFulfillmentService: skip fulfill — Shopify SKU mismatch', [
                         'marketplace' => $marketplace,
@@ -4443,7 +4452,7 @@ class VeeqoShopifyFulfillmentService
                 }
             }
 
-            $maxQuantity = $maxQuantity > 0 ? $maxQuantity : (trim($sku) !== '' ? 1 : 0);
+            // Fulfill the whole open quantity. Capping at 1 left qty 2+ orders partial.
             $prepared = $this->prepareShopifyFulfillmentOrders($storeUrl, $token, $shopifyOrderId, false, $sku, $maxQuantity);
             if (($prepared['error'] ?? null) !== null) {
                 return ['success' => false, 'message' => (string) $prepared['error']];
@@ -4809,6 +4818,40 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * A scheduled fulfillment order stays Unfulfilled until it is opened.
+     */
+    protected function openShopifyFulfillmentOrder(string $storeUrl, string $token, int $fulfillmentOrderId): bool
+    {
+        if ($fulfillmentOrderId < 1) {
+            return false;
+        }
+
+        try {
+            $res = $this->shopifyApi(
+                $storeUrl,
+                $token,
+                'POST',
+                "fulfillment_orders/{$fulfillmentOrderId}/open.json"
+            );
+            if ($res->successful()) {
+                return true;
+            }
+            Log::info('VeeqoShopifyFulfillmentService: scheduled fulfillment not opened', [
+                'fulfillment_order_id' => $fulfillmentOrderId,
+                'status' => $res->status(),
+                'body' => mb_substr($res->body(), 0, 200),
+            ]);
+        } catch (\Throwable $e) {
+            Log::info('VeeqoShopifyFulfillmentService: open fulfillment order failed', [
+                'fulfillment_order_id' => $fulfillmentOrderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return false;
+    }
+
+    /**
      * Release holds, move FOs that cannot be fulfilled in place, and collect FO line items.
      *
      * @return array{line_items: list<array<string, mixed>>, error: string|null}
@@ -4841,6 +4884,11 @@ class VeeqoShopifyFulfillmentService
             $actions = $this->shopifyFulfillmentActions($fo);
             if ($status === 'on_hold' || in_array('release_hold', $actions, true)) {
                 if ($this->releaseShopifyFulfillmentHold($storeUrl, $token, (int) $fo['id'])) {
+                    $released = true;
+                }
+            }
+            if ($status === 'scheduled' || in_array('mark_as_open', $actions, true)) {
+                if ($this->openShopifyFulfillmentOrder($storeUrl, $token, (int) $fo['id'])) {
                     $released = true;
                 }
             }
