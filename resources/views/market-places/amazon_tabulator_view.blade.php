@@ -4570,7 +4570,8 @@
                                 return false;
                             }
                         },
-                        width: 90
+                        width: 130,
+                        minWidth: 120
                     },
 
                     {
