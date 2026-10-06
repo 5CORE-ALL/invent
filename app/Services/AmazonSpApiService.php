@@ -800,10 +800,9 @@ class AmazonSpApiService
                     "maximum_seller_allowed_price" => $maxPriceSchedule,
                 ];
                 // High Std stays Your Price. S PRC is Sales Price only when strictly below it.
-                $sendSale = (int) round($salePrice * 100) < (int) round($price * 100);
-                if ($sendSale) {
-                    $offerValue['discounted_price'] = self::discountedPriceAttribute($price, $salePrice);
-                }
+                // Always send Sale: a live Sale when it is below Your Price, otherwise
+                // an ended Sale so Amazon drops the leftover (empty list = 90226, delete path = InvalidInput).
+                $offerValue['discounted_price'] = self::discountedPriceAttribute($price, $salePrice);
                 // Business Price → separate B2B audience offer (Listings API has no "business_price" field)
                 $b2bOfferValue = [
                     "marketplaceId" => "ATVPDKIKX0DER",
@@ -814,22 +813,13 @@ class AmazonSpApiService
                 ];
                 $offerValues = [$offerValue, $b2bOfferValue];
                 $includedB2b = true;
-                $patches = [[
-                    "op" => "replace",
-                    "path" => "/attributes/purchasable_offer",
-                    "value" => $offerValues
-                ]];
-                // Empty Sale schedule is INVALID (90226). Delete the leftover
-                // discounted_price so Min $18.99 is not blocked by Sale $17.99.
-                if (! $sendSale) {
-                    $patches[] = [
-                        'op' => 'delete',
-                        'path' => '/attributes/purchasable_offer/marketplace_id/ATVPDKIKX0DER/currency/USD/audience/ALL/discounted_price',
-                    ];
-                }
                 $body = [
                     "productType" => $productType,
-                    "patches" => $patches
+                    "patches" => [[
+                        "op" => "replace",
+                        "path" => "/attributes/purchasable_offer",
+                        "value" => $offerValues
+                    ]]
                 ];
 
                 Log::info(sprintf(
