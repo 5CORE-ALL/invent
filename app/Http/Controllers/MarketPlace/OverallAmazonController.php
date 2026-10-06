@@ -3091,6 +3091,83 @@ class OverallAmazonController extends Controller
         ]);
     }
 
+    /**
+     * Daily slab counts for Std prc vs dil history dots. One snapshot per PDT day.
+     */
+    public function amazonStdPrcVsDilHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 30);
+        if ($days < 7) {
+            $days = 7;
+        }
+        if ($days > 90) {
+            $days = 90;
+        }
+
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'amazon_std_prc_vs_dil_hist')
+            ->first();
+        $hist = is_array($row?->visibility) ? $row->visibility : [];
+        $end = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+        $out = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            $counts = is_array($hist[$key] ?? null) ? $hist[$key] : [];
+            $out[] = array_merge([
+                'date' => $key,
+                'label' => $d->format('m-d'),
+            ], $counts);
+        }
+
+        return response()->json([
+            'success' => true,
+            'days' => $days,
+            'data' => $out,
+        ]);
+    }
+
+    public function amazonStdPrcVsDilSaveHistory(Request $request)
+    {
+        $incoming = $request->input('counts');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'counts required'], 422);
+        }
+        $counts = [];
+        foreach ($incoming as $key => $value) {
+            $key = (string) $key;
+            if (! preg_match('/^[a-z][a-z0-9]*:[a-z0-9_-]{1,24}$/', $key) || ! is_numeric($value)) {
+                continue;
+            }
+            $counts[$key] = round((float) $value, 2);
+            if (count($counts) >= 200) {
+                break;
+            }
+        }
+
+        $today = Carbon::now('America/Los_Angeles')->toDateString();
+        $cutoff = Carbon::now('America/Los_Angeles')->subDays(89)->toDateString();
+        $row = ChannelTabulatorColumnSetting::query()->firstOrNew([
+            'channel_name' => 'amazon_std_prc_vs_dil_hist',
+        ]);
+        $hist = is_array($row->visibility) ? $row->visibility : [];
+        $hist[$today] = $counts;
+        foreach (array_keys($hist) as $date) {
+            if (! is_string($date) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || $date < $cutoff) {
+                unset($hist[$date]);
+            }
+        }
+        ksort($hist);
+        $row->visibility = $hist;
+        $row->column_order = ['history'];
+        $row->save();
+
+        return response()->json([
+            'success' => true,
+            'date' => $today,
+        ]);
+    }
+
     public function amazonPriceIncreaseDecrease(Request $request)
     {
         $mode = $request->query('mode');

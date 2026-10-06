@@ -66,19 +66,19 @@
         #amzStdPrcModal .amz-sp-pie {
             display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: stretch;
             margin-bottom: 10px;
         }
         #amzStdPrcModal .amz-sp-pie-canvas {
             position: relative;
-            width: 148px;
-            height: 148px;
-            flex: 0 0 148px;
+            width: 100%;
+            height: 196px;
+            flex: 0 0 196px;
         }
         #amzStdPrcModal .amz-sp-pie-canvas canvas {
             display: block;
-            width: 148px !important;
-            height: 148px !important;
+            width: 100% !important;
+            height: 196px !important;
         }
         #amzStdPrcModal .amz-sp-pie-legend {
             width: 100%;
@@ -96,11 +96,32 @@
         }
         #amzStdPrcModal .amz-sp-leg-row {
             display: grid;
-            grid-template-columns: 8px minmax(0, 1fr) auto auto;
+            grid-template-columns: 8px minmax(0, 1fr) auto auto 8px;
             gap: 6px;
             align-items: center;
             padding: 2px 0;
         }
+        #amzStdPrcModal .amz-sp-hist-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            justify-self: end;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+        }
+        #amzStdPrcModal .amz-sp-hist-dot:hover { transform: scale(1.35); }
+        #amzStdPrcModal .amz-sp-hist-wrap {
+            display: none;
+            margin: 0 0 12px;
+            padding: 8px 10px 6px;
+            border: 1px solid #e6edf5;
+            border-radius: 12px;
+            background: #fff;
+        }
+        #amzStdPrcModal .amz-sp-hist-wrap.is-open { display: block; }
+        #amzStdPrcModal .amz-sp-hist-canvas-wrap { height: 180px; }
         #amzStdPrcModal .amz-sp-leg-row strong { font-variant-numeric: tabular-nums; }
         #amzStdPrcModal .amz-sp-leg-pct { color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 2.2rem; text-align: right; }
         #amzStdPrcModal .amz-sp-swatch { width: 8px; height: 8px; border-radius: 50%; }
@@ -283,6 +304,15 @@
                                 <div class="small text-muted" id="amz-sp-margin-inv-sub"></div>
                             </div>
                             <div class="amz-sp-metric-grid" id="amz-sp-margin-inv-metrics"></div>
+                        </div>
+                    </div>
+                    <div class="amz-sp-hist-wrap" id="amz-sp-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="amz-sp-hist-title">Daily history</span>
+                            <button type="button" class="btn-close" id="amz-sp-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="amz-sp-hist-canvas-wrap">
+                            <canvas id="amz-sp-hist"></canvas>
                         </div>
                     </div>
 
@@ -471,6 +501,8 @@
         const amzStdPieCharts = {};
         let amzStdPieGen = 0;
         let amzStdApplied = false;
+        let amzStdHistChart = null;
+        let amzStdHistLive = {};
 
         function fmtAmzStdDiscBadge(pct, kind) {
             const n = Number(pct);
@@ -723,15 +755,178 @@
                     + '</div>';
             }).join('');
         }
-        function amzStdLegend(el, slices, counts) {
+        function amzStdEsc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+            });
+        }
+        function amzStdLegend(el, slices, counts, chart) {
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
             const html = slices.map(function(s) {
                 const n = counts[s.key] || 0;
                 const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                amzStdHistLive[chart + ':' + s.key] = n;
                 return '<div class="amz-sp-leg-row"><span class="amz-sp-swatch" style="background:' + s.color + '"></span>'
-                    + '<span>' + s.label + '</span><strong>' + n + '</strong><span class="amz-sp-leg-pct">' + pct + '%</span></div>';
+                    + '<span>' + amzStdEsc(s.label) + '</span><strong>' + n + '</strong><span class="amz-sp-leg-pct">' + pct + '%</span>'
+                    + '<button type="button" class="amz-sp-hist-dot" data-chart="' + amzStdEsc(chart) + '" data-band="' + amzStdEsc(s.key) + '" '
+                    + 'data-label="' + amzStdEsc(s.label) + '" data-color="' + amzStdEsc(s.color) + '" '
+                    + 'style="background:' + s.color + ';" title="' + amzStdEsc(s.label) + ' daily history"></button></div>';
             }).join('');
             $(el).html(html);
+        }
+        function amzStdTodayKey() {
+            try {
+                return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+            } catch (e) {
+                return new Date().toISOString().slice(0, 10);
+            }
+        }
+        function amzStdSaveDailyHistory() {
+            const counts = Object.assign({}, amzStdHistLive);
+            const any = Object.keys(counts).some(function(key) { return Number(counts[key]) > 0; });
+            if (!any) return;
+            try {
+                const key = 'amz_std_prc_vs_dil_hist';
+                const today = amzStdTodayKey();
+                let hist = {};
+                try { hist = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { hist = {}; }
+                hist[today] = counts;
+                const keys = Object.keys(hist).sort();
+                while (keys.length > 90) delete hist[keys.shift()];
+                localStorage.setItem(key, JSON.stringify(hist));
+            } catch (e) { /* ignore */ }
+            $.ajax({
+                url: '/amazon-std-prc-vs-dil-history',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' },
+                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), counts: counts },
+            });
+        }
+        function amzStdLocalHistory() {
+            try {
+                const hist = JSON.parse(localStorage.getItem('amz_std_prc_vs_dil_hist') || '{}') || {};
+                return Object.keys(hist).sort().map(function(date) {
+                    return Object.assign({ date: date, label: date.slice(5) }, hist[date] || {});
+                });
+            } catch (e) {
+                return [];
+            }
+        }
+        function amzStdPadHistory(rows) {
+            const byDate = {};
+            (rows || []).forEach(function(r) { if (r && r.date) byDate[r.date] = r; });
+            const today = amzStdTodayKey();
+            const parts = today.split('-').map(Number);
+            const end = new Date(Date.UTC(parts[0], (parts[1] || 1) - 1, parts[2] || 1));
+            const out = [];
+            for (let i = 29; i >= 0; i--) {
+                const d = new Date(end);
+                d.setUTCDate(d.getUTCDate() - i);
+                const key = d.toISOString().slice(0, 10);
+                const rec = byDate[key] ? Object.assign({}, byDate[key]) : {};
+                rec.date = key;
+                rec.label = key.slice(5);
+                out.push(rec);
+            }
+            const last = out[out.length - 1];
+            if (last) Object.assign(last, amzStdHistLive, { date: last.date, label: last.label });
+            return out;
+        }
+        function amzStdHistLabelsPlugin() {
+            return {
+                id: 'amzStdHistCountLabels',
+                afterDraw: function(chart) {
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const c = chart.ctx;
+                    if (!dataset || !meta || !meta.data) return;
+                    meta.data.forEach(function(point, i) {
+                        const val = dataset.data[i];
+                        if (val == null || !point) return;
+                        const txt = String(Math.round(Number(val) || 0));
+                        c.save();
+                        c.font = 'bold 10px Inter, system-ui, sans-serif';
+                        c.fillStyle = '#111';
+                        c.strokeStyle = 'rgba(255,255,255,0.95)';
+                        c.lineWidth = 3;
+                        c.lineJoin = 'round';
+                        c.textAlign = 'center';
+                        c.textBaseline = 'bottom';
+                        c.strokeText(txt, point.x, point.y - 5);
+                        c.fillText(txt, point.x, point.y - 5);
+                        c.restore();
+                    });
+                },
+            };
+        }
+        function amzStdDrawHist(chart, band, label, color, rows) {
+            const field = chart + ':' + band;
+            const plot = amzStdPadHistory(rows);
+            const money = chart === 'all';
+            $('#amz-sp-hist-title').text(label + (money ? ' · $ off' : ' count') + ' · last 30 days');
+            $('#amz-sp-hist-wrap').addClass('is-open');
+            const draw = function() {
+                const canvas = document.getElementById('amz-sp-hist');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (amzStdHistChart) { amzStdHistChart.destroy(); amzStdHistChart = null; }
+                amzStdHistChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: plot.map(function(r) { return r.label || r.date; }),
+                        datasets: [{
+                            data: plot.map(function(r) { return Number(r[field]) || 0; }),
+                            borderColor: color,
+                            backgroundColor: color + '22',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 1.5,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: color,
+                            pointBorderColor: color,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        clip: false,
+                        layout: { padding: { top: 16, right: 8, bottom: 2 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const n = Number(ctx.raw) || 0;
+                                        return money ? (' ' + amzStdMoney(n)) : (' Count: ' + Math.round(n));
+                                    },
+                                },
+                            },
+                        },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
+                            x: {
+                                offset: true,
+                                ticks: { maxRotation: 90, minRotation: 90, autoSkip: false, font: { size: 8, weight: '600' } },
+                            },
+                        },
+                    },
+                    plugins: [amzStdHistLabelsPlugin()],
+                });
+            };
+            if (typeof window.loadChartJs === 'function') window.loadChartJs().then(draw).catch(draw);
+            else draw();
+        }
+        function amzStdOpenHist(chart, band, label, color) {
+            const drawRows = function(rows) { amzStdDrawHist(chart, band, label, color, rows); };
+            $.ajax({
+                url: '/amazon-std-prc-vs-dil-history',
+                method: 'GET',
+                data: { days: 30 },
+            }).done(function(res) {
+                drawRows((res && res.success && Array.isArray(res.data)) ? res.data : amzStdLocalHistory());
+            }).fail(function() {
+                drawRows(amzStdLocalHistory());
+            });
         }
         function amzStdDrawPieNow(id, slices, counts) {
             const canvas = document.getElementById(id);
@@ -741,26 +936,24 @@
             amzStdPieCharts[id] = null;
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
             const data = slices.map(function(s) { return counts[s.key] || 0; });
-            const values = total > 0 ? data : slices.map(function() { return 1; });
             amzStdPieCharts[id] = new Chart(canvas.getContext('2d'), {
-                type: 'doughnut',
+                type: 'bar',
                 data: {
                     labels: slices.map(function(s) { return s.label; }),
                     datasets: [{
-                        data: values,
-                        backgroundColor: total > 0
-                            ? slices.map(function(s) { return s.color; })
-                            : slices.map(function() { return '#e2e8f0'; }),
-                        borderColor: '#fff',
-                        borderWidth: 2,
-                        hoverOffset: 4,
+                        data: data,
+                        backgroundColor: slices.map(function(s) { return s.color; }),
+                        borderRadius: 4,
+                        borderSkipped: false,
+                        barPercentage: 0.72,
+                        categoryPercentage: 0.8,
                     }],
                 },
                 options: {
+                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
                     animation: false,
-                    cutout: '58%',
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -771,12 +964,22 @@
                             boxPadding: 4,
                             callbacks: {
                                 label: function(ctx) {
-                                    if (!(total > 0)) return ' No rows';
                                     const n = Number(ctx.raw) || 0;
                                     const pct = total > 0 ? Math.round((n / total) * 100) : 0;
                                     return ' ' + n + ' · ' + pct + '%';
                                 },
                             },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            grid: { color: '#eef2f7' },
+                            ticks: { font: { size: 9 }, precision: 0 },
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { font: { size: 10 }, color: '#334155' },
                         },
                     },
                 },
@@ -927,11 +1130,12 @@
                 { id: 'amz-sp-pie-age', slices: ageSlices, counts: ageCounts },
                 { id: 'amz-sp-pie-all', slices: allSlices, counts: allCounts },
             ]);
-            amzStdLegend('#amz-sp-leg-dil', dilSlices, dilCounts);
-            amzStdLegend('#amz-sp-leg-rev', revSlices, revCounts);
-            amzStdLegend('#amz-sp-leg-cvr', cvrSlices, cvrCounts);
-            amzStdLegend('#amz-sp-leg-age', ageSlices, ageCounts);
-            amzStdLegend('#amz-sp-leg-all', allSlices, allCounts);
+            amzStdHistLive = {};
+            amzStdLegend('#amz-sp-leg-dil', dilSlices, dilCounts, 'dil');
+            amzStdLegend('#amz-sp-leg-rev', revSlices, revCounts, 'rev');
+            amzStdLegend('#amz-sp-leg-cvr', cvrSlices, cvrCounts, 'cvr');
+            amzStdLegend('#amz-sp-leg-age', ageSlices, ageCounts, 'age');
+            amzStdLegend('#amz-sp-leg-all', allSlices, allCounts, 'all');
 
             const rows = [
                 ['Age', skuHits.age, pctTotals.age, dollars.age],
@@ -1032,6 +1236,8 @@
                     applyAmzCombinedPlanToTargets(picked.targets, picked.label, { toastLabel: 'Std prc vs dil' });
                 }
                 status.text('Saved. S PRC = Std Prc − Sum disc.');
+                amzStdRefreshModal();
+                amzStdSaveDailyHistory();
                 if (typeof amzPefToast === 'function') amzPefToast('success', 'Std prc vs dil saved');
             }).fail(function() {
                 amzStdApplied = false;
@@ -1049,9 +1255,12 @@
             });
             $('#amzStdPrcModal').off('shown.bs.modal.amzsp').on('shown.bs.modal.amzsp', function() {
                 amzStdRefreshModal();
+                amzStdSaveDailyHistory();
             });
             $('#amzStdPrcModal').off('hidden.bs.modal.amzsp').on('hidden.bs.modal.amzsp', function() {
                 amzStdPieGen++;
+                $('#amz-sp-hist-wrap').removeClass('is-open');
+                if (amzStdHistChart) { amzStdHistChart.destroy(); amzStdHistChart = null; }
                 Object.keys(amzStdPieCharts).forEach(function(id) {
                     if (amzStdPieCharts[id]) { amzStdPieCharts[id].destroy(); amzStdPieCharts[id] = null; }
                 });
@@ -1091,6 +1300,14 @@
             $(document).off('input.amzsp').on('input.amzsp', '#amzStdPrcModal input', function() {
                 clearTimeout(bindAmzStdPrcUi._t);
                 bindAmzStdPrcUi._t = setTimeout(amzStdRefreshModal, 180);
+            });
+            $(document).off('click.amzsphist', '#amzStdPrcModal .amz-sp-hist-dot').on('click.amzsphist', '#amzStdPrcModal .amz-sp-hist-dot', function(e) {
+                e.preventDefault();
+                const $dot = $(this);
+                amzStdOpenHist(String($dot.attr('data-chart') || ''), String($dot.attr('data-band') || ''), String($dot.attr('data-label') || ''), String($dot.attr('data-color') || '#0f172a'));
+            });
+            $('#amz-sp-hist-close').off('click.amzsphist').on('click.amzsphist', function() {
+                $('#amz-sp-hist-wrap').removeClass('is-open');
             });
         }
         $(function() { bindAmzStdPrcUi(); });
