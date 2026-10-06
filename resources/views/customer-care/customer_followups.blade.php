@@ -75,6 +75,27 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
+        .followup-table-scroll table.table thead th.followup-sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .followup-table-scroll table.table thead th.followup-sortable:hover {
+            background: #245fbd !important;
+        }
+
+        .followup-sort-icon {
+            display: inline-block;
+            margin-left: 4px;
+            font-size: 0.75em;
+            opacity: 0.55;
+        }
+
+        th.followup-sort-asc .followup-sort-icon,
+        th.followup-sort-desc .followup-sort-icon {
+            opacity: 1;
+        }
+
         .followup-notes-cell {
             white-space: pre-wrap;
             word-break: break-word;
@@ -476,18 +497,18 @@
                             </colgroup>
                             <thead>
                                 <tr>
-                                    <th scope="col" class="followup-sl-col">SL NO</th>
-                                    <th scope="col">Ord</th>
-                                    <th scope="col" class="followup-sku-col">SKU</th>
-                                    <th scope="col">Follow up issue</th>
-                                    <th scope="col">Channel</th>
-                                    <th scope="col">Customer</th>
-                                    <th scope="col">Status</th>
-                                    <th scope="col">Date</th>
-                                    <th scope="col">Next</th>
-                                    <th scope="col">Resolved Date</th>
-                                    <th scope="col">Executive</th>
-                                    <th scope="col" class="followup-link-col">Link</th>
+                                    <th scope="col" class="followup-sl-col followup-sortable" data-sort-key="id" title="Sort">SL NO</th>
+                                    <th scope="col" class="followup-sortable" data-sort-key="order_id" title="Sort">Ord</th>
+                                    <th scope="col" class="followup-sku-col followup-sortable" data-sort-key="sku" title="Sort">SKU</th>
+                                    <th scope="col" class="followup-sortable" data-sort-key="notes" title="Sort">Follow up issue</th>
+                                    <th scope="col" class="followup-sortable" data-sort-key="channel_name" title="Sort">Channel</th>
+                                    <th scope="col" class="followup-sortable" data-sort-key="customer_name" title="Sort">Customer</th>
+                                    <th scope="col" class="followup-sortable" data-sort-key="status" title="Sort">Status</th>
+                                    <th scope="col" class="followup-sortable" data-sort-key="followup_sort" title="Sort">Date</th>
+                                    <th scope="col" class="followup-sortable" data-sort-key="next_followup_at" title="Sort">Next</th>
+                                    <th scope="col" class="followup-sortable" data-sort-key="resolved_sort" title="Sort">Resolved Date</th>
+                                    <th scope="col" class="followup-sortable" data-sort-key="executive" title="Sort">Executive</th>
+                                    <th scope="col" class="followup-link-col followup-sortable" data-sort-key="reference_link" title="Sort">Link</th>
                                     <th scope="col" class="followup-actions-col">Actions</th>
                                 </tr>
                             </thead>
@@ -836,13 +857,79 @@
                     const tatEl = document.getElementById('tatValue');
                     if (tatEl) tatEl.textContent = json.stats?.tat_avg_label ?? '—';
 
-                    if (!json.data.length) {
-                        tbody.innerHTML =
-                            '<tr><td colspan="13" class="text-center py-4 text-muted">No records match filters.</td></tr>';
-                        return;
-                    }
+                    followupRows = json.data;
+                    renderFollowupRows();
+                } catch (e) {
+                    tbody.innerHTML =
+                        '<tr><td colspan="13" class="text-center text-danger py-4">Failed to load data.</td></tr>';
+                }
+            }
 
-                    tbody.innerHTML = json.data.map((row, index) => {
+            let followupRows = [];
+            let followupSort = { key: null, dir: 'asc' };
+
+            function followupSortValue(row, key) {
+                const v = row[key];
+                if (v === null || v === undefined) return '';
+                const s = String(v).trim();
+                return s === '—' ? '' : s;
+            }
+
+            function sortedFollowupRows() {
+                if (!followupSort.key) return followupRows;
+                const key = followupSort.key;
+                const mul = followupSort.dir === 'desc' ? -1 : 1;
+                return followupRows.slice().sort((a, b) => {
+                    const av = followupSortValue(a, key);
+                    const bv = followupSortValue(b, key);
+                    if (av === '' && bv === '') return 0;
+                    if (av === '') return 1;
+                    if (bv === '') return -1;
+                    return av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' }) * mul;
+                });
+            }
+
+            function updateFollowupSortHeaders() {
+                document.querySelectorAll('th.followup-sortable').forEach(th => {
+                    const active = th.dataset.sortKey === followupSort.key;
+                    th.classList.toggle('followup-sort-asc', active && followupSort.dir === 'asc');
+                    th.classList.toggle('followup-sort-desc', active && followupSort.dir === 'desc');
+                    let icon = th.querySelector('.followup-sort-icon');
+                    if (!icon) {
+                        icon = document.createElement('span');
+                        icon.className = 'followup-sort-icon';
+                        th.appendChild(icon);
+                    }
+                    icon.textContent = active ? (followupSort.dir === 'asc' ? '▲' : '▼') : '⇅';
+                });
+            }
+
+            document.querySelectorAll('th.followup-sortable').forEach(th => {
+                th.addEventListener('click', () => {
+                    const key = th.dataset.sortKey;
+                    if (followupSort.key !== key) {
+                        followupSort = { key, dir: 'asc' };
+                    } else if (followupSort.dir === 'asc') {
+                        followupSort.dir = 'desc';
+                    } else {
+                        followupSort = { key: null, dir: 'asc' };
+                    }
+                    updateFollowupSortHeaders();
+                    teardownFollowupTooltips();
+                    renderFollowupRows();
+                });
+            });
+            updateFollowupSortHeaders();
+
+            function renderFollowupRows() {
+                const tbody = document.getElementById('followupTableBody');
+                if (!followupRows.length) {
+                    tbody.innerHTML =
+                        '<tr><td colspan="13" class="text-center py-4 text-muted">No records match filters.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = sortedFollowupRows().map((row, index) => {
                         const overdue = row.overdue ? ' followup-row-overdue' : '';
                         return '<tr class="' + overdue.trim() + '" data-id="' + row.id + '">' +
                             '<td class="followup-sl-col">' + (index + 1) + '</td>' +
@@ -868,15 +955,11 @@
                                 '" data-bs-toggle="tooltip" title="Delete"><i class="mdi mdi-delete"></i></button>' :
                                 '') +
                             '</div></td></tr>';
-                    }).join('');
+                }).join('');
 
-                    tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-                        if (!bootstrap.Tooltip.getInstance(el)) new bootstrap.Tooltip(el);
-                    });
-                } catch (e) {
-                    tbody.innerHTML =
-                        '<tr><td colspan="13" class="text-center text-danger py-4">Failed to load data.</td></tr>';
-                }
+                tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+                    if (!bootstrap.Tooltip.getInstance(el)) new bootstrap.Tooltip(el);
+                });
             }
 
             function clearFormErrors() {
