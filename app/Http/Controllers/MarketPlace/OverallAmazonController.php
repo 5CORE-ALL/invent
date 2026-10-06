@@ -2930,7 +2930,7 @@ class OverallAmazonController extends Controller
      * Std prc vs dil: promotional % off standard price for Dil, Age Days, and CVR up/down.
      * Review ranges stay on amazon_review_vs_disc. CVR slabs stay on amazon_cvr_vs_disc.
      *
-     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array{down_lt:float,down_disc:float,up_gt:float,up_disc:float,flat_disc:float}}
+     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array{down2_lt:float,down2_disc:float,down_lt:float,down_disc:float,up_gt:float,up_disc:float,up2_gt:float,up2_disc:float,flat_disc:float}}
      */
     private function amazonDefaultStdPrcVsDil(): array
     {
@@ -2952,10 +2952,14 @@ class OverallAmazonController extends Controller
                 ['min' => 366, 'max' => 9999, 'disc' => 0],
             ],
             'cvr' => [
+                'down2_lt' => 4,
+                'down2_disc' => 0,
                 'down_lt' => 7,
                 'down_disc' => 0,
                 'up_gt' => 10,
                 'up_disc' => 0,
+                'up2_gt' => 15,
+                'up2_disc' => 0,
                 'flat_disc' => 0,
             ],
         ];
@@ -3001,7 +3005,7 @@ class OverallAmazonController extends Controller
 
     /**
      * @param  mixed  $incoming
-     * @return array{down_lt:float,down_disc:float,up_gt:float,up_disc:float,flat_disc:float}
+     * @return array{down2_lt:float,down2_disc:float,down_lt:float,down_disc:float,up_gt:float,up_disc:float,up2_gt:float,up2_disc:float,flat_disc:float}
      */
     private function amazonNormalizeStdPrcCvr($incoming): array
     {
@@ -3009,12 +3013,14 @@ class OverallAmazonController extends Controller
         if (! is_array($incoming)) {
             return $out;
         }
-        foreach (['down_lt', 'up_gt'] as $key) {
+        $hadDown2Disc = is_numeric($incoming['down2_disc'] ?? null);
+        $hadUp2Disc = is_numeric($incoming['up2_disc'] ?? null);
+        foreach (['down2_lt', 'down_lt', 'up_gt', 'up2_gt'] as $key) {
             if (is_numeric($incoming[$key] ?? null) && (float) $incoming[$key] >= 0) {
                 $out[$key] = round((float) $incoming[$key], 2);
             }
         }
-        foreach (['down_disc', 'up_disc', 'flat_disc'] as $key) {
+        foreach (['down2_disc', 'down_disc', 'up_disc', 'up2_disc', 'flat_disc'] as $key) {
             if (! is_numeric($incoming[$key] ?? null)) {
                 continue;
             }
@@ -3026,6 +3032,12 @@ class OverallAmazonController extends Controller
                 $n = 100;
             }
             $out[$key] = round($n, 2);
+        }
+        if (! $hadDown2Disc) {
+            $out['down2_disc'] = $out['down_disc'];
+        }
+        if (! $hadUp2Disc) {
+            $out['up2_disc'] = $out['up_disc'];
         }
 
         return $out;

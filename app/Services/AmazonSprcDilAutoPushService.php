@@ -683,13 +683,34 @@ class AmazonSprcDilAutoPushService
         $sess60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
         $cvrL30 = AmazonDilGroiRule::cvrL30($aL30, $sess30);
         $trend = AmazonDilGroiRule::cvrTrend($cvrL30, AmazonDilGroiRule::cvrL45($aL30, $sess30, $aL60, $sess60));
-        $downLt = (float) ($cfg['down_lt'] ?? 7);
-        $upGt = (float) ($cfg['up_gt'] ?? 10);
         $disc = (float) ($cfg['flat_disc'] ?? 0);
-        if ($trend === 'down' && $cvrL30 < $downLt) {
-            $disc = (float) ($cfg['down_disc'] ?? 0);
-        } elseif ($trend === 'up' && $cvrL30 > $upGt) {
-            $disc = (float) ($cfg['up_disc'] ?? 0);
+        if ($trend === 'down') {
+            $downSlabs = [];
+            if (is_numeric($cfg['down2_lt'] ?? null) && (float) $cfg['down2_lt'] > 0) {
+                $downSlabs[] = ['lt' => (float) $cfg['down2_lt'], 'disc' => (float) ($cfg['down2_disc'] ?? 0)];
+            }
+            $downSlabs[] = ['lt' => (float) ($cfg['down_lt'] ?? 7), 'disc' => (float) ($cfg['down_disc'] ?? 0)];
+            usort($downSlabs, fn ($a, $b) => $a['lt'] <=> $b['lt']);
+            foreach ($downSlabs as $slab) {
+                if ($slab['lt'] > 0 && $cvrL30 < $slab['lt']) {
+                    $disc = $slab['disc'];
+                    break;
+                }
+            }
+        } elseif ($trend === 'up') {
+            $upSlabs = [
+                ['gt' => (float) ($cfg['up_gt'] ?? 10), 'disc' => (float) ($cfg['up_disc'] ?? 0)],
+            ];
+            if (is_numeric($cfg['up2_gt'] ?? null)) {
+                $upSlabs[] = ['gt' => (float) $cfg['up2_gt'], 'disc' => (float) ($cfg['up2_disc'] ?? 0)];
+            }
+            usort($upSlabs, fn ($a, $b) => $b['gt'] <=> $a['gt']);
+            foreach ($upSlabs as $slab) {
+                if ($cvrL30 > $slab['gt']) {
+                    $disc = $slab['disc'];
+                    break;
+                }
+            }
         }
         if (! is_finite($disc) || $disc <= 0) {
             return 0.0;

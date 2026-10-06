@@ -19,93 +19,231 @@
         .amz-dil-discount-badge.is-zero,
         .amz-sum-discount-badge.is-zero { color: #adb5bd; font-weight: 600; }
         #amzStdPrcModal .modal-dialog {
-            width: 96vw;
+            width: min(1480px, 96vw);
             max-width: 96vw;
-            margin: 1vh auto;
+            margin: 1.5vh auto;
         }
-        #amzStdPrcModal .modal-body { overflow-x: auto; }
+        #amzStdPrcModal .modal-content {
+            border: 0;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+        }
+        #amzStdPrcModal .modal-header {
+            background: #fff;
+            border-bottom: 1px solid #e8eef5;
+            padding: 14px 18px;
+        }
+        #amzStdPrcModal .modal-title { font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+        #amzStdPrcModal .amz-sp-sub { color: #64748b; font-size: 12px; font-weight: 500; margin-top: 2px; }
+        #amzStdPrcModal .modal-body {
+            background: #f4f7fb;
+            overflow-x: auto;
+            padding: 14px 16px 16px;
+        }
+        #amzStdPrcModal .modal-footer {
+            background: #fff;
+            border-top: 1px solid #e8eef5;
+            padding: 10px 16px;
+        }
         #amzStdPrcModal .amz-sp-cols {
             display: grid;
-            grid-template-columns: repeat(5, minmax(220px, 1fr));
-            gap: 10px;
-            align-items: start;
+            grid-template-columns: repeat(5, minmax(230px, 1fr));
+            gap: 12px;
+            align-items: stretch;
             min-width: 1180px;
         }
         #amzStdPrcModal .amz-sp-col {
             min-width: 0;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #e6edf5;
+            border-radius: 14px;
+            padding: 12px;
             background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
         #amzStdPrcModal .amz-sp-pie {
             display: flex;
             flex-direction: column;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
         #amzStdPrcModal .amz-sp-pie-canvas {
             position: relative;
-            width: 128px;
-            height: 128px;
-            flex: 0 0 128px;
+            width: 148px;
+            height: 148px;
+            flex: 0 0 148px;
         }
         #amzStdPrcModal .amz-sp-pie-canvas canvas {
             display: block;
-            width: 128px !important;
-            height: 128px !important;
+            width: 148px !important;
+            height: 148px !important;
         }
         #amzStdPrcModal .amz-sp-pie-legend {
             width: 100%;
-            font-size: 11px;
-            max-height: 92px;
-            overflow: auto;
-            margin-top: 4px;
+            font-size: 12px;
+            margin-top: 8px;
+            color: #334155;
         }
-        #amzStdPrcModal .amz-sp-pie-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; color: #334155; align-self: flex-start; }
-        #amzStdPrcModal .amz-sp-leg-row { display: flex; gap: 6px; align-items: center; margin-bottom: 2px; }
-        #amzStdPrcModal .amz-sp-swatch { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
-        #amzStdPrcModal .amz-sp-col .table { font-size: 11px; margin-bottom: 0; }
+        #amzStdPrcModal .amz-sp-pie-title {
+            font-weight: 700;
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #0f172a;
+            align-self: flex-start;
+            letter-spacing: -0.01em;
+        }
+        #amzStdPrcModal .amz-sp-leg-row {
+            display: grid;
+            grid-template-columns: 8px minmax(0, 1fr) auto auto;
+            gap: 6px;
+            align-items: center;
+            padding: 2px 0;
+        }
+        #amzStdPrcModal .amz-sp-leg-row strong { font-variant-numeric: tabular-nums; }
+        #amzStdPrcModal .amz-sp-leg-pct { color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 2.2rem; text-align: right; }
+        #amzStdPrcModal .amz-sp-swatch { width: 8px; height: 8px; border-radius: 50%; }
+        #amzStdPrcModal .amz-sp-col .table {
+            font-size: 12px;
+            margin-bottom: 0;
+            border-color: #e8eef5;
+        }
+        #amzStdPrcModal .amz-sp-col .table thead th {
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            border-color: #e8eef5;
+            white-space: nowrap;
+        }
         #amzStdPrcModal .amz-sp-col .table th,
-        #amzStdPrcModal .amz-sp-col .table td { padding: 3px 4px; }
-        #amzStdPrcModal .amz-sp-col .btn { font-size: 11px; }
+        #amzStdPrcModal .amz-sp-col .table td {
+            padding: 5px 6px;
+            border-color: #eef2f7;
+            vertical-align: middle;
+        }
+        #amzStdPrcModal .amz-sp-col .table tbody tr:last-child td { border-bottom: 0; }
+        #amzStdPrcModal #amz-sp-all-tbody tr.fw-semibold { background: #f8fafc; }
+        #amzStdPrcModal .amz-sp-add {
+            margin-top: auto;
+            width: 100%;
+            border-radius: 8px;
+            border-style: dashed;
+            font-weight: 600;
+        }
+        #amzStdPrcModal .amz-sp-col .table-responsive { margin-bottom: 8px; }
         #amzStdPrcModal .amz-sp-margins {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
         }
         #amzStdPrcModal .amz-sp-margin {
-            flex: 1 1 240px;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 8px 10px;
-            background: #f8fafc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            border: 1px solid #e6edf5;
+            border-radius: 14px;
+            padding: 12px 16px;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
-        #amzStdPrcModal .amz-sp-margin strong { font-size: 16px; }
+        #amzStdPrcModal .amz-sp-margin-kicker {
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        #amzStdPrcModal .amz-sp-margin strong {
+            display: block;
+            font-size: 26px;
+            line-height: 1.15;
+            letter-spacing: -0.03em;
+            margin: 2px 0;
+        }
         #amzStdPrcModal .amz-sp-metric-grid {
             display: grid;
-            grid-template-columns: 3.2rem 1fr auto;
-            gap: 2px 8px;
-            margin-top: 6px;
+            grid-template-columns: 3.4rem auto auto;
+            gap: 4px 12px;
+            width: max-content;
             font-size: 12px;
-            align-items: baseline;
+            align-items: center;
         }
         #amzStdPrcModal .amz-sp-metric { display: contents; }
         #amzStdPrcModal .amz-sp-metric .amz-sp-metric-name { color: #64748b; font-weight: 700; }
-        #amzStdPrcModal .amz-sp-metric .amz-sp-metric-money { font-weight: 700; text-align: right; }
+        #amzStdPrcModal .amz-sp-metric .amz-sp-metric-money { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
         #amzStdPrcModal .amz-sp-metric .amz-sp-metric-pct { font-weight: 700; text-align: right; }
         #amzStdPrcModal .amz-sp-section { font-weight: 700; font-size: 12px; margin: 12px 0 6px; color: #334155; }
         #amzStdPrcModal .amz-sp-input {
-            width: 100%;
-            max-width: 72px;
-            margin-left: auto;
-            text-align: right;
+            width: 58px;
+            max-width: 100%;
+            margin: 0 auto;
+            display: inline-block;
+            text-align: center;
             font-weight: 600;
-            padding: 2px 4px;
+            padding: 2px 6px;
             font-size: 12px;
+            height: 28px;
+            border-radius: 7px;
+            border-color: #dbe3ee;
+            background: #f8fafc;
+            font-variant-numeric: tabular-nums;
         }
-        #amzStdPrcModal .amz-sp-count { font-weight: 700; text-align: center; }
+        #amzStdPrcModal .amz-sp-input:focus {
+            background: #fff;
+            border-color: #93c5fd;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+        #amzStdPrcModal td.text-end .amz-sp-input { margin-left: auto; margin-right: 0; }
+        #amzStdPrcModal .amz-sp-cvr-thresh {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            color: #64748b;
+            font-weight: 700;
+        }
+        #amzStdPrcModal .amz-sp-cvr-thresh .amz-sp-input { width: 52px; margin: 0; }
+        #amzStdPrcModal .amz-sp-count { font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; color: #0f172a; }
+        #amzStdPrcModal .amz-sp-when { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #334155; white-space: nowrap; }
+        #amzStdPrcModal .amz-sp-when::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #94a3b8;
+            flex: 0 0 8px;
+        }
+        #amzStdPrcModal .amz-sp-when-down2::before { background: #9f1239; }
+        #amzStdPrcModal .amz-sp-when-down::before { background: #dc3545; }
+        #amzStdPrcModal .amz-sp-when-flat::before { background: #94a3b8; }
+        #amzStdPrcModal .amz-sp-when-up::before { background: #198754; }
+        #amzStdPrcModal .amz-sp-when-up2::before { background: #14532d; }
+        #amzStdPrcModal .amz-sp-max {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            background: #f8fafc;
+            border: 1px solid #eef2f7;
+        }
+        #amzStdPrcModal .amz-sp-max label { font-size: 11px; font-weight: 700; color: #64748b; letter-spacing: 0.03em; text-transform: uppercase; margin: 0; }
+        #amzStdPrcModal .amz-sp-del {
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            line-height: 1;
+            border-radius: 6px;
+            color: #94a3b8;
+        }
+        #amzStdPrcModal .amz-sp-del:hover { color: #dc3545; background: #fef2f2; }
+        #amzStdPrcModal #amz-sp-apply { border-radius: 8px; font-weight: 600; padding: 6px 14px; }
 @endif
 
 @if($amazonStdPrcPart === 'buttons' || $amazonStdPrcPart === 'all')
@@ -119,29 +257,31 @@
     <div class="modal fade" id="amzStdPrcModal" tabindex="-1" aria-labelledby="amzStdPrcModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title fs-6" id="amzStdPrcModalLabel">
-                        <i class="fas fa-tags me-1"></i> Std prc vs dil
-                    </h5>
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
+                            <i class="fas fa-tags me-1"></i> Std prc vs dil
+                        </h5>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − CVR − Reviews. CVR adds the slab and the up/down discount.</div>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body py-2">
-                    <p class="small text-muted mb-2">
-                        Every price starts at <strong>Std Prc</strong>.
-                        S PRC = Std Prc − (Age Disc + Dil Disc + CVR Disc + Rev Disc).
-                        CVR Disc is the CVR slab plus the up/down promotional discount below.
-                    </p>
+                <div class="modal-body">
                     <div class="amz-sp-margins">
                         <div class="amz-sp-margin">
-                            <div class="small text-muted">Projected margin · last L30 sales</div>
-                            <strong id="amz-sp-margin-l30">—</strong>
-                            <div class="small text-muted" id="amz-sp-margin-l30-sub"></div>
+                            <div class="amz-sp-margin-head">
+                                <div class="amz-sp-margin-kicker">Projected margin · last L30 sales</div>
+                                <strong id="amz-sp-margin-l30">—</strong>
+                                <div class="small text-muted" id="amz-sp-margin-l30-sub"></div>
+                            </div>
                             <div class="amz-sp-metric-grid" id="amz-sp-margin-l30-metrics"></div>
                         </div>
                         <div class="amz-sp-margin">
-                            <div class="small text-muted">Projected margin · total INV</div>
-                            <strong id="amz-sp-margin-inv">—</strong>
-                            <div class="small text-muted" id="amz-sp-margin-inv-sub"></div>
+                            <div class="amz-sp-margin-head">
+                                <div class="amz-sp-margin-kicker">Projected margin · total INV</div>
+                                <strong id="amz-sp-margin-inv">—</strong>
+                                <div class="small text-muted" id="amz-sp-margin-inv-sub"></div>
+                            </div>
                             <div class="amz-sp-metric-grid" id="amz-sp-margin-inv-metrics"></div>
                         </div>
                     </div>
@@ -167,7 +307,7 @@
                                     <tbody id="amz-sp-dil-tbody"></tbody>
                                 </table>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amz-sp-dil-add">Add slab</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-dil-add">Add slab</button>
                         </div>
 
                         <div class="amz-sp-col">
@@ -176,8 +316,8 @@
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-rev"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-rev"></div>
                             </div>
-                            <div class="d-flex align-items-center gap-1 mb-2">
-                                <label for="amz-sp-review-max" class="small fw-semibold mb-0 text-nowrap">Max</label>
+                            <div class="amz-sp-max">
+                                <label for="amz-sp-review-max">Max reviews</label>
                                 <input type="number" id="amz-sp-review-max" class="form-control form-control-sm amz-sp-input" min="1" step="1" value="4" title="No review discount when reviews are above this">
                             </div>
                             <div class="table-responsive">
@@ -194,7 +334,7 @@
                                     <tbody id="amz-sp-rev-tbody"></tbody>
                                 </table>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amz-sp-rev-add">Add range</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-rev-add">Add range</button>
                         </div>
 
                         <div class="amz-sp-col">
@@ -215,22 +355,34 @@
                                     </thead>
                                     <tbody>
                                         <tr>
-                                            <td>Down</td>
-                                            <td class="text-center">&lt; <input type="number" min="0" step="0.1" class="form-control form-control-sm d-inline-block amz-sp-input amz-sp-cvr-down-lt" value="7"></td>
+                                            <td><span class="amz-sp-when amz-sp-when-down2">Down</span></td>
+                                            <td class="text-center"><span class="amz-sp-cvr-thresh">&lt;<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down2-lt" value="4"></span></td>
+                                            <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down2-disc" value="0"></td>
+                                            <td class="amz-sp-count" id="amz-sp-cvr-down2-count">0</td>
+                                        </tr>
+                                        <tr>
+                                            <td><span class="amz-sp-when amz-sp-when-down">Down</span></td>
+                                            <td class="text-center"><span class="amz-sp-cvr-thresh">&lt;<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down-lt" value="7"></span></td>
                                             <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down-disc" value="0"></td>
                                             <td class="amz-sp-count" id="amz-sp-cvr-down-count">0</td>
                                         </tr>
                                         <tr>
-                                            <td>Flat</td>
+                                            <td><span class="amz-sp-when amz-sp-when-flat">Flat</span></td>
                                             <td class="text-center text-muted">mid</td>
                                             <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-flat-disc" value="0"></td>
                                             <td class="amz-sp-count" id="amz-sp-cvr-flat-count">0</td>
                                         </tr>
                                         <tr>
-                                            <td>Up</td>
-                                            <td class="text-center">&gt; <input type="number" min="0" step="0.1" class="form-control form-control-sm d-inline-block amz-sp-input amz-sp-cvr-up-gt" value="10"></td>
+                                            <td><span class="amz-sp-when amz-sp-when-up">Up</span></td>
+                                            <td class="text-center"><span class="amz-sp-cvr-thresh">&gt;<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up-gt" value="10"></span></td>
                                             <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up-disc" value="0"></td>
                                             <td class="amz-sp-count" id="amz-sp-cvr-up-count">0</td>
+                                        </tr>
+                                        <tr>
+                                            <td><span class="amz-sp-when amz-sp-when-up2">Up</span></td>
+                                            <td class="text-center"><span class="amz-sp-cvr-thresh">&gt;<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up2-gt" value="15"></span></td>
+                                            <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up2-disc" value="0"></td>
+                                            <td class="amz-sp-count" id="amz-sp-cvr-up2-count">0</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -257,7 +409,7 @@
                                     <tbody id="amz-sp-age-tbody"></tbody>
                                 </table>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amz-sp-age-add">Add range</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-age-add">Add range</button>
                         </div>
 
                         <div class="amz-sp-col">
@@ -281,9 +433,9 @@
                             </div>
                         </div>
                     </div>
-                    <div class="small text-muted mt-2" id="amz-sp-status"></div>
                 </div>
-                <div class="modal-footer py-2">
+                <div class="modal-footer">
+                    <div class="small text-muted me-auto" id="amz-sp-status"></div>
                     <button type="button" class="btn btn-sm btn-primary" id="amz-sp-apply"
                         title="Save these promotional discounts and write S PRC as Std Prc minus the sum.">
                         <i class="fas fa-save me-1"></i> Save and Apply
@@ -311,7 +463,7 @@
             { min: 181, max: 365, disc: 0 },
             { min: 366, max: 9999, disc: 0 },
         ];
-        const AMZ_STD_CVR_DEFAULT = { down_lt: 7, down_disc: 0, up_gt: 10, up_disc: 0, flat_disc: 0 };
+        const AMZ_STD_CVR_DEFAULT = { down2_lt: 4, down2_disc: 0, down_lt: 7, down_disc: 0, up_gt: 10, up_disc: 0, up2_gt: 15, up2_disc: 0, flat_disc: 0 };
         const AMZ_STD_PIE_COLORS = ['#6f42c1', '#3b82f6', '#14b8a6', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c', '#0ea5e9', '#64748b'];
         let amzStdDilRules = AMZ_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -362,22 +514,46 @@
             const dil = (typeof amzPefDil === 'function') ? amzPefDil(d) : 0;
             return amzStdRangeDisc(dil, amzStdDilRules);
         }
+        function amzStdCvrSlabs(cfg) {
+            cfg = cfg || AMZ_STD_CVR_DEFAULT;
+            const down = [
+                { key: 'down2', lt: Number(cfg.down2_lt), disc: Number(cfg.down2_disc) || 0 },
+                { key: 'down', lt: Number(cfg.down_lt), disc: Number(cfg.down_disc) || 0 },
+            ].filter(function(s) { return isFinite(s.lt) && s.lt > 0; });
+            down.sort(function(a, b) { return a.lt - b.lt; });
+            const up = [
+                { key: 'up', gt: Number(cfg.up_gt), disc: Number(cfg.up_disc) || 0 },
+                { key: 'up2', gt: Number(cfg.up2_gt), disc: Number(cfg.up2_disc) || 0 },
+            ].filter(function(s) { return isFinite(s.gt) && s.gt >= 0; });
+            up.sort(function(a, b) { return b.gt - a.gt; });
+            return { down: down, up: up };
+        }
+        function amzStdCvrMatch(d, cfg) {
+            const cvr = (typeof amzPefCvrL30Live === 'function') ? amzPefCvrL30Live(d) : 0;
+            const trend = (typeof amzPefCvrTrend === 'function') ? amzPefCvrTrend(d) : 'flat';
+            const slabs = amzStdCvrSlabs(cfg);
+            if (trend === 'down') {
+                for (let i = 0; i < slabs.down.length; i++) {
+                    if (cvr < slabs.down[i].lt) return slabs.down[i];
+                }
+            }
+            if (trend === 'up') {
+                for (let i = 0; i < slabs.up.length; i++) {
+                    if (cvr > slabs.up[i].gt) return slabs.up[i];
+                }
+            }
+            return null;
+        }
         function amzStdCvrTrendDisc(d) {
             if (!d || (typeof amzPefInv === 'function' && amzPefInv(d) === 0)) return 0;
             const cfg = amzStdCvrCfg || AMZ_STD_CVR_DEFAULT;
-            const cvr = (typeof amzPefCvrL30Live === 'function') ? amzPefCvrL30Live(d) : 0;
-            const trend = (typeof amzPefCvrTrend === 'function') ? amzPefCvrTrend(d) : 'flat';
-            let disc = Number(cfg.flat_disc) || 0;
-            if (trend === 'down' && cvr < (Number(cfg.down_lt) || 0)) disc = Number(cfg.down_disc) || 0;
-            else if (trend === 'up' && cvr > (Number(cfg.up_gt) || 0)) disc = Number(cfg.up_disc) || 0;
+            const hit = amzStdCvrMatch(d, cfg);
+            const disc = hit ? hit.disc : (Number(cfg.flat_disc) || 0);
             return isFinite(disc) && disc > 0 ? disc : 0;
         }
         function amzStdCvrBand(d, cfg) {
-            const cvr = (typeof amzPefCvrL30Live === 'function') ? amzPefCvrL30Live(d) : 0;
-            const trend = (typeof amzPefCvrTrend === 'function') ? amzPefCvrTrend(d) : 'flat';
-            if (trend === 'down' && cvr < (Number(cfg.down_lt) || 0)) return 'down';
-            if (trend === 'up' && cvr > (Number(cfg.up_gt) || 0)) return 'up';
-            return 'flat';
+            const hit = amzStdCvrMatch(d, cfg);
+            return hit ? hit.key : 'flat';
         }
         function computeAmzSumDiscountPct(d) {
             if (typeof computeAmzRuleStack !== 'function') return 0;
@@ -411,11 +587,15 @@
         function amzStdNormCvr(raw) {
             const out = Object.assign({}, AMZ_STD_CVR_DEFAULT);
             if (!raw) return out;
-            ['down_lt', 'up_gt', 'down_disc', 'up_disc', 'flat_disc'].forEach(function(key) {
+            const hadDown2Disc = raw.down2_disc !== undefined && raw.down2_disc !== null && raw.down2_disc !== '';
+            const hadUp2Disc = raw.up2_disc !== undefined && raw.up2_disc !== null && raw.up2_disc !== '';
+            ['down2_lt', 'down_lt', 'up_gt', 'up2_gt', 'down2_disc', 'down_disc', 'up_disc', 'up2_disc', 'flat_disc'].forEach(function(key) {
                 const n = Number(raw[key]);
                 if (!isFinite(n) || n < 0) return;
                 out[key] = n > 100 && key.indexOf('disc') !== -1 ? 100 : n;
             });
+            if (!hadDown2Disc) out.down2_disc = out.down_disc;
+            if (!hadUp2Disc) out.up2_disc = out.up_disc;
             return out;
         }
         function amzStdEachInvChild(fn) {
@@ -442,10 +622,14 @@
         }
         function amzStdReadDraft() {
             const cvr = amzStdNormCvr({
+                down2_lt: $('#amzStdPrcModal .amz-sp-cvr-down2-lt').val(),
+                down2_disc: $('#amzStdPrcModal .amz-sp-cvr-down2-disc').val(),
                 down_lt: $('#amzStdPrcModal .amz-sp-cvr-down-lt').val(),
                 down_disc: $('#amzStdPrcModal .amz-sp-cvr-down-disc').val(),
                 up_gt: $('#amzStdPrcModal .amz-sp-cvr-up-gt').val(),
                 up_disc: $('#amzStdPrcModal .amz-sp-cvr-up-disc').val(),
+                up2_gt: $('#amzStdPrcModal .amz-sp-cvr-up2-gt').val(),
+                up2_disc: $('#amzStdPrcModal .amz-sp-cvr-up2-disc').val(),
                 flat_disc: $('#amzStdPrcModal .amz-sp-cvr-flat-disc').val(),
             });
             const reviews = amzStdReadRanges('#amz-sp-rev-tbody', '.amz-sp-rev-min', '.amz-sp-rev-max', '.amz-sp-rev-disc');
@@ -468,7 +652,7 @@
                 + '<td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm amz-sp-input ' + prefix + '-max" value="' + max + '"></td>'
                 + '<td class="amz-sp-count ' + prefix + '-count">0</td>'
                 + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input ' + prefix + '-disc" value="' + disc + '"></td>'
-                + '<td><button type="button" class="btn btn-sm text-danger ' + prefix + '-del" title="Remove">&times;</button></td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm amz-sp-del ' + prefix + '-del" title="Remove">&times;</button></td>'
                 + '</tr>';
         }
         function amzStdPaintRanges(tbody, prefix, rules) {
@@ -477,10 +661,14 @@
         }
         function amzStdPaintCvr(cfg) {
             cfg = amzStdNormCvr(cfg);
+            $('#amzStdPrcModal .amz-sp-cvr-down2-lt').val(cfg.down2_lt);
+            $('#amzStdPrcModal .amz-sp-cvr-down2-disc').val(cfg.down2_disc);
             $('#amzStdPrcModal .amz-sp-cvr-down-lt').val(cfg.down_lt);
             $('#amzStdPrcModal .amz-sp-cvr-down-disc').val(cfg.down_disc);
             $('#amzStdPrcModal .amz-sp-cvr-up-gt').val(cfg.up_gt);
             $('#amzStdPrcModal .amz-sp-cvr-up-disc').val(cfg.up_disc);
+            $('#amzStdPrcModal .amz-sp-cvr-up2-gt').val(cfg.up2_gt);
+            $('#amzStdPrcModal .amz-sp-cvr-up2-disc').val(cfg.up2_disc);
             $('#amzStdPrcModal .amz-sp-cvr-flat-disc').val(cfg.flat_disc);
         }
         function amzStdPaintModal() {
@@ -541,7 +729,7 @@
                 const n = counts[s.key] || 0;
                 const pct = total > 0 ? Math.round((n / total) * 100) : 0;
                 return '<div class="amz-sp-leg-row"><span class="amz-sp-swatch" style="background:' + s.color + '"></span>'
-                    + '<span style="flex:1">' + s.label + '</span><strong>' + n + '</strong><span class="text-muted">' + pct + '%</span></div>';
+                    + '<span>' + s.label + '</span><strong>' + n + '</strong><span class="amz-sp-leg-pct">' + pct + '%</span></div>';
             }).join('');
             $(el).html(html);
         }
@@ -553,24 +741,44 @@
             amzStdPieCharts[id] = null;
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
             const data = slices.map(function(s) { return counts[s.key] || 0; });
+            const values = total > 0 ? data : slices.map(function() { return 1; });
             amzStdPieCharts[id] = new Chart(canvas.getContext('2d'), {
-                type: 'pie',
+                type: 'doughnut',
                 data: {
                     labels: slices.map(function(s) { return s.label; }),
                     datasets: [{
-                        data: total > 0 ? data : slices.map(function() { return 1; }),
+                        data: values,
                         backgroundColor: total > 0
                             ? slices.map(function(s) { return s.color; })
                             : slices.map(function() { return '#e2e8f0'; }),
                         borderColor: '#fff',
-                        borderWidth: 1,
+                        borderWidth: 2,
+                        hoverOffset: 4,
                     }],
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     animation: false,
-                    plugins: { legend: { display: false } },
+                    cutout: '58%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            padding: 10,
+                            cornerRadius: 8,
+                            displayColors: true,
+                            boxPadding: 4,
+                            callbacks: {
+                                label: function(ctx) {
+                                    if (!(total > 0)) return ' No rows';
+                                    const n = Number(ctx.raw) || 0;
+                                    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                    return ' ' + n + ' · ' + pct + '%';
+                                },
+                            },
+                        },
+                    },
                 },
             });
         }
@@ -593,7 +801,7 @@
             const dilCounts = {};
             const ageCounts = {};
             const revCounts = {};
-            const cvrCounts = { down: 0, flat: 0, up: 0 };
+            const cvrCounts = { down2: 0, down: 0, flat: 0, up: 0, up2: 0 };
             draft.dil.forEach(function(r, i) { dilCounts['d' + i] = 0; });
             dilCounts.outside = 0;
             draft.age.forEach(function(r, i) { ageCounts['a' + i] = 0; });
@@ -641,10 +849,8 @@
                 const dilDisc = dilIdx >= 0 ? (Number(draft.dil[dilIdx].disc) || 0) : 0;
                 const revDisc = revIdx >= 0 ? (Number(draft.reviews[revIdx].disc) || 0) : 0;
                 const slab = (typeof amzDiscForCvr === 'function' && typeof amzPefCvr === 'function') ? (amzDiscForCvr(amzPefCvr(d)) || 0) : 0;
-                let trend = Number(draft.cvr.flat_disc) || 0;
-                const cvrLive = (typeof amzPefCvrL30Live === 'function') ? amzPefCvrL30Live(d) : 0;
-                if (band === 'down' && cvrLive < draft.cvr.down_lt) trend = Number(draft.cvr.down_disc) || 0;
-                else if (band === 'up' && cvrLive > draft.cvr.up_gt) trend = Number(draft.cvr.up_disc) || 0;
+                const cvrHit = amzStdCvrMatch(d, draft.cvr);
+                let trend = cvrHit ? (Number(cvrHit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0);
                 const cvrDisc = Math.max(0, slab + (trend > 0 ? trend : 0));
                 if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
@@ -680,9 +886,11 @@
             $('#amz-sp-rev-tbody tr').each(function(i) {
                 $(this).find('.amz-sp-rev-count').text(revCounts['r' + i] || 0);
             });
+            $('#amz-sp-cvr-down2-count').text(cvrCounts.down2 || 0);
             $('#amz-sp-cvr-down-count').text(cvrCounts.down || 0);
             $('#amz-sp-cvr-flat-count').text(cvrCounts.flat || 0);
             $('#amz-sp-cvr-up-count').text(cvrCounts.up || 0);
+            $('#amz-sp-cvr-up2-count').text(cvrCounts.up2 || 0);
 
             const dilSlices = draft.dil.map(function(r, i) {
                 return { key: 'd' + i, label: r.min + '–' + r.max, color: AMZ_STD_PIE_COLORS[i % AMZ_STD_PIE_COLORS.length] };
@@ -694,9 +902,11 @@
                 return { key: 'r' + i, label: r.min + '–' + r.max, color: AMZ_STD_PIE_COLORS[i % AMZ_STD_PIE_COLORS.length] };
             }).concat([{ key: 'none', label: 'No disc', color: '#cbd5e1' }]);
             const cvrSlices = [
+                { key: 'down2', label: 'Down < ' + draft.cvr.down2_lt + '%', color: '#9f1239' },
                 { key: 'down', label: 'Down < ' + draft.cvr.down_lt + '%', color: '#dc3545' },
                 { key: 'flat', label: 'Flat', color: '#94a3b8' },
                 { key: 'up', label: 'Up > ' + draft.cvr.up_gt + '%', color: '#198754' },
+                { key: 'up2', label: 'Up > ' + draft.cvr.up2_gt + '%', color: '#14532d' },
             ];
             const allSlices = [
                 { key: 'age', label: 'Age', color: '#d97706' },

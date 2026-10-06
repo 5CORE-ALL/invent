@@ -1,4 +1,4 @@
-{{-- Ship: weight-slab shipping cost for OV L30 and total INV. Parts: css, buttons, modals, script. --}}
+{{-- Ship: weight-slab shipping cost for OV L30, A L30, and total INV. Parts: css, buttons, modals, script. --}}
 @php $amazonShipPart = $amazonShipPart ?? 'all'; @endphp
 
 @if($amazonShipPart === 'css' || $amazonShipPart === 'all')
@@ -15,12 +15,12 @@
         }
         #amzShipSlabModal .modal-dialog {
             width: 96vw;
-            max-width: 1100px;
+            max-width: 1560px;
             margin: 1vh auto;
         }
         #amzShipSlabModal .amz-ship-cols {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 12px;
             align-items: start;
         }
@@ -61,14 +61,14 @@
         #amzShipSlabModal .amz-ship-col .table th,
         #amzShipSlabModal .amz-ship-col .table td { padding: 3px 4px; }
         #amzShipSlabModal .amz-ship-total { font-size: 13px; font-weight: 700; color: #166534; }
-        @media (max-width: 900px) {
+        @media (max-width: 1100px) {
             #amzShipSlabModal .amz-ship-cols { grid-template-columns: 1fr; }
         }
 @endif
 
 @if($amazonShipPart === 'buttons' || $amazonShipPart === 'all')
                     <button type="button" class="btn btn-sm" id="amz-ship-slab-btn"
-                        title="Shipping cost by weight slab. OV L30 units and total INV, with ship dollars.">
+                        title="Shipping cost by weight slab. OV L30, A L30, and total INV, with ship dollars.">
                         <i class="fas fa-truck"></i> Ship
                     </button>
 @endif
@@ -86,7 +86,7 @@
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
                         Weight slabs match Shipping Master. Ship $ is each SKU’s Product Master ship rate.
-                        Totals are that rate times units.
+                        Totals are that rate times OV L30, A L30, or INV units.
                     </p>
                     <div class="amz-ship-cols">
                         <div class="amz-ship-col">
@@ -107,6 +107,27 @@
                                         </tr>
                                     </thead>
                                     <tbody id="amz-ship-ov-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="amz-ship-col">
+                            <div class="fw-bold mb-1" style="font-size:12px;color:#334155;">A L30 sales</div>
+                            <div class="amz-ship-total" id="amz-ship-al-total">—</div>
+                            <div class="amz-ship-pie">
+                                <div class="amz-ship-pie-canvas"><canvas id="amz-ship-pie-al"></canvas></div>
+                                <div class="amz-ship-pie-legend" id="amz-ship-leg-al"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Weight slab</th>
+                                            <th class="text-end">Ship</th>
+                                            <th class="text-end">A L30</th>
+                                            <th class="text-end">Ship total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amz-ship-al-tbody"></tbody>
                                 </table>
                             </div>
                         </div>
@@ -175,22 +196,25 @@
                 : [{ key: 'lb_0', label: '0 lb' }];
             const buckets = {};
             slabs.forEach(function(slab) {
-                buckets[slab.key] = { key: slab.key, label: slab.label, ovUnits: 0, ovShip: 0, invUnits: 0, invShip: 0, rates: {} };
+                buckets[slab.key] = { key: slab.key, label: slab.label, ovUnits: 0, ovShip: 0, alUnits: 0, alShip: 0, invUnits: 0, invShip: 0, rates: {} };
             });
             amzShipEachChild(function(d) {
                 const key = buckets[d.ship_slab] ? d.ship_slab : 'lb_0';
                 if (!buckets[key]) {
-                    buckets[key] = { key: key, label: key, ovUnits: 0, ovShip: 0, invUnits: 0, invShip: 0, rates: {} };
+                    buckets[key] = { key: key, label: key, ovUnits: 0, ovShip: 0, alUnits: 0, alShip: 0, invUnits: 0, invShip: 0, rates: {} };
                 }
                 const ship = parseFloat(d.Ship_productmaster) || 0;
                 const ov = (typeof amzPefOvL30 === 'function') ? amzPefOvL30(d) : (Number(d.ov_l30) || 0);
+                const al = (typeof amzPefAL30 === 'function') ? amzPefAL30(d) : (Number(d.A_L30) || 0);
                 const inv = (typeof amzPefInv === 'function') ? amzPefInv(d) : (Number(d.INV) || 0);
                 const b = buckets[key];
                 b.ovUnits += ov;
                 b.ovShip += ship * ov;
+                b.alUnits += al;
+                b.alShip += ship * al;
                 b.invUnits += inv;
                 b.invShip += ship * inv;
-                if (ship > 0 || ov > 0 || inv > 0) {
+                if (ship > 0 || ov > 0 || al > 0 || inv > 0) {
                     const rateKey = ship.toFixed(2);
                     b.rates[rateKey] = (b.rates[rateKey] || 0) + 1;
                 }
@@ -291,30 +315,42 @@
         function amzShipRefresh() {
             const rows = amzShipBuckets();
             const ov = amzShipSectionHtml(rows, 'ovUnits', 'ovShip');
+            const al = amzShipSectionHtml(rows, 'alUnits', 'alShip');
             const inv = amzShipSectionHtml(rows, 'invUnits', 'invShip');
             $('#amz-ship-ov-tbody').html(ov.html);
+            $('#amz-ship-al-tbody').html(al.html);
             $('#amz-ship-inv-tbody').html(inv.html);
             $('#amz-ship-ov-total').text(amzShipCount(ov.units) + ' units · ' + amzShipMoney(ov.dollars) + ' ship');
+            $('#amz-ship-al-total').text(amzShipCount(al.units) + ' units · ' + amzShipMoney(al.dollars) + ' ship');
             $('#amz-ship-inv-total').text(amzShipCount(inv.units) + ' units · ' + amzShipMoney(inv.dollars) + ' ship');
             const ovSlices = amzShipActiveSlices(rows, 'ovUnits', 'ovShip');
+            const alSlices = amzShipActiveSlices(rows, 'alUnits', 'alShip');
             const invSlices = amzShipActiveSlices(rows, 'invUnits', 'invShip');
             const ovCounts = {};
             const ovDollars = {};
+            const alCounts = {};
+            const alDollars = {};
             const invCounts = {};
             const invDollars = {};
             rows.forEach(function(row) {
                 ovCounts[row.key] = row.ovUnits;
                 ovDollars[row.key] = row.ovShip;
+                alCounts[row.key] = row.alUnits;
+                alDollars[row.key] = row.alShip;
                 invCounts[row.key] = row.invUnits;
                 invDollars[row.key] = row.invShip;
             });
             const ovPie = amzShipPieValues(ovSlices, ovCounts, ovDollars);
+            const alPie = amzShipPieValues(alSlices, alCounts, alDollars);
             const invPie = amzShipPieValues(invSlices, invCounts, invDollars);
             amzShipLegend('#amz-ship-leg-ov', ovSlices, ovCounts, ovPie.dollars);
+            amzShipLegend('#amz-ship-leg-al', alSlices, alCounts, alPie.dollars);
             amzShipLegend('#amz-ship-leg-inv', invSlices, invCounts, invPie.dollars);
+            const emptyPie = [{ key: 'none', label: 'None', color: '#e2e8f0' }];
             amzShipDrawPies([
-                { id: 'amz-ship-pie-ov', slices: ovSlices.length ? ovSlices : [{ key: 'none', label: 'None', color: '#e2e8f0' }], values: ovSlices.length ? ovPie.values : { none: 0 } },
-                { id: 'amz-ship-pie-inv', slices: invSlices.length ? invSlices : [{ key: 'none', label: 'None', color: '#e2e8f0' }], values: invSlices.length ? invPie.values : { none: 0 } },
+                { id: 'amz-ship-pie-ov', slices: ovSlices.length ? ovSlices : emptyPie, values: ovSlices.length ? ovPie.values : { none: 0 } },
+                { id: 'amz-ship-pie-al', slices: alSlices.length ? alSlices : emptyPie, values: alSlices.length ? alPie.values : { none: 0 } },
+                { id: 'amz-ship-pie-inv', slices: invSlices.length ? invSlices : emptyPie, values: invSlices.length ? invPie.values : { none: 0 } },
             ]);
         }
         function bindAmzShipSlabUi() {

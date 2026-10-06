@@ -240,6 +240,40 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
     }
 
+    public function test_extra_cvr_slabs_use_the_tighter_band(): void
+    {
+        $service = new AmazonSprcDilAutoPushService;
+        $cfg = [
+            'down2_lt' => 4,
+            'down2_disc' => 8,
+            'down_lt' => 7,
+            'down_disc' => 2,
+            'up_gt' => 10,
+            'up_disc' => 1,
+            'up2_gt' => 15,
+            'up2_disc' => 6,
+            'flat_disc' => 0,
+        ];
+
+        $this->assertEqualsWithDelta(8.0, $service->discForStdCvrTrend([
+            'a_l30' => 2, 'sess30' => 100, 'a_l60' => 10, 'sess60' => 100,
+        ], $cfg), 0.001);
+        $this->assertEqualsWithDelta(2.0, $service->discForStdCvrTrend([
+            'a_l30' => 5, 'sess30' => 100, 'a_l60' => 10, 'sess60' => 100,
+        ], $cfg), 0.001);
+        $this->assertEqualsWithDelta(1.0, $service->discForStdCvrTrend([
+            'a_l30' => 12, 'sess30' => 100, 'a_l60' => 8, 'sess60' => 100,
+        ], $cfg), 0.001);
+        $this->assertEqualsWithDelta(6.0, $service->discForStdCvrTrend([
+            'a_l30' => 20, 'sess30' => 100, 'a_l60' => 8, 'sess60' => 100,
+        ], $cfg), 0.001);
+        $this->assertEqualsWithDelta(2.0, $service->discForStdCvrTrend([
+            'a_l30' => 2, 'sess30' => 100, 'a_l60' => 10, 'sess60' => 100,
+        ], [
+            'down_lt' => 7, 'down_disc' => 2, 'up_gt' => 10, 'up_disc' => 1, 'flat_disc' => 0,
+        ]), 0.001);
+    }
+
     /**
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null
