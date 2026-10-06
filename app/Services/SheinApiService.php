@@ -2371,17 +2371,12 @@ class SheinApiService
             str_replace(' ', '-', $sku),
             str_replace('-', ' ', $sku),
             preg_replace('/\s+/', '-', $sku) ?: '',
-            str_replace(' ', '', $sku),
         ] as $alias) {
             $alias = trim((string) $alias);
             if ($alias !== '') {
                 $keys[] = $alias;
                 $keys[] = strtoupper($alias);
             }
-        }
-        $compact = ShopifySku::compactSkuForLookup($sku);
-        if (strlen($compact) >= 6) {
-            $keys[] = $compact;
         }
 
         return array_values(array_unique(array_filter($keys)));

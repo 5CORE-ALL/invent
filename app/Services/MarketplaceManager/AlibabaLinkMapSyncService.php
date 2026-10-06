@@ -82,14 +82,19 @@ class AlibabaLinkMapSyncService
         $items = $result['data']['products'] ?? [];
         $totalPage = $this->intOrNull($result['data']['total_page'] ?? null);
         $totalCount = $this->intOrNull($result['data']['total_count'] ?? null);
-        $pageUpserted = $this->upsertItems($items);
+        $pageUpserted = $this->upsertItems($items, $page === 1);
 
         $totalUpserted = (int) ($state['total_upserted'] ?? 0) + $pageUpserted;
         $itemCount = count($items);
         $done = $this->isLastPage($page, $itemCount, $pageSize, $totalPage);
+        $removed = 0;
+        if ($done && $page < self::MAX_PAGES) {
+            $removed = MarketplaceLinkMapPruner::prune(AlibabaMetric::class, 'alibaba');
+        }
 
         $message = $done
-            ? "Updated {$totalUpserted} SKU link(s) from Alibaba ({$page} API page(s)".($totalCount ? ", {$totalCount} products on AE" : '').'). No new listings were created on Alibaba.'
+            ? "Updated {$totalUpserted} SKU link(s) from Alibaba ({$page} API page(s)".($totalCount ? ", {$totalCount} products on AE" : '')
+                .($removed > 0 ? ", removed {$removed} missing" : '').'). No new listings were created on Alibaba.'
             : "Page {$page}".($totalPage ? " of {$totalPage}" : '').": {$pageUpserted} SKU link(s) saved…";
 
         $this->updateProgress([
@@ -192,9 +197,10 @@ class AlibabaLinkMapSyncService
     /**
      * @param  array<int, array<string, mixed>>  $items
      */
-    protected function upsertItems(array $items): int
+    protected function upsertItems(array $items, bool $resetSeen = false): int
     {
         $upserted = 0;
+        $seen = [];
 
         foreach ($items as $item) {
             if (! is_array($item)) {
@@ -227,9 +233,12 @@ class AlibabaLinkMapSyncService
                 }
                 AlibabaMetric::updateOrCreate(['sku' => $sku], $fill);
                 $this->persistApiPrice($productId, $sku, $price, $row['stock'] ?? null, $row['status'] ?? null);
+                $seen[] = $sku;
                 $upserted++;
             }
         }
+
+        MarketplaceLinkMapPruner::remember('alibaba', $seen, $resetSeen);
 
         return $upserted;
     }

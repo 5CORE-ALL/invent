@@ -1,5 +1,16 @@
 @extends('layouts.vertical', ['title' => $title ?? 'TikTok 2 — Listings', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
+@section('css')
+<style>
+    .tiktok2-products-table tbody td.sku-cell a,
+    .tiktok2-products-table tbody td.sku-cell code {
+        color: #000 !important;
+        font-weight: 700;
+        font-size: calc(0.875em + 1pt);
+    }
+</style>
+@endsection
+
 @section('content')
 <div class="row">
     <div class="col-12">
@@ -127,7 +138,7 @@
                 </ul>
 
                 <div class="table-responsive">
-                    <table class="table table-bordered table-hover mb-0 table-sm">
+                    <table class="table table-bordered table-hover mb-0 table-sm tiktok2-products-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 64px;">Image</th>
@@ -155,7 +166,7 @@
                                             <span class="text-muted">—</span>
                                         @endif
                                     </td>
-                                    <td>
+                                    <td class="sku-cell">
                                         @if($detailUrl)
                                             <a href="{{ $detailUrl }}" class="text-decoration-none" onclick="event.stopPropagation();"><code>{{ $p->sku }}</code></a>
                                         @else

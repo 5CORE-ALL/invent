@@ -128,7 +128,8 @@ class TikTokLinkMapSyncService
 
         $needsFull = $linked < 10
             || $lastFull === false
-            || ($lastFull !== false && $lastFull < now()->subDays(self::FULL_SYNC_EVERY_DAYS)->getTimestamp());
+            || ($lastFull !== false && $lastFull < now()->subDays(self::FULL_SYNC_EVERY_DAYS)->getTimestamp())
+            || ! Cache::get($this->pruneMarkerKey());
 
         if ($requested === 'quick') {
             if ($lastSync === false) {
@@ -143,7 +144,11 @@ class TikTokLinkMapSyncService
         if ($needsFull) {
             $why = $linked < 10
                 ? 'few/no linked SKUs'
-                : ($lastFull === false ? 'never full-synced' : 'full sync older than '.self::FULL_SYNC_EVERY_DAYS.' days');
+                : ($lastFull === false
+                    ? 'never full-synced'
+                    : (! Cache::get($this->pruneMarkerKey())
+                        ? 'full catalog removes listings TikTok no longer has'
+                        : 'full sync older than '.self::FULL_SYNC_EVERY_DAYS.' days'));
 
             return ['mode' => 'full', 'update_time_ge' => null, 'reason' => $why];
         }
@@ -297,6 +302,9 @@ class TikTokLinkMapSyncService
         $products = $this->extractProducts($response);
         $totalCount = $this->intOrNull($this->extractTotalCount($response));
         $nextToken = $this->extractNextPageToken($response);
+        if ($activeMode === 'full') {
+            $this->rememberSeenSkus($this->sellerSkusFromProducts($products), $page === 1);
+        }
         $pageUpserted = $this->upsertProducts($products);
 
         $totalUpserted = (int) ($state['total_upserted'] ?? 0) + $pageUpserted;
@@ -309,8 +317,18 @@ class TikTokLinkMapSyncService
         $done = $nextToken === '' || $itemCount === 0 || $page >= self::MAX_PAGES
             || ($totalPage !== null && $page >= $totalPage);
 
+        $removed = 0;
+        if ($done && $activeMode === 'full' && $page < self::MAX_PAGES && $nextToken === '' && $itemCount > 0) {
+            $removed = $this->pruneUnseenSkus();
+            if ($removed >= 0) {
+                Cache::forever($this->pruneMarkerKey(), now()->toDateTimeString());
+            }
+        }
+
         $message = $done
-            ? "{$label} {$modeLabel}: updated {$totalUpserted} SKU link(s) ({$page} page(s)"
+            ? "{$label} {$modeLabel}: updated {$totalUpserted} SKU link(s)"
+                .($removed > 0 ? ", removed {$removed} missing" : '')
+                ." ({$page} page(s)"
                 .($totalCount !== null ? ", {$totalCount} products" : '')
                 .($modeReason !== '' ? "; {$modeReason}" : '').').'
             : "{$modeLabel} page {$page}".($totalPage ? " of {$totalPage}" : '')
@@ -640,6 +658,113 @@ class TikTokLinkMapSyncService
                 $blueprint->string('listing_status', 32)->nullable()->index();
             });
         }
+    }
+
+    protected function seenSkusKey(): string
+    {
+        return 'tiktok_link_map_seen_skus_'.$this->channel;
+    }
+
+    protected function pruneMarkerKey(): string
+    {
+        return 'tiktok_link_map_pruned_missing_v1_'.$this->channel;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $products
+     * @return list<string>
+     */
+    protected function sellerSkusFromProducts(array $products): array
+    {
+        $skus = [];
+        foreach ($products as $product) {
+            if (! is_array($product)) {
+                continue;
+            }
+            foreach ($this->expandProductSkuRows($product) as $row) {
+                $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+                if ($sku !== '') {
+                    $skus[$sku] = true;
+                }
+            }
+        }
+
+        return array_keys($skus);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    protected function rememberSeenSkus(array $skus, bool $reset): void
+    {
+        $seen = $reset ? [] : Cache::get($this->seenSkusKey(), []);
+        if (! is_array($seen)) {
+            $seen = [];
+        }
+        foreach ($skus as $sku) {
+            $sku = strtoupper(trim($sku));
+            if ($sku !== '') {
+                $seen[$sku] = true;
+            }
+        }
+        Cache::put($this->seenSkusKey(), $seen, now()->addHours(6));
+    }
+
+    /**
+     * Delete local link rows whose seller SKU was not in this full catalog sync.
+     * Returns -1 when the TikTok response is too small to trust.
+     */
+    protected function pruneUnseenSkus(): int
+    {
+        $seen = Cache::get($this->seenSkusKey(), []);
+        if (! is_array($seen) || count($seen) < 20) {
+            Log::warning('TikTok link map prune skipped: catalog page was too small', [
+                'channel' => $this->channel,
+                'seen' => is_array($seen) ? count($seen) : 0,
+            ]);
+
+            return -1;
+        }
+
+        $model = $this->productModel();
+        $existing = (int) $model::query()->count();
+        if ($existing > 0 && count($seen) < (int) floor($existing * 0.25)) {
+            Log::warning('TikTok link map prune skipped: seen SKUs are far below the saved map', [
+                'channel' => $this->channel,
+                'seen' => count($seen),
+                'saved' => $existing,
+            ]);
+
+            return -1;
+        }
+
+        $dropIds = [];
+        $model::query()
+            ->select(['id', 'sku'])
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use ($seen, &$dropIds) {
+                foreach ($rows as $row) {
+                    $sku = strtoupper(trim((string) $row->sku));
+                    if ($sku === '' || isset($seen[$sku])) {
+                        continue;
+                    }
+                    $dropIds[] = $row->id;
+                }
+            });
+
+        $removed = 0;
+        foreach (array_chunk($dropIds, 500) as $ids) {
+            $removed += $model::query()->whereIn('id', $ids)->delete();
+        }
+        Cache::forget($this->seenSkusKey());
+        if ($removed > 0) {
+            Log::info('TikTok link map removed SKUs no longer on the seller catalog', [
+                'channel' => $this->channel,
+                'removed' => $removed,
+            ]);
+        }
+
+        return $removed;
     }
 
     /**

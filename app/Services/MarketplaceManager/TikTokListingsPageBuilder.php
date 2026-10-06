@@ -272,12 +272,31 @@ class TikTokListingsPageBuilder
             } elseif (isset($pageLive[$sku])) {
                 $live = $pageLive[$sku];
             }
+            if ($linked && is_array($live)) {
+                $liveSku = trim((string) ($live['sku'] ?? ''));
+                if ($liveSku !== ''
+                    && ShopifySku::normalizeSkuForShopifyLookup($liveSku) !== ShopifySku::normalizeSkuForShopifyLookup($sku)) {
+                    $linked = false;
+                    $pid = '';
+                    $skuId = '';
+                    $metricSku = null;
+                    $mpQty = null;
+                }
+            }
             if ($linked) {
                 $mpQty = MarketplaceListingStockResolver::displayedMarketplaceQty(
                     is_array($live) ? $live : null,
                     null,
                     $mpQty
                 );
+            }
+            $portalState = null;
+            if ($linked) {
+                $liveState = is_array($live) ? strtolower(trim((string) ($live['state'] ?? ''))) : '';
+                $savedState = strtolower(trim((string) ($metric->listing_status ?? '')));
+                $portalState = in_array($liveState, ['active', 'inactive'], true)
+                    ? $liveState
+                    : (in_array($savedState, ['active', 'inactive'], true) ? $savedState : null);
             }
 
             return (object) [
@@ -295,7 +314,7 @@ class TikTokListingsPageBuilder
                 'shopify_quantity' => $shopifyQty,
                 'linked' => $linked,
                 'listing_status' => $linked ? 'linked' : 'unlinked',
-                'tiktok_state' => $linked ? 'active' : null,
+                'tiktok_state' => $portalState,
             ];
         });
 
@@ -555,10 +574,6 @@ class TikTokListingsPageBuilder
                 $wanted[$norm] = true;
                 $wanted[strtoupper($norm)] = true;
             }
-            $compact = ShopifySku::compactSkuForLookup($sku);
-            if ($compact !== '') {
-                $wanted[$compact] = true;
-            }
         }
 
         $map = [];
@@ -573,10 +588,9 @@ class TikTokListingsPageBuilder
                 }
                 $upper = strtoupper($sku);
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                $compact = ShopifySku::compactSkuForLookup($sku);
+                // Compact (strip every space) matched a different TikTok product onto this SKU.
                 if (! isset($wanted[$upper])
-                    && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))
-                    && ($compact === '' || ! isset($wanted[$compact]))) {
+                    && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))) {
                     return;
                 }
                 $map[$sku] = $row;
@@ -585,9 +599,6 @@ class TikTokListingsPageBuilder
                     $map[$norm] = $row;
                     $map[strtoupper($norm)] = $row;
                 }
-                if ($compact !== '') {
-                    $map[$compact] = $row;
-                }
             });
 
         $out = [];
@@ -595,7 +606,6 @@ class TikTokListingsPageBuilder
             $out[$sku] = $map[$sku]
                 ?? $map[strtoupper($sku)]
                 ?? $map[ShopifySku::normalizeSkuForShopifyLookup($sku)]
-                ?? $map[ShopifySku::compactSkuForLookup($sku)]
                 ?? null;
         }
 
@@ -623,9 +633,10 @@ class TikTokListingsPageBuilder
         }
         $productId = trim((string) ($metric->product_id ?? ''));
         $skuId = trim((string) ($metric->sku_id ?? ''));
-        $sku = trim((string) ($metric->sku ?? ''));
+        $sellerSku = ShopifySku::normalizeSkuForShopifyLookup((string) ($metric->sku ?? ''));
+        $shopify = ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
 
-        return $productId !== '' && $skuId !== '' && $sku !== '';
+        return $productId !== '' && $skuId !== '' && $sellerSku !== '' && $sellerSku === $shopify;
     }
 
     protected function liveService(): TikTokLiveListingsService

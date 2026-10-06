@@ -415,8 +415,6 @@ class TikTok2InventorySyncService
             ShopifySku::normalizeSkuForShopifyLookup($sku),
             str_replace('-', ' ', $sku),
             preg_replace('/\s+/', '-', $sku) ?: '',
-            str_replace(' ', '', $sku),
-            ShopifySku::compactSkuForLookup($sku),
         ] as $alias) {
             $alias = trim((string) $alias);
             if ($alias !== '' && ! in_array($alias, $out, true)) {
@@ -445,10 +443,6 @@ class TikTok2InventorySyncService
                 $wanted[$norm] = true;
                 $wanted[strtoupper($norm)] = true;
             }
-            $compact = ShopifySku::compactSkuForLookup($trim);
-            if ($compact !== '') {
-                $wanted[$compact] = true;
-            }
         }
 
         return $wanted;
@@ -467,12 +461,7 @@ class TikTok2InventorySyncService
             return true;
         }
         $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-        if ($norm !== '' && (isset($wanted[$norm]) || isset($wanted[strtoupper($norm)]))) {
-            return true;
-        }
-        $compact = ShopifySku::compactSkuForLookup($sku);
-
-        return $compact !== '' && isset($wanted[$compact]);
+        return $norm !== '' && (isset($wanted[$norm]) || isset($wanted[strtoupper($norm)]));
     }
 
     /**
@@ -580,19 +569,11 @@ class TikTok2InventorySyncService
             return (int) $shopifyQty[$norm];
         }
 
-        $compact = ShopifySku::compactSkuForLookup($sku);
-        if ($compact !== '' && array_key_exists($compact, $shopifyQty)) {
-            return (int) $shopifyQty[$compact];
-        }
-
         foreach ($shopifyQty as $key => $qty) {
             if (strtoupper(trim((string) $key)) === $upper) {
                 return (int) $qty;
             }
             if ($norm !== '' && ShopifySku::normalizeSkuForShopifyLookup((string) $key) === $norm) {
-                return (int) $qty;
-            }
-            if ($compact !== '' && ShopifySku::compactSkuForLookup((string) $key) === $compact) {
                 return (int) $qty;
             }
         }
@@ -706,10 +687,6 @@ class TikTok2InventorySyncService
             $norm = ShopifySku::normalizeSkuForShopifyLookup($trim);
             if ($norm !== '') {
                 $keys[] = $norm;
-            }
-            $compact = ShopifySku::compactSkuForLookup($trim);
-            if ($compact !== '') {
-                $keys[] = $compact;
             }
         }
 

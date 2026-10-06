@@ -80,14 +80,19 @@ class AliexpressLinkMapSyncService
         $items = $result['data']['products'] ?? [];
         $totalPage = $this->intOrNull($result['data']['total_page'] ?? null);
         $totalCount = $this->intOrNull($result['data']['total_count'] ?? null);
-        $pageUpserted = $this->upsertItems($items);
+        $pageUpserted = $this->upsertItems($items, $page === 1);
 
         $totalUpserted = (int) ($state['total_upserted'] ?? 0) + $pageUpserted;
         $itemCount = count($items);
         $done = $this->isLastPage($page, $itemCount, $pageSize, $totalPage);
+        $removed = 0;
+        if ($done && $page < self::MAX_PAGES) {
+            $removed = MarketplaceLinkMapPruner::prune(AliexpressMetric::class, 'aliexpress');
+        }
 
         $message = $done
-            ? "Updated {$totalUpserted} SKU link(s) from AliExpress ({$page} API page(s)".($totalCount ? ", {$totalCount} products on AE" : '').'). No new listings were created on AliExpress.'
+            ? "Updated {$totalUpserted} SKU link(s) from AliExpress ({$page} API page(s)".($totalCount ? ", {$totalCount} products on AE" : '')
+                .($removed > 0 ? ", removed {$removed} missing" : '').'). No new listings were created on AliExpress.'
             : "Page {$page}".($totalPage ? " of {$totalPage}" : '').": {$pageUpserted} SKU link(s) saved…";
 
         $this->updateProgress([
@@ -190,9 +195,10 @@ class AliexpressLinkMapSyncService
     /**
      * @param  array<int, array<string, mixed>>  $items
      */
-    protected function upsertItems(array $items): int
+    protected function upsertItems(array $items, bool $resetSeen = false): int
     {
         $upserted = 0;
+        $seen = [];
 
         foreach ($items as $item) {
             if (! is_array($item)) {
@@ -220,9 +226,12 @@ class AliexpressLinkMapSyncService
                         'price' => $row['price'] ?? 0,
                     ]
                 );
+                $seen[] = $sku;
                 $upserted++;
             }
         }
+
+        MarketplaceLinkMapPruner::remember('aliexpress', $seen, $resetSeen);
 
         return $upserted;
     }

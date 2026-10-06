@@ -69,18 +69,13 @@ class SheinInventorySyncService
             $exactShopifyQty
         );
 
-        // Match Shein rows by hyphen / space / compact aliases (Shopify often has
-        // "TABLA MIC BLK" while shein_metric stores "TABLA-MIC-BLK").
+        // Match Shein rows by hyphen / space ("TABLA MIC BLK" and "TABLA-MIC-BLK").
+        // Stripping every space is not a match — that attached a different listing.
         $aliasList = [];
-        $wantedCompact = [];
         foreach ($skus as $sku) {
             foreach (SheinApiService::skuAliasesForLookup($sku) as $alias) {
                 $aliasList[] = $alias;
                 $aliasList[] = strtoupper($alias);
-            }
-            $compact = ShopifySku::compactSkuForLookup($sku);
-            if ($compact !== '') {
-                $wantedCompact[$compact] = true;
             }
         }
         $aliasList = array_values(array_unique(array_filter($aliasList)));
@@ -97,18 +92,14 @@ class SheinInventorySyncService
                 }
             })
             ->get()
-            ->filter(function (SheinMmMetric $metric) use ($wantedNorms, $wantedCompact, $skus) {
+            ->filter(function (SheinMmMetric $metric) use ($wantedNorms, $skus) {
                 $raw = (string) $metric->sku;
                 if (in_array($raw, $skus, true)) {
                     return true;
                 }
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
-                if ($norm !== '' && isset($wantedNorms[$norm])) {
-                    return true;
-                }
-                $compact = ShopifySku::compactSkuForLookup($raw);
 
-                return $compact !== '' && isset($wantedCompact[$compact]);
+                return $norm !== '' && isset($wantedNorms[$norm]);
             })
             ->values();
 
@@ -681,15 +672,6 @@ class SheinInventorySyncService
         foreach ($shopifyQty as $key => $qty) {
             if (strtoupper(trim((string) $key)) === $needleUpper) {
                 return (int) $qty;
-            }
-        }
-
-        $compact = ShopifySku::compactSkuForLookup($sku);
-        if ($compact !== '') {
-            foreach ($shopifyQty as $key => $qty) {
-                if (ShopifySku::compactSkuForLookup((string) $key) === $compact) {
-                    return (int) $qty;
-                }
             }
         }
 

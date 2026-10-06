@@ -757,10 +757,6 @@ class ChannelListingRegistry
             $norm = ReverbProduct::normalizeSkuForLookup($sku);
             $row = $norm !== '' ? ($lookup[$norm] ?? null) : null;
             if (! $row) {
-                $compact = ShopifySku::compactSkuForLookup($sku);
-                $row = $compact !== '' ? ($lookup['c:'.$compact] ?? null) : null;
-            }
-            if (! $row) {
                 continue;
             }
             if (ListingCountsEngine::isPendingOrReviewListingState($row->listing_state ?? $row->state ?? null)) {
@@ -789,10 +785,6 @@ class ChannelListingRegistry
             if ($norm !== '') {
                 $wanted[$norm] = strtolower($sku);
             }
-            $compact = ShopifySku::compactSkuForLookup($sku);
-            if ($compact !== '') {
-                $wanted['c:'.$compact] = strtolower($sku);
-            }
         }
 
         if ($wanted === []) {
@@ -806,10 +798,7 @@ class ChannelListingRegistry
 
         foreach ($statusRows as $row) {
             $norm = ReverbProduct::normalizeSkuForLookup((string) $row->sku);
-            $compact = ShopifySku::compactSkuForLookup((string) $row->sku);
-            $pmKey = ($norm !== '' && isset($wanted[$norm]))
-                ? $wanted[$norm]
-                : (($compact !== '' && isset($wanted['c:'.$compact])) ? $wanted['c:'.$compact] : null);
+            $pmKey = ($norm !== '' && isset($wanted[$norm])) ? $wanted[$norm] : null;
             if ($pmKey === null) {
                 continue;
             }

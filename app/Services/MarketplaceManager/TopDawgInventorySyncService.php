@@ -256,8 +256,8 @@ class TopDawgInventorySyncService
     }
 
     /**
-     * Hyphen / space / compact aliases so mismatch rows like "C10BP 20 10 R"
-     * still find TopDawg product_code "C10BP-20-10-R".
+     * Hyphen / space aliases so "C10BP 20 10 R" still finds "C10BP-20-10-R".
+     * Stripping every space is not a match — that attached a different listing.
      *
      * @return list<string>
      */
@@ -271,8 +271,6 @@ class TopDawgInventorySyncService
             ShopifySku::normalizeSkuForShopifyLookup($sku),
             str_replace('-', ' ', $sku),
             preg_replace('/\s+/', '-', $sku) ?: '',
-            str_replace(' ', '', $sku),
-            ShopifySku::compactSkuForLookup($sku),
         ] as $alias) {
             $alias = trim((string) $alias);
             if ($alias !== '' && ! in_array($alias, $out, true)) {
@@ -291,15 +289,10 @@ class TopDawgInventorySyncService
     protected function metricsForRequestedSkus(array $skus, array $wantedNorms)
     {
         $aliases = [];
-        $wantedCompact = [];
         foreach ($skus as $sku) {
             foreach (self::skuAliasesForPush($sku) as $alias) {
                 $aliases[$alias] = true;
                 $aliases[strtoupper($alias)] = true;
-            }
-            $compact = ShopifySku::compactSkuForLookup($sku);
-            if ($compact !== '') {
-                $wantedCompact[$compact] = true;
             }
         }
         $aliasList = array_keys($aliases);
@@ -318,35 +311,25 @@ class TopDawgInventorySyncService
             })
             ->get();
 
-        $matched = $found->filter(function (TopDawgProduct $metric) use ($wantedNorms, $wantedCompact, $skus) {
+        $matched = $found->filter(function (TopDawgProduct $metric) use ($wantedNorms, $skus) {
             $raw = (string) $metric->sku;
             if (in_array($raw, $skus, true)) {
                 return true;
             }
             $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
-            if ($norm !== '' && isset($wantedNorms[$norm])) {
-                return true;
-            }
-            $compact = ShopifySku::compactSkuForLookup($raw);
 
-            return $compact !== '' && isset($wantedCompact[$compact]);
+            return $norm !== '' && isset($wantedNorms[$norm]);
         })->values();
 
         $have = [];
         foreach ($matched as $metric) {
-            $raw = (string) $metric->sku;
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $metric->sku);
             if ($norm !== '') {
                 $have[$norm] = true;
             }
-            $compact = ShopifySku::compactSkuForLookup($raw);
-            if ($compact !== '') {
-                $have[$compact] = true;
-            }
         }
         $missingNorms = array_diff_key($wantedNorms, $have);
-        $missingCompact = array_diff_key($wantedCompact, $have);
-        if ($missingNorms === [] && $missingCompact === []) {
+        if ($missingNorms === []) {
             return $matched;
         }
 
@@ -355,25 +338,17 @@ class TopDawgInventorySyncService
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'topdawg_listing_id')
             ->orderBy('id')
-            ->chunkById(1000, function ($rows) use (&$matched, &$missingNorms, &$missingCompact) {
+            ->chunkById(1000, function ($rows) use (&$matched, &$missingNorms) {
                 foreach ($rows as $row) {
                     $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
-                    $compact = ShopifySku::compactSkuForLookup((string) $row->sku);
-                    $hit = ($norm !== '' && isset($missingNorms[$norm]))
-                        || ($compact !== '' && isset($missingCompact[$compact]));
-                    if (! $hit) {
+                    if ($norm === '' || ! isset($missingNorms[$norm])) {
                         continue;
                     }
                     $matched->push($row);
-                    if ($norm !== '') {
-                        unset($missingNorms[$norm]);
-                    }
-                    if ($compact !== '') {
-                        unset($missingCompact[$compact]);
-                    }
+                    unset($missingNorms[$norm]);
                 }
 
-                return $missingNorms !== [] || $missingCompact !== [];
+                return $missingNorms !== [];
             });
 
         return $matched->unique('id')->values();
