@@ -331,6 +331,15 @@ class SyncShopifyOrdersToInventory extends Command
         $rows = [];
         foreach ($order['line_items'] ?? [] as $line) {
             $sku = trim((string) ($line['sku'] ?? ''));
+            if ($sku === '') {
+                foreach ($line['properties'] ?? [] as $prop) {
+                    if (strtoupper(trim((string) ($prop['name'] ?? ''))) !== 'SKU') {
+                        continue;
+                    }
+                    $sku = trim((string) ($prop['value'] ?? ''));
+                    break;
+                }
+            }
 
             // Skip blank SKUs and bundle-parent placeholders
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {

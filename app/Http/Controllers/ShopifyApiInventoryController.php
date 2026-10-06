@@ -177,8 +177,7 @@ class ShopifyApiInventoryController extends Controller
             $priceSyncStartedAt = now()->toDateTimeString();
             Log::info('Starting Shopify inventory sync');
 
-            $endDate = Carbon::now()->endOfDay();
-            $startDate = Carbon::now()->subDays(30)->startOfDay();
+            [$startDate, $endDate] = ShopifySku::ovL30Window();
 
             // Get ALL SKUs (including paginated products)
             $inventoryData = $this->getAllInventoryData();
@@ -1346,10 +1345,15 @@ GQL;
         }
 
         $catalogKeyByNorm = [];
+        $catalogKeyByCompact = [];
         foreach ($groupedData as $sku => $row) {
             $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
             if ($norm !== '' && ! isset($catalogKeyByNorm[$norm])) {
                 $catalogKeyByNorm[$norm] = $sku;
+            }
+            $compact = ShopifySku::compactSkuForLookup((string) $sku);
+            if ($compact !== '' && ! isset($catalogKeyByCompact[$compact])) {
+                $catalogKeyByCompact[$compact] = $sku;
             }
         }
 
@@ -1361,6 +1365,10 @@ GQL;
             if (! isset($groupedData[$target])) {
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
                 $target = $catalogKeyByNorm[$norm] ?? '';
+            }
+            if ($target === '' || ! isset($groupedData[$target])) {
+                $compact = ShopifySku::compactSkuForLookup($sku);
+                $target = $catalogKeyByCompact[$compact] ?? '';
             }
             if ($target !== '' && isset($groupedData[$target])) {
                 $groupedData[$target]['quantity'] += $order['quantity'];
@@ -1387,8 +1395,7 @@ GQL;
         }
 
         foreach ($simplifiedData as &$item) {
-            $key = ShopifySku::normalizeSkuForShopifyLookup((string) ($item['sku'] ?? ''));
-            $item['quantity'] = $key === '' ? 0 : (int) ($sold[$key] ?? 0);
+            $item['quantity'] = ShopifySku::soldUnitsForSku((string) ($item['sku'] ?? ''), $sold);
         }
         unset($item);
 
@@ -1397,7 +1404,15 @@ GQL;
 
     protected function saveSkus(array $simplifiedData, ?string $priceSyncStartedAt = null)
     {
-        DB::transaction(function () use ($simplifiedData, $priceSyncStartedAt) {
+        $idsByCompact = [];
+        foreach ($simplifiedData as $item) {
+            if ((int) ($item['quantity'] ?? 0) > 0) {
+                $idsByCompact = ShopifySku::idsByCompactSku();
+                break;
+            }
+        }
+
+        DB::transaction(function () use ($simplifiedData, $priceSyncStartedAt, $idsByCompact) {
             $skusToUpdate = [];
             
             // Collect all SKUs we're about to update
@@ -1479,6 +1494,17 @@ GQL;
                         ['sku' => $sku],
                         $attributes
                     );
+
+                    // The page reads whichever spelling has a variant id. Write the
+                    // sold count onto every row that is the same SKU once spaces
+                    // and hyphens are removed, or that row stays at 0.
+                    if ($sold > 0 && $idsByCompact !== []) {
+                        $compact = ShopifySku::compactSkuForLookup($sku);
+                        $ids = $idsByCompact[$compact] ?? [];
+                        if (count($ids) > 1) {
+                            ShopifySku::query()->whereIn('id', $ids)->update(['quantity' => $sold]);
+                        }
+                    }
                     $updateCount++;
                 }
             }

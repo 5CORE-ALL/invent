@@ -10,6 +10,11 @@ class ShopifySku extends Model
 {
     use HasFactory;
 
+    /** @var array<string, int>|null */
+    private static ?array $ovL30SoldCache = null;
+
+    private static bool $ovL30SoldResolved = false;
+
     protected $table = 'shopify_skus';
 
     protected $fillable = [
@@ -128,18 +133,12 @@ class ShopifySku extends Model
         $indexRow = static function ($row) use (&$shopifyByNorm): void {
             $k = self::normalizeSkuForShopifyLookup($row->sku);
             if ($k !== '') {
-                $existing = $shopifyByNorm[$k] ?? null;
-                if ($existing === null || (! self::rowHasVariantId($existing) && self::rowHasVariantId($row))) {
-                    $shopifyByNorm[$k] = $row;
-                }
+                $shopifyByNorm[$k] = self::preferShopifyRow($shopifyByNorm[$k] ?? null, $row);
             }
             $c = self::compactSkuForLookup($row->sku);
             if ($c !== '') {
                 $ck = 'c:'.$c;
-                $existing = $shopifyByNorm[$ck] ?? null;
-                if ($existing === null || (! self::rowHasVariantId($existing) && self::rowHasVariantId($row))) {
-                    $shopifyByNorm[$ck] = $row;
-                }
+                $shopifyByNorm[$ck] = self::preferShopifyRow($shopifyByNorm[$ck] ?? null, $row);
             }
         };
         $resolved = static function (string $k, string $c) use (&$shopifyByNorm): bool {
@@ -227,7 +226,10 @@ class ShopifySku extends Model
             }
         }
 
-        return collect($out);
+        $mapped = collect($out);
+        self::overlayOvL30FromOrders($mapped);
+
+        return $mapped;
     }
 
     public static function firstForProductSku(?string $sku): ?self
@@ -278,12 +280,26 @@ class ShopifySku extends Model
     }
 
     /**
+     * Same 30-day window the Shopify inventory sync uses for shopify_skus.quantity.
+     *
+     * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon}
+     */
+    public static function ovL30Window(): array
+    {
+        $end = \Illuminate\Support\Carbon::now()->endOfDay();
+        $start = \Illuminate\Support\Carbon::now()->subDays(30)->startOfDay();
+
+        return [$start, $end];
+    }
+
+    /**
      * Units sold in a date window from shopify_raw_orders (Shopify orders, including
      * Amazon and other channels that were pushed into Shopify).
-     * Keyed by normalizeSkuForShopifyLookup. Null when that table is missing.
+     * Keyed by compactSkuForLookup so "DM E9 PRPL" and "DME9PRPL" are one product.
+     * Null when that table is missing.
      *
-     * shopify_skus.quantity is a separate cache written by the products/orders API sync.
-     * That sync can miss older pages and store 0 for a SKU that did sell.
+     * shopify_skus.quantity is a cache. A line whose SKU only matches after spaces
+     * or hyphens are removed used to miss that cache and leave OV L30 at 0.
      *
      * @return array<string, int>|null
      */
@@ -308,16 +324,147 @@ class ShopifySku extends Model
             ->selectRaw('sku, SUM(COALESCE(quantity, 0)) as qty')
             ->get();
 
+        return self::indexSoldQuantitiesByCompact($rows);
+    }
+
+    /**
+     * @param  iterable<int, object|array<string, mixed>>  $rows  sku + qty (or quantity)
+     * @return array<string, int>
+     */
+    public static function indexSoldQuantitiesByCompact(iterable $rows): array
+    {
         $map = [];
         foreach ($rows as $row) {
-            $key = self::normalizeSkuForShopifyLookup((string) $row->sku);
-            if ($key === '') {
+            $sku = is_object($row) ? (string) ($row->sku ?? '') : (string) ($row['sku'] ?? '');
+            $qty = is_object($row)
+                ? (int) ($row->qty ?? $row->quantity ?? 0)
+                : (int) ($row['qty'] ?? $row['quantity'] ?? 0);
+            $key = self::compactSkuForLookup($sku);
+            if ($key === '' || $qty === 0) {
                 continue;
             }
-            $map[$key] = ($map[$key] ?? 0) + (int) $row->qty;
+            $map[$key] = ($map[$key] ?? 0) + $qty;
         }
 
         return $map;
+    }
+
+    /**
+     * @param  array<string, int>  $soldByCompact
+     */
+    public static function soldUnitsForSku(?string $sku, array $soldByCompact): int
+    {
+        $key = self::compactSkuForLookup($sku);
+
+        return $key === '' ? 0 : (int) ($soldByCompact[$key] ?? 0);
+    }
+
+    /**
+     * shopify_skus ids that share a compact SKU, so a sold count written for
+     * "DM E9 PRPL" also lands on "DME9PRPL" instead of leaving that row at 0.
+     *
+     * @return array<string, list<int>>
+     */
+    public static function idsByCompactSku(): array
+    {
+        $map = [];
+        foreach (self::query()->select(['id', 'sku'])->get() as $row) {
+            $key = self::compactSkuForLookup((string) $row->sku);
+            if ($key === '') {
+                continue;
+            }
+            $map[$key][] = (int) $row->id;
+        }
+
+        return $map;
+    }
+
+    /**
+     * The variant row wins for INV, but sold units may have been stored on the
+     * other spelling. Keep the higher quantity on the row the page will read.
+     */
+    private static function preferShopifyRow(?self $existing, self $row): self
+    {
+        if ($existing === null) {
+            return $row;
+        }
+
+        $winner = (! self::rowHasVariantId($existing) && self::rowHasVariantId($row)) ? $row : $existing;
+        $other = $winner === $row ? $existing : $row;
+        $sold = max((int) ($winner->quantity ?? 0), (int) ($other->quantity ?? 0));
+        if ($sold > (int) ($winner->quantity ?? 0)) {
+            $winner->quantity = $sold;
+            $winner->syncOriginalAttribute('quantity');
+        }
+
+        return $winner;
+    }
+
+    /**
+     * Sold units for one SKU in the OV L30 window. Compact-matched, so a line
+     * stored as "DME9PRPL" counts for "DM E9 PRPL". Zero when the order table
+     * is missing. The lookup is cached for this process after the first call.
+     */
+    public static function ovL30SoldForSku(?string $sku): int
+    {
+        $sold = self::rememberOvL30Sold();
+        if ($sold === null) {
+            return 0;
+        }
+
+        return self::soldUnitsForSku($sku, $sold);
+    }
+
+    /**
+     * @return array<string, int>|null
+     */
+    private static function rememberOvL30Sold(): ?array
+    {
+        if (self::$ovL30SoldResolved) {
+            return self::$ovL30SoldCache;
+        }
+
+        self::$ovL30SoldResolved = true;
+        try {
+            [$start, $end] = self::ovL30Window();
+            self::$ovL30SoldCache = self::soldUnitsByNormalizedSku($start, $end);
+        } catch (\Throwable $e) {
+            self::$ovL30SoldCache = null;
+        }
+
+        return self::$ovL30SoldCache;
+    }
+
+    /**
+     * Raise a cached quantity of 0 when shopify_raw_orders already has the sale.
+     * Does not lower a cached count: a short order sync must not wipe OV L30.
+     *
+     * @param  \Illuminate\Support\Collection<string, self>  $rows  keyed by product SKU
+     */
+    public static function overlayOvL30FromOrders(Collection $rows): void
+    {
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $sold = self::rememberOvL30Sold();
+        if ($sold === null || $sold === []) {
+            return;
+        }
+
+        foreach ($rows as $productSku => $row) {
+            if (! $row instanceof self) {
+                continue;
+            }
+            $fromOrders = max(
+                self::soldUnitsForSku((string) $productSku, $sold),
+                self::soldUnitsForSku((string) $row->sku, $sold)
+            );
+            if ($fromOrders > (int) ($row->quantity ?? 0)) {
+                $row->quantity = $fromOrders;
+                $row->syncOriginalAttribute('quantity');
+            }
+        }
     }
 
     public static function variantIdForProductSku(?string $sku): ?string

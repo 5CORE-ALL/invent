@@ -28,6 +28,17 @@ class ShopifySkuLookupTest extends TestCase
         $this->assertContains('WF81204OHM2PCS', $keys);
     }
 
+    public function test_sold_units_follow_compact_sku_so_spaced_and_packed_spellings_add(): void
+    {
+        $sold = ShopifySku::indexSoldQuantitiesByCompact([
+            (object) ['sku' => 'DME9PRPL', 'qty' => 1],
+            ['sku' => 'DM-E9-PRPL', 'quantity' => 2],
+        ]);
+
+        $this->assertSame(3, ShopifySku::soldUnitsForSku('DM E9 PRPL', $sold));
+        $this->assertSame(0, ShopifySku::soldUnitsForSku('OTHER SKU', $sold));
+    }
+
     public function test_lookup_columns_include_live_inventory_fields(): void
     {
         foreach (['available_to_sell', 'inv', 'on_hand', 'committed', 'unavailable', 'incoming'] as $col) {

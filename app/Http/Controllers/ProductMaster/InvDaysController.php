@@ -664,9 +664,7 @@ class InvDaysController extends Controller
             return (float) ($product['shopify_quantity'] ?? 0);
         }
 
-        $key = ShopifySku::normalizeSkuForShopifyLookup($sku);
-
-        return (float) ($ovl30BySku[$key] ?? 0);
+        return (float) ShopifySku::soldUnitsForSku($sku, $ovl30BySku);
     }
 
     /**

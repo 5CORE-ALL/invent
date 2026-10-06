@@ -427,7 +427,15 @@ class OverallAmazonController extends Controller
             $row['is_missing_amazon'] = $amazonSheet ? false : true;
             
             // Same Shopify row as INV and the image. Not A_L30, shopify_l30, or a daily snapshot.
+            // Shopify lines stored under the Amazon seller SKU still belong on this row:
+            // A L30 already counts them, and those orders were pushed into Shopify.
             $row['ov_l30'] = ($shopify && $shopify->quantity !== null) ? (float) $shopify->quantity : 0;
+            $sheetSku = isset($amazonSheet) ? ($amazonSheet->sku ?? null) : null;
+            $productCompact = ShopifySku::compactSkuForLookup((string) $pm->sku);
+            $sheetCompact = ShopifySku::compactSkuForLookup($sheetSku !== null ? (string) $sheetSku : '');
+            if ($sheetCompact !== '' && $sheetCompact !== $productCompact) {
+                $row['ov_l30'] += ShopifySku::ovL30SoldForSku((string) $sheetSku);
+            }
             $row['L30'] = $row['ov_l30'];
             $row['fba'] = $pm->fba;
 
