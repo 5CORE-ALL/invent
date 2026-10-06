@@ -244,6 +244,7 @@ use App\Http\Controllers\MarketPlace\TiktokShopController;
 use App\Http\Controllers\MarketPlace\WalmartControllerMarket;
 use App\Http\Controllers\MarketPlace\ViewsMasterController;
 use App\Http\Controllers\MarketPlace\WayfairController;
+use App\Http\Controllers\MarketPlace\WayfairPriceUploadController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\AppscenicZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\AutoDSZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\BestbuyUSAZeroController;
@@ -3599,6 +3600,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/chat', 'index')->name('chat.index');
         Route::get('/chat/inbox', 'inbox')->name('chat.inbox');
         Route::get('/chat/archived', 'archived')->name('chat.archived');
+        Route::get('/chat/archived-messages', 'archivedMessages')->name('chat.archived-messages');
         Route::get('/chat/sync', 'sync')->name('chat.sync');
         Route::post('/chat/presence', 'presence')->name('chat.presence');
         Route::get('/chat/unread', 'unread')->name('chat.unread');
@@ -3617,6 +3619,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/chat/messages/{message}/pin', 'pin')->whereNumber('message')->name('chat.messages.pin');
         Route::post('/chat/messages/{message}/bookmark', 'bookmark')->whereNumber('message')->name('chat.messages.bookmark');
         Route::post('/chat/messages/{message}/archive', 'archiveMessage')->whereNumber('message')->name('chat.messages.archive');
+        Route::post('/chat/messages/{message}/unarchive', 'unarchiveMessage')->whereNumber('message')->name('chat.messages.unarchive');
         Route::post('/chat/messages/{message}/task', 'createTask')->whereNumber('message')->name('chat.messages.task');
         Route::post('/chat/channels/{channel}/read', 'markRead')->whereNumber('channel')->name('chat.channels.read');
         Route::post('/chat/channels/{channel}/pin', 'pinChannel')->whereNumber('channel')->name('chat.channels.pin');
@@ -3948,6 +3951,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/wayfair/badge-chart-data', [WayfairController::class, 'wayfairBadgeChartData'])->name('wayfair.pricing.badge.chart');
     Route::get('/wayfair/pricing-column-visibility', [WayfairController::class, 'getWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.get');
     Route::post('/wayfair/pricing-column-visibility', [WayfairController::class, 'setWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.set');
+    Route::get('/wayfair/price-upload/status', [WayfairPriceUploadController::class, 'status'])->name('wayfair.price-upload.status');
+    Route::get('/wayfair/price-upload/history', [WayfairPriceUploadController::class, 'history'])->name('wayfair.price-upload.history');
+    Route::post('/wayfair/price-upload/generate', [WayfairPriceUploadController::class, 'generate'])->name('wayfair.price-upload.generate');
+    Route::post('/wayfair/price-upload/upload-now', [WayfairPriceUploadController::class, 'uploadNow'])->name('wayfair.price-upload.upload-now');
+    Route::post('/wayfair/price-upload/retry', [WayfairPriceUploadController::class, 'retry'])->name('wayfair.price-upload.retry');
+    Route::post('/wayfair/price-upload/enabled', [WayfairPriceUploadController::class, 'setEnabled'])->name('wayfair.price-upload.enabled');
+    Route::get('/wayfair/price-upload/{upload}/download', [WayfairPriceUploadController::class, 'download'])->whereNumber('upload')->name('wayfair.price-upload.download');
+    Route::get('/wayfair/price-upload/{upload}', [WayfairPriceUploadController::class, 'show'])->whereNumber('upload')->name('wayfair.price-upload.show');
 
     // Best Buy Sales Routes
     Route::get('/bestbuy/daily-sales-data', [BestBuySalesController::class, 'getData'])->name('bestbuy.daily.sales.data');

@@ -1062,6 +1062,21 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        $schedule->command('wayfair:daily-price-upload')
+            ->dailyAt((string) config('wayfair_upload.schedule_time', '05:00'))
+            ->timezone(config('app.timezone'))
+            ->name('wayfair-daily-price-upload')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('wayfair:check-upload-status')
+            ->everyFifteenMinutes()
+            ->name('wayfair-check-upload-status')
+            ->withoutOverlapping(10)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Amazon CVR vs CPN → 5%/10% coupons (1/day) → Listings our_price (4:05 AM ET).
         // Uses shared pef_cvr_vs_cpn rules; pushes only SKUs whose target price/tier changed.
         $schedule->command('amazon:cvr-cpn-auto-push')

@@ -34,16 +34,37 @@ class InventChatBot
     public static function looksLikeCommand(string $body): bool
     {
         $trim = ltrim($body);
-        $lower = strtolower($trim);
 
-        return Str::startsWith($trim, '/')
-            || Str::startsWith($lower, '@invent')
+        return self::isExplicitInvocation($body)
             || (bool) preg_match('/\b(overdue|dar|daily activity|scope of improvement|si|task|help|complete|assign|deadline|due)\b/i', $trim);
+    }
+
+    /**
+     * A person asked the bot on purpose. Ordinary chat, including task discussions, is not an invocation.
+     */
+    public static function isExplicitInvocation(string $body): bool
+    {
+        $trim = ltrim($body);
+
+        return Str::startsWith($trim, '/') || Str::startsWith(strtolower($trim), '@invent');
+    }
+
+    public static function shouldReplyIn(ChatChannel $channel, string $body): bool
+    {
+        if (trim($body) === '') {
+            return false;
+        }
+
+        if ($channel->isBotInbox()) {
+            return self::looksLikeCommand($body);
+        }
+
+        return self::isExplicitInvocation($body);
     }
 
     public static function reply(User $user, ChatChannel $channel, string $body, bool $force = false): ?ChatMessage
     {
-        if (! $force && ! self::looksLikeCommand($body) && ! $channel->isBotInbox()) {
+        if (! $force && ! self::shouldReplyIn($channel, $body)) {
             return null;
         }
 

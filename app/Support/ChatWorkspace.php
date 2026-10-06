@@ -614,6 +614,7 @@ class ChatWorkspace
             ->get();
 
         $unread = self::unreadByChannel($user);
+        $visibleByChannel = self::visibleCountsByChannel($user, $channels->pluck('id')->all());
         $lastByChannel = ChatMessage::query()
             ->selectRaw('channel_id, MAX(id) as last_id')
             ->whereIn('channel_id', $channels->pluck('id'))
@@ -684,6 +685,7 @@ class ChatWorkspace
                 'slug' => $channel->slug,
                 'topic' => $channel->topic,
                 'unread' => (int) ($unread[$channel->id] ?? 0),
+                'has_messages' => (int) ($visibleByChannel[$channel->id] ?? 0) > 0,
                 'last_id' => $lastId,
                 'last_read_message_id' => $lastRead,
                 'first_unread_id' => $lastRead > 0 ? $lastRead + 1 : null,
@@ -1072,6 +1074,148 @@ class ChatWorkspace
             'message_id' => $message->id,
         ]);
         self::forgetUnreadCache((int) $user->id);
+    }
+
+    public static function unarchiveMessageFor(User $user, ChatMessage $message): void
+    {
+        if (! Schema::hasTable('chat_message_archives')) {
+            return;
+        }
+
+        ChatMessageArchive::query()
+            ->where('user_id', $user->id)
+            ->where('message_id', $message->id)
+            ->delete();
+        self::forgetUnreadCache((int) $user->id);
+    }
+
+    public static function channelHasVisibleMessages(User $user, int $channelId): bool
+    {
+        return (int) (self::visibleCountsByChannel($user, [$channelId])[$channelId] ?? 0) > 0;
+    }
+
+    /**
+     * Messages still visible to this user. Rows they archived for themselves are left out.
+     *
+     * @param  list<int>  $channelIds
+     * @return array<int, int>
+     */
+    public static function visibleCountsByChannel(User $user, array $channelIds): array
+    {
+        $channelIds = array_values(array_unique(array_filter(array_map('intval', $channelIds))));
+        if ($channelIds === [] || ! self::tablesReady()) {
+            return [];
+        }
+
+        $query = ChatMessage::query()
+            ->selectRaw('chat_messages.channel_id, COUNT(*) as visible_count')
+            ->whereIn('chat_messages.channel_id', $channelIds);
+        self::excludeArchived($query, $user);
+        $rows = $query->groupBy('chat_messages.channel_id')->pluck('visible_count', 'channel_id');
+
+        $out = [];
+        foreach ($rows as $channelId => $count) {
+            $out[(int) $channelId] = (int) $count;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function archivedMessagesFor(User $user, int $limit = 200): array
+    {
+        if (! Schema::hasTable('chat_message_archives') || ! self::tablesReady()) {
+            return [];
+        }
+
+        $memberIds = ChatChannelMember::query()
+            ->where('user_id', $user->id)
+            ->pluck('channel_id');
+        $archives = ChatMessageArchive::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get();
+        if ($archives->isEmpty()) {
+            return [];
+        }
+
+        $messages = ChatMessage::query()
+            ->with('user:id,name')
+            ->whereIn('id', $archives->pluck('message_id'))
+            ->whereIn('channel_id', $memberIds)
+            ->get()
+            ->keyBy('id');
+        $channels = ChatChannel::query()
+            ->whereIn('id', $messages->pluck('channel_id')->unique()->filter()->all())
+            ->get()
+            ->keyBy('id');
+
+        $peerIds = [];
+        foreach ($channels as $channel) {
+            if ($channel->isDm() && $channel->dm_key) {
+                [$left, $right] = array_map('intval', explode(':', (string) $channel->dm_key, 2) + [0, 0]);
+                $peerId = $left === (int) $user->id ? $right : $left;
+                if ($peerId > 0) {
+                    $peerIds[] = $peerId;
+                }
+            }
+        }
+        $peers = $peerIds === []
+            ? collect()
+            : User::query()->whereIn('id', $peerIds)->pluck('name', 'id');
+
+        $tz = TaskBusinessTime::tz();
+        $out = [];
+        foreach ($archives as $archive) {
+            $message = $messages->get($archive->message_id);
+            if (! $message) {
+                continue;
+            }
+            $channel = $channels->get($message->channel_id);
+            $channelName = $channel ? (string) $channel->name : 'Chat';
+            if ($channel && $channel->isBotInbox()) {
+                $channelName = self::BOT_NAME;
+            } elseif ($channel && $channel->isDm() && $channel->dm_key) {
+                [$left, $right] = array_map('intval', explode(':', (string) $channel->dm_key, 2) + [0, 0]);
+                $peerId = $left === (int) $user->id ? $right : $left;
+                $channelName = (string) ($peers[$peerId] ?? $channelName);
+            }
+            $deleted = $message->deleted_at !== null;
+            $preview = $deleted
+                ? 'This message was deleted.'
+                : trim((string) ($message->body ?: $message->attachment_name ?: 'Attachment'));
+
+            $out[] = [
+                'id' => (int) $message->id,
+                'channel_id' => (int) $message->channel_id,
+                'channel_name' => $channelName,
+                'name' => $message->is_bot
+                    ? self::botDisplayName($message->bot_name)
+                    : (string) ($message->user?->name ?? 'Member'),
+                'body' => Str::limit($preview, 280),
+                'created_label' => optional($message->created_at)->timezone($tz)->format('M j, g:i A'),
+                'archived_label' => optional($archive->created_at)->timezone($tz)->format('M j, g:i A'),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{channel_id: int, has_messages: bool, channel_unread: int}
+     */
+    public static function messageVisibilityFor(User $user, ChatMessage $message): array
+    {
+        $channelId = (int) $message->channel_id;
+
+        return [
+            'channel_id' => $channelId,
+            'has_messages' => self::channelHasVisibleMessages($user, $channelId),
+            'channel_unread' => (int) (self::unreadByChannel($user)[$channelId] ?? 0),
+        ];
     }
 
     public static function canPin(?User $user): bool

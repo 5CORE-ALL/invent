@@ -73,6 +73,8 @@
         'sub_title'  => '',
     ])
 
+    @include('market-places.partials.wayfair-price-upload')
+
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -2274,5 +2276,140 @@
                 });
             });
         });
+    </script>
+    <script>
+        (function () {
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const urls = {
+                status: '{{ route('wayfair.price-upload.status') }}',
+                history: '{{ route('wayfair.price-upload.history') }}',
+                generate: '{{ route('wayfair.price-upload.generate') }}',
+                upload: '{{ route('wayfair.price-upload.upload-now') }}',
+                retry: '{{ route('wayfair.price-upload.retry') }}',
+                enabled: '{{ route('wayfair.price-upload.enabled') }}',
+            };
+
+            function notify(message, ok) {
+                if (window.toastr) {
+                    ok ? toastr.success(message) : toastr.warning(message);
+                } else {
+                    alert(message);
+                }
+            }
+
+            function fill(data) {
+                const latest = data.latest || {};
+                $('#wf-upload-enabled').text(data.enabled ? 'ON' : 'OFF');
+                $('#wf-upload-schedule').text((data.schedule_time || '—') + (data.timezone ? ' ' + data.timezone : ''));
+                $('#wf-upload-last').text(latest.uploaded_at || latest.generated_at || '—');
+                $('#wf-upload-status').text(latest.status || '—');
+                $('#wf-upload-file').text(latest.filename || '—');
+                $('#wf-upload-skus').text(latest.total_rows ?? '—');
+                $('#wf-upload-changed').text(latest.changed_rows ?? '—');
+                $('#wf-upload-ok').text(latest.successful_rows ?? '—');
+                $('#wf-upload-bad').text(latest.failed_rows ?? '—');
+                $('#wf-upload-attempts').text(latest.attempts ?? '—');
+                $('#wf-upload-ref').text(latest.wayfair_reference || '—');
+                $('#wf-upload-job-started').text(data.last_job_started || '—');
+                $('#wf-upload-job-completed').text(data.last_job_completed || '—');
+                $('#wf-upload-job-failed').text(data.last_job_failed || '—');
+                $('#wf-upload-queue-badge')
+                    .attr('class', 'badge ' + (data.queue_running ? 'bg-success' : 'bg-danger'))
+                    .text(data.queue_running ? 'Queue: Running' : 'Queue: Not Running');
+                $('#wf-upload-worker-badge')
+                    .attr('class', 'badge ' + (data.worker_stuck ? 'bg-danger' : (data.worker_healthy ? 'bg-success' : 'bg-warning')))
+                    .text(data.worker_stuck ? 'Wayfair Upload Worker: Stuck' : (data.worker_healthy ? 'Wayfair Upload Worker: Healthy' : 'Wayfair Upload Worker: Not Running'));
+                const alertText = latest.status === 'NO_CHANGES'
+                    ? (latest.error_message || 'No price changes — upload skipped')
+                    : (latest.status === 'REQUIRES_REVIEW' || latest.status === 'AUTH_REQUIRED' ? (latest.error_message || latest.status) : '');
+                if (alertText) {
+                    $('#wf-upload-alert').text(alertText).show();
+                } else if (!data.upload_url_configured && data.mode === 'browser') {
+                    $('#wf-upload-alert').text('WAYFAIR_UPLOAD_URL is not set. Files can be generated, but Partner Home upload cannot run until that URL is configured.').show();
+                } else {
+                    $('#wf-upload-alert').hide();
+                }
+            }
+
+            function refresh() {
+                $.get(urls.status, fill);
+            }
+
+            function post(url, extra) {
+                return $.ajax({
+                    url: url,
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrf },
+                    data: Object.assign({ _token: csrf }, extra || {}),
+                });
+            }
+
+            function loadHistory() {
+                $.get(urls.history, function (res) {
+                    const $body = $('#wf-upload-history-table tbody').empty();
+                    (res.data || []).forEach(function (row) {
+                        const error = row.error_message ? $('<button type="button" class="btn btn-link btn-sm p-0 wf-view-error">View Error</button>').attr('data-error', row.error_message) : '—';
+                        const download = row.download_url ? $('<a class="btn btn-link btn-sm p-0" target="_blank">Download File</a>').attr('href', row.download_url) : '';
+                        const retry = ['FAILED', 'STUCK', 'AUTH_REQUIRED', 'REQUIRES_REVIEW'].indexOf(row.status) >= 0
+                            ? $('<button type="button" class="btn btn-link btn-sm p-0 wf-retry-one">Retry</button>').attr('data-id', row.id).attr('data-force', row.status === 'REQUIRES_REVIEW' ? '1' : '0')
+                            : '';
+                        const view = $('<button type="button" class="btn btn-link btn-sm p-0 wf-view-error">View</button>').attr('data-error', JSON.stringify(row, null, 2));
+                        const actions = $('<td>');
+                        actions.append(view, ' ', download, ' ', retry);
+                        $body.append($('<tr>')
+                            .append($('<td>').text(row.generated_at || ''))
+                            .append($('<td>').text(row.filename || ''))
+                            .append($('<td>').text(row.total_rows ?? ''))
+                            .append($('<td>').text(row.changed_rows ?? ''))
+                            .append($('<td>').text(row.status || ''))
+                            .append($('<td>').text(row.attempts ?? ''))
+                            .append($('<td>').text(row.wayfair_reference || ''))
+                            .append($('<td>').append(error))
+                            .append(actions));
+                    });
+                });
+            }
+
+            $('#wf-upload-generate').on('click', function () {
+                post(urls.generate).done(function (res) {
+                    notify(res.message || 'File generated.', !!res.success);
+                    refresh();
+                }).fail(function (xhr) {
+                    notify(xhr.responseJSON?.message || 'Generate failed.', false);
+                });
+            });
+            $('#wf-upload-now').on('click', function () {
+                post(urls.upload).done(function (res) {
+                    notify(res.message || 'Upload queued. The Wayfair upload is running in the background.', !!res.success);
+                    refresh();
+                }).fail(function (xhr) {
+                    notify(xhr.responseJSON?.message || 'Upload failed.', false);
+                });
+            });
+            $('#wf-upload-retry').on('click', function () {
+                post(urls.retry).done(function (res) {
+                    notify(res.message || 'Retry queued.', true);
+                    refresh();
+                });
+            });
+            $('#wf-upload-toggle').on('click', function () {
+                const on = $('#wf-upload-enabled').text() !== 'ON';
+                post(urls.enabled, { enabled: on ? 1 : 0 }).done(function () { refresh(); });
+            });
+            $('#wf-upload-history-btn').on('click', loadHistory);
+            $(document).on('click', '.wf-view-error', function () {
+                $('#wf-upload-error-text').text($(this).attr('data-error') || '');
+                const modal = document.getElementById('wfUploadErrorModal');
+                if (window.bootstrap && modal) new bootstrap.Modal(modal).show();
+            });
+            $(document).on('click', '.wf-retry-one', function () {
+                post(urls.retry, { upload_id: $(this).attr('data-id'), force: $(this).attr('data-force') }).done(function (res) {
+                    notify(res.message || 'Retry queued.', true);
+                    loadHistory();
+                    refresh();
+                });
+            });
+            refresh();
+        })();
     </script>
 @endsection

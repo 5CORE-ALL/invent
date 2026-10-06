@@ -110,6 +110,8 @@
         .slack-dot.is-off { background: #e01e5a; box-shadow: 0 0 0 2px rgba(224,30,90,.2); border: 0; }
         .slack-dot.is-away { background: #ecb22e; box-shadow: 0 0 0 2px rgba(236,178,46,.2); }
         .slack-dot.is-dnd { background: #e01e5a; box-shadow: none; }
+        .slack-dot.is-msg-read { background: #ecb22e; box-shadow: 0 0 0 2px rgba(236,178,46,.28); }
+        .slack-dot.is-msg-unread { background: #e01e5a; box-shadow: 0 0 0 2px rgba(224,30,90,.25); }
         .slack-item__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .slack-item__badge {
             min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
@@ -181,6 +183,24 @@
             padding: 4px 10px;
         }
         .slack-msg__act button.is-ack-delete:hover { background: #fee2e2; color: #b91c1c; }
+        .slack-msg__act button.is-recycle {
+            color: #b45309;
+            font-size: 16px;
+            line-height: 1;
+            padding: 4px 10px;
+        }
+        .slack-msg__act button.is-recycle:hover { background: #fef3c7; color: #92400e; }
+        .slack-recycle-row {
+            display: flex; flex-direction: column; gap: 4px;
+            padding: 10px 0; border-bottom: 1px solid #eee;
+        }
+        .slack-recycle-row__meta { font-size: 12px; color: #616061; }
+        .slack-recycle-row__meta strong { color: #1d1c1d; font-size: 14px; }
+        .slack-recycle-row__body { color: #1d1c1d; font-size: 14px; line-height: 1.4; word-break: break-word; }
+        .slack-recycle-row button {
+            align-self: flex-start; border: 0; background: #fef3c7; color: #92400e;
+            border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 700;
+        }
         #slackAckDeleteModal .modal-dialog { max-width: 380px; }
         #slackAckDeleteModal .modal-content { border: none; border-radius: 16px; overflow: hidden; }
         #slackAckDeleteModal .modal-header {
@@ -546,9 +566,28 @@
                 <div class="modal-body">
                     <input type="hidden" id="slackAckDeleteMessageId">
                     <p class="ack-delete-msg">I understand</p>
-                    <button type="button" id="slackAckDeleteTrash" title="Delete and hide this message">
-                        <i class="ri-delete-bin-line" aria-hidden="true"></i>
-                    </button>
+                    <div class="d-flex justify-content-center align-items-center gap-3">
+                        <button type="button" id="slackAckDeleteTrash" title="Hide this message for you only">
+                            <i class="ri-delete-bin-line" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" id="slackAckRecycle" title="Archived messages" aria-label="Archived messages" style="width:56px;height:56px;border:0;border-radius:50%;background:#fef3c7;color:#b45309;font-size:1.4rem;line-height:1;">
+                            <i class="ri-recycle-line" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="slackRecycleModal" tabindex="-1" aria-labelledby="slackRecycleTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="slackRecycleTitle">Archived messages</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="slackRecycleList">
+                    <div class="text-muted">No archived messages</div>
                 </div>
             </div>
         </div>
@@ -827,7 +866,7 @@
             const avatar = ch.avatar
                 ? '<img class="' + (ch.type === 'bot' ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
                 : (ch.type === 'bot' ? '<i class="ri-robot-2-line"></i>' : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : (ch.type === 'task' ? '<i class="ri-task-line"></i>' : '')));
-            const dot = (ch.type === 'dm') ? '<span class="' + presenceDotClass('slack-dot', ch) + '" title="' + esc(presenceTitle(ch)) + '"></span>' : '';
+            const dot = dmMessageDot(ch);
             const badge = ch.unread > 0 ? '<span class="slack-item__badge">' + ch.unread + '</span>' : '';
             const pinMark = ch.pinned ? '<i class="ri-pushpin-fill slack-pin-mark" title="Pinned"></i>' : '';
             btn.innerHTML = avatar + prefix + dot + pinMark + '<span class="slack-item__name">' + esc(ch.name) + '</span>' + badge +
@@ -993,7 +1032,8 @@
             '<button type="button" data-pin="' + m.id + '">' + (m.pinned ? 'Unpin' : 'Pin') + '</button>' +
             '<button type="button" data-save="' + m.id + '">' + (m.bookmarked ? 'Saved' : 'Save') + '</button>' +
             '<button type="button" data-task="' + m.id + '">Create Task</button>' +
-            '<button type="button" class="is-ack-delete" data-ad="' + m.id + '" title="Acknowledge and delete" aria-label="Acknowledge and delete"><i class="ri-delete-bin-fill" aria-hidden="true"></i></button>' +
+            '<button type="button" class="is-ack-delete" data-ad="' + m.id + '" title="Hide this message for you only" aria-label="Hide this message for you only"><i class="ri-delete-bin-fill" aria-hidden="true"></i></button>' +
+            '<button type="button" class="is-recycle" data-recycle="1" title="Archived messages" aria-label="Archived messages"><i class="ri-recycle-line" aria-hidden="true"></i></button>' +
             '</div>'
         );
         wrap.innerHTML = avatar + '<div style="flex:1;min-width:0">' +
@@ -1046,6 +1086,8 @@
         if (task) task.addEventListener('click', function () { openTaskFrom(m); });
         const ad = wrap.querySelector('[data-ad]');
         if (ad) ad.addEventListener('click', function () { openAckDelete(m.id); });
+        const recycle = wrap.querySelector('[data-recycle]');
+        if (recycle) recycle.addEventListener('click', function () { openRecycleBin(); });
         const thread = wrap.querySelector('[data-thread]');
         if (thread) thread.addEventListener('click', function () { openThread(m.id); });
         wrap.addEventListener('click', function (e) {
@@ -1107,6 +1149,26 @@
         if (online && status === 'away') return 'away';
         if (online && status === 'dnd') return 'dnd';
         return online ? 'online' : 'offline';
+    }
+
+    function dmMessageDot(ch) {
+        if (!ch || ch.type !== 'dm') return '';
+        if ((ch.unread || 0) > 0) {
+            return '<span class="slack-dot is-msg-unread" title="Unread messages"></span>';
+        }
+        if (ch.has_messages) {
+            return '<span class="slack-dot is-msg-read" title="Has messages"></span>';
+        }
+        return '';
+    }
+
+    function applyChannelFlags(data) {
+        if (!data || !data.channel_id) return;
+        const ch = channels.find(function (c) { return c.id === Number(data.channel_id); });
+        if (!ch) return;
+        if (typeof data.has_messages === 'boolean') ch.has_messages = data.has_messages;
+        if (typeof data.channel_unread === 'number') ch.unread = data.channel_unread;
+        renderNav();
     }
 
     function presenceDotClass(base, src) {
@@ -1249,7 +1311,13 @@
             if (idx >= 0) Object.assign(channels[idx], data.channel);
             const archivedIdx = archivedChannels.findIndex(function (c) { return c.id === id; });
             if (archivedIdx >= 0) Object.assign(archivedChannels[archivedIdx], data.channel);
+            if (idx >= 0) {
+                channels[idx].unread = 0;
+                if ((data.messages || []).length) channels[idx].has_messages = true;
+                else if (!aroundId) channels[idx].has_messages = false;
+            }
             setHead(ch, data.channel);
+            renderNav();
         }
         appendMessages(data.messages || [], true, false);
         applyReceipts(data.receipts || {});
@@ -1497,6 +1565,11 @@
             if (pending) pending.remove();
             appendMessages(data.messages || [], false, false);
             writeOutbox(readOutbox().filter(function (r) { return r.client_id !== cid; }));
+            const sentChannel = channels.find(function (c) { return c.id === activeId; });
+            if (sentChannel && !sentChannel.has_messages) {
+                sentChannel.has_messages = true;
+                renderNav();
+            }
             broadcastChat({ type: 'messages', channelId: activeId, messages: data.messages || [] });
         } catch (err) {
             markFailed(cid, text, activeId, file, parentId);
@@ -1944,10 +2017,62 @@
     document.getElementById('slackAckDeleteTrash').addEventListener('click', async function () {
         const mid = document.getElementById('slackAckDeleteMessageId').value;
         if (!mid) return;
-        await api('/chat/messages/' + mid + '/archive', { method: 'POST' });
+        const data = await api('/chat/messages/' + mid + '/archive', { method: 'POST' });
         window.bootstrap && window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackAckDeleteModal')).hide();
         hideArchivedMessage(mid);
+        applyChannelFlags(data);
     });
+    document.getElementById('slackAckRecycle').addEventListener('click', function () {
+        const ack = document.getElementById('slackAckDeleteModal');
+        if (!window.bootstrap) {
+            openRecycleBin();
+            return;
+        }
+        ack.addEventListener('hidden.bs.modal', function () { openRecycleBin(); }, { once: true });
+        window.bootstrap.Modal.getOrCreateInstance(ack).hide();
+    });
+
+    async function openRecycleBin() {
+        const list = document.getElementById('slackRecycleList');
+        const modal = document.getElementById('slackRecycleModal');
+        if (!list || !modal) return;
+        list.innerHTML = '<div class="text-muted">Loading…</div>';
+        window.bootstrap && window.bootstrap.Modal.getOrCreateInstance(modal).show();
+        let data;
+        try {
+            data = await api('/chat/archived-messages');
+        } catch (err) {
+            list.innerHTML = '<div class="text-danger">' + esc(err.message || 'Could not load archived messages.') + '</div>';
+            return;
+        }
+        const rows = data.messages || [];
+        if (!rows.length) {
+            list.innerHTML = '<div class="text-muted">No archived messages</div>';
+            return;
+        }
+        list.innerHTML = rows.map(function (m) {
+            return '<div class="slack-recycle-row">' +
+                '<div class="slack-recycle-row__meta"><strong>' + esc(m.name || '') + '</strong> · ' + esc(m.channel_name || '') + ' · ' + esc(m.archived_label || m.created_label || '') + '</div>' +
+                '<div class="slack-recycle-row__body">' + esc(m.body || '') + '</div>' +
+                '<button type="button" data-restore="' + m.id + '">Restore for me</button>' +
+                '</div>';
+        }).join('');
+        list.querySelectorAll('[data-restore]').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                const id = btn.getAttribute('data-restore');
+                btn.disabled = true;
+                try {
+                    const result = await api('/chat/messages/' + id + '/unarchive', { method: 'POST' });
+                    applyChannelFlags(result);
+                    if (Number(result.channel_id) === activeId) openChannel(activeId);
+                    openRecycleBin();
+                } catch (err) {
+                    btn.disabled = false;
+                    alert(err.message || 'Could not restore this message.');
+                }
+            });
+        });
+    }
 
     function openForward(id) {
         document.getElementById('slackForwardMessageId').value = id;

@@ -1,0 +1,8 @@
+{
+  "name": "wayfair-browser-upload",
+  "private": true,
+  "description": "Playwright worker for Wayfair Partner Home price-file upload. Not used by PHPUnit.",
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

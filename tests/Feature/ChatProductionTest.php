@@ -286,6 +286,54 @@ class ChatProductionTest extends TestCase
         $this->assertTrue(collect($forA->json('messages'))->contains(fn ($row) => (int) $row['id'] === $mid));
     }
 
+    public function test_dm_dots_follow_visible_messages_and_archives_stay_private(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('chat_message_archives')) {
+            $this->markTestSkipped('Chat message archives are not ready.');
+        }
+
+        [$a, $b, $channel] = $this->dmPair();
+        $msg = $this->actingAs($a)->postJson('/chat/channels/'.$channel->id.'/messages', [
+            'body' => 'dot check '.uniqid(),
+            'client_id' => 'cid-dot-'.uniqid(),
+        ]);
+        $msg->assertOk();
+        $mid = (int) $msg->json('messages.0.id');
+        $body = (string) $msg->json('messages.0.body');
+
+        $before = collect($this->actingAs($b)->getJson('/chat/inbox')->json('channels'))
+            ->first(fn ($row) => (int) $row['id'] === (int) $channel->id);
+        $this->assertNotNull($before);
+        $this->assertTrue($before['has_messages']);
+        $this->assertGreaterThan(0, $before['unread']);
+
+        $this->actingAs($b)->getJson('/chat/channels/'.$channel->id.'/messages')->assertOk();
+        $read = collect($this->actingAs($b)->getJson('/chat/inbox')->json('channels'))
+            ->first(fn ($row) => (int) $row['id'] === (int) $channel->id);
+        $this->assertTrue($read['has_messages']);
+        $this->assertSame(0, $read['unread']);
+
+        $this->actingAs($b)->postJson('/chat/messages/'.$mid.'/archive')
+            ->assertOk()
+            ->assertJsonPath('channel_id', (int) $channel->id);
+
+        $bin = $this->actingAs($b)->getJson('/chat/archived-messages')->assertOk();
+        $this->assertTrue(collect($bin->json('messages'))->contains(fn ($row) => (int) $row['id'] === $mid && $row['body'] === $body));
+        $otherBin = collect($this->actingAs($a)->getJson('/chat/archived-messages')->assertOk()->json('messages'));
+        $this->assertFalse($otherBin->contains(fn ($row) => (int) $row['id'] === $mid));
+
+        $stillThere = collect($this->actingAs($a)->getJson('/chat/channels/'.$channel->id.'/messages')->json('messages'));
+        $this->assertTrue($stillThere->contains(fn ($row) => (int) $row['id'] === $mid));
+
+        $this->actingAs($b)->postJson('/chat/messages/'.$mid.'/unarchive')
+            ->assertOk()
+            ->assertJsonPath('has_messages', true);
+        $restored = collect($this->actingAs($b)->getJson('/chat/channels/'.$channel->id.'/messages')->json('messages'));
+        $this->assertTrue($restored->contains(fn ($row) => (int) $row['id'] === $mid));
+        $gone = collect($this->actingAs($b)->getJson('/chat/archived-messages')->json('messages'));
+        $this->assertFalse($gone->contains(fn ($row) => (int) $row['id'] === $mid));
+    }
+
     public function test_message_to_task_stores_reference(): void
     {
         [$a, $b, $channel] = $this->dmPair();

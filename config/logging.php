@@ -191,6 +191,14 @@ return [
             'days' => 14,
             'replace_placeholders' => true,
         ],
+
+        'wayfair-upload' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/wayfair-upload.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 30,
+            'replace_placeholders' => true,
+        ],
     ],
 
 ];

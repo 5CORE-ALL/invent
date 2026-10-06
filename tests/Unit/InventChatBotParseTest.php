@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\ChatChannel;
 use App\Support\InventChatBot;
 use PHPUnit\Framework\TestCase;
 
@@ -33,5 +34,16 @@ class InventChatBotParseTest extends TestCase
     {
         $this->assertSame('task', InventChatBot::parse('/task buy tape')['command']);
         $this->assertSame('help', InventChatBot::parse('/help')['command']);
+    }
+
+    public function test_a_normal_task_chat_message_is_not_a_bot_command(): void
+    {
+        $body = 'sir please tell me the reason for marking the task rework.';
+        $taskChat = new ChatChannel(['type' => ChatChannel::TYPE_TASK]);
+        $botInbox = new ChatChannel(['type' => ChatChannel::TYPE_BOT]);
+
+        $this->assertFalse(InventChatBot::shouldReplyIn($taskChat, $body));
+        $this->assertTrue(InventChatBot::shouldReplyIn($botInbox, 'Show my overdue'));
+        $this->assertTrue(InventChatBot::shouldReplyIn($taskChat, '/help'));
     }
 }

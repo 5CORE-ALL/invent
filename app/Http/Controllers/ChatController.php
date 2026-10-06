@@ -354,7 +354,7 @@ class ChatController extends Controller
 
                 $out = collect([$message]);
 
-                if ($body !== '' && InventChatBot::looksLikeCommand($body)) {
+                if (InventChatBot::shouldReplyIn($row, $body)) {
                     $bot = InventChatBot::reply($user, $row, $body, false);
                     if ($bot) {
                         $out->push($bot);
@@ -716,7 +716,39 @@ class ChatController extends Controller
         ChatWorkspace::archiveMessageFor($user, $row);
         ChatAudit::record($user, 'message.acknowledged_deleted', 'chat_message', (int) $row->id, (int) $channel->id);
 
-        return response()->json(['ok' => true, 'id' => (int) $row->id, 'archived' => true]);
+        return response()->json(array_merge([
+            'ok' => true,
+            'id' => (int) $row->id,
+            'archived' => true,
+        ], ChatWorkspace::messageVisibilityFor($user, $row)));
+    }
+
+    public function unarchiveMessage(int $message): JsonResponse
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+        abort_unless(Schema::hasTable('chat_message_archives'), 422, 'Message archives are not ready yet.');
+        $row = ChatMessage::query()->findOrFail($message);
+        ChatWorkspace::memberOrFail($user, (int) $row->channel_id);
+        ChatWorkspace::unarchiveMessageFor($user, $row);
+
+        return response()->json(array_merge([
+            'ok' => true,
+            'id' => (int) $row->id,
+            'archived' => false,
+        ], ChatWorkspace::messageVisibilityFor($user, $row)));
+    }
+
+    public function archivedMessages(): JsonResponse
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+        abort_unless(Schema::hasTable('chat_message_archives'), 422, 'Message archives are not ready yet.');
+        $this->releaseSessionLock();
+
+        return response()->json([
+            'messages' => ChatWorkspace::archivedMessagesFor($user),
+        ]);
     }
 
     public function markRead(int $channel): JsonResponse

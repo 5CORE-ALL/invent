@@ -96,6 +96,10 @@ return [
             'timeout' => 900,
             'max_time' => 7200,
         ],
+        'wayfair-upload' => [
+            'timeout' => 900,
+            'max_time' => 7200,
+        ],
     ],
 
 ];
