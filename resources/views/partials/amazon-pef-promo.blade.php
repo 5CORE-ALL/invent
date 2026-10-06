@@ -4052,9 +4052,9 @@
                 const key = sku.toUpperCase();
                 if (!sku || seen[key]) return;
                 // Same set as the blue triangle badge: INV > 0 and Price ≠ live S PRC.
+                // Error / failed rows stay blue — retry them. A leftover failed_block
+                // used to hide these forever after Amazon INVALID.
                 if (d.is_missing_amazon) return;
-                const pushSt = String(d.PUSH_PRC_STATUS || d.SPRICE_STATUS || '').toLowerCase();
-                if (pushSt === 'error' || pushSt === 'failed') return;
                 if (typeof amazonHasBlueTriangle === 'function' && !amazonHasBlueTriangle(d)) return;
                 const plan = amzPushPrcPlanForQueue(d);
                 if (!plan || !(plan.effective > 0)) return;
@@ -4088,7 +4088,7 @@
             const items = collectAmzReloadPushItems();
             window._amzReloadPushQueued = true;
             if (!items.length) return;
-            queueAmzPushPrcItems(items, { silent: true });
+            queueAmzPushPrcItems(items, { silent: true, retryFailed: true });
         }
         function bindAmzReloadPushOnTable() {
             if (typeof table === 'undefined' || !table || !table.on) {

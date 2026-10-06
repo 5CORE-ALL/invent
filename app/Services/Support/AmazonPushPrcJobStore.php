@@ -46,9 +46,14 @@ class AmazonPushPrcJobStore
     public function create(array $tasks): array
     {
         $previous = $this->load();
-        $failedBlock = $this->mergeFailedBlock($previous);
+        // A finished / cancelled job must not keep Amazon rejects forever.
+        // The next Push on reload (or a new queue) starts clean and retries
+        // remaining Price ≠ S PRC SKUs — leftover sale / min-max may now be valid.
+        $failedBlock = $this->isActive($previous) ? $this->mergeFailedBlock($previous) : [];
         $normalized = $this->uniqueTasksBySku(
-            $this->dropBlockedTasks($this->normalizeTasks($tasks), $failedBlock)
+            $failedBlock === []
+                ? $this->normalizeTasks($tasks)
+                : $this->dropBlockedTasks($this->normalizeTasks($tasks), $failedBlock)
         );
         if ($normalized === []) {
             return $this->releaseEmptyQueue($previous, $failedBlock);

@@ -1902,7 +1902,8 @@ class OverallAmazonController extends Controller
 
         $tasks = $this->dropPushPrcTasksAlreadyAtListingPrice($tasks, $store);
         $blocked = 0;
-        if ($request->boolean('retry_failed')) {
+        $freshJob = ! $store->isActive($store->load());
+        if ($request->boolean('retry_failed') || $freshJob) {
             $retrySkus = [];
             foreach ($tasks as $task) {
                 $retrySkus[] = (string) ($task['sku'] ?? '');

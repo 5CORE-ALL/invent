@@ -67,7 +67,7 @@ class AmazonPushPrcJobStoreTest extends TestCase
         $this->assertSame('idle', $this->store()->load()['status']);
     }
 
-    public function test_amazon_reject_still_blocks_until_a_manual_retry(): void
+    public function test_new_job_after_failed_run_retries_the_same_s_prc(): void
     {
         $this->writeJob([
             'status' => 'failed',
@@ -76,30 +76,59 @@ class AmazonPushPrcJobStoreTest extends TestCase
                 'std' => 34.99,
                 'effective' => 29.99,
                 'status' => 'failed',
-                'error' => 'Min Price cannot be higher than Sale Price',
+                'error' => 'Amazon did not accept the price update (status: INVALID).',
             ]],
             'failed_block' => [
-                'DS CH BLU' => ['effective' => 29.99, 'error' => 'Min Price cannot be higher than Sale Price'],
+                'DS CH BLU' => [
+                    'effective' => 29.99,
+                    'error' => 'Amazon did not accept the price update (status: INVALID).',
+                ],
             ],
         ]);
 
-        $blocked = $this->store()->create([[
+        $retried = $this->store()->create([[
             'sku' => 'DS CH BLU',
             'std' => 34.99,
             'effective' => 29.99,
-        ]]);
-        $this->assertSame(0, $blocked['total']);
-
-        $store = $this->store();
-        $store->forgetBlocked(['DS CH BLU']);
-        $retried = $store->create([[
-            'sku' => 'DS CH BLU',
-            'std' => 34.99,
-            'effective' => 29.99,
+            'sale' => 29.99,
         ]]);
 
+        $this->assertSame('running', $retried['status']);
         $this->assertSame(1, $retried['total']);
         $this->assertSame('pending', $retried['tasks'][0]['status']);
+        $this->assertSame([], $retried['failed_block']);
+    }
+
+    public function test_append_skips_same_target_already_failed_while_job_is_running(): void
+    {
+        $this->writeJob([
+            'status' => 'running',
+            'tasks' => [[
+                'sku' => 'DS CH BLU',
+                'std' => 34.99,
+                'effective' => 29.99,
+                'sale' => 29.99,
+                'status' => 'failed',
+                'error' => 'Amazon did not accept the price update (status: INVALID).',
+            ]],
+            'total' => 1,
+            'failed_block' => [
+                'DS CH BLU' => [
+                    'effective' => 29.99,
+                    'error' => 'Amazon did not accept the price update (status: INVALID).',
+                ],
+            ],
+        ]);
+
+        $state = $this->store()->append([[
+            'sku' => 'DS CH BLU',
+            'std' => 34.99,
+            'effective' => 29.99,
+            'sale' => 29.99,
+        ]]);
+
+        $this->assertSame(1, $state['total']);
+        $this->assertSame('failed', $state['tasks'][0]['status']);
     }
 
     private function store(): AmazonPushPrcJobStore
