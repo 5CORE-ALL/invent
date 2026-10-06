@@ -36,7 +36,7 @@ class OrderFulfillmentShopifyPushService
     public const RETRY_COOLDOWN_MINUTES = 45;
 
     /** Only rows resolved by the page from these sources are pushed. */
-    public const PUSHABLE_SOURCES = ['veeqo', 'gofo', '4seller', 'channel', 'manual'];
+    public const PUSHABLE_SOURCES = ['veeqo', 'gofo', '4seller', 'channel', 'shopify', 'manual'];
 
     public function __construct(
         protected VeeqoShopifyFulfillmentService $labels,

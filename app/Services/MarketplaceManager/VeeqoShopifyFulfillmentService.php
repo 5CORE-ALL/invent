@@ -996,6 +996,40 @@ class VeeqoShopifyFulfillmentService
         ];
     }
 
+    /**
+     * Tracking already written on the Shopify order linked to this marketplace row.
+     * The Order Fulfillment grid uses this when the label lookup has not stored a number yet.
+     *
+     * @return array{tracking: string, carrier: string, source: string}|null
+     */
+    public function linkedShopifyTracking(string $marketplace, int $orderId): ?array
+    {
+        if ($orderId < 1) {
+            return null;
+        }
+        $ctx = $this->contextForMarketplaceOrder($marketplace, $orderId);
+        if ($ctx === null) {
+            return null;
+        }
+        $shopifyOrderId = trim((string) ($ctx['shopify_order_id'] ?? ''));
+        if ($shopifyOrderId === '' || str_starts_with($shopifyOrderId, 'manual')) {
+            return null;
+        }
+        $config = (array) ($ctx['shopify_config'] ?? []);
+        $sku = (string) ($ctx['sku'] ?? '');
+        $ids = (array) ($ctx['marketplace_order_ids'] ?? []);
+        $hit = $this->existingShopifyTracking($config, $shopifyOrderId, $sku, $ids);
+        if ($hit === null) {
+            $hit = $this->existingShopifyTracking($config, $shopifyOrderId);
+        }
+        if ($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') {
+            return null;
+        }
+        $hit['source'] = 'shopify';
+
+        return $hit;
+    }
+
     public function lookupLiveChannelTracking(string $marketplace, array $ids): ?array
     {
         $hit = $this->pullLiveMarketplaceTracking(strtolower(trim($marketplace)), $ids);

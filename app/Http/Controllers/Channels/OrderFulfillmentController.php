@@ -1970,8 +1970,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
-     * One order: saved number → synced marketplace row → Veeqo → marketplace API → 4Seller.
-     * Shopify fulfillment tracking is never used.
+     * One order: saved number → synced marketplace row → Veeqo → marketplace API → 4Seller
+     * → tracking already on the linked Shopify order.
      *
      * @param  array{mm_slug: string, order_id: string, sku: string, source_id: int, rows: list<array{id: string, sku: string}>}  $group
      * @return list<array{id: string, tracking: string, tracking_source: string, tracking_checked: bool}>
@@ -2058,11 +2058,29 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                     report($e);
                 }
             }
+            if ($hit === null && microtime(true) < $deadline) {
+                $sourceId = (int) ($group['source_id'] ?? 0);
+                if ($sourceId > 0) {
+                    try {
+                        $shopify = $lookup->linkedShopifyTracking($slug, $sourceId);
+                    } catch (\Throwable $e) {
+                        report($e);
+                        $shopify = null;
+                    }
+                    if (is_array($shopify) && trim((string) ($shopify['tracking'] ?? '')) !== '') {
+                        $hit = [
+                            'tracking' => (string) $shopify['tracking'],
+                            'carrier' => (string) ($shopify['carrier'] ?? ''),
+                            'source' => 'shopify',
+                        ];
+                    }
+                }
+            }
         }
 
         $source = strtolower(trim((string) ($hit['source'] ?? '')));
         $number = trim((string) ($hit['tracking'] ?? ''));
-        $allowed = in_array($source, ['gofo', '4seller', 'veeqo', 'channel'], true) && $number !== '';
+        $allowed = in_array($source, ['gofo', '4seller', 'veeqo', 'channel', 'shopify'], true) && $number !== '';
         if (! $allowed) {
             $source = null;
             $number = '';
@@ -2222,7 +2240,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $known = OrderFulfillmentTracking::query()
             ->where('mm_slug', $group['mm_slug'])
             ->where('order_id', $orderId)
-            ->whereIn('source', ['gofo', '4seller', 'veeqo', 'channel'])
+            ->whereIn('source', ['gofo', '4seller', 'veeqo', 'channel', 'shopify'])
             ->whereNotNull('tracking_number')
             ->where('tracking_number', '!=', '')
             ->first();
