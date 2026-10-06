@@ -371,7 +371,18 @@ class AmazonSpApiService
             ]];
         }
 
-        return [['schedule' => []]];
+        // Amazon rejects an empty schedule (min 1 element). An ended Sale
+        // drops the leftover price without leaving a live discount.
+        $startAt = now('UTC')->subDays(3)->startOfDay()->format('Y-m-d\TH:i:s\Z');
+        $endAt = now('UTC')->subDay()->startOfDay()->format('Y-m-d\TH:i:s\Z');
+
+        return [[
+            'schedule' => [[
+                'value_with_tax' => $your,
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+            ]],
+        ]];
     }
 
     /**
@@ -789,9 +800,10 @@ class AmazonSpApiService
                     "maximum_seller_allowed_price" => $maxPriceSchedule,
                 ];
                 // High Std stays Your Price. S PRC is Sales Price only when strictly below it.
-                // When there is no new sale, send an empty schedule so Amazon drops the
-                // leftover Sale (CS 04 2W: Sale $17.99 stayed under Min $18.99).
-                $offerValue['discounted_price'] = self::discountedPriceAttribute($price, $salePrice);
+                $sendSale = (int) round($salePrice * 100) < (int) round($price * 100);
+                if ($sendSale) {
+                    $offerValue['discounted_price'] = self::discountedPriceAttribute($price, $salePrice);
+                }
                 // Business Price → separate B2B audience offer (Listings API has no "business_price" field)
                 $b2bOfferValue = [
                     "marketplaceId" => "ATVPDKIKX0DER",
@@ -802,13 +814,22 @@ class AmazonSpApiService
                 ];
                 $offerValues = [$offerValue, $b2bOfferValue];
                 $includedB2b = true;
+                $patches = [[
+                    "op" => "replace",
+                    "path" => "/attributes/purchasable_offer",
+                    "value" => $offerValues
+                ]];
+                // Empty Sale schedule is INVALID (90226). Delete the leftover
+                // discounted_price so Min $18.99 is not blocked by Sale $17.99.
+                if (! $sendSale) {
+                    $patches[] = [
+                        'op' => 'delete',
+                        'path' => '/attributes/purchasable_offer/marketplace_id/ATVPDKIKX0DER/currency/USD/audience/ALL/discounted_price',
+                    ];
+                }
                 $body = [
                     "productType" => $productType,
-                    "patches" => [[
-                        "op" => "replace",
-                        "path" => "/attributes/purchasable_offer",
-                        "value" => $offerValues
-                    ]]
+                    "patches" => $patches
                 ];
 
                 Log::info(sprintf(
