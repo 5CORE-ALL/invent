@@ -72,13 +72,13 @@
         #amzStdPrcModal .amz-sp-pie-canvas {
             position: relative;
             width: 100%;
-            height: 196px;
-            flex: 0 0 196px;
+            height: 150px;
+            flex: 0 0 150px;
         }
         #amzStdPrcModal .amz-sp-pie-canvas canvas {
             display: block;
             width: 100% !important;
-            height: 196px !important;
+            height: 150px !important;
         }
         #amzStdPrcModal .amz-sp-pie-legend {
             width: 100%;
@@ -943,14 +943,15 @@
                     datasets: [{
                         data: data,
                         backgroundColor: slices.map(function(s) { return s.color; }),
-                        borderRadius: 4,
-                        borderSkipped: false,
-                        barPercentage: 0.72,
-                        categoryPercentage: 0.8,
+                        borderWidth: 0,
+                        borderRadius: 2,
+                        borderSkipped: 'bottom',
+                        barPercentage: 0.78,
+                        categoryPercentage: 0.72,
+                        maxBarThickness: 42,
                     }],
                 },
                 options: {
-                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
                     animation: false,
@@ -963,6 +964,9 @@
                             displayColors: true,
                             boxPadding: 4,
                             callbacks: {
+                                title: function(items) {
+                                    return items && items[0] ? items[0].label : '';
+                                },
                                 label: function(ctx) {
                                     const n = Number(ctx.raw) || 0;
                                     const pct = total > 0 ? Math.round((n / total) * 100) : 0;
@@ -973,13 +977,15 @@
                     },
                     scales: {
                         x: {
-                            beginAtZero: true,
-                            grid: { color: '#eef2f7' },
-                            ticks: { font: { size: 9 }, precision: 0 },
+                            grid: { display: false },
+                            border: { display: true, color: '#111827' },
+                            ticks: { display: false },
                         },
                         y: {
+                            beginAtZero: true,
                             grid: { display: false },
-                            ticks: { font: { size: 10 }, color: '#334155' },
+                            border: { display: true, color: '#111827' },
+                            ticks: { font: { size: 9 }, precision: 0, color: '#64748b' },
                         },
                     },
                 },

@@ -3,6 +3,7 @@
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         #lmp-overall-wrap .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 12px; }
         #lmp-overall-wrap .tabulator .tabulator-header { background: #f8f9fa; }
@@ -59,19 +60,19 @@
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent .tabulator-cell.lmp-diff-magenta,
         #lmp-overall-wrap .tabulator-row.tabulator-selected .tabulator-cell.lmp-diff-magenta,
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell.lmp-diff-magenta {
-            background: #ff00ff !important; color: #fff !important; font-weight: 700;
+            background: #ff00ff !important; color: #000 !important; font-weight: 700;
         }
         #lmp-overall-wrap .tabulator-cell.lmp-diff-red,
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent .tabulator-cell.lmp-diff-red,
         #lmp-overall-wrap .tabulator-row.tabulator-selected .tabulator-cell.lmp-diff-red,
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell.lmp-diff-red {
-            background: #dc3545 !important; color: #fff !important; font-weight: 700;
+            background: #dc3545 !important; color: #000 !important; font-weight: 700;
         }
         #lmp-overall-wrap .tabulator-cell.lmp-diff-green,
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent .tabulator-cell.lmp-diff-green,
         #lmp-overall-wrap .tabulator-row.tabulator-selected .tabulator-cell.lmp-diff-green,
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell.lmp-diff-green {
-            background: #28a745 !important; color: #fff !important; font-weight: 700;
+            background: #28a745 !important; color: #000 !important; font-weight: 700;
         }
         #lmp-overall-wrap .tabulator-cell.lmp-diff-yellow,
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent .tabulator-cell.lmp-diff-yellow,
@@ -102,6 +103,28 @@
         }
         #lmp-overall-text-preview[hidden] { display: none !important; }
         #lmp-overall-text-preview .card { max-width: 640px; width: 100%; }
+        #lmp-overall-toolbar { overflow-x: auto; flex-wrap: nowrap; }
+        #lmp-overall-toolbar .badge,
+        #lmp-overall-toolbar .form-control,
+        #lmp-overall-toolbar .form-select,
+        #lmp-overall-play { flex-shrink: 0; white-space: nowrap; }
+        #lmp-overall-play .btn i { font-size: 1.1rem; }
+        #lmp-play-auto { color: #28a745; }
+        #lmp-play-auto:hover { background-color: #28a745 !important; color: #fff !important; }
+        #lmp-play-pause { color: #ffc107; }
+        #lmp-play-pause:hover { background-color: #ffc107 !important; color: #fff !important; }
+        #lmp-play-backward,
+        #lmp-play-forward { color: #007bff; }
+        #lmp-play-backward:hover,
+        #lmp-play-forward:hover { background-color: #007bff !important; color: #fff !important; }
+        #lmp-play-backward:disabled,
+        #lmp-play-forward:disabled,
+        #lmp-play-backward:disabled:hover,
+        #lmp-play-forward:disabled:hover { color: #adb5bd; background-color: #f8f9fa !important; }
+        .lmp-std-filter,
+        .lmp-missing-filter { cursor: pointer; }
+        .lmp-std-filter.is-active,
+        .lmp-missing-filter.is-active { outline: 3px solid #ffc107; outline-offset: 2px; }
     </style>
 @endsection
 
@@ -115,42 +138,98 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <div class="d-flex flex-nowrap align-items-center gap-2 mb-2" id="lmp-overall-toolbar">
+                        <div class="btn-group" role="group" aria-label="Parent navigation" id="lmp-overall-play">
+                            <button type="button" id="lmp-play-backward" class="btn btn-sm btn-light" title="Previous parent" disabled>
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button type="button" id="lmp-play-pause" class="btn btn-sm btn-light" title="Stop navigation and show all" style="display: none;">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button type="button" id="lmp-play-auto" class="btn btn-sm btn-light" title="Start parent navigation">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button type="button" id="lmp-play-forward" class="btn btn-sm btn-light" title="Next parent" disabled>
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
                         <span id="lmp-overall-total" class="badge bg-secondary">Total: —</span>
                         <span id="lmp-overall-selected" class="badge bg-primary">Selected: 0</span>
                         <input type="search" id="lmp-overall-search-parent" class="form-control form-control-sm"
-                            placeholder="Search parent" autocomplete="off" style="max-width: 200px;">
+                            placeholder="Search parent" autocomplete="off" style="width: 150px;">
                         <input type="search" id="lmp-overall-search-sku" class="form-control form-control-sm"
-                            placeholder="Search SKU" autocomplete="off" style="max-width: 200px;">
-                        <button type="button" id="lmp-overall-refresh" class="btn btn-sm btn-outline-primary" title="Reload">
-                            <i class="ri-refresh-line"></i>
-                        </button>
-                        <span class="text-muted small" id="lmp-overall-status">Loading…</span>
-                    </div>
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="lmp-overall-std-badges">
-                        <span class="badge" style="background:#6f42c1;color:#fff;font-weight:700;" title="SKU rows where LMP amz is above 120% of Std Price">
+                            placeholder="Search SKU" autocomplete="off" style="width: 140px;">
+                        <select id="lmp-overall-inv-filter" class="form-select form-select-sm" aria-label="INV"
+                            style="width: 110px;">
+                            <option value="lt1">inv &lt; 1</option>
+                            <option value="gt0">Inv &gt; 0</option>
+                            <option value="all" selected>Inv = All</option>
+                        </select>
+                        <select id="lmp-overall-row-filter" class="form-select form-select-sm" aria-label="Row type"
+                            style="width: 100px;">
+                            <option value="sku">SKU</option>
+                            <option value="parent">Parent</option>
+                            <option value="both" selected>Both</option>
+                        </select>
+                        <span class="badge lmp-std-filter" data-band="high" data-field="lmp_amz" role="button" tabindex="0"
+                            style="background-color:#6f42c1;color:#fff;font-weight:700;"
+                            title="SKU rows where LMP amz is above 120% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP amz <span id="lmp-badge-high-lmp_amz">0</span>
                         </span>
-                        <span class="badge" style="background:#6f42c1;color:#fff;font-weight:700;" title="SKU rows where LMP ebay is above 120% of Std Price">
+                        <span class="badge lmp-std-filter" data-band="high" data-field="lmp_ebay" role="button" tabindex="0"
+                            style="background-color:#6f42c1;color:#fff;font-weight:700;"
+                            title="SKU rows where LMP ebay is above 120% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP ebay <span id="lmp-badge-high-lmp_ebay">0</span>
                         </span>
-                        <span class="badge" style="background:#6f42c1;color:#fff;font-weight:700;" title="SKU rows where LMP temu is above 120% of Std Price">
+                        <span class="badge lmp-std-filter" data-band="high" data-field="lmp_temu" role="button" tabindex="0"
+                            style="background-color:#6f42c1;color:#fff;font-weight:700;"
+                            title="SKU rows where LMP temu is above 120% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP temu <span id="lmp-badge-high-lmp_temu">0</span>
                         </span>
-                        <span class="badge" style="background:#6f42c1;color:#fff;font-weight:700;" title="SKU rows where LMP Google is above 120% of Std Price">
+                        <span class="badge lmp-std-filter" data-band="high" data-field="lmp_google" role="button" tabindex="0"
+                            style="background-color:#6f42c1;color:#fff;font-weight:700;"
+                            title="SKU rows where LMP Google is above 120% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP Google <span id="lmp-badge-high-lmp_google">0</span>
                         </span>
-                        <span class="badge bg-danger" style="font-weight:700;" title="SKU rows where LMP amz is below 80% of Std Price">
+                        <span class="badge lmp-std-filter" data-band="low" data-field="lmp_amz" role="button" tabindex="0"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;"
+                            title="SKU rows where LMP amz is below 80% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP amz <span id="lmp-badge-low-lmp_amz">0</span>
                         </span>
-                        <span class="badge bg-danger" style="font-weight:700;" title="SKU rows where LMP ebay is below 80% of Std Price">
+                        <span class="badge lmp-std-filter" data-band="low" data-field="lmp_ebay" role="button" tabindex="0"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;"
+                            title="SKU rows where LMP ebay is below 80% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP ebay <span id="lmp-badge-low-lmp_ebay">0</span>
                         </span>
-                        <span class="badge bg-danger" style="font-weight:700;" title="SKU rows where LMP temu is below 80% of Std Price">
+                        <span class="badge lmp-std-filter" data-band="low" data-field="lmp_temu" role="button" tabindex="0"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;"
+                            title="SKU rows where LMP temu is below 80% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP temu <span id="lmp-badge-low-lmp_temu">0</span>
                         </span>
-                        <span class="badge bg-danger" style="font-weight:700;" title="SKU rows where LMP Google is below 80% of Std Price">
+                        <span class="badge lmp-std-filter" data-band="low" data-field="lmp_google" role="button" tabindex="0"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;"
+                            title="SKU rows where LMP Google is below 80% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP Google <span id="lmp-badge-low-lmp_google">0</span>
+                        </span>
+                        <span class="badge lmp-missing-filter" data-field="lmp_amz" role="button" tabindex="0"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;"
+                            title="INV &gt; 0 SKU rows with no LMP amz. Click to filter. Click again to clear.">
+                            <i class="ri-alert-fill"></i> LMP M. amz <span id="lmp-missing-lmp_amz">0</span>
+                        </span>
+                        <span class="badge lmp-missing-filter" data-field="lmp_ebay" role="button" tabindex="0"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;"
+                            title="INV &gt; 0 SKU rows with no LMP ebay. Click to filter. Click again to clear.">
+                            <i class="ri-alert-fill"></i> LMP M. ebay <span id="lmp-missing-lmp_ebay">0</span>
+                        </span>
+                        <span class="badge lmp-missing-filter" data-field="lmp_temu" role="button" tabindex="0"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;"
+                            title="INV &gt; 0 SKU rows with no LMP temu. Click to filter. Click again to clear.">
+                            <i class="ri-alert-fill"></i> LMP M. temu <span id="lmp-missing-lmp_temu">0</span>
+                        </span>
+                        <span class="badge lmp-missing-filter" data-field="lmp_google" role="button" tabindex="0"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;"
+                            title="INV &gt; 0 SKU rows with no LMP Google. Click to filter. Click again to clear.">
+                            <i class="ri-alert-fill"></i> LMP M. Google <span id="lmp-missing-lmp_google">0</span>
                         </span>
                     </div>
                     <div id="lmp-overall-wrap">
@@ -1349,11 +1428,6 @@
                 ajaxURL: @json(route('lmp.overall.data')),
                 ajaxConfig: 'GET',
                 ajaxResponse: function (url, params, response) {
-                    const meta = response && response.meta ? response.meta : {};
-                    document.getElementById('lmp-overall-status').textContent =
-                        'Loaded · ' + (meta.refreshed_at || '') +
-                        ' · SKUs: ' + (meta.sku_count || 0).toLocaleString()
-                        + ' · Parents: ' + (meta.parent_count || 0).toLocaleString();
                     return (response && response.data) ? response.data : [];
                 },
                 rowFormatter: function (row) {
@@ -1531,12 +1605,53 @@
                 ],
             });
 
+            let badgeFilter = { type: '', field: '' };
+
+            function isMissingChannelLmp(row, field) {
+                if (!row || row.is_parent_summary) return false;
+                const inv = parseFloat(row.inv);
+                if (!isFinite(inv) || inv <= 0) return false;
+                const price = parseFloat(row[field]);
+                const count = parseInt(row[field + '_count'], 10) || 0;
+                return !(isFinite(price) && price > 0) && count === 0;
+            }
+
+            function skuMatchesBadge(row) {
+                if (!badgeFilter.type || !badgeFilter.field) return true;
+                if (!row || row.is_parent_summary) return false;
+                if (badgeFilter.type === 'missing') return isMissingChannelLmp(row, badgeFilter.field);
+                return lmpStdBand(row[badgeFilter.field], row.std_price) === badgeFilter.type;
+            }
+
+            function paintBadgeActive(badge, on) {
+                if (badge) badge.classList.toggle('is-active', on);
+            }
+
+            function updateMissingLmpCounts() {
+                const counts = {};
+                lmpBadgeCols.forEach(function (col) { counts[col.field] = 0; });
+                table.getData().forEach(function (row) {
+                    lmpBadgeCols.forEach(function (col) {
+                        if (isMissingChannelLmp(row, col.field)) counts[col.field]++;
+                    });
+                });
+                lmpBadgeCols.forEach(function (col) {
+                    const n = counts[col.field];
+                    const numEl = document.getElementById('lmp-missing-' + col.field);
+                    const badge = numEl ? numEl.closest('.lmp-missing-filter') : null;
+                    if (numEl) numEl.textContent = n.toLocaleString('en-US');
+                    if (!badge) return;
+                    badge.style.backgroundColor = n === 0 ? '#28a745' : '#dc3545';
+                    paintBadgeActive(badge, badgeFilter.type === 'missing' && badgeFilter.field === col.field);
+                });
+            }
+
             function updateLmpStdBadges() {
                 const counts = {};
                 lmpBadgeCols.forEach(function (col) {
                     counts[col.field] = { high: 0, low: 0 };
                 });
-                table.getData('active').forEach(function (row) {
+                table.getData().forEach(function (row) {
                     if (row.is_parent_summary) return;
                     lmpBadgeCols.forEach(function (col) {
                         const band = lmpStdBand(row[col.field], row.std_price);
@@ -1544,10 +1659,12 @@
                     });
                 });
                 lmpBadgeCols.forEach(function (col) {
-                    const highEl = document.getElementById('lmp-badge-high-' + col.field);
-                    const lowEl = document.getElementById('lmp-badge-low-' + col.field);
-                    if (highEl) highEl.textContent = counts[col.field].high.toLocaleString('en-US');
-                    if (lowEl) lowEl.textContent = counts[col.field].low.toLocaleString('en-US');
+                    ['high', 'low'].forEach(function (band) {
+                        const numEl = document.getElementById('lmp-badge-' + band + '-' + col.field);
+                        const badge = numEl ? numEl.closest('.lmp-std-filter') : null;
+                        if (numEl) numEl.textContent = counts[col.field][band].toLocaleString('en-US');
+                        paintBadgeActive(badge, badgeFilter.type === band && badgeFilter.field === col.field);
+                    });
                 });
             }
 
@@ -1557,6 +1674,7 @@
                 document.getElementById('lmp-overall-total').textContent = 'Total: ' + active.toLocaleString();
                 document.getElementById('lmp-overall-selected').textContent = 'Selected: ' + selected.toLocaleString();
                 updateLmpStdBadges();
+                updateMissingLmpCounts();
             }
 
             document.getElementById('lmp-overall-wrap').addEventListener('click', function (e) {
@@ -1570,36 +1688,153 @@
             }, true);
 
             table.on('dataProcessed', updateCounts);
-            table.on('dataFiltered', updateLmpStdBadges);
+            table.on('dataFiltered', function () {
+                updateLmpStdBadges();
+                updateMissingLmpCounts();
+            });
             table.on('rowSelectionChanged', updateCounts);
 
+            document.getElementById('lmp-overall-toolbar').addEventListener('click', function (e) {
+                const badge = e.target.closest('.lmp-std-filter, .lmp-missing-filter');
+                if (!badge) return;
+                const field = badge.getAttribute('data-field') || '';
+                const type = badge.classList.contains('lmp-missing-filter')
+                    ? 'missing'
+                    : (badge.getAttribute('data-band') || '');
+                if (!field || !type) return;
+                if (badgeFilter.type === type && badgeFilter.field === field) {
+                    badgeFilter = { type: '', field: '' };
+                } else {
+                    badgeFilter = { type: type, field: field };
+                }
+                applySearch();
+            });
+
             let searchTimer = null;
+            function invMatches(data, invFilter) {
+                if (invFilter === 'all') return true;
+                const inv = parseFloat(data.inv);
+                const n = isFinite(inv) ? inv : 0;
+                if (invFilter === 'lt1') return n < 1;
+                if (invFilter === 'gt0') return n > 0;
+                return true;
+            }
+            function rowMatches(data, rowFilter) {
+                if (rowFilter === 'sku') return !data.is_parent_summary;
+                if (rowFilter === 'parent') return !!data.is_parent_summary;
+                return true;
+            }
             function applySearch() {
                 const parentTerm = (document.getElementById('lmp-overall-search-parent').value || '').trim().toLowerCase();
                 const skuTerm = (document.getElementById('lmp-overall-search-sku').value || '').trim().toLowerCase();
-                if (parentTerm === '' && skuTerm === '') {
-                    table.clearFilter();
-                    return;
-                }
-                table.setFilter(function (data) {
+                const invFilter = document.getElementById('lmp-overall-inv-filter').value || 'all';
+                const rowFilter = document.getElementById('lmp-overall-row-filter').value || 'both';
+                const textAndInv = function (data) {
                     const parentOk = parentTerm === ''
                         || String(data.parent || '').toLowerCase().indexOf(parentTerm) !== -1;
                     const skuOk = skuTerm === ''
                         || String(data.sku || '').toLowerCase().indexOf(skuTerm) !== -1;
-                    return parentOk && skuOk;
+                    return parentOk && skuOk && invMatches(data, invFilter);
+                };
+                if (parentTerm === '' && skuTerm === '' && invFilter === 'all' && rowFilter === 'both' && !badgeFilter.type && !playActive) {
+                    table.clearFilter();
+                    return;
+                }
+                const parentsWithMatch = {};
+                if (badgeFilter.type) {
+                    table.getData().forEach(function (data) {
+                        if (!skuMatchesBadge(data) || !textAndInv(data) || !data.parent) return;
+                        if (!playParentMatches(data)) return;
+                        parentsWithMatch[data.parent] = true;
+                    });
+                }
+                table.setFilter(function (data) {
+                    if (!playParentMatches(data)) return false;
+                    if (!textAndInv(data) || !rowMatches(data, rowFilter)) return false;
+                    if (!badgeFilter.type) return true;
+                    if (data.is_parent_summary) return !!parentsWithMatch[data.parent];
+                    return skuMatchesBadge(data);
                 });
             }
+
+            let playParents = [];
+            let playIndex = -1;
+            let playActive = false;
+
+            function collectPlayParents() {
+                const seen = {};
+                const list = [];
+                table.getData().forEach(function (row) {
+                    const parent = String(row.parent || '').trim();
+                    if (!parent || seen[parent]) return;
+                    seen[parent] = true;
+                    list.push(parent);
+                });
+                return list;
+            }
+
+            function playParentMatches(data) {
+                if (!playActive || playIndex < 0 || !playParents.length) return true;
+                return String((data && data.parent) || '').trim() === playParents[playIndex];
+            }
+
+            function updatePlayButtons() {
+                const back = document.getElementById('lmp-play-backward');
+                const next = document.getElementById('lmp-play-forward');
+                const play = document.getElementById('lmp-play-auto');
+                const pause = document.getElementById('lmp-play-pause');
+                if (back) back.disabled = !playActive || playIndex <= 0;
+                if (next) next.disabled = !playActive || playIndex >= playParents.length - 1;
+                if (play) {
+                    play.style.display = playActive ? 'none' : '';
+                    play.title = playActive ? 'Show all products' : 'Start parent navigation';
+                }
+                if (pause) pause.style.display = playActive ? '' : 'none';
+                [back, next].forEach(function (btn) {
+                    if (!btn) return;
+                    btn.classList.toggle('btn-primary', playActive);
+                    btn.classList.toggle('btn-light', !playActive);
+                });
+            }
+
+            function startPlayNavigation() {
+                playParents = collectPlayParents();
+                if (!playParents.length) return;
+                playActive = true;
+                playIndex = 0;
+                updatePlayButtons();
+                applySearch();
+            }
+
+            function stopPlayNavigation() {
+                playActive = false;
+                playIndex = -1;
+                updatePlayButtons();
+                applySearch();
+            }
+
+            function stepPlayParent(delta) {
+                if (!playActive) return;
+                const next = playIndex + delta;
+                if (next < 0 || next >= playParents.length) return;
+                playIndex = next;
+                updatePlayButtons();
+                applySearch();
+            }
+
+            document.getElementById('lmp-play-auto').addEventListener('click', startPlayNavigation);
+            document.getElementById('lmp-play-pause').addEventListener('click', stopPlayNavigation);
+            document.getElementById('lmp-play-forward').addEventListener('click', function () { stepPlayParent(1); });
+            document.getElementById('lmp-play-backward').addEventListener('click', function () { stepPlayParent(-1); });
+            updatePlayButtons();
             ['lmp-overall-search-parent', 'lmp-overall-search-sku'].forEach(function (id) {
                 document.getElementById(id).addEventListener('input', function () {
                     clearTimeout(searchTimer);
                     searchTimer = setTimeout(applySearch, 200);
                 });
             });
-
-            document.getElementById('lmp-overall-refresh').addEventListener('click', function () {
-                document.getElementById('lmp-overall-status').textContent = 'Loading…';
-                table.setData();
-            });
+            document.getElementById('lmp-overall-inv-filter').addEventListener('change', applySearch);
+            document.getElementById('lmp-overall-row-filter').addEventListener('change', applySearch);
 
             document.getElementById('lmp-overall-std-save').addEventListener('click', function () {
                 const data = stdEditRow ? stdEditRow.getData() : null;
