@@ -129,11 +129,24 @@ class OrderFulfillmentShopifyPushService
             ->whereIn('source', self::PUSHABLE_SOURCES)
             ->where('created_at', '>=', now()->subDays(self::MAX_ROW_AGE_DAYS))
             ->whereNull('shopify_fulfilled_at')
-            ->where('shopify_push_attempts', '<', self::MAX_SHOPIFY_ATTEMPTS)
             ->where(function ($q) {
+                // Rows that gave up while Shopify had no open fulfillment, or
+                // while the seller SKU text differed, are tried again. A real
+                // multi-line SKU mismatch is marked "stopped" and stays stopped.
+                $q->where('shopify_push_attempts', '<', self::MAX_SHOPIFY_ATTEMPTS)
+                    ->orWhere('shopify_push_message', 'like', '%no open fulfillment orders%')
+                    ->orWhere('shopify_push_message', 'like', 'sku_mismatch:%');
+            })
+            ->where(function ($q) {
+                $q->whereNull('shopify_push_message')
+                    ->orWhere('shopify_push_message', 'not like', 'stopped %');
+            });
+        if ($onlyOrderId === null || trim($onlyOrderId) === '') {
+            $query->where(function ($q) {
                 $q->whereNull('shopify_push_checked_at')
                     ->orWhere('shopify_push_checked_at', '<', now()->subMinutes(self::RETRY_COOLDOWN_MINUTES));
             });
+        }
         $this->applyTargetFilters($query, $onlySlug, $onlyOrderId);
 
         // Newest orders first so today's / yesterday's orders are not stuck behind old retries.
@@ -269,11 +282,19 @@ class OrderFulfillmentShopifyPushService
         $action = (string) ($result['action'] ?? '');
         $message = (string) ($result['message'] ?? '');
         if (! in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
-            // Permanent mismatches (wrong order id / SKU on the Shopify copy) are not retried.
-            // "No open fulfillment orders" = already fulfilled / cancelled on Shopify; retrying cannot help.
-            $permanent = in_array($action, ['order_id_mismatch', 'sku_mismatch', 'order_id_required', 'sku_required', 'not_linked'], true)
-                || str_contains(strtolower($message), 'no open fulfillment orders');
-            $this->markShopifyFailure($row, $action.': '.$message, $permanent, $dryRun);
+            $notOpenYet = str_contains(strtolower($message), 'no open fulfillment orders');
+            if ($notOpenYet && ! $dryRun) {
+                // Hold, schedule, or a 3PL request. Do not burn the attempt cap —
+                // the fulfillment order often opens later the same day.
+                $row->shopify_push_checked_at = now();
+                $row->shopify_push_message = mb_substr($action.': '.$message, 0, 255);
+                $row->save();
+            } elseif ($action === 'sku_mismatch') {
+                $this->markShopifyFailure($row, 'stopped sku_mismatch: '.$message, true, $dryRun);
+            } else {
+                $permanent = in_array($action, ['order_id_mismatch', 'order_id_required', 'sku_required', 'not_linked'], true);
+                $this->markShopifyFailure($row, $action.': '.$message, $permanent, $dryRun);
+            }
             $out['message'] = $action.': '.$message;
 
             return $out;
