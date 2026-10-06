@@ -547,6 +547,7 @@
                         </ul>
                     </div>
                     @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'buttons'])
+                    @include('partials.amazon-ship-slabs', ['amazonShipPart' => 'buttons'])
                     <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
                         title="Dil slabs → Target NROI% (0–0 on top for Dil = 0). CVR overlay (editable, with Count) adjusts Target NROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
@@ -555,10 +556,12 @@
 
 @if($amazonPefPromoPart === 'css' || $amazonPefPromoPart === 'all')
         @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'css'])
+        @include('partials.amazon-ship-slabs', ['amazonShipPart' => 'css'])
 @endif
 
 @if($amazonPefPromoPart === 'modals' || $amazonPefPromoPart === 'all')
     @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'modals'])
+    @include('partials.amazon-ship-slabs', ['amazonShipPart' => 'modals'])
     {{-- CVR Disc: Amazon-only rules store amazon_cvr_vs_disc --}}
     <div class="modal fade" id="amzCvrDiscModal" tabindex="-1" aria-labelledby="amzCvrDiscModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -823,6 +826,7 @@
         @include('partials.tabulator-column-autofit')
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
         @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'script'])
+        @include('partials.amazon-ship-slabs', ['amazonShipPart' => 'script'])
         // ==================== CVR Disc / Rev Disc / Sprc Dil ====================
         const AMZ_CVR_DISC_DEFAULTS = [
             { key: '0.01-1', label: '0.01–1%', disc: 9 },

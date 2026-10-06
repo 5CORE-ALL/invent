@@ -127,6 +127,34 @@ class ShippingSlabRateService
         });
     }
 
+    /**
+     * Weight slabs used by Shipping Master Slab Rates, in display order.
+     *
+     * @return list<array{key: string, label: string}>
+     */
+    public function slabDefinitions(): array
+    {
+        return $this->getSlabDefinitions();
+    }
+
+    /**
+     * Slab key from Product Master ACT weight (lb, or kg when lb is blank).
+     * Missing weight is the 0 lb slab.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    public function slabKeyFromValues(array $values): string
+    {
+        $act = $this->itemWeightActLbResolved($values);
+        if ($act === null || $act <= 0) {
+            return 'lb_0';
+        }
+
+        $declared = $this->roundWeightLbUpToSlab($act);
+
+        return $this->resolveSlabKeyForWeight($declared ?? $act) ?? 'lb_0';
+    }
+
     public function resolveSlabKeyForWeight(?float $weightLb): ?string
     {
         if ($weightLb === null || ! is_finite($weightLb)) {

@@ -44,7 +44,17 @@
             align-items: center;
             margin-bottom: 8px;
         }
-        #amzStdPrcModal .amz-sp-pie-canvas { width: 128px; height: 128px; }
+        #amzStdPrcModal .amz-sp-pie-canvas {
+            position: relative;
+            width: 128px;
+            height: 128px;
+            flex: 0 0 128px;
+        }
+        #amzStdPrcModal .amz-sp-pie-canvas canvas {
+            display: block;
+            width: 128px !important;
+            height: 128px !important;
+        }
         #amzStdPrcModal .amz-sp-pie-legend {
             width: 100%;
             font-size: 11px;
@@ -73,6 +83,18 @@
             background: #f8fafc;
         }
         #amzStdPrcModal .amz-sp-margin strong { font-size: 16px; }
+        #amzStdPrcModal .amz-sp-metric-grid {
+            display: grid;
+            grid-template-columns: 3.2rem 1fr auto;
+            gap: 2px 8px;
+            margin-top: 6px;
+            font-size: 12px;
+            align-items: baseline;
+        }
+        #amzStdPrcModal .amz-sp-metric { display: contents; }
+        #amzStdPrcModal .amz-sp-metric .amz-sp-metric-name { color: #64748b; font-weight: 700; }
+        #amzStdPrcModal .amz-sp-metric .amz-sp-metric-money { font-weight: 700; text-align: right; }
+        #amzStdPrcModal .amz-sp-metric .amz-sp-metric-pct { font-weight: 700; text-align: right; }
         #amzStdPrcModal .amz-sp-section { font-weight: 700; font-size: 12px; margin: 12px 0 6px; color: #334155; }
         #amzStdPrcModal .amz-sp-input {
             width: 100%;
@@ -114,11 +136,13 @@
                             <div class="small text-muted">Projected margin · last L30 sales</div>
                             <strong id="amz-sp-margin-l30">—</strong>
                             <div class="small text-muted" id="amz-sp-margin-l30-sub"></div>
+                            <div class="amz-sp-metric-grid" id="amz-sp-margin-l30-metrics"></div>
                         </div>
                         <div class="amz-sp-margin">
                             <div class="small text-muted">Projected margin · total INV</div>
                             <strong id="amz-sp-margin-inv">—</strong>
                             <div class="small text-muted" id="amz-sp-margin-inv-sub"></div>
+                            <div class="amz-sp-metric-grid" id="amz-sp-margin-inv-metrics"></div>
                         </div>
                     </div>
 
@@ -293,6 +317,7 @@
         let amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzStdCvrCfg = Object.assign({}, AMZ_STD_CVR_DEFAULT);
         const amzStdPieCharts = {};
+        let amzStdPieGen = 0;
         let amzStdApplied = false;
 
         function fmtAmzStdDiscBadge(pct, kind) {
@@ -475,10 +500,40 @@
             const sign = v < 0 ? '-' : '';
             return sign + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
         }
+        function amzStdRowMargin(d) {
+            const marginRaw = parseFloat(d && d.percentage);
+            return (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
+        }
         function amzStdUnitProfit(d, sprice) {
             const lp = parseFloat(d && d.LP_productmaster) || 0;
             const ship = parseFloat(d && d.Ship_productmaster) || 0;
-            return (sprice * 0.80) - ship - lp;
+            return (sprice * amzStdRowMargin(d)) - ship - lp;
+        }
+        function amzStdEmptyBucket() {
+            return { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
+        }
+        function amzStdMetricHtml(bucket) {
+            const sales = bucket.sales;
+            const cogs = bucket.cogs;
+            const rows = [
+                ['GROI', bucket.gross, cogs > 0 ? (bucket.gross / cogs) * 100 : 0, 'groi'],
+                ['GPFT', bucket.gross, sales > 0 ? (bucket.gross / sales) * 100 : 0, 'gpft'],
+                ['NROI', bucket.net, cogs > 0 ? (bucket.net / cogs) * 100 : 0, 'nroi'],
+                ['NPFT', bucket.net, sales > 0 ? (bucket.net / sales) * 100 : 0, 'npft'],
+            ];
+            return rows.map(function(row) {
+                const moneyColor = row[1] < 0 ? '#dc3545' : '#166534';
+                let pctHtml = Math.round(row[2]) + '%';
+                if (window.MetricPctColors && typeof MetricPctColors.htmlFor === 'function') {
+                    const painted = MetricPctColors.htmlFor(row[3], row[2], { decimals: 0, empty: '—' });
+                    if (painted) pctHtml = painted;
+                }
+                return '<div class="amz-sp-metric">'
+                    + '<span class="amz-sp-metric-name">' + row[0] + '</span>'
+                    + '<span class="amz-sp-metric-money" style="color:' + moneyColor + '">' + amzStdMoney(row[1]) + '</span>'
+                    + '<span class="amz-sp-metric-pct">' + pctHtml + '</span>'
+                    + '</div>';
+            }).join('');
         }
         function amzStdLegend(el, slices, counts) {
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
@@ -490,20 +545,23 @@
             }).join('');
             $(el).html(html);
         }
-        function amzStdDrawPie(id, slices, counts) {
+        function amzStdDrawPieNow(id, slices, counts) {
             const canvas = document.getElementById(id);
             if (!canvas || typeof Chart === 'undefined') return;
-            if (amzStdPieCharts[id]) {
-                amzStdPieCharts[id].destroy();
-                amzStdPieCharts[id] = null;
-            }
+            const bound = (typeof Chart.getChart === 'function') ? Chart.getChart(canvas) : amzStdPieCharts[id];
+            if (bound) bound.destroy();
+            amzStdPieCharts[id] = null;
+            const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
+            const data = slices.map(function(s) { return counts[s.key] || 0; });
             amzStdPieCharts[id] = new Chart(canvas.getContext('2d'), {
                 type: 'pie',
                 data: {
                     labels: slices.map(function(s) { return s.label; }),
                     datasets: [{
-                        data: slices.map(function(s) { return counts[s.key] || 0; }),
-                        backgroundColor: slices.map(function(s) { return s.color; }),
+                        data: total > 0 ? data : slices.map(function() { return 1; }),
+                        backgroundColor: total > 0
+                            ? slices.map(function(s) { return s.color; })
+                            : slices.map(function() { return '#e2e8f0'; }),
                         borderColor: '#fff',
                         borderWidth: 1,
                     }],
@@ -511,9 +569,24 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: false,
                     plugins: { legend: { display: false } },
                 },
             });
+        }
+        function amzStdDrawPies(jobs) {
+            const gen = ++amzStdPieGen;
+            const draw = function() {
+                if (gen !== amzStdPieGen) return;
+                jobs.forEach(function(job) {
+                    amzStdDrawPieNow(job.id, job.slices, job.counts);
+                });
+            };
+            if (typeof window.loadChartJs === 'function') {
+                window.loadChartJs().then(draw).catch(function() {});
+                return;
+            }
+            draw();
         }
         function amzStdRefreshModal() {
             const draft = amzStdReadDraft();
@@ -530,12 +603,9 @@
             const dollars = { age: 0, dil: 0, cvr: 0, rev: 0 };
             const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0 };
             const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, all: 0 };
-            let l30Profit = 0;
-            let l30Sales = 0;
-            let l30Units = 0;
-            let invProfit = 0;
-            let invRetail = 0;
-            let invUnits = 0;
+            const l30 = amzStdEmptyBucket();
+            const inv = amzStdEmptyBucket();
+            const adsPct = (typeof amzAmazonAdsPct === 'function') ? amzAmazonAdsPct() : 0;
             amzStdEachInvChild(function(d) {
                 const std = Number(d.STANDARD_PRICE) || 0;
                 const dilVal = (typeof amzPefDil === 'function') ? amzPefDil(d) : 0;
@@ -585,14 +655,20 @@
                 if (std > 0) {
                     const sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
                     const profit = amzStdUnitProfit(d, sprice);
+                    const net = profit - (sprice * adsPct / 100);
+                    const lp = parseFloat(d.LP_productmaster) || 0;
                     const al30 = (typeof amzPefAL30 === 'function') ? amzPefAL30(d) : 0;
-                    const inv = (typeof amzPefInv === 'function') ? amzPefInv(d) : 0;
-                    l30Profit += profit * al30;
-                    l30Sales += sprice * al30;
-                    l30Units += al30;
-                    invProfit += profit * inv;
-                    invRetail += sprice * inv;
-                    invUnits += inv;
+                    const onHand = (typeof amzPefInv === 'function') ? amzPefInv(d) : 0;
+                    l30.gross += profit * al30;
+                    l30.net += net * al30;
+                    l30.sales += sprice * al30;
+                    l30.cogs += lp * al30;
+                    l30.units += al30;
+                    inv.gross += profit * onHand;
+                    inv.net += net * onHand;
+                    inv.sales += sprice * onHand;
+                    inv.cogs += lp * onHand;
+                    inv.units += onHand;
                 }
             });
             $('#amz-sp-dil-tbody tr').each(function(i) {
@@ -634,11 +710,13 @@
                 cvr: Math.round(dollars.cvr),
                 rev: Math.round(dollars.rev),
             };
-            amzStdDrawPie('amz-sp-pie-dil', dilSlices, dilCounts);
-            amzStdDrawPie('amz-sp-pie-rev', revSlices, revCounts);
-            amzStdDrawPie('amz-sp-pie-cvr', cvrSlices, cvrCounts);
-            amzStdDrawPie('amz-sp-pie-age', ageSlices, ageCounts);
-            amzStdDrawPie('amz-sp-pie-all', allSlices, allCounts);
+            amzStdDrawPies([
+                { id: 'amz-sp-pie-dil', slices: dilSlices, counts: dilCounts },
+                { id: 'amz-sp-pie-rev', slices: revSlices, counts: revCounts },
+                { id: 'amz-sp-pie-cvr', slices: cvrSlices, counts: cvrCounts },
+                { id: 'amz-sp-pie-age', slices: ageSlices, counts: ageCounts },
+                { id: 'amz-sp-pie-all', slices: allSlices, counts: allCounts },
+            ]);
             amzStdLegend('#amz-sp-leg-dil', dilSlices, dilCounts);
             amzStdLegend('#amz-sp-leg-rev', revSlices, revCounts);
             amzStdLegend('#amz-sp-leg-cvr', cvrSlices, cvrCounts);
@@ -663,12 +741,14 @@
                 + '</td><td class="text-end">' + pctSum + '</td><td class="text-end">' + amzStdMoney(dollarSum) + '</td></tr>');
             $('#amz-sp-all-tbody').html(body.join(''));
 
-            const l30Pct = l30Sales > 0 ? (l30Profit / l30Sales) * 100 : 0;
-            const invPct = invRetail > 0 ? (invProfit / invRetail) * 100 : 0;
-            $('#amz-sp-margin-l30').text(amzStdMoney(l30Profit)).css('color', l30Profit < 0 ? '#dc3545' : '#166534');
-            $('#amz-sp-margin-l30-sub').text(Math.round(l30Units) + ' units · ' + Math.round(l30Pct) + '% of sales');
-            $('#amz-sp-margin-inv').text(amzStdMoney(invProfit)).css('color', invProfit < 0 ? '#dc3545' : '#166534');
-            $('#amz-sp-margin-inv-sub').text(Math.round(invUnits) + ' units · ' + Math.round(invPct) + '% of retail');
+            const l30Pct = l30.sales > 0 ? (l30.gross / l30.sales) * 100 : 0;
+            const invPct = inv.sales > 0 ? (inv.gross / inv.sales) * 100 : 0;
+            $('#amz-sp-margin-l30').text(amzStdMoney(l30.gross)).css('color', l30.gross < 0 ? '#dc3545' : '#166534');
+            $('#amz-sp-margin-l30-sub').text(Math.round(l30.units) + ' units · ' + Math.round(l30Pct) + '% of sales');
+            $('#amz-sp-margin-l30-metrics').html(amzStdMetricHtml(l30));
+            $('#amz-sp-margin-inv').text(amzStdMoney(inv.gross)).css('color', inv.gross < 0 ? '#dc3545' : '#166534');
+            $('#amz-sp-margin-inv-sub').text(Math.round(inv.units) + ' units · ' + Math.round(invPct) + '% of retail');
+            $('#amz-sp-margin-inv-metrics').html(amzStdMetricHtml(inv));
         }
         function amzStdInRange(value, rule, isLast) {
             const n = Number(value);
@@ -761,6 +841,7 @@
                 amzStdRefreshModal();
             });
             $('#amzStdPrcModal').off('hidden.bs.modal.amzsp').on('hidden.bs.modal.amzsp', function() {
+                amzStdPieGen++;
                 Object.keys(amzStdPieCharts).forEach(function(id) {
                     if (amzStdPieCharts[id]) { amzStdPieCharts[id].destroy(); amzStdPieCharts[id] = null; }
                 });

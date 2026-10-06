@@ -11,6 +11,7 @@ use App\Models\AmazonBidCap;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use App\Services\AmazonSpApiService;
+use App\Services\ShippingSlabRateService;
 use App\Jobs\RunAmazonPushPrcJob;
 use App\Services\Support\AmazonPushPrcJobStore;
 use App\Models\MarketplacePercentage;
@@ -328,6 +329,7 @@ class OverallAmazonController extends Controller
         }
 
         $result = [];
+        $shipSlabs = app(ShippingSlabRateService::class);
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
@@ -494,6 +496,7 @@ class OverallAmazonController extends Controller
             $row['percentage'] = $percentage;
             $row['LP_productmaster'] = $lp;
             $row['Ship_productmaster'] = $ship;
+            $row['ship_slab'] = $shipSlabs->slabKeyFromValues(is_array($values) ? $values : []);
             $row['label_qty'] = $labelQty > 0 ? $labelQty : null;
             $row['Ship_own_productmaster'] = $ownShip;
 
@@ -3420,6 +3423,7 @@ class OverallAmazonController extends Controller
             'ordersL30Pft'       => $agg['pft'],
             'ordersL30Cogs'      => $agg['cogs'],
             'ordersL30Nroi'      => $ordersL30Nroi,
+            'shipSlabs'          => app(ShippingSlabRateService::class)->slabDefinitions(),
         ]);
     }
 
