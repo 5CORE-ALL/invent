@@ -158,7 +158,7 @@ class DobaSyncController extends Controller
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedDobaSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedDobaSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         // Live cache often omits inventory for inactive rows — fill gaps from local map
         // so qty-matched inactive SKUs land in Inactive & Matched (not Mismatch).
@@ -849,7 +849,7 @@ class DobaSyncController extends Controller
     {
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(DobaLiveListingsService::class);
-        $linkedSkus = $this->linkedDobaSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedDobaSkus(), $liveService->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),

@@ -401,7 +401,7 @@ class FaireSyncController extends Controller
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedFaireSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedFaireSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         // Live cache often omits inventory for inactive rows — fill gaps from local map
         // so qty-matched inactive SKUs land in Inactive & Matched (not Mismatch).
@@ -1079,7 +1079,7 @@ class FaireSyncController extends Controller
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(FaireLiveListingsService::class);
-        $linkedSkus = $this->linkedFaireSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedFaireSkus(), $liveService->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),

@@ -65,13 +65,13 @@ final class MarketplacePortalStatusTabs
 
     /**
      * @param  array<int, mixed>|null  $liveRows
-     * @return array{active: list<string>, inactive: list<string>}
+     * @return array{active: list<string>, inactive: list<string>, absent: list<string>}
      */
     public static function skuLists(?array $liveRows): array
     {
-        $active = [];
-        $inactive = [];
-        $seen = [];
+        $rank = ['inactive' => 1, 'absent' => 2, 'active' => 3];
+        $best = [];
+        $skuByNorm = [];
         foreach ($liveRows ?? [] as $row) {
             if (! is_array($row)) {
                 continue;
@@ -81,19 +81,45 @@ final class MarketplacePortalStatusTabs
                 continue;
             }
             $norm = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
-            if ($norm === '' || isset($seen[$norm])) {
+            if ($norm === '') {
                 continue;
             }
-            $seen[$norm] = true;
-            $bucket = self::bucket((string) ($row['state'] ?? ''));
-            if ($bucket === 'inactive') {
-                $inactive[] = $sku;
-            } elseif ($bucket === 'active') {
+            $state = (string) ($row['state'] ?? '');
+            if (MarketplaceListingPresence::isAbsent($state)) {
+                $kind = 'absent';
+            } else {
+                $bucket = self::bucket($state);
+                if ($bucket === 'active') {
+                    $kind = 'active';
+                } elseif ($bucket === 'inactive') {
+                    $kind = 'inactive';
+                } else {
+                    continue;
+                }
+            }
+            $current = $best[$norm] ?? null;
+            if ($current !== null && $rank[$kind] <= $rank[$current]) {
+                continue;
+            }
+            $best[$norm] = $kind;
+            $skuByNorm[$norm] = $sku;
+        }
+
+        $active = [];
+        $inactive = [];
+        $absent = [];
+        foreach ($best as $norm => $kind) {
+            $sku = $skuByNorm[$norm];
+            if ($kind === 'active') {
                 $active[] = $sku;
+            } elseif ($kind === 'absent') {
+                $absent[] = $sku;
+            } else {
+                $inactive[] = $sku;
             }
         }
 
-        return ['active' => $active, 'inactive' => $inactive];
+        return ['active' => $active, 'inactive' => $inactive, 'absent' => $absent];
     }
 
     /**
@@ -119,8 +145,11 @@ final class MarketplacePortalStatusTabs
     ): array {
         $portal = self::skuLists($liveRows);
         // Inv SKU Mismatch is for listings that are still live. Inactive / ended
-        // rows stay on the Inactive SKU tab.
-        $mismatchActive = self::withoutSkus($mismatchQty, $portal['inactive']);
+        // rows stay on the Inactive SKU tab. Unlisted / deleted rows are missing.
+        $absent = $portal['absent'];
+        $matchedQty = self::withoutSkus($matchedQty, $absent);
+        $zeroQty = self::withoutSkus($zeroQty, $absent);
+        $mismatchActive = self::withoutSkus($mismatchQty, array_merge($portal['inactive'], $absent));
         $counts['matched'] = count($matchedQty);
         $counts['mismatch'] = count($mismatchActive);
         $counts['zero'] = count($zeroQty);
@@ -148,7 +177,22 @@ final class MarketplacePortalStatusTabs
      */
     public static function withoutInactiveSkus(array $skus, ?array $liveRows): array
     {
-        return self::withoutSkus($skus, self::skuLists($liveRows)['inactive']);
+        $portal = self::skuLists($liveRows);
+
+        return self::withoutSkus($skus, array_merge($portal['inactive'], $portal['absent']));
+    }
+
+    /**
+     * Drop SKUs whose portal row is deleted, unlisted, or otherwise not a listing,
+     * so they count as missing instead of linked.
+     *
+     * @param  list<string>  $skus
+     * @param  array<int, mixed>|null  $liveRows
+     * @return list<string>
+     */
+    public static function withoutAbsentSkus(array $skus, ?array $liveRows): array
+    {
+        return self::withoutSkus($skus, self::skuLists($liveRows)['absent']);
     }
 
     /**

@@ -156,7 +156,7 @@ class PurchasingPowerSyncController extends Controller
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedPurchasingPowerSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedPurchasingPowerSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         // Live cache often omits inventory for inactive rows — fill gaps from local map
         // so qty-matched inactive SKUs land in Inactive & Matched (not Mismatch).
@@ -764,7 +764,7 @@ class PurchasingPowerSyncController extends Controller
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(PurchasingPowerLiveListingsService::class);
-        $linkedSkus = $this->linkedPurchasingPowerSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedPurchasingPowerSkus(), $liveService->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),

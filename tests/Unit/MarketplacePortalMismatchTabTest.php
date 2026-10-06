@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Support\Marketplace\EbayListingEnded;
 use PHPUnit\Framework\TestCase;
@@ -33,6 +34,43 @@ class MarketplacePortalMismatchTabTest extends TestCase
         $this->assertSame(['LIVE-SKU'], $result['mismatchActive']);
         $this->assertSame(1, $result['counts']['mismatch']);
         $this->assertContains('WF 810H 4 OHM 2PCS', $result['matchedInactive']);
+    }
+
+    public function test_unlisted_product_leaves_the_mismatch_tab(): void
+    {
+        $result = MarketplacePortalStatusTabs::overlayQtyAndPortal(
+            [],
+            [],
+            ['WF 472 2 PCS', 'LIVE-SKU'],
+            [],
+            [
+                ['sku' => 'WF 472 2 PCS', 'state' => 'unlisted'],
+                ['sku' => 'LIVE-SKU', 'state' => 'active'],
+            ]
+        );
+
+        $this->assertSame(['LIVE-SKU'], $result['mismatchActive']);
+        $this->assertSame(1, $result['counts']['mismatch']);
+        $this->assertNotContains('WF 472 2 PCS', $result['matchedInactive']);
+        $this->assertSame(
+            ['LIVE-SKU'],
+            MarketplacePortalStatusTabs::withoutAbsentSkus(['WF 472 2 PCS', 'LIVE-SKU'], [
+                ['sku' => 'WF 472 2 PCS', 'state' => 'unlisted'],
+                ['sku' => 'LIVE-SKU', 'state' => 'active'],
+            ])
+        );
+        $this->assertSame(
+            ['LIVE-SKU'],
+            MarketplacePortalStatusTabs::withoutInactiveSkus(['WF 472 2 PCS', 'LIVE-SKU'], [
+                ['sku' => 'WF 472 2 PCS', 'state' => 'unlisted'],
+                ['sku' => 'LIVE-SKU', 'state' => 'active'],
+            ])
+        );
+    }
+
+    public function test_equal_shopify_and_marketplace_qty_is_not_a_mismatch(): void
+    {
+        $this->assertTrue(MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance(80, 80, 'pls'));
     }
 
     public function test_ended_sibling_does_not_replace_the_active_listing_qty(): void

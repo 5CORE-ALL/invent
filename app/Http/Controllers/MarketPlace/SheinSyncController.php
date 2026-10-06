@@ -163,7 +163,7 @@ class SheinSyncController extends Controller
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedSheinSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedSheinSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         // Live `--`/null qty is mismatch vs in-stock Shopify; numeric live qty still overlays local.
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
@@ -1456,7 +1456,7 @@ class SheinSyncController extends Controller
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(SheinLiveListingsService::class);
-        $linkedSkus = $this->linkedSheinSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedSheinSkus(), $liveService->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),

@@ -73,7 +73,7 @@ class B5cB2bListingsPageBuilder
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),
@@ -716,7 +716,7 @@ class B5cB2bListingsPageBuilder
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedSkus(), $this->liveService()->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $this->liveService()->peekCached(),

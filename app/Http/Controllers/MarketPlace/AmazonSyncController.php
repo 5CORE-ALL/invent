@@ -159,7 +159,7 @@ class AmazonSyncController extends Controller
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedAmazonSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedAmazonSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         // Live cache often omits inventory for inactive rows — fill gaps from local map
         // so qty-matched inactive SKUs land in Inactive & Matched (not Mismatch).
@@ -784,7 +784,7 @@ class AmazonSyncController extends Controller
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(AmazonLiveListingsService::class);
-        $linkedSkus = $this->linkedAmazonSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedAmazonSkus(), $liveService->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),

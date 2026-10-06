@@ -149,7 +149,7 @@ class WayfairSyncController extends Controller
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedWayfairSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedWayfairSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         // Live cache often omits inventory for inactive rows — fill gaps from local map
         // so qty-matched inactive SKUs land in Inactive & Matched (not Mismatch).
@@ -745,7 +745,7 @@ class WayfairSyncController extends Controller
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(WayfairLiveListingsService::class);
-        $linkedSkus = $this->linkedWayfairSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedWayfairSkus(), $liveService->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),
