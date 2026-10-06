@@ -2496,7 +2496,7 @@
             const liveOk = isFinite(live) && live > 0;
             const want = Number(res.bid).toFixed(1);
             const liveText = liveOk ? live.toFixed(1) + '%' : 'empty';
-            if (liveOk && Math.round(live) === Math.round(res.bid)) {
+            if (liveOk && Math.round(Number(live) * 10) / 10 === Math.round(Number(res.bid) * 10) / 10) {
                 return { color: 'green', tip: 'Updated — C Bid matches S Bid ' + want + '%' };
             }
             return { color: 'yellow', tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText };
@@ -5266,7 +5266,7 @@
                             }
                             const color = res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
                             const title = res.title || 'Dil vs SBid';
-                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
+                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Number(res.bid).toFixed(1)}%</span>`;
                         }
                     },
                     {

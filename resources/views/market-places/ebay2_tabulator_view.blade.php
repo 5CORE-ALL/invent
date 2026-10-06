@@ -1370,6 +1370,10 @@
         function ebay2TabRound2(n) {
             return Math.round(Number(n) * 100) / 100;
         }
+        /** Same tenth the C Bid and S Bid cells print. Matches /ebay2/campaign-ads. */
+        function ebay2TabShownPercent(n) {
+            return Math.round(Number(n) * 10) / 10;
+        }
 
         /** Running COST_PER_SALE row with Dil vs SBid on and a real S Bid. Otherwise null. */
         function ebay2TabSbidResult(row) {
@@ -1390,7 +1394,7 @@
             const liveOk = isFinite(live) && live > 0;
             const want = Number(res.bid).toFixed(1);
             const liveText = liveOk ? live.toFixed(1) + '%' : 'empty';
-            if (liveOk && Math.round(live) === Math.round(res.bid)) {
+            if (liveOk && ebay2TabShownPercent(live) === ebay2TabShownPercent(res.bid)) {
                 return { color: 'green', tip: 'Updated — C Bid matches S Bid ' + want + '%' };
             }
             return { color: 'yellow', tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText };
@@ -4010,7 +4014,7 @@
                             const dilText = noAds
                                 ? '<span style="color:#fd7e14;font-weight:700;margin-left:4px;" title="No ads. This S BID is from Dil.">dil</span>'
                                 : '';
-                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>${dilText}`;
+                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Number(res.bid).toFixed(1)}%</span>${dilText}`;
                         }
                     },
                     {

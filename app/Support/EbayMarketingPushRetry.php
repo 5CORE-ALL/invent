@@ -92,6 +92,68 @@ final class EbayMarketingPushRetry
         return $this->failed($lastError, self::MAX_ATTEMPTS, $lastResponse);
     }
 
+    /**
+     * @param  array<string, mixed>  $query
+     * @return array{ok: bool, response: Response|null, error: string|null, attempts: int}
+     */
+    public function get(string $url, array $query = []): array
+    {
+        $lastError = 'Pull failed';
+        $lastResponse = null;
+
+        for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
+            try {
+                $lastResponse = Http::withToken($this->token)
+                    ->timeout(60)
+                    ->get($url, $query);
+            } catch (Throwable $e) {
+                $lastError = $e->getMessage();
+                $lastResponse = null;
+                if ($attempt >= self::MAX_ATTEMPTS || ! self::isTransient($lastError, 0)) {
+                    return $this->failed($lastError, $attempt, null);
+                }
+                $this->pause($attempt, $lastError);
+
+                continue;
+            }
+
+            if ($lastResponse->successful()) {
+                return [
+                    'ok' => true,
+                    'response' => $lastResponse,
+                    'error' => null,
+                    'attempts' => $attempt,
+                ];
+            }
+
+            $reason = self::reasonFromResponse($lastResponse);
+            $lastError = $reason;
+            if (self::isTokenFailure($lastResponse->status(), $reason)) {
+                try {
+                    $this->revive();
+                } catch (Throwable $e) {
+                    return $this->failed('Token error: '.$e->getMessage(), $attempt, $lastResponse);
+                }
+                if ($attempt >= self::MAX_ATTEMPTS) {
+                    return $this->failed($reason, $attempt, $lastResponse);
+                }
+                Log::warning('eBay marketing pull retrying after token refresh', [
+                    'attempt' => $attempt,
+                    'url' => $url,
+                ]);
+
+                continue;
+            }
+
+            if ($attempt >= self::MAX_ATTEMPTS || ! self::isTransient($reason, $lastResponse->status())) {
+                return $this->failed($reason, $attempt, $lastResponse);
+            }
+            $this->pause($attempt, $reason);
+        }
+
+        return $this->failed($lastError, self::MAX_ATTEMPTS, $lastResponse);
+    }
+
     public function acquireToken(): string
     {
         $last = 'Token error';

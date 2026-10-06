@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\Ebay3Metric;
+use App\Support\EbayBidPercentage;
+use App\Support\EbayCampaignAdLiveBid;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -61,7 +63,6 @@ class SyncEbay3CampaignListings extends Command
             $campaignName   = $campaign['campaignName']   ?? '';
             $campaignStatus = $campaign['campaignStatus'] ?? '';
             $funding        = $campaign['fundingStrategy']['fundingModel'] ?? null;
-            $campaignBid    = $campaign['fundingStrategy']['bidPercentage'] ?? null;
 
             if (!$campaignId) continue;
 
@@ -100,39 +101,36 @@ class SyncEbay3CampaignListings extends Command
                             continue;
                         }
                         $adId = (string) ($ad['adId'] ?? '');
-                        $bidPercentage = $ad['bidPercentage'] ?? $campaignBid;
-                        $this->line("      listing_id={$listingId} | adId={$adId} | bid={$bidPercentage}%");
+                        $this->line("      listing_id={$listingId} | adId={$adId} | bid=".EbayCampaignAdLiveBid::logLabel($ad));
                     }
                     continue;
                 }
 
-                $chunkStats = DB::transaction(function () use ($adChunk, $campaignId, $campaignName, $funding, $campaignStatus, $campaignBid) {
+                $chunkStats = DB::transaction(function () use ($adChunk, $campaignId, $campaignName, $funding, $campaignStatus) {
                     $ins = 0;
                     $upd = 0;
                     $skip = 0;
                     foreach ($adChunk as $ad) {
                         $listingId = (string) ($ad['listingId'] ?? '');
                         $adId = (string) ($ad['adId'] ?? '');
-                        $bidPercentage = $ad['bidPercentage'] ?? $campaignBid;
                         if (!$listingId) {
                             continue;
                         }
-                        $this->line("      listing_id={$listingId} | adId={$adId} | bid={$bidPercentage}%");
+                        $this->line("      listing_id={$listingId} | adId={$adId} | bid=".EbayCampaignAdLiveBid::logLabel($ad));
                         try {
                             $exists = DB::table('ebay3_campaign_ads')
                                 ->where('listing_id', $listingId)
                                 ->where('campaign_id', (string) $campaignId)
                                 ->exists();
-                            $row = [
+                            $row = EbayCampaignAdLiveBid::applyToRow([
                                 'campaign_id' => (string) $campaignId,
                                 'campaign_name' => $campaignName,
                                 'funding_strategy' => $funding,
                                 'campaign_status' => $campaignStatus,
                                 'ad_id' => $adId ?: null,
                                 'listing_id' => $listingId,
-                                'bid_percentage' => $bidPercentage !== null ? round((float) $bidPercentage, 2) : null,
                                 'updated_at' => now(),
-                            ];
+                            ], $ad);
                             if ($exists) {
                                 DB::table('ebay3_campaign_ads')
                                     ->where('listing_id', $listingId)
@@ -234,21 +232,7 @@ class SyncEbay3CampaignListings extends Command
                                     if (!$lid) {
                                         continue;
                                     }
-                                    $suggestedBid = null;
-                                    foreach ($bidPercs as $b) {
-                                        if (($b['basis'] ?? '') === 'ITEM' && isset($b['value'])) {
-                                            $suggestedBid = (float) $b['value'];
-                                            break;
-                                        }
-                                    }
-                                    if ($suggestedBid === null) {
-                                        foreach ($bidPercs as $b) {
-                                            if (($b['basis'] ?? '') === 'TRENDING' && isset($b['value'])) {
-                                                $suggestedBid = (float) $b['value'];
-                                                break;
-                                            }
-                                        }
-                                    }
+                                    $suggestedBid = EbayBidPercentage::maximumSuggested($bidPercs);
                                     $metric = $chunk->first(fn ($m) => (string) $m->item_id === $lid);
                                     $sku = $metric ? $metric->sku : null;
                                     $price = $metric ? $metric->ebay_price : null;
@@ -335,25 +319,7 @@ class SyncEbay3CampaignListings extends Command
                         $lid = $rec['listingId'] ?? null;
                         $promoteStatus = $rec['marketing']['ad']['promoteWithAd'] ?? null;
                         $bidPercs = $rec['marketing']['ad']['bidPercentages'] ?? [];
-                        $suggestedBid = null;
-
-                        foreach ($bidPercs as $b) {
-                            if (($b['basis'] ?? '') === 'ITEM' && isset($b['value'])) {
-                                $suggestedBid = (float) $b['value'];
-                                break;
-                            }
-                        }
-                        if ($suggestedBid === null) {
-                            foreach ($bidPercs as $b) {
-                                if (($b['basis'] ?? '') === 'TRENDING' && isset($b['value'])) {
-                                    $suggestedBid = (float) $b['value'];
-                                    break;
-                                }
-                            }
-                        }
-                        if ($suggestedBid === null && isset($bidPercs[0]['value'])) {
-                            $suggestedBid = (float) $bidPercs[0]['value'];
-                        }
+                        $suggestedBid = EbayBidPercentage::maximumSuggested($bidPercs);
 
                         if ($lid) {
                             $update = ['updated_at' => now()];

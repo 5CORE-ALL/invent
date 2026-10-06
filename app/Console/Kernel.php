@@ -427,6 +427,9 @@ class Kernel extends ConsoleKernel
         // Dil vs SBid autopush. Morning follows the 09:00 Shopify quantity sync (Dil).
         // Evening follows eBay metrics (CVR) and the 18:00 quantity sync. Only ads
         // whose rule bid changed are pushed. eBay 3 stays manual.
+        // Campaign-ads sync (20:30/20:32) pulls listing C Bid only — never the
+        // campaign default — then runs the same verify push so a stale pull
+        // cannot leave yellow pending rows overnight.
         foreach ([
             ['09:50', 'ebay:dil-sbid-auto-push ebay1', 'ebay1-dil-sbid-morning'],
             ['09:55', 'ebay:dil-sbid-auto-push ebay2', 'ebay2-dil-sbid-morning'],

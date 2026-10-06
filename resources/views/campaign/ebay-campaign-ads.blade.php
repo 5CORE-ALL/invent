@@ -15,7 +15,7 @@
                 <i class="fas fa-cloud-upload-alt me-1"></i>Push Selected (<span id="selected-count">0</span>)
             </button>
             <button class="btn btn-sm btn-danger" id="force-push-btn" type="button" disabled
-                    title="Push S Bid where C Bid does not match. A pending gap is the yellow dot. The red alert is a failed push.">
+                    title="Pull live C Bid, then push S Bid until they match. A pending gap is the yellow dot. The red alert is a failed push.">
                 <i class="fas fa-exclamation-circle me-1"></i>Force Push (<span id="force-push-count">0</span>)
             </button>
             <button class="btn btn-sm btn-info text-white d-none" id="enroll-selected-btn" data-bs-toggle="modal" data-bs-target="#enrollModal">
@@ -745,7 +745,7 @@ function ebayPaintForcePush() {
     countEl.textContent = String(n);
     btn.disabled = !ruleOn || n === 0;
     btn.title = ruleOn
-        ? 'Push S Bid for ' + n + ' listing(s) still pending or failed. Checked rows are used when any row is selected.'
+        ? 'Pull live C Bid and push S Bid until they match for ' + n + ' listing(s). Checked rows are used when any row is selected.'
         : 'Dil vs SBid is off. Turn it on to force push.';
 }
 
@@ -801,7 +801,7 @@ function ebayForcePush(listingIds) {
             headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
             contentType: 'application/json',
             data: JSON.stringify({ listing_ids: chunk }),
-            timeout: 180000,
+            timeout: 300000,
             success: function(resp) {
                 success += Number(resp && resp.success) || 0;
                 failed += Number(resp && resp.failed) || 0;

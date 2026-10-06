@@ -493,7 +493,7 @@ function dilSbidApply() {
         headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
         contentType: 'application/json',
         data: JSON.stringify({ listing_ids: ids }),
-        timeout: 180000,
+        timeout: 300000,
         success: function(resp) {
             if (btn) btn.disabled = false;
             if (resp && resp.error) {

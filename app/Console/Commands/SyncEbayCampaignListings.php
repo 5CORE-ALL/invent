@@ -3,6 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
+use App\Models\EbayMetric;
+use App\Services\DilVsSbidApplyService;
+use App\Services\EbayApiService;
+use App\Support\DilVsSbidRule;
+use App\Support\EbayCampaignAdLiveBid;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -66,7 +71,6 @@ class SyncEbayCampaignListings extends Command
             $campaignName   = $campaign['campaignName']   ?? '';
             $campaignStatus = $campaign['campaignStatus'] ?? '';
             $funding        = $campaign['fundingStrategy']['fundingModel'] ?? null;
-            $campaignBid    = $campaign['fundingStrategy']['bidPercentage'] ?? null;
 
             if (!$campaignId) continue;
 
@@ -91,26 +95,24 @@ class SyncEbayCampaignListings extends Command
                             continue;
                         }
                         $adId = (string) ($ad['adId'] ?? '');
-                        $bidPercentage = $ad['bidPercentage'] ?? $campaignBid;
-                        $this->line("      listing_id={$listingId} | adId={$adId} | bid={$bidPercentage}%");
+                        $this->line("      listing_id={$listingId} | adId={$adId} | bid=".EbayCampaignAdLiveBid::logLabel($ad));
                     }
                     continue;
                 }
 
-                $chunkStats = DB::transaction(function () use ($adChunk, $campaignId, $campaignName, $funding, $campaignStatus, $campaignBid) {
+                $chunkStats = DB::transaction(function () use ($adChunk, $campaignId, $campaignName, $funding, $campaignStatus) {
                     $ins = 0;
                     $upd = 0;
                     $skip = 0;
                     foreach ($adChunk as $ad) {
                         $listingId = (string) ($ad['listingId'] ?? '');
                         $adId = (string) ($ad['adId'] ?? '');
-                        $bidPercentage = $ad['bidPercentage'] ?? $campaignBid;
 
                         if (!$listingId) {
                             continue;
                         }
 
-                        $this->line("      listing_id={$listingId} | adId={$adId} | bid={$bidPercentage}%");
+                        $this->line("      listing_id={$listingId} | adId={$adId} | bid=".EbayCampaignAdLiveBid::logLabel($ad));
 
                         try {
                             $exists = DB::table('ebay_campaign_ads')
@@ -118,16 +120,15 @@ class SyncEbayCampaignListings extends Command
                                 ->where('campaign_id', (string) $campaignId)
                                 ->exists();
 
-                            $row = [
+                            $row = EbayCampaignAdLiveBid::applyToRow([
                                 'campaign_id' => (string) $campaignId,
                                 'campaign_name' => $campaignName,
                                 'funding_strategy' => $funding,
                                 'campaign_status' => $campaignStatus,
                                 'ad_id' => $adId ?: null,
                                 'listing_id' => $listingId,
-                                'bid_percentage' => $bidPercentage !== null ? round((float) $bidPercentage, 2) : null,
                                 'updated_at' => now(),
-                            ];
+                            ], $ad);
 
                             if ($exists) {
                                 DB::table('ebay_campaign_ads')
@@ -380,7 +381,36 @@ class SyncEbayCampaignListings extends Command
         }
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+        if (! $dryRun) {
+            $this->verifyDilVsSbid();
+        }
+
         return 0;
+    }
+
+    /** After an honest C Bid pull, push Dil vs SBid again where live still differs. */
+    private function verifyDilVsSbid(): void
+    {
+        $this->line('');
+        $this->info('Dil vs SBid verify — push listings whose live C Bid still differs.');
+        $result = app(DilVsSbidApplyService::class)->applyChanged(
+            DilVsSbidRule::KEY_EBAY1,
+            'ebay_campaign_ads',
+            EbayMetric::class,
+            EbayApiService::class
+        );
+        if (! empty($result['error'])) {
+            $this->warn('Dil vs SBid verify: '.$result['error']);
+
+            return;
+        }
+        $this->info(sprintf(
+            'Dil vs SBid verify: pushed %d, unchanged %d, failed %d, skipped %d',
+            (int) ($result['success'] ?? 0),
+            (int) ($result['unchanged'] ?? 0),
+            (int) ($result['failed'] ?? 0),
+            (int) ($result['skipped'] ?? 0)
+        ));
     }
 
     private function fetchAllCampaigns(string $token): array
