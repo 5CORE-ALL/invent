@@ -5,6 +5,7 @@ namespace App\Support\Marketplace;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Shared listing-page count loop (same rules as /listing-ebaytwo).
@@ -556,16 +557,26 @@ class ListingCountsEngine
         }
 
         $byKey = [];
+        $columns = ['sku', $column];
+        $hasStatus = false;
+        $table = (new $modelClass)->getTable();
+        if (Schema::hasColumn($table, 'listing_status') && $column !== 'listing_status') {
+            $columns[] = 'listing_status';
+            $hasStatus = true;
+        }
         $modelClass::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->whereNotNull($column)
             ->where($column, '!=', '')
-            ->get(['sku', $column])
-            ->each(function ($row) use (&$byKey, $column, $rejectSkuAsId, $wanted) {
+            ->get($columns)
+            ->each(function ($row) use (&$byKey, $column, $rejectSkuAsId, $wanted, $hasStatus) {
                 $sku = trim((string) $row->sku);
                 $id = trim((string) ($row->{$column} ?? ''));
                 if ($sku === '' || $id === '') {
+                    return;
+                }
+                if ($hasStatus && MarketplaceListingPresence::isAbsent($row->listing_status ?? null)) {
                     return;
                 }
                 if ($rejectSkuAsId && strcasecmp($id, $sku) === 0) {

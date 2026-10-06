@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\TikTokProduct;
+use App\Support\Marketplace\MarketplaceListingPresence;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -174,7 +175,14 @@ class TikTokLiveListingsService
         $rawStatus = Schema::hasColumn($this->table, 'listing_status')
             ? strtolower(trim((string) ($row->listing_status ?? '')))
             : '';
-        $state = in_array($rawStatus, ['active', 'inactive'], true) ? $rawStatus : 'other';
+        if (MarketplaceListingPresence::isAbsent($rawStatus)) {
+            return null;
+        }
+        $state = in_array($rawStatus, ['active', 'activate', 'live'], true)
+            ? 'active'
+            : (in_array($rawStatus, ['inactive', 'seller_deactivated', 'platform_deactivated', 'freeze'], true)
+                ? 'inactive'
+                : 'other');
 
         return [
             'product_id' => $productId,

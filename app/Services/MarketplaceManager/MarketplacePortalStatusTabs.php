@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\ShopifySku;
+use App\Support\Marketplace\MarketplaceListingPresence;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
@@ -18,6 +19,9 @@ final class MarketplacePortalStatusTabs
     {
         $state = strtolower(trim((string) $state));
         $state = str_replace([' ', '-'], '_', $state);
+        if (MarketplaceListingPresence::isAbsent($state)) {
+            return 'other';
+        }
         if (in_array($state, [
             'active', '1', 'true', 'live', 'onselling', 'on_selling',
             'published', 'enabled', 'buyable', 'buyable_by_quantity', 'listed',
@@ -27,12 +31,12 @@ final class MarketplacePortalStatusTabs
             return 'active';
         }
         if (in_array($state, [
-            'inactive', '0', 'false', 'offline', 'ended', 'draft', 'disabled',
-            'delisted', 'deleted', 'unpublished', 'auditing', 'editingrequired',
-            'editing_required', 'service_delete', 'pending', 'under_review',
-            'seller_deactivated', 'platform_deactivated', 'freeze', 'failed',
-            'incomplete', 'suppressed', 'blocked', 'unsold', 'archived',
-            'retired', 'rejected', 'suspended', 'hidden', 'closed',
+            'inactive', '0', 'false', 'offline', 'ended', 'disabled',
+            'auditing', 'editingrequired',
+            'editing_required', 'under_review',
+            'seller_deactivated', 'platform_deactivated', 'freeze',
+            'incomplete', 'suppressed', 'blocked', 'unsold',
+            'rejected', 'suspended', 'hidden', 'closed',
         ], true)) {
             return 'inactive';
         }

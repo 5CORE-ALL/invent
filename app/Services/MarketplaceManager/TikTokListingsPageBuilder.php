@@ -8,6 +8,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\ShopifySku;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
+use App\Support\Marketplace\MarketplaceListingPresence;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -283,6 +284,15 @@ class TikTokListingsPageBuilder
                     $mpQty = null;
                 }
             }
+            $savedState = strtolower(trim((string) ($metric?->listing_status ?? '')));
+            $liveState = is_array($live) ? strtolower(trim((string) ($live['state'] ?? ''))) : '';
+            if ($linked && (MarketplaceListingPresence::isAbsent($savedState) || MarketplaceListingPresence::isAbsent($liveState))) {
+                $linked = false;
+                $pid = '';
+                $skuId = '';
+                $metricSku = null;
+                $mpQty = null;
+            }
             if ($linked) {
                 $mpQty = MarketplaceListingStockResolver::displayedMarketplaceQty(
                     is_array($live) ? $live : null,
@@ -292,11 +302,11 @@ class TikTokListingsPageBuilder
             }
             $portalState = null;
             if ($linked) {
-                $liveState = is_array($live) ? strtolower(trim((string) ($live['state'] ?? ''))) : '';
-                $savedState = strtolower(trim((string) ($metric->listing_status ?? '')));
                 $portalState = in_array($liveState, ['active', 'inactive'], true)
                     ? $liveState
-                    : (in_array($savedState, ['active', 'inactive'], true) ? $savedState : null);
+                    : (in_array($savedState, ['active', 'seller_deactivated', 'platform_deactivated', 'freeze', 'inactive'], true)
+                        ? ($savedState === 'active' ? 'active' : 'inactive')
+                        : null);
             }
 
             return (object) [
@@ -522,13 +532,23 @@ class TikTokListingsPageBuilder
             return [];
         }
 
-        return ($this->productModel())::query()
+        $query = ($this->productModel())::query()
             ->whereNotNull('sku')
             ->whereNotNull('product_id')
             ->whereNotNull('sku_id')
             ->where('sku', '!=', '')
             ->where('product_id', '!=', '')
-            ->where('sku_id', '!=', '')
+            ->where('sku_id', '!=', '');
+        if (Schema::hasColumn($this->table(), 'listing_status')) {
+            $absent = MarketplaceListingPresence::absentStatuses();
+            $query->where(function ($q) use ($absent) {
+                $q->whereNull('listing_status')
+                    ->orWhere('listing_status', '')
+                    ->orWhereNotIn('listing_status', $absent);
+            });
+        }
+
+        return $query
             ->pluck('sku')
             ->map(static fn ($sku) => trim((string) $sku))
             ->filter(static fn (string $sku) => $sku !== '' && ! MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku))
@@ -633,6 +653,9 @@ class TikTokListingsPageBuilder
         }
         $productId = trim((string) ($metric->product_id ?? ''));
         $skuId = trim((string) ($metric->sku_id ?? ''));
+        if (MarketplaceListingPresence::isAbsent($metric->listing_status ?? null)) {
+            return false;
+        }
         $sellerSku = ShopifySku::normalizeSkuForShopifyLookup((string) ($metric->sku ?? ''));
         $shopify = ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
 

@@ -8,6 +8,7 @@ use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
+use App\Support\Marketplace\MarketplaceListingPresence;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -303,7 +304,7 @@ class TikTokLinkMapSyncService
         $totalCount = $this->intOrNull($this->extractTotalCount($response));
         $nextToken = $this->extractNextPageToken($response);
         if ($activeMode === 'full') {
-            $this->rememberSeenSkus($this->sellerSkusFromProducts($products), $page === 1);
+            $this->rememberSeenSkus($this->presentSellerSkusFromProducts($products), $page === 1);
         }
         $pageUpserted = $this->upsertProducts($products);
 
@@ -599,18 +600,38 @@ class TikTokLinkMapSyncService
             return ['ok' => false, 'upserted' => 0, 'error' => $this->label().' is not connected'];
         }
 
-        $upserted = $this->paginateStatusCatalog($api, 'ALL', 120);
+        $all = $this->paginateStatusCatalog($api, 'ALL', 120, true);
+        $upserted = $all['upserted'];
+        $complete = $all['complete'];
         foreach (['SELLER_DEACTIVATED', 'PLATFORM_DEACTIVATED', 'FREEZE'] as $status) {
-            $upserted += $this->paginateStatusCatalog($api, $status, 40);
+            $walk = $this->paginateStatusCatalog($api, $status, 40, false);
+            $upserted += $walk['upserted'];
+            $complete = $complete && $walk['complete'];
+        }
+        if ($complete) {
+            $removed = MarketplaceLinkMapPruner::prune($this->productModel(), $this->channel.'_portal');
+            if ($removed > 0) {
+                Log::info('TikTok portal status removed SKUs that are no longer listed', [
+                    'channel' => $this->channel,
+                    'removed' => $removed,
+                ]);
+            }
         }
 
         return ['ok' => true, 'upserted' => $upserted];
     }
 
-    protected function paginateStatusCatalog($api, string $status, int $maxPages): int
+    /**
+     * @return array{upserted: int, complete: bool}
+     */
+    protected function paginateStatusCatalog($api, string $status, int $maxPages, bool $resetSeen): array
     {
         $upserted = 0;
         $pageToken = '';
+        $portalChannel = $this->channel.'_portal';
+        if ($resetSeen) {
+            MarketplaceLinkMapPruner::remember($portalChannel, [], true);
+        }
         for ($page = 1; $page <= $maxPages; $page++) {
             try {
                 @set_time_limit(90);
@@ -622,7 +643,8 @@ class TikTokLinkMapSyncService
                     'page' => $page,
                     'error' => $e->getMessage(),
                 ]);
-                break;
+
+                return ['upserted' => $upserted, 'complete' => false];
             }
             if (! is_array($response) || (isset($response['code']) && (int) $response['code'] !== 0)) {
                 Log::warning('TikTok portal status API error', [
@@ -631,20 +653,26 @@ class TikTokLinkMapSyncService
                     'code' => $response['code'] ?? null,
                     'message' => $response['message'] ?? null,
                 ]);
-                break;
+
+                return ['upserted' => $upserted, 'complete' => false];
             }
             $products = $this->extractProducts($response);
             if ($products === []) {
-                break;
+                return ['upserted' => $upserted, 'complete' => true];
             }
+            MarketplaceLinkMapPruner::remember(
+                $portalChannel,
+                $this->presentSellerSkusFromProducts($products),
+                false
+            );
             $upserted += $this->upsertProducts($products, $status === 'ALL' ? null : $status);
             $pageToken = $this->extractNextPageToken($response);
             if ($pageToken === '') {
-                break;
+                return ['upserted' => $upserted, 'complete' => true];
             }
         }
 
-        return $upserted;
+        return ['upserted' => $upserted, 'complete' => false];
     }
 
     public function ensureListingStatusColumn(): void
@@ -690,6 +718,31 @@ class TikTokLinkMapSyncService
         }
 
         return array_keys($skus);
+    }
+
+    /**
+     * Seller SKUs that are still a listing. Deleted, draft, and failed products are not remembered,
+     * so a full sync drops them instead of keeping them as inactive.
+     *
+     * @param  array<int, array<string, mixed>>  $products
+     * @return list<string>
+     */
+    protected function presentSellerSkusFromProducts(array $products): array
+    {
+        $present = [];
+        foreach ($products as $product) {
+            if (! is_array($product)) {
+                continue;
+            }
+            if (MarketplaceListingPresence::isAbsent($this->normalizeTikTokPortalStatus($product))) {
+                continue;
+            }
+            foreach ($this->sellerSkusFromProducts([$product]) as $sku) {
+                $present[$sku] = true;
+            }
+        }
+
+        return array_keys($present);
     }
 
     /**
@@ -794,6 +847,14 @@ class TikTokLinkMapSyncService
                     continue;
                 }
 
+                if (MarketplaceListingPresence::isAbsent($listingStatus)) {
+                    $existingGone = $model::query()->where('sku', $normalizedSku)->first();
+                    if ($existingGone && (string) $existingGone->product_id === (string) $productId) {
+                        $existingGone->delete();
+                    }
+                    continue;
+                }
+
                 $update = [
                     'product_id' => (string) $productId,
                     'price' => $row['price'],
@@ -855,11 +916,17 @@ class TikTokLinkMapSyncService
         if ($raw === '' || $raw === 'ALL') {
             return '';
         }
-        if (in_array($raw, ['ACTIVATE', 'ACTIVE', 'LIVE'], true)) {
-            return 'active';
-        }
-
-        return 'inactive';
+        return match ($raw) {
+            'ACTIVATE', 'ACTIVE', 'LIVE' => 'active',
+            'SELLER_DEACTIVATED' => 'seller_deactivated',
+            'PLATFORM_DEACTIVATED' => 'platform_deactivated',
+            'FREEZE' => 'freeze',
+            'DELETED' => 'deleted',
+            'DRAFT' => 'draft',
+            'FAILED' => 'failed',
+            'PENDING' => 'pending',
+            default => strtolower($raw),
+        };
     }
 
     /**
