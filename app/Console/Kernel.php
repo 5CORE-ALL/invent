@@ -1420,12 +1420,12 @@ class Kernel extends ConsoleKernel
 
         // Missing Mapping (/map-issues): push every listed SKU's Shopify qty, then retry leftovers.
         // In-process (not queued) so it still runs when an mm-* worker is down. One process per
-        // channel so a hang on one marketplace cannot stop the others. Hourly 07:00–22:00 IST,
-        // start minutes staggered. A channel with nothing to push exits immediately.
+        // channel so a hang on one marketplace cannot stop the others. Hourly around the clock
+        // (Shopify sells overnight too), start minutes staggered. A channel with nothing to push exits immediately.
         foreach (\App\Console\Commands\PushMissingMappingInventory::CHANNELS as $i => $mmChannel) {
             $minute = ($i * 2) % 60;
             $schedule->command('inventory:push-missing-mapping', ['--channel' => [$mmChannel]])
-                ->cron($minute.' 7-22 * * *')
+                ->cron($minute.' * * * *')
                 ->timezone('Asia/Kolkata')
                 ->name('push-missing-mapping-inventory-'.$mmChannel)
                 ->withoutOverlapping(70)
@@ -2920,6 +2920,14 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('mm-poll-shopify-inventory-changes')
             ->withoutOverlapping(10)
+            ->appendOutputTo($log);
+
+        $schedule->command('mm:refresh-stale-mapping-counts')
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('mm-refresh-stale-mapping-counts')
+            ->withoutOverlapping(20)
+            ->runInBackground()
             ->appendOutputTo($log);
 
         // Order Fulfillment tracking column: resolve orders with no number yet

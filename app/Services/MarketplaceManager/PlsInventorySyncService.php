@@ -117,7 +117,7 @@ class PlsInventorySyncService
             }
         }
 
-        app(PlsLiveListingsService::class)->clearCache();
+        MarketplaceListingsAfterPush::refresh('pls');
         if ($overlay !== []) {
             app(ShopifyCatalogSyncService::class)->overlayCachedInventory('pls', $overlay);
         }
@@ -226,7 +226,7 @@ class PlsInventorySyncService
             }
         }
 
-        app(PlsLiveListingsService::class)->clearCache();
+        MarketplaceListingsAfterPush::refresh('pls');
 
         return [
             'success' => true,

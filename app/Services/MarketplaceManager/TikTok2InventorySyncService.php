@@ -649,6 +649,7 @@ class TikTok2InventorySyncService
         } catch (\Throwable $e) {
             // ignore
         }
+        \App\Support\Marketplace\MappingChannelCounts::markChannelStale('tiktok2');
     }
 
     protected function appendMismatchPass(): string

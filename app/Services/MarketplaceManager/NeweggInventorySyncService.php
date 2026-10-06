@@ -440,12 +440,14 @@ class NeweggInventorySyncService
      */
     protected function updateLocalStock(array $rows): void
     {
+        $pushed = [];
         foreach ($rows as $row) {
             $sku = trim((string) $row['sku_code']);
             if ($sku === '') {
                 continue;
             }
             $qty = (int) $row['inventory'];
+            $pushed[$sku] = $qty;
 
             if (Schema::hasTable('newegg_pricing_prices')) {
                 NeweggPricingPrice::updateOrCreate(
@@ -461,6 +463,7 @@ class NeweggInventorySyncService
                     ->update(['available_quantity' => $qty]);
             }
         }
+        MarketplaceListingsAfterPush::refresh('newegg', $pushed);
     }
 
     /**

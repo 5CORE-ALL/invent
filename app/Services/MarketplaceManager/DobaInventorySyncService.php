@@ -132,8 +132,6 @@ class DobaInventorySyncService
                 $updated++;
                 $this->persistLocalStock($sku, $qty);
             } else {
-                // Still update local metrics so MM UI reflects Shopify qty.
-                $this->persistLocalStock($sku, $qty);
                 $failed++;
             }
         }
@@ -274,5 +272,6 @@ class DobaInventorySyncService
                 ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
                 ->update(['inventory_doba' => (int) $qty]);
         }
+        MarketplaceListingsAfterPush::refresh('doba');
     }
 }

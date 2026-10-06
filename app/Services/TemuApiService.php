@@ -3519,30 +3519,33 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         $byGoods = [];
+        $skusByGoods = [];
+        $failed = 0;
+        $errors = [];
         foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
             $goodsId = trim((string) ($item['goods_id'] ?? ''));
-            if ($goodsId === '') {
-                continue;
-            }
             $skuId = $item['sku_id'] ?? null;
-            if ($skuId === null || $skuId === '') {
-                $sku = trim((string) ($item['sku'] ?? ''));
-                if ($sku !== '') {
-                    $skuId = $this->getSkuIdBySku($sku);
-                }
+            if ($goodsId !== '' && ($skuId === null || $skuId === '') && $sku !== '') {
+                $skuId = $this->getSkuIdBySku($sku);
             }
-            if ($skuId === null || $skuId === '') {
+            if ($goodsId === '' || $skuId === null || $skuId === '') {
+                $failed++;
+                if (count($errors) < 3) {
+                    $errors[] = ($sku !== '' ? $sku.': ' : '').'no Temu goods/SKU id';
+                }
+
                 continue;
             }
             $byGoods[$goodsId][] = [
                 'skuId' => is_numeric($skuId) ? (int) $skuId : $skuId,
                 'stockTarget' => max(0, (int) ($item['quantity'] ?? 0)),
             ];
+            $skusByGoods[$goodsId][] = $sku;
         }
 
         $pushed = 0;
-        $failed = 0;
-        $errors = [];
+        $updatedSkus = [];
 
         foreach ($byGoods as $goodsId => $skuStockTargetList) {
             $requestBody = [
@@ -3553,6 +3556,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             $result = $this->postStockEdit($requestBody);
             if ($result['success'] ?? false) {
                 $pushed += count($skuStockTargetList);
+                foreach ($skusByGoods[$goodsId] ?? [] as $sku) {
+                    if ($sku !== '') {
+                        $updatedSkus[] = $sku;
+                    }
+                }
             } else {
                 $failed += count($skuStockTargetList);
                 $errors[] = $result['message'] ?? 'Stock edit failed';
@@ -3563,6 +3571,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         return [
             'pushed' => $pushed,
             'failed' => $failed,
+            'updated_skus' => $updatedSkus,
             'message' => $errors === []
                 ? "Pushed stock for {$pushed} SKU(s) to Temu."
                 : implode('; ', array_slice($errors, 0, 3)),

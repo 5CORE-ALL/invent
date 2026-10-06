@@ -135,7 +135,7 @@ class Temu2InventorySyncService
         }
 
         $bulk = $this->temuApi->updateItemInventoryBulk($apiItems);
-        $this->persistLocalStock($apiItems);
+        $this->persistLocalStock(MarketplaceListingsAfterPush::acceptedRows($apiItems, $bulk));
 
         return [
             'updated' => (int) ($bulk['pushed'] ?? 0),
@@ -263,5 +263,6 @@ class Temu2InventorySyncService
                     ->update(['inventory_temu2' => (string) $qty]);
             }
         }
+        MarketplaceListingsAfterPush::refresh('temu2');
     }
 }

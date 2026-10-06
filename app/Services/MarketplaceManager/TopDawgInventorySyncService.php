@@ -427,7 +427,7 @@ class TopDawgInventorySyncService
         }
         try {
             Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'topdawg');
-            MappingChannelCounts::forgetMasterCaches();
+            MappingChannelCounts::markChannelStale('topdawg');
         } catch (\Throwable $e) {
             // ignore
         }

@@ -694,20 +694,21 @@ class ReverbInventorySyncService
      */
     protected function updateLocalStock(array $rows): void
     {
-        if (! Schema::hasTable('reverb_pricing_prices')) {
-            return;
-        }
-
+        $pushed = [];
         foreach ($rows as $row) {
             $sku = strtoupper(trim((string) $row['sku_code']));
             if ($sku === '') {
                 continue;
             }
-            ReverbPricingPrice::updateOrCreate(
-                ['sku' => $sku],
-                ['rv_stock' => (int) $row['inventory']]
-            );
+            $pushed[$sku] = (int) $row['inventory'];
+            if (Schema::hasTable('reverb_pricing_prices')) {
+                ReverbPricingPrice::updateOrCreate(
+                    ['sku' => $sku],
+                    ['rv_stock' => (int) $row['inventory']]
+                );
+            }
         }
+        MarketplaceListingsAfterPush::refresh('reverb', $pushed);
     }
 
     /**

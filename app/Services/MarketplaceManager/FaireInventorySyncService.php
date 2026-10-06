@@ -495,7 +495,7 @@ class FaireInventorySyncService
         }
         try {
             Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'faire');
-            MappingChannelCounts::forgetMasterCaches();
+            MappingChannelCounts::markChannelStale('faire');
         } catch (\Throwable $e) {
             // ignore
         }

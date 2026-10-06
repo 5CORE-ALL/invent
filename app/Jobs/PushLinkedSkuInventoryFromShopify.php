@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Models\MarketplaceSyncSettings;
+use App\Console\Commands\PushMissingMappingInventory;
 use App\Services\MarketplaceManager\AlibabaInventorySyncService;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
@@ -98,7 +98,10 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUniqueUn
     }
 
     /**
-     * Fan-out to every marketplace with inventory_sync enabled (parallel queues).
+     * Fan-out to every marketplace /map-issues counts (parallel queues).
+     * Same rule as inventory:push-missing-mapping: the Inventory sync toggle does
+     * not stop a Shopify stock change from reaching a channel, otherwise every
+     * sale left that channel above Shopify and on Inv SKU Mismatch.
      *
      * @param  array<int, string>  $skus
      * @return int number of marketplaces enqueued
@@ -109,11 +112,8 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUniqueUn
         ?string $inventoryItemId = null,
     ): int {
         $enqueued = 0;
-        foreach (MarketplaceManagerRegistry::slugs() as $slug) {
-            $settings = MarketplaceSyncSettings::getFor($slug);
-            if (! ($settings['inventory']['inventory_sync'] ?? false)) {
-                continue;
-            }
+        $slugs = array_intersect(MarketplaceManagerRegistry::slugs(), PushMissingMappingInventory::CHANNELS);
+        foreach ($slugs as $slug) {
             if (self::enqueue($slug, $skus, $availableHint, $inventoryItemId) > 0 || $inventoryItemId) {
                 $enqueued++;
             }
@@ -148,15 +148,6 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUniqueUn
             Log::info('PushLinkedSkuInventoryFromShopify: no SKUs pending', [
                 'marketplace' => $this->marketplace,
                 'inventory_item_id' => $this->inventoryItemId,
-            ]);
-
-            return;
-        }
-
-        if (! $this->inventorySyncEnabled($this->marketplace)) {
-            Log::info('PushLinkedSkuInventoryFromShopify: inventory_sync off — skip', [
-                'marketplace' => $this->marketplace,
-                'sku_count' => count($skus),
             ]);
 
             return;
@@ -337,13 +328,6 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUniqueUn
             unset($map[strtoupper($sku)]);
         }
         self::storeAttempts($marketplace, $map);
-    }
-
-    protected function inventorySyncEnabled(string $marketplace): bool
-    {
-        $settings = MarketplaceSyncSettings::getFor($marketplace);
-
-        return (bool) ($settings['inventory']['inventory_sync'] ?? false);
     }
 
     /**

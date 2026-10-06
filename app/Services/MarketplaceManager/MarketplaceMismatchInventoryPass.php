@@ -549,6 +549,37 @@ final class MarketplaceMismatchInventoryPass
         };
     }
 
+    public function forgetLiveRows(string $channel): void
+    {
+        $service = match (strtolower(trim($channel))) {
+            'newegg' => app(NeweggLiveListingsService::class),
+            'shein' => app(SheinLiveListingsService::class),
+            'topdawg' => app(TopDawgLiveListingsService::class),
+            'temu' => app(TemuLiveListingsService::class),
+            'temu2' => app(Temu2LiveListingsService::class),
+            'temu3' => app(Temu3LiveListingsService::class),
+            'purchasingpower' => app(PurchasingPowerLiveListingsService::class),
+            'wayfair' => app(WayfairLiveListingsService::class),
+            'bestbuy' => app(BestBuyLiveListingsService::class),
+            'macy' => app(MacyLiveListingsService::class),
+            'doba' => app(DobaLiveListingsService::class),
+            'ebay1' => app(Ebay1LiveListingsService::class),
+            'ebay2' => app(Ebay2LiveListingsService::class),
+            'ebay3' => app(Ebay3LiveListingsService::class),
+            'reverb' => app(ReverbLiveListingsService::class),
+            'aliexpress' => app(AliexpressLiveListingsService::class),
+            'faire' => app(FaireLiveListingsService::class),
+            'amazon' => app(AmazonLiveListingsService::class),
+            'alibaba' => app(AlibabaLiveListingsService::class),
+            'tiktok' => app(TikTokLiveListingsService::class),
+            'tiktok2' => app(TikTok2LiveListingsService::class),
+            'pls' => app(PlsLiveListingsService::class),
+            'b5cb2b' => app(B5cB2bLiveListingsService::class),
+            default => null,
+        };
+        $service?->clearCache();
+    }
+
     /**
      * Active/inactive split from each channel's local listings catalog.
      * Does not require a warm live cache. Reverb/AliExpress full API warm only when $allowApiWarm.

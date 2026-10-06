@@ -482,6 +482,7 @@ class AlibabaInventorySyncService
                 ['ab_stock' => (int) $row['inventory']]
             );
         }
+        MarketplaceListingsAfterPush::refresh('alibaba');
     }
 
     /**

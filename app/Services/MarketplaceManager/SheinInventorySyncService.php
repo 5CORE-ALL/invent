@@ -227,7 +227,7 @@ class SheinInventorySyncService
             $this->updateLocalStock($persisted);
             $this->updateLocalPlatformQuantities($persisted);
             try {
-                app(SheinLiveListingsService::class)->clearCache();
+                MarketplaceListingsAfterPush::refresh('shein');
             } catch (\Throwable $e) {
                 // ignore
             }
@@ -499,7 +499,7 @@ class SheinInventorySyncService
                 $this->updateLocalStock($persisted);
                 $this->updateLocalPlatformQuantities($persisted);
                 try {
-                    app(SheinLiveListingsService::class)->clearCache();
+                    MarketplaceListingsAfterPush::refresh('shein');
                 } catch (\Throwable $e) {
                     // ignore
                 }

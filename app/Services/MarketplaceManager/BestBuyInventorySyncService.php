@@ -264,5 +264,6 @@ class BestBuyInventorySyncService
                     ->update(['inventory_bestbuy' => (string) $qty]);
             }
         }
+        MarketplaceListingsAfterPush::refresh('bestbuy');
     }
 }

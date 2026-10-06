@@ -270,5 +270,6 @@ class MacyInventorySyncService
                     ->update(['inventory_macy' => (string) $qty]);
             }
         }
+        MarketplaceListingsAfterPush::refresh('macy');
     }
 }

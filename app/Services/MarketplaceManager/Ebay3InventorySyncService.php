@@ -156,7 +156,7 @@ class Ebay3InventorySyncService
             $this->updateLocalStock($pushedRows);
             $this->updateLocalPlatformQuantities($pushedRows);
             $this->updateLocalPrices($this->rowsWithPositivePrice($pushedRows));
-            app(Ebay3LiveListingsService::class)->clearCache();
+            MarketplaceListingsAfterPush::refresh('ebay3');
 
             return [
                 'updated' => (int) ($invResult['pushed'] ?? count($pushedRows)),
@@ -378,7 +378,7 @@ class Ebay3InventorySyncService
                 $this->updateLocalStock($pushedRows);
                 $this->updateLocalPlatformQuantities($pushedRows);
                 $this->updateLocalPrices($this->rowsWithPositivePrice($pushedRows));
-                app(Ebay3LiveListingsService::class)->clearCache();
+                MarketplaceListingsAfterPush::refresh('ebay3');
             } elseif ($failed > 0) {
                 Log::warning('Ebay3InventorySyncService: inventory push failed', $invResult);
             }
