@@ -83,8 +83,10 @@ final class MarketplaceListingQtyMatchService
 
         // Same qty the listings tab shows. A local mapping qty here kept SKUs on
         // /map-issues after the marketplace page had already matched them.
+        $rows = app(MarketplaceMismatchInventoryPass::class)->localRowsForStateSplit($mmChannel, false);
+        $liveRows = is_array($rows) ? $rows : null;
         $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($out);
-        $mp = $this->liveListingQtyMap($mmChannel);
+        $mp = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveRows);
         if ($mp === []) {
             $mp = $this->localStockMap($mmChannel, $out);
         }
@@ -98,7 +100,7 @@ final class MarketplaceListingQtyMatchService
             $real[] = (string) $sku;
         }
 
-        return $real;
+        return MarketplacePortalStatusTabs::withoutInactiveSkus($real, $liveRows);
     }
 
     /**

@@ -118,8 +118,11 @@ final class MarketplacePortalStatusTabs
         ?array $liveRows
     ): array {
         $portal = self::skuLists($liveRows);
+        // Inv SKU Mismatch is for listings that are still live. Inactive / ended
+        // rows stay on the Inactive SKU tab.
+        $mismatchActive = self::withoutSkus($mismatchQty, $portal['inactive']);
         $counts['matched'] = count($matchedQty);
-        $counts['mismatch'] = count($mismatchQty);
+        $counts['mismatch'] = count($mismatchActive);
         $counts['zero'] = count($zeroQty);
         $counts['matched_inactive'] = count($portal['inactive']);
         $counts['mismatch_inactive'] = count($portal['active']);
@@ -130,10 +133,60 @@ final class MarketplacePortalStatusTabs
         return [
             'counts' => $counts,
             'matchedActive' => $matchedQty,
-            'mismatchActive' => $mismatchQty,
+            'mismatchActive' => $mismatchActive,
             'matchedInactive' => $portal['inactive'],
             'mismatchInactive' => $portal['active'],
         ];
+    }
+
+    /**
+     * Drop seller-portal inactive SKUs from a qty tab (Inv SKU Mismatch, Linked mismatch).
+     *
+     * @param  list<string>  $skus
+     * @param  array<int, mixed>|null  $liveRows
+     * @return list<string>
+     */
+    public static function withoutInactiveSkus(array $skus, ?array $liveRows): array
+    {
+        return self::withoutSkus($skus, self::skuLists($liveRows)['inactive']);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @param  list<string>  $exclude
+     * @return list<string>
+     */
+    public static function withoutSkus(array $skus, array $exclude): array
+    {
+        $drop = [];
+        foreach ($exclude as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $upper = strtoupper($sku);
+            $norm = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
+            $drop[$upper] = true;
+            if ($norm !== '') {
+                $drop[$norm] = true;
+            }
+        }
+        if ($drop === []) {
+            return array_values(array_map(static fn ($sku) => (string) $sku, $skus));
+        }
+
+        $out = [];
+        foreach ($skus as $sku) {
+            $sku = (string) $sku;
+            $upper = strtoupper(trim($sku));
+            $norm = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
+            if (($upper !== '' && isset($drop[$upper])) || ($norm !== '' && isset($drop[$norm]))) {
+                continue;
+            }
+            $out[] = $sku;
+        }
+
+        return $out;
     }
 
     /**
