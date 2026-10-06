@@ -42,6 +42,7 @@ use App\Support\AmazonDilGroiRule;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -1457,6 +1458,44 @@ class ChannelPromoPricingController extends Controller
     /**
      * Std prc vs dil slabs — same defaults as /amazon-tabulator-view.
      */
+    /**
+     * Shipping Master weight slabs plus each child SKU's slab key.
+     * Shared by every channel analytics Ship modal.
+     */
+    public function shipSlabs(string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unknown channel.'], 404);
+        }
+
+        $payload = Cache::remember('channel_ship_slab_map_v1', 600, function () {
+            $service = app(\App\Services\ShippingSlabRateService::class);
+            $bySku = [];
+            foreach (ProductMaster::query()->get(['sku', 'Values']) as $product) {
+                $sku = strtoupper(trim((string) $product->sku));
+                if ($sku === '' || str_contains($sku, 'PARENT')) {
+                    continue;
+                }
+                $values = is_array($product->Values)
+                    ? $product->Values
+                    : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                $bySku[$sku] = $service->slabKeyFromValues(is_array($values) ? $values : []);
+            }
+
+            return [
+                'slabs' => $service->slabDefinitions(),
+                'by_sku' => $bySku,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'slabs' => $payload['slabs'] ?? [],
+            'by_sku' => $payload['by_sku'] ?? [],
+        ]);
+    }
+
     public function stdPrcVsDilRules(Request $request, string $channel): JsonResponse
     {
         $channel = $this->normalizeRulesChannel($channel);

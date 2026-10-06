@@ -2,14 +2,20 @@
 @php $channelStdPrcPart = $channelStdPrcPart ?? 'all'; @endphp
 
 @if($channelStdPrcPart === 'css' || $channelStdPrcPart === 'all')
-        #chStdPrcModal .modal-dialog { width: min(1480px, 96vw); max-width: 96vw; margin: 1.5vh auto; }
-        #chStdPrcModal .modal-content { border: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18); }
+        #chStdPrcModal .modal-dialog {
+            width: calc(100vw - 1.25rem);
+            max-width: calc(100vw - 1.25rem);
+            height: calc(100vh - 1.25rem);
+            max-height: calc(100vh - 1.25rem);
+            margin: 0.625rem auto;
+        }
+        #chStdPrcModal .modal-content { height: 100%; max-height: 100%; border: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18); }
         #chStdPrcModal .modal-header { background: #fff; border-bottom: 1px solid #e8eef5; padding: 14px 18px; }
         #chStdPrcModal .modal-title { font-weight: 700; color: #0f172a; }
         #chStdPrcModal .ch-sp-sub { color: #64748b; font-size: 12px; margin-top: 2px; }
         #chStdPrcModal .modal-body { background: #f4f7fb; padding: 14px 16px 16px; }
         #chStdPrcModal .modal-footer { background: #fff; border-top: 1px solid #e8eef5; }
-        #chStdPrcModal .ch-sp-cols { display: grid; grid-template-columns: repeat(5, minmax(230px, 1fr)); gap: 12px; align-items: stretch; min-width: 1180px; }
+        #chStdPrcModal .ch-sp-cols { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: stretch; width: 100%; min-width: 0; }
         #chStdPrcModal .ch-sp-col { min-width: 0; display: flex; flex-direction: column; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px; background: #fff; }
         #chStdPrcModal .ch-sp-pie-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: #0f172a; }
         #chStdPrcModal .ch-sp-pie-canvas { position: relative; width: 100%; height: 150px; }
@@ -26,7 +32,7 @@
         #chStdPrcModal .ch-sp-col .table { font-size: 12px; margin-bottom: 0; }
         #chStdPrcModal .ch-sp-col .table th, #chStdPrcModal .ch-sp-col .table td { padding: 5px 6px; vertical-align: middle; }
         #chStdPrcModal .ch-sp-col .table thead th { background: #f8fafc; color: #64748b; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
-        #chStdPrcModal .ch-sp-input { width: 58px; margin: 0 auto; display: inline-block; text-align: center; font-weight: 600; font-size: 12px; height: 28px; border-radius: 7px; }
+        #chStdPrcModal .ch-sp-input { width: 100%; max-width: 58px; margin: 0 auto; display: inline-block; text-align: center; font-weight: 600; font-size: 12px; height: 28px; border-radius: 7px; }
         #chStdPrcModal td.text-end .ch-sp-input { margin-left: auto; margin-right: 0; }
         #chStdPrcModal .ch-sp-cvr-thresh { display: inline-flex; align-items: center; gap: 4px; color: #64748b; font-weight: 700; }
         #chStdPrcModal .ch-sp-cvr-thresh .ch-sp-input { width: 52px; margin: 0; }

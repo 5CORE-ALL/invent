@@ -30,6 +30,7 @@
 
 @if($channelPromoPart === 'css' || $channelPromoPart === 'all')
         @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css'])
+        @include('partials.channel-ship-slabs', ['channelShipPart' => 'css'])
         /* Dil vs PRMT / CVR vs CPN — channel promo (ch-promo-*) */
         .ch-pef-promo-cell {
             font-size: inherit;
@@ -636,6 +637,7 @@
 @if($channelPromoPart === 'buttons' || $channelPromoPart === 'all')
                     @include('partials.sprice-lmp-cap-script')
                     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'buttons'])
+                    @include('partials.channel-ship-slabs', ['channelShipPart' => 'buttons'])
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     @unless(!empty($channelPromoUsesSprcDil) || !empty($channelPromoHideDilPrmt))
                     <div class="btn-group">
@@ -767,6 +769,7 @@
 
 @if($channelPromoPart === 'modals' || $channelPromoPart === 'all')
     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'modals'])
+    @include('partials.channel-ship-slabs', ['channelShipPart' => 'modals'])
 
     @unless($channelPromoHideCvrCpn)
     <div class="modal fade" id="chPromoCvrVsCpnModal" tabindex="-1" aria-labelledby="chPromoCvrVsCpnModalLabel" aria-hidden="true">
@@ -12054,4 +12057,5 @@
         @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'script', 'cvrUpDnChannel' => $channelPromoChannel])
         @endif
         @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'script'])
+        @include('partials.channel-ship-slabs', ['channelShipPart' => 'script'])
 @endif

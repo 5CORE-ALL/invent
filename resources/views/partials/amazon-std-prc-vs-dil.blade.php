@@ -19,11 +19,15 @@
         .amz-dil-discount-badge.is-zero,
         .amz-sum-discount-badge.is-zero { color: #adb5bd; font-weight: 600; }
         #amzStdPrcModal .modal-dialog {
-            width: min(1480px, 96vw);
-            max-width: 96vw;
-            margin: 1.5vh auto;
+            width: calc(100vw - 1.25rem);
+            max-width: calc(100vw - 1.25rem);
+            height: calc(100vh - 1.25rem);
+            max-height: calc(100vh - 1.25rem);
+            margin: 0.625rem auto;
         }
         #amzStdPrcModal .modal-content {
+            height: 100%;
+            max-height: 100%;
             border: 0;
             border-radius: 16px;
             overflow: hidden;
@@ -48,10 +52,11 @@
         }
         #amzStdPrcModal .amz-sp-cols {
             display: grid;
-            grid-template-columns: repeat(5, minmax(230px, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 12px;
             align-items: stretch;
-            min-width: 1180px;
+            width: 100%;
+            min-width: 0;
         }
         #amzStdPrcModal .amz-sp-col {
             min-width: 0;
