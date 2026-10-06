@@ -7,6 +7,20 @@ use PHPUnit\Framework\TestCase;
 
 class AmazonSaleBusinessMinTest extends TestCase
 {
+    public function test_equal_your_and_sale_clears_leftover_amazon_sale(): void
+    {
+        $patch = AmazonSpApiService::discountedPriceAttribute(19.99, 19.99);
+
+        $this->assertSame([], $patch[0]['schedule']);
+    }
+
+    public function test_sale_below_your_price_is_sent_as_discounted_price(): void
+    {
+        $patch = AmazonSpApiService::discountedPriceAttribute(21.99, 19.99);
+
+        $this->assertSame(19.99, $patch[0]['schedule'][0]['value_with_tax']);
+    }
+
     public function test_min_is_five_percent_below_sale_not_your_price(): void
     {
         $resolved = AmazonSpApiService::resolveYourAndSale(36.99, 34.03);

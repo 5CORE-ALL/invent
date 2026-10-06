@@ -628,16 +628,6 @@ class OverallAmazonController extends Controller
                     $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null; // Status: 'pushed', 'applied', 'error'
                     $pushedSale = AmazonPushedPricePullService::pushedSaleFromValue($raw);
                     $row['AMAZON_PUSHED_SALE'] = $pushedSale;
-                    // Buy Box / datasheet keep Your Price. After a push the listing
-                    // Sale is what Amazon.com shows — keep Price on that Sale so a
-                    // refresh does not bring the blue badge back.
-                    if ($pushedSale !== null && $pushedSale > 0) {
-                        $sheetOrSite = isset($row['price']) ? (float) $row['price'] : 0.0;
-                        $row['price'] = AmazonPushedPricePullService::tabulatorPriceAfterPush(
-                            $sheetOrSite > 0 ? $sheetOrSite : null,
-                            $pushedSale
-                        );
-                    }
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['variation_display'] = (isset($raw['variation']) && in_array($raw['variation'], ['red', 'green'], true)) ? $raw['variation'] : 'red';

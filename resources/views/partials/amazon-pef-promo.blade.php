@@ -2847,7 +2847,7 @@
                             + ' · Max $' + plan.max.toFixed(2)
                             + ' · Min $' + plan.min.toFixed(2)
                             + ' · Biz $' + plan.business.toFixed(2);
-                        if (status === 'pushed') {
+                        if (status === 'pushed' && (typeof amazonPushLooksSuccessful !== 'function' || amazonPushLooksSuccessful(d))) {
                             icon = '<i class="fa-solid fa-check-double"></i>';
                             color = '#28a745';
                             tip = 'Pushed — click to push again. Last effective $'

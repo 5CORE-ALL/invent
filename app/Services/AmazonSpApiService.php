@@ -348,6 +348,33 @@ class AmazonSpApiService
     }
 
     /**
+     * Amazon keeps an old Sale if discounted_price is omitted.
+     * Send the Sale when it is below Your Price; otherwise send an empty
+     * schedule so the leftover Sale is removed.
+     *
+     * @return list<array{schedule: list<array<string, mixed>>}>
+     */
+    public static function discountedPriceAttribute(float $yourPrice, float $salePrice): array
+    {
+        $your = round($yourPrice, 2);
+        $sale = round($salePrice, 2);
+        if ($sale >= 0.01 && (int) round($sale * 100) < (int) round($your * 100)) {
+            $startAt = now('UTC')->subDay()->startOfDay()->format('Y-m-d\TH:i:s\Z');
+            $endAt = now('UTC')->addYear()->startOfDay()->format('Y-m-d\TH:i:s\Z');
+
+            return [[
+                'schedule' => [[
+                    'value_with_tax' => $sale,
+                    'start_at' => $startAt,
+                    'end_at' => $endAt,
+                ]],
+            ]];
+        }
+
+        return [['schedule' => []]];
+    }
+
+    /**
      * Business Price = S PRC × 0.95.
      */
     public function businessPriceFromSalePrice(float $salePrice): float
@@ -762,22 +789,9 @@ class AmazonSpApiService
                     "maximum_seller_allowed_price" => $maxPriceSchedule,
                 ];
                 // High Std stays Your Price. S PRC is Sales Price only when strictly below it.
-                $sendDiscounted = (int) round($salePrice * 100) < (int) round($price * 100);
-                if ($sendDiscounted) {
-                    $startAt = now('UTC')->subDay()->startOfDay()->format('Y-m-d\TH:i:s\Z');
-                    $endAt = now('UTC')->addYear()->startOfDay()->format('Y-m-d\TH:i:s\Z');
-                    $offerValue['discounted_price'] = [
-                        [
-                            "schedule" => [
-                                [
-                                    "value_with_tax" => $salePrice,
-                                    "start_at" => $startAt,
-                                    "end_at" => $endAt,
-                                ]
-                            ]
-                        ]
-                    ];
-                }
+                // When there is no new sale, send an empty schedule so Amazon drops the
+                // leftover Sale (CS 04 2W: Sale $17.99 stayed under Min $18.99).
+                $offerValue['discounted_price'] = self::discountedPriceAttribute($price, $salePrice);
                 // Business Price → separate B2B audience offer (Listings API has no "business_price" field)
                 $b2bOfferValue = [
                     "marketplaceId" => "ATVPDKIKX0DER",
@@ -951,7 +965,7 @@ class AmazonSpApiService
                     $amazonSku,
                     $price,
                     $accessToken,
-                    $sendDiscounted ? $salePrice : null
+                    $salePrice
                 );
                 if ($confirmFailure !== null) {
                     $lastError = $confirmFailure;
@@ -1468,14 +1482,23 @@ class AmazonSpApiService
                 return null;
             }
             
-            // Compare prices (allow 0.02 difference for rounding)
+            // Customer price must be the S PRC we sent. A leftover Sale (CS 04 2W
+            // $17.99 under Min $18.99) used to pass because Your Price matched.
+            $customerHave = AmazonPushedPricePullService::customerPrice(
+                $currentPrice,
+                $currentSale
+            );
+            $customerWant = ($expectedSale !== null && (float) $expectedSale > 0)
+                ? (float) $expectedSale
+                : (float) $expectedPrice;
             $priceDiff = abs($currentPrice - $expectedPrice);
-            $verified = $priceDiff < 0.02;
-            $saleDiff = null;
-            if ($expectedSale !== null && (float) $expectedSale > 0
-                && (int) round((float) $expectedSale * 100) < (int) round((float) $expectedPrice * 100)) {
-                $saleDiff = $currentSale === null ? null : abs($currentSale - (float) $expectedSale);
-                $verified = $verified && $saleDiff !== null && $saleDiff < 0.02;
+            $saleDiff = ($customerHave !== null) ? abs($customerHave - $customerWant) : null;
+            $verified = $priceDiff < 0.02 && $saleDiff !== null && $saleDiff < 0.02;
+            $intendedSale = $expectedSale !== null && (float) $expectedSale > 0
+                && (int) round((float) $expectedSale * 100) < (int) round((float) $expectedPrice * 100);
+            if (! $intendedSale && $currentSale !== null && $currentSale > 0
+                && (int) round($currentSale * 100) !== (int) round($expectedPrice * 100)) {
+                $verified = false;
             }
             
             Log::info("Price verification result", [

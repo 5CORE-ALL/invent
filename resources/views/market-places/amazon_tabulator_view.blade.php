@@ -1597,17 +1597,17 @@
             if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) return false;
             const price = parseFloat(data.price) || 0;
             const sprice = amazonVisibleSprice(data);
-            if (!(sprice > 0)) return false;
-            const pushed = parseFloat(data.AMAZON_PUSHED_SALE || data.SPRICE_PUSHED_VALUE) || 0;
-            if (pushed > 0 && Math.round(sprice * 100) === Math.round(pushed * 100)) return false;
-            return price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
         function amazonListingPriceEqualsSprice(data, spriceOverride) {
             const price = parseFloat(data && data.price) || 0;
             const sprice = spriceOverride != null ? (parseFloat(spriceOverride) || 0) : amazonRowSprice(data);
-            if (price > 0 && sprice > 0 && Math.round(price * 100) === Math.round(sprice * 100)) return true;
-            const pushed = parseFloat(data && (data.AMAZON_PUSHED_SALE || data.SPRICE_PUSHED_VALUE)) || 0;
-            return pushed > 0 && sprice > 0 && Math.round(pushed * 100) === Math.round(sprice * 100);
+            return price > 0 && sprice > 0 && Math.round(price * 100) === Math.round(sprice * 100);
+        }
+        function amazonPushLooksSuccessful(data) {
+            const st = String((data && (data.PUSH_PRC_STATUS || data.SPRICE_STATUS)) || '').toLowerCase();
+            if (st !== 'pushed' && st !== 'applied') return false;
+            return !amazonHasBlueTriangle(data);
         }
         function syncAmazonBlueTriangleBadgeState() {
             $('#amazon-blue-triangle-badge').css({
@@ -1669,7 +1669,7 @@
             let amazonIcon = '<i class="fas fa-check"></i>';
             let amazonColor = '#28a745';
             let amazonTitle = 'Push to Amz';
-            if (amazonStatus === 'pushed') {
+            if (amazonPushLooksSuccessful(row)) {
                 amazonIcon = '<i class="fa-solid fa-check-double"></i>';
                 amazonTitle = 'Price pushed to Amz (Double-click to mark as Applied)';
             } else if (amazonStatus === 'applied') {
