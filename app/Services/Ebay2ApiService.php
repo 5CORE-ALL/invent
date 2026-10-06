@@ -11,6 +11,7 @@ use App\Services\Support\Concerns\ResolvesEbayListingItemId;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
+use App\Support\Marketplace\EbayListingEnded;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
 use Illuminate\Support\Facades\Cache;
@@ -2933,19 +2934,18 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 
     public function listingLooksEnded(?string $message): bool
     {
+        if (EbayListingEnded::looksEndedError($message)) {
+            return true;
+        }
         $blob = strtolower((string) $message);
         if ($blob === '') {
             return false;
         }
 
         return str_contains($blob, 'this item cannot be accessed')
-            || str_contains($blob, 'listing has been ended')
-            || str_contains($blob, 'auction has been closed')
             || str_contains($blob, 'errorcode>17')
             || str_contains($blob, '"17"')
-            || str_contains($blob, '21916250')
-            || str_contains($blob, 'error 291')
-            || str_contains($blob, '#291');
+            || str_contains($blob, '21916250');
     }
 
     protected function tradingHttp(int $timeout = 60)

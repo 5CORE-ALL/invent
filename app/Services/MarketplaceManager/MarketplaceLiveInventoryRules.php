@@ -240,11 +240,19 @@ final class MarketplaceLiveInventoryRules
      */
     public static function applyListingsShopifyQtyForPush(array $shopifyQty, array $skus, bool $exact = false): array
     {
-        return self::mergeLiveAndListingsQty(
+        $merged = self::mergeLiveAndListingsQty(
             $shopifyQty,
             MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus),
             $exact
         );
+        if (! $exact) {
+            return $merged;
+        }
+
+        // Mismatch push must write the same live Shopify qty the listings page shows.
+        // shopify_skus.inv alone was pushing a stale number onto a marketplace that
+        // already matched Shopify.
+        return MarketplaceListingStockResolver::overlayDisplayedShopifyQty($merged, $skus);
     }
 
     /**

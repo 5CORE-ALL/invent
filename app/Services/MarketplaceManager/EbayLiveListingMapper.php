@@ -102,10 +102,13 @@ final class EbayLiveListingMapper
                 continue;
             }
             if ($sku !== '') {
-                $out[$sku] = $row;
-                $out[$skuUpper] = $row;
-                if ($skuNorm !== '') {
-                    $out[$skuNorm] = $row;
+                $replace = ! isset($out[$skuUpper]) || self::activeRowReplaces($out[$skuUpper], $row);
+                if ($replace) {
+                    $out[$sku] = $row;
+                    $out[$skuUpper] = $row;
+                    if ($skuNorm !== '') {
+                        $out[$skuNorm] = $row;
+                    }
                 }
             }
             if ($pid !== '' && ! isset($out[$pid])) {
@@ -114,6 +117,20 @@ final class EbayLiveListingMapper
         }
 
         return $out;
+    }
+
+    /**
+     * An ended row must not replace the active listing the qty columns and the push use.
+     *
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $incoming
+     */
+    public static function activeRowReplaces(array $current, array $incoming): bool
+    {
+        $currentBucket = MarketplacePortalStatusTabs::bucket((string) ($current['state'] ?? ''));
+        $incomingBucket = MarketplacePortalStatusTabs::bucket((string) ($incoming['state'] ?? ''));
+
+        return ! ($currentBucket === 'active' && $incomingBucket === 'inactive');
     }
 
     /**

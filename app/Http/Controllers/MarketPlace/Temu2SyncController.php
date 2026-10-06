@@ -18,6 +18,7 @@ use App\Services\MarketplaceManager\Temu2OrderPushService;
 use App\Services\MarketplaceManager\Temu2OrderSyncService;
 use App\Services\MarketplaceManager\Temu2TrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\MarketplaceShopifyImportQueue;
@@ -322,23 +323,19 @@ class Temu2SyncController extends Controller
             $counts['linked_zero_inv'] = $counts['zero'];
         }
 
+        $portal = $this->temuPortalStatusSkuLists($liveService);
         $matchedActive = $matchedQty;
-        $matchedInactive = [];
-        $mismatchActive = $mismatchQty;
-        $mismatchInactive = [];
+        $matchedInactive = $portal['inactive'];
+        $mismatchActive = MarketplacePortalStatusTabs::withoutSkus($mismatchQty, $portal['inactive']);
+        $mismatchInactive = $portal['active'];
+        $linkedMismatchQty = MarketplacePortalStatusTabs::withoutSkus($linkedMismatchQty, $portal['inactive']);
         $counts['matched'] = count($matchedQty);
-        $counts['mismatch'] = count($mismatchQty);
-        $counts['matched_inactive'] = 0;
-        $counts['mismatch_inactive'] = 0;
+        $counts['mismatch'] = count($mismatchActive);
+        $counts['matched_inactive'] = count($matchedInactive);
+        $counts['mismatch_inactive'] = count($mismatchInactive);
         $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
         $counts['linked_with_inv'] = $counts['matched'];
         $counts['linked_mismatch'] = count($linkedMismatchQty);
-
-        $portal = $this->temuPortalStatusSkuLists($liveService);
-        $matchedInactive = $portal['inactive'];
-        $mismatchInactive = $portal['active'];
-        $counts['matched_inactive'] = count($matchedInactive);
-        $counts['mismatch_inactive'] = count($mismatchInactive);
 
         return [
             'linkedSkus' => $linkedSkus,

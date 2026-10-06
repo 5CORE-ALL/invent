@@ -699,6 +699,29 @@ class Ebay2InventorySyncService
     }
 
     /**
+     * eBay 291 means this item_id is ended. Remember that so it leaves Inv SKU Mismatch
+     * and the next push can use a live relist of the same SKU when one exists.
+     */
+    protected function markItemEnded(string $itemId): void
+    {
+        $itemId = trim($itemId);
+        if ($itemId === '' || ! Schema::hasTable('ebay_2_metrics') || ! Schema::hasColumn('ebay_2_metrics', 'listing_status')) {
+            return;
+        }
+
+        $update = ['listing_status' => 'ENDED'];
+        if (Schema::hasColumn('ebay_2_metrics', 'inactive_reason')) {
+            $update['inactive_reason'] = 'Unsold / ended';
+        }
+        Ebay2Metric::query()->where('item_id', $itemId)->update($update);
+        try {
+            app(Ebay2LiveListingsService::class)->clearCache();
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
      * @param  array{product_id: string, sku_code: string, inventory: int, price?: float|null}  $row
      * @return array{ok: bool, rate_limited: bool, skipped?: bool, row?: array, message?: string}
      */
@@ -755,6 +778,16 @@ class Ebay2InventorySyncService
                 }
             }
             if (! $preferFixedPrice && empty($result['success']) && (! empty($result['ended']) || $this->ebay2Api->listingLooksEnded($msg))) {
+                if (! $allowRelist) {
+                    $this->markItemEnded($itemId);
+
+                    return [
+                        'ok' => false,
+                        'skipped' => true,
+                        'rate_limited' => false,
+                        'message' => 'Listing ended or inactive — mismatch sync updates live qty only (no Relist).',
+                    ];
+                }
                 if ($allowRelist) {
                     $relist = $this->ebay2Api->relistFixedPriceItem($itemId, $sku, $qty);
                     $relistMsg = (string) ($relist['message'] ?? '');
@@ -778,9 +811,11 @@ class Ebay2InventorySyncService
                             'sku' => $sku,
                             'result' => $relist,
                         ]);
+                        $this->markItemEnded($itemId);
 
                         return [
                             'ok' => false,
+                            'skipped' => true,
                             'rate_limited' => false,
                             'message' => (string) ($relist['message'] ?? ($result['message'] ?? 'Relist failed')),
                         ];
@@ -851,6 +886,8 @@ class Ebay2InventorySyncService
                 return ['ok' => false, 'rate_limited' => true, 'message' => $lastMessage];
             }
             if (! $allowRelist && $this->ebay2Api->listingLooksEnded($lastMessage)) {
+                $this->markItemEnded($itemId);
+
                 return [
                     'ok' => false,
                     'skipped' => true,

@@ -866,6 +866,7 @@ final class MarketplaceListingStockResolver
         }
 
         $map = [];
+        $bucketByKey = [];
         foreach ($rows as $row) {
             if (! is_array($row)) {
                 continue;
@@ -881,15 +882,64 @@ final class MarketplaceListingStockResolver
             if ($qty === null) {
                 continue;
             }
+            $bucket = MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? ''));
             $upper = strtoupper($sku);
-            $map[$upper] = $qty;
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm !== '' && $norm !== $upper && ! array_key_exists($norm, $map)) {
-                $map[$norm] = $qty;
+            foreach (array_unique([$upper, $norm]) as $key) {
+                if ($key === '') {
+                    continue;
+                }
+                $prev = $bucketByKey[$key] ?? null;
+                if ($prev === 'active' && $bucket === 'inactive') {
+                    continue;
+                }
+                $map[$key] = $qty;
+                $bucketByKey[$key] = $bucket;
             }
         }
 
         return $map;
+    }
+
+    /**
+     * Same Shopify qty the listings table shows (live Admin), written back to shopify_skus.
+     * Keeps the stored column when the live read fails.
+     *
+     * @param  array<string, int>  $shopifyQty
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    public static function overlayDisplayedShopifyQty(array $shopifyQty, array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $skus
+        ), static fn (string $sku) => $sku !== '')));
+        if ($skus === []) {
+            return $shopifyQty;
+        }
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($skus), '?'));
+            $rows = ShopifySku::query()
+                ->whereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', array_map('strtoupper', $skus))
+                ->get()
+                ->all();
+            $live = self::liveShopifyQtyMapForRows($rows, true);
+        } catch (\Throwable $e) {
+            return $shopifyQty;
+        }
+
+        foreach ($live as $key => $qty) {
+            $key = (string) $key;
+            $shopifyQty[$key] = (int) $qty;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($key);
+            if ($norm !== '' && $norm !== $key) {
+                $shopifyQty[$norm] = (int) $qty;
+            }
+        }
+
+        return $shopifyQty;
     }
 
     /**

@@ -500,6 +500,7 @@ class AlibabaSyncController extends Controller
             $liveRows
         );
         $counts = $overlay['counts'];
+        $linkedMismatchQty = MarketplacePortalStatusTabs::withoutInactiveSkus($linkedMismatchQty, $liveRows ?? null);
         $counts['linked_mismatch'] = count($linkedMismatchQty);
         $matchedActive = $overlay['matchedActive'];
         $matchedInactive = $overlay['matchedInactive'];
