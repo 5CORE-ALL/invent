@@ -4,6 +4,8 @@ namespace Tests\Unit;
 
 use App\Jobs\UploadWayfairPriceFile;
 use App\Models\WayfairPriceUpload;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Services\Wayfair\Upload\BrowserUploadAdapter;
 use App\Services\Wayfair\Upload\MockUploadAdapter;
 use App\Services\Wayfair\WayfairPriceFileGenerator;
@@ -53,6 +55,7 @@ class WayfairPriceUploadTest extends TestCase
         config()->set('wayfair_upload.max_retries', 3);
         config()->set('wayfair_upload.job_timeout', 30);
         config()->set('wayfair_upload.stuck_after', 60);
+        config()->set('wayfair_upload.template', $this->miniTemplate());
     }
 
     protected function tearDown(): void
@@ -93,12 +96,13 @@ class WayfairPriceUploadTest extends TestCase
         $written = (new WayfairPriceFileGenerator())->write([
             'WF-1' => 10.5,
             'WF-2' => 3,
-        ], 'wayfair_price_test.csv');
+        ], 'wayfair_price_test.xlsx');
 
         $parsed = (new WayfairPriceFileGenerator())->read($written['absolute_path']);
-        $this->assertSame(['Supplier Part Number', 'New Base Cost'], $parsed['headers']);
+        $this->assertContains('SupplierPartNumber', $parsed['headers']);
+        $this->assertContains('BaseCost', $parsed['headers']);
         $this->assertSame(['WF-1' => '10.50', 'WF-2' => '3.00'], $parsed['rows']);
-        $this->assertSame(hash_file('sha256', $written['absolute_path']), $written['file_sha256']);
+        $this->assertSame('xlsx', $written['file_type']);
         @unlink($written['absolute_path']);
     }
 
@@ -106,7 +110,7 @@ class WayfairPriceUploadTest extends TestCase
     {
         $validator = new WayfairPriceFileValidator();
         $this->assertNotEmpty($validator->errors([
-            'headers' => WayfairPriceFileGenerator::HEADERS,
+            'headers' => WayfairPriceFileGenerator::REQUIRED_KEYS,
             'rows' => [],
         ]));
         $this->assertNotEmpty($validator->errors([
@@ -114,12 +118,12 @@ class WayfairPriceUploadTest extends TestCase
             'rows' => ['A' => '1.00'],
         ]));
         $negative = $validator->errors([
-            'headers' => WayfairPriceFileGenerator::HEADERS,
+            'headers' => WayfairPriceFileGenerator::REQUIRED_KEYS,
             'rows' => ['A' => '-1.00'],
         ]);
         $this->assertTrue(collect($negative)->contains(fn ($e) => str_contains($e, 'Negative')));
         $duplicate = $validator->errors([
-            'headers' => WayfairPriceFileGenerator::HEADERS,
+            'headers' => WayfairPriceFileGenerator::REQUIRED_KEYS,
             'rows' => ['A' => '1.00', 'a' => '2.00'],
         ]);
         $this->assertTrue(collect($duplicate)->contains(fn ($e) => str_contains($e, 'Duplicate')));
@@ -295,7 +299,7 @@ class WayfairPriceUploadTest extends TestCase
 
     private function queuedUpload(array $prices): WayfairPriceUpload
     {
-        $written = (new WayfairPriceFileGenerator())->write($prices, 'wayfair_price_'.md5(json_encode($prices).microtime(true)).'.csv');
+        $written = (new WayfairPriceFileGenerator())->write($prices, 'wayfair_price_'.md5(json_encode($prices).microtime(true)).'.xlsx');
 
         return WayfairPriceUpload::query()->create([
             'filename' => $written['filename'],
@@ -309,5 +313,42 @@ class WayfairPriceUploadTest extends TestCase
             'generated_at' => now(),
             'created_by' => 'test',
         ]);
+    }
+
+    private function miniTemplate(): string
+    {
+        $dir = storage_path('app/'.$this->dir);
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        $path = $dir.'/template.xlsx';
+        $sheet = (new Spreadsheet())->getActiveSheet();
+        $sheet->setTitle('Pricing');
+        foreach ([
+            'A' => 'SupplierPartNumber',
+            'B' => 'Status',
+            'C' => 'skus',
+            'D' => 'CurrentBaseCost',
+            'E' => 'BaseCost',
+        ] as $col => $key) {
+            $sheet->setCellValue($col.'2', $key);
+            $sheet->setCellValue($col.'3', $key);
+        }
+        $rows = [
+            5 => ['WF-1', 'Live', 'WF-1', 1],
+            6 => ['WF-2', 'Live', 'WF-2', 1],
+            7 => ['A', 'Live', 'A', 1],
+            8 => ['B', 'Live', 'B', 1],
+            9 => ['C', 'Live', 'C', 1],
+            10 => ['OLD', 'Discontinued', 'OLD', 9],
+        ];
+        foreach ($rows as $row => $values) {
+            foreach (['A', 'B', 'C', 'D'] as $i => $col) {
+                $sheet->setCellValue($col.$row, $values[$i]);
+            }
+        }
+        (new Xlsx($sheet->getParent()))->save($path);
+
+        return $path;
     }
 }

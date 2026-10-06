@@ -276,7 +276,7 @@ class MasterDilGroiSync
     }
 
     /**
-     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},is_default:bool}
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,is_default:bool}
      */
     public static function loadChannel(string $channel): array
     {
@@ -290,6 +290,7 @@ class MasterDilGroiSync
             return [
                 'rules' => $rules,
                 'cvr_adj' => $unpacked['cvr_adj'],
+                'clearance_nroi' => $unpacked['clearance_nroi'],
                 'is_default' => true,
             ];
         }
@@ -300,6 +301,7 @@ class MasterDilGroiSync
         return [
             'rules' => $rules,
             'cvr_adj' => $unpacked['cvr_adj'],
+            'clearance_nroi' => $unpacked['clearance_nroi'],
             'is_default' => false,
         ];
     }
@@ -317,10 +319,14 @@ class MasterDilGroiSync
             return;
         }
         $existing = self::loadChannel($channel);
+        $visibility = ['rules' => $rules, 'cvr_adj' => $existing['cvr_adj']];
+        if (isset($existing['clearance_nroi']) && is_numeric($existing['clearance_nroi'])) {
+            $visibility['clearance_nroi'] = $existing['clearance_nroi'];
+        }
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => self::storeKey($channel)],
             [
-                'visibility' => ['rules' => $rules, 'cvr_adj' => $existing['cvr_adj']],
+                'visibility' => $visibility,
                 'column_order' => array_column($rules, 'key'),
             ]
         );

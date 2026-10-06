@@ -12,8 +12,11 @@ class WayfairPriceFileValidator
     {
         $errors = [];
         $headers = $parsed['headers'] ?? [];
-        if ($headers !== WayfairPriceFileGenerator::HEADERS) {
-            $errors[] = 'File does not match the Wayfair price template (Supplier Part Number, New Base Cost).';
+        foreach (WayfairPriceFileGenerator::REQUIRED_KEYS as $key) {
+            if (! in_array($key, $headers, true)) {
+                $errors[] = 'File does not match the Wayfair cost-change template (Pricing sheet columns SupplierPartNumber and BaseCost / New Base Cost).';
+                break;
+            }
         }
 
         $rows = $parsed['rows'] ?? [];

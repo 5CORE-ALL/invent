@@ -2,6 +2,8 @@
   Sprc Dil — Dil → Target NROI slabs on every Dil tabulator (Ads%=0 → same $ as GROI).
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   A slab edit on this page writes only this channel's store.
+  Clearance is a last row: count of INV > 0 SKUs marked Clearance Yes on Inv Days, plus that page's Target NROI%.
+  Each channel stores clearance_nroi on its own {channel}_dil_vs_groi row.
   Master page /master-dil-rules is the only save that writes every site.
   Dil = OV L30 ÷ Shopify INV, per SKU, same as the Dil column.
   Every INV > 0 SKU uses the Dil-matching slab, including when channel L30 = 0.
@@ -166,6 +168,12 @@
             gap: 5px;
             cursor: pointer;
         }
+        #ebay-dil-groi-table tr[data-clearance] .ebay-dg-clearance-count,
+        #ebay-dil-groi-table tr[data-clearance] .ebay-dg-clearance-nroi {
+            color: #dc3545;
+            font-weight: 700;
+        }
+        #ebay-dil-groi-table tr[data-clearance] .ebay-dg-clearance-nroi { margin-left: 0.35rem; }
         #ebayDilGroiModal .ebay-dg-rules {
             margin: 0 0 10px;
             padding-left: 1.15rem;
@@ -456,6 +464,10 @@
                             slabs <strong>autosave</strong>. S PRC updates from the new rule. <strong>Save and Apply</strong> is optional (push / full wipe-then-write).
                         </li>
                         <li>
+                            <strong>Clearance</strong> count: INV &gt; 0 and Clearance is <strong>Yes</strong> on Inv Days.
+                            Target {{ $ebaySprcDilTargetLabel }}% is stored with this page’s Sprc Dil rules.
+                        </li>
+                        <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
                             @if(!empty($ebaySprcDilIsMacys))
                             Macys skips parent rows. Dil = OV L30 ÷ Shopify INV, including SKUs that are not listed.
@@ -713,6 +725,10 @@
             { key: '20-25', label: '20–25%', min: 20, max: 25, groi: 70 },
         ];
         let ebayDilGroiRules = EBAY_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        const ebayClearanceYesUrl = @json(route('inv.days.clearance.yes'));
+        let ebayClearanceYesSet = null;
+        let ebayClearanceYesLoading = null;
+        let ebayClearanceNroi = 0;
         let ebayDgDilPieChart = null;
         let ebayDgCvrPieChart = null;
         let ebayDgHistChart = null;
@@ -1137,7 +1153,7 @@
         }
         function ebayDilGroiCurrentList() {
             const fromModal = [];
-            $('#ebay-dil-groi-tbody tr').each(function() {
+            $('#ebay-dil-groi-tbody tr:not([data-clearance])').each(function() {
                 const rule = ebayNormalizeDilGroiRule({
                     min: parseFloat($(this).find('.ebay-dg-min').val()),
                     max: parseFloat($(this).find('.ebay-dg-max').val()),
@@ -1789,6 +1805,75 @@
                 else ebayDgCvrPieChart = chart;
             });
         }
+        function ebayClearanceSkuKey(sku) {
+            return String(sku || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+        }
+        function ebayEnsureClearanceYesSet() {
+            if (ebayClearanceYesSet) return Promise.resolve(ebayClearanceYesSet);
+            if (ebayClearanceYesLoading) return ebayClearanceYesLoading;
+            ebayClearanceYesLoading = fetch(ebayClearanceYesUrl, { headers: { 'Accept': 'application/json' } })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    const set = {};
+                    (data.skus || []).forEach(function(sku) { set[ebayClearanceSkuKey(sku)] = true; });
+                    ebayClearanceYesSet = set;
+                    return set;
+                })
+                .catch(function() {
+                    ebayClearanceYesSet = {};
+                    return ebayClearanceYesSet;
+                });
+            return ebayClearanceYesLoading;
+        }
+        function ebayClearanceYesCount() {
+            const set = ebayClearanceYesSet || {};
+            let n = 0;
+            ebayDgEachInvChild(function(d) {
+                const sku = (typeof chPromoSku === 'function')
+                    ? chPromoSku(d)
+                    : (d && (d['(Child) sku'] || d.sku));
+                if (set[ebayClearanceSkuKey(sku)]) n++;
+            });
+            return n;
+        }
+        function ebayClearanceNroiNow() {
+            const raw = parseFloat($('#ebay-dil-groi-tbody .ebay-dg-clearance-groi').val());
+            if (isFinite(raw) && raw >= 0) return ebayDgRound2(raw);
+            return isFinite(ebayClearanceNroi) ? ebayClearanceNroi : 0;
+        }
+        function ebayPaintClearanceNroiText() {
+            ebayClearanceNroi = ebayClearanceNroiNow();
+            const el = document.querySelector('#ebay-dil-groi-tbody .ebay-dg-clearance-nroi');
+            if (el) el.textContent = ebayDgFmtNum(ebayClearanceNroi) + '%';
+        }
+        function ebayPaintClearanceSlabCount() {
+            const el = document.querySelector('#ebay-dil-groi-tbody .ebay-dg-clearance-count');
+            if (!el) return;
+            ebayPaintClearanceNroiText();
+            if (!ebayClearanceYesSet) {
+                el.textContent = '…';
+                ebayEnsureClearanceYesSet().then(function() { ebayPaintClearanceSlabCount(); });
+                return;
+            }
+            el.textContent = String(ebayClearanceYesCount());
+        }
+        function ebayAppendClearanceSlabRow($tb) {
+            const nroi = isFinite(ebayClearanceNroi) ? ebayClearanceNroi : 0;
+            $tb.append(
+                '<tr data-clearance="1">'
+                + '<td class="text-center fw-semibold">clearance</td>'
+                + '<td class="text-center fw-semibold">clearance</td>'
+                + '<td class="ebay-dg-count" title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target ' + EBAY_DIL_TARGET_LABEL + '% in red. Stored on this page only.">'
+                + '<span class="ebay-dg-clearance-count">0</span>'
+                + '<span class="ebay-dg-clearance-nroi">0%</span>'
+                + '</td>'
+                + '<td class="text-end">'
+                + '<input type="number" min="0" step="0.1" class="form-control form-control-sm ebay-dg-clearance-groi" value="' + nroi + '" title="Target ' + EBAY_DIL_TARGET_LABEL + '% for clearance">'
+                + '</td><td></td>'
+                + '</tr>'
+            );
+            ebayPaintClearanceSlabCount();
+        }
         function renderEbayDilGroiPies() {
             try {
                 const rules = ebayDilGroiCurrentList();
@@ -1807,7 +1892,7 @@
                 ebayDgDrawPie('ebay-dg-dil-pie', 'dil', dilSlices, dilCounts);
 
                 if (EBAY_DIL_GROI_HIDE_CVR_PIE) {
-                    $('#ebay-dil-groi-tbody tr').each(function(i) {
+                    $('#ebay-dil-groi-tbody tr:not([data-clearance])').each(function(i) {
                         const r = rules[i];
                         const $cell = $(this).find('.ebay-dg-count');
                         $cell.find('.ebay-dg-count-n').text(r ? (dilCounts[r.key] || 0) : 0);
@@ -1817,6 +1902,7 @@
                             $cell.append(' ' + ebayDgHistDotHtml('dil', r.key, ebayDgSlabColor(i), r.label));
                         }
                     });
+                    ebayPaintClearanceSlabCount();
                     return;
                 }
 
@@ -1829,7 +1915,7 @@
                 ebayDgDrawPie('ebay-dg-cvr-pie', 'cvr', cvrBands, cvrCounts);
                 ebayPaintCvrGroiAdjCounts();
 
-                $('#ebay-dil-groi-tbody tr').each(function(i) {
+                $('#ebay-dil-groi-tbody tr:not([data-clearance])').each(function(i) {
                     const r = rules[i];
                     const $cell = $(this).find('.ebay-dg-count');
                     $cell.find('.ebay-dg-count-n').text(r ? (dilCounts[r.key] || 0) : 0);
@@ -1839,6 +1925,7 @@
                         $cell.append(' ' + ebayDgHistDotHtml('dil', r.key, ebayDgSlabColor(i), r.label));
                     }
                 });
+                ebayPaintClearanceSlabCount();
             } catch (e) {
                 console.warn('Sprc Dil pies', e);
             }
@@ -1856,11 +1943,12 @@
             }
             const rules = ebayDilGroiCurrentList();
             const counts = ebayDilGroiCollectCounts(rules);
-            $('#ebay-dil-groi-tbody tr').each(function(i) {
+            $('#ebay-dil-groi-tbody tr:not([data-clearance])').each(function(i) {
                 const r = rules[i];
                 $(this).find('.ebay-dg-count-n').text(r ? (counts[r.key] || 0) : 0);
             });
             ebayPaintCvrGroiAdjCounts();
+            ebayPaintClearanceSlabCount();
         }
         function renderEbayDilGroiModalTable() {
             const $tb = $('#ebay-dil-groi-tbody');
@@ -1891,6 +1979,7 @@
                     + '</td></tr>'
                 );
             });
+            ebayAppendClearanceSlabRow($tb);
             if ($('#ebayDilGroiModal').hasClass('show')) {
                 renderEbayDilGroiPies();
             } else {
@@ -1899,7 +1988,7 @@
         }
         function readEbayDilGroiRulesFromModal() {
             const rules = [];
-            $('#ebay-dil-groi-tbody tr').each(function() {
+            $('#ebay-dil-groi-tbody tr:not([data-clearance])').each(function() {
                 const rule = ebayNormalizeDilGroiRule({
                     min: parseFloat($(this).find('.ebay-dg-min').val()),
                     max: parseFloat($(this).find('.ebay-dg-max').val()),
@@ -1915,7 +2004,7 @@
             });
         }
         function cascadeEbayDilGroiFromFirst() {
-            const $rows = $('#ebay-dil-groi-tbody tr');
+            const $rows = $('#ebay-dil-groi-tbody tr:not([data-clearance])');
             if (!$rows.length) return;
             const firstVal = parseFloat($rows.eq(0).find('.ebay-dg-groi').val());
             if (!isFinite(firstVal)) return;
@@ -2642,6 +2731,9 @@
                     ebayDilGroiRules = ebayEnsureZeroToZeroSlab(EBAY_DIL_GROI_DEFAULTS);
                 }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
+                if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
+                    ebayClearanceNroi = ebayDgRound2(Number(res.clearance_nroi));
+                }
                 renderEbayDilGroiModalTable();
                 window._ebayDilRulesLoaded = true;
                 redrawEbaySprcDilColumn();
@@ -2680,10 +2772,13 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, _token: ebayDgCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, clearance_nroi: ebayClearanceNroiNow(), _token: ebayDgCsrf() }),
             });
             return ebayDgAutosaveXhr.then(function(res) {
                 ebayDgAutosaveXhr = null;
+                if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
+                    ebayClearanceNroi = ebayDgRound2(Number(res.clearance_nroi));
+                }
                 if (res && Array.isArray(res.rules)) {
                     const saved = ebayNormalizeDilGroiList(res.rules);
                     if (saved.length) ebayDilGroiRules = saved;
@@ -2780,6 +2875,11 @@
                     $btn.prop('disabled', false).html(html);
                 }
             });
+            $(document).off('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dil-groi-tbody .ebay-dg-clearance-groi')
+                .on('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dil-groi-tbody .ebay-dg-clearance-groi', function() {
+                    ebayPaintClearanceNroiText();
+                    ebayScheduleDilGroiAutosave();
+                });
             $(document).off('input.ebayDilGroi change.ebayDilGroi', '#ebay-dil-groi-tbody .ebay-dil-groi-input')
                 .on('input.ebayDilGroi change.ebayDilGroi', '#ebay-dil-groi-tbody .ebay-dil-groi-input', function() {
                     const first = $('#ebay-dil-groi-tbody .ebay-dg-groi').get(0);

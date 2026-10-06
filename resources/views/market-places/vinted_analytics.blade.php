@@ -1031,6 +1031,26 @@
                     }
                 },
                 {
+                    title: "OP",
+                    field: "op_sprice",
+                    hozAlign: "center",
+                    width: 50,
+                    headerSort: true,
+                    sorter: "number",
+                    headerTooltip: "Offer Sprice calculator — separate from S PRC. Click to view Offer Sprice and SGPFT / SGROI / SPFT / SNROI. Ship is subtracted.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return '';
+                        return '<i class="fas fa-question-circle vn-op-btn" title="Offer Sprice"'
+                            + ' style="color:#0d6efd;font-size:15px;cursor:pointer;line-height:1;"></i>';
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return;
+                        openVnOpSpriceModal(cell.getRow());
+                    }
+                },
+                {
                     title: "SGPFT",
                     field: "sgpft",
                     sorter: "number",

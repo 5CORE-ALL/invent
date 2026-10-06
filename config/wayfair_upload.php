@@ -17,9 +17,13 @@ return [
 
     'portal_url' => env('WAYFAIR_PORTAL_URL', 'https://partners.wayfair.com'),
 
-    // Required for browser and api modes. Leave empty until Wayfair gives the real upload URL.
-    // This project does not assume an undocumented pricing endpoint.
+    // Partner Home → Pricing Home → New Cost Change → Select Products.
+    // The projectId changes every time a new cost-change project is started.
     'upload_url' => env('WAYFAIR_UPLOAD_URL', ''),
+
+    // Exported "Export Product Spreadsheet". Import Product Spreadsheet expects this workbook.
+    // Only the New Base Cost column (BaseCost) is written. Pre-filled columns stay as exported.
+    'template' => env('WAYFAIR_COST_CHANGE_TEMPLATE', resource_path('wayfair/cost-change-template.xlsx')),
 
     // Optional page used to read processing status after the file is accepted.
     'status_url' => env('WAYFAIR_STATUS_URL', ''),
@@ -38,11 +42,8 @@ return [
     'schedule_time' => env('WAYFAIR_PRICE_UPLOAD_TIME', '05:00'),
 
     /*
-    | The existing pricing page download is a Tabulator analytics CSV.
-    | Wayfair's price sheet, already parsed by WayfairController, is
-    | Supplier Part Number + New Base Cost. The outbound file uses that
-    | template and the page's already-calculated S PRC (sprice).
-    | Set WAYFAIR_UPLOAD_PRICE_FIELD=price only to send the imported base cost.
+    | sprice is the calculated S PRC already shown on /wayfair-pricing.
+    | It is written into New Base Cost on the Partner Home cost-change workbook.
     */
     'price_field' => env('WAYFAIR_UPLOAD_PRICE_FIELD', 'sprice'),
 
@@ -75,10 +76,11 @@ return [
         'password' => env('WAYFAIR_LOGIN_PASSWORD_SELECTOR', 'input[type="password"]'),
         'submit_login' => env('WAYFAIR_LOGIN_SUBMIT_SELECTOR', 'button[type="submit"]'),
         'file' => env('WAYFAIR_FILE_INPUT_SELECTOR', 'input[type="file"]'),
+        'import_button' => env('WAYFAIR_IMPORT_BUTTON_TEXT', 'Import Product Spreadsheet'),
         'submit_upload' => env('WAYFAIR_UPLOAD_SUBMIT_SELECTOR', 'button[type="submit"]'),
     ],
 
-    'confirmation_text' => env('WAYFAIR_UPLOAD_CONFIRMATION_TEXT', 'success,submitted,upload complete,file received'),
+    'confirmation_text' => env('WAYFAIR_UPLOAD_CONFIRMATION_TEXT', 'success,submitted,upload complete,file received,imported'),
 
     'sftp' => [
         'host' => env('WAYFAIR_SFTP_HOST', ''),

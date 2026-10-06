@@ -5,10 +5,14 @@ namespace App\Services\Wayfair;
 use App\Http\Controllers\MarketPlace\WayfairController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class WayfairPriceFileGenerator
 {
-    public const HEADERS = ['Supplier Part Number', 'New Base Cost'];
+    /** Row 2 machine headers on the Partner Home Pricing sheet. */
+    public const REQUIRED_KEYS = ['SupplierPartNumber', 'BaseCost'];
 
     /**
      * Rows from the existing Wayfair pricing page. Does not recalculate prices.
@@ -64,33 +68,113 @@ class WayfairPriceFileGenerator
     }
 
     /**
-     * @param  array<string, float|int|string>  $prices
+     * Copy the Partner Home export and fill New Base Cost only.
+     * Gray pre-filled columns are left unchanged.
+     *
+     * @param  array<string, float|int|string>  $prices  calculated S PRC keyed by our SKU or supplier part number
      */
     public function write(array $prices, ?string $filename = null): array
     {
-        $filename = $filename ?: 'wayfair_price_'.now()->format('Y-m-d_H-i-s').'.csv';
+        $template = (string) config('wayfair_upload.template');
+        if ($template === '' || ! is_file($template)) {
+            throw new \RuntimeException('Wayfair cost-change template is missing. Export Product Spreadsheet from Partner Home and set WAYFAIR_COST_CHANGE_TEMPLATE.');
+        }
+
+        $filename = $filename ?: 'wayfair_price_'.now()->format('Y-m-d_H-i-s').'.xlsx';
+        if (! str_ends_with(strtolower($filename), '.xlsx')) {
+            $filename .= '.xlsx';
+        }
         $relativeDir = trim((string) config('wayfair_upload.outgoing_directory', 'wayfair/outgoing'), '/');
         $relative = $relativeDir.'/'.$filename;
         Storage::disk('local')->makeDirectory($relativeDir);
-
-        $handle = fopen(Storage::disk('local')->path($relative), 'wb');
-        if ($handle === false) {
-            throw new \RuntimeException('Could not write the Wayfair price file.');
-        }
-        fputcsv($handle, self::HEADERS);
-        foreach ($prices as $sku => $price) {
-            fputcsv($handle, [$sku, number_format((float) $price, 2, '.', '')]);
-        }
-        fclose($handle);
-
         $absolute = Storage::disk('local')->path($relative);
+
+        $spreadsheet = IOFactory::load($template);
+        $sheet = $spreadsheet->getSheetByName('Pricing');
+        if ($sheet === null) {
+            throw new \RuntimeException('Wayfair template has no Pricing sheet.');
+        }
+
+        $columns = $this->headerColumns($sheet);
+        foreach (self::REQUIRED_KEYS as $key) {
+            if (! isset($columns[$key])) {
+                throw new \RuntimeException('Wayfair template is missing the '.$key.' column.');
+            }
+        }
+
+        $lookup = [];
+        foreach ($prices as $sku => $price) {
+            $lookup[strtoupper(trim((string) $sku))] = round((float) $price, 2);
+        }
+
+        $partCol = $columns['SupplierPartNumber'];
+        $skuCol = $columns['skus'] ?? null;
+        $statusCol = $columns['Status'] ?? null;
+        $currentCol = $columns['CurrentBaseCost'] ?? null;
+        $newCol = $columns['BaseCost'];
+        $filled = [];
+
+        $highest = (int) $sheet->getHighestRow();
+        for ($row = 5; $row <= $highest; $row++) {
+            $part = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($partCol).$row)->getValue());
+            if ($part === '') {
+                continue;
+            }
+            $status = strtolower(trim((string) ($statusCol ? $sheet->getCell(Coordinate::stringFromColumnIndex($statusCol).$row)->getValue() : '')));
+            if ($status !== '' && ! str_starts_with($status, 'live')) {
+                continue;
+            }
+
+            $keys = [strtoupper($part)];
+            if ($skuCol) {
+                $rawSkus = (string) $sheet->getCell(Coordinate::stringFromColumnIndex($skuCol).$row)->getValue();
+                foreach (preg_split('/\s*,\s*/', $rawSkus) ?: [] as $sku) {
+                    $sku = strtoupper(trim($sku));
+                    if ($sku !== '') {
+                        $keys[] = $sku;
+                    }
+                }
+            }
+
+            $matched = [];
+            foreach (array_unique($keys) as $key) {
+                if (isset($lookup[$key])) {
+                    $matched[] = $lookup[$key];
+                }
+            }
+            $matched = array_values(array_unique($matched));
+            if (count($matched) !== 1) {
+                continue;
+            }
+            $price = $matched[0];
+            if ($currentCol) {
+                $current = $sheet->getCell(Coordinate::stringFromColumnIndex($currentCol).$row)->getValue();
+                if (is_numeric($current) && (int) round(((float) $current) * 100) === (int) round($price * 100)) {
+                    continue;
+                }
+            }
+
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($newCol).$row, $price);
+            $filled[$part] = number_format($price, 2, '.', '');
+        }
+
+        $spreadsheet->getProperties()->setCustomProperty('generated', 'wayfair-price-upload');
+        (new Xlsx($spreadsheet))->save($absolute);
+        $spreadsheet->disconnectWorksheets();
+
+        ksort($filled);
+        $canonical = '';
+        foreach ($filled as $part => $price) {
+            $canonical .= $part.'|'.$price."\n";
+        }
 
         return [
             'filename' => $filename,
             'file_path' => $relative,
             'absolute_path' => $absolute,
-            'file_type' => 'csv',
-            'file_sha256' => hash_file('sha256', $absolute) ?: '',
+            'file_type' => 'xlsx',
+            'file_sha256' => hash('sha256', $canonical),
+            'filled' => count($filled),
         ];
     }
 
@@ -99,27 +183,57 @@ class WayfairPriceFileGenerator
      */
     public function read(string $absolutePath): array
     {
-        $handle = fopen($absolutePath, 'rb');
-        if ($handle === false) {
+        if (! is_file($absolutePath) || ! is_readable($absolutePath)) {
             throw new \RuntimeException('Wayfair price file is not readable.');
         }
-        $headers = fgetcsv($handle) ?: [];
-        $rows = [];
-        while (($line = fgetcsv($handle)) !== false) {
-            if ($line === [null] || $line === false) {
-                continue;
-            }
-            $sku = trim((string) ($line[0] ?? ''));
-            if ($sku === '') {
-                continue;
-            }
-            $rows[$sku] = trim((string) ($line[1] ?? ''));
+
+        $spreadsheet = IOFactory::load($absolutePath);
+        $sheet = $spreadsheet->getSheetByName('Pricing');
+        if ($sheet === null) {
+            $spreadsheet->disconnectWorksheets();
+
+            return ['headers' => [], 'rows' => []];
         }
-        fclose($handle);
+
+        $columns = $this->headerColumns($sheet);
+        $rows = [];
+        if (isset($columns['SupplierPartNumber'], $columns['BaseCost'])) {
+            $partCol = Coordinate::stringFromColumnIndex($columns['SupplierPartNumber']);
+            $newCol = Coordinate::stringFromColumnIndex($columns['BaseCost']);
+            $highest = (int) $sheet->getHighestRow();
+            for ($row = 5; $row <= $highest; $row++) {
+                $part = trim((string) $sheet->getCell($partCol.$row)->getValue());
+                $price = $sheet->getCell($newCol.$row)->getCalculatedValue();
+                if ($part === '' || $price === null || $price === '') {
+                    continue;
+                }
+                $rows[$part] = is_numeric($price)
+                    ? number_format((float) $price, 2, '.', '')
+                    : trim((string) $price);
+            }
+        }
+        $spreadsheet->disconnectWorksheets();
 
         return [
-            'headers' => array_map(static fn ($h) => trim((string) $h), $headers),
+            'headers' => array_keys($columns),
             'rows' => $rows,
         ];
+    }
+
+    /**
+     * @return array<string, int> machine header => 1-based column index
+     */
+    private function headerColumns(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet): array
+    {
+        $columns = [];
+        $highest = Coordinate::columnIndexFromString($sheet->getHighestColumn());
+        for ($col = 1; $col <= $highest; $col++) {
+            $key = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($col).'2')->getValue());
+            if ($key !== '') {
+                $columns[$key] = $col;
+            }
+        }
+
+        return $columns;
     }
 }
