@@ -4,10 +4,19 @@ namespace Tests\Unit;
 
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
+use App\Support\Marketplace\EbayListingEnded;
 use PHPUnit\Framework\TestCase;
 
 class MarketplacePortalMismatchTabTest extends TestCase
 {
+    public function test_auction_ended_291_is_an_ended_listing(): void
+    {
+        $message = 'Auction ended. (eBay code: 291)';
+
+        $this->assertTrue(EbayListingEnded::looksEndedError($message));
+        $this->assertTrue(EbayListingEnded::looksEndedError('{"ErrorCode":"291","ShortMessage":"Auction ended."}'));
+    }
+
     public function test_inactive_listing_leaves_the_mismatch_tab(): void
     {
         $result = MarketplacePortalStatusTabs::overlayQtyAndPortal(

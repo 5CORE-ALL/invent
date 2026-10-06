@@ -45,7 +45,12 @@ final class EbayListingEnded
 
         return str_contains($blob, '#291')
             || str_contains($blob, 'error 291')
+            || str_contains($blob, 'ebay code: 291')
+            || str_contains($blob, 'auction ended')
+            || (bool) preg_match('/errorcode\D{0,3}291\b/', $blob)
             || str_contains($blob, 'ended listing')
+            || str_contains($blob, 'listing has been ended')
+            || str_contains($blob, 'auction has been closed')
             || str_contains($blob, 'revise ended');
     }
 
