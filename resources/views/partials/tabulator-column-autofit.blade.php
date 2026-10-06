@@ -60,7 +60,7 @@
         if (!node) return false;
         if (node.closest && node.closest('.modal')) return false;
         const id = String(node.id || '');
-        if (/modal|chart|history|dropdown|lmp-entries|dil-prmt|cvr-cpn|zero-sold|gt-sold/i.test(id)) {
+        if (/modal|chart|history|dropdown|lmp-entries|dil-prmt|cvr-cpn|zero-sold|gt-sold|amazon-table/i.test(id)) {
             return false;
         }
         const cols = (opts && opts.columns && opts.columns.length) || 0;

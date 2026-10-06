@@ -77,8 +77,8 @@
             overflow: hidden;
         }
 
-        /* Only the table body should scroll. Global sticky-header CSS + fitDataStretch
-           + Mac scrollbar gutter + virtual rows fight each other and snap scroll back. */
+        /* Only the table body should scroll. Sticky header + Mac scrollbar gutter
+           + virtual rows must not snap scroll back when columns stretch. */
         #amazon-table-wrapper {
             min-height: 0;
             min-width: 0;
@@ -3904,7 +3904,7 @@
                 headerSort: true,
                 headerSortElement: false,
                 headerSortClickElement: "header",
-                layout: "fitData",
+                layout: "fitDataStretch",
                 height: "100%",
                 autoResize: false,
                 layoutColumnsOnNewData: false,
