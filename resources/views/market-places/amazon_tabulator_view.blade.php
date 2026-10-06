@@ -4545,8 +4545,7 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#b45309;font-size:10px;margin-left:3px;" title="S PRC capped at Std Prc $'
                                     + stdNow.toFixed(2) + '"></i>'
                                 : '';
-                            const blueTri = (!atOrAboveLmp && !stdCapped && !stdCappedHighLmp
-                                && amazonHasBlueTriangle(rowData))
+                            const blueTri = amazonHasBlueTriangle(rowData)
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Price $' + currentPrice.toFixed(2) + '"></i>'
                                 : '';

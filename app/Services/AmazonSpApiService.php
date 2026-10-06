@@ -844,6 +844,7 @@ class AmazonSpApiService
                     'attempt' => $attempt,
                 ]);
 
+                
                 $response = Http::withToken($accessToken)
                     ->withHeaders([
                         'x-amz-access-token' => $accessToken,
