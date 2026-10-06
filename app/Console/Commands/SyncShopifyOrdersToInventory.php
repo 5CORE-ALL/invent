@@ -340,6 +340,12 @@ class SyncShopifyOrdersToInventory extends Command
                     break;
                 }
             }
+            if ($sku === '') {
+                $variantId = trim((string) ($line['variant_id'] ?? ''));
+                if ($variantId !== '') {
+                    $sku = trim((string) DB::table('shopify_skus')->where('variant_id', $variantId)->value('sku'));
+                }
+            }
 
             // Skip blank SKUs and bundle-parent placeholders
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {

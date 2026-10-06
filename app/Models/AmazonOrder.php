@@ -670,6 +670,47 @@ class AmazonOrder extends Model
         return self::indexUnitsSoldBySkuKeys($rows);
     }
 
+    /**
+     * Amazon units already pushed into Shopify whose Shopify order has no
+     * shopify_raw_orders lines. Those lines were dropped (blank SKU), so
+     * shopify_skus.quantity stays 0 while A L30 shows the sale.
+     * Keyed by ShopifySku::compactSkuForLookup. Not already inside OV L30.
+     *
+     * @return array<string, int>
+     */
+    public static function unitsPushedMissingFromShopifyRaw(DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('shopify_raw_orders')
+            || ! \Illuminate\Support\Facades\Schema::hasColumn('amazon_orders', 'shopify_order_id')) {
+            return [];
+        }
+
+        $rows = self::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->whereNotNull('o.shopify_order_id')
+                ->where('o.shopify_order_id', '!=', '')
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                })
+                ->whereNotNull('i.sku')
+                ->where('i.sku', '!=', '')
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))
+                        ->from('shopify_raw_orders as r')
+                        ->whereRaw('r.order_id = CAST(o.shopify_order_id AS UNSIGNED)');
+                }),
+            $start,
+            $end
+        )
+            ->selectRaw('i.sku as sku, SUM(COALESCE(i.quantity, 0)) as qty')
+            ->groupBy('i.sku')
+            ->get();
+
+        return ShopifySku::indexSoldQuantitiesByCompact($rows);
+    }
+
     public static function unitsSoldForProductSku(string $productSku, array $unitsBySku, ?string $sellerSku = null): int
     {
         $candidates = self::skuLookupKeys($productSku);

@@ -1423,7 +1423,20 @@
             return shown > 0 ? shown : raw;
         }
 
-        /** Min and Business are 5% below the shown S PRC. */
+        /**
+         * Your Price is Std when it is above the sale. Sale is the S PRC the buyer pays.
+         * Min is 5% under that sale, not under Your Price.
+         */
+        function amazonYourAndSaleForPush(rowData, fallbackPrice) {
+            const std = rowData ? (parseFloat(rowData.STANDARD_PRICE) || 0) : 0;
+            let sale = 0;
+            if (rowData && typeof amazonShownSprice === 'function') sale = amazonShownSprice(rowData);
+            if (!(sale > 0)) sale = parseFloat(fallbackPrice) || 0;
+            const your = (std > sale && sale > 0) ? std : sale;
+            return { your: your > 0 ? your : sale, sale: sale };
+        }
+
+        /** Min and Business are 5% below the shown Sale (S PRC), not Your Price. */
         function amazonMinBusinessPrice(rowData) {
             const sprice = amazonShownSprice(rowData);
             if (!(sprice > 0)) return 0;
@@ -3538,8 +3551,11 @@
                 $btn.prop('disabled', true);
                 $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
                 const asinModal = ($btn.attr('data-asin') || '').trim();
+                const modalData = modalRow ? modalRow.getData() : null;
+                const pushed = amazonYourAndSaleForPush(modalData, price);
                 
-                // Push to Amazon only (pass push_shopify: false)
+                // Your Price stays Std when it is higher. Sale is S PRC.
+                // Min is 5% under that Sale, so it cannot sit above the sale.
                 $.ajax({
                     url: '/apply-amazon-price',
                     method: 'POST',
@@ -3549,7 +3565,8 @@
                     },
                     data: {
                         sku: sku,
-                        price: price,
+                        price: pushed.your,
+                        sale_price: pushed.sale,
                         asin: asinModal || null,
                         push_shopify: false,
                         update_amazon_min_price: true
@@ -4560,7 +4577,7 @@
                         sorter: function(a, b, aRow, bRow) {
                             return (amazonMinBusinessPrice(aRow.getData()) || 0) - (amazonMinBusinessPrice(bRow.getData()) || 0);
                         },
-                        headerTooltip: "Minimum seller price. 5% below the S PRC in this row.",
+                        headerTooltip: "Minimum seller price. 5% below the Sale price (S PRC). Stays under the sale so Amazon does not deactivate the offer.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -6412,6 +6429,10 @@
                         }));
                         return;
                     }
+
+                    var pushedOffer = (typeof amazonYourAndSaleForPush === 'function')
+                        ? amazonYourAndSaleForPush(rowData, spriceRaw)
+                        : { your: parseFloat(spriceRaw) || 0, sale: parseFloat(spriceRaw) || 0 };
                     
                     var promise = fetch("{{ route('apply.amazon.price') }}", {
                         method: 'POST',
@@ -6422,7 +6443,8 @@
                         },
                         body: JSON.stringify({
                             sku: sku,
-                            price: spriceRaw,
+                            price: pushedOffer.your,
+                            sale_price: pushedOffer.sale,
                             push_shopify: false,
                             update_amazon_min_price: true
                         })

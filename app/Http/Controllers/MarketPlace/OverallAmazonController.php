@@ -181,9 +181,11 @@ class OverallAmazonController extends Controller
 
         // A L30 = real Amazon order units in the same Pacific L30 window as /amazon/daily-sales.
         $amazonL30UnitsBySku = [];
+        $amazonPushedMissingByCompact = [];
         try {
             [$dailySalesStart, $dailySalesEnd] = AmazonOrder::dailySalesL30Window(AmazonSalesController::DAILY_SALES_WINDOW_DAYS);
             $amazonL30UnitsBySku = AmazonOrder::unitsSoldBySkuForWindow($dailySalesStart, $dailySalesEnd);
+            $amazonPushedMissingByCompact = AmazonOrder::unitsPushedMissingFromShopifyRaw($dailySalesStart, $dailySalesEnd);
         } catch (\Throwable $e) {
             Log::warning('Amazon tabulator: failed loading daily-sales L30 units', [
                 'error' => $e->getMessage(),
@@ -435,6 +437,12 @@ class OverallAmazonController extends Controller
             $sheetCompact = ShopifySku::compactSkuForLookup($sheetSku !== null ? (string) $sheetSku : '');
             if ($sheetCompact !== '' && $sheetCompact !== $productCompact) {
                 $row['ov_l30'] += ShopifySku::ovL30SoldForSku((string) $sheetSku);
+            }
+            // Pushed to Shopify, but the order line never landed in shopify_raw_orders
+            // (blank SKU), so the cached OV L30 stayed 0. A L30 already counts it.
+            $row['ov_l30'] += (int) ($amazonPushedMissingByCompact[$productCompact] ?? 0);
+            if ($sheetCompact !== '' && $sheetCompact !== $productCompact) {
+                $row['ov_l30'] += (int) ($amazonPushedMissingByCompact[$sheetCompact] ?? 0);
             }
             $row['L30'] = $row['ov_l30'];
             $row['fba'] = $pm->fba;

@@ -580,8 +580,11 @@ class AmazonSpApiService
         $resolved = self::resolveYourAndSale($price, $salePrice);
         $price = $resolved['your_price'];
         $salePrice = $resolved['sale_price'];
-        $fromSale = self::computeSaleBusinessMin($salePrice);
-        $salePrice = $fromSale['sale_price'];
+        // Amazon deactivates the offer when Sale price is below Minimum price.
+        // Min and Business are 5% under the Sale price the buyer pays, not under
+        // a higher Your Price. Your $36.99 → min $35.14 sits above Sale $34.03.
+        $floorBasis = $resolved['send_sale'] ? $salePrice : $price;
+        $fromSale = self::computeSaleBusinessMin($floorBasis);
         $businessPrice = $fromSale['business_price'];
         $minPrice = $fromSale['min_price'];
         $pushReason = trim((string) ($extras['push_reason'] ?? 'price push'));
@@ -589,7 +592,7 @@ class AmazonSpApiService
             $pushReason = 'price push';
         }
 
-        $maxPrice = self::maximumFromSale($salePrice, $price);
+        $maxPrice = self::maximumFromSale($floorBasis, $price);
 
         if ($salePrice < 0.01 || (int) round($minPrice * 100) > (int) round($salePrice * 100)) {
             Log::error('Amazon push failed', [
