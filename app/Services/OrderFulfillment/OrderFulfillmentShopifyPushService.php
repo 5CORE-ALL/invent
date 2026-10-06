@@ -22,7 +22,13 @@ use Illuminate\Support\Facades\Schema;
  */
 class OrderFulfillmentShopifyPushService
 {
-    public const MAX_SHOPIFY_ATTEMPTS = 8;
+    public const MAX_SHOPIFY_ATTEMPTS = 16;
+
+    /** Rows older than this are left alone (the page itself only shows recent orders). */
+    public const MAX_ROW_AGE_DAYS = 30;
+
+    /** Doba copies are fulfilled by hand. */
+    public const EXCLUDED_SLUGS = ['manual', 'doba'];
 
     public const MAX_CHANNEL_ATTEMPTS = 6;
 
@@ -119,8 +125,9 @@ class OrderFulfillmentShopifyPushService
         $query = OrderFulfillmentTracking::query()
             ->whereNotNull('tracking_number')
             ->where('tracking_number', '!=', '')
-            ->where('mm_slug', '!=', 'manual')
+            ->whereNotIn('mm_slug', self::EXCLUDED_SLUGS)
             ->whereIn('source', self::PUSHABLE_SOURCES)
+            ->where('created_at', '>=', now()->subDays(self::MAX_ROW_AGE_DAYS))
             ->whereNull('shopify_fulfilled_at')
             ->where('shopify_push_attempts', '<', self::MAX_SHOPIFY_ATTEMPTS)
             ->where(function ($q) {
@@ -144,6 +151,8 @@ class OrderFulfillmentShopifyPushService
         $query = OrderFulfillmentTracking::query()
             ->whereNotNull('shopify_fulfilled_at')
             ->whereNull('channel_pushed_at')
+            ->whereNotIn('mm_slug', self::EXCLUDED_SLUGS)
+            ->where('created_at', '>=', now()->subDays(self::MAX_ROW_AGE_DAYS))
             ->where('channel_push_attempts', '>', 0)
             ->where('channel_push_attempts', '<', self::MAX_CHANNEL_ATTEMPTS)
             ->where(function ($q) {
@@ -221,7 +230,12 @@ class OrderFulfillmentShopifyPushService
 
         $shopifyOrderId = trim((string) ($ctx['shopify_order_id'] ?? ''));
         if ($shopifyOrderId === '' || str_starts_with($shopifyOrderId, 'manual')) {
-            $this->markShopifyFailure($row, 'Not linked to a Shopify order yet.', false, $dryRun);
+            // The Shopify copy is often imported hours later (queue backlog): wait without burning attempts.
+            if (! $dryRun) {
+                $row->shopify_push_checked_at = now();
+                $row->shopify_push_message = 'Not linked to a Shopify order yet.';
+                $row->save();
+            }
             $out['message'] = 'not linked to Shopify yet';
 
             return $out;
