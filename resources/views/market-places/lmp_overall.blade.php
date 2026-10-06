@@ -37,7 +37,7 @@
             text-orientation: mixed !important;
             transform: none !important;
         }
-        #lmp-overall-wrap .tabulator .tabulator-cell { padding: 4px 6px !important; }
+        #lmp-overall-wrap .tabulator .tabulator-cell { padding: 4px 4px !important; white-space: nowrap; }
         #lmp-overall-wrap .tabulator-row.tabulator-selectable:hover { cursor: default; background-color: transparent; }
         #lmp-overall-wrap .tabulator-row.tabulator-row-odd.tabulator-selectable:hover { background-color: #fff; }
         #lmp-overall-wrap .tabulator-row.tabulator-row-even.tabulator-selectable:hover { background-color: #efefef; }
@@ -55,9 +55,53 @@
         .lmp-overall-count { color: #007bff; font-weight: 700; text-decoration: none; cursor: pointer; }
         .lmp-overall-count:hover { text-decoration: underline; }
         .lmp-overall-edit { position: relative; z-index: 2; line-height: 1; }
+        #lmp-overall-wrap .tabulator-cell.lmp-diff-magenta,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent .tabulator-cell.lmp-diff-magenta,
+        #lmp-overall-wrap .tabulator-row.tabulator-selected .tabulator-cell.lmp-diff-magenta,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell.lmp-diff-magenta {
+            background: #ff00ff !important; color: #fff !important; font-weight: 700;
+        }
+        #lmp-overall-wrap .tabulator-cell.lmp-diff-red,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent .tabulator-cell.lmp-diff-red,
+        #lmp-overall-wrap .tabulator-row.tabulator-selected .tabulator-cell.lmp-diff-red,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell.lmp-diff-red {
+            background: #dc3545 !important; color: #fff !important; font-weight: 700;
+        }
+        #lmp-overall-wrap .tabulator-cell.lmp-diff-green,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent .tabulator-cell.lmp-diff-green,
+        #lmp-overall-wrap .tabulator-row.tabulator-selected .tabulator-cell.lmp-diff-green,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell.lmp-diff-green {
+            background: #28a745 !important; color: #fff !important; font-weight: 700;
+        }
+        #lmp-overall-wrap .tabulator-cell.lmp-diff-yellow,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent .tabulator-cell.lmp-diff-yellow,
+        #lmp-overall-wrap .tabulator-row.tabulator-selected .tabulator-cell.lmp-diff-yellow,
+        #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell.lmp-diff-yellow {
+            background: #ffc107 !important; color: #000 !important; font-weight: 700;
+        }
         #lmpOverallStdModal { z-index: 20000; }
+        #lmpOverallLmpModal .modal-dialog { max-width: min(1680px, calc(100vw - 1rem)); }
         #lmpOverallLmpModal .lmp-overall-comp-img { width: 42px; height: 42px; object-fit: contain; background: #fff; border-radius: 4px; }
-        #lmpOverallLmpModal tr.lmp-overall-ignored { opacity: 0.55; text-decoration: line-through; }
+        #lmpOverallLmpModal tr.lmp-ignored-row { opacity: 0.55; background: #f1f3f5 !important; }
+        #lmpOverallLmpModal tr.lmp-ignored-row td { text-decoration: line-through; text-decoration-color: #adb5bd; }
+        #lmpOverallLmpModal tr.lmp-ignored-row td.lmp-ignore-cell,
+        #lmpOverallLmpModal tr.lmp-ignored-row td.lmp-actions-cell,
+        #lmpOverallLmpModal tr.lmp-ignored-row .lmp-ov-ignore { text-decoration: none; }
+        #lmpOverallLmpModal tr.lmp-lowest-row,
+        #lmpOverallLmpModal tr.lmp-lowest-row > td { background: #fff8c5 !important; }
+        #lmpOverallLmpModal #lmp-overall-lmp-list thead th {
+            background: #334155; color: #fff; font-size: 11px; white-space: nowrap; vertical-align: middle;
+        }
+        #lmpOverallLmpModal #lmp-overall-lmp-list { font-size: 12px; }
+        #lmpOverallLmpModal .lmp-ov-preview-btn {
+            border: 0; background: none; color: #0d6efd; padding: 0 2px; cursor: pointer; line-height: 1;
+        }
+        #lmp-overall-text-preview {
+            position: fixed; inset: 0; z-index: 20050; background: rgba(15, 23, 42, 0.45);
+            display: flex; align-items: center; justify-content: center; padding: 1rem;
+        }
+        #lmp-overall-text-preview[hidden] { display: none !important; }
+        #lmp-overall-text-preview .card { max-width: 640px; width: 100%; }
     </style>
 @endsection
 
@@ -140,15 +184,95 @@
         </div>
     </div>
 
-    <div class="modal fade" id="lmpOverallLmpModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal fade" id="lmpOverallLmpModal" data-skip-lmp-sp="1" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="lmp-overall-lmp-title">LMP</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-header bg-primary text-white py-2">
+                    <h5 class="modal-title mb-0">
+                        <i class="ri-shopping-cart-2-line me-1"></i>
+                        <span id="lmp-overall-lmp-title">LMP</span>
+                    </h5>
+                    <div class="d-flex align-items-center gap-2 ms-auto">
+                        <button type="button" id="lmp-ov-pull" class="btn btn-sm btn-light" title="Pull live prices for this SKU">
+                            <i class="ri-download-cloud-2-line"></i> Pull
+                        </button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
                 </div>
-                <div class="modal-body p-0" id="lmp-overall-lmp-body"></div>
+                <div class="modal-body">
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-2">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-auto">
+                                    <label class="form-label mb-0 small fw-bold" for="lmp-ov-std">Std Prc</label>
+                                    <input type="number" class="form-control form-control-sm text-end fw-bold" id="lmp-ov-std"
+                                        step="0.01" min="0.01" placeholder="0.00" style="width: 7rem;"
+                                        title="Manual Standard Price. Saves to Std Prc for this SKU and Sku Link LMP siblings.">
+                                </div>
+                                <div class="col-auto">
+                                    <div class="small text-muted mb-0">GROI %</div>
+                                    <div id="lmp-ov-groi" class="fs-5 fw-bold" style="min-width: 3.5rem;">—</div>
+                                </div>
+                                <div class="col-auto">
+                                    <div class="small text-muted mb-0">NROI %</div>
+                                    <div id="lmp-ov-nroi" class="fs-5 fw-bold" style="min-width: 3.5rem;">—</div>
+                                </div>
+                                <div class="col small text-muted pb-1">
+                                    Standard Price (manual). Saves to <strong>Std Prc</strong> for this SKU and all
+                                    <strong>Sku Link LMP</strong> siblings. Use when LMP cannot be determined.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card mb-3 border-success">
+                        <div class="card-body">
+                            <form id="lmp-ov-form" class="row g-3 align-items-end">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-1"><strong>SKU</strong></label>
+                                    <div id="lmp-ov-sku-control"></div>
+                                </div>
+                                <div class="col-md-2" id="lmp-ov-id-wrap">
+                                    <label class="form-label mb-1" for="lmp-ov-id"><strong id="lmp-ov-id-label">ASIN</strong> <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="lmp-ov-id" placeholder="B07ABC123" autocomplete="off">
+                                </div>
+                                <div class="col-md-2" id="lmp-ov-source-wrap" hidden>
+                                    <label class="form-label mb-1" for="lmp-ov-source"><strong>Source</strong></label>
+                                    <input type="text" class="form-control" id="lmp-ov-source" placeholder="Store" autocomplete="off">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label mb-1" for="lmp-ov-price"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control" id="lmp-ov-price" placeholder="29.99" step="0.01" min="0.01">
+                                </div>
+                                <div class="col-md-2" id="lmp-ov-extra-wrap" hidden>
+                                    <label class="form-label mb-1" for="lmp-ov-extra"><strong id="lmp-ov-extra-label">Shipping</strong></label>
+                                    <input type="number" class="form-control" id="lmp-ov-extra" placeholder="0.00" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label mb-1" for="lmp-ov-link"><strong>Product Link</strong></label>
+                                    <input type="url" class="form-control" id="lmp-ov-link" placeholder="https://amazon.com/dp/...">
+                                </div>
+                                <div class="col-12 d-flex gap-2">
+                                    <button type="submit" class="btn btn-primary" id="lmp-ov-submit">
+                                        <i class="ri-add-line"></i> Add Competitor
+                                    </button>
+                                    <button type="button" class="btn btn-light" id="lmp-ov-cancel" hidden>Cancel</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="small mb-2" id="lmp-ov-msg"></div>
+                    <div id="lmp-overall-lmp-list"></div>
+                </div>
             </div>
+        </div>
+    </div>
+    <div id="lmp-overall-text-preview" hidden>
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white d-flex align-items-center py-2">
+                <strong id="lmp-ov-preview-title" class="me-auto">Details</strong>
+                <button type="button" class="btn-close btn-close-white" id="lmp-ov-preview-close" aria-label="Close"></button>
+            </div>
+            <div class="card-body" id="lmp-ov-preview-body" style="white-space: pre-wrap;"></div>
         </div>
     </div>
 @endsection
@@ -234,7 +358,7 @@
                     field: field,
                     hozAlign: 'center',
                     headerHozAlign: 'center',
-                    width: 118,
+                    minWidth: 108,
                     sorter: 'number',
                     formatter: function (cell) {
                         const row = cell.getRow().getData();
@@ -248,12 +372,6 @@
                 };
             }
 
-            const lmpSites = {
-                lmp_amz: { label: 'LMP amz', url: '/amazon/competitors' },
-                lmp_ebay: { label: 'LMP ebay', url: '/ebay-lmp-data' },
-                lmp_temu: { label: 'LMP temu', url: '/cvr-master-temu-lmp' },
-                lmp_google: { label: 'LMP Google', url: '/google-lmp-data' },
-            };
             const lmpModalEl = document.getElementById('lmpOverallLmpModal');
 
             function showBsModal(el) {
@@ -269,36 +387,33 @@
                 if (isFinite(landed) && landed > 0) return landed;
                 const total = parseFloat(row.total_price);
                 if (isFinite(total) && total > 0) return total;
-                return parseFloat(row.price) || 0;
+                const base = parseFloat(row.price) || 0;
+                const ship = parseFloat(row.shipping_cost);
+                if (isFinite(ship) && ship > 0) return base + ship;
+                return base;
             }
 
-            function renderLmpCompetitors(list) {
-                const rows = (Array.isArray(list) ? list : []).slice().sort(function (a, b) {
-                    return competitorPrice(a) - competitorPrice(b);
-                });
-                if (!rows.length) {
-                    return '<div class="text-muted p-3">No competitors</div>';
-                }
-                return '<table class="table table-sm align-middle mb-0"><thead class="table-light"><tr>'
-                    + '<th style="width:52px;"></th><th>Title</th><th class="text-end" style="width:90px;">Price</th><th style="width:70px;">Link</th>'
-                    + '</tr></thead><tbody>'
-                    + rows.map(function (row) {
-                        const price = competitorPrice(row);
-                        const title = row.product_title || row.title || '';
-                        const link = row.product_link || row.link || '';
-                        const img = row.image
-                            ? '<img class="lmp-overall-comp-img" src="' + escHtml(row.image) + '" alt="">'
-                            : '';
-                        const ignored = row.ignored ? ' class="lmp-overall-ignored"' : '';
-                        return '<tr' + ignored + '><td>' + img + '</td><td>' + escHtml(title) + '</td>'
-                            + '<td class="text-end"><span class="lmp-overall-price">'
-                            + (price > 0 ? ('$' + price.toFixed(2)) : '—') + '</span></td><td>'
-                            + (link ? '<a href="' + escHtml(link) + '" target="_blank" rel="noopener">Open</a>' : '—')
-                            + '</td></tr>';
-                    }).join('')
-                    + '</tbody></table>';
-            }
-
+            const LMP_OV_ADS_PCT = {{ (float) ($amazonAdsPercent ?? 0) }};
+            const lmpSites = {
+                lmp_amz: {
+                    label: 'LMP amz', kind: 'amazon', url: '/amazon/competitors', pull: true,
+                    idLabel: 'ASIN', idPlaceholder: 'B07ABC123', linkPlaceholder: 'https://amazon.com/dp/...',
+                },
+                lmp_ebay: {
+                    label: 'LMP ebay', kind: 'ebay', url: '/ebay-lmp-data', pull: true,
+                    idLabel: 'Item ID', idPlaceholder: '123456789012', linkPlaceholder: 'https://www.ebay.com/itm/...',
+                    extraLabel: 'Shipping',
+                },
+                lmp_temu: {
+                    label: 'LMP temu', kind: 'temu', url: '/cvr-master-temu-lmp', pull: false,
+                    linkPlaceholder: 'https://www.temu.com/...', extraLabel: 'Delivery',
+                },
+                lmp_google: {
+                    label: 'LMP Google', kind: 'google', url: '/google-lmp-data', pull: true,
+                    idLabel: 'Product ID', idPlaceholder: 'Product ID', linkPlaceholder: 'https://www.google.com/shopping/...',
+                },
+            };
+            const lmpState = { field: null, row: null, bySku: {}, competitors: [], editing: null, loadGen: 0, stdSilent: false };
             const lmpCountFields = {
                 lmp_amz: 'lmp_amz_count',
                 lmp_ebay: 'lmp_ebay_count',
@@ -306,25 +421,207 @@
                 lmp_google: 'lmp_google_count',
             };
 
+            function csrfToken() {
+                const meta = document.querySelector('meta[name="csrf-token"]');
+                return meta ? meta.getAttribute('content') : '';
+            }
+
+            function round2(n) {
+                return Math.round(n * 100) / 100;
+            }
+
+            function dash() {
+                return '<span class="text-muted">—</span>';
+            }
+
+            function setMsg(text, kind) {
+                const el = document.getElementById('lmp-ov-msg');
+                if (!el) return;
+                el.className = 'small mb-2 ' + (kind === 'error' ? 'text-danger' : (kind === 'ok' ? 'text-success' : 'text-muted'));
+                el.textContent = text || '';
+            }
+
+            function postJson(url, body) {
+                return fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify(body),
+                }).then(function (r) {
+                    return r.json().catch(function () { return {}; }).then(function (data) {
+                        if (!r.ok || (data && data.success === false)) {
+                            let msg = (data && (data.error || data.message)) || 'Request failed';
+                            const bag = data && (data.messages || data.errors);
+                            if (bag && typeof bag === 'object') {
+                                const first = Object.values(bag).flat()[0];
+                                if (first) msg = first;
+                            }
+                            if (r.status === 409 && data && data.error) msg = data.error;
+                            throw new Error(msg);
+                        }
+                        return data;
+                    });
+                });
+            }
+
+            function activeSku() {
+                const el = document.getElementById('lmp-ov-sku');
+                return el ? String(el.value || '').trim() : '';
+            }
+
+            function metricRow() {
+                const sku = activeSku();
+                if (sku && typeof table !== 'undefined' && table) {
+                    const row = table.getRow(sku);
+                    if (row) return row.getData();
+                }
+                return lmpState.row || {};
+            }
+
+            function groiAt(sp, row) {
+                const price = parseFloat(sp);
+                const lp = parseFloat(row && row.lp);
+                if (!(price > 0) || !(lp > 0)) return null;
+                const ship = parseFloat(row.ship) || 0;
+                return ((price * 0.80 - ship - lp) / lp) * 100;
+            }
+
+            function nroiAt(sp, row) {
+                const price = parseFloat(sp);
+                const lp = parseFloat(row && row.lp);
+                if (!(price > 0) || !(lp > 0)) return null;
+                const ship = parseFloat(row.ship) || 0;
+                const gross = (price * 0.80) - ship - lp;
+                const ads = price * ((parseFloat(LMP_OV_ADS_PCT) || 0) / 100);
+                return ((gross - ads) / lp) * 100;
+            }
+
+            function pctHtml(kind, value) {
+                if (value == null || !isFinite(value)) return dash();
+                if (window.MetricPctColors && typeof MetricPctColors.htmlFor === 'function') {
+                    const html = MetricPctColors.htmlFor(kind, value, { decimals: 0, empty: '' });
+                    if (html) return html;
+                }
+                return '<span style="font-weight:600;">' + Math.round(value) + '%</span>';
+            }
+
+            function refreshStdMetrics() {
+                const sp = parseFloat(document.getElementById('lmp-ov-std').value);
+                const row = metricRow();
+                const groi = groiAt(sp, row);
+                const nroi = nroiAt(sp, row);
+                document.getElementById('lmp-ov-groi').innerHTML = pctHtml('groi', groi);
+                document.getElementById('lmp-ov-nroi').innerHTML = pctHtml('nroi', nroi);
+                const text = (isFinite(sp) && sp > 0) ? ('$' + sp.toFixed(2)) : '—';
+                const groiHtml = pctHtml('groi', groi);
+                const nroiHtml = pctHtml('nroi', nroi);
+                document.querySelectorAll('#lmpOverallLmpModal .lmp-sp-cell').forEach(function (el) { el.textContent = text; });
+                document.querySelectorAll('#lmpOverallLmpModal .lmp-groi-cell').forEach(function (el) { el.innerHTML = groiHtml; });
+                document.querySelectorAll('#lmpOverallLmpModal .lmp-nroi-cell').forEach(function (el) { el.innerHTML = nroiHtml; });
+            }
+
+            function setStdInput(value) {
+                lmpState.stdSilent = true;
+                const n = parseFloat(value);
+                document.getElementById('lmp-ov-std').value = (isFinite(n) && n > 0) ? n.toFixed(2) : '';
+                refreshStdMetrics();
+                lmpState.stdSilent = false;
+            }
+
+            function skuChoices(row) {
+                if (!row || !row.is_parent_summary) {
+                    const sku = String((row && row.sku) || '').trim();
+                    return sku ? [sku] : [];
+                }
+                return table.getData().filter(function (data) {
+                    return !data.is_parent_summary && data.parent === row.parent;
+                }).map(function (data) {
+                    return String(data.sku || '').trim();
+                }).filter(Boolean);
+            }
+
             function competitorSkus(row, field) {
                 if (!row.is_parent_summary) {
                     const sku = String(row.sku || '').trim();
                     return sku ? [sku] : [];
                 }
                 const countField = lmpCountFields[field];
-                const parent = row.parent;
                 return table.getData().filter(function (data) {
                     return !data.is_parent_summary
-                        && data.parent === parent
+                        && data.parent === row.parent
                         && (parseInt(data[countField], 10) || 0) > 0;
                 }).map(function (data) {
                     return String(data.sku || '').trim();
                 }).filter(Boolean);
             }
 
-            function fetchCompetitors(site, sku, linked) {
+            function fillSkuControl(row) {
+                const wrap = document.getElementById('lmp-ov-sku-control');
+                const choices = skuChoices(row);
+                if (row.is_parent_summary) {
+                    wrap.innerHTML = '<select class="form-select" id="lmp-ov-sku">'
+                        + (choices.length ? choices.map(function (sku) {
+                            return '<option value="' + escHtml(sku) + '">' + escHtml(sku) + '</option>';
+                        }).join('') : '<option value="">No child SKU</option>')
+                        + '</select>';
+                    return;
+                }
+                wrap.innerHTML = '<input type="text" class="form-control" id="lmp-ov-sku" readonly value="'
+                    + escHtml(row.sku || '') + '">';
+            }
+
+            function configureSite(site) {
+                document.getElementById('lmp-ov-id-label').textContent = site.idLabel || 'ID';
+                document.getElementById('lmp-ov-id').placeholder = site.idPlaceholder || '';
+                document.getElementById('lmp-ov-link').placeholder = site.linkPlaceholder || 'https://';
+                document.getElementById('lmp-ov-id-wrap').hidden = site.kind === 'temu';
+                document.getElementById('lmp-ov-source-wrap').hidden = site.kind !== 'google';
+                const extra = document.getElementById('lmp-ov-extra-wrap');
+                extra.hidden = !(site.kind === 'ebay' || site.kind === 'temu');
+                if (site.extraLabel) document.getElementById('lmp-ov-extra-label').textContent = site.extraLabel;
+                document.getElementById('lmp-ov-pull').hidden = !site.pull;
+            }
+
+            function resetForm() {
+                lmpState.editing = null;
+                ['lmp-ov-id', 'lmp-ov-price', 'lmp-ov-link', 'lmp-ov-extra', 'lmp-ov-source'].forEach(function (id) {
+                    const el = document.getElementById(id);
+                    if (el) el.value = '';
+                });
+                document.getElementById('lmp-ov-submit').innerHTML = '<i class="ri-add-line"></i> Add Competitor';
+                document.getElementById('lmp-ov-cancel').hidden = true;
+            }
+
+            function enterEdit(item) {
+                lmpState.editing = item;
+                const skuEl = document.getElementById('lmp-ov-sku');
+                const sku = item._sku || item.sku || item.source_sku || '';
+                if (skuEl && skuEl.tagName === 'SELECT' && sku) {
+                    Array.from(skuEl.options).forEach(function (opt) {
+                        if (opt.value === sku) skuEl.value = sku;
+                    });
+                }
+                document.getElementById('lmp-ov-id').value = item.asin || item.item_id || item.product_id || '';
+                const price = parseFloat(item.price);
+                document.getElementById('lmp-ov-price').value = price > 0 ? price.toFixed(2) : '';
+                document.getElementById('lmp-ov-link').value = item.product_link || item.link || '';
+                const extra = item.shipping_cost != null && item.shipping_cost !== '' ? item.shipping_cost : item.delivery;
+                const extraN = parseFloat(extra);
+                document.getElementById('lmp-ov-extra').value = extraN > 0 ? extraN.toFixed(2) : '';
+                document.getElementById('lmp-ov-source').value = item.source || '';
+                document.getElementById('lmp-ov-submit').innerHTML = '<i class="ri-pencil-line"></i> Update Competitor';
+                document.getElementById('lmp-ov-cancel').hidden = false;
+                document.getElementById('lmp-ov-price').focus();
+            }
+
+            function fetchCompetitors(site, sku, linked, refresh) {
                 const params = new URLSearchParams();
                 params.set('sku', sku);
+                if (refresh) params.set('refresh', '1');
                 (Array.isArray(linked) ? linked : []).forEach(function (item) {
                     params.append('linked_lmp_skus[]', item);
                 });
@@ -341,40 +638,589 @@
                 });
             }
 
-            function openLmpModal(row, field) {
-                const site = lmpSites[field];
-                if (!site) return;
-                const sku = String(row.sku || '').trim();
-                document.getElementById('lmp-overall-lmp-title').textContent = site.label + ' — ' + sku;
-                document.getElementById('lmp-overall-lmp-body').innerHTML =
-                    '<div class="text-center text-muted py-4">Loading competitors…</div>';
-                if (!showBsModal(lmpModalEl)) return;
-                const skus = competitorSkus(row, field);
+            function lowestPrice(list) {
+                let best = null;
+                (list || []).forEach(function (item) {
+                    if (item.ignored) return;
+                    const price = competitorPrice(item);
+                    if (price > 0 && (best === null || price < best)) best = price;
+                });
+                return best;
+            }
+
+            function refreshParentSummaries() {
+                if (typeof table === 'undefined' || !table) return;
+                const kidsByParent = {};
+                table.getData().forEach(function (row) {
+                    if (row.is_parent_summary || !row.parent) return;
+                    (kidsByParent[row.parent] = kidsByParent[row.parent] || []).push(row);
+                });
+                const updates = [];
+                table.getData().forEach(function (row) {
+                    if (!row.is_parent_summary) return;
+                    const kids = kidsByParent[row.parent] || [];
+                    const next = { sku: row.sku };
+                    ['std_price', 'my_lmp', 'lmp_amz', 'lmp_ebay', 'lmp_temu', 'lmp_google', 'lp'].forEach(function (field) {
+                        const vals = kids.map(function (kid) { return parseFloat(kid[field]); })
+                            .filter(function (n) { return isFinite(n) && n > 0; });
+                        next[field] = vals.length ? round2(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length) : null;
+                    });
+                    ['lmp_amz_count', 'lmp_ebay_count', 'lmp_temu_count', 'lmp_google_count'].forEach(function (field) {
+                        next[field] = kids.reduce(function (sum, kid) { return sum + (parseInt(kid[field], 10) || 0); }, 0);
+                    });
+                    const prices = ['lmp_amz', 'lmp_ebay', 'lmp_temu', 'lmp_google']
+                        .map(function (field) { return parseFloat(next[field]); })
+                        .filter(function (n) { return isFinite(n) && n > 0; });
+                    next.ov_lmp = prices.length ? round2(Math.min.apply(null, prices)) : null;
+                    next.avg_lmp = prices.length ? round2(prices.reduce(function (a, b) { return a + b; }, 0) / prices.length) : null;
+                    updates.push(next);
+                });
+                if (updates.length) table.updateData(updates);
+                updateLmpStdBadges();
+            }
+
+            function syncGrid() {
+                if (typeof table === 'undefined' || !table || !lmpState.field) return;
+                const field = lmpState.field;
+                const countField = lmpCountFields[field];
+                const updates = [];
+                Object.keys(lmpState.bySku).forEach(function (sku) {
+                    const row = table.getRow(sku);
+                    const data = row ? row.getData() : null;
+                    if (!data || data.is_parent_summary) return;
+                    const l1 = lowestPrice(lmpState.bySku[sku]);
+                    const prices = ['lmp_amz', 'lmp_ebay', 'lmp_temu', 'lmp_google'].map(function (key) {
+                        return key === field ? l1 : parseFloat(data[key]);
+                    }).filter(function (n) { return isFinite(n) && n > 0; });
+                    const patch = { sku: data.sku };
+                    patch[field] = l1;
+                    patch[countField] = (lmpState.bySku[sku] || []).length;
+                    patch.ov_lmp = prices.length ? round2(Math.min.apply(null, prices)) : null;
+                    patch.avg_lmp = prices.length ? round2(prices.reduce(function (a, b) { return a + b; }, 0) / prices.length) : null;
+                    updates.push(patch);
+                });
+                if (updates.length) table.updateData(updates);
+                refreshParentSummaries();
+            }
+
+            function loadLists(refresh) {
+                const site = lmpSites[lmpState.field];
+                const gen = ++lmpState.loadGen;
+                const skus = competitorSkus(lmpState.row, lmpState.field);
+                const linked = lmpState.row && lmpState.row.is_parent_summary ? [] : ((lmpState.row && lmpState.row.linked_lmp_skus) || []);
                 if (!skus.length) {
-                    document.getElementById('lmp-overall-lmp-body').innerHTML =
-                        '<div class="text-muted p-3">No competitors</div>';
-                    return;
+                    lmpState.bySku = {};
+                    lmpState.competitors = [];
+                    renderList();
+                    return Promise.resolve();
                 }
-                const linked = row.is_parent_summary ? [] : row.linked_lmp_skus;
-                Promise.all(skus.map(function (item) {
-                    return fetchCompetitors(site, item, linked).catch(function () { return []; });
-                })).then(function (lists) {
+                document.getElementById('lmp-overall-lmp-list').innerHTML =
+                    '<div class="text-center text-muted py-4">' + (refresh ? 'Pulling live prices…' : 'Loading competitors…') + '</div>';
+                return Promise.all(skus.map(function (sku) {
+                    return fetchCompetitors(site, sku, linked, refresh).then(function (list) {
+                        list.forEach(function (item) {
+                            if (!item._sku) item._sku = item.sku || item.source_sku || sku;
+                        });
+                        return { sku: sku, list: list };
+                    }).catch(function () { return { sku: sku, list: [] }; });
+                })).then(function (groups) {
+                    if (gen !== lmpState.loadGen) return;
+                    const bySku = {};
                     const seen = {};
                     const merged = [];
-                    lists.forEach(function (list) {
-                        list.forEach(function (item) {
-                            const key = [item.id, item.asin, item.product_link || item.link, item.product_title || item.title, competitorPrice(item)].join('|');
+                    groups.forEach(function (group) {
+                        bySku[group.sku] = group.list;
+                        group.list.forEach(function (item) {
+                            const asin = String(item.asin || '').toUpperCase();
+                            const itemId = String(item.item_id || '');
+                            const productId = String(item.product_id || '');
+                            const key = asin ? ('asin:' + asin)
+                                : (itemId ? ('item:' + itemId)
+                                    : (productId ? ('pid:' + productId + '|' + String(item.source || ''))
+                                        : [item._sku, item.id, item.product_link || item.link, competitorPrice(item)].join('|')));
                             if (seen[key]) return;
                             seen[key] = true;
                             merged.push(item);
                         });
                     });
-                    document.getElementById('lmp-overall-lmp-body').innerHTML = renderLmpCompetitors(merged);
-                }).catch(function (err) {
-                    document.getElementById('lmp-overall-lmp-body').innerHTML =
-                        '<div class="text-danger p-3">' + escHtml(err.message || 'Failed to load competitors') + '</div>';
+                    lmpState.bySku = bySku;
+                    lmpState.competitors = merged.sort(function (a, b) { return competitorPrice(a) - competitorPrice(b); });
+                    renderList();
+                    syncGrid();
+                    if (refresh) setMsg('Pulled live prices.', 'ok');
                 });
             }
+
+            function previewBtn(label, text) {
+                const raw = String(text == null ? '' : text).trim();
+                if (!raw || raw === '—' || raw === 'N/A') return dash();
+                return '<button type="button" class="lmp-ov-preview-btn" data-label="' + escHtml(label)
+                    + '" data-text="' + escHtml(raw) + '" title="View full ' + escHtml(label) + '"><i class="ri-search-line"></i></button>';
+            }
+
+            function amazonShipCost(item) {
+                if (!item || !item.delivery) return 0;
+                const delText = String(item.delivery);
+                if (/\bfree\b/i.test(delText)) return 0;
+                const paid = delText.match(/\$\s*([\d,]+\.?\d*)\s*delivery/i) || delText.match(/\$\s*([\d,]+\.?\d*)/);
+                return paid ? (parseFloat(String(paid[1]).replace(/,/g, '')) || 0) : 0;
+            }
+
+            function priceCell(item, isLowest, ignored) {
+                const site = lmpSites[lmpState.field];
+                const base = parseFloat(item.price) || 0;
+                let ship = 0;
+                if (site.kind === 'amazon') ship = amazonShipCost(item);
+                else if (site.kind === 'ebay') ship = parseFloat(item.shipping_cost) || 0;
+                else if (site.kind === 'temu') ship = parseFloat(item.delivery != null ? item.delivery : item.shipping_cost) || 0;
+                const total = competitorPrice(item);
+                const shown = total > 0 ? total : base;
+                const inner = ship > 0
+                    ? ('$' + shown.toFixed(2) + '<br><small class="fw-normal">$' + base.toFixed(2) + ' + $' + ship.toFixed(2) + ' ship</small>')
+                    : ('$' + shown.toFixed(2));
+                if (isLowest) return '<span class="badge bg-success">' + inner + ' <i class="ri-trophy-line"></i></span>';
+                if (ignored) return '<strong>' + inner + '</strong> <span class="badge bg-secondary">Ignored</span>';
+                return '<strong class="text-success">' + inner + '</strong>';
+            }
+
+            function deliveryCell(item) {
+                if (item.delivery == null || item.delivery === '') return dash();
+                const delText = String(item.delivery);
+                if (siteIsAmazon() && /\bfree\b/i.test(delText)) {
+                    return '<span class="text-success fw-bold" title="' + escHtml(delText) + '">0</span>';
+                }
+                const paid = delText.match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                if (paid) return '<span class="text-danger fw-bold" title="' + escHtml(delText) + '">$' + escHtml(paid[1]) + ' ship</span>';
+                const n = parseFloat(delText);
+                if (isFinite(n) && n >= 0 && String(delText).trim() === String(n)) {
+                    return n === 0 ? '<span class="text-success fw-bold">0</span>' : '<span class="fw-bold">$' + n.toFixed(2) + '</span>';
+                }
+                const short = delText.length > 22 ? delText.slice(0, 22) + '…' : delText;
+                return '<span title="' + escHtml(delText) + '">' + escHtml(short) + '</span>';
+            }
+
+            function siteIsAmazon() {
+                return lmpSites[lmpState.field] && lmpSites[lmpState.field].kind === 'amazon';
+            }
+
+            function stockCell(item) {
+                const stockText = item.stock != null ? String(item.stock).trim() : '';
+                const qty = item.stock_quantity != null && item.stock_quantity !== '' ? parseInt(item.stock_quantity, 10) : NaN;
+                if (!stockText && !isFinite(qty)) return dash();
+                const tip = escHtml(stockText || (isFinite(qty) ? String(qty) : ''));
+                if (isFinite(qty)) {
+                    const color = qty === 0 ? '#dc3545' : (qty <= 5 ? '#dc3545' : (qty <= 20 ? '#ffc107' : '#198754'));
+                    return '<span style="color:' + color + ';font-weight:700;" title="' + tip + '">' + qty + '</span>';
+                }
+                if (/\bout\s+of\s+stock\b/i.test(stockText)) return '<span class="text-danger fw-bold" title="' + tip + '">OOS</span>';
+                if (/\bin\s+stock\b/i.test(stockText)) return '<span class="text-success fw-bold" title="' + tip + '">In Stock</span>';
+                return '<span title="' + tip + '">' + escHtml(stockText.length > 18 ? stockText.slice(0, 18) + '…' : stockText) + '</span>';
+            }
+
+            function actionCells(index, item) {
+                const link = item.product_link || item.link || '';
+                const ignored = !!item.ignored;
+                const linkHtml = link
+                    ? '<a href="' + escHtml(link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="Open product"><i class="ri-external-link-line"></i></a>'
+                    : dash();
+                return '<td class="text-center">' + linkHtml + '</td>'
+                    + '<td class="text-center lmp-ignore-cell"><input type="checkbox" class="form-check-input lmp-ov-ignore" data-idx="'
+                    + index + '"' + (ignored ? ' checked' : '') + ' title="Ignore for L1"></td>'
+                    + '<td class="text-center text-nowrap lmp-actions-cell">'
+                    + '<button type="button" class="btn btn-sm btn-warning lmp-ov-edit me-1" data-idx="' + index + '" title="Edit this competitor"><i class="ri-pencil-line"></i></button>'
+                    + '<button type="button" class="btn btn-sm btn-danger lmp-ov-delete" data-idx="' + index + '" title="Delete this competitor"><i class="ri-delete-bin-line"></i></button>'
+                    + '</td>';
+            }
+
+            function metricCells() {
+                const sp = parseFloat(document.getElementById('lmp-ov-std').value);
+                const row = metricRow();
+                const text = (isFinite(sp) && sp > 0) ? ('$' + sp.toFixed(2)) : '—';
+                return '<td class="text-center fw-bold lmp-sp-cell">' + text + '</td>'
+                    + '<td class="text-center lmp-groi-cell">' + pctHtml('groi', groiAt(sp, row)) + '</td>'
+                    + '<td class="text-center lmp-nroi-cell">' + pctHtml('nroi', nroiAt(sp, row)) + '</td>';
+            }
+
+            function renderList() {
+                const list = lmpState.competitors || [];
+                const box = document.getElementById('lmp-overall-lmp-list');
+                const kind = (lmpSites[lmpState.field] || {}).kind;
+                if (!list.length) {
+                    box.innerHTML = '<div class="alert alert-warning mb-0"><i class="ri-information-line"></i> No competitors found yet. Add your first competitor above.</div>';
+                    return;
+                }
+                const l1 = lowestPrice(list);
+                const head = {
+                    amazon: ['#', 'Image', 'ASIN', 'Title', 'Seller', 'Price', 'Std Prc', 'GROI %', 'NROI %', 'Revenue (30d)', 'Units (30d)', 'Buy Box', 'Type', 'Rating', 'Reviews', 'Delivery', 'Inv', 'Link', 'Ignore', 'Actions'],
+                    ebay: ['#', 'Image', 'Item ID', 'Title', 'Price', 'Ship', 'Std Prc', 'GROI %', 'NROI %', 'Link', 'Ignore', 'Actions'],
+                    google: ['#', 'Image', 'Product ID', 'Source', 'Title', 'Price', 'Rating', 'Reviews', 'Std Prc', 'GROI %', 'NROI %', 'Link', 'Ignore', 'Actions'],
+                    temu: ['#', 'Price', 'Delivery', 'Std Prc', 'GROI %', 'NROI %', 'Link', 'Ignore', 'Actions'],
+                }[kind] || [];
+                let html = '';
+                if (l1 != null) {
+                    html += '<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$' + Number(l1).toFixed(2) + '</strong></div>';
+                }
+                html += '<div class="table-responsive"><table class="table table-bordered table-sm align-middle mb-0"><thead><tr>'
+                    + head.map(function (label) { return '<th class="text-center">' + label + '</th>'; }).join('')
+                    + '</tr></thead><tbody>';
+                list.forEach(function (item, index) {
+                    const ignored = !!item.ignored;
+                    const total = competitorPrice(item);
+                    const isLowest = !ignored && l1 != null && Math.abs(total - l1) < 0.01;
+                    const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'lmp-lowest-row' : '');
+                    const img = item.image
+                        ? '<img class="lmp-overall-comp-img" src="' + escHtml(item.image) + '" alt="">'
+                        : dash();
+                    let cells = '<td class="text-center"><strong>' + (index + 1) + '</strong></td>';
+                    if (kind === 'amazon') {
+                        const revenue = item.monthly_revenue ? '<span class="text-success fw-bold">$' + Math.round(parseFloat(item.monthly_revenue)) + '</span>' : dash();
+                        const units = item.monthly_units_sold ? '<span class="text-primary fw-bold">' + parseInt(item.monthly_units_sold, 10) + '</span>' : dash();
+                        const rating = item.rating ? '<span class="text-warning">' + parseFloat(item.rating).toFixed(1) + '</span>' : dash();
+                        const reviews = item.reviews ? parseInt(item.reviews, 10).toLocaleString() : dash();
+                        const type = item.seller_type
+                            ? '<span class="badge bg-' + (item.seller_type === 'FBA' ? 'warning' : 'secondary') + '">' + escHtml(item.seller_type) + '</span>'
+                            : dash();
+                        cells += '<td class="text-center">' + img + '</td>'
+                            + '<td><span class="text-primary fw-bold">' + escHtml(item.asin || 'N/A') + '</span></td>'
+                            + '<td class="text-center">' + previewBtn('Product Title', item.product_title || item.title) + '</td>'
+                            + '<td class="text-center">' + previewBtn('Seller', item.seller_name) + '</td>'
+                            + '<td>' + priceCell(item, isLowest, ignored) + '</td>'
+                            + metricCells()
+                            + '<td class="text-center">' + revenue + '</td>'
+                            + '<td class="text-center">' + units + '</td>'
+                            + '<td class="text-center">' + (item.buy_box_owner ? escHtml(item.buy_box_owner) : dash()) + '</td>'
+                            + '<td class="text-center">' + type + '</td>'
+                            + '<td class="text-center">' + rating + '</td>'
+                            + '<td class="text-center">' + reviews + '</td>'
+                            + '<td class="text-center">' + deliveryCell(item) + '</td>'
+                            + '<td class="text-center">' + stockCell(item) + '</td>';
+                    } else if (kind === 'ebay') {
+                        const ship = parseFloat(item.shipping_cost) || 0;
+                        cells += '<td class="text-center">' + img + '</td>'
+                            + '<td>' + escHtml(item.item_id || '—') + '</td>'
+                            + '<td class="text-center">' + previewBtn('Product Title', item.title || item.product_title) + '</td>'
+                            + '<td>' + priceCell(item, isLowest, ignored) + '</td>'
+                            + '<td class="text-center">' + (ship > 0 ? ('$' + ship.toFixed(2)) : '<span class="badge bg-info">FREE</span>') + '</td>'
+                            + metricCells();
+                    } else if (kind === 'google') {
+                        const rating = item.rating ? parseFloat(item.rating).toFixed(1) : dash();
+                        const reviews = item.reviews ? parseInt(item.reviews, 10).toLocaleString() : dash();
+                        cells += '<td class="text-center">' + img + '</td>'
+                            + '<td>' + escHtml(item.product_id || '—') + '</td>'
+                            + '<td>' + escHtml(item.source || '—') + '</td>'
+                            + '<td class="text-center">' + previewBtn('Product Title', item.title || item.product_title) + '</td>'
+                            + '<td>' + priceCell(item, isLowest, ignored) + '</td>'
+                            + '<td class="text-center">' + rating + '</td>'
+                            + '<td class="text-center">' + reviews + '</td>'
+                            + metricCells();
+                    } else {
+                        cells += '<td>' + priceCell(item, isLowest, ignored) + '</td>'
+                            + '<td class="text-center">' + deliveryCell(item) + '</td>'
+                            + metricCells();
+                    }
+                    cells += actionCells(index, item);
+                    html += '<tr class="' + rowClass + '">' + cells + '</tr>';
+                });
+                html += '</tbody></table></div>';
+                box.innerHTML = html;
+            }
+
+            function openPreview(label, text) {
+                document.getElementById('lmp-ov-preview-title').textContent = label || 'Details';
+                document.getElementById('lmp-ov-preview-body').textContent = text || '';
+                document.getElementById('lmp-overall-text-preview').hidden = false;
+            }
+
+            function closePreview() {
+                document.getElementById('lmp-overall-text-preview').hidden = true;
+            }
+
+            function sameCompetitor(a, b) {
+                if (String(a.id) === String(b.id) && String(a._sku || a.sku || '') === String(b._sku || b.sku || '')) return true;
+                const asin = String(b.asin || '').toUpperCase();
+                if (asin && String(a.asin || '').toUpperCase() === asin) return true;
+                const itemId = String(b.item_id || '');
+                if (itemId && String(a.item_id || '') === itemId) return true;
+                return false;
+            }
+
+            function applyIgnoreLocal(item, ignored) {
+                function mark(list) {
+                    (list || []).forEach(function (row) {
+                        if (sameCompetitor(row, item)) row.ignored = ignored ? 1 : 0;
+                    });
+                }
+                mark(lmpState.competitors);
+                Object.keys(lmpState.bySku).forEach(function (sku) { mark(lmpState.bySku[sku]); });
+                renderList();
+                syncGrid();
+            }
+
+            function temuEntries(list) {
+                return (list || []).map(function (item) {
+                    return {
+                        price: parseFloat(item.price) || 0,
+                        delivery: parseFloat(item.delivery != null ? item.delivery : item.shipping_cost) || 0,
+                        link: item.link || item.product_link || null,
+                        ignored: !!item.ignored,
+                        source_sku: item.source_sku || item._sku || null,
+                    };
+                });
+            }
+
+            function mutateTemu(item, mutator) {
+                const sku = item._sku || item.source_sku || activeSku();
+                const site = lmpSites.lmp_temu;
+                return fetchCompetitors(site, sku, [], false).then(function (list) {
+                    const entries = temuEntries(list);
+                    const idx = entries.findIndex(function (row, i) {
+                        const id = 'temu-' + (i + 1);
+                        return id === String(item.id)
+                            || (Math.abs((parseFloat(row.price) || 0) - (parseFloat(item.price) || 0)) < 0.01
+                                && String(row.link || '') === String(item.link || item.product_link || ''));
+                    });
+                    const next = mutator(entries, idx);
+                    if (next === false) throw new Error('Temu competitor was not found. Reload and try again.');
+                    return postJson('/temu-lmp/save', { sku: sku, lmp_entries: next });
+                });
+            }
+
+            function saveCompetitor(event) {
+                event.preventDefault();
+                const site = lmpSites[lmpState.field];
+                if (!site) return;
+                const sku = activeSku();
+                if (!sku || /^PARENT\b/i.test(sku)) {
+                    setMsg('Pick a SKU before adding or updating a competitor.', 'error');
+                    return;
+                }
+                const price = parseFloat(document.getElementById('lmp-ov-price').value);
+                const idVal = document.getElementById('lmp-ov-id').value.trim();
+                const link = document.getElementById('lmp-ov-link').value.trim();
+                const extraRaw = document.getElementById('lmp-ov-extra').value.trim();
+                const extra = extraRaw === '' ? 0 : parseFloat(extraRaw);
+                const source = document.getElementById('lmp-ov-source').value.trim();
+                if (!(price > 0)) {
+                    setMsg('Valid price is required.', 'error');
+                    return;
+                }
+                if (site.kind !== 'temu' && !idVal) {
+                    setMsg(site.idLabel + ' is required.', 'error');
+                    return;
+                }
+                if (extraRaw !== '' && (!isFinite(extra) || extra < 0)) {
+                    setMsg('Shipping must be 0 or more.', 'error');
+                    return;
+                }
+                const editing = lmpState.editing;
+                const btn = document.getElementById('lmp-ov-submit');
+                btn.disabled = true;
+                let req;
+                if (site.kind === 'amazon') {
+                    req = editing
+                        ? postJson('/amazon/lmp/update', { id: editing.id, price: price, product_link: link || null, asin: idVal })
+                        : postJson('/amazon/lmp/add', { sku: sku, asin: idVal, price: price, product_link: link || null, marketplace: 'US' });
+                } else if (site.kind === 'ebay') {
+                    req = editing
+                        ? postJson('/ebay-lmp-update', { id: editing.id, price: price, shipping_cost: extra, product_link: link || null, item_id: idVal })
+                        : postJson('/ebay-lmp-add', { sku: sku, item_id: idVal, price: price, shipping_cost: extra, product_link: link || null });
+                } else if (site.kind === 'google') {
+                    req = editing
+                        ? postJson('/google-lmp-update', { id: editing.id, price: price, product_link: link || null, product_id: idVal })
+                        : postJson('/google-lmp-add', { sku: sku, product_id: idVal, source: source || null, price: price, product_link: link || null });
+                } else {
+                    const draft = { price: price, delivery: extra, link: link || null, ignored: false, source_sku: sku };
+                    req = editing
+                        ? mutateTemu(editing, function (entries, idx) {
+                            if (idx < 0) return false;
+                            entries[idx] = Object.assign({}, entries[idx], draft, { ignored: entries[idx].ignored });
+                            return entries;
+                        })
+                        : fetchCompetitors(lmpSites.lmp_temu, sku, [], false).then(function (list) {
+                            const entries = temuEntries(list);
+                            entries.push(draft);
+                            return postJson('/temu-lmp/save', { sku: sku, lmp_entries: entries });
+                        });
+                }
+                req.then(function () {
+                    setMsg(editing ? 'Competitor updated.' : 'Competitor added.', 'ok');
+                    resetForm();
+                    return loadLists(false);
+                }).catch(function (err) {
+                    setMsg(err.message || 'Save failed', 'error');
+                }).finally(function () {
+                    btn.disabled = false;
+                });
+            }
+
+            function deleteCompetitor(item) {
+                const site = lmpSites[lmpState.field];
+                const label = item.asin || item.item_id || item.product_id || 'this competitor';
+                const price = competitorPrice(item);
+                if (!confirm('Delete competitor ' + label + (price > 0 ? ' ($' + price.toFixed(2) + ')' : '') + ' from tracking?')) return;
+                let req;
+                if (site.kind === 'amazon') req = postJson('/amazon/lmp/delete', { id: item.id });
+                else if (site.kind === 'ebay') req = postJson('/ebay-lmp-delete', { id: item.id });
+                else if (site.kind === 'google') req = postJson('/google-lmp-delete', { id: item.id });
+                else {
+                    req = mutateTemu(item, function (entries, idx) {
+                        if (idx < 0) return false;
+                        entries.splice(idx, 1);
+                        return entries;
+                    });
+                }
+                setMsg('Deleting…', '');
+                req.then(function () {
+                    setMsg('Competitor deleted.', 'ok');
+                    if (lmpState.editing && String(lmpState.editing.id) === String(item.id)) resetForm();
+                    return loadLists(false);
+                }).catch(function (err) {
+                    setMsg(err.message || 'Delete failed', 'error');
+                });
+            }
+
+            function ignoreCompetitor(item, ignored) {
+                const site = lmpSites[lmpState.field];
+                applyIgnoreLocal(item, ignored);
+                const sku = item._sku || item.sku || item.source_sku || activeSku();
+                let req;
+                if (site.kind === 'amazon') {
+                    req = postJson('/amazon/lmp/ignore', { id: item.id, sku: sku, ignored: ignored ? 1 : 0 });
+                } else if (site.kind === 'temu') {
+                    req = mutateTemu(item, function (entries, idx) {
+                        if (idx < 0) return false;
+                        entries[idx].ignored = !!ignored;
+                        return entries;
+                    });
+                } else {
+                    req = postJson('/cvr-master-lmp-ignore', {
+                        marketplace: site.kind,
+                        id: item.id,
+                        sku: sku,
+                        ignored: ignored ? 1 : 0,
+                    });
+                }
+                req.then(function (res) {
+                    setMsg((res && res.message) || (ignored ? 'Ignored for L1' : 'Included in L1'), 'ok');
+                }).catch(function (err) {
+                    applyIgnoreLocal(item, !ignored);
+                    setMsg(err.message || 'Failed to update ignore', 'error');
+                });
+            }
+
+            function saveStd() {
+                if (lmpState.stdSilent || !lmpState.row) return;
+                const row = metricRow();
+                const sku = String(row.sku || '').trim();
+                if (!sku || /^PARENT\b/i.test(sku)) {
+                    setMsg('Pick a child SKU before saving Std Price.', 'error');
+                    return;
+                }
+                const std = parseFloat(document.getElementById('lmp-ov-std').value);
+                if (!(std > 0)) {
+                    setMsg('Enter a Std Price greater than 0.', 'error');
+                    return;
+                }
+                const current = parseFloat(row.std_price);
+                if (isFinite(current) && Math.abs(current - std) < 0.001) return;
+                const my = parseFloat(row.my_lmp);
+                const body = { sku: sku, std_price: std };
+                if (isFinite(my) && my > 0) body.my_lmp = my;
+                setMsg('Saving Std Price…', '');
+                postJson(@json(route('lmp.overall.save')), body).then(function (res) {
+                    applyEditToLinkedRows(sku, {
+                        std_price: parseFloat(res.std_price) || std,
+                        my_lmp: res.my_lmp,
+                    }, res.applied_skus);
+                    refreshParentSummaries();
+                    refreshStdMetrics();
+                    setMsg('Std Price saved.', 'ok');
+                }).catch(function (err) {
+                    setMsg(err.message || 'Save failed', 'error');
+                });
+            }
+
+            function openLmpModal(row, field) {
+                const site = lmpSites[field];
+                if (!site) return;
+                lmpState.field = field;
+                lmpState.row = row;
+                lmpState.bySku = {};
+                lmpState.competitors = [];
+                lmpState.editing = null;
+                document.getElementById('lmp-overall-lmp-title').textContent = site.label + ' — ' + (row.sku || '');
+                configureSite(site);
+                fillSkuControl(row);
+                setStdInput(parseFloat(metricRow().std_price));
+                resetForm();
+                setMsg('', '');
+                document.getElementById('lmp-overall-lmp-list').innerHTML = '<div class="text-center text-muted py-4">Loading competitors…</div>';
+                if (!showBsModal(lmpModalEl)) return;
+                loadLists(false);
+            }
+
+            document.getElementById('lmp-ov-form').addEventListener('submit', saveCompetitor);
+            document.getElementById('lmp-ov-cancel').addEventListener('click', function () {
+                resetForm();
+                setMsg('', '');
+            });
+            document.getElementById('lmp-ov-pull').addEventListener('click', function () {
+                const btn = this;
+                btn.disabled = true;
+                const html = btn.innerHTML;
+                btn.innerHTML = '<i class="ri-loader-4-line"></i> Pulling…';
+                loadLists(true).finally(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = html;
+                });
+            });
+            document.getElementById('lmp-ov-std').addEventListener('input', refreshStdMetrics);
+            document.getElementById('lmp-ov-std').addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.blur();
+                }
+            });
+            document.getElementById('lmp-ov-std').addEventListener('change', saveStd);
+            document.getElementById('lmp-ov-sku-control').addEventListener('change', function (e) {
+                if (!e.target || e.target.id !== 'lmp-ov-sku') return;
+                const row = table.getRow(e.target.value);
+                if (row) setStdInput(parseFloat(row.getData().std_price));
+            });
+            document.getElementById('lmp-overall-lmp-list').addEventListener('click', function (e) {
+                const preview = e.target.closest('.lmp-ov-preview-btn');
+                if (preview) {
+                    e.preventDefault();
+                    openPreview(preview.getAttribute('data-label'), preview.getAttribute('data-text'));
+                    return;
+                }
+                const edit = e.target.closest('.lmp-ov-edit');
+                if (edit) {
+                    const item = lmpState.competitors[parseInt(edit.getAttribute('data-idx'), 10)];
+                    if (item) enterEdit(item);
+                    return;
+                }
+                const del = e.target.closest('.lmp-ov-delete');
+                if (del) {
+                    const item = lmpState.competitors[parseInt(del.getAttribute('data-idx'), 10)];
+                    if (item) deleteCompetitor(item);
+                }
+            });
+            document.getElementById('lmp-overall-lmp-list').addEventListener('change', function (e) {
+                const box = e.target.closest('.lmp-ov-ignore');
+                if (!box) return;
+                const item = lmpState.competitors[parseInt(box.getAttribute('data-idx'), 10)];
+                if (!item) return;
+                ignoreCompetitor(item, box.checked);
+            });
+            document.getElementById('lmp-ov-preview-close').addEventListener('click', closePreview);
+            document.getElementById('lmp-overall-text-preview').addEventListener('click', function (e) {
+                if (e.target === this) closePreview();
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !document.getElementById('lmp-overall-text-preview').hidden) closePreview();
+            });
+            lmpModalEl.addEventListener('hidden.bs.modal', closePreview);
 
             function pctCell(value, styleName) {
                 if (value == null || value === '') return '<span class="text-muted">—</span>';
@@ -385,13 +1231,28 @@
                 return '<span style="' + style + '">' + Math.round(pct) + '%</span>';
             }
 
+            function lmpPriceDiffPct(data) {
+                const lmp = parseFloat(data && data.avg_lmp);
+                const price = parseFloat(data && data.avg_price);
+                if (!isFinite(lmp) || lmp <= 0 || !isFinite(price) || price <= 0) return null;
+                return ((lmp - price) / price) * 100;
+            }
+
+            function lmpPriceDiffClass(pct) {
+                if (pct == null || !isFinite(pct)) return '';
+                if (pct < 0) return 'lmp-diff-red';
+                if (pct < 10) return 'lmp-diff-green';
+                if (pct <= 20) return 'lmp-diff-yellow';
+                return 'lmp-diff-magenta';
+            }
+
             function percentColumn(title, field, styleName, tip) {
                 return {
                     title: title,
                     field: field,
                     hozAlign: 'center',
                     headerHozAlign: 'center',
-                    width: 80,
+                    minWidth: 52,
                     sorter: 'number',
                     headerTooltip: tip,
                     formatter: function (cell) {
@@ -438,7 +1299,8 @@
             const table = new Tabulator('#lmp-overall-table', {
                 index: 'sku',
                 height: '70vh',
-                layout: 'fitDataStretch',
+                layout: 'fitData',
+                columnDefaults: { resizable: true },
                 placeholder: 'Loading…',
                 selectableRows: 'highlight',
                 selectableRowsRollingSelection: true,
@@ -471,7 +1333,8 @@
                         headerHozAlign: 'center',
                         headerSort: false,
                         cssClass: 'lmp-header-flat',
-                        width: 70,
+                        width: 42,
+                        minWidth: 42,
                         frozen: true,
                     },
                     {
@@ -479,7 +1342,8 @@
                         field: 'image',
                         hozAlign: 'center',
                         headerSort: false,
-                        width: 64,
+                        width: 46,
+                        minWidth: 46,
                         frozen: true,
                         formatter: function (cell) {
                             const url = cell.getValue();
@@ -488,13 +1352,13 @@
                             return '<img class="lmp-overall-thumb" src="' + safe + '" alt="">';
                         },
                     },
-                    { title: 'parent', field: 'parent', width: 130, frozen: true },
-                    { title: 'sku', field: 'sku', width: 150, frozen: true },
+                    { title: 'parent', field: 'parent', minWidth: 64, frozen: true },
+                    { title: 'sku', field: 'sku', minWidth: 72, frozen: true },
                     {
                         title: 'inv',
                         field: 'inv',
                         hozAlign: 'center',
-                        width: 70,
+                        minWidth: 44,
                         sorter: 'number',
                         formatter: function (cell) { return countCell(cell.getValue()); },
                     },
@@ -502,7 +1366,7 @@
                         title: 'ovl30',
                         field: 'ovl30',
                         hozAlign: 'center',
-                        width: 80,
+                        minWidth: 48,
                         sorter: 'number',
                         headerTooltip: 'Overall L30 units from Shopify',
                         formatter: function (cell) { return countCell(cell.getValue()); },
@@ -511,7 +1375,7 @@
                         title: 'dil',
                         field: 'dil',
                         hozAlign: 'center',
-                        width: 70,
+                        minWidth: 48,
                         sorter: 'number',
                         headerTooltip: 'dil = ovl30 / inv × 100',
                         formatter: function (cell) {
@@ -539,7 +1403,7 @@
                         field: 'ov_lmp',
                         hozAlign: 'center',
                         headerHozAlign: 'center',
-                        width: 90,
+                        minWidth: 72,
                         sorter: 'number',
                         headerTooltip: 'Lowest LMP across Amazon, eBay, Temu, and Google',
                         formatter: function (cell) { return money(cell.getValue()); },
@@ -549,7 +1413,7 @@
                         field: 'avg_lmp',
                         hozAlign: 'center',
                         headerHozAlign: 'center',
-                        width: 90,
+                        minWidth: 72,
                         sorter: 'number',
                         headerTooltip: 'Average LMP across Amazon, eBay, Temu, and Google',
                         formatter: function (cell) { return money(cell.getValue()); },
@@ -558,16 +1422,43 @@
                         title: 'My LMP',
                         field: 'my_lmp',
                         hozAlign: 'center',
-                        width: 90,
+                        minWidth: 72,
                         sorter: 'number',
                         headerTooltip: 'Manual My LMP (amazon_data_view.MY_LMP)',
                         formatter: function (cell) { return money(cell.getValue()); },
                     },
                     {
+                        title: 'Diff',
+                        field: 'lmp_diff',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        minWidth: 56,
+                        headerTooltip: '(Avg LMP − Avg Price) / Avg Price',
+                        sorter: function (a, b, aRow, bRow) {
+                            const av = lmpPriceDiffPct(aRow.getData());
+                            const bv = lmpPriceDiffPct(bRow.getData());
+                            if (av == null && bv == null) return 0;
+                            if (av == null) return -1;
+                            if (bv == null) return 1;
+                            return av - bv;
+                        },
+                        formatter: function (cell) {
+                            const el = cell.getElement();
+                            if (el) {
+                                el.classList.remove('lmp-diff-magenta', 'lmp-diff-red', 'lmp-diff-green', 'lmp-diff-yellow');
+                            }
+                            const pct = lmpPriceDiffPct(cell.getRow().getData());
+                            const cls = lmpPriceDiffClass(pct);
+                            if (el && cls) el.classList.add(cls);
+                            if (pct == null) return '<span class="text-muted">—</span>';
+                            return Math.round(pct) + '%';
+                        },
+                    },
+                    {
                         title: 'Std Price',
                         field: 'std_price',
                         hozAlign: 'center',
-                        width: 90,
+                        minWidth: 72,
                         sorter: 'number',
                         headerTooltip: 'Amazon Standard Price (amazon_data_view.STANDARD_PRICE)',
                         formatter: function (cell) { return money(cell.getValue()); },
@@ -576,7 +1467,7 @@
                         title: 'Avg Price',
                         field: 'avg_price',
                         hozAlign: 'center',
-                        width: 90,
+                        minWidth: 72,
                         sorter: 'number',
                         headerTooltip: 'Avg Price from /pricing-master-cvr',
                         formatter: function (cell) { return money(cell.getValue()); },
@@ -586,7 +1477,8 @@
                         field: 'row_edit',
                         hozAlign: 'center',
                         headerSort: false,
-                        width: 52,
+                        width: 40,
+                        minWidth: 40,
                         formatter: function (cell) {
                             const data = cell.getRow().getData();
                             if (data.is_parent_summary) return '';
@@ -712,6 +1604,7 @@
                         std_price: parseFloat(body.std_price) || std,
                         my_lmp: body.my_lmp,
                     }, body.applied_skus);
+                    refreshParentSummaries();
                     msg.className = 'small mt-2 text-success';
                     msg.textContent = 'Saved.';
                     setTimeout(function () {

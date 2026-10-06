@@ -25,7 +25,16 @@ class LmpOverallController extends Controller
 
     public function index(): View
     {
-        return view('market-places.lmp_overall');
+        $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')
+            ->value('ads_percentage');
+        if ($amazonAdsPercent === null) {
+            $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')
+                ->value('ads_percentage');
+        }
+
+        return view('market-places.lmp_overall', [
+            'amazonAdsPercent' => (float) ($amazonAdsPercent ?? 0),
+        ]);
     }
 
     /**
@@ -113,7 +122,7 @@ class LmpOverallController extends Controller
             ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
             ->orderBy('parent')
             ->orderBy('sku')
-            ->get(['id', 'parent', 'sku', 'main_image']);
+            ->get(['id', 'parent', 'sku', 'main_image', 'Values']);
 
         $skus = $products->pluck('sku')->filter()->unique()->values()->all();
         $cvrBySku = $this->pricingCvrAvgBySku();
@@ -155,11 +164,14 @@ class LmpOverallController extends Controller
 
             $skuKey = $this->skuKey($sku);
             $cvr = $cvrBySku[$skuKey] ?? $cvrBySku[str_replace(' ', '', $skuKey)] ?? null;
+            $cost = $this->productCost($product);
 
             $row = [
                 'image' => $product->main_image ?: null,
                 'parent' => preg_replace('/\s+/', ' ', trim((string) ($product->parent ?? ''))),
                 'sku' => $sku,
+                'lp' => $cost['lp'],
+                'ship' => $cost['ship'],
                 'inv' => $inv,
                 'ovl30' => $ovl30,
                 'dil' => $dil,
@@ -302,6 +314,8 @@ class LmpOverallController extends Controller
             'inv' => $inv,
             'ovl30' => $ovl30,
             'dil' => $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0.0,
+            'lp' => $this->avgPositive($children, 'lp'),
+            'ship' => $this->avgNumeric($children, 'ship'),
             'std_price' => $this->avgPositive($children, 'std_price'),
             'my_lmp' => $this->avgPositive($children, 'my_lmp'),
             'linked_lmp_skus' => [],
@@ -358,6 +372,29 @@ class LmpOverallController extends Controller
         $values = collect($rows)->pluck($field)->filter(fn ($value) => is_numeric($value));
 
         return $values->isNotEmpty() ? round((float) $values->avg(), 2) : null;
+    }
+
+    /**
+     * LP and ship from product_master.Values — same inputs as Amazon GROI% / NROI%.
+     *
+     * @return array{lp: ?float, ship: float}
+     */
+    private function productCost(ProductMaster $product): array
+    {
+        $values = is_array($product->Values) ? $product->Values : [];
+        $lp = 0.0;
+        foreach ($values as $key => $value) {
+            if (strtolower((string) $key) === 'lp' && is_numeric($value)) {
+                $lp = (float) $value;
+                break;
+            }
+        }
+        $ship = (isset($values['ship']) && is_numeric($values['ship'])) ? (float) $values['ship'] : 0.0;
+
+        return [
+            'lp' => $lp > 0 ? round($lp, 2) : null,
+            'ship' => round($ship, 2),
+        ];
     }
 
     private function skuKey(string $sku): string
