@@ -114,6 +114,17 @@ class MarketplaceChannelFulfillmentHub
         return isset($this->channelMap()[strtolower(trim($marketplace))]);
     }
 
+    /** False when the channel's "push tracking" setting is switched off in Marketplace Manager. */
+    public function channelPushEnabled(string $marketplace): bool
+    {
+        $map = $this->channelMap()[strtolower(trim($marketplace))] ?? null;
+        if ($map === null) {
+            return false;
+        }
+
+        return $this->channelAllowsPush(app($map[1]));
+    }
+
     /**
      * When Shopify copies are fulfilled from the unfulfilled-order scan (no local id),
      * resolve the channel row from tags like newegg-123 / tiktok2-5768….

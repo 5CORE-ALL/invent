@@ -342,9 +342,27 @@ class OrderFulfillmentShopifyPushService
     {
         $row->shopify_push_checked_at = now();
 
+        if ($slug === 'pls') {
+            // The Shopify order fulfilled above is the PLS storefront order itself.
+            $row->channel_pushed_at = now();
+            $row->channel_push_message = 'Fulfilled on the PLS Shopify store.';
+            $row->save();
+
+            return ['state' => 'pushed', 'message' => $row->channel_push_message];
+        }
+
         if (! $this->hub->supportsChannel($slug)) {
             $row->channel_push_attempts = self::MAX_CHANNEL_ATTEMPTS;
             $row->channel_push_message = 'No marketplace tracking push available for '.$slug.'.';
+            $row->save();
+
+            return ['state' => 'skipped', 'message' => $row->channel_push_message];
+        }
+
+        if (! $this->hub->channelPushEnabled($slug)) {
+            // Cooldown only (no attempt burned) so the row is pushed once the setting is switched back on.
+            $row->channel_push_attempts = max(1, (int) $row->channel_push_attempts);
+            $row->channel_push_message = 'Tracking push is turned off for '.$slug.' in Marketplace Manager settings.';
             $row->save();
 
             return ['state' => 'skipped', 'message' => $row->channel_push_message];
@@ -357,12 +375,11 @@ class OrderFulfillmentShopifyPushService
         }
 
         if ($result === null) {
-            // Push disabled in Marketplace Manager settings, or the channel row vanished.
-            $row->channel_push_attempts = self::MAX_CHANNEL_ATTEMPTS;
-            $row->channel_push_message = 'Marketplace push disabled or order row not found for '.$slug.'.';
+            $row->channel_push_attempts = min(self::MAX_CHANNEL_ATTEMPTS, (int) $row->channel_push_attempts + 1);
+            $row->channel_push_message = 'Marketplace order row not found for '.$slug.'.';
             $row->save();
 
-            return ['state' => 'skipped', 'message' => $row->channel_push_message];
+            return ['state' => 'failed', 'message' => $row->channel_push_message];
         }
 
         $message = trim((string) ($result['message'] ?? ''));

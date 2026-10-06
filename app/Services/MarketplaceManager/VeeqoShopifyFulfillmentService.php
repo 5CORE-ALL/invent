@@ -3268,6 +3268,9 @@ class VeeqoShopifyFulfillmentService
     {
         $out = [];
         foreach (MarketplaceManagerRegistry::slugs() as $slug) {
+            if ($slug === 'pls') {
+                continue;
+            }
             $config = $this->shopifyConfigFor($slug);
             $url = strtolower(trim((string) ($config['store_url'] ?? '')));
             $token = trim((string) ($config['token'] ?? ''));
@@ -5818,6 +5821,17 @@ GQL;
      */
     protected function shopifyConfigFor(string $marketplace): array
     {
+        // PLS orders live on the ProLightSounds store (pls_sales.shopify_order_id is that store's id),
+        // whose token comes from the client-credentials service rather than .env.
+        if (strtolower(trim($marketplace)) === 'pls') {
+            $pls = app(\App\Services\ShopifyPlsTokenService::class);
+            $domain = (string) ($pls->getDomain() ?? '');
+            $token = (string) ($pls->getAccessToken() ?? '');
+            if ($domain !== '' && $token !== '') {
+                return ['store_url' => $domain, 'token' => $token, 'store_key' => 'pls'];
+            }
+        }
+
         $settings = MarketplaceSyncSettings::getFor($marketplace);
         $storeKey = (string) ($settings['order']['shopify_store'] ?? 'main');
 
