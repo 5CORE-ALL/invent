@@ -126,7 +126,13 @@ final class MarketplaceListingQtyMatchService
         }
 
         $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
-        $mp = $this->localStockMap($mmChannel, $skus);
+        // Same qty the listings tab shows. Local stock is overwritten with the
+        // push target on success, which used to mark the SKU fixed while the
+        // page still showed the old marketplace total.
+        $mp = $this->liveListingQtyMap($mmChannel);
+        if ($mp === []) {
+            $mp = $this->localStockMap($mmChannel, $skus);
+        }
         $out = [];
         foreach ($skus as $sku) {
             $shopifyQty = MarketplaceListingStockResolver::qtyFromMap($shopify, $sku);

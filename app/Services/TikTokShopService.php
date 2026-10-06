@@ -4991,7 +4991,7 @@ class TikTokShopService
      */
     protected function inventoryRowsForPushQty(array $warehouses, int $quantity): array
     {
-        return self::distributePushInventory(
+        return self::pushRowsForWarehouseStock(
             $warehouses,
             $quantity,
             $this->resolveDefaultWarehouseId()
@@ -5000,9 +5000,13 @@ class TikTokShopService
 
     /**
      * Rows to write so the sum of warehouse qty equals $quantity.
-     * Stock sitting on a second warehouse is left alone and subtracted from
-     * the main warehouse. Zeroing that second warehouse is often ignored, so
-     * the listings total never matched Shopify.
+     *
+     * A second warehouse that holds only part of the target is left alone and
+     * subtracted from the main warehouse (TikTok often ignores a 0 on that
+     * second warehouse). When the other warehouses already hold the whole
+     * target — the 2× case, Shopify qty copied onto every warehouse — writing
+     * 0 on the main warehouse alone does not change the sum the listings page
+     * shows. That push must set the main warehouse to the target and 0 the rest.
      *
      * @param  list<array{warehouse_id?: string, quantity?: int}>  $warehouses
      * @return list<array{warehouse_id: string, quantity: int}>
@@ -5011,28 +5015,19 @@ class TikTokShopService
     {
         $quantity = max(0, $quantity);
         $bestWid = self::primaryWarehouseId($warehouses, $defaultWarehouseId);
-        $bestQty = -1;
         $others = 0;
         foreach ($warehouses as $row) {
             if (! is_array($row)) {
                 continue;
             }
             $wid = trim((string) ($row['warehouse_id'] ?? ''));
-            if ($wid === '') {
+            if ($wid === '' || $wid === $bestWid) {
                 continue;
             }
-            $q = max(0, (int) ($row['quantity'] ?? 0));
-            if ($wid === $bestWid) {
-                $bestQty = $q;
-            } else {
-                $others += $q;
-            }
+            $others += max(0, (int) ($row['quantity'] ?? 0));
         }
 
-        if ($bestWid !== '' && $bestQty <= 0 && $others <= 0) {
-            return self::distributePushInventory($warehouses, $quantity, $defaultWarehouseId);
-        }
-        if ($bestWid !== '' && $others > 0 && $others <= $quantity) {
+        if ($bestWid !== '' && $others > 0 && $others < $quantity) {
             return [[
                 'warehouse_id' => $bestWid,
                 'quantity' => $quantity - $others,
@@ -5096,8 +5091,10 @@ class TikTokShopService
     }
 
     /**
-     * Put the target on the fullest warehouse and zero the rest.
-     * All-zero listings get the target on every warehouse.
+     * Put the target on the main warehouse and 0 on every other warehouse.
+     * The listings page sums warehouses, so copying the target onto each one
+     * makes TikTok qty warehouse-count × Shopify and the SKU never leaves
+     * Inv SKU Mismatch.
      *
      * @param  list<array{warehouse_id?: string, quantity?: int}>  $warehouses
      * @return list<array{warehouse_id: string, quantity: int}>
@@ -5106,18 +5103,6 @@ class TikTokShopService
     {
         $quantity = max(0, $quantity);
         $bestWid = self::primaryWarehouseId($warehouses, $defaultWarehouseId);
-        $bestQty = -1;
-        foreach ($warehouses as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $wid = trim((string) ($row['warehouse_id'] ?? ''));
-            if ($wid === $bestWid) {
-                $bestQty = max(0, (int) ($row['quantity'] ?? 0));
-                break;
-            }
-        }
-        $broadcast = $bestWid === '' || $bestQty <= 0;
 
         $out = [];
         $seen = [];
@@ -5130,9 +5115,12 @@ class TikTokShopService
                 continue;
             }
             $seen[$wid] = true;
+            if ($bestWid === '') {
+                $bestWid = $wid;
+            }
             $out[] = [
                 'warehouse_id' => $wid,
-                'quantity' => ($broadcast || $wid === $bestWid) ? $quantity : 0,
+                'quantity' => $wid === $bestWid ? $quantity : 0,
             ];
         }
 
