@@ -397,6 +397,9 @@ final class MarketplaceLiveInventoryRules
             return false;
         }
         $marketplaceQty = (int) $marketplaceQty;
+        if ($marketplaceQty === $shopifyQty) {
+            return true;
+        }
         if ($shopifyQty <= 0) {
             return $marketplaceQty <= 0;
         }

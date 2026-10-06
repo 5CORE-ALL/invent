@@ -173,7 +173,7 @@ class Ebay3SyncController extends Controller
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedEbay3Skus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedEbay3Skus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         // Live cache often omits inventory for inactive rows — fill gaps from local map
         // so qty-matched inactive SKUs land in Inactive & Matched (not Mismatch).
@@ -946,7 +946,7 @@ class Ebay3SyncController extends Controller
     {
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(Ebay3LiveListingsService::class);
-        $linkedSkus = $this->linkedEbay3Skus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedEbay3Skus(), $liveService->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),

@@ -5,6 +5,7 @@ namespace App\Services\MarketplaceManager;
 use App\Jobs\WarmPlsLiveListingsCache;
 use App\Models\ShopifySku;
 use App\Services\Support\MarketplaceApiConfigService;
+use App\Support\Marketplace\MarketplaceListingPresence;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
@@ -73,7 +74,7 @@ class PlsListingsPageBuilder
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),
@@ -467,26 +468,37 @@ class PlsListingsPageBuilder
             return [];
         }
 
-        $skus = [];
-        DB::table('shopify_catalog_variants')
-            ->where('store', 'pls')
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->orderBy('id')
-            ->chunkById(1000, function ($rows) use (&$skus) {
-                foreach ($rows as $row) {
-                    $sku = trim((string) $row->sku);
-                    if ($sku === '' || MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
-                        continue;
-                    }
-                    $skus[] = $sku;
+        $listed = [];
+        $hasProducts = Schema::hasTable('shopify_catalog_products');
+        $q = DB::table('shopify_catalog_variants as v')
+            ->where('v.store', 'pls')
+            ->whereNotNull('v.sku')
+            ->where('v.sku', '!=', '');
+        if ($hasProducts) {
+            $q->leftJoin('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+                ->select(['v.id', 'v.sku', 'p.status']);
+        } else {
+            $q->select(['v.id', 'v.sku']);
+        }
+        $q->orderBy('v.id')->chunkById(1000, function ($rows) use (&$listed, $hasProducts) {
+            foreach ($rows as $row) {
+                $sku = trim((string) $row->sku);
+                if ($sku === '' || MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
+                    continue;
                 }
-            });
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm === '') {
+                    continue;
+                }
+                $status = $hasProducts ? (string) ($row->status ?? '') : '';
+                if (MarketplaceListingPresence::isAbsent($status)) {
+                    continue;
+                }
+                $listed[$norm] = $sku;
+            }
+        }, 'v.id', 'id');
 
-        return collect($skus)
-            ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
-            ->values()
-            ->all();
+        return array_values($listed);
     }
 
     /**
@@ -581,6 +593,9 @@ class PlsListingsPageBuilder
     public function isLinked(?object $metric, string $shopifySku): bool
     {
         if (! $metric) {
+            return false;
+        }
+        if (MarketplaceListingPresence::isAbsent($metric->status ?? null)) {
             return false;
         }
         $productId = trim((string) ($metric->product_id ?? ''));
@@ -735,7 +750,7 @@ class PlsListingsPageBuilder
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $linkedSkus = $this->linkedSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedSkus(), $this->liveService()->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $this->liveService()->peekCached(),

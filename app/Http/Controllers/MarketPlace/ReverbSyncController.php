@@ -209,7 +209,7 @@ class ReverbSyncController extends Controller
             WarmReverbLiveListingsCache::dispatch();
         }
 
-        $linkedSkus = $this->linkedReverbSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedReverbSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         // Prefer warm live cache, but fill gaps from local stock (ended/inactive often omit qty).
         $localMpStock = $this->reverbStockMapForSkus($allLinkedVerified);
@@ -1562,7 +1562,7 @@ class ReverbSyncController extends Controller
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(ReverbLiveListingsService::class);
-        $linkedSkus = $this->linkedReverbSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedReverbSkus(), $liveService->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),

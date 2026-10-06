@@ -25,6 +25,7 @@ final class MarketplaceListingPresence
             'service_delete',
             'delisted',
             'not_listed',
+            'unlisted',
             'missing',
         ];
     }

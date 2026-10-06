@@ -245,7 +245,7 @@ class Temu3SyncController extends Controller
         ShopifyLiveVerifiedCatalogService $catalog
     ): array {
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'linked_mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
-        $linkedSkus = $this->linkedTemuSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedTemuSkus(), $liveService->peekCached());
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),
@@ -324,12 +324,15 @@ class Temu3SyncController extends Controller
         }
 
         $portal = $this->temuPortalStatusSkuLists($liveService);
-        $matchedActive = $matchedQty;
+        $liveRows = $liveService->peekCached();
+        $matchedActive = MarketplacePortalStatusTabs::withoutAbsentSkus($matchedQty, $liveRows);
         $matchedInactive = $portal['inactive'];
-        $mismatchActive = MarketplacePortalStatusTabs::withoutSkus($mismatchQty, $portal['inactive']);
+        $mismatchActive = MarketplacePortalStatusTabs::withoutInactiveSkus($mismatchQty, $liveRows);
         $mismatchInactive = $portal['active'];
-        $linkedMismatchQty = MarketplacePortalStatusTabs::withoutSkus($linkedMismatchQty, $portal['inactive']);
-        $counts['matched'] = count($matchedQty);
+        $linkedMismatchQty = MarketplacePortalStatusTabs::withoutInactiveSkus($linkedMismatchQty, $liveRows);
+        $zeroQty = MarketplacePortalStatusTabs::withoutAbsentSkus($zeroQty, $liveRows);
+        $counts['matched'] = count($matchedActive);
+        $counts['zero'] = count($zeroQty);
         $counts['mismatch'] = count($mismatchActive);
         $counts['matched_inactive'] = count($matchedInactive);
         $counts['mismatch_inactive'] = count($mismatchInactive);
@@ -340,7 +343,7 @@ class Temu3SyncController extends Controller
         return [
             'linkedSkus' => $linkedSkus,
             'allLinkedVerified' => $allLinkedVerified,
-            'matchedQty' => $matchedQty,
+            'matchedQty' => $matchedActive,
             'mismatchQty' => $mismatchQty,
             'linkedMismatchQty' => $linkedMismatchQty,
             'zeroQty' => $zeroQty,
@@ -1165,7 +1168,7 @@ class Temu3SyncController extends Controller
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(Temu3LiveListingsService::class);
-        $linkedSkus = $this->linkedTemuSkus();
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedTemuSkus(), $liveService->peekCached());
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),
