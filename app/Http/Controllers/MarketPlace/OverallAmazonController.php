@@ -628,6 +628,24 @@ class OverallAmazonController extends Controller
                     $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null; // Status: 'pushed', 'applied', 'error'
                     $pushedSale = AmazonPushedPricePullService::pushedSaleFromValue($raw);
                     $row['AMAZON_PUSHED_SALE'] = $pushedSale;
+                    $pulledLive = isset($raw['PRICE_PULLED_VALUE']) && is_numeric($raw['PRICE_PULLED_VALUE'])
+                        ? round((float) $raw['PRICE_PULLED_VALUE'], 2)
+                        : 0.0;
+                    $pullStatus = strtolower((string) ($raw['PRICE_PULL_STATUS'] ?? ''));
+                    $pushSt = strtolower((string) ($raw['PUSH_PRC_STATUS'] ?? $raw['SPRICE_STATUS'] ?? ''));
+                    // Buy Box / datasheet keep Your Price. After a successful push the
+                    // customer price is the Sale — use it so Price = S PRC and the
+                    // blue badge does not come back on refresh. A later live pull wins
+                    // if Amazon still shows a different customer price.
+                    if ($pulledLive > 0 && $pullStatus === 'pulled') {
+                        $row['price'] = $pulledLive;
+                    } elseif ($pushedSale !== null && $pushedSale > 0
+                        && in_array($pushSt, ['pushed', 'applied'], true)) {
+                        $row['price'] = AmazonPushedPricePullService::tabulatorPriceAfterPush(
+                            isset($row['price']) ? (float) $row['price'] : null,
+                            $pushedSale
+                        );
+                    }
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['variation_display'] = (isset($raw['variation']) && in_array($raw['variation'], ['red', 'green'], true)) ? $raw['variation'] : 'red';
