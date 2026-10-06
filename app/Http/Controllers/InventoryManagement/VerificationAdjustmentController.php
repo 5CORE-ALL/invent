@@ -24,7 +24,8 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\ShopifyInventoryLog;
 use App\Jobs\UpdateShopifyInventoryJob;
 use App\Models\LostGainAqHistory;
-use App\Services\ShopifyAdminCallPacer;
+use App\Services\ShopifyAdminCallGate;
+use App\Services\ShopifyStockTransferGraphql;
 use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -70,15 +71,29 @@ class VerificationAdjustmentController extends Controller
     }
 
     /**
-     * One Shopify Admin call, paced under 2 per second, retried when Shopify returns 429.
+     * One Shopify Admin REST call, sharing the app-wide 2/sec gate, retried on 429.
      */
-    protected function sendShopify(callable $call, int $attempts = 6): \Illuminate\Http\Client\Response
+    protected function sendShopify(callable $call, int $attempts = 8): \Illuminate\Http\Client\Response
     {
         return $this->retryOnRateLimit(function () use ($call) {
-            ShopifyAdminCallPacer::wait();
+            ShopifyAdminCallGate::acquire();
+            $response = $call();
+            ShopifyAdminCallGate::record($response);
 
-            return $call();
+            return $response;
         }, $attempts, 0.0);
+    }
+
+    public static function isShopifyRateLimitError(?string $message): bool
+    {
+        $text = strtolower((string) $message);
+
+        return $text !== ''
+            && (str_contains($text, '429')
+                || str_contains($text, 'calls per second')
+                || str_contains($text, 'rate limited')
+                || str_contains($text, 'exceeded 2')
+                || str_contains($text, 'throttled'));
     }
 
     /**
@@ -881,11 +896,15 @@ class VerificationAdjustmentController extends Controller
             }
         }
 
-        return [
+        $result = [
             'success' => true,
             'message' => 'Updated',
-            'available' => $available,
         ];
+        if ($available !== null) {
+            $result['available'] = $available;
+        }
+
+        return $result;
     }
 
     protected function resolveInventoryItemIdFast(string $normalizedSku): ?string
@@ -972,8 +991,18 @@ GQL;
         return $matches[1];
     }
 
-    protected function postInventoryAdjustment(string $inventoryItemId, string $locationId, int $adjustment): int
+    /**
+     * GraphQL first (separate cost bucket from REST 2/sec). REST adjust.json is the fallback.
+     *
+     * @return int|null New available qty when Shopify returns it
+     */
+    protected function postInventoryAdjustment(string $inventoryItemId, string $locationId, int $adjustment): ?int
     {
+        $viaGraphql = $this->adjustInventoryViaGraphQl($inventoryItemId, $locationId, $adjustment);
+        if ($viaGraphql !== null) {
+            return $viaGraphql['available'];
+        }
+
         $response = $this->sendShopify(function () use ($inventoryItemId, $locationId, $adjustment) {
             return $this->shopifyHttp()->timeout(8)
                 ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
@@ -994,6 +1023,57 @@ GQL;
         }
 
         return (int) ($response->json('inventory_level.available') ?? 0);
+    }
+
+    /**
+     * @return array{available: int|null}|null null means fall back to REST
+     */
+    protected function adjustInventoryViaGraphQl(string $inventoryItemId, string $locationId, int $adjustment): ?array
+    {
+        try {
+            $response = $this->shopifyHttp()->timeout(12)
+                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json", [
+                    'query' => ShopifyStockTransferGraphql::ADJUST_MUTATION,
+                    'variables' => [
+                        'input' => [
+                            'reason' => 'correction',
+                            'name' => 'available',
+                            'changes' => [[
+                                'delta' => $adjustment,
+                                'inventoryItemId' => 'gid://shopify/InventoryItem/'.$inventoryItemId,
+                                'locationId' => 'gid://shopify/Location/'.$locationId,
+                            ]],
+                        ],
+                    ],
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('Verification GraphQL inventory adjust failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $json = $response->json();
+        if (! is_array($json) || ShopifyStockTransferGraphql::isThrottled($json)) {
+            return null;
+        }
+
+        $parsed = ShopifyStockTransferGraphql::parseAdjust($json);
+        if ($parsed['success'] ?? false) {
+            return ['available' => $parsed['available'] ?? null];
+        }
+
+        $error = (string) ($parsed['error'] ?? '');
+        if ($error !== '' && $this->inventoryNotStockedAtLocation(new \Exception($error))) {
+            throw new \Exception($error);
+        }
+
+        return null;
     }
 
     protected function inventoryNotStockedAtLocation(\Exception $e): bool
@@ -2640,12 +2720,14 @@ GQL;
         }
 
         if (in_array($record->shopify_adjustment_status, ['success', 'na'], true)) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Shopify inventory already updated.',
-                'shopify_adjustment_status' => $record->shopify_adjustment_status,
-                'shopify_adjustment_succeeded_at' => $record->shopify_adjustment_succeeded_at?->toIso8601String(),
-            ]);
+            return response()->json($this->shopifyAdjustmentStatusPayload($record, true));
+        }
+
+        if ($request->boolean('status_only')) {
+            return response()->json($this->shopifyAdjustmentStatusPayload(
+                $record,
+                in_array($record->shopify_adjustment_status, ['success', 'na'], true)
+            ));
         }
 
         return response()->json($this->finishShopifyAdjustment($record));
@@ -2654,63 +2736,182 @@ GQL;
     /**
      * @return array<string, mixed>
      */
-    protected function finishShopifyAdjustment(Inventory $record): array
+    public function finishShopifyAdjustment(Inventory $record): array
     {
-        $sku = trim((string) $record->sku);
-        $toAdjust = (int) $record->to_adjust;
-
-        if ($toAdjust === 0) {
-            $record->shopify_adjustment_status = 'na';
-            $record->shopify_adjustment_error = null;
-            $record->save();
-
-            return [
-                'success' => true,
-                'message' => 'No Shopify change (0 adjustment).',
-                'shopify_adjustment_status' => 'na',
-            ];
+        $lock = Cache::lock('va:shopify_adjust:'.$record->id, 90);
+        try {
+            if (! $lock->get()) {
+                return [
+                    'success' => false,
+                    'queued' => true,
+                    'inventory_id' => $record->id,
+                    'message' => 'Shopify update already in progress.',
+                    'shopify_adjustment_status' => 'pending',
+                ];
+            }
+        } catch (\Throwable $e) {
+            $lock = null;
         }
 
         try {
-            $result = $this->adjustShopifyInventoryFast($sku, $toAdjust);
-        } catch (\Exception $e) {
-            $result = ['success' => false, 'error' => $e->getMessage()];
-        }
+            $record->refresh();
+            if (in_array($record->shopify_adjustment_status, ['success', 'na'], true)) {
+                return $this->shopifyAdjustmentStatusPayload($record, true);
+            }
 
-        if ($result['success'] ?? false) {
-            $record->shopify_adjustment_status = 'success';
-            $record->shopify_adjustment_error = null;
-            $record->shopify_adjustment_succeeded_at = Carbon::now('America/New_York');
+            $sku = trim((string) $record->sku);
+            $toAdjust = (int) $record->to_adjust;
+
+            if ($toAdjust === 0) {
+                $record->shopify_adjustment_status = 'na';
+                $record->shopify_adjustment_error = null;
+                $record->save();
+
+                return [
+                    'success' => true,
+                    'inventory_id' => $record->id,
+                    'message' => 'No Shopify change (0 adjustment).',
+                    'shopify_adjustment_status' => 'na',
+                ];
+            }
+
+            try {
+                $result = $this->adjustShopifyInventoryFast($sku, $toAdjust);
+            } catch (\Exception $e) {
+                $result = ['success' => false, 'error' => $e->getMessage()];
+            }
+
+            if ($result['success'] ?? false) {
+                $record->shopify_adjustment_status = 'success';
+                $record->shopify_adjustment_error = null;
+                $record->shopify_adjustment_succeeded_at = Carbon::now('America/New_York');
+                $record->save();
+
+                $localQty = $this->applyAdjustmentToLocalShopifySku(
+                    $sku,
+                    $toAdjust,
+                    isset($result['available']) ? (int) $result['available'] : null
+                );
+
+                return [
+                    'success' => true,
+                    'inventory_id' => $record->id,
+                    'message' => 'Shopify inventory updated.',
+                    'shopify_adjustment_status' => 'success',
+                    'shopify_adjustment_error' => null,
+                    'shopify_adjustment_succeeded_at' => $record->shopify_adjustment_succeeded_at?->toIso8601String(),
+                    'shopify_pull' => $localQty !== null
+                        ? ['success' => true, 'message' => 'Inventory updated for this SKU.', 'data' => $localQty]
+                        : ['success' => false, 'message' => 'Shopify updated, but this SKU was not found locally.'],
+                ];
+            }
+
+            $error = (string) ($result['error'] ?? 'Shopify update failed.');
+
+            return $this->persistShopifyAdjustmentOutcome($record, $error);
+        } finally {
+            try {
+                $lock?->release();
+            } catch (\Throwable $e) {
+                // lock already released or file cache
+            }
+        }
+    }
+
+    /**
+     * Rate limits stay pending for the scheduled retry. Other errors fail the row.
+     *
+     * @return array<string, mixed>
+     */
+    protected function persistShopifyAdjustmentOutcome(Inventory $record, string $error): array
+    {
+        $record->shopify_retry_count = (int) $record->shopify_retry_count + 1;
+
+        if (self::isShopifyRateLimitError($error) && (int) $record->shopify_retry_count < 10) {
+            $record->shopify_adjustment_status = 'pending';
+            $record->shopify_adjustment_error = Str::limit(
+                'Shopify is busy (rate limited). Automatic retry scheduled.',
+                65000,
+                ''
+            );
             $record->save();
 
-            $localQty = $this->applyAdjustmentToLocalShopifySku(
-                $sku,
-                $toAdjust,
-                isset($result['available']) ? (int) $result['available'] : null
-            );
-
             return [
-                'success' => true,
-                'message' => 'Shopify inventory updated.',
-                'shopify_adjustment_status' => 'success',
-                'shopify_adjustment_error' => null,
-                'shopify_adjustment_succeeded_at' => $record->shopify_adjustment_succeeded_at?->toIso8601String(),
-                'shopify_pull' => $localQty !== null
-                    ? ['success' => true, 'message' => 'Inventory updated for this SKU.', 'data' => $localQty]
-                    : ['success' => false, 'message' => 'Shopify updated, but this SKU was not found locally.'],
+                'success' => false,
+                'queued' => true,
+                'inventory_id' => $record->id,
+                'message' => 'Shopify is busy. This row will retry automatically.',
+                'shopify_adjustment_status' => 'pending',
+                'shopify_adjustment_error' => $record->shopify_adjustment_error,
             ];
         }
 
-        $error = (string) ($result['error'] ?? 'Shopify update failed.');
         $record->shopify_adjustment_status = 'failed';
         $record->shopify_adjustment_error = Str::limit($error, 65000, '');
         $record->save();
 
         return [
             'success' => false,
+            'inventory_id' => $record->id,
             'message' => $error,
             'shopify_adjustment_status' => 'failed',
             'shopify_adjustment_error' => $record->shopify_adjustment_error,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function shopifyAdjustmentStatusPayload(Inventory $record, bool $success): array
+    {
+        $pull = null;
+        if ($record->shopify_adjustment_status === 'success') {
+            $localQty = $this->localShopifyQtyPayload((string) $record->sku);
+            $pull = $localQty !== null
+                ? ['success' => true, 'message' => 'Inventory updated for this SKU.', 'data' => $localQty]
+                : null;
+        }
+
+        return [
+            'success' => $success,
+            'queued' => $record->shopify_adjustment_status === 'pending',
+            'inventory_id' => $record->id,
+            'message' => $success
+                ? 'Shopify inventory already updated.'
+                : (string) ($record->shopify_adjustment_error ?: 'Shopify update is still running.'),
+            'shopify_adjustment_status' => $record->shopify_adjustment_status,
+            'shopify_adjustment_error' => $record->shopify_adjustment_error,
+            'shopify_adjustment_succeeded_at' => $record->shopify_adjustment_succeeded_at?->toIso8601String(),
+            'shopify_pull' => $pull,
+        ];
+    }
+
+    /**
+     * @return array<string, int|float>|null
+     */
+    protected function localShopifyQtyPayload(string $sku): ?array
+    {
+        $normalized = strtoupper(preg_replace('/\s+/u', ' ', trim($sku)));
+        $row = ShopifySku::firstForProductSku($sku)
+            ?: ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        if (! $row) {
+            return null;
+        }
+
+        $available = (int) ($row->available_to_sell ?? $row->inv ?? 0);
+        $onHand = (int) ($row->on_hand ?? $available);
+        $l30 = (float) ($row->quantity ?? 0);
+        $dil = $available !== 0 ? round($l30 / $available, 2) : 0;
+
+        return [
+            'INV' => $available,
+            'L30' => $l30,
+            'DIL' => $dil,
+            'ON_HAND' => $onHand,
+            'COMMITTED' => (int) ($row->committed ?? 0),
+            'AVAILABLE_TO_SELL' => $available,
+            'UNAVAILABLE' => (int) ($row->unavailable ?? 0),
+            'INCOMING' => (int) ($row->incoming ?? 0),
         ];
     }
 
@@ -2724,17 +2925,17 @@ GQL;
         ]);
 
         $record = Inventory::find($request->inventory_id);
-        if (! $record || $record->shopify_adjustment_status !== 'failed') {
+        if (! $record || ! in_array($record->shopify_adjustment_status, ['failed', 'pending'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'This row is not waiting for a Shopify retry.',
             ], 400);
         }
 
-        if ((int) $record->shopify_retry_count >= 5) {
+        if ((int) $record->shopify_retry_count >= 10) {
             return response()->json([
                 'success' => false,
-                'message' => 'Maximum retry attempts (5) reached. Update inventory in Shopify manually if needed.',
+                'message' => 'Maximum retry attempts (10) reached. Update inventory in Shopify manually if needed.',
             ], 400);
         }
 
@@ -2745,47 +2946,10 @@ GQL;
             ], 400);
         }
 
-        $sku = trim((string) $record->sku);
-        $result = $this->adjustShopifyInventoryFast($sku, (int) $record->to_adjust);
+        $payload = $this->finishShopifyAdjustment($record);
+        $status = $payload['shopify_adjustment_status'] ?? 'failed';
 
-        if ($result['success']) {
-            $record->shopify_adjustment_status = 'success';
-            $record->shopify_adjustment_error = null;
-            $record->shopify_adjustment_succeeded_at = Carbon::now('America/New_York');
-            $record->save();
-
-            $successYmd = Carbon::parse($record->shopify_adjustment_succeeded_at)->timezone('America/New_York')->format('Y-m-d');
-
-            $localQty = $this->applyAdjustmentToLocalShopifySku(
-                $sku,
-                (int) $record->to_adjust,
-                isset($result['available']) ? (int) $result['available'] : null
-            );
-            $shopifyPull = $localQty !== null
-                ? ['success' => true, 'message' => 'Inventory updated for this SKU.', 'data' => $localQty]
-                : ['success' => false, 'message' => 'Shopify updated, but this SKU was not found locally.'];
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Shopify inventory updated successfully.',
-                'shopify_adjustment_status' => 'success',
-                'shopify_retry_count' => (int) $record->shopify_retry_count,
-                'shopify_success_ymd' => $successYmd,
-                'shopify_pull' => $shopifyPull,
-            ]);
-        }
-
-        $record->increment('shopify_retry_count');
-        $record->shopify_adjustment_error = Str::limit((string) ($result['error'] ?? 'Unknown error'), 65000, '');
-        $record->shopify_adjustment_status = 'failed';
-        $record->save();
-
-        return response()->json([
-            'success' => false,
-            'message' => $result['error'] ?? 'Shopify update failed.',
-            'shopify_adjustment_status' => 'failed',
-            'shopify_retry_count' => (int) $record->shopify_retry_count,
-        ], 422);
+        return response()->json($payload, ($payload['success'] ?? false) || $status === 'pending' ? 200 : 422);
     }
 
     /**

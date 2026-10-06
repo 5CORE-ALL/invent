@@ -101,12 +101,18 @@ class ShopifyStockTransferGraphqlTest extends TestCase
             'data' => [
                 'inventoryAdjustQuantities' => [
                     'userErrors' => [],
-                    'inventoryAdjustmentGroup' => ['reason' => 'correction'],
+                    'inventoryAdjustmentGroup' => [
+                        'reason' => 'correction',
+                        'changes' => [
+                            ['name' => 'available', 'delta' => 3, 'quantityAfterChange' => 14],
+                        ],
+                    ],
                 ],
             ],
         ]);
 
         $this->assertTrue($parsed['success']);
+        $this->assertSame(14, $parsed['available']);
     }
 
     public function test_picks_ohio_over_main_warehouse(): void

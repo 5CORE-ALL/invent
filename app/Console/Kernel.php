@@ -1940,6 +1940,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Verification Accept: recover Shopify 429s outside the request so rows do not stay failed.
+        $schedule->command('verification:retry-shopify-adjustments --limit=25')
+            ->everyTwoMinutes()
+            ->name('verification-retry-shopify-adjustments')
+            ->withoutOverlapping(8)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $ist($schedule->command('app:fetch-shopify-product-views --days=30')
             ->twiceDaily(10, 18)
             ->name('shopify-product-views')

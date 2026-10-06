@@ -2748,6 +2748,10 @@
                     pushTitle = 'No Shopify change (0 adjustment) · record saved';
                 } else if (pushStatus === 'loading') {
                     pushTitle = 'Pushing to Shopify…';
+                } else if (pushStatus === 'pending') {
+                    pushTitle = (pushErr == null || pushErr === '')
+                        ? 'Shopify is busy. Automatic retry is running.'
+                        : String(pushErr).trim().slice(0, 500);
                 }
 
                 let pullTitle = null;
@@ -4222,6 +4226,68 @@
                 });
             }
 
+            function applyShopifyPushResponse(sku, pushRes, pollAttempt) {
+                const $live = findAdjustmentRow(sku);
+                const status = pushRes && pushRes.shopify_adjustment_status ? pushRes.shopify_adjustment_status : null;
+                if (status === 'success' || status === 'na') {
+                    if ($live.length) {
+                        clearRowAdjustAlert($live);
+                    }
+                    const pulled = pushRes.shopify_pull && pushRes.shopify_pull.success ? pushRes.shopify_pull.data : null;
+                    if (pulled) {
+                        applyShopifyRefreshDataToArrays(sku, pulled);
+                        if ($live.length) {
+                            applyShopifyRefreshDataToRow($live, pulled);
+                        }
+                    }
+                    const pushAt = pushRes.shopify_adjustment_succeeded_at || null;
+                    if ($live.length) {
+                        setRowShopifyPushUi($live, status, null, pushAt, 'success', null);
+                    }
+                    rememberShopifyPushState(sku, status, null, pushAt, 'success', null);
+                    return;
+                }
+                if (status === 'pending' || (pushRes && pushRes.queued)) {
+                    const pendingMsg = (pushRes && pushRes.message)
+                        ? pushRes.message
+                        : 'Shopify is busy. This row will retry automatically.';
+                    if ($live.length) {
+                        setRowShopifyPushUi($live, 'pending', pendingMsg, null, 'pending', null);
+                    }
+                    rememberShopifyPushState(sku, 'pending', pendingMsg, null, 'pending', null);
+                    scheduleShopifyPushStatusPoll(pushRes.inventory_id || null, sku, pollAttempt || 0);
+                    return;
+                }
+                const msg = (pushRes && pushRes.message) || 'Shopify update failed for this row.';
+                if ($live.length) {
+                    setRowShopifyPushUi($live, 'failed', msg, null, 'failed', 'Pull not done (push failed)');
+                    showRowAdjustAlert($live, msg);
+                }
+                rememberShopifyPushState(sku, 'failed', msg, null, 'failed', 'Pull not done (push failed)');
+            }
+
+            function scheduleShopifyPushStatusPoll(inventoryId, sku, pollAttempt) {
+                const id = inventoryId || null;
+                if (!id || pollAttempt >= 6) {
+                    return;
+                }
+                const delayMs = Math.min(15000 * Math.max(1, pollAttempt + 1), 90000);
+                setTimeout(function () {
+                    $.ajax({
+                        url: '/push-verification-shopify-adjustment',
+                        method: 'POST',
+                        data: {
+                            inventory_id: id,
+                            status_only: 1,
+                            _token: $('meta[name="csrf-token"]').attr('content')
+                        }
+                    }).done(function (pushRes) {
+                        pushRes.inventory_id = pushRes.inventory_id || id;
+                        applyShopifyPushResponse(sku, pushRes, pollAttempt + 1);
+                    });
+                }, delayMs);
+            }
+
             function pushShopifyForSavedRow(inventoryId, sku) {
                 $.ajax({
                     url: '/push-verification-shopify-adjustment',
@@ -4231,31 +4297,17 @@
                         _token: $('meta[name="csrf-token"]').attr('content')
                     }
                 }).done(function (pushRes) {
-                    const $live = findAdjustmentRow(sku);
-                    if (!$live.length) {
-                        return;
-                    }
-                    if (pushRes.shopify_adjustment_status === 'success' || pushRes.shopify_adjustment_status === 'na') {
-                        clearRowAdjustAlert($live);
-                        const pulled = pushRes.shopify_pull && pushRes.shopify_pull.success ? pushRes.shopify_pull.data : null;
-                        if (pulled) {
-                            applyShopifyRefreshDataToArrays(sku, pulled);
-                            applyShopifyRefreshDataToRow($live, pulled);
-                        }
-                        const pushAt = pushRes.shopify_adjustment_succeeded_at || null;
-                        setRowShopifyPushUi($live, pushRes.shopify_adjustment_status, null, pushAt, 'success', null);
-                        rememberShopifyPushState(sku, pushRes.shopify_adjustment_status, null, pushAt, 'success', null);
-                        return;
-                    }
-                    const msg = pushRes.message || 'Shopify update failed for this row.';
-                    setRowShopifyPushUi($live, 'failed', msg, null, 'failed', 'Pull not done (push failed)');
-                    rememberShopifyPushState(sku, 'failed', msg, null, 'failed', 'Pull not done (push failed)');
-                    showRowAdjustAlert($live, msg);
+                    pushRes.inventory_id = pushRes.inventory_id || inventoryId;
+                    applyShopifyPushResponse(sku, pushRes, 0);
                 }).fail(function (xhr) {
+                    const body = xhr.responseJSON || {};
+                    if (body.shopify_adjustment_status === 'pending' || body.queued) {
+                        body.inventory_id = body.inventory_id || inventoryId;
+                        applyShopifyPushResponse(sku, body, 0);
+                        return;
+                    }
                     const $live = findAdjustmentRow(sku);
-                    const msg = (xhr.responseJSON && xhr.responseJSON.message)
-                        ? xhr.responseJSON.message
-                        : 'Shopify update failed for this row.';
+                    const msg = body.message || 'Shopify update failed for this row.';
                     if ($live.length) {
                         setRowShopifyPushUi($live, 'failed', msg, null, 'failed', 'Pull not done (push failed)');
                         showRowAdjustAlert($live, msg);

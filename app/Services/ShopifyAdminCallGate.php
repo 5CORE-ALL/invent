@@ -74,7 +74,10 @@ class ShopifyAdminCallGate
         if ($response->status() === 429 || self::bodyLooksRateLimited($response)) {
             $retryAfter = $response->header('Retry-After');
             $wait = is_numeric($retryAfter) ? (float) $retryAfter : 2.5;
-            $wait = min(30.0, max(1.5, $wait));
+            if (! is_numeric($retryAfter)) {
+                $wait = max(1.5, $wait);
+            }
+            $wait = min(30.0, max(0.0, $wait));
             Cache::put(self::cooldownKey($store), microtime(true) + $wait, 90);
             Log::info('Shopify Admin call gate: cooldown after rate limit', [
                 'store' => $store,

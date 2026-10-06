@@ -101,11 +101,12 @@ class ShopifyOhioLocationResolver
         $graphqlTried = false;
         for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
             try {
-                ShopifyAdminCallPacer::wait();
+                ShopifyAdminCallGate::acquire();
                 $response = Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
                 ])->timeout(30)->get("https://{$domain}/admin/api/2025-01/locations.json");
+                ShopifyAdminCallGate::record($response);
             } catch (\Throwable $e) {
                 Log::warning('ShopifyOhioLocationResolver: could not resolve Ohio location', [
                     'error' => $e->getMessage(),

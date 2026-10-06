@@ -34,6 +34,11 @@ mutation AdjustAvailable($input: InventoryAdjustQuantitiesInput!) {
     }
     inventoryAdjustmentGroup {
       reason
+      changes {
+        name
+        delta
+        quantityAfterChange
+      }
     }
   }
 }
@@ -178,7 +183,34 @@ GQL;
             return ['success' => false, 'error' => 'Shopify did not confirm the inventory adjustment'];
         }
 
-        return ['success' => true];
+        return [
+            'success' => true,
+            'available' => self::parseAdjustAvailable($json),
+        ];
+    }
+
+    /**
+     * Available qty after a successful inventoryAdjustQuantities mutation.
+     *
+     * @param  array<string, mixed>|null  $json
+     */
+    public static function parseAdjustAvailable(?array $json): ?int
+    {
+        $changes = $json['data']['inventoryAdjustQuantities']['inventoryAdjustmentGroup']['changes'] ?? [];
+        if (! is_array($changes)) {
+            return null;
+        }
+
+        foreach ($changes as $change) {
+            if (! is_array($change) || ($change['name'] ?? '') !== 'available') {
+                continue;
+            }
+            if (isset($change['quantityAfterChange']) && is_numeric($change['quantityAfterChange'])) {
+                return (int) $change['quantityAfterChange'];
+            }
+        }
+
+        return null;
     }
 
     /**
