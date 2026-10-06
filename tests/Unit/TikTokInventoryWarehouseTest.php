@@ -60,6 +60,32 @@ class TikTokInventoryWarehouseTest extends TestCase
         ], $rows);
     }
 
+    public function test_doubled_warehouses_collapse_so_the_sum_equals_shopify(): void
+    {
+        $rows = TikTokShopService::pushRowsForWarehouseStock([
+            ['warehouse_id' => 'main', 'quantity' => 50],
+            ['warehouse_id' => 'extra', 'quantity' => 50],
+        ], 50);
+
+        $this->assertSame([
+            ['warehouse_id' => 'main', 'quantity' => 50],
+            ['warehouse_id' => 'extra', 'quantity' => 0],
+        ], $rows);
+    }
+
+    public function test_empty_warehouses_do_not_each_receive_the_full_shopify_qty(): void
+    {
+        $rows = TikTokShopService::pushRowsForWarehouseStock([
+            ['warehouse_id' => 'main', 'quantity' => 0],
+            ['warehouse_id' => 'extra', 'quantity' => 0],
+        ], 2);
+
+        $this->assertSame([
+            ['warehouse_id' => 'main', 'quantity' => 2],
+            ['warehouse_id' => 'extra', 'quantity' => 0],
+        ], $rows);
+    }
+
     public function test_rejected_adjust_falls_back_to_zeroing_the_extra_warehouse(): void
     {
         $warehouses = [
