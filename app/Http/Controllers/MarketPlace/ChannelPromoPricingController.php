@@ -1455,6 +1455,256 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
+     * Std prc vs dil slabs — same defaults as /amazon-tabulator-view.
+     */
+    public function stdPrcVsDilRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+        $defaults = $this->defaultStdPrcVsDil();
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel.'_std_prc_vs_dil')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved) || $saved === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'dil' => $defaults['dil'],
+                'age' => $defaults['age'],
+                'cvr' => $defaults['cvr'],
+                'reviews' => $defaults['reviews'],
+                'review_max' => $defaults['review_max'],
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_default' => false,
+            'dil' => $this->normalizeStdPrcRanges($saved['dil'] ?? null, $defaults['dil']),
+            'age' => $this->normalizeStdPrcRanges($saved['age'] ?? null, $defaults['age']),
+            'cvr' => $this->normalizeStdPrcCvr($saved['cvr'] ?? null),
+            'reviews' => $this->normalizeStdPrcRanges($saved['reviews'] ?? null, $defaults['reviews']),
+            'review_max' => $this->normalizeStdPrcReviewMax($saved['review_max'] ?? null),
+        ]);
+    }
+
+    public function saveStdPrcVsDilRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+        $defaults = $this->defaultStdPrcVsDil();
+        $payload = [
+            'dil' => $this->normalizeStdPrcRanges($request->input('dil'), $defaults['dil']),
+            'age' => $this->normalizeStdPrcRanges($request->input('age'), $defaults['age']),
+            'cvr' => $this->normalizeStdPrcCvr($request->input('cvr')),
+            'reviews' => $this->normalizeStdPrcRanges($request->input('reviews'), $defaults['reviews']),
+            'review_max' => $this->normalizeStdPrcReviewMax($request->input('review_max')),
+        ];
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => $channel.'_std_prc_vs_dil'],
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews']]
+        );
+
+        return response()->json(array_merge(['success' => true], $payload));
+    }
+
+    public function stdPrcVsDilHistory(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+        $days = (int) $request->input('days', 30);
+        if ($days < 7) {
+            $days = 7;
+        }
+        if ($days > 90) {
+            $days = 90;
+        }
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel.'_std_prc_vs_dil_hist')
+            ->first();
+        $hist = is_array($row?->visibility) ? $row->visibility : [];
+        $end = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+        $out = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            $counts = is_array($hist[$key] ?? null) ? $hist[$key] : [];
+            $out[] = array_merge(['date' => $key, 'label' => $d->format('m-d')], $counts);
+        }
+
+        return response()->json(['success' => true, 'days' => $days, 'data' => $out]);
+    }
+
+    public function saveStdPrcVsDilHistory(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+        $incoming = $request->input('counts');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'counts required'], 422);
+        }
+        $counts = [];
+        foreach ($incoming as $key => $value) {
+            $key = (string) $key;
+            if (! preg_match('/^[a-z][a-z0-9]*:[a-z0-9_-]{1,24}$/', $key) || ! is_numeric($value)) {
+                continue;
+            }
+            $counts[$key] = round((float) $value, 2);
+            if (count($counts) >= 200) {
+                break;
+            }
+        }
+        $today = Carbon::now('America/Los_Angeles')->toDateString();
+        $cutoff = Carbon::now('America/Los_Angeles')->subDays(89)->toDateString();
+        $row = ChannelTabulatorColumnSetting::query()->firstOrNew([
+            'channel_name' => $channel.'_std_prc_vs_dil_hist',
+        ]);
+        $hist = is_array($row->visibility) ? $row->visibility : [];
+        $hist[$today] = $counts;
+        foreach (array_keys($hist) as $date) {
+            if (! is_string($date) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || $date < $cutoff) {
+                unset($hist[$date]);
+            }
+        }
+        ksort($hist);
+        $row->visibility = $hist;
+        $row->column_order = ['history'];
+        $row->save();
+
+        return response()->json(['success' => true, 'date' => $today]);
+    }
+
+    /**
+     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array<string, float>, reviews: list<array{min:float,max:float,disc:float}>, review_max: int}
+     */
+    private function defaultStdPrcVsDil(): array
+    {
+        return [
+            'dil' => [
+                ['min' => 0, 'max' => 0, 'disc' => 0],
+                ['min' => 0.1, 'max' => 10, 'disc' => 0],
+                ['min' => 10, 'max' => 25, 'disc' => 0],
+                ['min' => 25, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 100, 'disc' => 0],
+                ['min' => 100, 'max' => 9999, 'disc' => 0],
+            ],
+            'age' => [
+                ['min' => 0, 'max' => 30, 'disc' => 0],
+                ['min' => 31, 'max' => 60, 'disc' => 0],
+                ['min' => 61, 'max' => 90, 'disc' => 0],
+                ['min' => 91, 'max' => 180, 'disc' => 0],
+                ['min' => 181, 'max' => 365, 'disc' => 0],
+                ['min' => 366, 'max' => 9999, 'disc' => 0],
+            ],
+            'cvr' => [
+                'down2_lt' => 4,
+                'down2_disc' => 0,
+                'down_lt' => 7,
+                'down_disc' => 0,
+                'up_gt' => 10,
+                'up_disc' => 0,
+                'up2_gt' => 15,
+                'up2_disc' => 0,
+                'flat_disc' => 0,
+            ],
+            'reviews' => [
+                ['min' => 1, 'max' => 2, 'disc' => 4],
+                ['min' => 2, 'max' => 3, 'disc' => 4],
+            ],
+            'review_max' => 4,
+        ];
+    }
+
+    /**
+     * @param  mixed  $incoming
+     * @param  list<array{min:float,max:float,disc:float}>  $fallback
+     * @return list<array{min:float,max:float,disc:float}>
+     */
+    private function normalizeStdPrcRanges($incoming, array $fallback): array
+    {
+        if (! is_array($incoming)) {
+            return $fallback;
+        }
+        $rules = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = (float) $item['min'];
+            $max = (float) $item['max'];
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $disc = is_numeric($item['disc'] ?? null) ? (float) $item['disc'] : 0;
+            $rules[] = [
+                'min' => round($min, 2),
+                'max' => round($max, 2),
+                'disc' => round(min(100, max(0, $disc)), 2),
+            ];
+        }
+
+        return $rules !== [] ? $rules : $fallback;
+    }
+
+    /**
+     * @param  mixed  $incoming
+     * @return array<string, float>
+     */
+    private function normalizeStdPrcCvr($incoming): array
+    {
+        $out = $this->defaultStdPrcVsDil()['cvr'];
+        if (! is_array($incoming)) {
+            return $out;
+        }
+        $hadDown2 = is_numeric($incoming['down2_disc'] ?? null);
+        $hadUp2 = is_numeric($incoming['up2_disc'] ?? null);
+        foreach (['down2_lt', 'down_lt', 'up_gt', 'up2_gt'] as $key) {
+            if (is_numeric($incoming[$key] ?? null) && (float) $incoming[$key] >= 0) {
+                $out[$key] = round((float) $incoming[$key], 2);
+            }
+        }
+        foreach (['down2_disc', 'down_disc', 'up_disc', 'up2_disc', 'flat_disc'] as $key) {
+            if (! is_numeric($incoming[$key] ?? null)) {
+                continue;
+            }
+            $out[$key] = round(min(100, max(0, (float) $incoming[$key])), 2);
+        }
+        if (! $hadDown2) {
+            $out['down2_disc'] = $out['down_disc'];
+        }
+        if (! $hadUp2) {
+            $out['up2_disc'] = $out['up_disc'];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  mixed  $incoming
+     */
+    private function normalizeStdPrcReviewMax($incoming): int
+    {
+        $n = is_numeric($incoming) ? (int) $incoming : 4;
+        if ($n < 1) {
+            $n = 4;
+        }
+        if ($n > 999) {
+            $n = 999;
+        }
+
+        return $n;
+    }
+
+    /**
      * Dil slabs → target %. Every Sprc Dil page uses Target NROI
      * (stored groi/nroi). Ads%=0 keeps the same dollar as GROI.
      */

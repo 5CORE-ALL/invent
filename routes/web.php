@@ -5960,6 +5960,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'dilGroiRules'])->name('channel.promo.dil-groi.get');
     Route::post('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'saveDilGroiRules'])->name('channel.promo.dil-groi.save');
     Route::get('/channel-promo-pricing/{channel}/dil-groi-history', [ChannelPromoPricingController::class, 'dilGroiSlabHistory'])->name('channel.promo.dil-groi.history');
+    Route::get('/channel-promo-pricing/{channel}/std-prc-vs-dil', [ChannelPromoPricingController::class, 'stdPrcVsDilRules'])->name('channel.promo.std-prc.get');
+    Route::post('/channel-promo-pricing/{channel}/std-prc-vs-dil', [ChannelPromoPricingController::class, 'saveStdPrcVsDilRules'])->name('channel.promo.std-prc.save');
+    Route::get('/channel-promo-pricing/{channel}/std-prc-vs-dil-history', [ChannelPromoPricingController::class, 'stdPrcVsDilHistory'])->name('channel.promo.std-prc.history');
+    Route::post('/channel-promo-pricing/{channel}/std-prc-vs-dil-history', [ChannelPromoPricingController::class, 'saveStdPrcVsDilHistory'])->name('channel.promo.std-prc.history.save');
     Route::get('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'gtSoldPrcRules'])->name('channel.promo.gt-sold-prc.get');
     Route::post('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'saveGtSoldPrcRules'])->name('channel.promo.gt-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'pageReloadPushSetting'])->name('channel.promo.page-reload-push.get');
