@@ -137,7 +137,6 @@ class LmpOverallController extends Controller
         $manual = $this->amazonManualPrices();
         $stdBySku = $manual['std'];
         $myLmpBySku = $manual['my_lmp'];
-        $adsPct = $this->amazonAdsPercent();
 
         $rows = [];
         foreach ($products as $product) {
@@ -233,7 +232,7 @@ class LmpOverallController extends Controller
                 ),
                 'is_parent_summary' => false,
             ];
-            $row = array_merge($row, $this->stdPriceMargins($row['std_price'], $cost['lp'], $cost['ship'], $adsPct));
+            $row = array_merge($row, $this->stdPriceMargins($row['std_price'], $cost['lp'], $cost['ship']));
             $rows[] = array_merge($row, $this->marketplaceLmpSummary($row));
         }
 
@@ -389,12 +388,12 @@ class LmpOverallController extends Controller
     /**
      * NROI% and NPFT% at Std Price — same shape as Amazon NROI / PFT, using Std Price as the price.
      *
-     * Std NROI% = ((Std × 0.70 − ship − LP − Std × Ads%) / LP) × 100
-     * Std NPFT% = GPFT% − Ads%, GPFT% = ((Std × 0.70 − ship − LP) / Std) × 100
+     * Std NROI% = ((Std × 0.70 − ship − LP) / LP) × 100
+     * Std NPFT% = ((Std × 0.70 − ship − LP) / Std) × 100
      *
      * @return array{std_nroi: ?float, std_npft: ?float}
      */
-    private function stdPriceMargins(?float $std, ?float $lp, float $ship, float $adsPct): array
+    private function stdPriceMargins(?float $std, ?float $lp, float $ship): array
     {
         if ($std === null || $std <= 0) {
             return ['std_nroi' => null, 'std_npft' => null];
@@ -402,9 +401,9 @@ class LmpOverallController extends Controller
 
         $lpVal = ($lp !== null && $lp > 0) ? $lp : 0.0;
         $gross = ($std * 0.70) - $ship - $lpVal;
-        $npft = round((($gross / $std) * 100) - $adsPct, 2);
+        $npft = round(($gross / $std) * 100, 2);
         $nroi = $lpVal > 0
-            ? round((($gross - ($std * ($adsPct / 100))) / $lpVal) * 100, 2)
+            ? round(($gross / $lpVal) * 100, 2)
             : null;
 
         return [

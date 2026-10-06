@@ -103,11 +103,7 @@
         }
         #lmp-overall-text-preview[hidden] { display: none !important; }
         #lmp-overall-text-preview .card { max-width: 640px; width: 100%; }
-        #lmp-overall-toolbar { overflow-x: auto; flex-wrap: nowrap; }
-        #lmp-overall-toolbar .badge,
-        #lmp-overall-toolbar .form-control,
-        #lmp-overall-toolbar .form-select,
-        #lmp-overall-play { flex-shrink: 0; white-space: nowrap; }
+        #lmp-overall-play { flex-shrink: 0; }
         #lmp-overall-play .btn i { font-size: 1.1rem; }
         #lmp-play-auto { color: #28a745; }
         #lmp-play-auto:hover { background-color: #28a745 !important; color: #fff !important; }
@@ -138,7 +134,8 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="d-flex flex-nowrap align-items-center gap-2 mb-2" id="lmp-overall-toolbar">
+                    <div class="d-flex flex-column gap-2 mb-2" id="lmp-overall-toolbar">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
                         <div class="btn-group" role="group" aria-label="Parent navigation" id="lmp-overall-play">
                             <button type="button" id="lmp-play-backward" class="btn btn-sm btn-light" title="Previous parent" disabled>
                                 <i class="fas fa-step-backward"></i>
@@ -153,8 +150,8 @@
                                 <i class="fas fa-step-forward"></i>
                             </button>
                         </div>
-                        <span id="lmp-overall-total" class="badge bg-secondary">Total: —</span>
-                        <span id="lmp-overall-selected" class="badge bg-primary">Selected: 0</span>
+                        <span id="lmp-overall-total" class="badge fs-6 p-2 bg-secondary">Total: —</span>
+                        <span id="lmp-overall-selected" class="badge fs-6 p-2 bg-primary">Selected: 0</span>
                         <input type="search" id="lmp-overall-search-parent" class="form-control form-control-sm"
                             placeholder="Search parent" autocomplete="off" style="width: 150px;">
                         <input type="search" id="lmp-overall-search-sku" class="form-control form-control-sm"
@@ -171,66 +168,69 @@
                             <option value="parent">Parent</option>
                             <option value="both" selected>Both</option>
                         </select>
-                        <span class="badge lmp-std-filter" data-band="high" data-field="lmp_amz" role="button" tabindex="0"
+                        </div>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="badge fs-6 p-2 lmp-std-filter" data-band="high" data-field="lmp_amz" role="button" tabindex="0"
                             style="background-color:#6f42c1;color:#fff;font-weight:700;"
                             title="SKU rows where LMP amz is above 120% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP amz <span id="lmp-badge-high-lmp_amz">0</span>
                         </span>
-                        <span class="badge lmp-std-filter" data-band="high" data-field="lmp_ebay" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-std-filter" data-band="high" data-field="lmp_ebay" role="button" tabindex="0"
                             style="background-color:#6f42c1;color:#fff;font-weight:700;"
                             title="SKU rows where LMP ebay is above 120% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP ebay <span id="lmp-badge-high-lmp_ebay">0</span>
                         </span>
-                        <span class="badge lmp-std-filter" data-band="high" data-field="lmp_temu" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-std-filter" data-band="high" data-field="lmp_temu" role="button" tabindex="0"
                             style="background-color:#6f42c1;color:#fff;font-weight:700;"
                             title="SKU rows where LMP temu is above 120% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP temu <span id="lmp-badge-high-lmp_temu">0</span>
                         </span>
-                        <span class="badge lmp-std-filter" data-band="high" data-field="lmp_google" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-std-filter" data-band="high" data-field="lmp_google" role="button" tabindex="0"
                             style="background-color:#6f42c1;color:#fff;font-weight:700;"
                             title="SKU rows where LMP Google is above 120% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP Google <span id="lmp-badge-high-lmp_google">0</span>
                         </span>
-                        <span class="badge lmp-std-filter" data-band="low" data-field="lmp_amz" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-std-filter" data-band="low" data-field="lmp_amz" role="button" tabindex="0"
                             style="background-color:#dc3545;color:#fff;font-weight:700;"
                             title="SKU rows where LMP amz is below 80% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP amz <span id="lmp-badge-low-lmp_amz">0</span>
                         </span>
-                        <span class="badge lmp-std-filter" data-band="low" data-field="lmp_ebay" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-std-filter" data-band="low" data-field="lmp_ebay" role="button" tabindex="0"
                             style="background-color:#dc3545;color:#fff;font-weight:700;"
                             title="SKU rows where LMP ebay is below 80% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP ebay <span id="lmp-badge-low-lmp_ebay">0</span>
                         </span>
-                        <span class="badge lmp-std-filter" data-band="low" data-field="lmp_temu" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-std-filter" data-band="low" data-field="lmp_temu" role="button" tabindex="0"
                             style="background-color:#dc3545;color:#fff;font-weight:700;"
                             title="SKU rows where LMP temu is below 80% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP temu <span id="lmp-badge-low-lmp_temu">0</span>
                         </span>
-                        <span class="badge lmp-std-filter" data-band="low" data-field="lmp_google" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-std-filter" data-band="low" data-field="lmp_google" role="button" tabindex="0"
                             style="background-color:#dc3545;color:#fff;font-weight:700;"
                             title="SKU rows where LMP Google is below 80% of Std Price. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP Google <span id="lmp-badge-low-lmp_google">0</span>
                         </span>
-                        <span class="badge lmp-missing-filter" data-field="lmp_amz" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-missing-filter" data-field="lmp_amz" role="button" tabindex="0"
                             style="background-color:#dc3545;color:#fff;font-weight:700;"
                             title="INV &gt; 0 SKU rows with no LMP amz. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP M. amz <span id="lmp-missing-lmp_amz">0</span>
                         </span>
-                        <span class="badge lmp-missing-filter" data-field="lmp_ebay" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-missing-filter" data-field="lmp_ebay" role="button" tabindex="0"
                             style="background-color:#dc3545;color:#fff;font-weight:700;"
                             title="INV &gt; 0 SKU rows with no LMP ebay. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP M. ebay <span id="lmp-missing-lmp_ebay">0</span>
                         </span>
-                        <span class="badge lmp-missing-filter" data-field="lmp_temu" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-missing-filter" data-field="lmp_temu" role="button" tabindex="0"
                             style="background-color:#dc3545;color:#fff;font-weight:700;"
                             title="INV &gt; 0 SKU rows with no LMP temu. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP M. temu <span id="lmp-missing-lmp_temu">0</span>
                         </span>
-                        <span class="badge lmp-missing-filter" data-field="lmp_google" role="button" tabindex="0"
+                        <span class="badge fs-6 p-2 lmp-missing-filter" data-field="lmp_google" role="button" tabindex="0"
                             style="background-color:#dc3545;color:#fff;font-weight:700;"
                             title="INV &gt; 0 SKU rows with no LMP Google. Click to filter. Click again to clear.">
                             <i class="ri-alert-fill"></i> LMP M. Google <span id="lmp-missing-lmp_google">0</span>
                         </span>
+                        </div>
                     </div>
                     <div id="lmp-overall-wrap">
                         <div id="lmp-overall-table"></div>
@@ -585,8 +585,7 @@
                 if (!(price > 0) || !(lp > 0)) return null;
                 const ship = parseFloat(row.ship) || 0;
                 const gross = (price * 0.70) - ship - lp;
-                const ads = price * ((parseFloat(LMP_OV_ADS_PCT) || 0) / 100);
-                return ((gross - ads) / lp) * 100;
+                return (gross / lp) * 100;
             }
 
             function stdNpftAt(sp, row) {
@@ -595,8 +594,7 @@
                 const lp = parseFloat(row && row.lp);
                 const ship = parseFloat(row && row.ship) || 0;
                 const lpVal = (isFinite(lp) && lp > 0) ? lp : 0;
-                const gpft = ((price * 0.70 - ship - lpVal) / price) * 100;
-                return gpft - (parseFloat(LMP_OV_ADS_PCT) || 0);
+                return ((price * 0.70 - ship - lpVal) / price) * 100;
             }
 
             function stdMarginFields(std, row) {
@@ -1576,8 +1574,8 @@
                         headerTooltip: 'Amazon Standard Price (amazon_data_view.STANDARD_PRICE)',
                         formatter: function (cell) { return money(cell.getValue()); },
                     },
-                    percentColumn('Std NROI%', 'std_nroi', 'nroiStyle', 'NROI% at Std Price with 70% margin. ((Std Prc × 0.70 − ship − LP − Std Prc × Amazon Ads%) / LP) × 100'),
-                    percentColumn('Std NPFT%', 'std_npft', 'npftStyle', 'NPFT% at Std Price with 70% margin. GPFT% − Amazon Ads%, where GPFT% = ((Std Prc × 0.70 − ship − LP) / Std Prc) × 100'),
+                    percentColumn('Std NROI%', 'std_nroi', 'nroiStyle', 'NROI% at Std Price with 70% margin. ((Std Prc × 0.70 − ship − LP) / LP) × 100'),
+                    percentColumn('Std NPFT%', 'std_npft', 'npftStyle', 'NPFT% at Std Price with 70% margin. ((Std Prc × 0.70 − ship − LP) / Std Prc) × 100'),
                     {
                         title: 'Avg Price',
                         field: 'avg_price',
