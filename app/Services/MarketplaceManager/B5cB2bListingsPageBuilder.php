@@ -556,9 +556,10 @@ class B5cB2bListingsPageBuilder
         if (! $metric) {
             return false;
         }
-        $sku = trim((string) ($metric->sku ?? ''));
+        $sellerSku = ShopifySku::normalizeSkuForShopifyLookup((string) ($metric->sku ?? ''));
+        $shopify = ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
 
-        return $sku !== '';
+        return $sellerSku !== '' && $sellerSku === $shopify;
     }
 
     /**

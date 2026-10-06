@@ -965,10 +965,9 @@ class Ebay2InventorySyncService
         }
 
         $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-        $compact = ShopifySku::compactSkuForLookup($sku);
         $hyphen = $norm !== '' ? str_replace(' ', '-', $norm) : '';
         $out = [];
-        foreach ([$sku, $norm, $hyphen, $compact] as $alias) {
+        foreach ([$sku, $norm, $hyphen] as $alias) {
             $alias = trim((string) $alias);
             if ($alias !== '') {
                 $out[$alias] = $alias;

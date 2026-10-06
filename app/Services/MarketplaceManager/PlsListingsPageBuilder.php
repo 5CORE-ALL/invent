@@ -583,9 +583,10 @@ class PlsListingsPageBuilder
             return false;
         }
         $productId = trim((string) ($metric->product_id ?? ''));
-        $sku = trim((string) ($metric->sku ?? ''));
+        $sellerSku = ShopifySku::normalizeSkuForShopifyLookup((string) ($metric->sku ?? ''));
+        $shopify = ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
 
-        return $productId !== '' && $sku !== '';
+        return $productId !== '' && $sellerSku !== '' && $sellerSku === $shopify;
     }
 
     /**

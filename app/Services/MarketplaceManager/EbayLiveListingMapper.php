@@ -224,13 +224,8 @@ final class EbayLiveListingMapper
         }
         $ln = ShopifySku::normalizeSkuForShopifyLookup($left);
         $rn = ShopifySku::normalizeSkuForShopifyLookup($right);
-        if ($ln !== '' && $ln === $rn) {
-            return true;
-        }
-        $lc = ShopifySku::compactSkuForLookup($left);
-        $rc = ShopifySku::compactSkuForLookup($right);
 
-        return $lc !== '' && $lc === $rc;
+        return $ln !== '' && $ln === $rn;
     }
 
     /**

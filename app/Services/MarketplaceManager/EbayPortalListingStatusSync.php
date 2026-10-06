@@ -432,7 +432,6 @@ class EbayPortalListingStatusSync
         $keys = [
             strtoupper(trim($sku)),
             ShopifySku::normalizeSkuForShopifyLookup($sku),
-            ShopifySku::compactSkuForLookup($sku),
         ];
 
         return array_values(array_unique(array_filter($keys)));

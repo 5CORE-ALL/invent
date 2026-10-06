@@ -282,10 +282,6 @@ final class AmazonListingStatusHelper
         if ($norm !== '') {
             $keys[$norm] = true;
         }
-        $compact = ShopifySku::compactSkuForLookup($sku);
-        if ($compact !== '') {
-            $keys[strtoupper($compact)] = true;
-        }
         $base = trim((string) preg_replace('/\s+(FBA|FBM)$/i', '', $sku));
         if ($base !== '' && strcasecmp($base, $sku) !== 0) {
             $keys[strtoupper($base)] = true;
@@ -340,10 +336,6 @@ final class AmazonListingStatusHelper
             }
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if ($norm !== '' && isset($active[$norm])) {
-                continue;
-            }
-            $compact = strtoupper(ShopifySku::compactSkuForLookup($sku) ?: '');
-            if ($compact !== '' && isset($active[$compact])) {
                 continue;
             }
             $inactive[] = $sku;

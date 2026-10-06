@@ -91,12 +91,18 @@ class FaireLinkMapSyncService
             $pageUpserted += $this->upsertProduct($product, $pageSkus);
         }
         $this->hydrateInventoryFromFaireApi($pageSkus);
+        MarketplaceLinkMapPruner::remember('faire', $pageSkus, $page === 1);
 
         $totalUpserted = (int) ($state['total_upserted'] ?? 0) + $pageUpserted;
         $done = count($products) < $pageSize;
+        $removed = 0;
+        if ($done) {
+            $removed = MarketplaceLinkMapPruner::prune(FaireMetric::class, 'faire');
+        }
 
         $message = $done
-            ? "Updated {$totalUpserted} SKU link(s) from Faire products ({$page} page(s))."
+            ? "Updated {$totalUpserted} SKU link(s) from Faire products ({$page} page(s))"
+                .($removed > 0 ? ", removed {$removed} missing" : '').'.'
             : "Page {$page}: {$pageUpserted} SKU link(s) saved…";
 
         $this->updateProgress([
