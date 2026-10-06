@@ -434,6 +434,34 @@ class FetchEbay2Metrics extends Command
         return [];
     }
 
+    /**
+     * Variation stock is the quantity buyers see. A 0 QuantityAvailable (or a missing
+     * variation Quantity) must not copy the parent listing quantity, which is often 0.
+     */
+    private function variationReportQty(\SimpleXMLElement $variation, ?int $parentQuantity): ?int
+    {
+        $quantity = isset($variation->Quantity) && is_numeric((string) $variation->Quantity)
+            ? (int) $variation->Quantity
+            : null;
+        $available = isset($variation->QuantityAvailable) && is_numeric((string) $variation->QuantityAvailable)
+            ? (int) $variation->QuantityAvailable
+            : null;
+        if ($available !== null && $available > 0) {
+            return $available;
+        }
+        if ($quantity !== null && $quantity > 0) {
+            return $quantity;
+        }
+        if ($available !== null) {
+            return $available;
+        }
+        if ($quantity !== null) {
+            return $quantity;
+        }
+
+        return $parentQuantity;
+    }
+
     private function parseXml($xml)
     {
         $out = [];
@@ -462,8 +490,8 @@ class FetchEbay2Metrics extends Command
             $variationData = [];
             foreach ($item->Variations->Variation ?? [] as $v) {
                 $varSku = (string) $v->SKU;
-                $varPrice = isset($v->Price) ? (float) $v->Price : $price;
-                $varQuantity = isset($v->Quantity) ? (int) $v->Quantity : $quantity;
+                $varPrice = isset($v->Price) ? (float) $v->Price : (isset($v->StartPrice) ? (float) $v->StartPrice : $price);
+                $varQuantity = $this->variationReportQty($v, $quantity);
                 
                 $variationData[$varSku] = [
                     'item_id' => $itemId,

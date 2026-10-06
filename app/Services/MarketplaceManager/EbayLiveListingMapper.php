@@ -196,37 +196,47 @@ final class EbayLiveListingMapper
                 if ($vSku === '' || ! self::skuEquals($vSku, $sku)) {
                     continue;
                 }
-                $sold = (int) ($variation['SellingStatus']['QuantitySold'] ?? $variation['QuantitySold'] ?? 0);
-                foreach (['QuantityAvailable', 'Quantity'] as $key) {
-                    if (isset($variation[$key]) && is_numeric($variation[$key])) {
-                        $qty = (int) $variation[$key];
-                        if ($key === 'Quantity' && $sold > 0 && $qty >= $sold) {
-                            return $qty - $sold;
-                        }
 
-                        return $qty;
-                    }
-                }
-
-                return null;
+                return self::availableFromNode($variation);
             }
 
             return null;
         }
 
-        $sold = (int) ($item['SellingStatus']['QuantitySold'] ?? $item['QuantitySold'] ?? 0);
-        foreach (['QuantityAvailable', 'Quantity'] as $key) {
-            if (isset($item[$key]) && is_numeric($item[$key])) {
-                $qty = (int) $item[$key];
-                if ($key === 'Quantity' && $sold > 0 && $qty >= $sold) {
-                    return $qty - $sold;
-                }
+        return self::availableFromNode($item);
+    }
 
-                return $qty;
+    /**
+     * Seller Hub "available" for one listing or variation.
+     * QuantityAvailable 0 with a positive Quantity is the parent/offer echo, not the stock buyers see.
+     *
+     * @param  array<string, mixed>  $node
+     */
+    public static function availableFromNode(array $node): ?int
+    {
+        $available = isset($node['QuantityAvailable']) && is_numeric($node['QuantityAvailable'])
+            ? (int) $node['QuantityAvailable']
+            : null;
+        $quantity = isset($node['Quantity']) && is_numeric($node['Quantity'])
+            ? (int) $node['Quantity']
+            : null;
+        $sold = (int) ($node['SellingStatus']['QuantitySold'] ?? $node['QuantitySold'] ?? 0);
+
+        if ($available !== null && $available > 0) {
+            return $available;
+        }
+        if ($quantity !== null && $quantity > 0) {
+            if ($available === null && $sold > 0 && $quantity >= $sold) {
+                return $quantity - $sold;
             }
+
+            return $quantity;
+        }
+        if ($available !== null) {
+            return $available;
         }
 
-        return null;
+        return $quantity;
     }
 
     public static function skuEquals(string $left, string $right): bool

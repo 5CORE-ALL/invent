@@ -699,6 +699,25 @@ class Ebay2InventorySyncService
     }
 
     /**
+     * Keep the variation qty Seller Hub shows. A failed revise used to leave ebay_stock at 0
+     * while the variation still had stock, so Inv SKU Mismatch never matched the listing.
+     */
+    protected function rememberObservedQty(string $itemId, string $sku, int $qty): void
+    {
+        $row = [
+            'product_id' => $itemId,
+            'sku_code' => $sku,
+            'inventory' => max(0, $qty),
+        ];
+        $this->updateLocalStock([$row]);
+        try {
+            app(Ebay2LiveListingsService::class)->applyPushedInventory([$row]);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
      * eBay 291 means this item_id is ended. Remember that so it leaves Inv SKU Mismatch
      * and the next push can use a live relist of the same SKU when one exists.
      */
@@ -861,6 +880,9 @@ class Ebay2InventorySyncService
                             $liveMatches = $liveQty !== null && (int) $liveQty === $qty;
                         }
                     }
+                    if ($liveQty !== null) {
+                        $this->rememberObservedQty($itemId, $sku, (int) $liveQty);
+                    }
                     if (self::rejectUnconfirmedEbayQty($liveQty, $qty, $usedQtyOnlyFallback)) {
                         return [
                             'ok' => false,
@@ -901,6 +923,12 @@ class Ebay2InventorySyncService
                 'qty' => $qty,
                 'result' => $result,
             ]);
+            if ($confirmLive && ! $this->ebay2Api->listingLooksEnded($lastMessage)) {
+                $observed = $this->ebay2Api->variationAvailableQty($itemId, $sku);
+                if ($observed !== null) {
+                    $this->rememberObservedQty($itemId, $sku, (int) $observed);
+                }
+            }
 
             return ['ok' => false, 'rate_limited' => false, 'message' => $lastMessage];
         } catch (\Throwable $e) {
