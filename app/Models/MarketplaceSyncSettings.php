@@ -117,12 +117,16 @@ class MarketplaceSyncSettings extends Model
     public static function canAutoFulfillShopify(string $marketplace, ?array $settings = null): bool
     {
         $marketplace = strtolower(trim($marketplace));
-        if ($marketplace === '') {
+        if ($marketplace === '' ) {
             return true;
+        }
+        // Doba tracking is shown on Order Fulfillment only. It is never written onto Shopify.
+        if ($marketplace === 'doba') {
+            return false;
         }
         $settings ??= self::getFor($marketplace);
 
-        return (bool) ($settings['order']['auto_fulfill_shopify'] ?? ($marketplace !== 'doba'));
+        return (bool) ($settings['order']['auto_fulfill_shopify'] ?? true);
     }
 
     public static function importPaidOrdersOnly(string $marketplace, ?array $settings = null): bool

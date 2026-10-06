@@ -130,10 +130,14 @@ class VeeqoShopifyFulfillmentService
      */
     public function autoFulfillBlocked(string $marketplace): bool
     {
+        $marketplace = strtolower(trim($marketplace));
+        // Doba numbers are fetched for the Order Fulfillment page and must not be written to Shopify, including from a manual fulfill action.
+        if ($marketplace === 'doba') {
+            return true;
+        }
         if ($this->manualAction) {
             return false;
         }
-        $marketplace = strtolower(trim($marketplace));
         if ($marketplace === '') {
             return false;
         }
@@ -154,12 +158,15 @@ class VeeqoShopifyFulfillmentService
     protected function autoFulfillBlockedResult(string $marketplace): array
     {
         $label = $marketplace === 'doba' ? 'Doba' : ucfirst($marketplace);
+        $message = $marketplace === 'doba'
+            ? 'Doba tracking is kept on Order Fulfillment and is not written to Shopify.'
+            : 'Automatic Shopify fulfillment is turned off for '.$label.' — fulfill the Shopify order manually (or use the per-order Fetch tracking button).';
 
         return [
             'success' => false,
             'skipped' => true,
             'action' => 'auto_fulfill_off',
-            'message' => 'Automatic Shopify fulfillment is turned off for '.$label.' — fulfill the Shopify order manually (or use the per-order Fetch tracking button).',
+            'message' => $message,
         ];
     }
 
