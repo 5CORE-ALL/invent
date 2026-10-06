@@ -194,7 +194,7 @@ class WayfairSyncController extends Controller
             }
             $liveMpByUpper = [];
             if ($productIds !== []) {
-                foreach ($liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($productIds)), 0, 80)) as $pid => $row) {
+                foreach ($liveService->liveDetailsByProductIds(array_values(array_unique($productIds))) as $pid => $row) {
                     $sku = $idToSku[(string) $pid] ?? trim((string) ($row['sku'] ?? ''));
                     if ($sku === '' || ! array_key_exists('inventory', $row) || $row['inventory'] === null) {
                         continue;

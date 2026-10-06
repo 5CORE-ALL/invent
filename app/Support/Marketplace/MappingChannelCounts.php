@@ -25,7 +25,7 @@ class MappingChannelCounts
 
     public const CHANNEL_TITAS_CACHE_KEY = 'mapping_pages_titas_by_channel_v1';
 
-    public const MASTER_ROWS_CACHE_KEY = 'mapping_pages_master_rows_v3';
+    public const MASTER_ROWS_CACHE_KEY = 'mapping_pages_master_rows_v4';
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v2';
 
