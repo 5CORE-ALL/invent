@@ -668,6 +668,32 @@ class InvDaysController extends Controller
     }
 
     /**
+     * Push time and last-sale time used to compute Inv Days age.
+     *
+     * @return array{push: array<string, string>, last_sale: array<string, string>}
+     */
+    public function ageDaySources(): array
+    {
+        return [
+            'push' => $this->latestShopifyPushAtBySku(),
+            'last_sale' => $this->lastSaleDateBySku(),
+        ];
+    }
+
+    /**
+     * Whole days since the latest Shopify push. INV 0 stops the clock at the last sale.
+     */
+    public function ageDays(string $sku, float $inv, array $pushBySku, array $lastSaleBySku): ?int
+    {
+        $key = $this->skuKey($sku);
+        $end = $inv <= 0
+            ? ($lastSaleBySku[$key] ?? null)
+            : Carbon::now('America/New_York')->toDateTimeString();
+
+        return $this->wholeDaysBetween($pushBySku[$key] ?? null, $end);
+    }
+
+    /**
      * Latest successful Shopify push time per SKU (inventory_warehouse.push_status = success).
      *
      * @return array<string, string>

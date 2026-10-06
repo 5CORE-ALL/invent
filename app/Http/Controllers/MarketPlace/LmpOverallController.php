@@ -25,15 +25,8 @@ class LmpOverallController extends Controller
 
     public function index(): View
     {
-        $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')
-            ->value('ads_percentage');
-        if ($amazonAdsPercent === null) {
-            $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')
-                ->value('ads_percentage');
-        }
-
         return view('market-places.lmp_overall', [
-            'amazonAdsPercent' => (float) ($amazonAdsPercent ?? 0),
+            'amazonAdsPercent' => $this->amazonAdsPercent(),
         ]);
     }
 
@@ -144,6 +137,7 @@ class LmpOverallController extends Controller
         $manual = $this->amazonManualPrices();
         $stdBySku = $manual['std'];
         $myLmpBySku = $manual['my_lmp'];
+        $adsPct = $this->amazonAdsPercent();
 
         $rows = [];
         foreach ($products as $product) {
@@ -239,6 +233,7 @@ class LmpOverallController extends Controller
                 ),
                 'is_parent_summary' => false,
             ];
+            $row = array_merge($row, $this->stdPriceMargins($row['std_price'], $cost['lp'], $cost['ship'], $adsPct));
             $rows[] = array_merge($row, $this->marketplaceLmpSummary($row));
         }
 
@@ -324,6 +319,8 @@ class LmpOverallController extends Controller
             'gpft' => $this->avgNumeric($children, 'gpft'),
             'nroi' => $this->avgNumeric($children, 'nroi'),
             'npft' => $this->avgNumeric($children, 'npft'),
+            'std_nroi' => $this->avgNumeric($children, 'std_nroi'),
+            'std_npft' => $this->avgNumeric($children, 'std_npft'),
             'lmp_amz' => $this->avgPositive($children, 'lmp_amz'),
             'lmp_amz_count' => (int) $children->sum('lmp_amz_count'),
             'lmp_ebay' => $this->avgPositive($children, 'lmp_ebay'),
@@ -372,6 +369,48 @@ class LmpOverallController extends Controller
         $values = collect($rows)->pluck($field)->filter(fn ($value) => is_numeric($value));
 
         return $values->isNotEmpty() ? round((float) $values->avg(), 2) : null;
+    }
+
+    /**
+     * Amazon channel Ads% from /all-marketplace-master.
+     */
+    private function amazonAdsPercent(): float
+    {
+        $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')
+            ->value('ads_percentage');
+        if ($amazonAdsPercent === null) {
+            $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')
+                ->value('ads_percentage');
+        }
+
+        return (float) ($amazonAdsPercent ?? 0);
+    }
+
+    /**
+     * NROI% and NPFT% at Std Price — same shape as Amazon NROI / PFT, using Std Price as the price.
+     *
+     * Std NROI% = ((Std × 0.70 − ship − LP − Std × Ads%) / LP) × 100
+     * Std NPFT% = GPFT% − Ads%, GPFT% = ((Std × 0.70 − ship − LP) / Std) × 100
+     *
+     * @return array{std_nroi: ?float, std_npft: ?float}
+     */
+    private function stdPriceMargins(?float $std, ?float $lp, float $ship, float $adsPct): array
+    {
+        if ($std === null || $std <= 0) {
+            return ['std_nroi' => null, 'std_npft' => null];
+        }
+
+        $lpVal = ($lp !== null && $lp > 0) ? $lp : 0.0;
+        $gross = ($std * 0.70) - $ship - $lpVal;
+        $npft = round((($gross / $std) * 100) - $adsPct, 2);
+        $nroi = $lpVal > 0
+            ? round((($gross - ($std * ($adsPct / 100))) / $lpVal) * 100, 2)
+            : null;
+
+        return [
+            'std_nroi' => $nroi,
+            'std_npft' => $npft,
+        ];
     }
 
     /**

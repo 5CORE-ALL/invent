@@ -22,12 +22,10 @@ use Throwable;
 /**
  * Amazon Analytics Sprc Dil stack → SPRICE → Listings API (page not required).
  *
- * Same as Push Prc on /amazon-tabulator-view:
- *  Dil in slab (INV > 0, including 0 Sold) → Sale = Dil→NROI
- *    (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100)
- *    then CVR Down & < 7% → Target NROI −10; CVR Up & > 10% → Target NROI +10
- *  Else → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
- *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%.
+ * Same as Push Prc / S PRC on /amazon-tabulator-view:
+ *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + CVR Disc + Rev Disc) / 100)
+ *  CVR Disc = CVR slab + CVR up/down promotional discount
+ *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  Skip when live Price already equals the target. Price column updates on each push.
  */
 class AmazonSprcDilAutoPushService
@@ -54,6 +52,7 @@ class AmazonSprcDilAutoPushService
         $cvrGroiAdj = $dilStore['cvr_adj'];
         $cvrRules = $this->loadCvrDiscRules();
         $review = $this->loadReviewDiscRules();
+        $stdPromo = $this->loadStdPrcVsDil();
         $adsPct = $this->amazonAdsPercent();
 
         $this->log($logger, 'Loaded Dil slabs='.count($dilRules)
@@ -106,7 +105,8 @@ class AmazonSprcDilAutoPushService
                         $review['rules'],
                         $review['max_reviews'],
                         $cvrGroiAdj,
-                        $adsPct
+                        $adsPct,
+                        $stdPromo
                     );
                     if ($computed === null) {
                         $stats['skipped']++;
@@ -202,7 +202,8 @@ class AmazonSprcDilAutoPushService
      * @param  list<array{key:string,label:string,disc:float}>  $cvrRules
      * @param  list<array{key:string,min:int,max:int,disc:float}>  $reviewRules
      * @param  array<string, mixed>|null  $cvrAdj
-     * @return array{sprice:float,dil:float,groi:?float,nroi:?float,cvr_disc:float,review_disc:float,dil_groi:bool,lmp_capped:bool,base:float}|null
+     * @param  array<string, mixed>  $stdPromo  Dil / Age / CVR up-down promotional % off Std Prc
+     * @return array{sprice:float,dil:float,groi:?float,nroi:?float,cvr_disc:float,review_disc:float,dil_disc:float,age_disc:float,sum_disc:float,dil_groi:bool,lmp_capped:bool,base:float}|null
      */
     public function computeTarget(
         array $row,
@@ -211,7 +212,8 @@ class AmazonSprcDilAutoPushService
         array $reviewRules,
         int $reviewMax,
         ?array $cvrAdj = null,
-        ?float $adsPct = null
+        ?float $adsPct = null,
+        array $stdPromo = []
     ): ?array {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
@@ -251,16 +253,22 @@ class AmazonSprcDilAutoPushService
         }
         $dilGroi = $dilPrice !== null && $dilPrice > 0;
 
-        $cvrDisc = $this->discForCvr($cvr, $cvrRules);
+        $cvrSlab = $this->discForCvr($cvr, $cvrRules);
+        $cvrTrendDisc = $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []);
+        $cvrDisc = round(min(99.99, max(0, $cvrSlab + $cvrTrendDisc)), 2);
         $reviewDisc = $this->discForReviews($reviews, $reviewRules, $reviewMax);
-        $totalDisc = round(min(99.99, max(0, $cvrDisc + $reviewDisc)), 2);
+        $dilDisc = $this->discForStdRange($dil, is_array($stdPromo['dil'] ?? null) ? $stdPromo['dil'] : []);
+        $ageDisc = 0.0;
+        if (isset($row['age_days']) && $row['age_days'] !== null && $row['age_days'] !== '') {
+            $ageDisc = $this->discForStdRange((float) $row['age_days'], is_array($stdPromo['age'] ?? null) ? $stdPromo['age'] : []);
+        }
+        $totalDisc = round(min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc)), 2);
 
-        $sale = null;
-        if ($dilGroi) {
-            $sale = $dilPrice;
-        } elseif (! ($std > 0)) {
+        if (! ($std > 0)) {
             return null;
-        } elseif ($totalDisc > 0 && $totalDisc < 100) {
+        }
+        $sale = null;
+        if ($totalDisc > 0 && $totalDisc < 100) {
             $sale = round($std * (1 - ($totalDisc / 100)), 2);
             if (! ($sale >= 0.01) || $sale >= $std) {
                 $sale = null;
@@ -294,8 +302,11 @@ class AmazonSprcDilAutoPushService
             'dil' => round($dil, 2),
             'groi' => $nroi,
             'nroi' => $nroi,
-            'cvr_disc' => $dilGroi ? 0.0 : $cvrDisc,
-            'review_disc' => $dilGroi ? 0.0 : $reviewDisc,
+            'cvr_disc' => $cvrDisc,
+            'review_disc' => $reviewDisc,
+            'dil_disc' => $dilDisc,
+            'age_disc' => $ageDisc,
+            'sum_disc' => $totalDisc,
             'dil_groi' => $dilGroi,
             'lmp_capped' => $lmpCapped,
             'base' => $std > 0 ? round($std, 2) : round($sprice, 2),
@@ -370,6 +381,16 @@ class AmazonSprcDilAutoPushService
 
         $reviewsBySku = $this->loadReviewCounts($skuKeys);
         $lmpBySku = $this->loadLmpBySku($skuKeys, $sellerSkus);
+        $ageDays = app(\App\Http\Controllers\ProductMaster\InvDaysController::class);
+        $agePushBySku = [];
+        $ageLastSaleBySku = [];
+        try {
+            $ageSources = $ageDays->ageDaySources();
+            $agePushBySku = $ageSources['push'] ?? [];
+            $ageLastSaleBySku = $ageSources['last_sale'] ?? [];
+        } catch (Throwable $e) {
+            Log::warning('[AmazonSprcDilAutoPush] age days lookup failed', ['error' => $e->getMessage()]);
+        }
 
         $out = [];
         $seen = [];
@@ -428,6 +449,7 @@ class AmazonSprcDilAutoPushService
                 'ship' => $ship,
                 'lmp' => (float) ($lmpBySku[$sku] ?? 0),
                 'review_count' => (int) ($reviewsBySku[$sku] ?? 0),
+                'age_days' => $ageDays->ageDays($sellerSku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => $std,
                 'sprice' => (float) ($dv['SPRICE'] ?? 0),
                 'pushed_value' => $lastOffer['sale'],
@@ -605,6 +627,98 @@ class AmazonSprcDilAutoPushService
         }
 
         return 0.0;
+    }
+
+    /**
+     * First matching From–To wins. A From = To row matches that value only. The last row includes To.
+     *
+     * @param  list<array<string, mixed>>  $rules
+     */
+    public function discForStdRange(float $value, array $rules): float
+    {
+        if (! is_finite($value) || $value < 0 || $rules === []) {
+            return 0.0;
+        }
+        $list = array_values($rules);
+        $last = count($list) - 1;
+        foreach ($list as $i => $rule) {
+            if (! is_array($rule)) {
+                continue;
+            }
+            $min = (float) ($rule['min'] ?? 0);
+            $max = (float) ($rule['max'] ?? 0);
+            if ($max < $min) {
+                $swap = $min;
+                $min = $max;
+                $max = $swap;
+            }
+            $hit = abs($max - $min) < 0.00001
+                ? abs($value - $min) < 0.00001
+                : ($value >= $min && ($i === $last ? $value <= $max : $value < $max));
+            if (! $hit) {
+                continue;
+            }
+            $n = (float) ($rule['disc'] ?? 0);
+
+            return is_finite($n) && $n > 0 ? round($n, 2) : 0.0;
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * CVR up/down promotional % added on top of the CVR slab discount.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array<string, mixed>  $cfg
+     */
+    public function discForStdCvrTrend(array $row, array $cfg): float
+    {
+        if ($cfg === []) {
+            return 0.0;
+        }
+        $aL30 = (float) ($row['a_l30'] ?? 0);
+        $sess30 = (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0);
+        $aL60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
+        $sess60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
+        $cvrL30 = AmazonDilGroiRule::cvrL30($aL30, $sess30);
+        $trend = AmazonDilGroiRule::cvrTrend($cvrL30, AmazonDilGroiRule::cvrL45($aL30, $sess30, $aL60, $sess60));
+        $downLt = (float) ($cfg['down_lt'] ?? 7);
+        $upGt = (float) ($cfg['up_gt'] ?? 10);
+        $disc = (float) ($cfg['flat_disc'] ?? 0);
+        if ($trend === 'down' && $cvrL30 < $downLt) {
+            $disc = (float) ($cfg['down_disc'] ?? 0);
+        } elseif ($trend === 'up' && $cvrL30 > $upGt) {
+            $disc = (float) ($cfg['up_disc'] ?? 0);
+        }
+        if (! is_finite($disc) || $disc <= 0) {
+            return 0.0;
+        }
+
+        return round($disc, 2);
+    }
+
+    /**
+     * @return array{dil: list<array<string, mixed>>, age: list<array<string, mixed>>, cvr: array<string, mixed>}
+     */
+    protected function loadStdPrcVsDil(): array
+    {
+        $empty = ['dil' => [], 'age' => [], 'cvr' => []];
+        try {
+            $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_std_prc_vs_dil')->first();
+        } catch (Throwable $e) {
+            return $empty;
+        }
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved)) {
+            return $empty;
+        }
+
+        return [
+            'dil' => is_array($saved['dil'] ?? null) ? $saved['dil'] : [],
+            'age' => is_array($saved['age'] ?? null) ? $saved['age'] : [],
+            'cvr' => is_array($saved['cvr'] ?? null) ? $saved['cvr'] : [],
+        ];
     }
 
     public function capSpriceToLmp(float $sprice, float $lmp, float $lp, float $ship): float

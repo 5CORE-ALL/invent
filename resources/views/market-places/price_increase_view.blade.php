@@ -5453,6 +5453,21 @@
                     }
                 },
                 {
+                    title: "Avg NROI%",
+                    field: "avg_nroi",
+                    hozAlign: "center",
+                    minWidth: 60,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        if (!Number.isFinite(pct)) return '-';
+                        const st = (window.MetricPctColors && MetricPctColors.nroiStyle(pct)) || '';
+                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
+                    }
+                },
+                {
                     title: "Avg Price",
                     field: "avg_price",
                     hozAlign: "center",
@@ -5532,21 +5547,6 @@
                         return `<span style="${styleForGpftValue(value)}">${Math.round(value)}%</span>`;
                     },
                     minWidth: 70
-                },
-                {
-                    title: "Avg NROI%",
-                    field: "avg_nroi",
-                    hozAlign: "center",
-                    minWidth: 60,
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value == null || value === '') return '-';
-                        const pct = parseFloat(value);
-                        if (!Number.isFinite(pct)) return '-';
-                        const st = (window.MetricPctColors && MetricPctColors.nroiStyle(pct)) || '';
-                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
-                    }
                 },
                 {
                     title: "Avg NPFT%",

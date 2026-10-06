@@ -317,6 +317,16 @@ class OverallAmazonController extends Controller
             ->groupBy('parent')
             ->map->count();
 
+        $agePushBySku = [];
+        $ageLastSaleBySku = [];
+        try {
+            $ageSources = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->ageDaySources();
+            $agePushBySku = $ageSources['push'] ?? [];
+            $ageLastSaleBySku = $ageSources['last_sale'] ?? [];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon tabulator: age days lookup failed', ['error' => $e->getMessage()]);
+        }
+
         $result = [];
 
         foreach ($productMasters as $pm) {
@@ -412,6 +422,12 @@ class OverallAmazonController extends Controller
             $row['cvr_prev_date'] = $cvrPrevDate;
 
             $row['INV'] = ($shopify && $shopify->inv !== null) ? (float) $shopify->inv : 0;
+            $row['age_days'] = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->ageDays(
+                (string) $pm->sku,
+                (float) $row['INV'],
+                $agePushBySku,
+                $ageLastSaleBySku
+            );
             
             // Get Amazon inventory from stock mappings (null-safe, handle string values)
             $stockMapping = $stockMappings->get($pm->sku);
@@ -2904,6 +2920,159 @@ class OverallAmazonController extends Controller
             'success' => true,
             'max_reviews' => $maxReviews,
             'rules' => $rules,
+        ]);
+    }
+
+    /**
+     * Std prc vs dil: promotional % off standard price for Dil, Age Days, and CVR up/down.
+     * Review ranges stay on amazon_review_vs_disc. CVR slabs stay on amazon_cvr_vs_disc.
+     *
+     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array{down_lt:float,down_disc:float,up_gt:float,up_disc:float,flat_disc:float}}
+     */
+    private function amazonDefaultStdPrcVsDil(): array
+    {
+        return [
+            'dil' => [
+                ['min' => 0, 'max' => 0, 'disc' => 0],
+                ['min' => 0.1, 'max' => 10, 'disc' => 0],
+                ['min' => 10, 'max' => 25, 'disc' => 0],
+                ['min' => 25, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 100, 'disc' => 0],
+                ['min' => 100, 'max' => 9999, 'disc' => 0],
+            ],
+            'age' => [
+                ['min' => 0, 'max' => 30, 'disc' => 0],
+                ['min' => 31, 'max' => 60, 'disc' => 0],
+                ['min' => 61, 'max' => 90, 'disc' => 0],
+                ['min' => 91, 'max' => 180, 'disc' => 0],
+                ['min' => 181, 'max' => 365, 'disc' => 0],
+                ['min' => 366, 'max' => 9999, 'disc' => 0],
+            ],
+            'cvr' => [
+                'down_lt' => 7,
+                'down_disc' => 0,
+                'up_gt' => 10,
+                'up_disc' => 0,
+                'flat_disc' => 0,
+            ],
+        ];
+    }
+
+    /**
+     * @param  mixed  $incoming
+     * @return list<array{min:float,max:float,disc:float}>
+     */
+    private function amazonNormalizeStdPrcRanges($incoming, array $fallback): array
+    {
+        if (! is_array($incoming)) {
+            return $fallback;
+        }
+        $rules = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = (float) $item['min'];
+            $max = (float) $item['max'];
+            if ($max < $min) {
+                $swap = $min;
+                $min = $max;
+                $max = $swap;
+            }
+            $disc = is_numeric($item['disc'] ?? null) ? (float) $item['disc'] : 0;
+            if ($disc < 0) {
+                $disc = 0;
+            }
+            if ($disc > 100) {
+                $disc = 100;
+            }
+            $rules[] = [
+                'min' => round($min, 2),
+                'max' => round($max, 2),
+                'disc' => round($disc, 2),
+            ];
+        }
+
+        return $rules !== [] ? $rules : $fallback;
+    }
+
+    /**
+     * @param  mixed  $incoming
+     * @return array{down_lt:float,down_disc:float,up_gt:float,up_disc:float,flat_disc:float}
+     */
+    private function amazonNormalizeStdPrcCvr($incoming): array
+    {
+        $out = $this->amazonDefaultStdPrcVsDil()['cvr'];
+        if (! is_array($incoming)) {
+            return $out;
+        }
+        foreach (['down_lt', 'up_gt'] as $key) {
+            if (is_numeric($incoming[$key] ?? null) && (float) $incoming[$key] >= 0) {
+                $out[$key] = round((float) $incoming[$key], 2);
+            }
+        }
+        foreach (['down_disc', 'up_disc', 'flat_disc'] as $key) {
+            if (! is_numeric($incoming[$key] ?? null)) {
+                continue;
+            }
+            $n = (float) $incoming[$key];
+            if ($n < 0) {
+                $n = 0;
+            }
+            if ($n > 100) {
+                $n = 100;
+            }
+            $out[$key] = round($n, 2);
+        }
+
+        return $out;
+    }
+
+    public function amazonStdPrcVsDilRules()
+    {
+        $defaults = $this->amazonDefaultStdPrcVsDil();
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'amazon_std_prc_vs_dil')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved) || $saved === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'dil' => $defaults['dil'],
+                'age' => $defaults['age'],
+                'cvr' => $defaults['cvr'],
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_default' => false,
+            'dil' => $this->amazonNormalizeStdPrcRanges($saved['dil'] ?? null, $defaults['dil']),
+            'age' => $this->amazonNormalizeStdPrcRanges($saved['age'] ?? null, $defaults['age']),
+            'cvr' => $this->amazonNormalizeStdPrcCvr($saved['cvr'] ?? null),
+        ]);
+    }
+
+    public function amazonStdPrcVsDilSaveRules(Request $request)
+    {
+        $defaults = $this->amazonDefaultStdPrcVsDil();
+        $payload = [
+            'dil' => $this->amazonNormalizeStdPrcRanges($request->input('dil'), $defaults['dil']),
+            'age' => $this->amazonNormalizeStdPrcRanges($request->input('age'), $defaults['age']),
+            'cvr' => $this->amazonNormalizeStdPrcCvr($request->input('cvr')),
+        ];
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'amazon_std_prc_vs_dil'],
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr']]
+        );
+
+        return response()->json([
+            'success' => true,
+            'dil' => $payload['dil'],
+            'age' => $payload['age'],
+            'cvr' => $payload['cvr'],
         ]);
     }
 

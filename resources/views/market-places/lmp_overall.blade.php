@@ -500,6 +500,35 @@
                 return ((gross - ads) / lp) * 100;
             }
 
+            function stdNroiAt(sp, row) {
+                const price = parseFloat(sp);
+                const lp = parseFloat(row && row.lp);
+                if (!(price > 0) || !(lp > 0)) return null;
+                const ship = parseFloat(row.ship) || 0;
+                const gross = (price * 0.70) - ship - lp;
+                const ads = price * ((parseFloat(LMP_OV_ADS_PCT) || 0) / 100);
+                return ((gross - ads) / lp) * 100;
+            }
+
+            function stdNpftAt(sp, row) {
+                const price = parseFloat(sp);
+                if (!(price > 0)) return null;
+                const lp = parseFloat(row && row.lp);
+                const ship = parseFloat(row && row.ship) || 0;
+                const lpVal = (isFinite(lp) && lp > 0) ? lp : 0;
+                const gpft = ((price * 0.70 - ship - lpVal) / price) * 100;
+                return gpft - (parseFloat(LMP_OV_ADS_PCT) || 0);
+            }
+
+            function stdMarginFields(std, row) {
+                const nroi = stdNroiAt(std, row);
+                const npft = stdNpftAt(std, row);
+                return {
+                    std_nroi: (nroi == null || !isFinite(nroi)) ? null : round2(nroi),
+                    std_npft: (npft == null || !isFinite(npft)) ? null : round2(npft),
+                };
+            }
+
             function pctHtml(kind, value) {
                 if (value == null || !isFinite(value)) return dash();
                 if (window.MetricPctColors && typeof MetricPctColors.htmlFor === 'function') {
@@ -663,6 +692,11 @@
                     ['std_price', 'my_lmp', 'lmp_amz', 'lmp_ebay', 'lmp_temu', 'lmp_google', 'lp'].forEach(function (field) {
                         const vals = kids.map(function (kid) { return parseFloat(kid[field]); })
                             .filter(function (n) { return isFinite(n) && n > 0; });
+                        next[field] = vals.length ? round2(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length) : null;
+                    });
+                    ['std_nroi', 'std_npft'].forEach(function (field) {
+                        const vals = kids.map(function (kid) { return parseFloat(kid[field]); })
+                            .filter(function (n) { return isFinite(n); });
                         next[field] = vals.length ? round2(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length) : null;
                     });
                     ['lmp_amz_count', 'lmp_ebay_count', 'lmp_temu_count', 'lmp_google_count'].forEach(function (field) {
@@ -1290,7 +1324,12 @@
                     const linked = Array.isArray(data.linked_lmp_skus) ? data.linked_lmp_skus : [];
                     const inGroup = applied.has(rowSku)
                         || linked.some(function (s) { return String(s || '').trim().toUpperCase() === target; });
-                    if (inGroup) updates.push(Object.assign({ sku: data.sku }, fields));
+                    if (!inGroup) return;
+                    const patch = Object.assign({ sku: data.sku }, fields);
+                    if (Object.prototype.hasOwnProperty.call(fields, 'std_price')) {
+                        Object.assign(patch, stdMarginFields(fields.std_price, data));
+                    }
+                    updates.push(patch);
                 });
                 if (updates.length) table.updateData(updates);
                 updateLmpStdBadges();
@@ -1455,7 +1494,7 @@
                         },
                     },
                     {
-                        title: 'Std Price',
+                        title: 'Std Prc',
                         field: 'std_price',
                         hozAlign: 'center',
                         minWidth: 72,
@@ -1463,6 +1502,8 @@
                         headerTooltip: 'Amazon Standard Price (amazon_data_view.STANDARD_PRICE)',
                         formatter: function (cell) { return money(cell.getValue()); },
                     },
+                    percentColumn('Std NROI%', 'std_nroi', 'nroiStyle', 'NROI% at Std Price with 70% margin. ((Std Prc × 0.70 − ship − LP − Std Prc × Amazon Ads%) / LP) × 100'),
+                    percentColumn('Std NPFT%', 'std_npft', 'npftStyle', 'NPFT% at Std Price with 70% margin. GPFT% − Amazon Ads%, where GPFT% = ((Std Prc × 0.70 − ship − LP) / Std Prc) × 100'),
                     {
                         title: 'Avg Price',
                         field: 'avg_price',

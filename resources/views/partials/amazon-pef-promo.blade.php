@@ -19,8 +19,11 @@
             color: #64748b;
         }
         .amz-pef-promo-cell.has-val { color: #0f172a; }
+        .tabulator-row .tabulator-cell[tabulator-field="age_discount"],
+        .tabulator-row .tabulator-cell[tabulator-field="dil_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="review_discount"],
+        .tabulator-row .tabulator-cell[tabulator-field="sum_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="t_discounts"] {
             padding: 2px 4px !important;
         }
@@ -543,13 +546,19 @@
                             </li>
                         </ul>
                     </div>
+                    @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'buttons'])
                     <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
                         title="Dil slabs → Target NROI% (0–0 on top for Dil = 0). CVR overlay (editable, with Count) adjusts Target NROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
 
+@if($amazonPefPromoPart === 'css' || $amazonPefPromoPart === 'all')
+        @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'css'])
+@endif
+
 @if($amazonPefPromoPart === 'modals' || $amazonPefPromoPart === 'all')
+    @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'modals'])
     {{-- CVR Disc: Amazon-only rules store amazon_cvr_vs_disc --}}
     <div class="modal fade" id="amzCvrDiscModal" tabindex="-1" aria-labelledby="amzCvrDiscModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -813,6 +822,7 @@
 @if($amazonPefPromoPart === 'script' || $amazonPefPromoPart === 'all')
         @include('partials.tabulator-column-autofit')
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
+        @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'script'])
         // ==================== CVR Disc / Rev Disc / Sprc Dil ====================
         const AMZ_CVR_DISC_DEFAULTS = [
             { key: '0.01-1', label: '0.01–1%', disc: 9 },
@@ -1207,11 +1217,13 @@
             const n = Number(rule.disc);
             return isFinite(n) && n >= 0 ? n : 0;
         }
-        /** CVR → CVR Disc. % (INV=0 → 0). Uses amazon_cvr_vs_disc rules only. */
+        /** CVR slab disc plus CVR up/down promo from Std prc vs dil. INV=0 → 0. */
         function computeAmzCvrDiscountPct(d) {
             if (!amzPefIsChildRow(d)) return null;
             if (amzPefInv(d) === 0) return 0;
-            return amzDiscForCvr(amzPefCvr(d));
+            const slab = amzDiscForCvr(amzPefCvr(d));
+            const trend = (typeof amzStdCvrTrendDisc === 'function') ? (Number(amzStdCvrTrendDisc(d)) || 0) : 0;
+            return amzPefRound2(Math.max(0, slab + trend));
         }
         function amzPefReviewCount(d) {
             const n = parseInt(d && (d.amz_review_count != null ? d.amz_review_count : d.reviews), 10);
@@ -2740,6 +2752,55 @@
         function amazonPefPromoColumns() {
             return [
                 {
+                    title: 'Age Disc',
+                    field: 'age_discount',
+                    width: 70,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    headerTooltip: 'Age Disc — promotional % from Age Days slabs in Std prc vs dil. INV=0 → 0%. Read-only.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = (typeof computeAmzAgeDiscountPct === 'function' ? computeAmzAgeDiscountPct(aRow.getData()) : 0) || 0;
+                        const bv = (typeof computeAmzAgeDiscountPct === 'function' ? computeAmzAgeDiscountPct(bRow.getData()) : 0) || 0;
+                        return av - bv;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (!amzPefIsChildRow(d)) return '';
+                        const pct = (typeof computeAmzAgeDiscountPct === 'function') ? computeAmzAgeDiscountPct(d) : 0;
+                        const days = d.age_days;
+                        const tip = (days == null || days === '' ? 'No age' : (days + ' age days'))
+                            + ' → discount ' + (pct || 0) + '%';
+                        return '<span title="' + amzPefEscAttr(tip) + '">'
+                            + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'age') : (pct || '—'))
+                            + '</span>';
+                    },
+                },
+                {
+                    title: 'Dil Disc',
+                    field: 'dil_discount',
+                    width: 68,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    headerTooltip: 'Dil Disc — promotional % from Dil slabs in Std prc vs dil. INV=0 → 0%. Read-only.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = (typeof computeAmzDilDiscountPct === 'function' ? computeAmzDilDiscountPct(aRow.getData()) : 0) || 0;
+                        const bv = (typeof computeAmzDilDiscountPct === 'function' ? computeAmzDilDiscountPct(bRow.getData()) : 0) || 0;
+                        return av - bv;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (!amzPefIsChildRow(d)) return '';
+                        const pct = (typeof computeAmzDilDiscountPct === 'function') ? computeAmzDilDiscountPct(d) : 0;
+                        const dil = (typeof amzPefDil === 'function') ? amzPefDil(d) : 0;
+                        const tip = 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% → discount ' + (pct || 0) + '%';
+                        return '<span title="' + amzPefEscAttr(tip) + '">'
+                            + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'dil') : (pct || '—'))
+                            + '</span>';
+                    },
+                },
+                {
                     title: 'CVR Disc.',
                     field: 'cvr_discount',
                     width: 64,
@@ -2802,8 +2863,35 @@
                             + fmtAmzReviewDiscountBadge(pct) + '</span>';
                     },
                 },
+                {
+                    title: 'Sum disc',
+                    field: 'sum_discount',
+                    width: 72,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    headerTooltip: 'Age Disc + Dil Disc + CVR Disc + Rev Disc. S PRC = Std Prc × (1 − this % / 100).',
+                    sorter: function(a, b, aRow, bRow) {
+                        const fn = typeof computeAmzSumDiscountPct === 'function' ? computeAmzSumDiscountPct : function() { return 0; };
+                        return (Number(fn(aRow.getData())) || 0) - (Number(fn(bRow.getData())) || 0);
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (!amzPefIsChildRow(d)) return '';
+                        const pct = (typeof computeAmzSumDiscountPct === 'function') ? computeAmzSumDiscountPct(d) : 0;
+                        const stack = (typeof computeAmzRuleStack === 'function') ? computeAmzRuleStack(d) : {};
+                        const tip = 'Age ' + (stack.ageDisc || 0)
+                            + ' + Dil ' + (stack.dilDisc || 0)
+                            + ' + CVR ' + (stack.cvrDisc || 0)
+                            + ' + Rev ' + (stack.reviewDisc || 0)
+                            + ' = ' + (pct || 0) + '%';
+                        return '<span title="' + amzPefEscAttr(tip) + '">'
+                            + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'sum') : (pct || '—'))
+                            + '</span>';
+                    },
+                },
                 ...(typeof tDiscountsColumn === 'function' ? [Object.assign({}, tDiscountsColumn(computeAmzTDiscountsPct), {
-                    headerTooltip: 'CVR Disc + Rev Disc. Sprc Dil Sales use GROI, not this %.',
+                    headerTooltip: 'CVR Disc + Rev Disc. Sum disc adds Age Disc and Dil Disc.',
                 })] : []),
                 {
                     title: 'Push Prc',
@@ -2823,7 +2911,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'Push Prc: Your=Std. Sprc Dil (Dil in slab, including 0 Sold) → Sale=GROI. Other rows → Sale=Std−(CVR Disc+Rev Disc), LMP-capped to match S PRC. Sale=Biz=Min. Dot = PDT history.',
+                    headerTooltip: 'Push Prc: Your=Std. Sale = Std − (Age Disc + Dil Disc + CVR Disc + Rev Disc), LMP-capped to match S PRC. Sale=Biz=Min. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (!amzPefIsChildRow(d)) return '';
@@ -2906,11 +2994,12 @@
 
         /**
          * Live rule stack for this SKU.
-         * CVR Disc = CVR slab (INV=0 or CVR≤0 → 0)
-         * Rev Disc = review-count slab (INV=0 or count 0 or count > max → 0)
-         * Sprc Dil = Dil slab → Target NROI, then CVR Down < 7% -10 / Up > 10% +10 (every INV > 0 SKU, including 0 Sold)
+         * Age Disc + Dil Disc + CVR Disc + Rev Disc, each a % off Std Prc.
+         * CVR Disc = CVR slab + CVR up/down promo. INV=0 → 0.
          */
         function computeAmzRuleStack(d) {
+            const ageDisc = Math.max(0, Number(typeof computeAmzAgeDiscountPct === 'function' ? computeAmzAgeDiscountPct(d) : 0) || 0);
+            const dilDisc = Math.max(0, Number(typeof computeAmzDilDiscountPct === 'function' ? computeAmzDilDiscountPct(d) : 0) || 0);
             const cvrDisc = Math.max(0, Number(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0) || 0);
             const reviewDisc = Math.max(0, Number(typeof computeAmzReviewDiscountPct === 'function' ? computeAmzReviewDiscountPct(d) : 0) || 0);
             const zeroSold = typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(d);
@@ -2918,9 +3007,11 @@
                 ? amzDilGroiMetaForRow(d)
                 : null;
             const dilGroi = !!(dilGroiMeta && dilGroiMeta.sprc > 0);
-            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(0, cvrDisc + reviewDisc)));
+            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + reviewDisc)));
             return {
                 prmt: 0,
+                ageDisc: ageDisc,
+                dilDisc: dilDisc,
                 cvrDisc: cvrDisc,
                 reviewDisc: reviewDisc,
                 cvrUpDn: 0,
@@ -2938,24 +3029,8 @@
         }
         function formatAmzPushPrcDiscNote(plan) {
             const parts = [];
-            if (plan.dilGroi) {
-                let groiNote = 'Sprc Dil NROI ' + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
-                if (plan.dilGroiCvrAdj) {
-                    const sign = plan.dilGroiCvrAdj > 0 ? '+' : '';
-                    const cfg = amzCvrGroiAdjNow();
-                    const why = plan.dilGroiCvrAdj > 0
-                        ? ('CVR Up > ' + cfg.up_gt + '%')
-                        : ('CVR Down < ' + cfg.down_lt + '% and down arrow');
-                    groiNote = 'Sprc Dil NROI ' + (plan.dilGroiSlabGroi != null ? plan.dilGroiSlabGroi : '') + '%'
-                        + ' ' + sign + plan.dilGroiCvrAdj + ' (' + why + ') → '
-                        + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
-                }
-                parts.push(groiNote + (plan.dilGroiLabel ? (' · ' + plan.dilGroiLabel) : ''));
-                if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
-                else if (plan.stdCapped) parts.push('Std cap');
-                if (plan.lmpCapped) parts.push('LMP cap');
-                return parts.length ? ' (' + parts.join(' + ') + ')' : '';
-            }
+            if (plan.ageDisc) parts.push('Age Disc ' + plan.ageDisc + '%');
+            if (plan.dilDisc) parts.push('Dil Disc ' + plan.dilDisc + '%');
             if (plan.cvrDisc) parts.push('CVR Disc ' + plan.cvrDisc + '%');
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
             if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
@@ -2965,9 +3040,8 @@
         }
         /**
          * Push Prc plan per SKU:
-         *  Sprc Dil (Dil in slab, including 0 Sold) → Sale = Dil→NROI target, then CVR Down < 7% -10 / Up > 10% +10 (does not stack discounts)
-         *  Other  → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
-         *  Site / Your Price = S PRC; Min and Business = S PRC × 0.95; Max = S PRC × 1.10
+         *  Sale = Std × (1 − (Age Disc + Dil Disc + CVR Disc + Rev Disc)/100)
+         *  No discount → Sale = Std. Site / Your Price = S PRC; Min and Business = S PRC × 0.95; Max = S PRC × 1.10
          */
         function amzMinBusinessFromSprc(sprc) {
             const base = amzPefRound2(sprc);
@@ -2983,19 +3057,14 @@
         }
         function computeAmzTDiscountsPct(d) {
             const stack = computeAmzRuleStack(d);
-            if (stack.dilGroi) return 0;
-            return stack.totalDisc;
+            return amzPefRound2(Math.min(99.99, (stack.cvrDisc || 0) + (stack.reviewDisc || 0)));
         }
         function computeAmzPushPrcPlan(d) {
             const std = Number(d.STANDARD_PRICE) || 0;
             const stack = computeAmzRuleStack(d);
+            if (!(std > 0)) return null;
             let sale = null;
-            if (stack.dilGroi && stack.dilGroiPrice != null) {
-                sale = stack.dilGroiPrice;
-                if (!(sale >= 0.01)) sale = null;
-            } else if (!(std > 0)) {
-                return null;
-            } else if (stack.totalDisc > 0 && stack.totalDisc < 100) {
+            if (stack.totalDisc > 0 && stack.totalDisc < 100) {
                 sale = amzPefRound2(std * (1 - (stack.totalDisc / 100)));
                 if (!(sale >= 0.01) || sale >= std) sale = null;
             }
@@ -3011,6 +3080,8 @@
                 min: amzMinBusinessFromSprc(saleBase),
                 business: amzMinBusinessFromSprc(saleBase),
                 prmt: stack.prmt,
+                ageDisc: stack.ageDisc,
+                dilDisc: stack.dilDisc,
                 cvrDisc: stack.cvrDisc,
                 reviewDisc: stack.reviewDisc,
                 cvrUpDn: stack.cvrUpDn,
@@ -3467,9 +3538,8 @@
                 'Clear S PRC and refill for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?'
                 + (skippedInv ? ('\n(Skip ' + skippedInv + ' with INV = 0)') : '')
                 + '\n\nFormula (same as Push Prc, no Amazon push):\n'
-                + 'Dil in slab → Target NROI from Sprc Dil (including 0 Sold)\n'
-                + 'No Dil match → Std × (1 − (CVR Disc + Rev Disc)/100)\n'
-                + 'If no rule → S PRC = Std'
+                + 'S PRC = Std × (1 − (Age Disc + Dil Disc + CVR Disc + Rev Disc)/100)\n'
+                + 'No discount → S PRC = Std'
             )) return;
 
             const $btn = $('#amz-sprice-recalc-btn');
@@ -4157,6 +4227,13 @@
                 Promise.resolve(loadAmzDilGroiRules()).then(function() { amzNoteRuleReady('dilgroi'); }).catch(function() { amzNoteRuleReady('dilgroi'); });
             } else {
                 amzNoteRuleReady('dilgroi');
+            }
+            if (typeof loadAmzStdPrcRules === 'function') {
+                Promise.resolve(loadAmzStdPrcRules()).then(function() {
+                    if (table) {
+                        try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
+                    }
+                });
             }
             bindAmzRuleSpriceAutofill();
             bindAmzReloadPushOnTable();

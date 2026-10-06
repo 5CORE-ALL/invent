@@ -8,7 +8,7 @@ use Tests\TestCase;
 
 class AmazonSprcDilAutoPushServiceTest extends TestCase
 {
-    public function test_dil_match_uses_nroi_price_and_ignores_cvr_rev_disc(): void
+    public function test_std_price_minus_cvr_and_review_disc_even_when_dil_matches(): void
     {
         $out = $this->compute([
             'inv' => 10,
@@ -24,13 +24,14 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertTrue($out['dil_groi']);
         $this->assertEqualsWithDelta(50.0, $out['nroi'], 0.001);
-        $this->assertEqualsWithDelta(50.0, $out['groi'], 0.001);
-        $this->assertEqualsWithDelta(85.0, $out['sprice'], 0.001);
-        $this->assertSame(0.0, $out['cvr_disc']);
-        $this->assertSame(0.0, $out['review_disc']);
+        $this->assertEqualsWithDelta(9.0, $out['cvr_disc'], 0.001);
+        $this->assertEqualsWithDelta(4.0, $out['review_disc'], 0.001);
+        $this->assertEqualsWithDelta(13.0, $out['sum_disc'], 0.001);
+        // Std $100 − (9% + 4%).
+        $this->assertEqualsWithDelta(87.0, $out['sprice'], 0.001);
     }
 
-    public function test_dil_match_raises_sprice_when_ads_pct_is_applied(): void
+    public function test_ads_pct_does_not_change_std_discount_sprice(): void
     {
         $out = $this->compute([
             'inv' => 10,
@@ -43,15 +44,39 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
             'lmp' => 0,
         ], 10.0);
 
-        $expected = AmazonDilGroiRule::suggestedPriceFromNroi(40, 8, 50, 10);
         $this->assertNotNull($out);
-        $this->assertTrue($out['dil_groi']);
-        $this->assertEqualsWithDelta($expected, $out['sprice'], 0.001);
-        $this->assertEqualsWithDelta(
-            50.0,
-            AmazonDilGroiRule::snroiAtPrice($out['sprice'], 40, 8, 10),
-            0.05
-        );
+        $this->assertEqualsWithDelta(87.0, $out['sprice'], 0.001);
+    }
+
+    public function test_std_price_minus_age_dil_cvr_and_review_discounts(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 12,
+            'age_days' => 100,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 200,
+            'cvr' => 0.5,
+            'review_count' => 2,
+            'lmp' => 0,
+            'a_l30' => 8,
+            'sess30' => 100,
+            'a_l60' => 8,
+            'sess60' => 100,
+        ], 0.0, [
+            'dil' => [['min' => 10, 'max' => 25, 'disc' => 5]],
+            'age' => [['min' => 91, 'max' => 180, 'disc' => 3]],
+            'cvr' => ['down_lt' => 7, 'down_disc' => 2, 'up_gt' => 10, 'up_disc' => 1, 'flat_disc' => 0],
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(3.0, $out['age_disc'], 0.001);
+        $this->assertEqualsWithDelta(5.0, $out['dil_disc'], 0.001);
+        $this->assertEqualsWithDelta(9.0, $out['cvr_disc'], 0.001);
+        $this->assertEqualsWithDelta(4.0, $out['review_disc'], 0.001);
+        $this->assertEqualsWithDelta(21.0, $out['sum_disc'], 0.001);
+        $this->assertEqualsWithDelta(158.0, $out['sprice'], 0.001);
     }
 
     public function test_no_dil_match_uses_std_minus_cvr_and_review_disc(): void
@@ -132,7 +157,7 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertFalse($out['lmp_capped']);
-        $this->assertEqualsWithDelta(85.0, $out['sprice'], 0.001);
+        $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
     }
 
     public function test_missing_lmp_caps_sprice_at_std(): void
@@ -150,7 +175,6 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertFalse($out['lmp_capped']);
-        // Dil target is $85. No LMP, so Std $70 is the maximum.
         $this->assertEqualsWithDelta(70.0, $out['sprice'], 0.001);
     }
 
@@ -190,8 +214,7 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertTrue($out['dil_groi']);
         $this->assertEqualsWithDelta(40.0, $out['nroi'], 0.001);
-        $expected = AmazonDilGroiRule::suggestedPriceFromNroi(40, 8, 40, 0);
-        $this->assertEqualsWithDelta($expected, $out['sprice'], 0.001);
+        $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
     }
 
     public function test_cvr_up_above_10_adds_10_to_target_nroi(): void
@@ -214,15 +237,14 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertTrue($out['dil_groi']);
         $this->assertEqualsWithDelta(60.0, $out['nroi'], 0.001);
-        $expected = AmazonDilGroiRule::suggestedPriceFromNroi(40, 8, 60, 0);
-        $this->assertEqualsWithDelta($expected, $out['sprice'], 0.001);
+        $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
     }
 
     /**
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null
      */
-    private function compute(array $row, float $adsPct = 0.0): ?array
+    private function compute(array $row, float $adsPct = 0.0, array $stdPromo = []): ?array
     {
         $row = array_merge([
             'a_l30' => 8,
@@ -240,6 +262,6 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
             ['key' => '2-3', 'min' => 2, 'max' => 3, 'disc' => 4],
         ];
 
-        return $service->computeTarget($row, AmazonDilGroiRule::defaults(), $cvrRules, $reviewRules, 4, null, $adsPct);
+        return $service->computeTarget($row, AmazonDilGroiRule::defaults(), $cvrRules, $reviewRules, 4, null, $adsPct, $stdPromo);
     }
 }

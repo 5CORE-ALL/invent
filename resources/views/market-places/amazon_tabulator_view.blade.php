@@ -4493,7 +4493,7 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. Live rule price. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. Std Prc is always the maximum: a suggested S PRC above Std is capped to Std, and when Std is higher that S PRC is the Sales Price. Red triangle stays when S PRC ≥ LMP. Orange triangle = LMP above Std, review Std price.",
+                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + CVR Disc + Rev Disc). If LMP is lower and SGROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -5718,8 +5718,11 @@
                 const field = def && def.field ? String(def.field) : '';
                 if (field === 'row_select') return 'Row Select';
                 if (field === 'push_prc') return 'Push Prc';
+                if (field === 'age_discount') return 'Age Disc';
+                if (field === 'dil_discount') return 'Dil Disc';
                 if (field === 'cvr_discount') return 'CVR Disc.';
                 if (field === 'review_discount') return 'Rev Disc.';
+                if (field === 'sum_discount') return 'Sum disc';
                 if (field === 't_discounts') return 'T Discounts';
                 if (field === 'SPRC_DIL') return 'Sprc Dil';
                 const raw = (def && def.title != null) ? def.title : field;
@@ -5742,7 +5745,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|min_price|business_price|max_price|push_prc|cvr_discount|review_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|cvr_discount|review_discount|sum_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
