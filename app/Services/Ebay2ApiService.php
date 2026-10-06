@@ -2870,28 +2870,11 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         }
 
         $sku = trim((string) $sku);
-        $vars = $item['Variations']['Variation'] ?? null;
-        if (is_array($vars) && $sku !== '') {
-            $list = isset($vars['SKU']) || isset($vars['Quantity']) ? [$vars] : $vars;
-            foreach ($list as $v) {
-                if (! is_array($v)) {
-                    continue;
-                }
-                if (! \App\Services\MarketplaceManager\EbayLiveListingMapper::skuEquals(
-                    (string) ($v['SKU'] ?? ''),
-                    $sku
-                )) {
-                    continue;
-                }
-
-                return $this->availableFromQtyAndSold($v['Quantity'] ?? null, $v['SellingStatus']['QuantitySold'] ?? ($v['QuantitySold'] ?? 0));
-            }
+        if (\App\Services\MarketplaceManager\EbayLiveListingMapper::listingHasVariations($item) && $sku === '') {
+            return null;
         }
 
-        return $this->availableFromQtyAndSold(
-            $item['Quantity'] ?? null,
-            $item['SellingStatus']['QuantitySold'] ?? 0
-        );
+        return \App\Services\MarketplaceManager\EbayLiveListingMapper::quantityFromGetItem($item, $sku);
     }
 
     public function listingStatus(string $itemId): ?string

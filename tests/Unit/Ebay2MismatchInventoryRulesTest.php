@@ -115,6 +115,32 @@ class Ebay2MismatchInventoryRulesTest extends TestCase
         $this->assertSame(24, EbayLiveListingMapper::quantityFromGetItem($soldItem, '36L BLACK OPEN BOX'));
     }
 
+    public function test_zero_quantity_available_does_not_hide_the_variation_quantity(): void
+    {
+        $item = [
+            'Quantity' => 0,
+            'QuantityAvailable' => 0,
+            'Variations' => [
+                'Variation' => [
+                    [
+                        'SKU' => 'ND 58',
+                        'Quantity' => 100,
+                        'QuantityAvailable' => 0,
+                        'SellingStatus' => ['QuantitySold' => 0],
+                    ],
+                    [
+                        'SKU' => 'OTHER',
+                        'Quantity' => 0,
+                        'QuantityAvailable' => 0,
+                    ],
+                ],
+            ],
+        ];
+
+        $this->assertSame(100, EbayLiveListingMapper::quantityFromGetItem($item, 'ND 58'));
+        $this->assertNull(EbayLiveListingMapper::quantityFromGetItem($item, 'MISSING'));
+    }
+
     public function test_normalize_sku_for_screenshot_rows(): void
     {
         $this->assertSame('CA10D AL BLK', ShopifySku::normalizeSkuForShopifyLookup('CA10D-AL-BLK'));

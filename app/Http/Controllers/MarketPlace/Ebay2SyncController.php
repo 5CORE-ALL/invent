@@ -358,7 +358,7 @@ class Ebay2SyncController extends Controller
             }
         }
 
-        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $aeStockMap, $liveShopifyQty, $stateIndex, $pageLiveByProduct) {
+        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $aeStockMap, $liveShopifyQty, $stateIndex, $pageLiveByProduct, $linkTab) {
             $sku = (string) $row->sku;
             $metric = $aeMap[$sku] ?? null;
             $linked = $this->isShopifySkuLinkedOnEbay2($metric, $sku);
@@ -378,6 +378,26 @@ class Ebay2SyncController extends Controller
                     is_array($cached) ? $cached : null,
                     $aeQty
                 );
+            }
+            if ($linked && $pid !== '' && ($aeQty === null || $aeQty === 0) && in_array($linkTab, ['mismatch', 'linked_mismatch'], true)) {
+                $observed = $this->ebay2Api->variationAvailableQty($pid, $metricSku !== null && $metricSku !== '' ? $metricSku : $sku);
+                if ($observed !== null && $observed > 0) {
+                    $aeQty = $observed;
+                    Ebay2Metric::query()
+                        ->where('item_id', $pid)
+                        ->where(function ($q) use ($sku, $metricSku) {
+                            $q->where('sku', $sku);
+                            if ($metricSku !== null && $metricSku !== '' && strcasecmp($metricSku, $sku) !== 0) {
+                                $q->orWhere('sku', $metricSku);
+                            }
+                        })
+                        ->update(['ebay_stock' => $observed]);
+                    app(Ebay2LiveListingsService::class)->applyPushedInventory([[
+                        'product_id' => $pid,
+                        'sku_code' => $sku,
+                        'inventory' => $observed,
+                    ]]);
+                }
             }
 
             return (object) [
@@ -550,7 +570,7 @@ class Ebay2SyncController extends Controller
 
         $item = is_array($info['Item'] ?? null) ? $info['Item'] : (is_array($info) ? $info : []);
         $title = trim((string) ($item['Title'] ?? $metric->ebay_title ?? ''));
-        $qty = $item['Quantity'] ?? $item['QuantityAvailable'] ?? null;
+        $qty = EbayLiveListingMapper::quantityFromGetItem($item, $sku);
         $price = EbayGetItemPrice::fromItem($item, $sku);
 
         $updates = array_filter([
