@@ -424,8 +424,24 @@ class ChannelPushSpriceRunner
                     .($negSnroi ? ': negative SNROI' : ($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : ''))),
                 $ok
             );
-            usleep(in_array($this->channel, ['macys', 'macy'], true) ? 50000 : 250000);
+            usleep($this->pauseAfterPushMicros());
         }
+    }
+
+    /**
+     * business5core.com throttles listing writes. One B2B push about every
+     * 1.5s stays under that limit; a 429 still waits inside the store client.
+     */
+    private function pauseAfterPushMicros(): int
+    {
+        if (in_array($this->channel, ['macys', 'macy'], true)) {
+            return 50000;
+        }
+        if ($this->channel === 'shopify_b2b') {
+            return 1500000;
+        }
+
+        return 250000;
     }
 
     private function pullLivePriceAfterPush(string $sku, float $expected): float

@@ -629,13 +629,7 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <div id="reverb-table-wrapper" style="height: calc(100vh - 20
-                
-                
-                
-                
-                
-                0px); display: flex; flex-direction: column;">
+                <div id="reverb-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div id="reverb-table" style="flex: 1;"></div>
                 </div>
             </div>

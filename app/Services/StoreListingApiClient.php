@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -162,25 +163,47 @@ class StoreListingApiClient
             ->withHeaders($this->headers($withApiKey));
 
         $method = strtoupper($method);
-        $response = match ($method) {
-            'GET' => $pending->get($url, $query),
-            'POST' => $pending->post($url, $body ?? []),
-            'PATCH' => $pending->patch($url, $body ?? []),
-            default => $pending->put($url, $body ?? []),
-        };
+        $maxAttempts = 5;
+        $response = null;
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $response = match ($method) {
+                'GET' => $pending->get($url, $query),
+                'POST' => $pending->post($url, $body ?? []),
+                'PATCH' => $pending->patch($url, $body ?? []),
+                default => $pending->put($url, $body ?? []),
+            };
 
-        if (! $response->successful()) {
-            $body = mb_substr($response->body(), 0, 500);
+            if ($response->status() === 429 && $attempt < $maxAttempts) {
+                $wait = $this->rateLimitWaitSeconds($response, $attempt);
+                Log::warning('Store listing API rate limited, retrying', [
+                    'method' => $method,
+                    'url' => $url,
+                    'attempt' => $attempt,
+                    'wait_seconds' => $wait,
+                ]);
+                if ($wait > 0) {
+                    sleep($wait);
+                }
+
+                continue;
+            }
+
+            break;
+        }
+
+        if (! $response || ! $response->successful()) {
+            $status = $response ? $response->status() : 0;
+            $raw = $response ? mb_substr($response->body(), 0, 500) : '';
             Log::error('Store listing API request failed', [
                 'method' => $method,
                 'url' => $url,
-                'status' => $response->status(),
-                'body' => $body,
+                'status' => $status,
+                'body' => $raw,
             ]);
 
-            $json = $response->json();
+            $json = $response ? $response->json() : null;
             $storeMessage = is_array($json) ? trim((string) ($json['message'] ?? '')) : '';
-            if ($response->status() === 401) {
+            if ($status === 401) {
                 throw new RuntimeException(
                     'Store API request failed (HTTP 401)'
                     .($storeMessage !== '' ? ': '.$storeMessage : '.')
@@ -188,11 +211,39 @@ class StoreListingApiClient
                 );
             }
             throw new RuntimeException(
-                'Store API request failed (HTTP '.$response->status().')'
+                'Store API request failed (HTTP '.$status.')'
                 .($storeMessage !== '' ? ': '.$storeMessage : '.')
             );
         }
 
+        return $this->decodeStoreJson($response);
+    }
+
+    /**
+     * business5core.com answers 429 with Laravel's "Too Many Attempts".
+     * Wait for Retry-After instead of failing the SKU.
+     */
+    private function rateLimitWaitSeconds(Response $response, int $attempt): int
+    {
+        $header = trim((string) $response->header('Retry-After'));
+        if ($header !== '' && is_numeric($header)) {
+            return max(0, min(60, (int) $header));
+        }
+        if ($header !== '') {
+            $until = strtotime($header);
+            if ($until !== false) {
+                return max(0, min(60, $until - time()));
+            }
+        }
+
+        return min(60, 2 * max(1, $attempt));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodeStoreJson(Response $response): array
+    {
         $json = $response->json();
         if ($json === null || $json === []) {
             return is_array($json) ? $json : [];
