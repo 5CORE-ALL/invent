@@ -263,6 +263,7 @@
                         title="{{ $ebaySprcDilBtnTitle }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
+                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => $ebaySprcDilChannel])
 @endif
 
 @if($ebaySprcDilPart === 'modals' || $ebaySprcDilPart === 'all')
@@ -571,6 +572,7 @@
 @endif
 
 @if($ebaySprcDilPart === 'script' || $ebaySprcDilPart === 'all')
+        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'script', 'spriceRuleChannel' => $ebaySprcDilChannel])
         const EBAY_DIL_GROI_CHANNEL = @json($ebaySprcDilChannel);
         const EBAY_DIL_GROI_ZERO_SOLD_MIN = @json($ebaySprcDilZeroSoldUsesMinGroi);
         const EBAY_DIL_GROI_CVR_ADJ = @json(!empty($ebaySprcDilCvrGroiAdj));
@@ -2185,7 +2187,7 @@
         }
         /** Macys / Purchasing Power: paint Dil S PRC in the grid (persist is ebayApplySprcDilToTable). */
         function ebayDgPaintMacysRuleSprice() {
-            return 0;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() !== 'dil') return 0;
             if (typeof table === 'undefined' || !table) return 0;
             // Shopify S PRC / SNROI already read live Dil. Mass row.update + redraw jumps the table to the top.
             if ((typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
@@ -2390,6 +2392,24 @@
             return patch;
         }
         function ebayTiktokRuleDiscount(d) {
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                const meta = ebayDilGroiMetaForRow(d);
+                if (meta && meta.sprc > 0) {
+                    let price = ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
+                        ? fbMpRoundSprice(meta.sprc)
+                        : ebayDgRound2(meta.sprc);
+                    if ((ebayDgIsShopifyB2c() || ebayDgIsMacys() || ebayDgIsEbay123() || ebayDgIsNewegg())
+                        && typeof chPromoFinalSpriceToSave === 'function') {
+                        const source = ebayDgIsNewegg() && meta.rawSprc > 0 ? meta.rawSprc : price;
+                        price = chPromoFinalSpriceToSave(d, source);
+                    }
+                    if (!(price > 0)) return 0;
+                    return ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
+                        ? fbMpRoundSprice(price)
+                        : ebayDgRound2(price);
+                }
+                return 0;
+            }
             if (typeof window.chStdPriceForRow === 'function') {
                 const stdRule = Number(window.chStdPriceForRow(d)) || 0;
                 if (stdRule > 0) return stdRule;
@@ -2533,7 +2553,7 @@
             return fills.length;
         }
         async function ebayApplySprcDilToTable(opts) {
-            return 0;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() !== 'dil') return 0;
             opts = opts || {};
             const persist = opts.persist === true;
             const allowPush = opts.push === true;

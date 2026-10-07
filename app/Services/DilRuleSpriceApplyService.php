@@ -172,13 +172,14 @@ class DilRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
-        $this->applyStdPrcVsDil = true;
+        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc($this->channel);
         $store = $this->loadDilGroiStore();
         $dilRules = $store['rules'];
         $cvrAdj = $store['cvr_adj'];
         $margin = $this->takeHome();
 
-        $this->log($logger, $this->channel.' loaded Dil slabs='.count($dilRules).' margin='.$margin);
+        $this->log($logger, $this->channel.' S PRC rule='.($this->applyStdPrcVsDil ? 'std' : 'dil')
+            .' Dil slabs='.count($dilRules).' margin='.$margin);
 
         $stats = [
             'channel' => $this->channel,
@@ -272,7 +273,7 @@ class DilRuleSpriceApplyService
      */
     public function collectPushTasks(?array $onlySkus = null): array
     {
-        $this->applyStdPrcVsDil = true;
+        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc($this->channel);
         if (! in_array($this->channel, self::PUSH_CHANNELS, true)) {
             return [];
         }

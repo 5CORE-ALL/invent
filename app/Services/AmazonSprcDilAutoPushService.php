@@ -58,6 +58,7 @@ class AmazonSprcDilAutoPushService
         $adsPct = $this->amazonAdsPercent();
 
         $this->log($logger, 'Loaded Dil slabs='.count($dilRules)
+            .' S PRC rule='.(\App\Support\SpriceActiveRule::forChannel('amazon'))
             .' CVR Disc slabs='.count($cvrRules)
             .' Rev Disc slabs='.count($review['rules'])
             .' Ads%='.$adsPct
@@ -265,6 +266,41 @@ class AmazonSprcDilAutoPushService
             }
         }
         $dilGroi = $dilPrice !== null && $dilPrice > 0;
+
+        if (\App\Support\SpriceActiveRule::forChannel('amazon') === 'dil') {
+            if ($dilPrice === null || ! ($dilPrice >= 0.01)) {
+                return null;
+            }
+            $capped = AmazonDilGroiRule::capSpriceToLmp(
+                (float) $dilPrice,
+                $lmp,
+                $lp,
+                $ship,
+                AmazonDilGroiRule::TAKE_HOME,
+                $std
+            );
+            if (! is_finite($capped) || $capped < 0.01) {
+                return null;
+            }
+
+            return [
+                'sprice' => round($capped, 2),
+                'dil' => round($dil, 2),
+                'groi' => $nroi,
+                'nroi' => $nroi,
+                'cvr_disc' => 0.0,
+                'review_disc' => 0.0,
+                'buss_disc' => 0.0,
+                'zero_sold_disc' => 0.0,
+                'roi_disc' => 0.0,
+                'dil_disc' => 0.0,
+                'age_disc' => 0.0,
+                'sum_disc' => 0.0,
+                'dil_groi' => true,
+                'lmp_capped' => $lmp > 0 && ((float) $dilPrice - $capped) > 0.009,
+                'base' => $std > 0 ? round($std, 2) : round($capped, 2),
+            ];
+        }
 
         $cvrDisc = $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []);
         $reviewQty = (int) ($row['review_count'] ?? 0);

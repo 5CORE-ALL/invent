@@ -1157,9 +1157,8 @@
             return chain;
         }
         function chStdOwnsSprice() {
-            if (typeof CHANNEL_PROMO_CHANNEL === 'undefined' || CHANNEL_PROMO_CHANNEL !== 'shopify_b2b') return true;
-            if (typeof window.shopifyB2bSpriceRule !== 'function') return true;
-            return window.shopifyB2bSpriceRule() === 'std';
+            if (typeof window.spriceActiveRule === 'function') return window.spriceActiveRule() !== 'dil';
+            return true;
         }
         let chStdAutoApplied = false;
         let chStdAutoWaits = 0;
@@ -1304,6 +1303,20 @@
             });
             $('#ch-sp-hist-close').off('click.chsthist').on('click.chsthist', function() { $('#ch-sp-hist-wrap').removeClass('is-open'); });
         }
+        window.chStdApplyActivePrices = function() {
+            if (!chStdOwnsSprice()) return;
+            const updates = chStdWritePrices(chStdDraftNow());
+            const redraw = function() {
+                if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') {
+                    try { table.redraw(true); } catch (e) { /* ignore */ }
+                }
+                if (typeof updateSummary === 'function') updateSummary();
+                if (typeof window.shopifyB2bRefreshSpriceCells === 'function') window.shopifyB2bRefreshSpriceCells();
+            };
+            const pending = chStdSavePrices(updates);
+            if (pending && typeof pending.always === 'function') pending.always(redraw);
+            else redraw();
+        };
         $(function() {
             bindChStdPrcUi();
             chStdScheduleAutoApply();

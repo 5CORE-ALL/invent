@@ -41,7 +41,7 @@ class PurchasingPowerRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, bool $push = true, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
-        $this->applyStdPrcVsDil = true;
+        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc('purchasing_power');
         $dilRules = $this->loadDilGroiRules();
         $margin = MarketplacePercentage::takeHomeForPromoChannel('purchasing_power');
         if (! ($margin > 0)) {

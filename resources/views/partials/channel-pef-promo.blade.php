@@ -9282,15 +9282,18 @@
             const dil = Number(ebaySprcDilForRow(d)) || 0;
             return dil > 0 && Math.abs(price - dil) < 0.005;
         }
-        /** What Push Prc sends. Sprc Dil is rules-only and is not this price. */
+        /** What Push Prc sends. Only the ON S PRC rule. */
         function chPromoPushSpriceAmount(d) {
             if (!d) return 0;
-            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b'
-                && typeof window.shopifyB2bSpriceRule === 'function'
-                && window.shopifyB2bSpriceRule() === 'dil'
-                && typeof window.shopifyB2bDisplayedSprice === 'function') {
-                const dilShown = Number(window.shopifyB2bDisplayedSprice(d)) || 0;
-                return dilShown > 0 ? chPromoRound2(dilShown) : 0;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b' && typeof window.shopifyB2bDisplayedSprice === 'function') {
+                    const b2bShown = Number(window.shopifyB2bDisplayedSprice(d)) || 0;
+                    return b2bShown > 0 ? chPromoRound2(b2bShown) : 0;
+                }
+                if (typeof ebaySprcDilForRow === 'function') {
+                    const dilShown = Number(ebaySprcDilForRow(d)) || 0;
+                    return dilShown > 0 ? chPromoRound2(dilShown) : 0;
+                }
             }
             if (typeof window.chStdPriceForRow === 'function') {
                 const stdRule = Number(window.chStdPriceForRow(d)) || 0;

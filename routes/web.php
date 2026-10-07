@@ -5973,6 +5973,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'saveGtSoldPrcRules'])->name('channel.promo.gt-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'pageReloadPushSetting'])->name('channel.promo.page-reload-push.get');
     Route::post('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'savePageReloadPushSetting'])->name('channel.promo.page-reload-push.save');
+    Route::get('/channel-promo-pricing/{channel}/sprice-active-rule', [ChannelPromoPricingController::class, 'spriceActiveRule'])->name('channel.promo.sprice-active-rule.get');
+    Route::post('/channel-promo-pricing/{channel}/sprice-active-rule', [ChannelPromoPricingController::class, 'saveSpriceActiveRule'])->name('channel.promo.sprice-active-rule.save');
     Route::get('/channel-promo-pricing/{channel}/ignore-neg-snroi', [ChannelPromoPricingController::class, 'ignoreNegSnroiSetting'])->name('channel.promo.ignore-neg-snroi.get');
     Route::post('/channel-promo-pricing/{channel}/ignore-neg-snroi', [ChannelPromoPricingController::class, 'saveIgnoreNegSnroiSetting'])->name('channel.promo.ignore-neg-snroi.save');
     Route::post('/channel-promo-pricing/{channel}/push-blue', [ChannelPromoPricingController::class, 'startBackgroundBluePush'])->name('channel.promo.push-blue');

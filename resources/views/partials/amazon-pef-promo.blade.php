@@ -565,6 +565,7 @@
                         title="Dil slabs → Target NROI% (0–0 on top for Dil = 0). CVR overlay (editable, with Count) adjusts Target NROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
+                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => 'amazon'])
 @endif
 
 @if($amazonPefPromoPart === 'css' || $amazonPefPromoPart === 'all')
@@ -841,6 +842,7 @@
 @endif
 
 @if($amazonPefPromoPart === 'script' || $amazonPefPromoPart === 'all')
+        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'script', 'spriceRuleChannel' => 'amazon'])
         @include('partials.tabulator-column-autofit')
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
         @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'script'])
@@ -3326,6 +3328,11 @@
         /** Live S PRC from Dil / CVR Disc / 0 Sold. Ignores stored SPRICE. */
         function amzLiveRuleSprice(d) {
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
+                const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
+                return raw > 0 ? amzCapRuleSprice(d, raw) : 0;
+            }
             const plan = computeAmzPushPrcPlan(d);
             if (!plan || !(plan.effective > 0)) return 0;
             return amzCapRuleSprice(d, plan.effective);

@@ -363,6 +363,41 @@ class ChannelPromoPricingController extends Controller
         ]);
     }
 
+    public function spriceActiveRule(string $channel): JsonResponse
+    {
+        $channel = \App\Support\SpriceActiveRule::normalize($channel);
+        if (! $this->allowsSpriceActiveRuleChannel($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'rule' => \App\Support\SpriceActiveRule::forChannel($channel),
+        ]);
+    }
+
+    public function saveSpriceActiveRule(Request $request, string $channel): JsonResponse
+    {
+        $channel = \App\Support\SpriceActiveRule::normalize($channel);
+        if (! $this->allowsSpriceActiveRuleChannel($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+        $rule = \App\Support\SpriceActiveRule::save($channel, (string) $request->input('rule', 'std'));
+
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'rule' => $rule,
+        ]);
+    }
+
+    private function allowsSpriceActiveRuleChannel(string $channel): bool
+    {
+        return $channel !== ''
+            && ($this->normalizeRulesChannel($channel) !== null || $this->allowsPageReloadPushChannel($channel));
+    }
+
     /** Per-page switch: skip Push Prc when SNROI at that price is below 0. */
     public static function ignoreNegativeSnroiPush(string $channel): bool
     {

@@ -33,7 +33,7 @@ class MacysRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
-        $this->applyStdPrcVsDil = true;
+        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc('macys');
         $dilRules = $this->loadDilGroiRules();
         $margin = MarketplacePercentage::takeHomeForPromoChannel('macys');
         if (! ($margin > 0)) {

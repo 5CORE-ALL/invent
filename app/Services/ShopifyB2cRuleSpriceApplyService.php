@@ -35,7 +35,7 @@ class ShopifyB2cRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
-        $this->applyStdPrcVsDil = true;
+        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc('shopify_b2c');
         $dilStore = $this->loadDilGroiStore();
         $dilRules = $dilStore['rules'];
         $cvrAdj = $dilStore['cvr_adj'];

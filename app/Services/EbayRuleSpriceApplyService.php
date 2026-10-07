@@ -87,14 +87,15 @@ class EbayRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
-        $this->applyStdPrcVsDil = true;
+        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc($this->channel);
         $store = $this->loadDilGroiStore();
         $dilRules = $store['rules'];
         $cvrAdj = $store['cvr_adj'];
         $margin = $this->takeHome();
         $adsPct = $this->channelAdsPercent();
 
-        $this->log($logger, $this->channel.' loaded Dil slabs='.count($dilRules)
+        $this->log($logger, $this->channel.' S PRC rule='.($this->applyStdPrcVsDil ? 'std' : 'dil')
+            .' Dil slabs='.count($dilRules)
             .' margin='.$margin
             .' ads%='.$adsPct
             .' target='.($this->targetsNroi() ? 'NROI' : 'GROI'));
@@ -184,7 +185,7 @@ class EbayRuleSpriceApplyService
      */
     public function collectPushTasks(?array $onlySkus = null): array
     {
-        $this->applyStdPrcVsDil = true;
+        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc($this->channel);
         $store = $this->loadDilGroiStore();
         $margin = $this->takeHome();
         $adsPct = $this->channelAdsPercent();
