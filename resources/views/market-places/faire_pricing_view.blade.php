@@ -555,13 +555,13 @@
         function frRuleSprice(row, extra) {
             extra = extra || {};
             if (!row || frIsParentRow(row)) return 0;
+            if (typeof window.chStdPriceForRow === 'function') {
+                const stdRule = Number(window.chStdPriceForRow(row)) || 0;
+                if (stdRule > 0) return +stdRule.toFixed(2);
+            }
             if (typeof chPromoLiveSprice === 'function') {
                 const live = Number(chPromoLiveSprice(row));
                 if (live > 0) return +live.toFixed(2);
-            }
-            if (typeof ebaySprcDilForRow === 'function') {
-                const sprcDil = Number(ebaySprcDilForRow(row));
-                if (sprcDil > 0) return +sprcDil.toFixed(2);
             }
             if (typeof chPromoZeroSoldRuleSprice === 'function') {
                 const zeroSold = Number(chPromoZeroSoldRuleSprice(row));
@@ -631,10 +631,6 @@
             if (typeof frRuleSprice === 'function') {
                 const live = Number(frRuleSprice(data)) || 0;
                 if (live > 0) return +live.toFixed(2);
-            }
-            if (typeof ebaySprcDilForRow === 'function') {
-                const dil = Number(ebaySprcDilForRow(data)) || 0;
-                if (dil > 0) return +dil.toFixed(2);
             }
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;

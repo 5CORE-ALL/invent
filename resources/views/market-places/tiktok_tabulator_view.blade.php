@@ -1388,10 +1388,6 @@
             }
             const stored = ttSavedSpriceAmount(rowData);
             if (stored > 0) return stored;
-            if (typeof ebaySprcDilForRow === 'function') {
-                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
-                if (dil > 0) return dil;
-            }
             return 0;
         }
         window.ttDisplayedSprice = ttDisplayedSprice;

@@ -318,9 +318,9 @@
     /** Same as Amazon analytics: live Sprc Dil, then saved S PRC. Shown even when it equals Price. */
     function plsVisibleSprice(data) {
         if (!data || plsIsParentRow(data)) return 0;
-        if (typeof ebaySprcDilForRow === 'function') {
-            const dil = Number(ebaySprcDilForRow(data)) || 0;
-            if (dil > 0) return dil;
+        if (typeof window.chStdPriceForRow === 'function') {
+            const stdRule = Number(window.chStdPriceForRow(data)) || 0;
+            if (stdRule > 0) return stdRule;
         }
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
@@ -1011,7 +1011,7 @@
                     editable: false,
                     sorter: "number",
                     visible: true,
-                    headerTooltip: "Same dollar the Dil rule saves. Solved so SNROI = Target NROI: (LP × (1 + NROI%/100) + Ship) / PLS%. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                    headerTooltip: "Saved S PRC, or Std prc vs dil. Sprc Dil does not write this cell. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (plsIsParentRow(rowData)) return '';

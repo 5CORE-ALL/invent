@@ -118,6 +118,12 @@ class AmazonCvrCpnAutoPushService
                     continue;
                 }
 
+                if (\App\Support\NegativeSnroiPushGuard::shouldSkip('amazon', (string) $row['sku'], (float) $computed['sprice'])) {
+                    $stats['skipped']++;
+                    $this->log($logger, 'Skip '.$row['sku'].': negative SNROI');
+                    continue;
+                }
+
                 $plan = AmazonSpApiService::computeSaleBusinessMin((float) $computed['sprice']);
                 $reason = $pushAll
                     ? 'Push All'

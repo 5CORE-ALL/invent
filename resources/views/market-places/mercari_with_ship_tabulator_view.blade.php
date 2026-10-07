@@ -783,7 +783,7 @@
                         hozAlign: "center",
                         width: 92,
                         sorter: "number",
-                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. L30 = 0 still uses the Dil-matching slab. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "Saved S PRC. Sprc Dil does not write this cell. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             let value = (typeof chPromoTableSprice === 'function')

@@ -625,8 +625,8 @@
         function sheinRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
             let live = 0;
-            if (typeof ebaySprcDilForRow === 'function') {
-                live = Number(ebaySprcDilForRow(data)) || 0;
+            if (typeof window.chStdPriceForRow === 'function') {
+                live = Number(window.chStdPriceForRow(data)) || 0;
             }
             if (live > 0 && typeof chPromoCapSpriceToLmp === 'function') {
                 const capped = Number(chPromoCapSpriceToLmp(data, live));

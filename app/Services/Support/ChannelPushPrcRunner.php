@@ -7,6 +7,7 @@ use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Services\ChannelPromoPricingService;
 use App\Services\Ebay1CouponService;
+use App\Support\NegativeSnroiPushGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -131,10 +132,20 @@ class ChannelPushPrcRunner
 
             $ok = false;
             $error = null;
+            $negSnroi = false;
             try {
                 if (! ($std > 0)) {
                     throw new \RuntimeException('Std Prc required for Push Prc');
                 }
+                if (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, (float) $std)) {
+                    $ok = true;
+                    $negSnroi = true;
+                    $logger->info('Channel Push Prc skipped — negative SNROI', [
+                        'channel' => $this->channel,
+                        'sku' => $sku,
+                        'price' => $std,
+                    ]);
+                } else {
 
                 $promo->upsert($this->channel, $sku, [
                     'prmt_pct' => $prmt,
@@ -170,6 +181,7 @@ class ChannelPushPrcRunner
                     throw new \RuntimeException(implode(' | ', $stepErrors));
                 }
                 $ok = true;
+                }
             } catch (\Throwable $e) {
                 $ok = false;
                 $error = $e->getMessage();
@@ -188,14 +200,14 @@ class ChannelPushPrcRunner
                 }
             }
 
-            $store->update(function (array $state) use ($index, $sku, $ok, $error) {
+            $store->update(function (array $state) use ($index, $sku, $ok, $error, $negSnroi) {
                 if (! isset($state['tasks'][$index]) || ! is_array($state['tasks'][$index])) {
                     return $state;
                 }
                 if ($ok) {
                     $state['tasks'][$index]['status'] = 'ok';
                     $state['tasks'][$index]['error'] = null;
-                    $state['tasks'][$index]['message'] = 'pushed';
+                    $state['tasks'][$index]['message'] = $negSnroi ? 'skipped — negative SNROI' : 'pushed';
                     $state['ok_count'] = ((int) ($state['ok_count'] ?? 0)) + 1;
                 } else {
                     $state['tasks'][$index]['status'] = 'failed';

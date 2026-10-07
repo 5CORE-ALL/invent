@@ -695,10 +695,6 @@
             const stdRule = Number(window.chStdPriceForRow(data)) || 0;
             if (stdRule > 0) return stdRule;
         }
-        if (typeof ebaySprcDilForRow === 'function') {
-            const dil = Number(ebaySprcDilForRow(data)) || 0;
-            if (dil > 0) return Math.round(dil * 100) / 100;
-        }
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
             if (saved > 0) return saved;
@@ -728,13 +724,7 @@
         return shopifyB2bSpriceMetrics(data && data.Price, data && data.LP_productmaster);
     }
     function shopifyB2bRowSMetrics(data) {
-        const m = shopifyB2bSpriceMetrics(shopifyB2bDisplayedSprice(data), data && data.LP_productmaster);
-        const target = shopifyB2bDilTargetNroi(data);
-        if (target != null) {
-            m.snroi = target;
-            if (!(shopifyChannelAdsPct() > 0)) m.sroi = target;
-        }
-        return m;
+        return shopifyB2bSpriceMetrics(shopifyB2bDisplayedSprice(data), data && data.LP_productmaster);
     }
     function shopifyB2bRowSpriceForAlert(data) {
         return shopifyB2bDisplayedSprice(data);

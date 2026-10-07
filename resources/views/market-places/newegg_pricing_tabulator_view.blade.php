@@ -824,8 +824,6 @@
 
         /** Sprc Dil below A Price uses A Price. Sprc Dil at or above A Price stays. */
         function neShownSprice(data) {
-            const raw = neRawSprcDil(data);
-            if (raw > 0) return neApplyAmzFloor(data, raw);
             return neApplyAmzFloor(data, neDisplayedSpriceRaw(data));
         }
         window.neShownSprice = neShownSprice;

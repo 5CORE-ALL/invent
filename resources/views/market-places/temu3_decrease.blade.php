@@ -2059,9 +2059,9 @@
     /** Discounted Price = Sprc Dil (Dil → Target GROI%), else 0 Sold / Std × (1 − T Promo). Never uses stored S PRC. */
     function temuDiscountedPrice(row) {
         if (!row || (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(row))) return 0;
-        if (typeof ebaySprcDilForRow === 'function') {
-            const sprcDil = Number(ebaySprcDilForRow(row));
-            if (sprcDil > 0) return +sprcDil.toFixed(2);
+        if (typeof window.chStdPriceForRow === 'function') {
+            const stdRule = Number(window.chStdPriceForRow(row)) || 0;
+            if (stdRule > 0) return +stdRule.toFixed(2);
         }
         if (typeof chPromoTemuZeroSoldSprice === 'function') {
             const zeroSold = Number(chPromoTemuZeroSoldSprice(row));

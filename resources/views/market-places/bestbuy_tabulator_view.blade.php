@@ -701,14 +701,8 @@
         // Ignored competitors are not LMP. A live LMP below Amazon stays at A Price.
         if (amz > 0 && lmp > 0 && lmp + 0.0001 < amz) return amz;
         let base = 0;
-        if (typeof ebayDilGroiMetaForRow === 'function') {
-            const meta = ebayDilGroiMetaForRow(data);
-            base = Number(meta && meta.rawSprc) || 0;
-        }
-        if (!(base > 0)) {
-            const saved = bestbuySavedSprice(data);
-            if (saved > 0 && !bestbuyPriceIsIgnoredLmp(data, saved)) base = saved;
-        }
+        const saved = bestbuySavedSprice(data);
+        if (saved > 0 && !bestbuyPriceIsIgnoredLmp(data, saved)) base = saved;
         if (!(base > 0)) return 0;
         const capped = bestbuyCapAfterAmz(data, base);
         if (bestbuyPriceIsIgnoredLmp(data, capped)) return amz > 0 ? amz : 0;

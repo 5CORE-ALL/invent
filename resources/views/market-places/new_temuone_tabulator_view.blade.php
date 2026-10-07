@@ -1038,12 +1038,10 @@
      */
     function temuDiscountedPrice(row) {
         if (!row) return 0;
-        if (typeof ebaySprcDilForRow === 'function') {
-            const sprcDil = Number(ebaySprcDilForRow(row));
-            if (sprcDil > 0) return +sprcDil.toFixed(2);
+        if (typeof window.chStdPriceForRow === 'function') {
+            const stdRule = Number(window.chStdPriceForRow(row)) || 0;
+            if (stdRule > 0) return +stdRule.toFixed(2);
         }
-        const storedDil = parseFloat(row.sprc_dil);
-        if (storedDil > 0) return +storedDil.toFixed(2);
         if (typeof chPromoTemuZeroSoldSprice === 'function') {
             const zeroSold = Number(chPromoTemuZeroSoldSprice(row));
             if (zeroSold > 0) return +zeroSold.toFixed(2);

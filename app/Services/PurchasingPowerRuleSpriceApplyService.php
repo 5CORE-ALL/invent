@@ -115,6 +115,11 @@ class PurchasingPowerRuleSpriceApplyService
                             $next = $computed !== null ? $computed['sprice'] : 0.0;
                             if (abs($saved - $next) < 0.005) {
                                 if ($push && ! $dryRun && $next > 0 && ($row['listed'] ?? false) && abs($next - $live) >= 0.005) {
+                                    if (\App\Support\NegativeSnroiPushGuard::shouldSkip('purchasing_power', (string) $row['sku'], $next)) {
+                                        $stats['skipped']++;
+                                        $this->log($logger, 'Skip '.$row['sku'].': negative SNROI');
+                                        continue;
+                                    }
                                     $ok = $this->pushPrice((string) $row['sku'], $next);
                                     if ($ok) {
                                         $stats['pushed']++;
@@ -134,6 +139,11 @@ class PurchasingPowerRuleSpriceApplyService
                             if ($next > 0) {
                                 $stats['applied']++;
                                 if ($push && ! $dryRun && ($row['listed'] ?? false) && abs($next - $live) >= 0.005) {
+                                    if (\App\Support\NegativeSnroiPushGuard::shouldSkip('purchasing_power', (string) $row['sku'], $next)) {
+                                        $stats['skipped']++;
+                                        $this->log($logger, 'Skip '.$row['sku'].': negative SNROI');
+                                        continue;
+                                    }
                                     $ok = $this->pushPrice((string) $row['sku'], $next);
                                     if ($ok) {
                                         $stats['pushed']++;

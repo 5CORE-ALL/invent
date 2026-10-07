@@ -1002,15 +1002,6 @@
             const live = Number(ebayTiktokRuleDiscount(rowData)) || 0;
             if (live > 0) return live;
         }
-        if (typeof ebaySprcDilForRow === 'function') {
-            const dil = Number(ebaySprcDilForRow(rowData)) || 0;
-            if (dil > 0) {
-                const capped = (typeof ebay3CapSpriceToLmp === 'function')
-                    ? ebay3CapSpriceToLmp(rowData, dil)
-                    : +Number(dil).toFixed(2);
-                if (capped > 0) return capped;
-            }
-        }
         return ebay3RawRuleSprice(rowData);
     }
     function ebay3SpriceAmount(rowData) {

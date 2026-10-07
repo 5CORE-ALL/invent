@@ -1196,9 +1196,9 @@
      */
     function temuDiscountedPrice(row) {
         if (!row) return 0;
-        if (typeof ebaySprcDilForRow === 'function') {
-            const sprcDil = Number(ebaySprcDilForRow(row));
-            if (sprcDil > 0) return +sprcDil.toFixed(2);
+        if (typeof window.chStdPriceForRow === 'function') {
+            const stdRule = Number(window.chStdPriceForRow(row)) || 0;
+            if (stdRule > 0) return +stdRule.toFixed(2);
         }
         if (typeof chPromoTemuZeroSoldSprice === 'function') {
             const zeroSold = Number(chPromoTemuZeroSoldSprice(row));
@@ -1212,8 +1212,6 @@
             const calc = chPromoSpriceFromStdTPromo(row, { skip_lmp_cap: true });
             if (calc > 0) return +Number(calc).toFixed(2);
         }
-        const stored = parseFloat(row.sprc_dil);
-        if (stored > 0) return +stored.toFixed(2);
         if (!(chPromoInv(row) > 0)) return 0;
         const std = temuStdPrc(row);
         return std > 0 ? std : 0;

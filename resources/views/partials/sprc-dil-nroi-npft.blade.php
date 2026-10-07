@@ -60,10 +60,6 @@
                 const shown = Number(ebay3DisplayedSprice(d)) || 0;
                 if (shown > 0) return shown;
             }
-            if (typeof ebaySprcDilForRow === 'function') {
-                const dil = Number(ebaySprcDilForRow(d)) || 0;
-                if (dil > 0) return dil;
-            }
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(d));
                 if (saved > 0) return saved;

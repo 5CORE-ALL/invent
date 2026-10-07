@@ -655,9 +655,9 @@
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba_withoutship'])
         function dwsDisplayedSprice(data) {
             if (!data || isDobaWithoutshipParentRow(data)) return 0;
-            if (typeof ebaySprcDilForRow === 'function') {
-                const dil = Number(ebaySprcDilForRow(data)) || 0;
-                if (dil > 0) return dil;
+            if (typeof window.chStdPriceForRow === 'function') {
+                const stdRule = Number(window.chStdPriceForRow(data)) || 0;
+                if (stdRule > 0) return stdRule;
             }
             if (typeof chPromoSavedOrLiveSprice === 'function') {
                 return Number(chPromoSavedOrLiveSprice(data)) || 0;
@@ -1356,9 +1356,9 @@
                     const fills = [];
                     items.forEach(function(item) {
                         const d = item.row.getData() || {};
-                        let price = (typeof ebayTiktokRuleDiscount === 'function')
-                            ? ebayTiktokRuleDiscount(d)
-                            : ((typeof ebaySprcDilForRow === 'function') ? (ebaySprcDilForRow(d) || 0) : 0);
+                        let price = (typeof window.chStdPriceForRow === 'function')
+                            ? (Number(window.chStdPriceForRow(d)) || 0)
+                            : 0;
                         if (!(price > 0)) return;
                         dwsApplyRuleSpriceToRow(item.row, price);
                         fills.push({

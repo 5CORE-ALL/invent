@@ -684,16 +684,16 @@
             const fills = [];
             items.forEach(function(item) {
                 const d = item.row.getData() || {};
-                let price = (typeof ebayTiktokRuleDiscount === 'function')
-                    ? ebayTiktokRuleDiscount(d)
-                    : ((typeof ebaySprcDilForRow === 'function') ? (ebaySprcDilForRow(d) || 0) : 0);
+                let price = (typeof window.chStdPriceForRow === 'function')
+                    ? (Number(window.chStdPriceForRow(d)) || 0)
+                    : 0;
                 if (!(price > 0)) return;
                 tdApplyRuleSpriceToRow(item.row, price);
                 fills.push({ sku: item.sku, sprice: price });
             });
             if (fills.length) {
                 tdSaveSpriceUpdates(fills, { clearFirst: false });
-                tdShowToast('S PRC cleared, then Sprc Dil saved on ' + fills.length + ' SKU(s)', 'success');
+                tdShowToast('S PRC cleared, then Std prc vs dil saved on ' + fills.length + ' SKU(s)', 'success');
             } else {
                 tdShowToast('Cleared SPRICE for ' + items.length + ' SKU(s)', 'success');
             }

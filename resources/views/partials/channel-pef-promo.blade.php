@@ -10054,25 +10054,11 @@
         /** Live Dil S PRC for Shopify B2C. Same dollar the S PRC cell paints. */
         function chPromoB2cLiveSprice(d) {
             if (!d) return 0;
-            if (typeof shopifyB2cShownSprice === 'function') {
-                const shown = Number(shopifyB2cShownSprice(d)) || 0;
-                if (shown > 0) return chPromoRound2(shown);
+            if (typeof window.chStdPriceForRow === 'function') {
+                const stdRule = Number(window.chStdPriceForRow(d)) || 0;
+                if (stdRule > 0) return chPromoRound2(stdRule);
             }
-            let raw = 0;
-            if (typeof ebayDilGroiMetaForRow === 'function') {
-                const meta = ebayDilGroiMetaForRow(d);
-                if (meta && (meta.rawSprc > 0 || meta.sprc > 0)) {
-                    raw = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
-                }
-            }
-            if (!(raw > 0) && typeof ebaySprcDilForRow === 'function') {
-                raw = Number(ebaySprcDilForRow(d)) || 0;
-            }
-            if (!(raw > 0)) return 0;
-            const price = (typeof chPromoFinalSpriceToSave === 'function')
-                ? Number(chPromoFinalSpriceToSave(d, raw))
-                : raw;
-            return price > 0 ? chPromoRound2(price) : 0;
+            return 0;
         }
         function chPromoCollectB2cRuleSpriceJobs() {
             const jobs = [];

@@ -1306,14 +1306,11 @@
             if (stdRule > 0) return stdRule;
         }
         const stored = parseFloat(data.SPRICE) || 0;
-        const dil = shopifyB2cRawSprcDil(data);
         const amz = shopifyB2cAmzPrice(data);
-        if (dil > 0 && amz > 0 && dil > amz) return dil;
         if (shopifyB2cIsAmzSuggApplied(data)) {
             if (amz > 0) return Math.round(amz * 100) / 100;
             return stored > 0 ? Math.round(stored * 100) / 100 : 0;
         }
-        if (dil > 0) return dil;
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
             if (saved > 0) return saved;
@@ -1373,14 +1370,7 @@
     /** Displayed S PRC after LMP cap, before the Amz floor. Sprc Dil uses the raw Dil $ so Amz still flags. */
     function shopifyB2cPriceBeforeAmzFloor(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
-        let value = 0;
-        if (typeof ebayDilGroiMetaForRow === 'function') {
-            const meta = ebayDilGroiMetaForRow(data);
-            if (meta && (meta.rawSprc > 0 || meta.sprc > 0)) {
-                value = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
-            }
-        }
-        if (!(value > 0)) value = shopifyB2cDisplayedSprice(data);
+        let value = shopifyB2cDisplayedSprice(data);
         if (!(value > 0)) return 0;
         if (!shopifyB2cIsAmzSuggApplied(data)) {
             value = shopifyB2cExactLmpCap(data, value);
@@ -1393,16 +1383,12 @@
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
         if (shopifyB2cLmpBelowAmz(data)) return amz;
-        const suggested = shopifyB2cRawSprcDil(data);
-        if (shopifyB2cCents(suggested) > 0 && shopifyB2cCents(amz) > 0 && shopifyB2cCents(suggested) > shopifyB2cCents(amz)) {
-            return shopifyB2cCapLikeTemu(data, suggested);
-        }
-        if (!(shopifyB2cCents(suggested) > 0) && shopifyB2cIsAmzSuggApplied(data) && shopifyB2cCents(amz) > 0) {
+        if (shopifyB2cIsAmzSuggApplied(data) && shopifyB2cCents(amz) > 0) {
             let s = shopifyB2cExactLmpCap(data, amz);
             if (shopifyB2cCents(s) > 0 && shopifyB2cCents(s) < shopifyB2cCents(amz)) s = amz;
             return s > 0 ? s : 0;
         }
-        const price = suggested > 0 ? suggested : shopifyB2cDisplayedSprice(data);
+        const price = shopifyB2cDisplayedSprice(data);
         if (!(price > 0)) return 0;
         return shopifyB2cCapLikeTemu(data, price);
     }
@@ -2763,9 +2749,9 @@
                 const fills = [];
                 items.forEach(function(item) {
                     const d = item.row.getData() || {};
-                    let price = (typeof ebayTiktokRuleDiscount === 'function')
-                        ? ebayTiktokRuleDiscount(d)
-                        : ((typeof ebaySprcDilForRow === 'function') ? (ebaySprcDilForRow(d) || 0) : 0);
+                    let price = (typeof window.chStdPriceForRow === 'function')
+                        ? (Number(window.chStdPriceForRow(d)) || 0)
+                        : 0;
                     if (!(price > 0)) return;
                     if (typeof chPromoSpricePatch === 'function') {
                         item.row.update(Object.assign({}, chPromoSpricePatch(price), { SPRICE_STATUS: 'applied' }));
@@ -2776,7 +2762,7 @@
                 });
                 if (fills.length) {
                     saveSpriceUpdates(fills, { clearFirst: false });
-                    showToast('S PRC cleared, then Sprc Dil saved on ' + fills.length + ' SKU(s)', 'success');
+                    showToast('S PRC cleared, then Std prc vs dil saved on ' + fills.length + ' SKU(s)', 'success');
                 } else {
                     showToast('SPRICE cleared for ' + items.length + ' SKU(s)', 'success');
                 }
