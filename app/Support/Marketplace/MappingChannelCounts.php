@@ -149,8 +149,8 @@ class MappingChannelCounts
             $byChannel = Cache::get(self::CHANNEL_TITAS_CACHE_KEY);
             if (! is_array($byChannel) || $byChannel === []) {
                 $byChannel = [];
-                $rows = Cache::get(self::MASTER_ROWS_CACHE_KEY);
-                if (is_array($rows)) {
+                $rows = self::currentMasterRows();
+                if ($rows !== []) {
                     foreach ($rows as $row) {
                         if (! is_array($row)) {
                             continue;
@@ -169,8 +169,8 @@ class MappingChannelCounts
             Cache::put(self::CHANNEL_TITAS_CACHE_KEY, $byChannel, now()->addHours(6));
             self::storeTotalTitas((int) array_sum($byChannel));
 
-            $rows = Cache::get(self::MASTER_ROWS_CACHE_KEY);
-            if (! is_array($rows) || $rows === []) {
+            $rows = self::currentMasterRows();
+            if ($rows === []) {
                 return;
             }
             foreach ($rows as $i => $row) {
@@ -181,12 +181,41 @@ class MappingChannelCounts
                     continue;
                 }
                 $rows[$i]['missing_mapping_titas'] = $count;
-                Cache::put(self::MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(30));
+                self::putMasterRows($rows, Cache::has(self::MASTER_ROWS_CACHE_KEY));
                 break;
             }
         } catch (\Throwable $e) {
             // ignore
         }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private static function currentMasterRows(): array
+    {
+        foreach ([self::MASTER_ROWS_CACHE_KEY, self::MASTER_ROWS_LAST_GOOD_KEY] as $key) {
+            $rows = Cache::get($key);
+            if (is_array($rows) && $rows !== []) {
+                return $rows;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * The 30-minute key decides when the background job runs a full rebuild;
+     * the last-good copy is what the page shows in between.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private static function putMasterRows(array $rows, bool $fresh = true): void
+    {
+        if ($fresh) {
+            Cache::put(self::MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(30));
+        }
+        Cache::put(self::MASTER_ROWS_LAST_GOOD_KEY, $rows, now()->addDays(7));
     }
 
     public const STALE_CHANNELS_CACHE_KEY = 'mapping_pages_stale_channels_v1';
@@ -394,18 +423,75 @@ class MappingChannelCounts
     public static function masterRows(bool $useCache = false): array
     {
         if ($useCache) {
-            try {
-                $cached = Cache::get(self::MASTER_ROWS_CACHE_KEY);
-                if (is_array($cached) && $cached !== []) {
-                    return $cached;
+            // The page never counts all marketplaces itself (that runs past the
+            // web timeout); mm:refresh-stale-mapping-counts rebuilds in the background.
+            foreach ([self::MASTER_ROWS_CACHE_KEY, self::MASTER_ROWS_LAST_GOOD_KEY] as $key) {
+                try {
+                    $cached = Cache::get($key);
+                    if (is_array($cached) && $cached !== []) {
+                        return $cached;
+                    }
+                } catch (\Throwable $e) {
+                    // try the next key
                 }
-            } catch (\Throwable $e) {
-                // ignore
             }
+
+            return self::skeletonMasterRows();
         }
 
-        $titasCounts = self::collectListingsMismatchCounts();
-        $apiStatuses = self::collectApiStatuses();
+        return self::buildMasterRows(self::collectListingsMismatchCounts(), self::collectApiStatuses());
+    }
+
+    /** Last full Missing Mapping rows; kept after the 30-minute cache expires. */
+    public const MASTER_ROWS_LAST_GOOD_KEY = 'mapping_pages_master_rows_last_good_v1';
+
+    /**
+     * Rebuild every channel's count when the 30-minute cache has expired.
+     * Runs from the scheduler only.
+     */
+    public static function rebuildMasterRowsIfExpired(): bool
+    {
+        try {
+            $cached = Cache::get(self::MASTER_ROWS_CACHE_KEY);
+            if (is_array($cached) && $cached !== []) {
+                return false;
+            }
+        } catch (\Throwable $e) {
+            // rebuild
+        }
+        self::masterRows(false);
+
+        return true;
+    }
+
+    /**
+     * Rows from cached counts only (no marketplace scan), for the first page load before any rebuild.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function skeletonMasterRows(): array
+    {
+        $counts = [];
+        $apiStatuses = [];
+        try {
+            $byChannel = Cache::get(self::CHANNEL_TITAS_CACHE_KEY);
+            $counts = is_array($byChannel) ? $byChannel : [];
+            $api = Cache::get(self::API_STATUS_CACHE_KEY);
+            $apiStatuses = is_array($api) ? $api : [];
+        } catch (\Throwable $e) {
+            // zeros until the background rebuild finishes
+        }
+
+        return self::buildMasterRows($counts, $apiStatuses, false);
+    }
+
+    /**
+     * @param  array<string, int>  $titasCounts
+     * @param  array<string, array<string, mixed>>  $apiStatuses
+     * @return list<array<string, mixed>>
+     */
+    private static function buildMasterRows(array $titasCounts, array $apiStatuses, bool $store = true): array
+    {
         $logos = self::logoMap();
         $displayNames = self::displayNameMap();
 
@@ -456,8 +542,12 @@ class MappingChannelCounts
             ];
         }
 
+        if (! $store) {
+            return $rows;
+        }
+
         try {
-            Cache::put(self::MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(30));
+            self::putMasterRows($rows);
             $byChannel = [];
             foreach ($rows as $row) {
                 if (! is_array($row)) {
