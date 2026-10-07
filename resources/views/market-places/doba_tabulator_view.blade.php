@@ -2072,6 +2072,9 @@
                                 'R&A': item['R&A'] !== undefined ? item['R&A'] : '',
                                 INV: inv,
                                 shopify_inv: Number(item.shopify_inv) || 0,
+                                age_days: (item.age_days === null || item.age_days === undefined || item.age_days === '')
+                                    ? null
+                                    : Number(item.age_days),
                                 is_missing_doba: !!item.is_missing_doba,
                                 L30: l30,
                                 ov_dil: ovDil,

@@ -4482,6 +4482,7 @@
                             return ra - rb;
                         }
                     },
+                    @include('partials.analytics-buss-discount-column')
                     {
                         title: "Buyer Link",
                         field: "asin",
@@ -4884,7 +4885,7 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + CVR Disc + Rev Disc). If LMP is lower and SGROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum.",
+                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + CVR Disc + Rev Disc + Buss Discount). If LMP is lower and SGROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';

@@ -15,7 +15,7 @@
         #chStdPrcModal .ch-sp-sub { color: #64748b; font-size: 12px; margin-top: 2px; }
         #chStdPrcModal .modal-body { background: #f4f7fb; padding: 14px 16px 16px; }
         #chStdPrcModal .modal-footer { background: #fff; border-top: 1px solid #e8eef5; }
-        #chStdPrcModal .ch-sp-cols { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: stretch; width: 100%; min-width: 0; }
+        #chStdPrcModal .ch-sp-cols { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; align-items: stretch; width: 100%; min-width: 0; }
         #chStdPrcModal .ch-sp-col { min-width: 0; display: flex; flex-direction: column; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px; background: #fff; }
         #chStdPrcModal .ch-sp-pie-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: #0f172a; }
         #chStdPrcModal .ch-sp-pie-canvas { position: relative; width: 100%; height: 150px; }
@@ -76,7 +76,7 @@
 @endif
 
 @if($channelStdPrcPart === 'buttons' || $channelStdPrcPart === 'all')
-                    <button type="button" class="btn btn-sm" id="ch-std-prc-btn" title="Std Prc minus Age, Dil, CVR, and Review discounts. Same slabs as Amazon.">
+                    <button type="button" class="btn btn-sm" id="ch-std-prc-btn" title="Std Prc minus Age, Dil, CVR, Review, and Buss discounts. Same slabs as Amazon.">
                         <i class="fas fa-tags"></i> Std prc vs dil
                     </button>
 @endif
@@ -88,7 +88,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − CVR − Reviews. Std Prc under $15 uses half of each rule discount (0.5×).</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − CVR − Reviews − Buss. Std Prc under $15 uses half of each rule discount (0.5×).</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -133,6 +133,13 @@
                             <div class="d-flex justify-content-between align-items-center mb-2"><label class="small fw-semibold mb-0" for="ch-sp-review-max">Max reviews</label><input type="number" id="ch-sp-review-max" class="form-control form-control-sm ch-sp-input" min="1" step="1" value="4"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-rev-tbody"></tbody></table></div>
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-rev-add">Add range</button>
+                        </div>
+                        <div class="ch-sp-col">
+                            <div class="ch-sp-pie-title" title="Std Prc ranges. Disc % updates the Buss Discount column.">Buss Discount</div>
+                            <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-buss"></canvas></div>
+                            <div class="ch-sp-pie-legend" id="ch-sp-leg-buss"></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-buss-tbody"></tbody></table></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-buss-add">Add range</button>
                         </div>
                         <div class="ch-sp-col">
                             <div class="ch-sp-pie-title">CVR up / down</div>
@@ -183,10 +190,12 @@
         ];
         const CH_STD_CVR_DEFAULT = { down2_lt: 4, down2_disc: 0, down_lt: 7, down_disc: 0, up_gt: 10, up_disc: 0, up2_gt: 15, up2_disc: 0, flat_disc: 0 };
         const CH_STD_REV_DEFAULTS = [{ min: 1, max: 2, disc: 4 }, { min: 2, max: 3, disc: 4 }];
+        const CH_STD_BUSS_DEFAULTS = [{ min: 0, max: 15, disc: 0 }, { min: 15, max: 50, disc: 0 }, { min: 50, max: 9999, disc: 0 }];
         const CH_STD_COLORS = ['#6f42c1', '#3b82f6', '#14b8a6', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c', '#0ea5e9', '#64748b'];
         let chStdDil = CH_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdAge = CH_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdRev = CH_STD_REV_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        let chStdBuss = CH_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdCvr = Object.assign({}, CH_STD_CVR_DEFAULT);
         let chStdReviewMax = 4;
         const chStdCharts = {};
@@ -261,48 +270,55 @@
             }
             return 0;
         }
+        let chStdAmzBySku = null;
+        let chStdAmzMapReq = null;
+        function chStdLoadAmzMap() {
+            if (chStdAmzBySku) return $.Deferred().resolve(chStdAmzBySku).promise();
+            if (chStdAmzMapReq) return chStdAmzMapReq;
+            chStdAmzMapReq = $.ajax({
+                url: '/inv-days/amazon-std-map',
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+            }).done(function(res) {
+                chStdAmzBySku = (res && res.metrics && typeof res.metrics === 'object') ? res.metrics : {};
+            }).fail(function() {
+                chStdAmzBySku = {};
+            });
+            return chStdAmzMapReq;
+        }
+        function chStdAmzMetric(d) {
+            if (!chStdAmzBySku || !d) return null;
+            const hit = chStdAmzBySku[chStdSkuKey(chStdRowSku(d))];
+            if (!hit || !hit.length) return null;
+            return {
+                a30: Number(hit[0]) || 0,
+                s30: Number(hit[1]) || 0,
+                a60: Number(hit[2]) || 0,
+                s60: Number(hit[3]) || 0,
+                ov: Number(hit[4]) || 0,
+                inv: Number(hit[5]) || 0,
+            };
+        }
+        function chStdCvrInputs(d) {
+            const m = chStdAmzMetric(d);
+            if (m) return m;
+            return {
+                a30: chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30']),
+                s30: chStdNum(d, ['Sess30', 'sess30', 'sessions_l30']),
+                a60: chStdNum(d, ['units_ordered_l60', 'a_l60', 'al60']),
+                s60: chStdNum(d, ['sessions_l60', 'sess60']),
+            };
+        }
         function chStdCvrLive(d) {
-            if (typeof chPromoIsEbayChannel === 'function' && chPromoIsEbayChannel()) {
-                const sold = chStdNum(d, ['eBay L30', 'ebay_l30']);
-                const views = chStdNum(d, ['views', 'Views', 't_views']);
-                return views > 0 ? (sold / views) * 100 : 0;
-            }
-            let a = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30']);
-            if (!(a > 0)) a = chStdNum(d, ['temu_l30']);
-            const sess = chStdNum(d, ['Sess30', 'sess30', 'sessions_l30', 'views']);
-            if (sess > 0) return (a / sess) * 100;
-            return (typeof chPromoCvr === 'function') ? (Number(chPromoCvr(d)) || 0) : 0;
+            const inp = chStdCvrInputs(d);
+            return inp.s30 > 0 ? (inp.a30 / inp.s30) * 100 : 0;
         }
         function chStdCvrTrend(d) {
-            if (typeof chPromoIsEbayChannel === 'function' && chPromoIsEbayChannel()) {
-                const views = chStdNum(d, ['views', 'Views', 't_views']);
-                const l30 = chStdNum(d, ['eBay L30', 'ebay_l30']);
-                const l60 = chStdNum(d, ['eBay L60', 'ebay_l60']);
-                const cvr = views > 0 ? (l30 / views) * 100 : 0;
-                const cvr60 = views > 0 ? (l60 / views) * 100 : 0;
-                if (cvr60 > 0) {
-                    if (cvr === 0 || cvr + 0.1 < cvr60) return 'down';
-                    if (cvr > cvr60 + 0.1) return 'up';
-                }
-                return 'flat';
-            }
-            const amzUnits = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30', 'Sess30', 'sess30', 'sessions_l30']);
-            if (!(amzUnits > 0) && d && (d.cvr_30 != null || d.cvr_60 != null)) {
-                const c30 = chStdNum(d, ['cvr_30', 'cvr_percent']);
-                const c60 = chStdNum(d, ['cvr_60']);
-                if (c30 + 0.1 < c60) return 'down';
-                if (c30 > c60 + 0.1) return 'up';
-                return 'flat';
-            }
-            const cvr = chStdCvrLive(d);
-            const a30 = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30', 'temu_l30']);
-            const s30 = chStdNum(d, ['Sess30', 'sess30', 'sessions_l30', 'views']);
-            const a60 = chStdNum(d, ['units_ordered_l60', 'a_l60', 'al60']);
-            const s60 = chStdNum(d, ['sessions_l60', 'sess60']);
-            const sess45 = (s30 + s60) / 2;
-            if (!(sess45 > 0)) return 'flat';
-            const cvr45 = (((a30 + a60) / 2) / sess45) * 100;
-            if (cvr45 > 0 && (cvr === 0 || cvr < cvr45 - 0.1)) return 'down';
+            const inp = chStdCvrInputs(d);
+            const cvr = inp.s30 > 0 ? (inp.a30 / inp.s30) * 100 : 0;
+            const sess45 = (inp.s30 + inp.s60) / 2;
+            const cvr45 = sess45 > 0 ? (((inp.a30 + inp.a60) / 2) / sess45) * 100 : 0;
+            if (cvr === 0 || cvr < cvr45 - 0.1) return 'down';
             if (cvr > cvr45 + 0.1) return 'up';
             return 'flat';
         }
@@ -331,8 +347,55 @@
             }
             return null;
         }
+        let chStdAgeBySku = null;
+        let chStdAgeMapReq = null;
+        function chStdSkuKey(sku) {
+            return String(sku == null ? '' : sku).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        }
+        function chStdRowSku(d) {
+            if (!d) return '';
+            if (typeof chPromoSku === 'function') {
+                const fromPromo = chPromoSku(d);
+                if (fromPromo) return fromPromo;
+            }
+            return d['(Child) sku'] || d.sku || d.SKU || d.seller_sku || '';
+        }
+        function chStdStockForAge(d) {
+            const m = chStdAmzMetric(d);
+            if (m) return m.inv;
+            const ch = (typeof CHANNEL_PROMO_CHANNEL === 'string') ? CHANNEL_PROMO_CHANNEL : '';
+            if ((ch === 'doba' || ch === 'doba_withoutship') && d && d.shopify_inv != null && d.shopify_inv !== '') {
+                return Number(d.shopify_inv) || 0;
+            }
+            if (typeof chPromoInv === 'function') return Number(chPromoInv(d)) || 0;
+            if (d && d.INV != null && d.INV !== '') return Number(d.INV) || 0;
+            if (d && d.inv != null && d.inv !== '') return Number(d.inv) || 0;
+            if (d && d.shopify_inv != null && d.shopify_inv !== '') return Number(d.shopify_inv) || 0;
+            return 0;
+        }
+        function chStdLoadAgeMap() {
+            if (chStdAgeBySku) return $.Deferred().resolve(chStdAgeBySku).promise();
+            if (chStdAgeMapReq) return chStdAgeMapReq;
+            chStdAgeMapReq = $.ajax({
+                url: '/inv-days/age-map',
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+            }).done(function(res) {
+                chStdAgeBySku = (res && res.age_days && typeof res.age_days === 'object') ? res.age_days : {};
+            }).fail(function() {
+                chStdAgeBySku = {};
+            });
+            return chStdAgeMapReq;
+        }
         function chStdAgeDays(d) {
-            const raw = d && (d.age_days != null && d.age_days !== '' ? d.age_days : d.age);
+            let raw = d && (d.age_days != null && d.age_days !== '' ? d.age_days : d.age);
+            if ((raw == null || raw === '') && chStdAgeBySku && d) {
+                const hit = chStdAgeBySku[chStdSkuKey(chStdRowSku(d))];
+                if (hit != null && hit !== '') {
+                    raw = hit;
+                    d.age_days = hit;
+                }
+            }
             const n = Number(raw);
             return isFinite(n) ? n : null;
         }
@@ -340,11 +403,11 @@
             return chStdNum(d, ['review_count', 'reviews', 'Reviews', 'rating_count', 'ratings']);
         }
         function chStdSumDisc(d, draft) {
-            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax };
-            if (typeof chPromoInv === 'function' && chPromoInv(d) <= 0) return 0;
+            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss };
+            if (!(chStdStockForAge(d) > 0)) return 0;
             const std = chStdRowStd(d);
-            const dil = (typeof chPromoDil === 'function') ? chPromoDil(d) : 0;
-            const ageDisc = chStdScaleDisc(std, chStdRangeDisc(chStdAgeDays(d), draft.age));
+            const dil = chStdDilPct(d);
+            const ageDisc = chStdAgeDisc(d, draft.age);
             const dilDisc = chStdScaleDisc(std, chStdRangeDisc(dil, draft.dil));
             const reviews = chStdReviews(d);
             let revDisc = 0;
@@ -356,13 +419,15 @@
             }
             revDisc = chStdScaleDisc(std, revDisc);
             const cvrDisc = chStdScaleDisc(std, chStdCvrDiscPct(d, draft));
-            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc));
+            const bussRules = draft.buss || chStdBuss;
+            const bussDisc = chStdScaleDisc(std, chStdRangeDisc(std, bussRules));
+            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc));
         }
         function chStdRows() {
             const out = [];
             const take = function(d) {
                 if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return;
-                if (typeof chPromoInv === 'function' && chPromoInv(d) <= 0) return;
+                if (!(chStdStockForAge(d) > 0)) return;
                 out.push(d);
             };
             if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
@@ -396,6 +461,7 @@
                 dil: chStdReadRanges('#ch-sp-dil-tbody', '.ch-sp-dil-min', '.ch-sp-dil-max', '.ch-sp-dil-disc'),
                 age: chStdReadRanges('#ch-sp-age-tbody', '.ch-sp-age-min', '.ch-sp-age-max', '.ch-sp-age-disc'),
                 reviews: chStdReadRanges('#ch-sp-rev-tbody', '.ch-sp-rev-min', '.ch-sp-rev-max', '.ch-sp-rev-disc'),
+                buss: chStdReadRanges('#ch-sp-buss-tbody', '.ch-sp-buss-min', '.ch-sp-buss-max', '.ch-sp-buss-disc'),
                 reviewMax: (function() { const n = parseInt($('#ch-sp-review-max').val(), 10); return isFinite(n) && n > 0 ? n : 4; })(),
                 cvr: chStdNormCvr({
                     down2_lt: $('#chStdPrcModal .ch-sp-cvr-down2-lt').val(), down2_disc: $('#chStdPrcModal .ch-sp-cvr-down2-disc').val(),
@@ -472,20 +538,22 @@
         }
         function chStdRefresh() {
             const draft = chStdReadDraft();
-            const dilCounts = { outside: 0 }, ageCounts = { none: 0 }, revCounts = { none: 0 };
+            const dilCounts = { outside: 0 }, ageCounts = { none: 0 }, revCounts = { none: 0 }, bussCounts = { outside: 0 };
             const cvrCounts = { down2: 0, down: 0, flat: 0, up: 0, up2: 0 };
             draft.dil.forEach(function(r, i) { dilCounts['d' + i] = 0; });
             draft.age.forEach(function(r, i) { ageCounts['a' + i] = 0; });
             draft.reviews.forEach(function(r, i) { revCounts['r' + i] = 0; });
-            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0 };
-            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0 };
-            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, all: 0 };
+            draft.buss.forEach(function(r, i) { bussCounts['u' + i] = 0; });
+            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0 };
+            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0 };
+            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, all: 0 };
             const l30 = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const invB = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const ads = (typeof chPromoAdsFrac === 'function') ? ((Number(chPromoAdsFrac()) || 0) * 100) : 0;
             chStdRows().forEach(function(d) {
                 const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
-                const dilVal = (typeof chPromoDil === 'function') ? chPromoDil(d) : 0;
+                const dilVal = chStdDilPct(d);
+                const invOk = chStdStockForAge(d) > 0;
                 let dilIdx = -1;
                 for (let i = 0; i < draft.dil.length; i++) if (chStdInRange(dilVal, draft.dil[i], i === draft.dil.length - 1)) { dilIdx = i; break; }
                 if (dilIdx >= 0) dilCounts['d' + dilIdx] += 1; else dilCounts.outside += 1;
@@ -503,17 +571,23 @@
                     }
                 }
                 if (revIdx >= 0) revCounts['r' + revIdx] += 1; else revCounts.none += 1;
+                const stdHit = Number(std) || 0;
+                let bussIdx = -1;
+                for (let i = 0; i < draft.buss.length; i++) if (chStdInRange(stdHit, draft.buss[i], i === draft.buss.length - 1)) { bussIdx = i; break; }
+                if (bussIdx >= 0) bussCounts['u' + bussIdx] += 1; else bussCounts.outside += 1;
                 const hit = chStdCvrMatch(d, draft.cvr);
                 cvrCounts[hit ? hit.key : 'flat'] += 1;
-                const ageDisc = chStdScaleDisc(std, ageIdx >= 0 ? (Number(draft.age[ageIdx].disc) || 0) : 0);
-                const dilDisc = chStdScaleDisc(std, dilIdx >= 0 ? (Number(draft.dil[dilIdx].disc) || 0) : 0);
+                const ageDisc = invOk ? chStdScaleDisc(std, ageIdx >= 0 ? (Number(draft.age[ageIdx].disc) || 0) : 0) : 0;
+                const dilDisc = invOk ? chStdScaleDisc(std, dilIdx >= 0 ? (Number(draft.dil[dilIdx].disc) || 0) : 0) : 0;
                 const revDisc = chStdScaleDisc(std, revIdx >= 0 ? (Number(draft.reviews[revIdx].disc) || 0) : 0);
-                const cvrDisc = chStdScaleDisc(std, Math.max(0, hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0)));
+                const bussDisc = chStdScaleDisc(std, bussIdx >= 0 ? (Number(draft.buss[bussIdx].disc) || 0) : 0);
+                const cvrDisc = invOk ? chStdScaleDisc(std, Math.max(0, hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0))) : 0;
                 if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
                 if (revDisc > 0) { skuHits.rev++; dollars.rev += std * revDisc / 100; pctTotals.rev += revDisc; }
-                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc);
+                if (bussDisc > 0) { skuHits.buss++; dollars.buss += std * bussDisc / 100; pctTotals.buss += bussDisc; }
+                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc);
                 if (sum > 0) skuHits.all++;
                 if (std > 0) {
                     const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
@@ -527,9 +601,10 @@
                     invB.gross += gross * inv; invB.net += net * inv; invB.sales += sprice * inv; invB.cogs += lp * inv; invB.units += inv;
                 }
             });
-            ['dil', 'age', 'rev'].forEach(function(prefix) {
-                const counts = prefix === 'dil' ? dilCounts : (prefix === 'age' ? ageCounts : revCounts);
-                $('#ch-sp-' + prefix + '-tbody tr').each(function(i) { $(this).find('.ch-sp-' + prefix + '-count').text(counts[(prefix === 'dil' ? 'd' : prefix === 'age' ? 'a' : 'r') + i] || 0); });
+            const countKey = { dil: 'd', age: 'a', rev: 'r', buss: 'u' };
+            const countMap = { dil: dilCounts, age: ageCounts, rev: revCounts, buss: bussCounts };
+            ['dil', 'age', 'rev', 'buss'].forEach(function(prefix) {
+                $('#ch-sp-' + prefix + '-tbody tr').each(function(i) { $(this).find('.ch-sp-' + prefix + '-count').text(countMap[prefix][countKey[prefix] + i] || 0); });
             });
             $('#ch-sp-cvr-down2-count').text(cvrCounts.down2);
             $('#ch-sp-cvr-down-count').text(cvrCounts.down);
@@ -539,6 +614,7 @@
             const dilSlices = draft.dil.map(function(r, i) { return { key: 'd' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const ageSlices = draft.age.map(function(r, i) { return { key: 'a' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No age', color: '#cbd5e1' }]);
             const revSlices = draft.reviews.map(function(r, i) { return { key: 'r' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No disc', color: '#cbd5e1' }]);
+            const bussSlices = draft.buss.map(function(r, i) { return { key: 'u' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const cvrSlices = [
                 { key: 'down2', label: 'Down < ' + draft.cvr.down2_lt + '%', color: '#9f1239' },
                 { key: 'down', label: 'Down < ' + draft.cvr.down_lt + '%', color: '#dc3545' },
@@ -549,23 +625,26 @@
             const allSlices = [
                 { key: 'age', label: 'Age', color: '#d97706' }, { key: 'dil', label: 'Dil', color: '#6f42c1' },
                 { key: 'cvr', label: 'CVR', color: '#20c997' }, { key: 'rev', label: 'Reviews', color: '#7c3aed' },
+                { key: 'buss', label: 'Buss', color: '#0d6efd' },
             ];
-            const allCounts = { age: Math.round(dollars.age), dil: Math.round(dollars.dil), cvr: Math.round(dollars.cvr), rev: Math.round(dollars.rev) };
+            const allCounts = { age: Math.round(dollars.age), dil: Math.round(dollars.dil), cvr: Math.round(dollars.cvr), rev: Math.round(dollars.rev), buss: Math.round(dollars.buss) };
             chStdHistLive = {};
             chStdLegend('#ch-sp-leg-dil', dilSlices, dilCounts, 'dil');
             chStdLegend('#ch-sp-leg-rev', revSlices, revCounts, 'rev');
+            chStdLegend('#ch-sp-leg-buss', bussSlices, bussCounts, 'buss');
             chStdLegend('#ch-sp-leg-cvr', cvrSlices, cvrCounts, 'cvr');
             chStdLegend('#ch-sp-leg-age', ageSlices, ageCounts, 'age');
             chStdLegend('#ch-sp-leg-all', allSlices, allCounts, 'all');
             chStdDrawBars([
                 { id: 'ch-sp-pie-dil', slices: dilSlices, counts: dilCounts },
                 { id: 'ch-sp-pie-rev', slices: revSlices, counts: revCounts },
+                { id: 'ch-sp-pie-buss', slices: bussSlices, counts: bussCounts },
                 { id: 'ch-sp-pie-cvr', slices: cvrSlices, counts: cvrCounts },
                 { id: 'ch-sp-pie-age', slices: ageSlices, counts: ageCounts },
                 { id: 'ch-sp-pie-all', slices: allSlices, counts: allCounts },
             ]);
             let pctSum = 0, dollarSum = 0;
-            const body = [['Age', skuHits.age, pctTotals.age, dollars.age], ['Dil', skuHits.dil, pctTotals.dil, dollars.dil], ['CVR', skuHits.cvr, pctTotals.cvr, dollars.cvr], ['Reviews', skuHits.rev, pctTotals.rev, dollars.rev]].map(function(row) {
+            const body = [['Age', skuHits.age, pctTotals.age, dollars.age], ['Dil', skuHits.dil, pctTotals.dil, dollars.dil], ['CVR', skuHits.cvr, pctTotals.cvr, dollars.cvr], ['Reviews', skuHits.rev, pctTotals.rev, dollars.rev], ['Buss', skuHits.buss, pctTotals.buss, dollars.buss]].map(function(row) {
                 pctSum += row[2]; dollarSum += row[3];
                 return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td><td class="text-end">' + row[2] + '</td><td class="text-end">' + chStdMoney(row[3]) + '</td></tr>';
             });
@@ -593,6 +672,7 @@
             $('#ch-sp-dil-tbody').html(chStdDil.map(function(r) { return chStdRangeRow('ch-sp-dil', r); }).join(''));
             $('#ch-sp-age-tbody').html(chStdAge.map(function(r) { return chStdRangeRow('ch-sp-age', r); }).join(''));
             $('#ch-sp-rev-tbody').html(chStdRev.map(function(r) { return chStdRangeRow('ch-sp-rev', r); }).join(''));
+            $('#ch-sp-buss-tbody').html(chStdBuss.map(function(r) { return chStdRangeRow('ch-sp-buss', r); }).join(''));
             $('#ch-sp-review-max').val(chStdReviewMax);
             const cfg = chStdNormCvr(chStdCvr);
             $('#chStdPrcModal .ch-sp-cvr-down2-lt').val(cfg.down2_lt);
@@ -612,11 +692,13 @@
                 chStdDil = (res.dil || CH_STD_DIL_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdAge = (res.age || CH_STD_AGE_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdRev = (res.reviews || CH_STD_REV_DEFAULTS).map(chStdNormRange).filter(Boolean);
+                chStdBuss = (res.buss || CH_STD_BUSS_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdCvr = chStdNormCvr(res.cvr);
                 chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdDil.length) chStdDil = CH_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdAge.length) chStdAge = CH_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdRev.length) chStdRev = CH_STD_REV_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+                if (!chStdBuss.length) chStdBuss = CH_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
             });
         }
         function chStdTodayKey() {
@@ -675,21 +757,31 @@
                 .fail(function() { draw([]); });
         }
         function chStdDraftNow() {
-            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax };
+            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss };
         }
         function chStdDiscBadge(pct) {
             const n = Number(pct) || 0;
             if (!(n > 0)) return '<span style="color:#adb5bd;font-weight:600;">—</span>';
             return '<span style="font-weight:700;color:#0f172a;">' + n + '</span>';
         }
-        function chStdAgeDisc(d) {
-            return chStdScaleDisc(chStdRowStd(d), chStdRangeDisc(chStdAgeDays(d), chStdAge));
+        function chStdAgeDisc(d, rules) {
+            // Same as Amazon analytics: INV = 0 → 0%. Age days come from the Shopify push clock.
+            if (!(chStdStockForAge(d) > 0)) return 0;
+            const days = chStdAgeDays(d);
+            if (days == null) return 0;
+            return chStdScaleDisc(chStdRowStd(d), chStdRangeDisc(days, rules || chStdAge));
+        }
+        function chStdDilPct(d) {
+            const m = chStdAmzMetric(d);
+            if (m) return m.inv > 0 ? (m.ov / m.inv) * 100 : 0;
+            return (typeof chPromoDil === 'function') ? chPromoDil(d) : 0;
         }
         function chStdDilDisc(d) {
-            const dil = (typeof chPromoDil === 'function') ? chPromoDil(d) : 0;
-            return chStdScaleDisc(chStdRowStd(d), chStdRangeDisc(dil, chStdDil));
+            if (!(chStdStockForAge(d) > 0)) return 0;
+            return chStdScaleDisc(chStdRowStd(d), chStdRangeDisc(chStdDilPct(d), chStdDil));
         }
         function chStdCvrDiscPct(d, draft) {
+            if (!(chStdStockForAge(d) > 0)) return 0;
             const cfg = (draft && draft.cvr) ? draft.cvr : chStdCvr;
             const hit = chStdCvrMatch(d, cfg);
             const trend = hit ? (Number(hit.disc) || 0) : (Number(cfg.flat_disc) || 0);
@@ -704,6 +796,14 @@
             }
             return 0;
         }
+        function chStdBussDiscPct(d) {
+            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return null;
+            if (typeof chPromoInv === 'function' && chPromoInv(d) <= 0) return 0;
+            const std = chStdRowStd(d);
+            return chStdScaleDisc(std, chStdRangeDisc(std, chStdBuss));
+        }
+        window.chStdBussDiscPct = chStdBussDiscPct;
+        window.analyticsBussDiscountPct = chStdBussDiscPct;
         function chStdDiscCol(title, field, tip, read) {
             return {
                 title: title,
@@ -725,11 +825,39 @@
         }
         function chStdDiscColumns() {
             return [
-                chStdDiscCol('Age Disc', 'age_discount', 'Age Disc from Std prc vs dil. INV = 0 → blank.', chStdAgeDisc),
-                chStdDiscCol('Dil Disc', 'dil_discount', 'Dil Disc from Std prc vs dil. INV = 0 → blank.', chStdDilDisc),
-                chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR discount from Std prc vs dil. Up/down disc is used as-is and is not added to the CVR slab. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }),
+                Object.assign(chStdDiscCol('Age Disc', 'age_discount', 'Age Disc — promotional % from Age Days slabs in Std prc vs dil. Same Shopify age clock as Amazon. INV = 0 → 0%. Read-only.', chStdAgeDisc), {
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                        const pct = chStdAgeDisc(d);
+                        const days = chStdAgeDays(d);
+                        const tip = (days == null ? 'No age' : (days + ' age days'))
+                            + ' → discount ' + (pct || 0) + '%';
+                        return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
+                    },
+                }),
+                Object.assign(chStdDiscCol('Dil Disc', 'dil_discount', 'Dil Disc — same as Amazon: Shopify OV L30 ÷ Shopify INV. INV = 0 → 0%.', chStdDilDisc), {
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                        const pct = chStdDilDisc(d);
+                        const dil = chStdDilPct(d);
+                        const tip = 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% → discount ' + (pct || 0) + '%';
+                        return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
+                    },
+                }),
+                Object.assign(chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR Disc — same as Amazon: A L30 ÷ Sess30, CVR 0 is Down. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }), {
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                        const pct = chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d));
+                        const cvr = chStdCvrLive(d);
+                        const tip = 'CVR ' + (isFinite(cvr) ? cvr.toFixed(1) : '0') + '% ' + chStdCvrTrend(d) + ' → discount ' + (pct || 0) + '%';
+                        return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
+                    },
+                }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + CVR + Rev + Buss. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
             ];
         }
         function chStdAppendDiscColumns(cols) {
@@ -744,7 +872,7 @@
         function chStdPriceForRow(d, draft) {
             if (!d) return 0;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
-            if (typeof chPromoInv === 'function' && chPromoInv(d) <= 0) return 0;
+            if (!(chStdStockForAge(d) > 0)) return 0;
             const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
             if (!(std > 0)) return 0;
             const sum = chStdSumDisc(d, draft || chStdDraftNow());
@@ -841,7 +969,7 @@
                 if (chStdAutoWaits++ < 120) setTimeout(chStdScheduleAutoApply, 500);
                 return;
             }
-            chStdLoad().always(function() {
+            $.when(chStdLoad(), chStdLoadAgeMap(), chStdLoadAmzMap()).always(function() {
                 if (chStdAutoApplied) return;
                 chStdAutoApplied = true;
                 chStdEnsureColumns();
@@ -871,11 +999,12 @@
                 url: CH_PROMO_RULES_BASE + '/std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax },
+                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss },
             }).done(function(res) {
                 if (res && res.dil) chStdDil = res.dil.map(chStdNormRange).filter(Boolean);
                 if (res && res.age) chStdAge = res.age.map(chStdNormRange).filter(Boolean);
                 if (res && res.reviews) chStdRev = res.reviews.map(chStdNormRange).filter(Boolean);
+                if (res && res.buss) chStdBuss = res.buss.map(chStdNormRange).filter(Boolean);
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 const updates = chStdWritePrices(draft);
@@ -934,7 +1063,14 @@
                 $('#ch-sp-rev-tbody').html(rules.map(function(r) { return chStdRangeRow('ch-sp-rev', r); }).join(''));
                 chStdRefresh();
             });
-            $(document).off('click.chstddel').on('click.chstddel', '#chStdPrcModal .ch-sp-dil-del, #chStdPrcModal .ch-sp-age-del, #chStdPrcModal .ch-sp-rev-del', function() {
+            $('#ch-sp-buss-add').off('click.chstd').on('click.chstd', function() {
+                const rules = chStdReadRanges('#ch-sp-buss-tbody', '.ch-sp-buss-min', '.ch-sp-buss-max', '.ch-sp-buss-disc');
+                const last = rules.length ? rules[rules.length - 1].max : 0;
+                rules.push({ min: last, max: last + 10, disc: 0 });
+                $('#ch-sp-buss-tbody').html(rules.map(function(r) { return chStdRangeRow('ch-sp-buss', r); }).join(''));
+                chStdRefresh();
+            });
+            $(document).off('click.chstddel').on('click.chstddel', '#chStdPrcModal .ch-sp-dil-del, #chStdPrcModal .ch-sp-age-del, #chStdPrcModal .ch-sp-rev-del, #chStdPrcModal .ch-sp-buss-del', function() {
                 $(this).closest('tr').remove();
                 chStdRefresh();
             });

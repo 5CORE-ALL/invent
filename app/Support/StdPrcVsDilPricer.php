@@ -6,7 +6,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 
 /**
  * S PRC from a channel's saved Std prc vs dil slabs.
- * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review) / 100).
+ * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review + Buss) / 100).
  * Std Prc under $15 uses half of each rule discount (0.5×).
  * Used by the unattended apply commands. The page does not have to be open.
  */
@@ -19,7 +19,7 @@ class StdPrcVsDilPricer
     /** @var array<string, self> */
     private static array $cache = [];
 
-    /** @param array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int} $rules */
+    /** @param array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int,buss?:list<array<string,float>>} $rules */
     public function __construct(private array $rules) {}
 
     public static function forChannel(string $channel): self
@@ -38,6 +38,7 @@ class StdPrcVsDilPricer
             'cvr' => self::cvr($saved['cvr'] ?? null, $defaults['cvr']),
             'reviews' => self::ranges($saved['reviews'] ?? null, $defaults['reviews']),
             'review_max' => is_numeric($saved['review_max'] ?? null) ? max(1, (int) $saved['review_max']) : $defaults['review_max'],
+            'buss' => self::ranges($saved['buss'] ?? null, $defaults['buss']),
         ];
 
         return self::$cache[$channel] = new self($rules);
@@ -48,7 +49,8 @@ class StdPrcVsDilPricer
      */
     public function priceFromRow(array $row): ?float
     {
-        $inv = (float) ($row['inv'] ?? $row['INV'] ?? 0);
+        $metric = $this->lookupAmazonMetric($row);
+        $inv = $metric !== null ? $metric['inv'] : (float) ($row['inv'] ?? $row['INV'] ?? 0);
         if (! ($inv > 0)) {
             return null;
         }
@@ -56,16 +58,17 @@ class StdPrcVsDilPricer
         if (! ($std > 0)) {
             return null;
         }
-        $dil = (float) ($row['dil'] ?? 0);
-        $age = is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null;
-        $cvr = (float) ($row['cvr'] ?? 0);
-        $cvr60 = (float) ($row['cvr_60'] ?? 0);
+        $dil = $metric !== null ? $metric['dil'] : (float) ($row['dil'] ?? 0);
+        $age = is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : $this->lookupAgeDays($row, $inv);
+        $cvr = $metric !== null ? $metric['cvr'] : (float) ($row['cvr'] ?? 0);
+        $cvr60 = $metric !== null ? $metric['cvr45'] : (float) ($row['cvr_60'] ?? 0);
         $reviews = (float) ($row['review_count'] ?? $row['reviews'] ?? $row['Reviews'] ?? 0);
         $ageDisc = self::scaleRuleDisc($this->ageDisc($age), $std);
         $dilDisc = self::scaleRuleDisc($this->rangeDisc($dil, $this->rules['dil']), $std);
         $cvrDisc = self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60), $std);
         $reviewDisc = self::scaleRuleDisc($this->reviewDisc($reviews), $std);
-        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc));
+        $bussDisc = self::scaleRuleDisc($this->rangeDisc($std, $this->rules['buss'] ?? []), $std);
+        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc));
         $price = round($std * (1 - $sum / 100), 2);
 
         return $price > 0 ? $price : null;
@@ -79,6 +82,68 @@ class StdPrcVsDilPricer
         }
 
         return round($disc * self::LOW_STD_FACTOR, 2);
+    }
+
+    /**
+     * Amazon analytics sends age_days on the row. Other apply jobs do not,
+     * so use the same Shopify push clock when the row omitted it.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function lookupAgeDays(array $row, float $inv): ?float
+    {
+        $sku = trim((string) ($row['sku'] ?? $row['(Child) sku'] ?? ''));
+        if ($sku === '' || ! function_exists('app')) {
+            return null;
+        }
+        try {
+            if (! app()->bound('db')) {
+                return null;
+            }
+            $days = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->ageDaysFor($sku, $inv);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return is_int($days) ? (float) $days : null;
+    }
+
+    /**
+     * Amazon Dil % and CVR L30/L45. Same inputs as /amazon-tabulator-view.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{dil:float,cvr:float,cvr45:float,inv:float}|null
+     */
+    private function lookupAmazonMetric(array $row): ?array
+    {
+        $sku = trim((string) ($row['sku'] ?? $row['(Child) sku'] ?? ''));
+        if ($sku === '' || ! function_exists('app')) {
+            return null;
+        }
+        try {
+            if (! app()->bound('db')) {
+                return null;
+            }
+            $hit = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->amazonStdMetricFor($sku);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if (! is_array($hit)) {
+            return null;
+        }
+        $s30 = (float) $hit['s30'];
+        $s60 = (float) $hit['s60'];
+        $a30 = (float) $hit['a30'];
+        $a60 = (float) $hit['a60'];
+        $inv = (float) $hit['inv'];
+        $sess45 = ($s30 + $s60) / 2;
+
+        return [
+            'inv' => $inv,
+            'dil' => $inv > 0 ? ((float) $hit['ov'] / $inv) * 100 : 0.0,
+            'cvr' => $s30 > 0 ? ($a30 / $s30) * 100 : 0.0,
+            'cvr45' => $sess45 > 0 ? ((($a30 + $a60) / 2) / $sess45) * 100 : 0.0,
+        ];
     }
 
     private function ageDisc(?float $age): float
@@ -120,12 +185,11 @@ class StdPrcVsDilPricer
     {
         $cfg = $this->rules['cvr'];
         $trend = 'flat';
-        if ($cvr60 > 0) {
-            if ($cvr === 0.0 || $cvr < $cvr60 - 0.1) {
-                $trend = 'down';
-            } elseif ($cvr > $cvr60 + 0.1) {
-                $trend = 'up';
-            }
+        // Same as Amazon: CVR 0 (no sessions) is Down, then the down slabs.
+        if ($cvr <= 0.0 || ($cvr60 > 0 && $cvr < $cvr60 - 0.1)) {
+            $trend = 'down';
+        } elseif ($cvr60 > 0 && $cvr > $cvr60 + 0.1) {
+            $trend = 'up';
         }
         if ($trend === 'down') {
             $slabs = [];
@@ -229,7 +293,7 @@ class StdPrcVsDilPricer
     }
 
     /**
-     * @return array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int}
+     * @return array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int,buss:list<array<string,float>>}
      */
     private static function defaults(): array
     {
@@ -259,6 +323,11 @@ class StdPrcVsDilPricer
                 ['min' => 2, 'max' => 3, 'disc' => 4],
             ],
             'review_max' => 4,
+            'buss' => [
+                ['min' => 0, 'max' => 15, 'disc' => 0],
+                ['min' => 15, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 9999, 'disc' => 0],
+            ],
         ];
     }
 }

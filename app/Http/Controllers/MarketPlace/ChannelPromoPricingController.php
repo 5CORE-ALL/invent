@@ -1591,6 +1591,7 @@ class ChannelPromoPricingController extends Controller
                 'cvr' => $defaults['cvr'],
                 'reviews' => $defaults['reviews'],
                 'review_max' => $defaults['review_max'],
+                'buss' => $defaults['buss'],
             ]);
         }
 
@@ -1602,6 +1603,7 @@ class ChannelPromoPricingController extends Controller
             'cvr' => $this->normalizeStdPrcCvr($saved['cvr'] ?? null),
             'reviews' => $this->normalizeStdPrcRanges($saved['reviews'] ?? null, $defaults['reviews']),
             'review_max' => $this->normalizeStdPrcReviewMax($saved['review_max'] ?? null),
+            'buss' => $this->normalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
         ]);
     }
 
@@ -1618,10 +1620,11 @@ class ChannelPromoPricingController extends Controller
             'cvr' => $this->normalizeStdPrcCvr($request->input('cvr')),
             'reviews' => $this->normalizeStdPrcRanges($request->input('reviews'), $defaults['reviews']),
             'review_max' => $this->normalizeStdPrcReviewMax($request->input('review_max')),
+            'buss' => $this->normalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
         ];
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss']]
         );
 
         return response()->json(array_merge(['success' => true], $payload));
@@ -1698,7 +1701,7 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array<string, float>, reviews: list<array{min:float,max:float,disc:float}>, review_max: int}
+     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array<string, float>, reviews: list<array{min:float,max:float,disc:float}>, review_max: int, buss: list<array{min:float,max:float,disc:float}>}
      */
     private function defaultStdPrcVsDil(): array
     {
@@ -1735,6 +1738,11 @@ class ChannelPromoPricingController extends Controller
                 ['min' => 2, 'max' => 3, 'disc' => 4],
             ],
             'review_max' => 4,
+            'buss' => [
+                ['min' => 0, 'max' => 15, 'disc' => 0],
+                ['min' => 15, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 9999, 'disc' => 0],
+            ],
         ];
     }
 

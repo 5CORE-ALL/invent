@@ -2913,7 +2913,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'Age Disc + Dil Disc + CVR Disc + Rev Disc. S PRC = Std Prc × (1 − this % / 100).',
+                    headerTooltip: 'Age Disc + Dil Disc + CVR Disc + Rev Disc + Buss Discount. S PRC = Std Prc × (1 − this % / 100).',
                     sorter: function(a, b, aRow, bRow) {
                         const fn = typeof computeAmzSumDiscountPct === 'function' ? computeAmzSumDiscountPct : function() { return 0; };
                         return (Number(fn(aRow.getData())) || 0) - (Number(fn(bRow.getData())) || 0);
@@ -2927,6 +2927,7 @@
                             + ' + Dil ' + (stack.dilDisc || 0)
                             + ' + CVR ' + (stack.cvrDisc || 0)
                             + ' + Rev ' + (stack.reviewDisc || 0)
+                            + ' + Buss ' + (stack.bussDisc || 0)
                             + ' = ' + (pct || 0) + '%';
                         return '<span title="' + amzPefEscAttr(tip) + '">'
                             + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'sum') : (pct || '—'))
@@ -3037,7 +3038,7 @@
 
         /**
          * Live rule stack for this SKU.
-         * Age Disc + Dil Disc + CVR Disc + Rev Disc, each a % off Std Prc.
+         * Age Disc + Dil Disc + CVR Disc + Rev Disc + Buss Discount, each a % off Std Prc.
          * CVR Disc = Std prc vs dil up/down/flat disc only. INV=0 → 0.
          */
         function computeAmzRuleStack(d) {
@@ -3053,18 +3054,22 @@
             const reviewDisc = (typeof amzStdDisc === 'function')
                 ? amzStdDisc(typeof computeAmzReviewDiscountPct === 'function' ? computeAmzReviewDiscountPct(d) : 0)
                 : (Number(typeof computeAmzReviewDiscountPct === 'function' ? computeAmzReviewDiscountPct(d) : 0) || 0);
+            const bussDisc = (typeof amzStdDisc === 'function')
+                ? amzStdDisc(typeof computeAmzBussDiscountPct === 'function' ? computeAmzBussDiscountPct(d) : 0)
+                : (Number(typeof computeAmzBussDiscountPct === 'function' ? computeAmzBussDiscountPct(d) : 0) || 0);
             const zeroSold = typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(d);
             const dilGroiMeta = (typeof amzDilGroiMetaForRow === 'function')
                 ? amzDilGroiMetaForRow(d)
                 : null;
             const dilGroi = !!(dilGroiMeta && dilGroiMeta.sprc > 0);
-            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + reviewDisc)));
+            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + reviewDisc + bussDisc)));
             return {
                 prmt: 0,
                 ageDisc: ageDisc,
                 dilDisc: dilDisc,
                 cvrDisc: cvrDisc,
                 reviewDisc: reviewDisc,
+                bussDisc: bussDisc,
                 cvrUpDn: 0,
                 zeroSold: !!zeroSold,
                 zeroSoldGroi: (zeroSold && dilGroi) ? dilGroiMeta.groi : null,
@@ -3084,6 +3089,7 @@
             if (plan.dilDisc) parts.push('Dil Disc ' + plan.dilDisc + '%');
             if (plan.cvrDisc) parts.push('CVR Disc ' + plan.cvrDisc + '%');
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
+            if (plan.bussDisc) parts.push('Buss Discount ' + plan.bussDisc + '%');
             if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
             else if (plan.stdCapped) parts.push('Std cap');
             if (plan.lmpCapped) parts.push('LMP cap');
@@ -3135,6 +3141,7 @@
                 dilDisc: stack.dilDisc,
                 cvrDisc: stack.cvrDisc,
                 reviewDisc: stack.reviewDisc,
+                bussDisc: stack.bussDisc,
                 cvrUpDn: stack.cvrUpDn,
                 zeroSold: stack.zeroSold,
                 zeroSoldGroi: stack.zeroSoldGroi,

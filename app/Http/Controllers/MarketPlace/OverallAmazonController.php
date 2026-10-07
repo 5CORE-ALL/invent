@@ -2942,10 +2942,10 @@ class OverallAmazonController extends Controller
     }
 
     /**
-     * Std prc vs dil: promotional % off standard price for Dil, Age Days, and CVR up/down.
+     * Std prc vs dil: promotional % off standard price for Dil, Age Days, CVR up/down, and Buss Discount.
      * Review ranges stay on amazon_review_vs_disc. CVR slabs stay on amazon_cvr_vs_disc.
      *
-     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array{down2_lt:float,down2_disc:float,down_lt:float,down_disc:float,up_gt:float,up_disc:float,up2_gt:float,up2_disc:float,flat_disc:float}}
+     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array{down2_lt:float,down2_disc:float,down_lt:float,down_disc:float,up_gt:float,up_disc:float,up2_gt:float,up2_disc:float,flat_disc:float}, buss: list<array{min:float,max:float,disc:float}>}
      */
     private function amazonDefaultStdPrcVsDil(): array
     {
@@ -2976,6 +2976,11 @@ class OverallAmazonController extends Controller
                 'up2_gt' => 15,
                 'up2_disc' => 0,
                 'flat_disc' => 0,
+            ],
+            'buss' => [
+                ['min' => 0, 'max' => 15, 'disc' => 0],
+                ['min' => 15, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 9999, 'disc' => 0],
             ],
         ];
     }
@@ -3073,6 +3078,7 @@ class OverallAmazonController extends Controller
                 'dil' => $defaults['dil'],
                 'age' => $defaults['age'],
                 'cvr' => $defaults['cvr'],
+                'buss' => $defaults['buss'],
             ]);
         }
 
@@ -3082,6 +3088,7 @@ class OverallAmazonController extends Controller
             'dil' => $this->amazonNormalizeStdPrcRanges($saved['dil'] ?? null, $defaults['dil']),
             'age' => $this->amazonNormalizeStdPrcRanges($saved['age'] ?? null, $defaults['age']),
             'cvr' => $this->amazonNormalizeStdPrcCvr($saved['cvr'] ?? null),
+            'buss' => $this->amazonNormalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
         ]);
     }
 
@@ -3092,11 +3099,12 @@ class OverallAmazonController extends Controller
             'dil' => $this->amazonNormalizeStdPrcRanges($request->input('dil'), $defaults['dil']),
             'age' => $this->amazonNormalizeStdPrcRanges($request->input('age'), $defaults['age']),
             'cvr' => $this->amazonNormalizeStdPrcCvr($request->input('cvr')),
+            'buss' => $this->amazonNormalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
         ];
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'amazon_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'buss']]
         );
 
         return response()->json([
@@ -3104,6 +3112,7 @@ class OverallAmazonController extends Controller
             'dil' => $payload['dil'],
             'age' => $payload['age'],
             'cvr' => $payload['cvr'],
+            'buss' => $payload['buss'],
         ]);
     }
 

@@ -85,6 +85,52 @@ class StdPrcVsDilPricerTest extends TestCase
         ]));
     }
 
+    public function test_buss_discount_comes_off_std_by_price_range(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'buss' => [
+                ['min' => 0, 'max' => 15, 'disc' => 10],
+                ['min' => 15, 'max' => 50, 'disc' => 4],
+            ],
+        ]);
+
+        // $20 is in 15–50 → 4%. $20 × 0.96 = $19.20.
+        $this->assertSame(19.2, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 20,
+        ]));
+        // $10 is under $15, so 10% is halved to 5%. $10 × 0.95 = $9.50.
+        $this->assertSame(9.5, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 10,
+        ]));
+    }
+
+    public function test_zero_cvr_is_down_like_amazon(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 8, 'down_lt' => 7, 'down_disc' => 5,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+        ]);
+
+        $this->assertSame(92.0, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 100,
+            'cvr' => 0,
+        ]));
+    }
+
     public function test_zero_inventory_skips(): void
     {
         $pricer = new StdPrcVsDilPricer([

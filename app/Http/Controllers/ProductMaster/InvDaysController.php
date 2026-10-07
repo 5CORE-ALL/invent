@@ -10,6 +10,7 @@ use App\Models\ForecastAnalysisHistory;
 use App\Models\ShopifySku;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -678,6 +679,180 @@ class InvDaysController extends Controller
             'push' => $this->latestShopifyPushAtBySku(),
             'last_sale' => $this->lastSaleDateBySku(),
         ];
+    }
+
+    /**
+     * Same age clock as /amazon-tabulator-view, keyed by normalized SKU.
+     * Pages that do not send age_days still apply Age Disc from this map.
+     *
+     * @return array<string, int>
+     */
+    public function ageDayMap(): array
+    {
+        return Cache::remember('inv_days_age_map_v1', 120, function () {
+            $sources = $this->cachedAgeSources();
+            $out = [];
+            ShopifySku::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->select(['id', 'sku', 'inv'])
+                ->chunkById(2000, function ($rows) use (&$out, $sources) {
+                    foreach ($rows as $row) {
+                        $days = $this->ageDays(
+                            (string) $row->sku,
+                            (float) ($row->inv ?? 0),
+                            $sources['push'],
+                            $sources['last_sale']
+                        );
+                        if ($days === null) {
+                            continue;
+                        }
+                        $out[$this->skuKey((string) $row->sku)] = $days;
+                    }
+                });
+
+            return $out;
+        });
+    }
+
+    public function ageMap()
+    {
+        try {
+            return response()->json([
+                'success' => true,
+                'age_days' => $this->ageDayMap(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Age day map failed: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'age_days' => []], 500);
+        }
+    }
+
+    /**
+     * Amazon Dil and CVR inputs for every analytics page.
+     * Each value is [A L30, Sess30, units L60, sessions L60, OV L30, Shopify INV].
+     */
+    public function amazonStdMap()
+    {
+        try {
+            return response()->json([
+                'success' => true,
+                'metrics' => $this->amazonStdMetricMap(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Amazon std metric map failed: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'metrics' => []], 500);
+        }
+    }
+
+    /**
+     * @return array{a30:float,s30:float,a60:float,s60:float,ov:float,inv:float}|null
+     */
+    public function amazonStdMetricFor(string $sku): ?array
+    {
+        $hit = $this->amazonStdMetricMap()[$this->skuKey($sku)] ?? null;
+        if (! is_array($hit) || count($hit) < 6) {
+            return null;
+        }
+
+        return [
+            'a30' => (float) $hit[0],
+            's30' => (float) $hit[1],
+            'a60' => (float) $hit[2],
+            's60' => (float) $hit[3],
+            'ov' => (float) $hit[4],
+            'inv' => (float) $hit[5],
+        ];
+    }
+
+    /**
+     * Same Dil and CVR inputs as /amazon-tabulator-view, keyed by normalized SKU.
+     *
+     * @return array<string, array{0:float,1:float,2:float,3:float,4:float,5:float}>
+     */
+    public function amazonStdMetricMap(): array
+    {
+        return Cache::remember('inv_days_amazon_std_map_v1', 120, function () {
+            $sheets = AmazonDatasheet::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['id', 'sku', 'sessions_l30', 'sessions_l60', 'units_ordered_l60', 'updated_at'])
+                ->groupBy(fn ($row) => AmazonDatasheet::normalizeSkuForLookup((string) $row->sku));
+
+            $l30Units = [];
+            $pushedMissing = [];
+            try {
+                [$start, $end] = AmazonOrder::dailySalesL30Window(
+                    \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS
+                );
+                $l30Units = AmazonOrder::unitsSoldBySkuForWindow($start, $end);
+                $pushedMissing = AmazonOrder::unitsPushedMissingFromShopifyRaw($start, $end);
+            } catch (\Throwable $e) {
+                Log::warning('Amazon std metric map: L30 units failed', ['error' => $e->getMessage()]);
+            }
+
+            $out = [];
+            ShopifySku::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->select(['id', 'sku', 'inv', 'quantity'])
+                ->chunkById(2000, function ($rows) use (&$out, $sheets, $l30Units, $pushedMissing) {
+                    foreach ($rows as $row) {
+                        $sku = (string) $row->sku;
+                        $lookup = AmazonDatasheet::normalizeSkuForLookup($sku);
+                        $sheet = AmazonDatasheet::pickBestForProductSku($sku, $sheets->get($lookup) ?? []);
+                        $sheetSku = $sheet?->sku ?? null;
+                        $a30 = AmazonOrder::unitsSoldForProductSku($sku, $l30Units, $sheetSku);
+                        $productCompact = ShopifySku::compactSkuForLookup($sku);
+                        $sheetCompact = ShopifySku::compactSkuForLookup($sheetSku !== null ? (string) $sheetSku : '');
+                        $ov = (float) ($row->quantity ?? 0);
+                        if ($sheetCompact !== '' && $sheetCompact !== $productCompact) {
+                            $ov += ShopifySku::ovL30SoldForSku((string) $sheetSku);
+                            $ov += (int) ($pushedMissing[$sheetCompact] ?? 0);
+                        }
+                        $ov += (int) ($pushedMissing[$productCompact] ?? 0);
+                        $out[$this->skuKey($sku)] = [
+                            (float) $a30,
+                            (float) ($sheet?->sessions_l30 ?? 0),
+                            (float) ($sheet?->units_ordered_l60 ?? 0),
+                            (float) ($sheet?->sessions_l60 ?? 0),
+                            $ov,
+                            (float) ($row->inv ?? 0),
+                        ];
+                    }
+                });
+
+            return $out;
+        });
+    }
+
+    /**
+     * Age days for one SKU. Sources are loaded once per process.
+     */
+    public function ageDaysFor(string $sku, float $inv): ?int
+    {
+        $sources = $this->cachedAgeSources();
+
+        return $this->ageDays($sku, $inv, $sources['push'], $sources['last_sale']);
+    }
+
+    /**
+     * @return array{push: array<string, string>, last_sale: array<string, string>}
+     */
+    private function cachedAgeSources(): array
+    {
+        static $sources = null;
+        if ($sources === null) {
+            try {
+                $sources = $this->ageDaySources();
+            } catch (\Throwable $e) {
+                $sources = ['push' => [], 'last_sale' => []];
+            }
+        }
+
+        return $sources;
     }
 
     /**

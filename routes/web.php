@@ -1148,6 +1148,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inv-under-30-days/data', [\App\Http\Controllers\ProductMaster\InvUnder30DaysController::class, 'getData'])->name('inv.under.30.days.data');
     Route::get('/inv-days', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'index'])->name('inv.days');
     Route::get('/inv-days/data', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'getData'])->name('inv.days.data');
+    Route::get('/inv-days/age-map', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'ageMap'])->name('inv.days.age-map');
+    Route::get('/inv-days/amazon-std-map', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'amazonStdMap'])->name('inv.days.amazon-std-map');
     Route::post('/inv-days/clearance', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'toggleClearance'])->name('inv.days.clearance');
     Route::post('/inv-days/clearance/bulk', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'bulkClearance'])->name('inv.days.clearance.bulk');
     Route::post('/inv-days/nrp/bulk', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'bulkNrp'])->name('inv.days.nrp.bulk');
