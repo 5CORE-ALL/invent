@@ -88,7 +88,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -920,7 +920,11 @@
             const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
             if (!(std > 0)) return 0;
             const sum = chStdSumDisc(d, draft || chStdDraftNow());
-            const raw = std * (1 - Math.min(99.99, sum) / 100);
+            let raw = std * (1 - Math.min(99.99, sum) / 100);
+            if (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
+                const ship = (typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0;
+                raw -= ship;
+            }
             if (!(raw > 0)) return 0;
             return (typeof chPromoRoundChannelSprice === 'function')
                 ? chPromoRoundChannelSprice(raw)

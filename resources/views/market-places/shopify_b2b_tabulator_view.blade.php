@@ -2048,7 +2048,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Live from Sprc Dil (Dil slab, including when B2B L30 = 0; then CVR overlay). No LMP cap. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "Not editable. Std Prc discounts, then Ship is subtracted. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) {
