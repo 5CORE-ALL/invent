@@ -652,6 +652,11 @@
                             title="Discount never applies when the star rating is this value or higher">
                         <span class="small text-muted">No discount when the star rating is this value or higher.</span>
                     </div>
+                    <label class="d-flex align-items-center gap-2 mb-2 small fw-semibold" for="amz-review-no-reviews-no-disc">
+                        <input type="checkbox" id="amz-review-no-reviews-no-disc" checked>
+                        No reviews, no discount
+                        <span class="fw-normal text-muted">A SKU with no review count takes 0% even when the star rating matches a range.</span>
+                    </label>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-review-disc-table">
                             <thead class="table-light">
@@ -860,6 +865,7 @@
         let amzCvrDiscRules = AMZ_CVR_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzReviewDiscRules = AMZ_REVIEW_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzReviewDiscMax = AMZ_REVIEW_DISC_MAX_DEFAULT;
+        let amzNoReviewsNoDiscount = true;
         const AMZ_CD_SLAB_META = [
             { key: 'eq-0', label: '0', color: '#94a3b8' },
             { key: '0.01-1', label: '0.01–1', color: '#a00211' },
@@ -1245,6 +1251,12 @@
             const n = parseFloat(raw);
             return isFinite(n) && n > 0 ? n : 0;
         }
+        /** Count in parentheses. 0 means the SKU has no reviews. */
+        function amzPefReviewQty(d) {
+            const raw = d && d.amz_review_count;
+            const n = parseFloat(raw);
+            return isFinite(n) && n > 0 ? n : 0;
+        }
         function amzNormalizeReviewDiscRule(r) {
             const min = parseInt(r && r.min, 10);
             const max = parseInt(r && r.max, 10);
@@ -1260,10 +1272,11 @@
                 disc: (typeof amzStdDisc === 'function') ? amzStdDisc(disc) : ((isFinite(disc) ? disc : 0)),
             };
         }
-        /** Star rating → Rev Disc. % (INV=0, rating 0, or rating >= max → 0). First matching from–to wins. */
+        /** Star rating → Rev Disc. % (INV=0, no reviews, rating 0, or rating >= max → 0). First matching from–to wins. */
         function computeAmzReviewDiscountPct(d) {
             if (!amzPefIsChildRow(d)) return null;
             if (amzPefInv(d) === 0) return 0;
+            if (amzNoReviewsNoDiscount && !(amzPefReviewQty(d) > 0)) return 0;
             const count = amzPefReviewCount(d);
             const cap = Number(amzReviewDiscMax);
             const maxRev = (isFinite(cap) && cap > 0) ? cap : AMZ_REVIEW_DISC_MAX_DEFAULT;
@@ -2487,6 +2500,7 @@
                 const count = amzPefReviewCount(d);
                 const cap = Number(amzReviewDiscMax);
                 const maxRev = (isFinite(cap) && cap > 0) ? cap : AMZ_REVIEW_DISC_MAX_DEFAULT;
+                if (amzNoReviewsNoDiscount && !(amzPefReviewQty(d) > 0)) return;
                 if (!(count > 0) || count >= maxRev) return;
                 for (let i = 0; i < amzReviewDiscRules.length; i++) {
                     const rule = amzNormalizeReviewDiscRule(amzReviewDiscRules[i]);
@@ -2504,6 +2518,7 @@
             const $tb = $('#amz-review-disc-tbody').empty();
             const maxEl = document.getElementById('amz-review-disc-max');
             if (maxEl) maxEl.value = String(amzReviewDiscMax || AMZ_REVIEW_DISC_MAX_DEFAULT);
+            $('#amz-review-no-reviews-no-disc').prop('checked', !!amzNoReviewsNoDiscount);
             if (!amzReviewDiscRules.length) {
                 amzReviewDiscRules = AMZ_REVIEW_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
             }
@@ -2538,6 +2553,7 @@
                 : AMZ_REVIEW_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
             const maxRaw = parseInt($('#amz-review-disc-max').val(), 10);
             amzReviewDiscMax = (isFinite(maxRaw) && maxRaw > 0) ? maxRaw : AMZ_REVIEW_DISC_MAX_DEFAULT;
+            amzNoReviewsNoDiscount = $('#amz-review-no-reviews-no-disc').is(':checked');
             return amzReviewDiscRules.map(function(r) {
                 return { key: r.key, min: r.min, max: r.max, label: r.label, disc: Number(r.disc) || 0 };
             });
@@ -2574,6 +2590,9 @@
                 if (res && isFinite(Number(res.max_reviews)) && Number(res.max_reviews) > 0) {
                     amzReviewDiscMax = Number(res.max_reviews);
                 }
+                if (res && res.no_reviews_no_discount !== undefined && res.no_reviews_no_discount !== null) {
+                    amzNoReviewsNoDiscount = !!res.no_reviews_no_discount;
+                }
                 renderAmzReviewDiscModalTable();
                 $('#amz-review-disc-status').text(res && res.is_default
                     ? 'Using defaults (1–2 = 4%, 2–3 = 4%; max 4 reviews).'
@@ -2589,7 +2608,7 @@
                 url: '/amazon-review-disc',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                data: { rules: rules, max_reviews: amzReviewDiscMax, _token: amzPefCsrf() },
+                data: { rules: rules, max_reviews: amzReviewDiscMax, no_reviews_no_discount: amzNoReviewsNoDiscount ? 1 : 0, _token: amzPefCsrf() },
             }).then(function(res) {
                 if (res && Array.isArray(res.rules)) {
                     amzReviewDiscRules = res.rules.map(function(r) {
@@ -2597,6 +2616,9 @@
                     }).filter(Boolean);
                     if (isFinite(Number(res.max_reviews)) && Number(res.max_reviews) > 0) {
                         amzReviewDiscMax = Number(res.max_reviews);
+                    }
+                    if (res.no_reviews_no_discount !== undefined && res.no_reviews_no_discount !== null) {
+                        amzNoReviewsNoDiscount = !!res.no_reviews_no_discount;
                     }
                     renderAmzReviewDiscModalTable();
                 }
@@ -2856,7 +2878,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'Review Disc. — star rating in Reviews (not the count in parentheses). Rating at or above Max (4) → 0%. INV=0 → 0%. Read-only.',
+                    headerTooltip: 'Review Disc. — star rating in Reviews (not the count in parentheses). No reviews → 0% when that option is on. Rating at or above Max (4) → 0%. INV=0 → 0%. Read-only.',
                     sorter: function(a, b, aRow, bRow) {
                         const av = computeAmzReviewDiscountPct(aRow.getData()) || 0;
                         const bv = computeAmzReviewDiscountPct(bRow.getData()) || 0;
@@ -2872,7 +2894,8 @@
                             ? Number(d.STANDARD_PRICE)
                             : (Number(d.price) || 0);
                         const dollars = (pct > 0 && base > 0) ? amzPefRound2(base * (pct / 100)) : 0;
-                        const tip = (count > 0 ? ('rating ' + count.toFixed(1)) : 'no rating')
+                        const qty = amzPefReviewQty(d);
+                        const tip = (amzNoReviewsNoDiscount && !(qty > 0) ? 'no reviews → no discount' : (count > 0 ? ('rating ' + count.toFixed(1)) : 'no rating'))
                             + ' → discount ' + (pct || 0) + '%'
                             + (count >= (Number(amzReviewDiscMax) || AMZ_REVIEW_DISC_MAX_DEFAULT)
                                 ? (' (at or above max ' + (amzReviewDiscMax || AMZ_REVIEW_DISC_MAX_DEFAULT) + ')')

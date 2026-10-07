@@ -276,6 +276,20 @@
             border: 1px solid #eef2f7;
         }
         #amzStdPrcModal .amz-sp-max label { font-size: 11px; font-weight: 700; color: #64748b; letter-spacing: 0.03em; text-transform: uppercase; margin: 0; }
+        #amzStdPrcModal .amz-sp-norev {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: -2px 0 8px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            background: #f8fafc;
+            border: 1px solid #eef2f7;
+            font-size: 12px;
+            font-weight: 600;
+            color: #334155;
+        }
+        #amzStdPrcModal .amz-sp-norev input { margin: 0; }
         #amzStdPrcModal .amz-sp-del {
             width: 22px;
             height: 22px;
@@ -371,6 +385,10 @@
                                 <label for="amz-sp-review-max">Max reviews</label>
                                 <input type="number" id="amz-sp-review-max" class="form-control form-control-sm amz-sp-input" min="1" step="1" value="4" title="No review discount when reviews are this value or higher">
                             </div>
+                            <label class="amz-sp-norev" for="amz-sp-no-reviews-no-disc">
+                                <input type="checkbox" id="amz-sp-no-reviews-no-disc" checked>
+                                No reviews, no discount
+                            </label>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0">
                                     <thead class="table-light">
@@ -700,6 +718,7 @@
                 cvr: cvr,
                 reviews: reviews,
                 reviewMax: reviewMax,
+                noReviewsNoDiscount: $('#amz-sp-no-reviews-no-disc').is(':checked'),
             };
         }
         function amzStdRangeRow(prefix, rule) {
@@ -739,6 +758,8 @@
             amzStdPaintRanges('#amz-sp-rev-tbody', 'amz-sp-rev', reviews);
             const maxRev = (typeof amzReviewDiscMax !== 'undefined') ? amzReviewDiscMax : 4;
             $('#amz-sp-review-max').val(maxRev);
+            const noRev = (typeof amzNoReviewsNoDiscount === 'undefined') ? true : !!amzNoReviewsNoDiscount;
+            $('#amz-sp-no-reviews-no-disc').prop('checked', noRev);
             amzStdPaintCvr(amzStdCvrCfg);
             amzStdRefreshModal();
         }
@@ -1044,6 +1065,7 @@
             ageCounts.none = 0;
             draft.reviews.forEach(function(r, i) { revCounts['r' + i] = 0; });
             revCounts.none = 0;
+            revCounts.noreviews = 0;
             const dollars = { age: 0, dil: 0, cvr: 0, rev: 0 };
             const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0 };
             const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, all: 0 };
@@ -1069,15 +1091,21 @@
                 if (ageIdx >= 0) ageCounts['a' + ageIdx] += 1;
                 else ageCounts.none += 1;
                 const reviews = (typeof amzPefReviewCount === 'function') ? amzPefReviewCount(d) : 0;
+                const reviewQty = parseFloat(d && d.amz_review_count);
+                const noReviews = !(isFinite(reviewQty) && reviewQty > 0);
                 let revIdx = -1;
-                if (reviews > 0 && reviews < draft.reviewMax) {
+                if (draft.noReviewsNoDiscount && noReviews) {
+                    revCounts.noreviews += 1;
+                } else if (reviews > 0 && reviews < draft.reviewMax) {
                     for (let i = 0; i < draft.reviews.length; i++) {
                         const rule = draft.reviews[i];
                         if (reviews >= rule.min && reviews <= rule.max) { revIdx = i; break; }
                     }
+                    if (revIdx >= 0) revCounts['r' + revIdx] += 1;
+                    else revCounts.none += 1;
+                } else {
+                    revCounts.none += 1;
                 }
-                if (revIdx >= 0) revCounts['r' + revIdx] += 1;
-                else revCounts.none += 1;
                 const band = amzStdCvrBand(d, draft.cvr);
                 cvrCounts[band] = (cvrCounts[band] || 0) + 1;
 
@@ -1134,7 +1162,11 @@
             }).concat([{ key: 'none', label: 'No age', color: '#cbd5e1' }]);
             const revSlices = draft.reviews.map(function(r, i) {
                 return { key: 'r' + i, label: r.min + '–' + r.max, color: AMZ_STD_PIE_COLORS[i % AMZ_STD_PIE_COLORS.length] };
-            }).concat([{ key: 'none', label: 'No disc', color: '#cbd5e1' }]);
+            });
+            if (draft.noReviewsNoDiscount) {
+                revSlices.push({ key: 'noreviews', label: 'No reviews', color: '#94a3b8' });
+            }
+            revSlices.push({ key: 'none', label: 'No disc', color: '#cbd5e1' });
             const cvrSlices = [
                 { key: 'down2', label: 'Down < ' + draft.cvr.down2_lt + '%', color: '#9f1239' },
                 { key: 'down', label: 'Down < ' + draft.cvr.down_lt + '%', color: '#dc3545' },
@@ -1238,6 +1270,7 @@
                 }).filter(Boolean);
             }
             if (typeof amzReviewDiscMax !== 'undefined') amzReviewDiscMax = draft.reviewMax;
+            if (typeof amzNoReviewsNoDiscount !== 'undefined') amzNoReviewsNoDiscount = !!draft.noReviewsNoDiscount;
             const status = $('#amz-sp-status');
             status.text('Saving…');
             const stdSave = $.ajax({
@@ -1250,7 +1283,7 @@
                 url: '/amazon-review-disc',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), rules: draft.reviews, max_reviews: draft.reviewMax },
+                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), rules: draft.reviews, max_reviews: draft.reviewMax, no_reviews_no_discount: draft.noReviewsNoDiscount ? 1 : 0 },
             });
             $.when(stdSave, revSave).done(function(stdRes) {
                 const res = stdRes && stdRes[0] ? stdRes[0] : stdRes;
@@ -1328,7 +1361,7 @@
                 $(this).closest('tr').remove();
                 amzStdRefreshModal();
             });
-            $(document).off('input.amzsp').on('input.amzsp', '#amzStdPrcModal input', function() {
+            $(document).off('input.amzsp change.amzsp').on('input.amzsp change.amzsp', '#amzStdPrcModal input', function() {
                 clearTimeout(bindAmzStdPrcUi._t);
                 bindAmzStdPrcUi._t = setTimeout(amzStdRefreshModal, 180);
             });

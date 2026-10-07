@@ -217,6 +217,44 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
     }
 
+    public function test_no_reviews_blocks_discount_when_star_rating_would_match(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 2.5,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 100,
+            'cvr' => 0.5,
+            'review_count' => 0,
+            'review_rating' => 2,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(0.0, $out['review_disc'], 0.001);
+        $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
+    }
+
+    public function test_star_rating_still_discounts_when_a_review_exists(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 2.5,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 100,
+            'cvr' => 0.5,
+            'review_count' => 1,
+            'review_rating' => 2,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(4.0, $out['review_disc'], 0.001);
+        $this->assertEqualsWithDelta(96.0, $out['sprice'], 0.001);
+    }
+
     public function test_cvr_up_above_10_adds_10_to_target_nroi(): void
     {
         $out = $this->compute([

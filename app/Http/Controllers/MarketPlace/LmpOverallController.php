@@ -285,6 +285,152 @@ class LmpOverallController extends Controller
     }
 
     /**
+     * Pieces sold in the last 30 days, split by the channel on each Shopify order.
+     */
+    public function channelSales(Request $request): JsonResponse
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        $incoming = $request->input('skus', []);
+        $skus = [];
+        if (is_array($incoming)) {
+            foreach ($incoming as $item) {
+                $item = trim((string) $item);
+                if ($item !== '' && ! str_starts_with(strtoupper($item), 'PARENT ')) {
+                    $skus[] = $item;
+                }
+            }
+        }
+        if ($skus === [] && $sku !== '' && ! str_starts_with(strtoupper($sku), 'PARENT ')) {
+            $skus = [$sku];
+        }
+        $skus = array_values(array_unique($skus));
+        if (count($skus) > 400) {
+            $skus = array_slice($skus, 0, 400);
+        }
+
+        [$start, $end] = ShopifySku::ovL30Window();
+        $from = $start->format('Y-m-d');
+        $to = $end->format('Y-m-d');
+        $channels = [];
+        $total = 0;
+
+        if ($skus !== [] && Schema::hasTable('shopify_raw_orders')) {
+            $compacts = [];
+            foreach ($skus as $one) {
+                $key = ShopifySku::compactSkuForLookup($one);
+                if ($key !== '') {
+                    $compacts[$key] = true;
+                }
+            }
+            $compacts = array_keys($compacts);
+            if ($compacts !== []) {
+                $expr = "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(sku, ' ', ''), '-', ''), '_', ''), '.', ''), '/', ''))";
+                $rows = DB::table('shopify_raw_orders')
+                    ->whereBetween('order_date', [$from, $to])
+                    ->where(function ($query) {
+                        $query->whereNull('financial_status')
+                            ->orWhereNotIn('financial_status', ['refunded', 'voided']);
+                    })
+                    ->whereNotNull('sku')
+                    ->where('sku', '!=', '')
+                    ->whereIn(DB::raw($expr), $compacts)
+                    ->get(['source_name', 'tags', 'quantity']);
+
+                foreach ($rows as $row) {
+                    $pieces = (int) ($row->quantity ?? 0);
+                    if ($pieces === 0) {
+                        continue;
+                    }
+                    $label = $this->channelLabelForSale((string) ($row->source_name ?? ''), (string) ($row->tags ?? ''));
+                    if (! isset($channels[$label])) {
+                        $channels[$label] = 0;
+                    }
+                    $channels[$label] += $pieces;
+                    $total += $pieces;
+                }
+            }
+        }
+
+        arsort($channels);
+        $list = [];
+        foreach ($channels as $label => $pieces) {
+            $list[] = ['channel' => $label, 'pieces' => $pieces];
+        }
+
+        return response()->json([
+            'success' => true,
+            'sku' => $sku,
+            'from' => $from,
+            'to' => $to,
+            'total' => $total,
+            'channels' => $list,
+        ]);
+    }
+
+    public function channelLabelForSale(string $source, string $tags): string
+    {
+        $src = strtolower(trim($source));
+        $tag = strtolower($tags);
+        $blob = $src.' '.$tag;
+
+        if (str_contains($blob, 'ebay')) {
+            if (str_contains($blob, 'ebay3') || str_contains($blob, 'ebay 3')) {
+                return 'eBay 3';
+            }
+            if (str_contains($blob, 'ebay2') || str_contains($blob, 'ebay 2')) {
+                return 'eBay 2';
+            }
+            if (str_contains($blob, 'ebay1') || str_contains($blob, 'ebay 1')) {
+                return 'eBay 1';
+            }
+
+            return 'eBay';
+        }
+
+        $map = [
+            'amazon' => 'Amazon',
+            'temu3' => 'Temu 3',
+            'temu2' => 'Temu 2',
+            'temu' => 'Temu',
+            'tiktok2' => 'TikTok 2',
+            'tiktok' => 'TikTok',
+            'shein' => 'Shein',
+            'walmart' => 'Walmart',
+            'wayfair' => 'Wayfair',
+            'aliexpress' => 'AliExpress',
+            'ali express' => 'AliExpress',
+            'alibaba' => 'Alibaba',
+            'newegg' => 'Newegg',
+            'bestbuy' => 'Best Buy',
+            'best buy' => 'Best Buy',
+            'macy' => "Macy's",
+            'reverb' => 'Reverb',
+            'faire' => 'Faire',
+            'doba' => 'Doba',
+            'mercari' => 'Mercari',
+            'depop' => 'Depop',
+            'topdawg' => 'TopDawg',
+            'purchasingpower' => 'Purchasing Power',
+            'purchasing power' => 'Purchasing Power',
+            'shopify_draft_order' => 'Shopify Wholesale',
+            'pos' => 'Shopify POS',
+            'web' => 'Shopify',
+            'online_store' => 'Shopify',
+            'shopify' => 'Shopify',
+        ];
+        foreach ($map as $needle => $label) {
+            if ($needle !== '' && str_contains($src, $needle)) {
+                return $label;
+            }
+        }
+        if ($src === '') {
+            return 'Shopify';
+        }
+
+        return trim($source) !== '' ? trim($source) : 'Shopify';
+    }
+
+    /**
      * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $children
      * @param  array<string, ?string>  $parentImages
      * @return array<string, mixed>

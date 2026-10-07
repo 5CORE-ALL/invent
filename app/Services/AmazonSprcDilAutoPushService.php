@@ -106,7 +106,8 @@ class AmazonSprcDilAutoPushService
                         $review['max_reviews'],
                         $cvrGroiAdj,
                         $adsPct,
-                        $stdPromo
+                        $stdPromo,
+                        (bool) ($review['no_reviews_no_discount'] ?? true)
                     );
                     if ($computed === null) {
                         $stats['skipped']++;
@@ -209,6 +210,7 @@ class AmazonSprcDilAutoPushService
      * @param  list<array{key:string,min:int,max:int,disc:float}>  $reviewRules
      * @param  array<string, mixed>|null  $cvrAdj
      * @param  array<string, mixed>  $stdPromo  Dil / Age / CVR up-down promotional % off Std Prc
+     * @param  bool  $noReviewsNoDiscount  No review count → 0 review discount
      * @return array{sprice:float,dil:float,groi:?float,nroi:?float,cvr_disc:float,review_disc:float,dil_disc:float,age_disc:float,sum_disc:float,dil_groi:bool,lmp_capped:bool,base:float}|null
      */
     public function computeTarget(
@@ -219,7 +221,8 @@ class AmazonSprcDilAutoPushService
         int $reviewMax,
         ?array $cvrAdj = null,
         ?float $adsPct = null,
-        array $stdPromo = []
+        array $stdPromo = [],
+        bool $noReviewsNoDiscount = true
     ): ?array {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
@@ -262,7 +265,11 @@ class AmazonSprcDilAutoPushService
         $dilGroi = $dilPrice !== null && $dilPrice > 0;
 
         $cvrDisc = $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []);
-        $reviewDisc = $this->discForReviews($reviews, $reviewRules, $reviewMax);
+        $reviewQty = (int) ($row['review_count'] ?? 0);
+        $hasStarRating = array_key_exists('review_rating', $row) && is_numeric($row['review_rating']);
+        $reviewDisc = ($noReviewsNoDiscount && $hasStarRating && $reviewQty <= 0)
+            ? 0.0
+            : $this->discForReviews($reviews, $reviewRules, $reviewMax);
         $dilDisc = $this->discForStdRange($dil, is_array($stdPromo['dil'] ?? null) ? $stdPromo['dil'] : []);
         $ageDisc = 0.0;
         if (isset($row['age_days']) && $row['age_days'] !== null && $row['age_days'] !== '') {
@@ -1044,7 +1051,7 @@ class AmazonSprcDilAutoPushService
     }
 
     /**
-     * @return array{max_reviews: int, rules: list<array{key:string,min:int,max:int,label:string,disc:float}>}
+     * @return array{max_reviews: int, no_reviews_no_discount: bool, rules: list<array{key:string,min:int,max:int,label:string,disc:float}>}
      */
     protected function loadReviewDiscRules(): array
     {
@@ -1055,7 +1062,7 @@ class AmazonSprcDilAutoPushService
         $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_review_vs_disc')->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         if (! is_array($saved) || $saved === []) {
-            return ['max_reviews' => 4, 'rules' => $defaults];
+            return ['max_reviews' => 4, 'no_reviews_no_discount' => true, 'rules' => $defaults];
         }
         $max = isset($saved['max_reviews']) && is_numeric($saved['max_reviews'])
             ? (int) $saved['max_reviews']
@@ -1063,6 +1070,8 @@ class AmazonSprcDilAutoPushService
         if ($max < 1) {
             $max = 4;
         }
+        $noReviewsNoDiscount = ! array_key_exists('no_reviews_no_discount', $saved)
+            || filter_var($saved['no_reviews_no_discount'], FILTER_VALIDATE_BOOLEAN);
         $items = isset($saved['rules']) && is_array($saved['rules']) ? $saved['rules'] : $saved;
         $rules = [];
         foreach ($items as $item) {
@@ -1096,6 +1105,7 @@ class AmazonSprcDilAutoPushService
 
         return [
             'max_reviews' => $max,
+            'no_reviews_no_discount' => $noReviewsNoDiscount,
             'rules' => $rules !== [] ? $rules : $defaults,
         ];
     }

@@ -2870,6 +2870,15 @@ class OverallAmazonController extends Controller
         return 4;
     }
 
+    private function amazonNoReviewsNoDiscountFromSaved($saved): bool
+    {
+        if (! is_array($saved) || ! array_key_exists('no_reviews_no_discount', $saved)) {
+            return true;
+        }
+
+        return filter_var($saved['no_reviews_no_discount'], FILTER_VALIDATE_BOOLEAN);
+    }
+
     /**
      * Load Amazon Review Disc rules (channel amazon_review_vs_disc).
      */
@@ -2885,6 +2894,7 @@ class OverallAmazonController extends Controller
                 'success' => true,
                 'is_default' => true,
                 'max_reviews' => 4,
+                'no_reviews_no_discount' => true,
                 'rules' => $defaults,
             ]);
         }
@@ -2893,6 +2903,7 @@ class OverallAmazonController extends Controller
             'success' => true,
             'is_default' => false,
             'max_reviews' => $this->amazonReviewDiscMaxFromSaved($saved),
+            'no_reviews_no_discount' => $this->amazonNoReviewsNoDiscountFromSaved($saved),
             'rules' => $this->amazonNormalizeReviewDiscRules($saved),
         ]);
     }
@@ -2907,9 +2918,13 @@ class OverallAmazonController extends Controller
         if ($maxReviews < 1) {
             $maxReviews = 4;
         }
+        $noReviewsNoDiscount = $request->exists('no_reviews_no_discount')
+            ? $request->boolean('no_reviews_no_discount')
+            : true;
 
         $payload = [
             'max_reviews' => $maxReviews,
+            'no_reviews_no_discount' => $noReviewsNoDiscount,
             'rules' => $rules,
         ];
 
@@ -2921,6 +2936,7 @@ class OverallAmazonController extends Controller
         return response()->json([
             'success' => true,
             'max_reviews' => $maxReviews,
+            'no_reviews_no_discount' => $noReviewsNoDiscount,
             'rules' => $rules,
         ]);
     }

@@ -80,7 +80,10 @@
         #lmp-overall-wrap .tabulator-row.lmp-overall-parent.tabulator-selected .tabulator-cell.lmp-diff-yellow {
             background: #ffc107 !important; color: #000 !important; font-weight: 700;
         }
-        #lmpOverallStdModal { z-index: 20000; }
+        #lmpOverallStdModal, #lmpOverallSoldModal { z-index: 20000; }
+        #lmpOverallSoldModal .modal-content { display: flex; flex-direction: column; }
+        #lmpOverallSoldModal .modal-body { flex: 1 1 auto; min-height: 0; }
+        .lmp-overall-sold { position: relative; z-index: 2; line-height: 1; }
         #lmpOverallLmpModal .modal-dialog { max-width: min(1680px, calc(100vw - 1rem)); }
         #lmpOverallLmpModal .lmp-overall-comp-img { width: 42px; height: 42px; object-fit: contain; background: #fff; border-radius: 4px; }
         #lmpOverallLmpModal tr.lmp-ignored-row { opacity: 0.55; background: #f1f3f5 !important; }
@@ -235,6 +238,20 @@
                     <div id="lmp-overall-wrap">
                         <div id="lmp-overall-table"></div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="lmpOverallSoldModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: min(1680px, calc(100vw - 1rem)); height: calc(100vh - 1.5rem);">
+            <div class="modal-content h-100">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title mb-0">Pricing Master CVR — <span id="lmp-overall-sold-sku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <iframe id="lmp-overall-sold-frame" title="Pricing Master CVR" style="width:100%;height:100%;border:0;background:#fff;"></iframe>
                 </div>
             </div>
         </div>
@@ -1483,6 +1500,24 @@
                         formatter: function (cell) { return countCell(cell.getValue()); },
                     },
                     {
+                        title: 'Sold',
+                        field: 'channel_sold',
+                        hozAlign: 'center',
+                        headerSort: false,
+                        width: 46,
+                        minWidth: 46,
+                        cssClass: 'lmp-header-flat',
+                        headerTooltip: 'Same Pricing Master CVR breakdown as /pricing-master-cvr',
+                        formatter: function (cell) {
+                            const data = cell.getRow().getData();
+                            const sku = data.sku || '';
+                            if (!sku || data.is_parent_summary) return '';
+                            return '<button type="button" class="btn btn-sm btn-link text-primary p-0 lmp-overall-sold" data-sku="'
+                                + escHtml(sku) + '" title="Pricing Master CVR">'
+                                + '<i class="fa fa-search" style="font-size:14px;pointer-events:none;"></i></button>';
+                        },
+                    },
+                    {
                         title: 'dil',
                         field: 'dil',
                         hozAlign: 'center',
@@ -1675,7 +1710,46 @@
                 updateMissingLmpCounts();
             }
 
+            const soldModalEl = document.getElementById('lmpOverallSoldModal');
+            const soldFrame = document.getElementById('lmp-overall-sold-frame');
+            function openSoldModal(sku) {
+                const row = sku ? table.getRow(sku) : null;
+                const data = row ? row.getData() : { sku: sku };
+                if (data.is_parent_summary) return;
+                const target = String(data.sku || sku || '').trim();
+                if (!target) return;
+                document.getElementById('lmp-overall-sold-sku').textContent = target;
+                const params = new URLSearchParams({
+                    sku: target,
+                    inv: String(Math.round(parseFloat(data.inv) || 0)),
+                    l30: String(Math.round(parseFloat(data.ovl30) || 0)),
+                    dil: String(parseFloat(data.dil) || 0),
+                    embed: '1',
+                });
+                if (data.image) params.set('image', data.image);
+                if (soldFrame) soldFrame.src = '/pricing-master-cvr?' + params.toString();
+                showBsModal(soldModalEl);
+            }
+            if (soldModalEl) {
+                soldModalEl.addEventListener('hidden.bs.modal', function () {
+                    if (soldFrame) soldFrame.src = 'about:blank';
+                });
+            }
+            window.addEventListener('message', function (event) {
+                if (!event.data || event.data.type !== 'lmp-overall-close-sold') return;
+                if (soldModalEl && window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(soldModalEl).hide();
+                }
+            });
+
             document.getElementById('lmp-overall-wrap').addEventListener('click', function (e) {
+                const soldBtn = e.target.closest('.lmp-overall-sold');
+                if (soldBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openSoldModal(soldBtn.getAttribute('data-sku'));
+                    return;
+                }
                 const btn = e.target.closest('.lmp-overall-edit');
                 if (!btn) return;
                 e.preventDefault();
