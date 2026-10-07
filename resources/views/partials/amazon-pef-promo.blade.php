@@ -639,18 +639,18 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
-                        Map <strong>review count</strong> ranges to <strong>Rev Disc.</strong> %
+                        Map the <strong>star rating</strong> (the 4.0 in Reviews, not the count in parentheses) to <strong>Rev Disc.</strong> %
                         (added to T Discounts / S PRC).
                         Defaults: <strong>1–2 → 4%</strong>, <strong>2–3 → 4%</strong>.
-                        Review count at or above <strong>Max reviews</strong> never takes a discount.
+                        A rating at or above <strong>Max reviews</strong> never takes a discount.
                         Add or edit ranges as needed.
                     </p>
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <label for="amz-review-disc-max" class="small fw-semibold mb-0 text-nowrap">Max reviews</label>
                         <input type="number" id="amz-review-disc-max" class="form-control form-control-sm"
                             min="1" step="1" value="4" style="width:72px;"
-                            title="Discount never applies when review count is this value or higher">
-                        <span class="small text-muted">No discount when reviews are this value or higher.</span>
+                            title="Discount never applies when the star rating is this value or higher">
+                        <span class="small text-muted">No discount when the star rating is this value or higher.</span>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-review-disc-table">
@@ -1239,8 +1239,10 @@
             const trend = (typeof amzStdCvrTrendDisc === 'function') ? (Number(amzStdCvrTrendDisc(d)) || 0) : 0;
             return amzPefRound2(Math.max(0, trend));
         }
+        /** Star rating in Reviews (4.0), not the count in parentheses. */
         function amzPefReviewCount(d) {
-            const n = parseInt(d && (d.amz_review_count != null ? d.amz_review_count : d.reviews), 10);
+            const raw = d && d.amz_avg_rating;
+            const n = parseFloat(raw);
             return isFinite(n) && n > 0 ? n : 0;
         }
         function amzNormalizeReviewDiscRule(r) {
@@ -1258,7 +1260,7 @@
                 disc: (isFinite(disc) && disc >= 0) ? disc : 0,
             };
         }
-        /** Review count → Rev Disc. % (INV=0 or count 0 or count >= max → 0). First matching from–to wins. */
+        /** Star rating → Rev Disc. % (INV=0, rating 0, or rating >= max → 0). First matching from–to wins. */
         function computeAmzReviewDiscountPct(d) {
             if (!amzPefIsChildRow(d)) return null;
             if (amzPefInv(d) === 0) return 0;
@@ -2852,7 +2854,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'Review Disc. — from Review Disc rules (1–2 / 2–3 = 4% by default). Reviews at or above Max (4) → 0%. INV=0 → 0%. Read-only.',
+                    headerTooltip: 'Review Disc. — star rating in Reviews (not the count in parentheses). Rating at or above Max (4) → 0%. INV=0 → 0%. Read-only.',
                     sorter: function(a, b, aRow, bRow) {
                         const av = computeAmzReviewDiscountPct(aRow.getData()) || 0;
                         const bv = computeAmzReviewDiscountPct(bRow.getData()) || 0;
@@ -2868,7 +2870,7 @@
                             ? Number(d.STANDARD_PRICE)
                             : (Number(d.price) || 0);
                         const dollars = (pct > 0 && base > 0) ? amzPefRound2(base * (pct / 100)) : 0;
-                        const tip = (count > 0 ? (count + ' review' + (count === 1 ? '' : 's')) : '0 reviews')
+                        const tip = (count > 0 ? ('rating ' + count.toFixed(1)) : 'no rating')
                             + ' → discount ' + (pct || 0) + '%'
                             + (count >= (Number(amzReviewDiscMax) || AMZ_REVIEW_DISC_MAX_DEFAULT)
                                 ? (' (at or above max ' + (amzReviewDiscMax || AMZ_REVIEW_DISC_MAX_DEFAULT) + ')')

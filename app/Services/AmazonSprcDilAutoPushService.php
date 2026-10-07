@@ -231,7 +231,9 @@ class AmazonSprcDilAutoPushService
         $ship = (float) ($row['ship'] ?? 0);
         $std = (float) ($row['standard_price'] ?? 0);
         $cvr = (float) ($row['cvr'] ?? 0);
-        $reviews = (int) ($row['review_count'] ?? 0);
+        $reviews = isset($row['review_rating']) && is_numeric($row['review_rating'])
+            ? (float) $row['review_rating']
+            : (float) ($row['review_count'] ?? 0);
         $lmp = (float) ($row['lmp'] ?? 0);
 
         $ads = $adsPct ?? $this->amazonAdsPercent();
@@ -435,6 +437,7 @@ class AmazonSprcDilAutoPushService
             $dv = $this->decodeValue($views[$sku]->value ?? null);
             $std = (float) ($dv['STANDARD_PRICE'] ?? 0);
             $lastOffer = AmazonSpApiService::lastPushedSaleBusinessMin($dv);
+            $rev = $reviewsBySku[$sku] ?? ['count' => 0, 'rating' => 0.0];
 
             $out[] = [
                 'sku' => $sku,
@@ -452,7 +455,8 @@ class AmazonSprcDilAutoPushService
                 'lp' => $lp,
                 'ship' => $ship,
                 'lmp' => (float) ($lmpBySku[$sku] ?? 0),
-                'review_count' => (int) ($reviewsBySku[$sku] ?? 0),
+                'review_count' => (int) ($rev['count'] ?? 0),
+                'review_rating' => (float) ($rev['rating'] ?? 0),
                 'age_days' => $ageDays->ageDays($sellerSku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => $std,
                 'sprice' => (float) ($dv['SPRICE'] ?? 0),
@@ -489,7 +493,7 @@ class AmazonSprcDilAutoPushService
 
     /**
      * @param  list<string>  $skuKeys
-     * @return array<string, int>
+     * @return array<string, array{count: int, rating: float}>
      */
     protected function loadReviewCounts(array $skuKeys): array
     {
@@ -504,13 +508,16 @@ class AmazonSprcDilAutoPushService
                     $q->where('channel', 'Amazon')->orWhereNull('channel')->orWhere('channel', '');
                 })
                 ->whereNotNull('sku')
-                ->get(['sku', 'review_count']);
+                ->get(['sku', 'review_count', 'product_rating']);
             foreach ($rows as $rr) {
                 $k = strtoupper(trim(str_replace("\xc2\xa0", ' ', (string) $rr->sku)));
                 if ($k === '') {
                     continue;
                 }
-                $out[$k] = (int) ($rr->review_count ?? 0);
+                $out[$k] = [
+                    'count' => (int) ($rr->review_count ?? 0),
+                    'rating' => is_numeric($rr->product_rating) ? (float) $rr->product_rating : 0.0,
+                ];
             }
         } catch (Throwable $e) {
             Log::warning('[AmazonSprcDilAutoPush] reviews load failed', ['error' => $e->getMessage()]);
@@ -612,9 +619,11 @@ class AmazonSprcDilAutoPushService
     }
 
     /**
+     * Star rating (4.0), not the count in parentheses.
+     *
      * @param  list<array{key:string,min:int,max:int,disc:float}>  $rules
      */
-    public function discForReviews(int $count, array $rules, int $maxReviews): float
+    public function discForReviews(float $count, array $rules, int $maxReviews): float
     {
         $cap = $maxReviews > 0 ? $maxReviews : 4;
         if (! ($count > 0) || $count >= $cap) {
