@@ -622,15 +622,14 @@
                     <input type="checkbox" role="switch" id="ch-promo-reload-push-switch"
                         {{ $channelPromoPageReloadPushEnabled ? 'checked' : '' }}>
                 </label>
-                <label class="ch-promo-reload-push-switch{{ $channelPromoIgnoreNegSnroi ? '' : ' is-off' }}"
+                <label class="ch-promo-reload-push-switch"
                     id="ch-promo-neg-snroi-wrap"
-                    title="When ON, Push Prc skips a SKU whose SNROI at the push price is below 0. The price still saves. When OFF, negative SNROI is pushed.">
+                    title="Push Prc and cron skip a SKU whose SNROI at the push price is below 0. The price still saves.">
                     <span class="ch-promo-reload-push-text">
                         Ignore neg SNROI
-                        <span class="ch-promo-reload-push-state" id="ch-promo-neg-snroi-label">{{ $channelPromoIgnoreNegSnroi ? 'On' : 'Off' }}</span>
+                        <span class="ch-promo-reload-push-state" id="ch-promo-neg-snroi-label">On</span>
                     </span>
-                    <input type="checkbox" role="switch" id="ch-promo-neg-snroi-switch"
-                        {{ $channelPromoIgnoreNegSnroi ? 'checked' : '' }}>
+                    <input type="checkbox" role="switch" id="ch-promo-neg-snroi-switch" checked disabled>
                 </label>
                 <div id="ch-promo-reload-push-progress" class="ch-promo-reload-push-progress"
                     aria-live="polite" title="S PRC push progress">
@@ -1218,7 +1217,7 @@
         }
         const CHANNEL_PROMO_TAKEHOME = {{ (float) ($channelPromoTakehome ?? 1) }};
         let chPromoPageReloadPushEnabled = @json($channelPromoPageReloadPushEnabled ?? true);
-        let chPromoIgnoreNegSnroi = @json($channelPromoIgnoreNegSnroi ?? false);
+        let chPromoIgnoreNegSnroi = true;
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
         const CHANNEL_PROMO_HIDE_PUSH_CPN = @json($channelPromoHidePushCpn);
         const CHANNEL_PROMO_USES_AMAZON_CVR_DISC = @json($channelPromoUsesAmazonCvrDisc ?? false);
@@ -3497,7 +3496,6 @@
             return (net / lp) * 100;
         }
         function chPromoSnroiPushBlocked(d, price) {
-            if (!chPromoIgnoreNegSnroi) return false;
             const n = chPromoSnroiAtPrice(d, price);
             return n != null && n < 0;
         }
@@ -11350,19 +11348,8 @@
         }
         function initChannelPromoPricingUi() {
             syncChPromoReloadPushSwitchUi();
+            chPromoIgnoreNegSnroi = true;
             syncChPromoNegSnroiSwitchUi();
-            $('#ch-promo-neg-snroi-switch').off('change.chpromoNegSnroi').on('change.chpromoNegSnroi', function() {
-                const on = !!this.checked;
-                saveChPromoIgnoreNegSnroi(on).done(function() {
-                    chPromoToast('success', on
-                        ? 'Negative SNROI is not pushed.'
-                        : 'Negative SNROI can be pushed.');
-                }).fail(function() {
-                    chPromoIgnoreNegSnroi = !on;
-                    syncChPromoNegSnroiSwitchUi();
-                    chPromoToast('error', 'Could not save the SNROI switch');
-                });
-            });
             $('#ch-promo-reload-push-switch').off('change.chpromoReload').on('change.chpromoReload', function() {
                 const on = !!this.checked;
                 const prev = chPromoPageReloadPushAllowed();

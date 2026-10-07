@@ -504,15 +504,14 @@
                     <input type="checkbox" role="switch" id="amz-reload-push-switch"
                         {{ $amazonPageReloadPushEnabled ? 'checked' : '' }}>
                 </label>
-                <label class="amz-reload-push-switch{{ $amazonIgnoreNegSnroi ? '' : ' is-off' }}"
+                <label class="amz-reload-push-switch"
                     id="amz-neg-snroi-wrap"
-                    title="When ON, Push Prc skips a SKU whose SNROI at the push price is below 0. The price still saves. When OFF, negative SNROI is pushed.">
+                    title="Push Prc and cron skip a SKU whose SNROI at the push price is below 0. The price still saves.">
                     <span class="amz-reload-push-text">
                         Ignore neg SNROI
-                        <span class="amz-reload-push-state" id="amz-neg-snroi-label">{{ $amazonIgnoreNegSnroi ? 'On' : 'Off' }}</span>
+                        <span class="amz-reload-push-state" id="amz-neg-snroi-label">On</span>
                     </span>
-                    <input type="checkbox" role="switch" id="amz-neg-snroi-switch"
-                        {{ $amazonIgnoreNegSnroi ? 'checked' : '' }}>
+                    <input type="checkbox" role="switch" id="amz-neg-snroi-switch" checked disabled>
                 </label>
                 <div id="amz-reload-push-progress" class="amz-reload-push-progress"
                     aria-live="polite" title="Amazon Push Prc progress">
@@ -951,7 +950,7 @@
             ];
         }
         let amzPageReloadPushEnabled = @json($amazonPageReloadPushEnabled ?? false);
-        let amzIgnoreNegSnroi = @json($amazonIgnoreNegSnroi ?? false);
+        let amzIgnoreNegSnroi = true;
 
         function amzPefCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -3961,7 +3960,7 @@
 
         /** Queue SKUs for background Push Prc (append-safe while a job is running). */
         function amzPushBlockedByNegSnroi(item) {
-            if (!amzIgnoreNegSnroi || !item || typeof amazonComputeNroiAtSp !== 'function') return false;
+            if (!item || typeof amazonComputeNroiAtSp !== 'function') return false;
             if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return false;
             const sku = String(item.sku || '').trim().toUpperCase();
             let d = null;
@@ -3980,7 +3979,7 @@
         }
         function queueAmzPushPrcItems(items, opts) {
             opts = opts || {};
-            if (amzIgnoreNegSnroi && Array.isArray(items)) {
+            if (Array.isArray(items)) {
                 items = items.filter(function(item) { return !amzPushBlockedByNegSnroi(item); });
             }
             if (!items || !items.length) {
@@ -4255,19 +4254,8 @@
 
         function initAmazonPefPromoUi() {
             syncAmzReloadPushSwitchUi();
+            amzIgnoreNegSnroi = true;
             syncAmzNegSnroiSwitchUi();
-            $('#amz-neg-snroi-switch').off('change.amzNegSnroi').on('change.amzNegSnroi', function() {
-                const on = !!this.checked;
-                saveAmzIgnoreNegSnroi(on).done(function() {
-                    amzPefToast('success', on
-                        ? 'Negative SNROI is not pushed.'
-                        : 'Negative SNROI can be pushed.');
-                }).fail(function() {
-                    amzIgnoreNegSnroi = !on;
-                    syncAmzNegSnroiSwitchUi();
-                    amzPefToast('error', 'Could not save the SNROI switch');
-                });
-            });
             $('#amz-reload-push-switch').off('change.amzReload').on('change.amzReload', function() {
                 const on = !!this.checked;
                 const prev = amzPageReloadPushAllowed();

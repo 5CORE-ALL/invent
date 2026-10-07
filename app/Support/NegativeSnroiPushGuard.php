@@ -8,7 +8,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 
 /**
- * Per-page switch: do not push a price whose SNROI is below 0.
+ * Never push a price whose SNROI is below 0. The price can still be saved.
  * SNROI% = ((price × margin − ship − LP − price × Ads%) / LP) × 100.
  */
 class NegativeSnroiPushGuard
@@ -67,7 +67,7 @@ class NegativeSnroiPushGuard
 
     public static function shouldSkip(string $channel, string $sku, float $price): bool
     {
-        if (! self::enabled($channel) || ! ($price > 0)) {
+        if (! ($price > 0)) {
             return false;
         }
         $cost = self::costForSku($sku);
