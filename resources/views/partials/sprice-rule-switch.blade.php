@@ -51,6 +51,12 @@
                 window._spriceActiveRule = rule;
                 try { localStorage.setItem(SPRICE_RULE_KEY, rule); } catch (e) { /* ignore */ }
                 spricePaintRuleSwitch();
+                if (typeof window.frRefreshSpriceCells === 'function') {
+                    try { window.frRefreshSpriceCells(); } catch (e) { /* ignore */ }
+                }
+                if (typeof window.shopifyB2bRefreshSpriceCells === 'function') {
+                    try { window.shopifyB2bRefreshSpriceCells(); } catch (e2) { /* ignore */ }
+                }
                 if (spriceRuleResolve) {
                     const done = spriceRuleResolve;
                     spriceRuleResolve = null;
@@ -72,6 +78,9 @@
                 }
                 if (typeof window.shopifyB2bRefreshSpriceCells === 'function') {
                     try { window.shopifyB2bRefreshSpriceCells(); } catch (e2) { /* ignore */ }
+                }
+                if (typeof window.frRefreshSpriceCells === 'function') {
+                    try { window.frRefreshSpriceCells(); } catch (e3) { /* ignore */ }
                 }
             }
             function spriceSetActiveRule(rule, opts) {

@@ -552,45 +552,46 @@
             }
             return 0;
         }
+        function frSpriceRule() {
+            if (typeof window.spriceActiveRule === 'function') return window.spriceActiveRule();
+            return 'std';
+        }
         function frRuleSprice(row, extra) {
             extra = extra || {};
             if (!row || frIsParentRow(row)) return 0;
+            if (frSpriceRule() === 'dil') {
+                if (typeof ebaySprcDilForRow === 'function') {
+                    const dil = Number(ebaySprcDilForRow(row)) || 0;
+                    if (dil > 0) return +dil.toFixed(2);
+                }
+                return 0;
+            }
+            // Std prc vs dil is ON: S PRC = Std × (1 − discounts). Ship is not used.
+            // Do not fall through to Sprc Dil — that was painting 100/50/30 targets beside this price.
             if (typeof window.chStdPriceForRow === 'function') {
                 const stdRule = Number(window.chStdPriceForRow(row)) || 0;
                 if (stdRule > 0) return +stdRule.toFixed(2);
             }
-            if (typeof chPromoLiveSprice === 'function') {
-                const live = Number(chPromoLiveSprice(row));
-                if (live > 0) return +live.toFixed(2);
-            }
-            if (typeof chPromoZeroSoldRuleSprice === 'function') {
-                const zeroSold = Number(chPromoZeroSoldRuleSprice(row));
-                if (zeroSold > 0) return +zeroSold.toFixed(2);
-            }
-            const passed = Number(extra.candidate != null ? extra.candidate : extra.sprice);
-            if (extra.use_passed_as_discounted && passed > 0) return +passed.toFixed(2);
-            return frDiscountedPrice(row);
+            return 0;
         }
         window.frRuleSprice = frRuleSprice;
+        function frFaireMargin(d) {
+            const raw = parseFloat(d && d._margin);
+            if (isFinite(raw) && raw > 0) return raw > 1 ? raw / 100 : raw;
+            return 0.75;
+        }
         function frFaireSpriceMetrics(d, sprice) {
             const lp = parseFloat(d && d.lp) || 0;
-            const margin = parseFloat(d && d._margin) || 0.75;
+            const margin = frFaireMargin(d);
             const s = parseFloat(sprice) || 0;
+            const profit = (s * margin) - lp;
             return {
-                sgpft: s > 0 ? Math.round(((s * margin - lp) / s) * 100) : 0,
-                sroi: lp > 0 ? Math.round(((s * margin - lp) / lp) * 100) : 0,
+                sgpft: s > 0 ? Math.round((profit / s) * 100) : 0,
+                sroi: lp > 0 ? Math.round((profit / lp) * 100) : 0,
             };
         }
-        /** Dil slab target after CVR. Faire Ads% = 0, so SGROI and SNROI both equal this. */
-        function frFaireRuleTargetPct(d) {
-            if (typeof ebayDilGroiTargetGroi !== 'function') return null;
-            const target = ebayDilGroiTargetGroi(d);
-            if (target == null || !isFinite(Number(target))) return null;
-            return Math.round(Number(target));
-        }
+        /** ROI of the Sprice column. Ship is not in the profit. Ads% is 0, so SNROI = SGROI. */
         function frFaireShownRoi(d) {
-            const target = frFaireRuleTargetPct(d);
-            if (target != null) return target;
             const sprice = (typeof frRowSpriceForAlert === 'function') ? frRowSpriceForAlert(d) : 0;
             if (!(sprice > 0)) return parseFloat(d && d.sroi) || 0;
             return frFaireSpriceMetrics(d, sprice).sroi;
@@ -647,6 +648,15 @@
         }
         window.frDisplayedSprice = frDisplayedSprice;
         window.frPushSprice = frPushSprice;
+        function frRefreshSpriceCells() {
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+            try {
+                (table.getRows('visible') || []).forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e2) { /* ignore */ }
+        }
+        window.frRefreshSpriceCells = frRefreshSpriceCells;
         function frListingPrice(data) {
             data = frRowData(data);
             if (!data) return 0;
@@ -2515,7 +2525,7 @@
                     {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editable: false,
-                        headerTooltip: 'Not editable. S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. Dil-matching slab, including when AL30 = 0. Otherwise Std × (1 − CVR%/100). Ship not used. No LMP cap. Blue triangle = S PRC ≠ Price.',
+                        headerTooltip: 'Not editable. The ON switch fills this column. Sprc Dil: (LP × (1 + target%/100)) / margin. Std prc vs dil: Std × (1 − discounts). Ship not used. Blue triangle = S PRC ≠ Price.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -2537,7 +2547,7 @@
                         sorter: function(a, b, aRow, bRow) {
                             return frFaireShownRoi(aRow.getData()) - frFaireShownRoi(bRow.getData());
                         },
-                        headerTooltip: 'SGROI from Sprc Dil. Faire Ads% = 0, so SGROI = SNROI = the Dil Target NROI (Ship not used).',
+                        headerTooltip: 'SGROI of the Sprice column. ((S PRC × margin − LP) / LP) × 100. Ship not used. Faire Ads% = 0, so SNROI = SGROI.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2549,7 +2559,7 @@
                         sorter: function(a, b, aRow, bRow) {
                             return frFaireShownRoi(aRow.getData()) - frFaireShownRoi(bRow.getData());
                         },
-                        headerTooltip: 'SNROI = Dil Target NROI. S PRC is back-solved so this matches the slab. Faire Ads% = 0, so SNROI = SGROI. Ship not used.',
+                        headerTooltip: 'SNROI of the Sprice column. Faire Ads% = 0, so SNROI = SGROI. Ship not used.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
