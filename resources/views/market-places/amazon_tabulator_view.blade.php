@@ -920,6 +920,41 @@
         </div>
     </div>
 
+    <!-- Std Prc editor (magnifying glass). Std NROI% and Std NPFT% follow the typed price. -->
+    <div class="modal fade" id="stdPrcEditModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title mb-0">Std Price — <span id="stdPrcEditSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-4">
+                            <label class="form-label mb-1 small fw-bold" for="stdPrcEditInput">Std Prc</label>
+                            <input type="number" class="form-control form-control-sm text-end fw-bold" id="stdPrcEditInput"
+                                step="0.01" min="0.01" placeholder="0.00" autocomplete="off">
+                        </div>
+                        <div class="col-4">
+                            <div class="form-label mb-1 small fw-bold">Std NROI%</div>
+                            <div id="stdPrcEditNroi" class="form-control form-control-sm bg-light fw-bold text-center" title="((Std Prc × 0.70 − ship − LP) / LP) × 100">—</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="form-label mb-1 small fw-bold">Std NPFT%</div>
+                            <div id="stdPrcEditNpft" class="form-control form-control-sm bg-light fw-bold text-center" title="((Std Prc × 0.70 − ship − LP) / Std Prc) × 100">—</div>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Saves Std Prc for this SKU and its Sku Link LMP siblings.</div>
+                    <div class="small mt-1" id="stdPrcEditMsg"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="stdPrcEditSave">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- LMP Competitors Modal -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -2696,9 +2731,109 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof r.reformat === 'function') r.reformat();
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
+        }
+
+        let stdPrcEditState = { sku: '', rowData: null, lastSaved: null };
+
+        function refreshStdPrcEditMetrics() {
+            const sp = parseFloat($('#stdPrcEditInput').val());
+            const row = stdPrcEditState.rowData;
+            const nroi = amazonModalNroiAtStd(sp, row);
+            const npft = amazonModalNpftAtStd(sp, row);
+            $('#stdPrcEditNroi').html(nroi === null ? '<span class="text-muted">—</span>' : amazonModalNroiColoredHtml(nroi));
+            $('#stdPrcEditNpft').html(npft === null ? '<span class="text-muted">—</span>' : amazonModalNpftColoredHtml(npft));
+        }
+
+        function openStdPrcEditModal(sku) {
+            const key = String(sku || '').trim();
+            if (!key) return;
+            const row = getAmazonTabulatorRowDataBySku(key);
+            stdPrcEditState.sku = key;
+            stdPrcEditState.rowData = row || null;
+            let sp = null;
+            if (row) {
+                const std = parseFloat(row.STANDARD_PRICE);
+                if (isFinite(std) && std > 0) sp = std;
+            }
+            stdPrcEditState.lastSaved = sp;
+            $('#stdPrcEditSku').text(key);
+            $('#stdPrcEditMsg').text('');
+            $('#stdPrcEditInput').val(sp != null ? sp.toFixed(2) : '');
+            refreshStdPrcEditMetrics();
+            const el = document.getElementById('stdPrcEditModal');
+            if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+            bootstrap.Modal.getOrCreateInstance(el).show();
+            setTimeout(function() {
+                const input = document.getElementById('stdPrcEditInput');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }, 200);
+        }
+
+        function saveStdPrcEditModal(closeAfter) {
+            const sku = stdPrcEditState.sku;
+            const sp = parseFloat($('#stdPrcEditInput').val());
+            if (!sku || !isFinite(sp) || sp <= 0) return;
+            if (stdPrcEditState.lastSaved != null && Math.abs(stdPrcEditState.lastSaved - sp) < 0.0001) {
+                if (closeAfter) {
+                    const el = document.getElementById('stdPrcEditModal');
+                    if (el && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        bootstrap.Modal.getOrCreateInstance(el).hide();
+                    }
+                }
+                return;
+            }
+            stdPrcEditState.lastSaved = sp;
+            $('#stdPrcEditMsg').text('Saving…');
+            $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    sku: sku,
+                    sprice: sp,
+                    is_standard_price: 1
+                },
+                success: function(response) {
+                    const std = parseFloat(response.data);
+                    const saved = (isFinite(std) && std > 0) ? std : sp;
+                    stdPrcEditState.lastSaved = saved;
+                    const primary = applyStandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                    if (primary) stdPrcEditState.rowData = primary.getData();
+                    refreshStdPrcEditMetrics();
+                    if (typeof amzScheduleRuleSpriceSync === 'function') {
+                        amzScheduleRuleSpriceSync({ force: true, delay: 200 });
+                    }
+                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                    $('#stdPrcEditMsg').text(n > 1 ? ('Saved for ' + n + ' linked SKUs') : 'Saved');
+                    if (typeof showToast === 'function') {
+                        showToast('success', n > 1
+                            ? ('Std Prc saved for ' + n + ' linked SKUs')
+                            : 'Std Prc saved');
+                    }
+                    if (closeAfter) {
+                        const el = document.getElementById('stdPrcEditModal');
+                        if (el && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                            bootstrap.Modal.getOrCreateInstance(el).hide();
+                        }
+                    }
+                },
+                error: function() {
+                    stdPrcEditState.lastSaved = null;
+                    $('#stdPrcEditMsg').text('Failed to save');
+                    if (typeof showToast === 'function') {
+                        showToast('error', 'Failed to save Std Prc');
+                    }
+                }
+            });
         }
 
         function saveLmpModalSpToGrid() {
@@ -4403,7 +4538,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: "number",
-                        headerTooltip: "Standard Price. Not editable here. Magnifying glass opens the LMP model to edit Std Prc. Orange triangle = LMP is above Std Prc.",
+                        headerTooltip: "Standard Price. Not editable here. Magnifying glass opens Std Prc, Std NROI%, and Std NPFT%. Orange triangle = LMP is above Std Prc.",
                         width: 108,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -4413,7 +4548,7 @@
                             const std = parseFloat(value) || 0;
                             const sku = rowData['(Child) sku'] || '';
                             const searchBtn = sku
-                                ? `<button type="button" class="btn btn-sm p-0 open-std-prc-modal" data-sku="${escAttr(sku)}" title="Edit Std Prc" style="border:none;background:none;color:#0d6efd;line-height:1;"><i class="fa fa-search"></i></button>`
+                                ? `<button type="button" class="btn btn-sm p-0 open-std-prc-modal" data-sku="${escAttr(sku)}" title="Edit Std Prc, Std NROI%, Std NPFT%" style="border:none;background:none;color:#0d6efd;line-height:1;"><i class="fa fa-search"></i></button>`
                                 : '';
                             if (!value || std <= 0) {
                                 return searchBtn || '';
@@ -4433,8 +4568,7 @@
                                 const rowData = cell.getRow().getData() || {};
                                 const sku = btn.getAttribute('data-sku') || rowData['(Child) sku'] || '';
                                 if (sku) {
-                                    const linked = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
-                                    loadCompetitorsModal(sku, linked);
+                                    openStdPrcEditModal(sku);
                                 }
                                 return false;
                             }
@@ -7309,9 +7443,19 @@
                 e.stopPropagation();
                 const sku = $(this).attr('data-sku') || $(this).data('sku');
                 if (!sku) return;
-                const row = getAmazonTabulatorRowDataBySku(sku);
-                const linkedSkus = (row && Array.isArray(row.linked_lmp_skus)) ? row.linked_lmp_skus : [];
-                loadCompetitorsModal(sku, linkedSkus);
+                openStdPrcEditModal(sku);
+            });
+            $(document).on('input', '#stdPrcEditInput', function() {
+                refreshStdPrcEditMetrics();
+            });
+            $(document).on('keydown', '#stdPrcEditInput', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveStdPrcEditModal(true);
+                }
+            });
+            $(document).on('click', '#stdPrcEditSave', function() {
+                saveStdPrcEditModal(true);
             });
 
             $(document).on('click', '.view-lmp-competitors', function(e) {
