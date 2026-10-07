@@ -533,16 +533,18 @@ class OverallAmazonController extends Controller
             $allLmpEntries = AmazonSkuCompetitor::applyIgnoreToSameAsins($allLmpEntries);
             $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
 
-            $row['lmp_entries'] = $allLmpEntries
+            $mappedLmpEntries = $allLmpEntries
                 ->map(fn ($entry) => $this->mapAmazonLmpEntry($entry, $lmpIgnoredIds, false))
                 ->values()
                 ->all();
-            $row['lmp_entries_total'] = count($row['lmp_entries']);
+            $row['lmp_entries_total'] = count($mappedLmpEntries);
+            // Grid stays light: L1 price + count only. The LMP modal loads the list.
+            $row['lmp_entries'] = [];
 
-            // L1 from the same mapped entries the grid receives (skip ignored).
+            // L1 from the mapped entries (skip ignored). lmp_price is already landed.
             $lowestMapped = null;
             $lowestLanded = null;
-            foreach ($row['lmp_entries'] as $mapped) {
+            foreach ($mappedLmpEntries as $mapped) {
                 if (! empty($mapped['ignored'])) {
                     continue;
                 }

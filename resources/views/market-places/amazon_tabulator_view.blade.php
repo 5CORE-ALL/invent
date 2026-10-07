@@ -1257,8 +1257,8 @@
             return row;
         }
 
-        // Outer LMP = Model L1 from the same lmp_entries (DB ignored flags).
-        // Used by the LMP column, Diff column, S PRC cap, and Diff filter.
+        // Outer LMP = landed L1. The grid stores that price on the row.
+        // A loaded competitor list (after the LMP modal) overrides it.
         function lmpWithShipping(rowData) {
             if (!rowData) return 0;
             const entries = rowData.lmp_entries || [];
@@ -1267,13 +1267,7 @@
                 return fromEntries.l1 != null && fromEntries.l1 > 0 ? fromEntries.l1 : 0;
             }
             const base = parseFloat(rowData.lmp_price || 0) || 0;
-            if (!base || base <= 0) return base;
-            let shipCost = 0;
-            if (rowData.lmp_delivery) {
-                const m = String(rowData.lmp_delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
-                if (m) shipCost = parseFloat(m[1].replace(/,/g, '')) || 0;
-            }
-            return base + shipCost;
+            return base > 0 ? base : 0;
         }
 
         /** Same test as LMP column red: INV > 0 and Price > landed L1. */
