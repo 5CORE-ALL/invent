@@ -6,8 +6,9 @@ use App\Models\ChannelTabulatorColumnSetting;
 
 /**
  * S PRC from a channel's saved Std prc vs dil slabs.
- * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review + Buss + 0 Sold) / 100).
+ * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review + Buss + 0 Sold + ROI) / 100).
  * Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
+ * ROI disc uses GROI% at the current listing price.
  * Used by the unattended apply commands. The page does not have to be open.
  */
 class StdPrcVsDilPricer
@@ -19,7 +20,7 @@ class StdPrcVsDilPricer
     /** @var array<string, self> */
     private static array $cache = [];
 
-    /** @param array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int,buss?:list<array<string,float>>,zero_sold_disc?:float} $rules */
+    /** @param array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int,buss?:list<array<string,float>>,roi?:list<array<string,float>>,zero_sold_disc?:float} $rules */
     public function __construct(private array $rules, private string $channel = '') {}
 
     public static function forChannel(string $channel): self
@@ -39,6 +40,7 @@ class StdPrcVsDilPricer
             'reviews' => self::ranges($saved['reviews'] ?? null, $defaults['reviews']),
             'review_max' => is_numeric($saved['review_max'] ?? null) ? max(1, (int) $saved['review_max']) : $defaults['review_max'],
             'buss' => self::ranges($saved['buss'] ?? null, $defaults['buss']),
+            'roi' => self::ranges($saved['roi'] ?? null, $defaults['roi']),
             'zero_sold_disc' => self::discPercent($saved['zero_sold_disc'] ?? null),
         ];
 
@@ -69,10 +71,14 @@ class StdPrcVsDilPricer
         $cvrDisc = self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60), $std);
         $reviewDisc = self::scaleRuleDisc($this->reviewDisc($reviews), $std);
         $bussDisc = $this->rangeDisc($std, $this->rules['buss'] ?? []);
+        $roi = $this->roiPct($row);
+        $roiDisc = $roi === null
+            ? 0.0
+            : self::scaleRuleDisc($this->rangeDisc($roi, $this->rules['roi'] ?? [], true), $std);
         $zeroSoldDisc = $this->isZeroSold($row)
             ? self::scaleRuleDisc((float) ($this->rules['zero_sold_disc'] ?? 0), $std)
             : 0.0;
-        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc));
+        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $roiDisc));
         $price = round($std * (1 - $sum / 100), 2);
 
         return $price > 0 ? $price : null;
@@ -160,11 +166,43 @@ class StdPrcVsDilPricer
     }
 
     /**
+     * GROI% at the current listing price. Shopify B2B excludes ship, matching the page column.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function roiPct(array $row): ?float
+    {
+        foreach (['roi', 'groi', 'GROI%'] as $key) {
+            if (isset($row[$key]) && is_numeric($row[$key])) {
+                return (float) $row[$key];
+            }
+        }
+        $price = (float) ($row['live'] ?? $row['price'] ?? $row['Price'] ?? 0);
+        $lp = (float) ($row['lp'] ?? $row['LP'] ?? $row['LP_productmaster'] ?? 0);
+        if (! ($price > 0) || ! ($lp > 0)) {
+            return null;
+        }
+        $margin = (float) ($row['margin'] ?? $row['_margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0)) {
+            $margin = $this->channel === 'shopify_b2b' ? 0.95 : 0.0;
+        }
+        if (! ($margin > 0)) {
+            return null;
+        }
+        $ship = $this->channel === 'shopify_b2b' ? 0.0 : (float) ($row['ship'] ?? $row['Ship'] ?? 0);
+
+        return ((($price * $margin) - $ship - $lp) / $lp) * 100;
+    }
+
+    /**
      * @param  list<array<string, float>>  $rules
      */
-    private function rangeDisc(float $value, array $rules): float
+    private function rangeDisc(float $value, array $rules, bool $allowNegative = false): float
     {
-        if ($value < 0 || $rules === []) {
+        if ($rules === [] || (! $allowNegative && $value < 0)) {
             return 0.0;
         }
         $last = count($rules) - 1;
@@ -331,6 +369,13 @@ class StdPrcVsDilPricer
                 ['min' => 0, 'max' => 15, 'disc' => 0],
                 ['min' => 15, 'max' => 50, 'disc' => 0],
                 ['min' => 50, 'max' => 9999, 'disc' => 0],
+            ],
+            'roi' => [
+                ['min' => -9999, 'max' => 0, 'disc' => 0],
+                ['min' => 0, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 75, 'disc' => 0],
+                ['min' => 75, 'max' => 125, 'disc' => 0],
+                ['min' => 125, 'max' => 9999, 'disc' => 0],
             ],
             'zero_sold_disc' => 0,
         ];

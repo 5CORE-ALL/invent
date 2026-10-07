@@ -159,6 +159,46 @@ class StdPrcVsDilPricerTest extends TestCase
         ]));
     }
 
+    public function test_roi_discount_uses_groi_slabs_and_halves_under_15(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'roi' => [
+                ['min' => 0, 'max' => 50, 'disc' => 10],
+                ['min' => 50, 'max' => 9999, 'disc' => 2],
+            ],
+        ], 'shopify_b2b');
+
+        // Price $20 × 0.95 − LP $10 = GROI 90% → 2%. $100 × 0.98 = $98.
+        $this->assertSame(98.0, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 100,
+            'live' => 20,
+            'lp' => 10,
+            'margin' => 0.95,
+        ]));
+        // Price $12 × 0.95 − $10 = GROI 14% → 10%. $100 × 0.90 = $90.
+        $this->assertSame(90.0, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 100,
+            'live' => 12,
+            'lp' => 10,
+            'margin' => 0.95,
+        ]));
+        // Std under $15 halves the 10% ROI disc. $10 × 0.95 = $9.50.
+        $this->assertSame(9.5, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 10,
+            'live' => 12,
+            'lp' => 10,
+            'margin' => 0.95,
+        ]));
+    }
+
     public function test_zero_inventory_skips(): void
     {
         $pricer = new StdPrcVsDilPricer([
