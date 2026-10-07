@@ -2931,11 +2931,12 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(10)
             ->appendOutputTo($log);
 
+        // Only writer of the /map-issues counts: the page reads them and never recounts itself.
         $schedule->command('mm:refresh-stale-mapping-counts')
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('mm-refresh-stale-mapping-counts')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
 
