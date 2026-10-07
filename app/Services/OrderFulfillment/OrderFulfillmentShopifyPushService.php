@@ -17,13 +17,13 @@ use Illuminate\Support\Facades\Schema;
  *  2. pushes the number to the originating marketplace when the marketplace
  *     order has no tracking yet (each channel service checks "already shipped").
  *
- * Progress is stored on order_fulfillment_trackings so every row is handled once
- * and failures retry with a cool-down instead of hammering the APIs.
+ * Progress is stored on order_fulfillment_trackings so every row is handled once.
+ * A row that has not reached Shopify is never given up on inside MAX_ROW_AGE_DAYS:
+ * it waits on shopify_next_try_at, with a longer wait after each failure, so a
+ * temporary Shopify error can never leave an order unfulfilled for good.
  */
 class OrderFulfillmentShopifyPushService
 {
-    public const MAX_SHOPIFY_ATTEMPTS = 16;
-
     /** Rows older than this are left alone (the page itself only shows recent orders). */
     public const MAX_ROW_AGE_DAYS = 30;
 
@@ -32,8 +32,17 @@ class OrderFulfillmentShopifyPushService
 
     public const MAX_CHANNEL_ATTEMPTS = 6;
 
-    /** Minutes between retries of a row that failed. */
+    /** Minutes between retries of a row that failed (also the wait for rows without shopify_next_try_at). */
     public const RETRY_COOLDOWN_MINUTES = 45;
+
+    /** Longest wait between retries of a temporary failure. */
+    public const MAX_RETRY_MINUTES = 360;
+
+    /** Wait between retries of a mismatch the data must change to fix (re-import, relink). */
+    public const MISMATCH_RETRY_MINUTES = 720;
+
+    /** Wait while Shopify has no copy / no open fulfillment order yet (no attempt counted). */
+    public const WAITING_RETRY_MINUTES = 30;
 
     /** Only rows resolved by the page from these sources are pushed. */
     public const PUSHABLE_SOURCES = ['veeqo', 'gofo', '4seller', 'channel', 'shopify', 'manual'];
@@ -128,32 +137,114 @@ class OrderFulfillmentShopifyPushService
             ->whereNotIn('mm_slug', self::EXCLUDED_SLUGS)
             ->whereIn('source', self::PUSHABLE_SOURCES)
             ->where('created_at', '>=', now()->subDays(self::MAX_ROW_AGE_DAYS))
-            ->whereNull('shopify_fulfilled_at')
-            ->where(function ($q) {
-                // Rows that gave up while Shopify had no open fulfillment, or
-                // while the seller SKU text differed, are tried again. A real
-                // multi-line SKU mismatch is marked "stopped" and stays stopped.
-                $q->where('shopify_push_attempts', '<', self::MAX_SHOPIFY_ATTEMPTS)
-                    ->orWhere('shopify_push_message', 'like', '%no open fulfillment orders%')
-                    ->orWhere('shopify_push_message', 'like', 'sku_mismatch:%');
-            })
-            ->where(function ($q) {
-                $q->whereNull('shopify_push_message')
-                    ->orWhere('shopify_push_message', 'not like', 'stopped %');
-            });
+            ->whereNull('shopify_fulfilled_at');
         if ($onlyOrderId === null || trim($onlyOrderId) === '') {
-            $query->where(function ($q) {
-                $q->whereNull('shopify_push_checked_at')
-                    ->orWhere('shopify_push_checked_at', '<', now()->subMinutes(self::RETRY_COOLDOWN_MINUTES));
-            });
+            $this->whereDue($query);
         }
         $this->applyTargetFilters($query, $onlySlug, $onlyOrderId);
 
-        // Newest orders first so today's / yesterday's orders are not stuck behind old retries.
+        // Never-tried rows first, then whichever has waited longest, so a pile of
+        // retries can never starve an order.
         return $query->orderByRaw('shopify_push_checked_at IS NULL DESC')
+            ->orderBy('shopify_push_checked_at')
             ->orderByDesc('id')
             ->limit(max(1, $limit))
             ->get();
+    }
+
+    /**
+     * Rows with tracking inside the push window, per marketplace: fulfilled on
+     * Shopify vs still waiting, and the reasons the waiting ones gave.
+     *
+     * @return array{
+     *   by_slug: array<string, array{fulfilled: int, waiting: int, due_now: int}>,
+     *   reasons: list<array{slug: string, reason: string, rows: int}>
+     * }
+     */
+    public function statusReport(): array
+    {
+        $report = ['by_slug' => [], 'reasons' => []];
+        if (! Schema::hasTable('order_fulfillment_trackings')) {
+            return $report;
+        }
+        self::ensureColumns();
+
+        $base = fn () => OrderFulfillmentTracking::query()
+            ->whereNotNull('tracking_number')
+            ->where('tracking_number', '!=', '')
+            ->whereNotIn('mm_slug', self::EXCLUDED_SLUGS)
+            ->whereIn('source', self::PUSHABLE_SOURCES)
+            ->where('created_at', '>=', now()->subDays(self::MAX_ROW_AGE_DAYS));
+
+        foreach ($base()->selectRaw('mm_slug, SUM(shopify_fulfilled_at IS NOT NULL) AS fulfilled, SUM(shopify_fulfilled_at IS NULL) AS waiting')
+            ->groupBy('mm_slug')->get() as $r) {
+            $report['by_slug'][(string) $r->mm_slug] = [
+                'fulfilled' => (int) $r->fulfilled,
+                'waiting' => (int) $r->waiting,
+                'due_now' => 0,
+            ];
+        }
+        $due = $base()->whereNull('shopify_fulfilled_at');
+        $this->whereDue($due);
+        foreach ($due->selectRaw('mm_slug, COUNT(*) AS n')->groupBy('mm_slug')->get() as $r) {
+            if (isset($report['by_slug'][(string) $r->mm_slug])) {
+                $report['by_slug'][(string) $r->mm_slug]['due_now'] = (int) $r->n;
+            }
+        }
+        ksort($report['by_slug']);
+
+        $reasons = [];
+        foreach ($base()->whereNull('shopify_fulfilled_at')->get(['mm_slug', 'shopify_push_message']) as $r) {
+            $key = (string) $r->mm_slug."\0".self::reasonLabel((string) ($r->shopify_push_message ?? ''));
+            $reasons[$key] = ($reasons[$key] ?? 0) + 1;
+        }
+        arsort($reasons);
+        foreach ($reasons as $key => $n) {
+            [$slug, $reason] = explode("\0", $key, 2);
+            $report['reasons'][] = ['slug' => $slug, 'reason' => $reason, 'rows' => $n];
+        }
+
+        return $report;
+    }
+
+    /** Push message with order-specific numbers removed, so rows group by cause. */
+    public static function reasonLabel(string $message): string
+    {
+        $message = trim($message);
+        if ($message === '') {
+            return 'not tried yet';
+        }
+        $message = (string) preg_replace('/[A-Z0-9]*\d[A-Z0-9-]{5,}/i', '#', $message);
+
+        return mb_strimwidth($message, 0, 90, '…');
+    }
+
+    protected function whereDue($query): void
+    {
+        $now = now();
+        $query->where(function ($q) use ($now) {
+            $q->where('shopify_next_try_at', '<=', $now)
+                ->orWhere(function ($legacy) use ($now) {
+                    $legacy->whereNull('shopify_next_try_at')
+                        ->where(function ($c) use ($now) {
+                            $c->whereNull('shopify_push_checked_at')
+                                ->orWhere('shopify_push_checked_at', '<', $now->copy()->subMinutes(self::RETRY_COOLDOWN_MINUTES));
+                        });
+                });
+        });
+    }
+
+    /**
+     * Minutes until the next Shopify attempt after the given number of failures.
+     */
+    public static function retryDelayMinutes(int $attempts, bool $mismatch = false): int
+    {
+        if ($mismatch) {
+            return self::MISMATCH_RETRY_MINUTES;
+        }
+        $steps = max(0, $attempts - 1);
+
+        return (int) min(self::MAX_RETRY_MINUTES, self::RETRY_COOLDOWN_MINUTES * (2 ** min($steps, 4)));
     }
 
     /**
@@ -216,12 +307,8 @@ class OrderFulfillmentShopifyPushService
         }
 
         if ($this->labels->autoFulfillBlocked($slug)) {
-            // Cooldown only (no attempt burned): re-enabling the switch lets the row fulfill later.
-            if (! $dryRun) {
-                $row->shopify_push_checked_at = now();
-                $row->shopify_push_message = mb_substr('Automatic Shopify fulfillment is turned off for '.$slug.'.', 0, 255);
-                $row->save();
-            }
+            // No attempt counted: re-enabling the switch lets the row fulfill on the next run.
+            $this->markWaiting($row, 'Automatic Shopify fulfillment is turned off for '.$slug.'.', $dryRun);
             $out['shopify'] = 'skipped';
             $out['message'] = 'auto-fulfill off for '.$slug;
 
@@ -235,20 +322,19 @@ class OrderFulfillmentShopifyPushService
             Log::warning('OrderFulfillmentShopifyPush: context failed', ['slug' => $slug, 'id' => $localId, 'error' => $e->getMessage()]);
         }
         if ($ctx === null) {
-            $this->markShopifyFailure($row, 'Marketplace '.$slug.' is not set up for label → Shopify.', true, $dryRun);
-            $out['message'] = 'unsupported marketplace';
+            $this->markShopifyFailure($row, 'Marketplace '.$slug.' order row not found for label → Shopify.', true, $dryRun);
+            $out['message'] = 'marketplace order row not found';
 
             return $out;
         }
 
         $shopifyOrderId = trim((string) ($ctx['shopify_order_id'] ?? ''));
         if ($shopifyOrderId === '' || str_starts_with($shopifyOrderId, 'manual')) {
-            // The Shopify copy is often imported hours later (queue backlog): wait without burning attempts.
-            if (! $dryRun) {
-                $row->shopify_push_checked_at = now();
-                $row->shopify_push_message = 'Not linked to a Shopify order yet.';
-                $row->save();
-            }
+            $shopifyOrderId = $this->unlinkedShopifyCopy($row, $slug, $ctx);
+        }
+        if ($shopifyOrderId === '') {
+            // The Shopify copy is often imported hours later (queue backlog): wait without counting an attempt.
+            $this->markWaiting($row, 'Not linked to a Shopify order yet.', $dryRun);
             $out['message'] = 'not linked to Shopify yet';
 
             return $out;
@@ -282,18 +368,12 @@ class OrderFulfillmentShopifyPushService
         $action = (string) ($result['action'] ?? '');
         $message = (string) ($result['message'] ?? '');
         if (! in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
-            $notOpenYet = str_contains(strtolower($message), 'no open fulfillment orders');
-            if ($notOpenYet && ! $dryRun) {
-                // Hold, schedule, or a 3PL request. Do not burn the attempt cap —
-                // the fulfillment order often opens later the same day.
-                $row->shopify_push_checked_at = now();
-                $row->shopify_push_message = mb_substr($action.': '.$message, 0, 255);
-                $row->save();
-            } elseif ($action === 'sku_mismatch') {
-                $this->markShopifyFailure($row, 'stopped sku_mismatch: '.$message, true, $dryRun);
+            if (str_contains(strtolower($message), 'no open fulfillment orders')) {
+                // Hold, schedule, or a 3PL request: the fulfillment order often opens later the same day.
+                $this->markWaiting($row, $action.': '.$message, $dryRun);
             } else {
-                $permanent = in_array($action, ['order_id_mismatch', 'order_id_required', 'sku_required', 'not_linked'], true);
-                $this->markShopifyFailure($row, $action.': '.$message, $permanent, $dryRun);
+                $mismatch = in_array($action, ['sku_mismatch', 'order_id_mismatch', 'order_id_required', 'sku_required', 'not_linked'], true);
+                $this->markShopifyFailure($row, $action.': '.$message, $mismatch, $dryRun);
             }
             $out['message'] = $action.': '.$message;
 
@@ -308,6 +388,7 @@ class OrderFulfillmentShopifyPushService
         $row->shopify_order_id = $shopifyOrderId;
         $row->shopify_fulfilled_at = now();
         $row->shopify_push_checked_at = now();
+        $row->shopify_next_try_at = null;
         $row->shopify_push_message = mb_substr($message, 0, 255);
         $row->save();
 
@@ -438,17 +519,59 @@ class OrderFulfillmentShopifyPushService
         return ['state' => $notImplemented ? 'skipped' : 'failed', 'message' => $row->channel_push_message];
     }
 
-    protected function markShopifyFailure(OrderFulfillmentTracking $row, string $message, bool $permanent, bool $dryRun): void
+    /**
+     * A failure counts an attempt and waits longer each time; it never stops the row.
+     */
+    protected function markShopifyFailure(OrderFulfillmentTracking $row, string $message, bool $mismatch, bool $dryRun): void
     {
         if ($dryRun) {
             return;
         }
-        $row->shopify_push_attempts = $permanent
-            ? self::MAX_SHOPIFY_ATTEMPTS
-            : min(self::MAX_SHOPIFY_ATTEMPTS, (int) $row->shopify_push_attempts + 1);
+        $attempts = min(250, (int) $row->shopify_push_attempts + 1);
+        $row->shopify_push_attempts = $attempts;
         $row->shopify_push_checked_at = now();
+        $row->shopify_next_try_at = now()->addMinutes(self::retryDelayMinutes($attempts, $mismatch));
         $row->shopify_push_message = mb_substr($message, 0, 255);
         $row->save();
+    }
+
+    protected function markWaiting(OrderFulfillmentTracking $row, string $message, bool $dryRun): void
+    {
+        if ($dryRun) {
+            return;
+        }
+        $row->shopify_push_checked_at = now();
+        $row->shopify_next_try_at = now()->addMinutes(self::WAITING_RETRY_MINUTES);
+        $row->shopify_push_message = mb_substr($message, 0, 255);
+        $row->save();
+    }
+
+    /**
+     * Shopify copy for a marketplace row that never got its Shopify id saved:
+     * the id found on an earlier run, else a Shopify search by the marketplace
+     * order id (verified against the copy's tags before it is used).
+     *
+     * @param  array<string, mixed>  $ctx
+     */
+    protected function unlinkedShopifyCopy(OrderFulfillmentTracking $row, string $slug, array $ctx): string
+    {
+        $known = trim((string) ($row->shopify_order_id ?? ''));
+        if ($known !== '' && ! str_starts_with($known, 'manual')) {
+            return $known;
+        }
+
+        $ids = is_array($ctx['marketplace_order_ids'] ?? null) ? $ctx['marketplace_order_ids'] : [];
+        $orderId = trim((string) $row->order_id);
+        if ($orderId !== '') {
+            $ids[] = $orderId;
+        }
+        try {
+            return (string) ($this->labels->findShopifyCopyForMarketplaceOrder($slug, $ids) ?? '');
+        } catch (\Throwable $e) {
+            Log::info('OrderFulfillmentShopifyPush: Shopify copy search failed', ['slug' => $slug, 'order' => $orderId, 'error' => $e->getMessage()]);
+
+            return '';
+        }
     }
 
     /**
@@ -466,19 +589,26 @@ class OrderFulfillmentShopifyPushService
 
     public static function ensureColumns(): void
     {
-        if (! Schema::hasTable('order_fulfillment_trackings')
-            || Schema::hasColumn('order_fulfillment_trackings', 'shopify_fulfilled_at')) {
+        if (! Schema::hasTable('order_fulfillment_trackings')) {
             return;
         }
-        Schema::table('order_fulfillment_trackings', function ($table) {
-            $table->string('shopify_order_id', 64)->nullable()->after('checked_at');
-            $table->timestamp('shopify_fulfilled_at')->nullable()->after('shopify_order_id');
-            $table->unsignedTinyInteger('shopify_push_attempts')->default(0)->after('shopify_fulfilled_at');
-            $table->timestamp('shopify_push_checked_at')->nullable()->after('shopify_push_attempts');
-            $table->string('shopify_push_message', 255)->nullable()->after('shopify_push_checked_at');
-            $table->timestamp('channel_pushed_at')->nullable()->after('shopify_push_message');
-            $table->unsignedTinyInteger('channel_push_attempts')->default(0)->after('channel_pushed_at');
-            $table->string('channel_push_message', 255)->nullable()->after('channel_push_attempts');
-        });
+        if (! Schema::hasColumn('order_fulfillment_trackings', 'shopify_fulfilled_at')) {
+            Schema::table('order_fulfillment_trackings', function ($table) {
+                $table->string('shopify_order_id', 64)->nullable()->after('checked_at');
+                $table->timestamp('shopify_fulfilled_at')->nullable()->after('shopify_order_id');
+                $table->unsignedTinyInteger('shopify_push_attempts')->default(0)->after('shopify_fulfilled_at');
+                $table->timestamp('shopify_push_checked_at')->nullable()->after('shopify_push_attempts');
+                $table->string('shopify_push_message', 255)->nullable()->after('shopify_push_checked_at');
+                $table->timestamp('channel_pushed_at')->nullable()->after('shopify_push_message');
+                $table->unsignedTinyInteger('channel_push_attempts')->default(0)->after('channel_pushed_at');
+                $table->string('channel_push_message', 255)->nullable()->after('channel_push_attempts');
+            });
+        }
+        if (! Schema::hasColumn('order_fulfillment_trackings', 'shopify_next_try_at')) {
+            Schema::table('order_fulfillment_trackings', function ($table) {
+                $table->timestamp('shopify_next_try_at')->nullable()->after('shopify_push_checked_at');
+                $table->index('shopify_next_try_at', 'of_tracking_next_try_idx');
+            });
+        }
     }
 }
