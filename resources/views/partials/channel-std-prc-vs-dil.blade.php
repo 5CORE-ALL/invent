@@ -1067,6 +1067,11 @@
             }
             return chain;
         }
+        function chStdOwnsSprice() {
+            if (typeof CHANNEL_PROMO_CHANNEL === 'undefined' || CHANNEL_PROMO_CHANNEL !== 'shopify_b2b') return true;
+            if (typeof window.shopifyB2bSpriceRule !== 'function') return true;
+            return window.shopifyB2bSpriceRule() === 'std';
+        }
         let chStdAutoApplied = false;
         let chStdAutoWaits = 0;
         function chStdScheduleAutoApply() {
@@ -1082,6 +1087,7 @@
                 if (chStdAutoApplied) return;
                 chStdAutoApplied = true;
                 chStdEnsureColumns();
+                if (!chStdOwnsSprice()) return;
                 const updates = chStdWritePrices(chStdDraftNow());
                 const redraw = function() {
                     if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') {
@@ -1117,6 +1123,12 @@
                 if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(0, Number(res.zero_sold_disc)));
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
+                if (!chStdOwnsSprice()) {
+                    $('#ch-sp-status').text('Saved. S PRC follows the ON rule.');
+                    chStdRefresh();
+                    chStdSaveHistory();
+                    return;
+                }
                 const updates = chStdWritePrices(draft);
                 const done = function() {
                     chStdAutoApplied = true;

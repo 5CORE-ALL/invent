@@ -626,6 +626,16 @@
 
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shopify_b2b'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2b'])
+                    <div class="d-inline-flex align-items-center gap-3 ms-1" id="b2b-sprice-rule-switch" title="Only the ON rule fills S PRC. Turning one ON turns the other OFF.">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="b2b-rule-dil-sw">
+                            <label class="form-check-label small" for="b2b-rule-dil-sw">Sprc Dil</label>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="b2b-rule-std-sw" checked>
+                            <label class="form-check-label small" for="b2b-rule-std-sw">Std prc vs dil</label>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -689,8 +699,91 @@
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2b'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
+    const SHOPIFY_B2B_SPRICE_RULE_KEY = 'shopify_b2b_sprice_rule';
+    function shopifyB2bSpriceRule() {
+        try {
+            const v = localStorage.getItem(SHOPIFY_B2B_SPRICE_RULE_KEY);
+            if (v === 'dil' || v === 'std') return v;
+        } catch (e) { /* keep default */ }
+        return 'std';
+    }
+    function shopifyB2bPaintSpriceRuleSwitch() {
+        const rule = shopifyB2bSpriceRule();
+        const dil = document.getElementById('b2b-rule-dil-sw');
+        const std = document.getElementById('b2b-rule-std-sw');
+        if (dil) dil.checked = rule === 'dil';
+        if (std) std.checked = rule === 'std';
+    }
+    function shopifyB2bRefreshSpriceCells() {
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+        try {
+            (table.getRows('visible') || []).forEach(function(row) {
+                try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+            });
+        } catch (e) { /* ignore */ }
+        if (typeof updateSummary === 'function') {
+            try { updateSummary(); } catch (e2) { /* ignore */ }
+        }
+    }
+    function shopifyB2bPersistActiveSprice() {
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+        const updates = [];
+        (table.getRows('all') || table.getRows() || []).forEach(function(row) {
+            const d = row.getData();
+            if (!d || isShopifyB2bParentRow(d)) return;
+            const sku = String(d['(Child) sku'] || '').trim();
+            if (!sku) return;
+            const price = shopifyB2bDisplayedSprice(d);
+            const patch = (typeof chPromoSpricePatch === 'function')
+                ? chPromoSpricePatch(price > 0 ? price : 0)
+                : { SPRICE: price > 0 ? price : 0, sprice: price > 0 ? price : 0 };
+            try { row.update(patch); } catch (e) { /* ignore */ }
+            if (price > 0) updates.push({ sku: sku, sprice: price });
+        });
+        shopifyB2bRefreshSpriceCells();
+        if (updates.length && typeof saveChannelSpriceBatch === 'function') {
+            const size = 200;
+            let chain = Promise.resolve();
+            for (let i = 0; i < updates.length; i += size) {
+                const chunk = updates.slice(i, i + size);
+                chain = chain.then(function() { return saveChannelSpriceBatch(chunk, { skip_push: 1, queue_push: false }); });
+            }
+        }
+    }
+    function shopifyB2bSetSpriceRule(rule) {
+        rule = rule === 'dil' ? 'dil' : 'std';
+        if (shopifyB2bSpriceRule() === rule) {
+            shopifyB2bPaintSpriceRuleSwitch();
+            return;
+        }
+        try { localStorage.setItem(SHOPIFY_B2B_SPRICE_RULE_KEY, rule); } catch (e) { /* ignore */ }
+        shopifyB2bPaintSpriceRuleSwitch();
+        shopifyB2bPersistActiveSprice();
+        if (typeof showToast === 'function') {
+            showToast(rule === 'dil' ? 'S PRC uses Sprc Dil' : 'S PRC uses Std prc vs dil', 'success');
+        }
+    }
+    window.shopifyB2bSpriceRule = shopifyB2bSpriceRule;
+    $(function() {
+        shopifyB2bPaintSpriceRuleSwitch();
+        $('#b2b-sprice-rule-switch').on('change', 'input', function() {
+            const picked = this.id === 'b2b-rule-dil-sw' ? 'dil' : 'std';
+            if (!this.checked) {
+                shopifyB2bSetSpriceRule(picked === 'dil' ? 'std' : 'dil');
+                return;
+            }
+            shopifyB2bSetSpriceRule(picked);
+        });
+    });
     function shopifyB2bDisplayedSprice(data) {
         if (!data || isShopifyB2bParentRow(data)) return 0;
+        if (shopifyB2bSpriceRule() === 'dil') {
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(data)) || 0;
+                if (dil > 0) return dil;
+            }
+            return 0;
+        }
         if (typeof window.chStdPriceForRow === 'function') {
             const stdRule = Number(window.chStdPriceForRow(data)) || 0;
             if (stdRule > 0) return stdRule;
@@ -2048,7 +2141,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Std Prc discounts, then Ship is subtracted. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil, or Std prc vs dil (Ship subtracted). Turning one ON turns the other OFF. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) {
