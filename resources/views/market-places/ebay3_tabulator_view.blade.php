@@ -2301,9 +2301,10 @@
             }
             return { color: 'yellow', tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText };
         }
+        /** Same alert as /ebay3/campaign-ads: red only after a failed push. A pending gap stays the yellow dot. */
         function ebay3TabBidAlertText(row) {
             const sync = ebay3TabBidSync(row);
-            if (!sync || sync.color === 'green') return '';
+            if (!sync || sync.color !== 'red') return '';
             return 'S Bid: ' + sync.tip;
         }
 
@@ -3014,7 +3015,7 @@
                     width: 56,
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Shown when C Bid does not match S Bid. Hover the mark for both percents. A running promoted listing only.",
+                    headerTooltip: "Shown only when the S Bid push failed. A pending gap stays the yellow dot on C Bid.",
                     formatter: function(cell) {
                         const tip = ebay3TabBidAlertText(cell.getRow().getData());
                         if (!tip) return '';
