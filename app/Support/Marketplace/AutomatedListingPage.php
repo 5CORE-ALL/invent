@@ -59,7 +59,7 @@ class AutomatedListingPage
         $listedMap = ChannelListingRegistry::loadListedIds($cfg, $skus);
         $idField = (string) ($cfg['id_field'] ?? 'listing_id');
 
-        return $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $listedMap, $idField) {
+        $rows = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $listedMap, $idField) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
 
@@ -111,5 +111,7 @@ class AutomatedListingPage
 
             return $item;
         })->values();
+
+        return LmpStdPrice::attach($rows);
     }
 }

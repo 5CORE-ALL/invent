@@ -9,6 +9,7 @@ use App\Models\EbayTwoDataView;
 use App\Models\Ebay2Metric;
 use App\Support\Marketplace\EbayTwoListingCounts;
 use App\Support\Marketplace\ListingCountsEngine;
+use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -97,7 +98,7 @@ class ListingEbayTwoController extends Controller
 
         return response()->json([
             'status' => 200,
-            'data' => $processedData
+            'data' => LmpStdPrice::attach($processedData),
         ]);
     }
 

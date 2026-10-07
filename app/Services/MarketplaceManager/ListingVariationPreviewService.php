@@ -25,6 +25,7 @@ class ListingVariationPreviewService
         private NeweggListingPublishService $newegg,
         private TopDawgListingPublishService $topdawg,
         private MiraklListingPublishService $mirakl,
+        private AlibabaListingPublishService $alibaba,
     ) {
     }
 
@@ -145,6 +146,9 @@ class ListingVariationPreviewService
         }
         if (in_array($channel, ['topdawg', 'top-dawg', 'top_dawg'], true)) {
             return $this->topdawg->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName, $overrides);
+        }
+        if ($channel === 'alibaba') {
+            return $this->alibaba->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $overrides);
         }
         if (DirectStoreListingPublishService::channelFor($channel) !== null) {
             return app(DirectStoreListingPublishService::class)->publishSkus($channel, $skus, $overrides);

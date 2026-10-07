@@ -1946,10 +1946,126 @@ class AlibabaApiService extends AliExpressApiService
         return 'Alibaba price update failed.';
     }
 
+    /**
+     * @param  array<string, mixed>  $raw
+     */
+    protected function schemaError(array $raw, string $fallback): string
+    {
+        $message = $this->icbuErrorMessage($raw);
+
+        return $message === 'Alibaba price update failed.' ? $fallback : $message;
+    }
+
     protected function useIcbuRest(): void
     {
         if (! str_contains($this->restBase, 'openapi-api.alibaba.com')) {
             $this->restBase = 'https://openapi-api.alibaba.com/rest';
         }
+    }
+
+    /**
+     * Full schema XML of a live product. Used to clone a listed sibling when adding a Missing L SKU.
+     *
+     * @return array{success: bool, message?: string, xml?: string, data?: mixed}
+     */
+    public function productSchemaXml(string $productId): array
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return ['success' => false, 'message' => 'Alibaba product id is missing.'];
+        }
+
+        $this->useIcbuRest();
+        $params = [
+            'product_id' => $productId,
+            'language' => 'en_US',
+        ];
+        $raw = $this->callRestGateway('/icbu/product/schema/get', $params);
+        if (empty($raw['success'])) {
+            $raw = $this->callIcbu('alibaba.icbu.product.schema.get', $params);
+        }
+        if (empty($raw['success'])) {
+            return ['success' => false, 'message' => $this->schemaError($raw, 'Alibaba did not return a product schema to copy.')];
+        }
+
+        $xml = \App\Support\Marketplace\AlibabaProductSchema::xmlFromPayload($raw);
+        if ($xml === '') {
+            return ['success' => false, 'message' => 'Alibaba did not return a product schema to copy.'];
+        }
+
+        return ['success' => true, 'xml' => $xml, 'data' => $raw['data'] ?? null];
+    }
+
+    /**
+     * Empty schema for a category when no listed sibling exists to copy.
+     *
+     * @return array{success: bool, message?: string, xml?: string}
+     */
+    public function renderCategorySchema(string $catId): array
+    {
+        $catId = trim($catId);
+        if ($catId === '' || ! ctype_digit($catId)) {
+            return ['success' => false, 'message' => 'Alibaba category id is missing.'];
+        }
+
+        $this->useIcbuRest();
+        $params = [
+            'cat_id' => $catId,
+            'language' => 'en_US',
+        ];
+        $raw = $this->callRestGateway('/icbu/product/schema/render', $params);
+        if (empty($raw['success'])) {
+            $raw = $this->callIcbu('alibaba.icbu.product.schema.render', $params);
+        }
+        if (empty($raw['success'])) {
+            return ['success' => false, 'message' => $this->schemaError($raw, 'Alibaba did not return a category schema.')];
+        }
+
+        $xml = \App\Support\Marketplace\AlibabaProductSchema::xmlFromPayload($raw);
+        if ($xml === '') {
+            return ['success' => false, 'message' => 'Alibaba did not return a category schema.'];
+        }
+
+        return ['success' => true, 'xml' => $xml];
+    }
+
+    /**
+     * Create a product from schema XML.
+     *
+     * @return array{success: bool, message?: string, product_id?: string, data?: mixed}
+     */
+    public function addProductSchema(string $catId, string $xml): array
+    {
+        $catId = trim($catId);
+        $xml = trim($xml);
+        if ($catId === '' || ! ctype_digit($catId)) {
+            return ['success' => false, 'message' => 'Alibaba category id is missing.'];
+        }
+        if ($xml === '' || ! str_contains($xml, '<field')) {
+            return ['success' => false, 'message' => 'Alibaba product schema is empty.'];
+        }
+
+        $this->useIcbuRest();
+        $params = [
+            'cat_id' => $catId,
+            'xml' => $xml,
+            'language' => 'en_US',
+        ];
+        $raw = $this->callRestGateway('/icbu/product/schema/add', $params);
+        if (empty($raw['success']) && ! $this->isAuthError($raw)) {
+            $raw = $this->callIcbu('alibaba.icbu.product.schema.add', $params);
+        }
+        if (empty($raw['success'])) {
+            return ['success' => false, 'message' => $this->schemaError($raw, 'Alibaba did not create the product.')];
+        }
+
+        $productId = \App\Support\Marketplace\AlibabaProductSchema::productIdFromPayload($raw);
+
+        return [
+            'success' => $productId !== '',
+            'message' => $productId !== '' ? '' : 'Alibaba accepted the product but did not return a product id.',
+            'product_id' => $productId !== '' ? $productId : null,
+            'data' => $raw['data'] ?? null,
+        ];
     }
 }

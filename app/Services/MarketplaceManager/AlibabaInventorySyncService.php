@@ -193,7 +193,7 @@ class AlibabaInventorySyncService
         }
 
         if (MarketplaceSyncSettings::alibabaCanCreateProducts($settings)) {
-            Log::info('AlibabaInventorySyncService: create_products_on_alibaba is enabled but listing creation is not implemented yet; only existing linked SKUs will be updated.');
+            Log::info('AlibabaInventorySyncService: create_products_on_alibaba is enabled. New products are added from Listing Alibaba Publish; this sync only updates SKUs already on Alibaba.');
         }
 
         $skus = $metrics->pluck('sku')->unique()->values()->all();

@@ -10,6 +10,7 @@ use App\Models\ShopifySku;
 use App\Models\ProductStockMapping;
 use App\Support\Marketplace\AmazonListingCounts;
 use App\Support\Marketplace\ListingCountsEngine;
+use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Http\Request;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonListingDailyMetric;
@@ -70,7 +71,7 @@ class ListingAmazonController extends Controller
 
         return response()->json([
             'status' => 200,
-            'data' => $processedData,
+            'data' => LmpStdPrice::attach($processedData),
         ]);
     }
 

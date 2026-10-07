@@ -97,6 +97,11 @@
                                         </div>
                                         <small>Type to search Reverb categories. Click one from the list to use it.</small>
                                     </div>
+                                    <div id="listing-publish-alibaba-category" class="listing-publish-category" @if(($publishChannel ?? '') !== 'alibaba') hidden @endif>
+                                        <label for="listing-publish-alibaba-category-id">Alibaba category id</label>
+                                        <input type="text" id="listing-publish-alibaba-category-id" class="form-control form-control-sm" placeholder="Only if this parent has no listed Alibaba SKU" inputmode="numeric" autocomplete="off">
+                                        <small>Leave this blank when another SKU in the same parent is already on Alibaba. We copy that product’s category. Std Prc from LMP Overall is the price.</small>
+                                    </div>
                                     <div id="listing-publish-groups"></div>
                                     <div id="listing-publish-progress"></div>
                                 </div>

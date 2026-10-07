@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\Marketplace\AliexpressListingCounts;
 use App\Support\Marketplace\ListingCountsEngine;
+use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -91,7 +92,7 @@ class ListingAliexpressController extends Controller
 
         return response()->json([
             'status' => 200,
-            'data' => $processedData,
+            'data' => LmpStdPrice::attach($processedData),
         ]);
     }
 
