@@ -6300,6 +6300,48 @@ GQL;
     }
 
     /**
+     * Shopify copy of a marketplace order whose row never got its Shopify id.
+     * Used only when the copy carries the full marketplace order id and this
+     * marketplace's tag; Doba copies are never returned.
+     *
+     * @param  list<string>  $orderIds
+     */
+    public function findShopifyCopyForMarketplaceOrder(string $marketplace, array $orderIds): ?string
+    {
+        $marketplace = strtolower(trim($marketplace));
+        if ($marketplace === '' || $marketplace === 'doba') {
+            return null;
+        }
+        $config = $this->shopifyConfigFor($marketplace);
+        $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+        foreach (array_slice($matcher->fullOrderIdsFirst($orderIds), 0, 2) as $id) {
+            if (strlen($id) < 6) {
+                continue;
+            }
+            $hit = $this->findShopifyOrderByMarketplaceRef($config, $id);
+            $shopifyId = trim((string) ($hit['id'] ?? ''));
+            if ($shopifyId === '') {
+                continue;
+            }
+            $order = $this->shopifyOrderPayload($config, $shopifyId);
+            if ($order === null || $this->shopifyOrderIsDoba($order)) {
+                continue;
+            }
+            $primary = $matcher->primaryMarketplaceSlug($order);
+            if ($primary === '' || ! $matcher->slugsCompatible($primary, $marketplace)) {
+                continue;
+            }
+            if ($matcher->matchFullOrderId($order, [$id]) === null) {
+                continue;
+            }
+
+            return $shopifyId;
+        }
+
+        return null;
+    }
+
+    /**
      * @param  array{store_url?: string, token?: string}  $config
      * @return array{id: int|string, name?: string}|null
      */

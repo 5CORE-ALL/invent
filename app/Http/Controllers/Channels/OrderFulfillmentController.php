@@ -14,6 +14,7 @@ use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Services\OrderFulfillment\ChannelBatchTrackingLookup;
+use App\Services\OrderFulfillment\OrderFulfillmentShopifyPushService;
 use App\Services\SheinApiService;
 use App\Services\ShipmentTrackingService;
 use App\Services\VeeqoApiService;
@@ -1767,6 +1768,58 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         ]);
     }
 
+    /**
+     * Order lines on the page (default date range) per marketplace, and how many still have no tracking.
+     *
+     * @return array<string, array{lines: int, missing: int}>
+     */
+    public function trackingCoverageBySlug(): array
+    {
+        $this->ensureTrackingTable();
+        $out = [];
+        foreach ($this->attachSavedTracking($this->collectFulfillmentRows()) as $row) {
+            if (! empty($row['manual'])) {
+                continue;
+            }
+            $slug = (string) ($row['mm_slug'] ?? '');
+            if ($slug === '') {
+                continue;
+            }
+            $out[$slug] ??= ['lines' => 0, 'missing' => 0];
+            $out[$slug]['lines']++;
+            if (trim((string) ($row['tracking'] ?? '')) === '') {
+                $out[$slug]['missing']++;
+            }
+        }
+        ksort($out);
+
+        return $out;
+    }
+
+    /**
+     * Minutes before the scheduler looks up an order with no tracking again.
+     * Recent orders get their label soon, so they are re-checked hourly; old
+     * misses are re-checked less often so they cannot crowd out new orders.
+     */
+    public static function trackingMissRecheckMinutes(string $orderDate): int
+    {
+        try {
+            $placed = trim($orderDate) !== '' ? \Carbon\Carbon::parse($orderDate) : null;
+        } catch (\Throwable) {
+            $placed = null;
+        }
+        if ($placed === null) {
+            return self::TRACKING_MISS_COOLDOWN_MINUTES;
+        }
+        $ageDays = $placed->diffInDays(now(), true);
+
+        return match (true) {
+            $ageDays <= 3 => self::TRACKING_MISS_COOLDOWN_MINUTES,
+            $ageDays <= 10 => 240,
+            default => 720,
+        };
+    }
+
     /** Share of the backfill budget the batch channel sweep may use. */
     private const TRACKING_SWEEP_BUDGET_SHARE = 0.45;
 
@@ -1785,7 +1838,6 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $this->ensureTrackingTable();
 
         $rows = $this->attachSavedTracking($this->collectFulfillmentRows());
-        $cooldown = now()->subMinutes(self::TRACKING_MISS_COOLDOWN_MINUTES);
 
         $missing = [];
         foreach ($rows as $row) {
@@ -1814,7 +1866,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 continue;
             }
             $checkedAt = $row['tracking_checked_at'] ?? null;
-            if ($checkedAt !== null && \Carbon\Carbon::parse($checkedAt)->gt($cooldown)) {
+            if ($checkedAt !== null && \Carbon\Carbon::parse($checkedAt)->gt(
+                now()->subMinutes(self::trackingMissRecheckMinutes((string) ($row['order_date'] ?? '')))
+            )) {
                 continue;
             }
             $slug = (string) ($row['mm_slug'] ?? '');
@@ -2364,6 +2418,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                     $table->string('channel_push_message', 255)->nullable()->after('channel_push_attempts');
                 });
             }
+            OrderFulfillmentShopifyPushService::ensureColumns();
 
             return;
         }
@@ -2451,14 +2506,23 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'source' => $source,
             'checked_at' => now(),
         ];
+        $numberChanged = $existing && $number !== null
+            && strcasecmp((string) preg_replace('/\s+/', '', (string) $existing->tracking_number), (string) preg_replace('/\s+/', '', $number)) !== 0;
+        if ($numberChanged && $existing->shopify_fulfilled_at === null) {
+            // A row waiting on a failed number tries the new one on the next push run.
+            $values += [
+                'shopify_push_checked_at' => null,
+                'shopify_next_try_at' => null,
+            ];
+        }
         // A different number than the one already copied to Shopify / the
         // marketplace must be pushed again by order-fulfillment:push-tracking.
-        if ($existing && $number !== null && $existing->shopify_fulfilled_at !== null
-            && strcasecmp((string) preg_replace('/\s+/', '', (string) $existing->tracking_number), (string) preg_replace('/\s+/', '', $number)) !== 0) {
+        if ($numberChanged && $existing->shopify_fulfilled_at !== null) {
             $values += [
                 'shopify_fulfilled_at' => null,
                 'shopify_push_attempts' => 0,
                 'shopify_push_checked_at' => null,
+                'shopify_next_try_at' => null,
                 'shopify_push_message' => null,
                 'channel_pushed_at' => null,
                 'channel_push_attempts' => 0,

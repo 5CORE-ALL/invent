@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\Channels\OrderFulfillmentController;
 use App\Services\OrderFulfillment\OrderFulfillmentShopifyPushService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -13,13 +14,18 @@ class PushOrderFulfillmentTrackingCommand extends Command
         {--budget=540 : Seconds this run may spend}
         {--slug= : Only this marketplace (ebay1, temu, amazon, …)}
         {--order= : Only this marketplace order id}
-        {--dry-run : Show what would be fulfilled without writing to Shopify or any marketplace}';
+        {--dry-run : Show what would be fulfilled without writing to Shopify or any marketplace}
+        {--status : Report tracking coverage and why rows are still unfulfilled on Shopify, then exit}';
 
     protected $description = 'Fulfil Shopify orders with the tracking numbers shown on /order-fulfillment (Veeqo, GOFO/4Seller, marketplace, manual) and push those numbers to marketplaces that have no tracking yet.';
 
     public function handle(OrderFulfillmentShopifyPushService $service): int
     {
         @set_time_limit(0);
+
+        if ($this->option('status')) {
+            return $this->printStatus($service);
+        }
 
         $dryRun = (bool) $this->option('dry-run');
         try {
@@ -65,6 +71,42 @@ class PushOrderFulfillmentTrackingCommand extends Command
             $result['channel_skipped'],
             $result['seconds']
         ));
+
+        return self::SUCCESS;
+    }
+
+    protected function printStatus(OrderFulfillmentShopifyPushService $service): int
+    {
+        try {
+            $coverage = app(OrderFulfillmentController::class)->trackingCoverageBySlug();
+        } catch (\Throwable $e) {
+            $this->warn('Page coverage unavailable: '.$e->getMessage());
+            $coverage = [];
+        }
+        $report = $service->statusReport();
+
+        $slugs = array_unique(array_merge(array_keys($coverage), array_keys($report['by_slug'])));
+        sort($slugs);
+        $this->info('Order Fulfillment page (default range) and Shopify push (last '.OrderFulfillmentShopifyPushService::MAX_ROW_AGE_DAYS.' days):');
+        $this->table(
+            ['Marketplace', 'Page lines', 'No tracking', 'Shopify fulfilled', 'Waiting', 'Due now'],
+            array_map(static fn (string $slug) => [
+                $slug,
+                $coverage[$slug]['lines'] ?? '-',
+                $coverage[$slug]['missing'] ?? '-',
+                $report['by_slug'][$slug]['fulfilled'] ?? 0,
+                $report['by_slug'][$slug]['waiting'] ?? 0,
+                $report['by_slug'][$slug]['due_now'] ?? 0,
+            ], $slugs)
+        );
+
+        if ($report['reasons'] !== []) {
+            $this->info('Why rows with tracking are still unfulfilled on Shopify:');
+            $this->table(
+                ['Marketplace', 'Rows', 'Last result'],
+                array_map(static fn (array $r) => [$r['slug'], $r['rows'], $r['reason']], array_slice($report['reasons'], 0, 40))
+            );
+        }
 
         return self::SUCCESS;
     }
