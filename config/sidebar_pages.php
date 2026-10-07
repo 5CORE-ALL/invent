@@ -74,6 +74,7 @@ return [
     ['value' => 'trash_entries', 'text' => 'Trash Entries', 'group' => 'Inventory Management'],
     ['value' => 'pallete_sales', 'text' => 'Pallete Sales', 'group' => 'Inventory Management'],
     ['value' => 'view_inventory', 'text' => 'Inventory Main', 'group' => 'Inventory Management'],
+    ['value' => 'inv_management_5core', 'text' => 'INV Management 5Core', 'group' => 'Inventory Management'],
     ['value' => 'stock_adjustment', 'text' => 'Stock Adjustment', 'group' => 'Inventory Management'],
 
     // Inventory Warehouse
