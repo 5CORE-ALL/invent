@@ -948,12 +948,12 @@
                                         style="width: 7rem;" title="Manual Standard Price — use when LMP cannot be determined. Saves to Std Prc column only.">
                                 </div>
                                 <div class="col-auto">
-                                    <div class="small text-muted mb-0">GROI %</div>
-                                    <div id="lmpModalGroiPct" class="fs-5 fw-bold" style="min-width: 3.5rem;">—</div>
+                                    <div class="small text-muted mb-0">Std NROI%</div>
+                                    <div id="lmpModalStdNroiPct" class="fs-5 fw-bold" style="min-width: 3.5rem;" title="((Std Prc × 0.70 − ship − LP) / LP) × 100">—</div>
                                 </div>
                                 <div class="col-auto">
-                                    <div class="small text-muted mb-0">NROI %</div>
-                                    <div id="lmpModalNroiPct" class="fs-5 fw-bold" style="min-width: 3.5rem;">—</div>
+                                    <div class="small text-muted mb-0">Std NPFT%</div>
+                                    <div id="lmpModalStdNpftPct" class="fs-5 fw-bold" style="min-width: 3.5rem;" title="((Std Prc × 0.70 − ship − LP) / Std Prc) × 100">—</div>
                                 </div>
                                 <div class="col-auto small text-muted pb-1">
                                     Standard Price (manual). Saves to <strong>Std Prc</strong> for this SKU and all
@@ -2613,6 +2613,17 @@
             return ((price * 0.70 - ship - lp) / lp) * 100;
         }
 
+        /** Std NPFT% at a typed Std Prc. ((Std × 0.70 − ship − LP) / Std) × 100 */
+        function amazonModalNpftAtStd(sp, rowData) {
+            if (!rowData) return null;
+            const price = parseFloat(sp);
+            if (!isFinite(price) || price <= 0) return null;
+            const lp = parseFloat(rowData.LP_productmaster);
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const lpVal = (isFinite(lp) && lp > 0) ? lp : 0;
+            return ((price * 0.70 - ship - lpVal) / price) * 100;
+        }
+
         function amazonModalNroiColoredHtml(fieldVal) {
             if (window.MetricPctColors) {
                 const html = MetricPctColors.htmlFor('nroi', fieldVal, { decimals: 0, empty: '' });
@@ -2623,19 +2634,29 @@
             return '<span style="color:#dc3545;font-weight:600;">' + Math.round(p) + '%</span>';
         }
 
+        function amazonModalNpftColoredHtml(fieldVal) {
+            if (window.MetricPctColors) {
+                const html = MetricPctColors.htmlFor('npft', fieldVal, { decimals: 0, empty: '' });
+                return html || '<span class="text-muted">—</span>';
+            }
+            const p = parseFloat(fieldVal);
+            if (!isFinite(p)) return '<span class="text-muted">—</span>';
+            return '<span style="font-weight:600;">' + Math.round(p) + '%</span>';
+        }
+
         function refreshLmpModalSpMetrics() {
             const sp = parseFloat($('#lmpModalSpInput').val());
             const row = currentLmpData.rowData;
-            const groi = amazonComputeGroiAtSp(sp, row);
             const nroi = amazonModalNroiAtStd(sp, row);
-            $('#lmpModalGroiPct').html(groi === null ? '<span class="text-muted">—</span>' : amazonModalGroiColoredHtml(groi));
-            $('#lmpModalNroiPct').html(nroi === null ? '<span class="text-muted">—</span>' : amazonModalNroiColoredHtml(nroi));
-            const spText = (isFinite(sp) && sp > 0) ? ('$' + sp.toFixed(2)) : '—';
-            const groiHtml = groi === null ? '<span class="text-muted">—</span>' : amazonModalGroiColoredHtml(groi);
+            const npft = amazonModalNpftAtStd(sp, row);
             const nroiHtml = nroi === null ? '<span class="text-muted">—</span>' : amazonModalNroiColoredHtml(nroi);
+            const npftHtml = npft === null ? '<span class="text-muted">—</span>' : amazonModalNpftColoredHtml(npft);
+            $('#lmpModalStdNroiPct').html(nroiHtml);
+            $('#lmpModalStdNpftPct').html(npftHtml);
+            const spText = (isFinite(sp) && sp > 0) ? ('$' + sp.toFixed(2)) : '—';
             $('.lmp-sp-cell').text(spText === '—' ? '—' : spText);
-            $('.lmp-groi-cell').html(groiHtml);
-            $('.lmp-nroi-cell').html(nroiHtml);
+            $('.lmp-std-nroi-cell').html(nroiHtml);
+            $('.lmp-std-npft-cell').html(npftHtml);
         }
 
         function initLmpModalSpFromSku(sku) {
@@ -4404,8 +4425,20 @@
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                 dot + ('$' + std.toFixed(2)) + reviewTri + searchBtn + '</span>';
                         },
-                        cellClick: function(e) {
-                            if (e.target.closest('.open-std-prc-modal') || e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
+                        cellClick: function(e, cell) {
+                            const btn = e.target && e.target.closest ? e.target.closest('.open-std-prc-modal') : null;
+                            if (btn) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const rowData = cell.getRow().getData() || {};
+                                const sku = btn.getAttribute('data-sku') || rowData['(Child) sku'] || '';
+                                if (sku) {
+                                    const linked = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
+                                    loadCompetitorsModal(sku, linked);
+                                }
+                                return false;
+                            }
+                            if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
                                 e.stopPropagation();
                                 return false;
                             }
@@ -7009,10 +7042,10 @@
                 
                 const modalSp = parseFloat($('#lmpModalSpInput').val());
                 const modalSpText = (isFinite(modalSp) && modalSp > 0) ? ('$' + modalSp.toFixed(2)) : '—';
-                const modalGroi = amazonComputeGroiAtSp(modalSp, currentLmpData.rowData);
                 const modalNroi = amazonModalNroiAtStd(modalSp, currentLmpData.rowData);
-                const modalGroiHtml = modalGroi === null ? '<span class="text-muted">—</span>' : amazonModalGroiColoredHtml(modalGroi);
+                const modalNpft = amazonModalNpftAtStd(modalSp, currentLmpData.rowData);
                 const modalNroiHtml = modalNroi === null ? '<span class="text-muted">—</span>' : amazonModalNroiColoredHtml(modalNroi);
+                const modalNpftHtml = modalNpft === null ? '<span class="text-muted">—</span>' : amazonModalNpftColoredHtml(modalNpft);
                 const l1ValForList = (lowestPrice != null && isFinite(parseFloat(lowestPrice)))
                     ? parseFloat(lowestPrice) : null;
 
@@ -7027,8 +7060,8 @@
                             <th class="text-center" style="width: 44px;" title="Seller">Seller</th>
                             <th style="width: 80px;">Price</th>
                             <th style="width: 70px;" title="Std Prc from top input">Std Prc</th>
-                            <th style="width: 70px;" title="GROI% at Std Prc — same as /lmp-overall model">GROI %</th>
-                            <th style="width: 70px;" title="NROI% at Std Price with 70% margin. ((Std Prc × 0.70 − ship − LP) / LP) × 100">NROI %</th>
+                            <th style="width: 78px;" title="NROI% at Std Price with 70% margin. ((Std Prc × 0.70 − ship − LP) / LP) × 100">Std NROI%</th>
+                            <th style="width: 78px;" title="NPFT% at Std Price with 70% margin. ((Std Prc × 0.70 − ship − LP) / Std Prc) × 100">Std NPFT%</th>
                             <th style="width: 90px;">Revenue<br><small>(30d)</small></th>
                             <th style="width: 70px;">Units<br><small>(30d)</small></th>
                             <th style="width: 100px;">Buy Box</th>
@@ -7149,8 +7182,8 @@
                             <td class="text-center" style="width: 44px;">${sellerCell}</td>
                             <td><strong>${priceBadge}</strong></td>
                             <td class="text-center fw-bold lmp-sp-cell">${modalSpText}</td>
-                            <td class="text-center lmp-groi-cell">${modalGroiHtml}</td>
-                            <td class="text-center lmp-nroi-cell">${modalNroiHtml}</td>
+                            <td class="text-center lmp-std-nroi-cell">${modalNroiHtml}</td>
+                            <td class="text-center lmp-std-npft-cell">${modalNpftHtml}</td>
                             <td class="text-center">${revenue}</td>
                             <td class="text-center">${units}</td>
                             <td style="font-size: 11px;">${buyBox}</td>
