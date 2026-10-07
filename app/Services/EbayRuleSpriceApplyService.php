@@ -178,35 +178,26 @@ class EbayRuleSpriceApplyService
     }
 
     /**
-     * Same price as the S PRC cell. Writes it into SPRICE, and queues a push only when the
-     * live eBay price is a different cent. Listed, INV > 0, not ended.
+     * Blue-triangle push: saved S PRC ≠ live eBay price. Does not recompute or overwrite SPRICE.
+     * Listed, INV > 0, not ended.
      *
      * @return list<array{sku: string, price: float}>
      */
     public function collectPushTasks(?array $onlySkus = null): array
     {
-        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc($this->channel);
-        $store = $this->loadDilGroiStore();
-        $margin = $this->takeHome();
-        $adsPct = $this->channelAdsPercent();
         $out = [];
         foreach ($this->hydrateAll($onlySkus) as $row) {
-            $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin, $adsPct);
-            if ($computed === null) {
+            if (! ((float) ($row['inv'] ?? 0) > 0)) {
                 continue;
             }
-            $next = round((float) $computed['sprice'], 2);
             $saved = round((float) ($row['saved_sprice'] ?? 0), 2);
             $live = round((float) ($row['live'] ?? 0), 2);
-            if ($saved <= 0 || ! self::sameCents($saved, $next)) {
-                $this->saveSprice((string) $row['sku'], $next, $row, $margin);
-            }
-            if ($live <= 0 || self::sameCents($live, $next)) {
+            if ($saved <= 0 || $live <= 0 || self::sameCents($saved, $live)) {
                 continue;
             }
             $out[] = [
                 'sku' => $row['sku'],
-                'price' => $next,
+                'price' => $saved,
             ];
         }
 

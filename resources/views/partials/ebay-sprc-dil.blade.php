@@ -700,7 +700,7 @@
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
         }
         function ebayDgAutoApplies() {
-            return true;
+            return false;
         }
         function ebayDgExcludeShip() {
             // Purchasing Power uses Ship BB in the Amazon invert — do not drop it here.

@@ -166,7 +166,7 @@ class StdPrcVsDilPricer
     }
 
     /**
-     * GROI% at the current listing price. Shopify B2B excludes ship, matching the page column.
+     * GROI% at the current listing price. Shopify B2B and Faire exclude ship, matching the page column.
      *
      * @param  array<string, mixed>  $row
      */
@@ -192,7 +192,9 @@ class StdPrcVsDilPricer
         if (! ($margin > 0)) {
             return null;
         }
-        $ship = $this->channel === 'shopify_b2b' ? 0.0 : (float) ($row['ship'] ?? $row['Ship'] ?? 0);
+        $ship = in_array($this->channel, ['shopify_b2b', 'faire'], true)
+            ? 0.0
+            : (float) ($row['ship'] ?? $row['Ship'] ?? 0);
 
         return ((($price * $margin) - $ship - $lp) / $lp) * 100;
     }

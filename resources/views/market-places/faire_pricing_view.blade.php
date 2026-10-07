@@ -237,7 +237,7 @@
                             <i class="fas fa-exchange-alt"></i>
                         </button>
                         <button type="button" id="fr-rule-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
-                            title="Price rules: Dil %, Faire sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
+                            title="Price rules: Dil %, Faire sold qty, Discount % → SPRICE = STD × (1−Disc%). Ship not used.">
                             <i class="fas fa-sliders-h"></i> Rule
                         </button>
                         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'faire'])
@@ -444,7 +444,7 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-2">
                         Match rows by <strong>Dil %</strong> and <strong>Sold qty (Faire)</strong>.
-                        Apply sets <strong>SPRICE = (STD prc × (1 − Discount%/100)) − Ship</strong>.
+                        Apply sets <strong>SPRICE = STD prc × (1 − Discount%/100)</strong> (Ship not used).
                         Blank min/max = no limit. If SKUs are checked, only those are updated.
                     </p>
                     <div class="table-responsive">
@@ -1447,9 +1447,8 @@
                 }
 
                 const factor = 1 - (parseFloat(hit.discount_pct) / 100);
-                const ship = parseFloat(d.ship) || 0;
-                // SPRICE = (STD × (1 − Discount%/100)) − Ship
-                let newSprice = frRoundToRetailPrice(Math.max(0.99, (std * factor) - ship));
+                // Same no-ship rule as Shopify B2B: SPRICE = STD × (1 − Discount%/100). Ship is not used.
+                let newSprice = frRoundToRetailPrice(Math.max(0.99, std * factor));
                 const margin = parseFloat(d._margin) || 0.75;
                 const lp = parseFloat(d.lp) || 0;
                 const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;

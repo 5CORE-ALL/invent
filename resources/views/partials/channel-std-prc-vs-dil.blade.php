@@ -425,6 +425,10 @@
         function chStdReviews(d) {
             return chStdNum(d, ['review_count', 'reviews', 'Reviews', 'rating_count', 'ratings']);
         }
+        function chStdExcludesShip() {
+            return typeof CHANNEL_PROMO_CHANNEL !== 'undefined'
+                && (CHANNEL_PROMO_CHANNEL === 'shopify_b2b' || CHANNEL_PROMO_CHANNEL === 'faire');
+        }
         function chStdRoiPct(d) {
             if (typeof shopifyB2bRowPriceMetrics === 'function') {
                 const m = shopifyB2bRowPriceMetrics(d);
@@ -435,14 +439,11 @@
             const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
             if (!(price > 0) || !(lp > 0)) return 0;
             const margin = chStdMargin(d);
-            let ship = 0;
-            if (typeof CHANNEL_PROMO_CHANNEL === 'undefined' || CHANNEL_PROMO_CHANNEL !== 'shopify_b2b') {
-                ship = (typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0;
-            }
+            const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
             return (((price * margin) - ship - lp) / lp) * 100;
         }
         function chStdSumDisc(d, draft) {
-            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, roi: chStdRoi, zeroSoldDisc: chStdZeroSoldDisc };
+            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), roi: chStdRoi, zeroSoldDisc: chStdZeroSoldDisc };
             if (!(chStdStockForAge(d) > 0)) return 0;
             const std = chStdRowStd(d);
             const dil = chStdDilPct(d);
@@ -650,7 +651,7 @@
                 if (std > 0) {
                     const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
-                    const ship = (typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0;
+                    const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
                     const gross = (sprice * chStdMargin(d)) - ship - lp;
                     const net = gross - (sprice * ads / 100);
                     const units = (typeof chPromoOvL30 === 'function') ? chPromoOvL30(d) : 0;
@@ -737,6 +738,7 @@
             $('#ch-sp-margin-inv').text(chStdMoney(invB.gross)).css('color', invB.gross < 0 ? '#dc3545' : '#166534');
             $('#ch-sp-margin-inv-sub').text(Math.round(invB.units) + ' units · ' + (invB.sales > 0 ? Math.round((invB.gross / invB.sales) * 100) : 0) + '% of retail');
             $('#ch-sp-margin-inv-metrics').html(metricHtml(invB));
+            chStdRepaintDiscColumns();
         }
         function chStdPaint() {
             $('#ch-sp-dil-tbody').html(chStdDil.map(function(r) { return chStdRangeRow('ch-sp-dil', r); }).join(''));
@@ -877,14 +879,32 @@
             return chStdScaleDisc(chStdRowStd(d), chStdRangeDisc(chStdRoiPct(d), chStdRoi, true));
         }
         window.chStdRoiDiscPct = chStdRoiDiscPct;
+        function chStdBussRulesLive() {
+            const modal = document.getElementById('chStdPrcModal');
+            if (modal && modal.classList.contains('show')) {
+                const live = chStdReadRanges('#ch-sp-buss-tbody', '.ch-sp-buss-min', '.ch-sp-buss-max', '.ch-sp-buss-disc');
+                if (live.length) return live;
+            }
+            return chStdBuss;
+        }
         function chStdBussDiscPct(d) {
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return null;
-            if (typeof chPromoInv === 'function' && chPromoInv(d) <= 0) return 0;
-            const std = chStdRowStd(d);
-            return chStdRangeDisc(std, chStdBuss);
+            if (!(chStdStockForAge(d) > 0)) return 0;
+            return chStdRangeDisc(chStdRowStd(d), chStdBussRulesLive());
         }
         window.chStdBussDiscPct = chStdBussDiscPct;
         window.analyticsBussDiscountPct = chStdBussDiscPct;
+        function chStdRepaintDiscColumns() {
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
+            ['buss_discount', 'sum_discount'].forEach(function(field) {
+                let col = null;
+                try { col = table.getColumn(field); } catch (e) { col = null; }
+                if (!col || typeof col.getCells !== 'function') return;
+                col.getCells().forEach(function(cell) {
+                    try { if (cell && typeof cell.reformat === 'function') cell.reformat(); } catch (err) { /* ignore */ }
+                });
+            });
+        }
         function chStdRowIsZeroSold(d) {
             if (!d || d.is_parent_summary) return false;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return false;
@@ -940,7 +960,18 @@
                         return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
                     },
                 }),
-                Object.assign(chStdDiscCol('B Disc', 'buss_discount', 'B Disc from Std Prc ranges in Std prc vs dil. Full Disc % at every Std Prc, including under $15.', function(d) { return chStdBussDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
+                Object.assign(chStdDiscCol('B Disc', 'buss_discount', 'B Disc from Std Prc ranges in Std prc vs dil. Full Disc % at every Std Prc, including under $15.', function(d) { return chStdBussDiscPct(d) || 0; }), {
+                    visible: true,
+                    minWidth: 64,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                        const pct = chStdBussDiscPct(d) || 0;
+                        const std = chStdRowStd(d);
+                        const tip = (std > 0 ? ('Std Prc $' + std.toFixed(2) + ' → ') : '') + 'B Disc ' + pct + '%';
+                        return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
+                    },
+                }),
                 Object.assign(chStdDiscCol('0 Sold', 'zero_sold_discount', '0 Sold discount from Std prc vs dil. Applies only when this page sold qty is 0. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdZeroSoldDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
                 Object.assign(chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR Disc — same as Amazon: A L30 ÷ Sess30, CVR 0 is Down. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }), {
                     formatter: function(cell) {
@@ -1196,6 +1227,7 @@
                     if (chStdAutoApplied) return;
                     chStdAutoApplied = true;
                     chStdEnsureColumns();
+                    chStdRepaintDiscColumns();
                     if (!chStdOwnsSprice()) return;
                     const updates = chStdWritePrices(chStdDraftNow());
                 const redraw = function() {
@@ -1273,6 +1305,7 @@
                 chStdPieGen++;
                 $('#ch-sp-hist-wrap').removeClass('is-open');
                 if (chStdHistChart) { chStdHistChart.destroy(); chStdHistChart = null; }
+                chStdRepaintDiscColumns();
             });
             $('#ch-sp-apply').off('click.chstd').on('click.chstd', function(e) { e.preventDefault(); chStdApply(); });
             $('#ch-sp-dil-add').off('click.chstd').on('click.chstd', function() {

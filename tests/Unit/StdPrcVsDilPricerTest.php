@@ -199,6 +199,34 @@ class StdPrcVsDilPricerTest extends TestCase
         ]));
     }
 
+    public function test_faire_roi_discount_excludes_ship_like_shopify_b2b(): void
+    {
+        $rules = [
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'roi' => [
+                ['min' => 0, 'max' => 50, 'disc' => 10],
+                ['min' => 50, 'max' => 9999, 'disc' => 2],
+            ],
+        ];
+        $row = [
+            'inv' => 1,
+            'std' => 100,
+            'live' => 30,
+            'lp' => 10,
+            'ship' => 8,
+            'margin' => 0.75,
+        ];
+
+        // ($30 × 0.75 − LP $10) / LP = GROI 125% with ship ignored → 2%. $100 × 0.98 = $98.
+        $this->assertSame(98.0, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row));
+        // Same row with ship counted: GROI 45% → 10%. $100 × 0.90 = $90.
+        $this->assertSame(90.0, (new StdPrcVsDilPricer($rules, 'ebay1'))->priceFromRow($row));
+    }
+
     public function test_zero_inventory_skips(): void
     {
         $pricer = new StdPrcVsDilPricer([

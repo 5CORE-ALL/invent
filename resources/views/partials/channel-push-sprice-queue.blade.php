@@ -207,6 +207,27 @@
                     });
                 }
             }
+            /** Drop leftover catalog jobs without a confirm. Page reload then queues the blue-triangle set. */
+            function chPushSpriceCancelSilent() {
+                stopChannelPushSpricePoll();
+                chPushSpriceExpecting = false;
+                chPushSpriceExpectMisses = 0;
+                if (chPushSpriceUsesClientPump()) cancelChannelPushSpriceClient();
+                return $.ajax({
+                    url: CH_PUSH_SPRICE_URL + '/cancel',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
+                    data: { _token: chPushSpriceCsrf() },
+                }).always(function() {
+                    setChannelPushSpriceProgress({
+                        active: false,
+                        done: 0,
+                        total: 0,
+                        pct: 0,
+                        msg: 'Ready',
+                    });
+                });
+            }
             function chPushSpriceCancelQueued() {
                 if (chPushSpriceUsesClientPump() && (chPushClientBusy() || chPushClientCancelled)) {
                     if (!confirm('Cancel remaining listing pushes? Already-pushed SKUs stay on the marketplace.')) return;
@@ -1390,15 +1411,6 @@
                 opts = opts || {};
                 // Catalog catch-up is opt-in ({ catalog: true }). Only saved S PRC ≠ live Price.
                 if (!opts.catalog) return;
-                if (opts.catalog && (CH_PUSH_SPRICE_CHANNEL === 'ebay1' || CH_PUSH_SPRICE_CHANNEL === 'ebay2' || CH_PUSH_SPRICE_CHANNEL === 'ebay3')) {
-                    if (typeof global.chPromoTryEbayBluePush === 'function') {
-                        global.chPromoTryEbayBluePush();
-                        return;
-                    }
-                }
-                if (opts.catalog && typeof global.chPromoStartServerBluePush === 'function' && global.chPromoStartServerBluePush()) {
-                    return;
-                }
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
                 if (opts.once !== false && opts.silent) window._chPushSpricePageChecked = true;
                 if (!chPushSpriceAutoPushAllowed()) return;
@@ -1489,6 +1501,7 @@
             global.scanAndQueueChannelPushSprice = scanAndQueueChannelPushSprice;
             global.startChannelPushSpricePoll = startChannelPushSpricePoll;
             global.setChannelPushSpriceProgress = setChannelPushSpriceProgress;
+            global.chPushSpriceCancelSilent = chPushSpriceCancelSilent;
             global._chPushSpriceChannel = CH_PUSH_SPRICE_CHANNEL;
 
             if (CH_PUSH_SPRICE_LIVE) {
@@ -1498,7 +1511,18 @@
                     headers: { 'Accept': 'application/json' },
                     timeout: 15000,
                 }).done(function(resp) {
-                    if (resp && resp.active) startChannelPushSpricePoll();
+                    window._chPromoEbayLeftoverStatus = resp || null;
+                    if (resp && resp.active && !/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) {
+                        startChannelPushSpricePoll();
+                    }
+                    if (/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)
+                        && typeof window.chPromoTryEbayBluePush === 'function') {
+                        window.chPromoTryEbayBluePush();
+                    }
+                }).fail(function() {
+                    window._chPromoEbayLeftoverStatus = null;
                 });
+            } else {
+                window._chPromoEbayLeftoverStatus = null;
             }
         })(window);

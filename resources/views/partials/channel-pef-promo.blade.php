@@ -10004,11 +10004,48 @@
             });
             return true;
         }
-        /** Start the server blue push once slabs are ready. A hung Dil-rules request must not block it. */
+        function chPromoEbayBlueFn() {
+            if (CHANNEL_PROMO_CHANNEL === 'ebay2') return window.ebay2HasBlueTriangle;
+            if (CHANNEL_PROMO_CHANNEL === 'ebay3') return window.ebay3HasBlueTriangle;
+            return window.ebay1HasBlueTriangle;
+        }
+        function chPromoEbayBlueCount() {
+            const fn = chPromoEbayBlueFn();
+            if (typeof fn !== 'function') return -1;
+            let rows = (window.allTableData && window.allTableData.length)
+                ? window.allTableData
+                : [];
+            if (!rows.length) {
+                const tbl = chPromoSafeTable();
+                if (tbl && typeof tbl.getData === 'function') {
+                    try { rows = tbl.getData() || []; } catch (e) { rows = []; }
+                }
+            }
+            if (!rows.length) return -1;
+            let n = 0;
+            rows.forEach(function(d) { if (fn(d)) n++; });
+            return n;
+        }
+        function chPromoEbayBlueRowsReady() {
+            const extraN = (window.allTableData && window.allTableData.length) || 0;
+            const tbl = chPromoSafeTable();
+            const n = (tbl && typeof tbl.getDataCount === 'function') ? tbl.getDataCount() : 0;
+            return (n > 0 || extraN > 0) && typeof chPromoEbayBlueFn() === 'function';
+        }
+        /** Queue only the blue-triangle rows (S PRC ≠ Price), the same set as the badge. */
         function chPromoTryEbayBluePush() {
             if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return;
             if (!chPromoPageReloadPushAllowed()) return;
-            if (window._chPromoServerBluePushStarted) return;
+            if (window._chPromoEbayBlueScanStarted) return;
+            if (!window._chPromoEbayRuleReady
+                && window.spriceActiveRuleReady
+                && typeof window.spriceActiveRuleReady.then === 'function') {
+                window.spriceActiveRuleReady.then(function() {
+                    window._chPromoEbayRuleReady = true;
+                    chPromoTryEbayBluePush();
+                });
+                return;
+            }
             window._chPromoEbayBluePushWaits = (window._chPromoEbayBluePushWaits || 0) + 1;
             const waitedLongEnough = window._chPromoEbayBluePushWaits > 20;
             if (!chPromoEbaySpriceSlabsReady() && !waitedLongEnough) {
@@ -10025,7 +10062,47 @@
                 window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 600);
                 return;
             }
-            chPromoStartServerBluePush();
+            if (!chPromoEbayBlueRowsReady() && window._chPromoEbayBluePushWaits < 50) {
+                clearTimeout(window._chPromoEbayBluePushTimer);
+                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
+                return;
+            }
+            if (window._chPromoEbayLeftoverStatus === undefined && window._chPromoEbayBluePushWaits < 40) {
+                clearTimeout(window._chPromoEbayBluePushTimer);
+                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
+                return;
+            }
+            const scan = (typeof scanAndQueueChannelPushSprice === 'function')
+                ? scanAndQueueChannelPushSprice
+                : (window.scanAndQueueChannelPushSprice || null);
+            if (typeof scan !== 'function') return;
+            const leftover = window._chPromoEbayLeftoverStatus || null;
+            const leftoverActive = !!(leftover && leftover.active);
+            const leftoverTotal = leftover ? (Number(leftover.total) || 0) : 0;
+            const blueN = chPromoEbayBlueCount();
+            const slack = blueN > 0 ? Math.max(20, Math.ceil(blueN * 0.1)) : 20;
+            const leftoverIsCatalog = leftoverActive && leftoverTotal > 0
+                && (blueN < 0 || leftoverTotal > blueN + slack);
+            const leftoverIsBlue = leftoverActive && leftoverTotal > 0 && blueN >= 0
+                && leftoverTotal <= blueN + slack;
+            const startScan = function() {
+                window._chPromoEbayBlueScanStarted = true;
+                scan(chPromoSafeTable(), { once: false, silent: false, catalog: true });
+            };
+            if (leftoverIsCatalog && typeof window.chPushSpriceCancelSilent === 'function') {
+                window._chPromoEbayBlueScanStarted = true;
+                window.chPushSpriceCancelSilent().always(function() {
+                    window._chPromoEbayLeftoverStatus = null;
+                    scan(chPromoSafeTable(), { once: false, silent: false, catalog: true });
+                });
+                return;
+            }
+            if (leftoverIsBlue && typeof startChannelPushSpricePoll === 'function') {
+                window._chPromoEbayBlueScanStarted = true;
+                startChannelPushSpricePoll();
+                return;
+            }
+            startScan();
         }
         window.chPromoStartServerBluePush = chPromoStartServerBluePush;
         window.chPromoTryEbayBluePush = chPromoTryEbayBluePush;
@@ -11402,6 +11479,7 @@
                         );
                         if (!on) return;
                         window._chPromoServerBluePushStarted = false;
+                        window._chPromoEbayBlueScanStarted = false;
                         if (typeof chPromoIsTemuPromoChannel === 'function'
                             && chPromoIsTemuPromoChannel()
                             && typeof scanAndQueueTemuListingPush === 'function') {
