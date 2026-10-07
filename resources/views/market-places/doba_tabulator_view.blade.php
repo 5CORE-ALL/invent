@@ -2145,7 +2145,7 @@
                 paginationSize: 50,
                 paginationSizeSelector: [25, 50, 100, 200, true], // true = All
                 layout: "fitData",
-                responsiveLayout: "hide",
+                responsiveLayout: false,
                 placeholder: "No Data Available",
                 selectable: false,
                 headerFilterPlaceholder: "",
