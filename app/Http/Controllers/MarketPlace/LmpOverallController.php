@@ -249,6 +249,112 @@ class LmpOverallController extends Controller
     }
 
     /**
+     * Same Avg GPFT% / GROI% / NPFT% / NROI%, OV LMP, Avg LMP, My LMP, Diff, and Avg Price
+     * as one child row on /lmp-overall. Used by the Amazon Std Price modal.
+     */
+    public function skuMetrics(Request $request): JsonResponse
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '' || str_starts_with(strtoupper($sku), 'PARENT')) {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        try {
+            $payload = $this->metricsForSku($sku);
+        } catch (\Throwable $e) {
+            Log::warning('LMP Overall: SKU metrics failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Could not load LMP metrics.'], 500);
+        }
+
+        return response()->json($payload);
+    }
+
+    /**
+     * (Avg LMP − Avg Price) / Avg Price × 100. Same as the Diff column on /lmp-overall.
+     */
+    public function lmpPriceDiffPct(?float $avgLmp, ?float $avgPrice): ?float
+    {
+        if ($avgLmp === null || $avgPrice === null || $avgLmp <= 0 || $avgPrice <= 0) {
+            return null;
+        }
+
+        return round((($avgLmp - $avgPrice) / $avgPrice) * 100, 2);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function metricsForSku(string $sku): array
+    {
+        $groups = app(LmpSkuGroupService::class);
+        try {
+            $groups->prepareForSkus([$sku]);
+        } catch (\Throwable $e) {
+            Log::warning('LMP Overall: SKU link groups failed', ['error' => $e->getMessage()]);
+        }
+        $members = $groups->groupContaining($sku);
+        if ($members === []) {
+            $members = [$sku];
+        }
+
+        $cvrBySku = $this->pricingCvrAvgBySku();
+        $skuKey = $this->skuKey($sku);
+        $cvr = $cvrBySku[$skuKey] ?? $cvrBySku[str_replace(' ', '', $skuKey)] ?? null;
+
+        $amzLookup = $this->amazonLookupForMembers($members);
+        $ebayLookup = $this->ebayLookupForMembers($members);
+        $googleLookup = $this->googleLookupForMembers($members);
+        $temuBySku = $this->temuLowestForMembers($members)['price'];
+
+        $row = [
+            'lmp_amz' => $this->minAcrossGroup(
+                $members,
+                $amzLookup['lowest'],
+                fn (string $member) => AmazonSkuCompetitor::normalizeSkuKey($member),
+                fn ($item) => AmazonSkuCompetitor::landedPrice($item)
+            ),
+            'lmp_ebay' => $this->minAcrossGroup(
+                $members,
+                $ebayLookup['lowest'],
+                fn (string $member) => EbaySkuCompetitor::normalizeSkuKey($member),
+                function ($item) {
+                    $price = $item->total_price ?? null;
+
+                    return is_numeric($price) && (float) $price > 0 ? (float) $price : null;
+                }
+            ),
+            'lmp_temu' => $this->minTemuAcrossGroup($members, $temuBySku),
+            'lmp_google' => $this->minAcrossGroup(
+                $members,
+                $googleLookup['lowest'],
+                fn (string $member) => GoogleSkuCompetitor::normalizeSkuKey($member),
+                function ($item) {
+                    $price = $item->price ?? null;
+
+                    return is_numeric($price) && (float) $price > 0 ? (float) $price : null;
+                }
+            ),
+        ];
+        $summary = $this->marketplaceLmpSummary($row);
+        $avgPrice = isset($cvr['avg_price']) && is_numeric($cvr['avg_price']) ? (float) $cvr['avg_price'] : null;
+
+        return [
+            'success' => true,
+            'sku' => $sku,
+            'gpft' => $cvr['avg_gpft'] ?? null,
+            'groi' => $cvr['avg_roi'] ?? null,
+            'npft' => $cvr['avg_pft'] ?? null,
+            'nroi' => $cvr['avg_nroi'] ?? null,
+            'ov_lmp' => $summary['ov_lmp'],
+            'avg_lmp' => $summary['avg_lmp'],
+            'my_lmp' => $this->myLmpForMembers($members),
+            'diff' => $this->lmpPriceDiffPct($summary['avg_lmp'], $avgPrice),
+            'avg_price' => $avgPrice,
+        ];
+    }
+
+    /**
      * One summary row per parent, placed above that parent's SKUs.
      *
      * @param  list<array<string, mixed>>  $rows
@@ -1002,6 +1108,144 @@ class LmpOverallController extends Controller
         }
 
         return $total;
+    }
+
+    /**
+     * @param  list<string>  $members
+     * @return array{details: \Illuminate\Support\Collection, lowest: \Illuminate\Support\Collection}
+     */
+    private function amazonLookupForMembers(array $members): array
+    {
+        $items = AmazonSkuCompetitor::getCompetitorsForSkus($members, 'amazon');
+        $grouped = $items->groupBy(fn ($item) => AmazonSkuCompetitor::normalizeSkuKey($item->sku));
+
+        return [
+            'details' => $grouped,
+            'lowest' => $grouped->map(fn ($group) => AmazonSkuCompetitor::lowestFromCollection($group)),
+        ];
+    }
+
+    /**
+     * @param  list<string>  $members
+     * @return array{details: \Illuminate\Support\Collection, lowest: \Illuminate\Support\Collection}
+     */
+    private function ebayLookupForMembers(array $members): array
+    {
+        $query = EbaySkuCompetitor::query()
+            ->where('marketplace', 'ebay')
+            ->where('total_price', '>', 0);
+        $this->constrainSkuKeys($query, $members);
+        $grouped = $query->get()->groupBy(fn ($item) => EbaySkuCompetitor::normalizeSkuKey($item->sku));
+
+        return [
+            'details' => $grouped,
+            'lowest' => $grouped->map(function ($items) {
+                $active = EbaySkuCompetitor::withoutIgnored($items);
+
+                return $active->sortBy(fn ($item) => (float) ($item->total_price ?? 0))->first();
+            }),
+        ];
+    }
+
+    /**
+     * @param  list<string>  $members
+     * @return array{details: \Illuminate\Support\Collection, lowest: \Illuminate\Support\Collection}
+     */
+    private function googleLookupForMembers(array $members): array
+    {
+        $query = GoogleSkuCompetitor::query()
+            ->where('marketplace', 'google')
+            ->wherePositivePrice();
+        $this->constrainSkuKeys($query, $members);
+        $grouped = $query->get()->groupBy(fn ($item) => GoogleSkuCompetitor::normalizeSkuKey($item->sku));
+
+        return [
+            'details' => $grouped,
+            'lowest' => $grouped->map(fn ($items) => GoogleSkuCompetitor::lowestFromCollection($items)),
+        ];
+    }
+
+    /**
+     * @param  list<string>  $members
+     * @return array{price: array<string, float>, count: array<string, int>}
+     */
+    private function temuLowestForMembers(array $members): array
+    {
+        $out = ['price' => [], 'count' => []];
+        if ($members === [] || ! Schema::hasTable('temu_lmp')) {
+            return $out;
+        }
+
+        $query = TemuLmp::query()->select(['id', 'sku', 'lmp', 'lmp_2', 'lmp_entries']);
+        $this->constrainSkuKeys($query, $members);
+        foreach ($query->get() as $row) {
+            $key = $this->skuKey((string) $row->sku);
+            if ($key === '') {
+                continue;
+            }
+            $stats = $this->temuRowStats($row);
+            if ($stats['price'] !== null && (! isset($out['price'][$key]) || $stats['price'] < $out['price'][$key])) {
+                $out['price'][$key] = $stats['price'];
+            }
+            if ($stats['count'] > 0) {
+                $out['count'][$key] = ($out['count'][$key] ?? 0) + $stats['count'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $members
+     */
+    private function myLmpForMembers(array $members): ?float
+    {
+        if ($members === [] || ! Schema::hasTable('amazon_data_view')) {
+            return null;
+        }
+
+        $query = AmazonDataView::query()->select(['id', 'sku', 'value']);
+        $this->constrainSkuKeys($query, $members);
+        $bySku = [];
+        foreach ($query->get() as $row) {
+            $key = $this->skuKey((string) $row->sku);
+            if ($key === '') {
+                continue;
+            }
+            $val = is_array($row->value) ? $row->value : [];
+            $mine = $val['MY_LMP'] ?? null;
+            if (is_numeric($mine) && (float) $mine > 0) {
+                $bySku[$key] = round((float) $mine, 2);
+            }
+        }
+
+        return $this->priceForGroup($members, $bySku);
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<\Illuminate\Database\Eloquent\Model>  $query
+     * @param  list<string>  $members
+     */
+    private function constrainSkuKeys($query, array $members): void
+    {
+        $keys = [];
+        foreach ($members as $member) {
+            $key = $this->skuKey((string) $member);
+            if ($key !== '') {
+                $keys[$key] = $key;
+            }
+        }
+        $keys = array_values($keys);
+        if ($keys === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+        $query->where(function ($inner) use ($keys) {
+            foreach ($keys as $key) {
+                $inner->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key]);
+            }
+        });
     }
 
     /**

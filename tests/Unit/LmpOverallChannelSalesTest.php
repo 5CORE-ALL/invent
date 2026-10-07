@@ -20,4 +20,13 @@ class LmpOverallChannelSalesTest extends TestCase
         $this->assertSame('Temu 3', $controller->channelLabelForSale('temu3', ''));
         $this->assertSame("Macy's", $controller->channelLabelForSale("macy's", ''));
     }
+
+    public function test_lmp_price_diff_is_avg_lmp_against_avg_price(): void
+    {
+        $controller = new LmpOverallController;
+
+        $this->assertSame(25.0, $controller->lmpPriceDiffPct(12.5, 10.0));
+        $this->assertNull($controller->lmpPriceDiffPct(null, 10.0));
+        $this->assertNull($controller->lmpPriceDiffPct(12.5, 0.0));
+    }
 }

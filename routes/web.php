@@ -4315,6 +4315,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // LMP Overall — parent/SKU inventory with Amz, eBay, Temu, and Google LMP
     Route::get('/lmp-overall', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'index'])->name('lmp.overall');
     Route::get('/lmp-overall/data', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'data'])->name('lmp.overall.data');
+    Route::get('/lmp-overall/sku-metrics', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'skuMetrics'])->name('lmp.overall.sku-metrics');
     Route::post('/lmp-overall/channel-sales', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'channelSales'])->name('lmp.overall.channel-sales');
     Route::post('/lmp-overall/save', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'save'])->name('lmp.overall.save');
 

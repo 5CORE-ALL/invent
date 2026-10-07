@@ -922,7 +922,7 @@
 
     <!-- Std Prc editor (magnifying glass). Std NROI% and Std NPFT% follow the typed price. -->
     <div class="modal fade" id="stdPrcEditModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 720px;">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title mb-0">Std Price — <span id="stdPrcEditSku"></span></h5>
@@ -944,7 +944,47 @@
                             <div id="stdPrcEditNpft" class="form-control form-control-sm bg-light fw-bold text-center" title="((Std Prc × 0.70 − ship − LP) / Std Prc) × 100">—</div>
                         </div>
                     </div>
-                    <div class="form-text mt-2">Saves Std Prc for this SKU and its Sku Link LMP siblings.</div>
+                    <div class="row g-2 mt-2">
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg GPFT%</div>
+                            <div id="stdPrcAvgGpft" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg GPFT% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg GROI%</div>
+                            <div id="stdPrcAvgGroi" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg GROI% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg NPFT%</div>
+                            <div id="stdPrcAvgNpft" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg NPFT% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg NROI%</div>
+                            <div id="stdPrcAvgNroi" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg NROI% from Pricing Master CVR">—</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">OV LMP</div>
+                            <div id="stdPrcOvLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Lowest LMP across Amazon, eBay, Temu, and Google">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg LMP</div>
+                            <div id="stdPrcAvgLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Average LMP across Amazon, eBay, Temu, and Google">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">My LMP</div>
+                            <div id="stdPrcMyLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Manual My LMP">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Diff</div>
+                            <div id="stdPrcDiff" class="form-control form-control-sm fw-bold text-center" title="(Avg LMP − Avg Price) / Avg Price">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg Price</div>
+                            <div id="stdPrcAvgPrice" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg Price from Pricing Master CVR">—</div>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Saves Std Prc for this SKU and its Sku Link LMP siblings. Avg and LMP figures match LMP Overall.</div>
                     <div class="small mt-1" id="stdPrcEditMsg"></div>
                 </div>
                 <div class="modal-footer py-2">
@@ -2748,6 +2788,113 @@
             $('#stdPrcEditNpft').html(npft === null ? '<span class="text-muted">—</span>' : amazonModalNpftColoredHtml(npft));
         }
 
+        const stdPrcLmpMetricIds = ['stdPrcAvgGpft', 'stdPrcAvgGroi', 'stdPrcAvgNpft', 'stdPrcAvgNroi', 'stdPrcOvLmp', 'stdPrcAvgLmp', 'stdPrcMyLmp', 'stdPrcDiff', 'stdPrcAvgPrice'];
+        const stdPrcLmpCache = {};
+        let stdPrcLmpXhr = null;
+
+        function stdPrcMetricDash(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            el.innerHTML = '<span class="text-muted">—</span>';
+        }
+
+        function stdPrcPaintPct(id, kind, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            const n = Number(value);
+            if (value == null || value === '' || !isFinite(n)) {
+                el.innerHTML = '<span class="text-muted">—</span>';
+                return;
+            }
+            if (window.MetricPctColors && typeof MetricPctColors.htmlFor === 'function') {
+                el.innerHTML = MetricPctColors.htmlFor(kind, n, { decimals: 0, empty: '—' });
+                return;
+            }
+            el.textContent = Math.round(n) + '%';
+        }
+
+        function stdPrcPaintMoney(id, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            const n = Number(value);
+            el.innerHTML = (isFinite(n) && n > 0)
+                ? ('$' + n.toFixed(2))
+                : '<span class="text-muted">—</span>';
+        }
+
+        function paintStdPrcLmpMetrics(data) {
+            if (!data) {
+                stdPrcLmpMetricIds.forEach(stdPrcMetricDash);
+                return;
+            }
+            stdPrcPaintPct('stdPrcAvgGpft', 'gpft', data.gpft);
+            stdPrcPaintPct('stdPrcAvgGroi', 'groi', data.groi);
+            stdPrcPaintPct('stdPrcAvgNpft', 'npft', data.npft);
+            stdPrcPaintPct('stdPrcAvgNroi', 'nroi', data.nroi);
+            stdPrcPaintMoney('stdPrcOvLmp', data.ov_lmp);
+            stdPrcPaintMoney('stdPrcAvgLmp', data.avg_lmp);
+            stdPrcPaintMoney('stdPrcMyLmp', data.my_lmp);
+            stdPrcPaintMoney('stdPrcAvgPrice', data.avg_price);
+            const diffEl = document.getElementById('stdPrcDiff');
+            const pct = Number(data.diff);
+            if (!diffEl) return;
+            if (data.diff == null || data.diff === '' || !isFinite(pct)) {
+                stdPrcMetricDash('stdPrcDiff');
+                return;
+            }
+            let bg = '#ff00ff';
+            if (pct < 0) bg = '#dc3545';
+            else if (pct < 10) bg = '#28a745';
+            else if (pct <= 20) bg = '#ffc107';
+            diffEl.style.background = bg;
+            diffEl.style.color = '#000';
+            diffEl.textContent = Math.round(pct) + '%';
+        }
+
+        function loadStdPrcLmpMetrics(sku) {
+            const key = String(sku || '').trim().toUpperCase();
+            if (!key) {
+                paintStdPrcLmpMetrics(null);
+                return;
+            }
+            if (stdPrcLmpCache[key]) {
+                paintStdPrcLmpMetrics(stdPrcLmpCache[key]);
+                return;
+            }
+            stdPrcLmpMetricIds.forEach(function(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.style.background = '';
+                el.style.color = '';
+                el.textContent = '…';
+            });
+            if (stdPrcLmpXhr && typeof stdPrcLmpXhr.abort === 'function') stdPrcLmpXhr.abort();
+            stdPrcLmpXhr = $.ajax({
+                url: '/lmp-overall/sku-metrics',
+                method: 'GET',
+                data: { sku: sku },
+                headers: { 'Accept': 'application/json' }
+            }).done(function(res) {
+                if (String(stdPrcEditState.sku || '').trim().toUpperCase() !== key) return;
+                if (!res || !res.success) {
+                    paintStdPrcLmpMetrics(null);
+                    return;
+                }
+                stdPrcLmpCache[key] = res;
+                paintStdPrcLmpMetrics(res);
+            }).fail(function(xhr) {
+                if (xhr && xhr.statusText === 'abort') return;
+                if (String(stdPrcEditState.sku || '').trim().toUpperCase() !== key) return;
+                paintStdPrcLmpMetrics(null);
+            });
+        }
+
         function openStdPrcEditModal(sku) {
             const key = String(sku || '').trim();
             if (!key) return;
@@ -2764,6 +2911,7 @@
             $('#stdPrcEditMsg').text('');
             $('#stdPrcEditInput').val(sp != null ? sp.toFixed(2) : '');
             refreshStdPrcEditMetrics();
+            loadStdPrcLmpMetrics(key);
             const el = document.getElementById('stdPrcEditModal');
             if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
             bootstrap.Modal.getOrCreateInstance(el).show();
@@ -4548,7 +4696,7 @@
                             const std = parseFloat(value) || 0;
                             const sku = rowData['(Child) sku'] || '';
                             const searchBtn = sku
-                                ? `<button type="button" class="btn btn-sm p-0 open-std-prc-modal" data-sku="${escAttr(sku)}" title="Edit Std Prc, Std NROI%, Std NPFT%" style="border:none;background:none;color:#0d6efd;line-height:1;"><i class="fa fa-search"></i></button>`
+                                ? `<button type="button" class="btn btn-sm p-0 open-std-prc-modal" data-sku="${escAttr(sku)}" title="Std Prc plus Avg GPFT, GROI, NPFT, NROI, OV LMP, Avg LMP, My LMP, Diff, and Avg Price" style="border:none;background:none;color:#0d6efd;line-height:1;"><i class="fa fa-search"></i></button>`
                                 : '';
                             if (!value || std <= 0) {
                                 return searchBtn || '';
