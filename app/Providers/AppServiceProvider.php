@@ -19,6 +19,7 @@ use App\Models\FbaManualData;
 use App\Models\ScopeOfImprovement;
 use App\Models\UserIncentive;
 use App\Support\ChatWorkspace;
+use App\Support\Marketplace\AlibabaEnv;
 use App\Support\DarL30Metrics;
 use App\Support\TaskBusinessTime;
 use App\Observers\FbaManualDataObserver;
@@ -81,6 +82,7 @@ class AppServiceProvider extends ServiceProvider
         // File cache (sidebar badges, ShouldBeUnique locks): optimize:clear can wipe
         // storage/framework/cache/data; recreate before any Cache::put/lock.
         StoragePathGuard::ensure();
+        AlibabaEnv::apply();
 
         // Override default "file" driver so missing shard dirs retry instead of 500.
         Cache::extend('file', function ($app, array $config) {

@@ -1002,6 +1002,7 @@ class MappingChannelCounts
             'shein' => ['shein_metric', 'shein_pricing_prices', 'shein_listing_statuses'],
             'newegg' => ['newegg_metric', 'newegg_pricing_prices'],
             'aliexpress' => ['aliexpress_metric', 'aliexpress_pricing_prices', 'aliexpress_listing_statuses'],
+            'alibaba' => ['alibaba_metrics'],
             'pls' => ['pls_products', 'pls_listing_statuses', 'shopify_catalog_variants'],
             'wayfair' => ['wayfair_pricing_prices'],
             'faire' => ['faire_metric', 'faire_listing_statuses'],

@@ -75,8 +75,10 @@ class AlibabaAuthUrlCommand extends Command
             if (str_contains($line, '=') && ! str_starts_with(ltrim($line), '#')) {
                 $key = trim(explode('=', $line, 2)[0]);
                 if (isset($updates[$key])) {
-                    $out[] = $key.'='.$updates[$key];
-                    $seen[$key] = true;
+                    if (empty($seen[$key])) {
+                        $out[] = $key.'='.$updates[$key];
+                        $seen[$key] = true;
+                    }
                     continue;
                 }
             }

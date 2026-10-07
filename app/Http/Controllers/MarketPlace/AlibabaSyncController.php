@@ -302,6 +302,12 @@ class AlibabaSyncController extends Controller
 
         if (preg_match($pattern, $contents)) {
             $contents = preg_replace_callback($pattern, static fn () => $line, $contents, 1);
+            $contents = preg_replace('/^'.preg_quote($key, '/').'=.*\R?/m', '', $contents, -1, $removed);
+            // The callback already wrote the new line; the replace above strips every
+            // copy, so put the single kept line back.
+            if (($removed ?? 0) > 0) {
+                $contents = rtrim($contents)."\n".$line."\n";
+            }
         } else {
             $contents = rtrim($contents, "\n")."\n".$line."\n";
         }
