@@ -700,7 +700,7 @@
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
         }
         function ebayDgAutoApplies() {
-            return false;
+            return true;
         }
         function ebayDgExcludeShip() {
             // Purchasing Power uses Ship BB in the Amazon invert — do not drop it here.
@@ -2298,10 +2298,6 @@
                 ebayDgAutoApplyWaits = 0;
                 const run = function() {
                     if (!ebayDilOwnsSprice()) return;
-                    if (ebayDgIsShopifyB2c() && typeof window.chPromoScheduleB2cRuleSpriceThenPush === 'function') {
-                        window.chPromoScheduleB2cRuleSpriceThenPush({ delay: 200 });
-                        return;
-                    }
                     const persist = opts.persist !== false;
                     const push = persist
                         && typeof chPromoPageReloadPushAllowed === 'function'
