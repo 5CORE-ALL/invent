@@ -386,19 +386,21 @@ class AlibabaApiService extends AliExpressApiService
     }
 
     /**
-     * @param  array<int, array{product_id: string, sku_code: string, inventory: int}>  $rows
+     * Push Shopify quantities through /icbu/product/inventory/update.
+     * That call sets inventory.amount on a numeric skuId. sku_code is not accepted.
+     *
+     * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
+     * @return array{success: bool, message: string, updated: int, errors: list<string>, failed_skus: list<string>}
      */
     public function batchUpdateInventory(array $rows): array
     {
         if ($rows === []) {
-            return ['success' => true, 'message' => 'No rows to update.', 'updated' => 0];
+            return ['success' => true, 'message' => 'No rows to update.', 'updated' => 0, 'errors' => [], 'failed_skus' => []];
         }
 
-        $updated = 0;
-        $errors = [];
-
+        $byProduct = [];
         foreach ($rows as $row) {
-            $productId = (string) ($row['product_id'] ?? '');
+            $productId = trim((string) ($row['product_id'] ?? ''));
             $skuCode = trim((string) ($row['sku_code'] ?? $row['sku'] ?? ''));
             if ($productId === '' || $skuCode === ''
                 || ! \App\Services\MarketplaceManager\MarketplaceLiveInventoryRules::isLinked($productId, $skuCode)) {
@@ -411,62 +413,302 @@ class AlibabaApiService extends AliExpressApiService
                     (int) $row['shopify_qty']
                 );
             }
-
-            $shapes = [
-                [
-                    'product_id' => $productId,
-                    'sku_inventory_list' => $this->encodeRequestPayload([
-                        ['sku_code' => $skuCode, 'inventory' => $inventory],
-                    ]),
-                ],
-                [
-                    'product_id' => $productId,
-                    'sku_code' => $skuCode,
-                    'inventory' => $inventory,
-                ],
-                [
-                    'product_id' => $productId,
-                    'cargo_number' => $skuCode,
-                    'inventory' => $inventory,
-                ],
+            $byProduct[$productId][] = [
+                'sku_code' => $skuCode,
+                'inventory' => $inventory,
             ];
+        }
 
-            $ok = false;
-            $lastMessage = 'Inventory update failed.';
-            foreach (['alibaba.icbu.product.inventory.update', 'alibaba.product.inventory.update', 'alibaba.icbu.product.stock.update'] as $method) {
-                foreach ($shapes as $params) {
-                    $raw = $this->callIcbu($method, $params);
-                    if (! empty($raw['success'])) {
-                        $ok = true;
-                        break 2;
+        if ($byProduct === []) {
+            return ['success' => true, 'message' => 'No linked SKUs to update.', 'updated' => 0, 'errors' => [], 'failed_skus' => []];
+        }
+
+        $this->useIcbuRest();
+        $updated = 0;
+        $errors = [];
+        $failedSkus = [];
+        $productIds = array_keys($byProduct);
+
+        foreach ($productIds as $index => $productId) {
+            $group = $byProduct[$productId];
+            $resolved = $this->icbuInventoryItems((string) $productId, $group);
+            if ($resolved['auth']) {
+                foreach (array_slice($productIds, $index) as $laterId) {
+                    foreach ($byProduct[$laterId] as $item) {
+                        $failedSkus[] = $item['sku_code'];
+                        $errors[] = $item['sku_code'].': '.$resolved['error'];
                     }
-                    $lastMessage = (string) ($raw['message'] ?? $lastMessage);
-                    if ($this->isAuthError($raw)) {
-                        return [
-                            'success' => false,
-                            'message' => $lastMessage,
-                            'updated' => $updated,
-                        ];
+                }
+                break;
+            }
+
+            foreach ($resolved['missing'] as $skuCode) {
+                $failedSkus[] = $skuCode;
+                $errors[] = $skuCode.': '.$resolved['error'];
+            }
+
+            if ($resolved['items'] !== []) {
+                $payloadItems = array_map(static function (array $item): array {
+                    return [
+                        'productId' => $item['productId'],
+                        'skuId' => $item['skuId'],
+                        'inventory' => $item['inventory'],
+                    ];
+                }, $resolved['items']);
+                $raw = $this->callRestGateway('/icbu/product/inventory/update', [
+                    'inventory_update_request' => [
+                        'inventoryItems' => $payloadItems,
+                    ],
+                ]);
+                $failure = $this->icbuInventoryWriteError($raw);
+                if ($failure === null) {
+                    $updated += count($resolved['items']);
+                } else {
+                    foreach ($resolved['items'] as $item) {
+                        $skuCode = (string) ($item['sku_code'] ?? '');
+                        $failedSkus[] = $skuCode;
+                        $errors[] = $skuCode.': '.$failure;
+                    }
+                    if ($this->isAuthError($raw) || $this->isAuthError(['message' => $failure])) {
+                        foreach (array_slice($productIds, $index + 1) as $laterId) {
+                            foreach ($byProduct[$laterId] as $item) {
+                                $failedSkus[] = $item['sku_code'];
+                                $errors[] = $item['sku_code'].': '.$failure;
+                            }
+                        }
+                        break;
                     }
                 }
             }
 
-            if ($ok) {
-                $updated++;
-            } else {
-                $errors[] = $skuCode.': '.$lastMessage;
+            if (! app()->runningUnitTests()) {
+                usleep(150000);
             }
-            usleep(150000);
         }
+
+        $failedSkus = array_values(array_unique($failedSkus));
+        $shown = array_slice(array_values(array_unique($errors)), 0, 2);
+        $extra = count($errors) - count($shown);
+        $failed = count($failedSkus);
 
         return [
             'success' => $errors === [],
             'message' => $errors === []
                 ? "Inventory updated for {$updated} SKU(s)."
-                : implode(' | ', $errors),
+                : 'Pushed '.$updated.' inventory row(s) to Alibaba ('.$failed.' API fail).'
+                    .($shown !== [] ? ' '.implode(' | ', $shown).($extra > 0 ? " (+{$extra} more)" : '') : ''),
             'updated' => $updated,
             'errors' => $errors,
+            'failed_skus' => $failedSkus,
         ];
+    }
+
+    /**
+     * @param  list<array{sku_code: string, inventory: int}>  $rows
+     * @return array{items: list<array<string, mixed>>, missing: list<string>, error: string, auth: bool}
+     */
+    protected function icbuInventoryItems(string $productId, array $rows): array
+    {
+        $info = $this->getProductInfo($productId);
+        if ($this->isAuthError($info)) {
+            return [
+                'items' => [],
+                'missing' => [],
+                'error' => (string) ($info['message'] ?? 'Alibaba auth failed.'),
+                'auth' => true,
+            ];
+        }
+
+        $product = (! empty($info['success']) && is_array($info['data'] ?? null)) ? $info['data'] : [];
+        $nodes = $product !== [] ? $this->skuDefinitionNodes($product) : [];
+        $items = [];
+        $unresolved = [];
+
+        foreach ($rows as $row) {
+            $skuId = $this->icbuSkuIdForCode($nodes, (string) $row['sku_code']);
+            if ($skuId === null) {
+                $unresolved[] = $row;
+                continue;
+            }
+            $items[] = $this->icbuInventoryItem($productId, $skuId, (int) $row['inventory'], (string) $row['sku_code']);
+        }
+
+        if ($unresolved !== []) {
+            $lookup = $this->icbuSkuIdsFromInventory($productId);
+            if ($lookup['auth']) {
+                return [
+                    'items' => [],
+                    'missing' => [],
+                    'error' => $lookup['error'],
+                    'auth' => true,
+                ];
+            }
+
+            $stillMissing = [];
+            foreach ($unresolved as $row) {
+                $skuId = $this->icbuSkuIdFromInventoryItems($lookup['items'], (string) $row['sku_code'], count($rows) === 1 && count($nodes) <= 1);
+                if ($skuId === null) {
+                    $stillMissing[] = (string) $row['sku_code'];
+                    continue;
+                }
+                $items[] = $this->icbuInventoryItem($productId, $skuId, (int) $row['inventory'], (string) $row['sku_code']);
+            }
+            $unresolved = $stillMissing;
+        }
+
+        $error = 'Alibaba SKU id was not found, so inventory was not pushed.';
+
+        return [
+            'items' => $items,
+            'missing' => array_values(array_map('strval', $unresolved)),
+            'error' => $error,
+            'auth' => false,
+        ];
+    }
+
+    /**
+     * @return array{productId: string, skuId: string, inventory: array{amount: string}, sku_code: string}
+     */
+    protected function icbuInventoryItem(string $productId, string $skuId, int $inventory, string $skuCode): array
+    {
+        return [
+            'productId' => $productId,
+            'skuId' => $skuId,
+            'inventory' => ['amount' => (string) max(0, $inventory)],
+            'sku_code' => $skuCode,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $nodes
+     */
+    protected function icbuSkuIdForCode(array $nodes, string $sku): ?string
+    {
+        $want = strtoupper(trim($sku));
+        $only = count($nodes) === 1;
+        foreach ($nodes as $node) {
+            $code = strtoupper(trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? '')));
+            $skuId = $this->icbuNumericId($node['skuId'] ?? $node['sku_id'] ?? null);
+            if ($skuId === null) {
+                continue;
+            }
+            if ($only || ($want !== '' && $code === $want)) {
+                return $skuId;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{items: list<array<string, mixed>>, error: string, auth: bool}
+     */
+    protected function icbuSkuIdsFromInventory(string $productId): array
+    {
+        $raw = $this->callRestGateway('/icbu/product/inventory/get', [
+            'inventory_get_request' => ['productId' => $productId],
+        ]);
+        if ($this->isAuthError($raw)) {
+            return ['items' => [], 'error' => (string) ($raw['message'] ?? 'Alibaba auth failed.'), 'auth' => true];
+        }
+        if (empty($raw['success'])) {
+            return ['items' => [], 'error' => (string) ($raw['message'] ?? 'Alibaba inventory lookup failed.'), 'auth' => false];
+        }
+
+        $data = is_array($raw['data'] ?? null) ? $raw['data'] : [];
+        $result = is_array($data['result'] ?? null) ? $data['result'] : $data;
+        $list = $result['inventoryItems'] ?? $result['inventory_items'] ?? [];
+        if (is_array($list) && $list !== [] && ! array_is_list($list)) {
+            $list = [$list];
+        }
+
+        $items = [];
+        foreach (is_array($list) ? $list : [] as $item) {
+            if (is_array($item)) {
+                $items[] = $item;
+            }
+        }
+
+        return ['items' => $items, 'error' => '', 'auth' => false];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    protected function icbuSkuIdFromInventoryItems(array $items, string $sku, bool $allowOnlyItem): ?string
+    {
+        $want = strtoupper(trim($sku));
+        $onlyId = null;
+        if (count($items) === 1) {
+            $onlyId = $this->icbuNumericId($items[0]['skuId'] ?? $items[0]['sku_id'] ?? null);
+        }
+
+        foreach ($items as $item) {
+            $skuId = $this->icbuNumericId($item['skuId'] ?? $item['sku_id'] ?? null);
+            if ($skuId === null) {
+                continue;
+            }
+            $labels = [strtoupper(trim((string) ($item['skuCode'] ?? $item['sku_code'] ?? '')))];
+            $attributes = $item['attributes'] ?? [];
+            if (is_array($attributes)) {
+                if ($attributes !== [] && ! array_is_list($attributes)) {
+                    $attributes = [$attributes];
+                }
+                foreach ($attributes as $attribute) {
+                    if (! is_array($attribute)) {
+                        continue;
+                    }
+                    $labels[] = strtoupper(trim((string) ($attribute['attributeValue'] ?? $attribute['attribute_value'] ?? $attribute['value'] ?? '')));
+                }
+            }
+            if ($want !== '' && in_array($want, $labels, true)) {
+                return $skuId;
+            }
+        }
+
+        return $allowOnlyItem ? $onlyId : null;
+    }
+
+    protected function icbuNumericId(mixed $value): ?string
+    {
+        if (is_int($value) || is_float($value)) {
+            $value = (string) (int) $value;
+        }
+        $id = trim((string) $value);
+
+        return preg_match('/^\d+$/', $id) === 1 ? $id : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     */
+    protected function icbuInventoryWriteError(array $raw): ?string
+    {
+        if (empty($raw['success'])) {
+            $message = trim((string) ($raw['message'] ?? ''));
+
+            return $message !== '' ? $message : 'Alibaba inventory update failed.';
+        }
+
+        $data = is_array($raw['data'] ?? null) ? $raw['data'] : [];
+        $flag = $data['success'] ?? null;
+        if ($flag === false || $flag === 'false' || $flag === 0 || $flag === '0') {
+            $message = trim((string) ($data['message'] ?? $data['msg'] ?? ''));
+
+            return $message !== '' ? $message : 'Alibaba inventory update failed.';
+        }
+
+        $result = $data['result'] ?? null;
+        if (is_array($result)) {
+            $inner = $result['success'] ?? null;
+            if ($inner === false || $inner === 'false' || $inner === 0 || $inner === '0') {
+                $message = trim((string) ($result['message'] ?? $result['error_message'] ?? $result['msg'] ?? ''));
+
+                return $message !== '' ? $message : 'Alibaba inventory update failed.';
+            }
+        }
+
+        return null;
     }
 
     public function declareSellerShipment(array $params): array

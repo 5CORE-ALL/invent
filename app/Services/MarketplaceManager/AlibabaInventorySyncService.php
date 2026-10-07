@@ -104,10 +104,17 @@ class AlibabaInventorySyncService
         }
 
         $invResult = $this->aliExpressApi->batchUpdateInventory($inventoryRows);
+        $pushed = (int) ($invResult['updated'] ?? 0);
+        $failedSkus = array_fill_keys(array_map('strval', $invResult['failed_skus'] ?? []), true);
+        if ($pushed > 0) {
+            $okRows = array_values(array_filter(
+                $inventoryRows,
+                static fn (array $row): bool => ! isset($failedSkus[(string) ($row['sku_code'] ?? '')])
+            ));
+            $this->updateLocalStock($okRows);
+            $this->updateLocalPlatformQuantities($okRows);
+        }
         if (! empty($invResult['success'])) {
-            $this->updateLocalStock($inventoryRows);
-            $this->updateLocalPlatformQuantities($inventoryRows);
-
             return [
                 'updated' => count($inventoryRows),
                 'failed' => 0,
@@ -116,7 +123,7 @@ class AlibabaInventorySyncService
             ];
         }
 
-        // Still refresh Shopify qty on our platform even if AE API push failed.
+        // Still refresh Shopify qty on our platform even if the Alibaba API push failed.
         $this->updateLocalPlatformQuantities($inventoryRows, false);
 
         Log::warning('AlibabaInventorySyncService: post-order SKU inventory sync failed', [
@@ -125,8 +132,8 @@ class AlibabaInventorySyncService
         ]);
 
         return [
-            'updated' => 0,
-            'failed' => count($inventoryRows),
+            'updated' => $pushed,
+            'failed' => count($inventoryRows) - $pushed,
             'skipped' => $skipped,
             'message' => $invResult['message'] ?? 'Alibaba inventory update failed.',
         ];
@@ -306,12 +313,18 @@ class AlibabaInventorySyncService
                 'rows' => count($inventoryRows),
             ]);
             $invResult = $this->aliExpressApi->batchUpdateInventory($inventoryRows);
-            if (! empty($invResult['success'])) {
-                $updated = count($inventoryRows);
-                $this->updateLocalStock($inventoryRows);
-                $this->updateLocalPlatformQuantities($inventoryRows);
-            } else {
-                $failed = count($inventoryRows);
+            $updated = (int) ($invResult['updated'] ?? 0);
+            $failed = count($inventoryRows) - $updated;
+            if ($updated > 0) {
+                $failedSkus = array_fill_keys(array_map('strval', $invResult['failed_skus'] ?? []), true);
+                $okRows = array_values(array_filter(
+                    $inventoryRows,
+                    static fn (array $row): bool => ! isset($failedSkus[(string) ($row['sku_code'] ?? '')])
+                ));
+                $this->updateLocalStock($okRows);
+                $this->updateLocalPlatformQuantities($okRows);
+            }
+            if ($failed > 0) {
                 Log::warning('AlibabaInventorySyncService: inventory batch failed', $invResult);
             }
         }
@@ -332,6 +345,7 @@ class AlibabaInventorySyncService
             'skipped' => $skipped,
             'price_updated' => $priceUpdated,
             'message' => "Inventory: {$updated} updated, {$failed} failed. Prices: {$priceUpdated} updated. Skipped: {$skipped}."
+                .($failed > 0 && isset($invResult) ? ' '.trim((string) ($invResult['message'] ?? '')) : '')
                 .$this->appendMismatchPass(!$dryRun && ($settings['inventory']['inventory_sync'] ?? false)),
         ];
     }
