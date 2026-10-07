@@ -201,7 +201,75 @@ class MappingChannelCounts
             }
         }
 
-        return [];
+        return self::storedMasterRows();
+    }
+
+    /**
+     * Last full rows saved on disk, so `php artisan cache:clear` or a cache
+     * flush never drops the page back to zeros while the recount runs.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function storedMasterRows(): array
+    {
+        try {
+            $path = self::storedRowsPath();
+            if (! is_file($path)) {
+                return [];
+            }
+            $rows = json_decode((string) file_get_contents($path), true);
+
+            return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private static function storeMasterRowsOnDisk(array $rows): void
+    {
+        try {
+            $path = self::storedRowsPath();
+            $dir = dirname($path);
+            if (! is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            $tmp = $path.'.'.getmypid().'.tmp';
+            if (file_put_contents($tmp, json_encode(array_values($rows)), LOCK_EX) !== false) {
+                @rename($tmp, $path);
+            }
+        } catch (\Throwable $e) {
+            // cache copies still serve the page
+        }
+    }
+
+    /**
+     * Save the counts already in the cache to disk when no saved copy exists yet.
+     */
+    public static function seedStoredRows(): void
+    {
+        if (is_file(self::storedRowsPath())) {
+            return;
+        }
+        foreach ([self::MASTER_ROWS_CACHE_KEY, self::MASTER_ROWS_LAST_GOOD_KEY] as $key) {
+            try {
+                $rows = Cache::get($key);
+                if (is_array($rows) && $rows !== []) {
+                    self::storeMasterRowsOnDisk($rows);
+
+                    return;
+                }
+            } catch (\Throwable $e) {
+                // try the next key
+            }
+        }
+    }
+
+    private static function storedRowsPath(): string
+    {
+        return storage_path('app/marketplace/mapping_master_rows.json');
     }
 
     /**
@@ -216,6 +284,7 @@ class MappingChannelCounts
             Cache::put(self::MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(30));
         }
         Cache::put(self::MASTER_ROWS_LAST_GOOD_KEY, $rows, now()->addDays(7));
+        self::storeMasterRowsOnDisk($rows);
     }
 
     public const STALE_CHANNELS_CACHE_KEY = 'mapping_pages_stale_channels_v1';
@@ -291,7 +360,14 @@ class MappingChannelCounts
             }
         }
 
-        return 0;
+        $stored = self::storedMasterRows();
+        if ($stored === []) {
+            return 0;
+        }
+        $total = (int) collect($stored)->sum('missing_mapping_titas');
+        self::storeTotalTitas($total);
+
+        return $total;
     }
 
     /**
@@ -306,10 +382,7 @@ class MappingChannelCounts
         }
 
         try {
-            $cached = Cache::get(self::MASTER_ROWS_CACHE_KEY);
-            if (! is_array($cached)) {
-                return 0;
-            }
+            $cached = self::currentMasterRows();
             foreach ($cached as $row) {
                 if (! is_array($row)) {
                     continue;
@@ -333,8 +406,7 @@ class MappingChannelCounts
     {
         $cached = self::cachedCountForSlug($slug);
         try {
-            $rows = Cache::get(self::MASTER_ROWS_CACHE_KEY);
-            if (is_array($rows) && $rows !== []) {
+            if (self::currentMasterRows() !== []) {
                 return $cached;
             }
         } catch (\Throwable $e) {
@@ -434,6 +506,10 @@ class MappingChannelCounts
                 } catch (\Throwable $e) {
                     // try the next key
                 }
+            }
+            $stored = self::storedMasterRows();
+            if ($stored !== []) {
+                return $stored;
             }
 
             return self::skeletonMasterRows();
