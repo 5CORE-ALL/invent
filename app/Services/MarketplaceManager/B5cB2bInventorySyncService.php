@@ -163,7 +163,7 @@ class B5cB2bInventorySyncService
             app(B5cB2bLiveListingsService::class)->clearCache();
             Cache::forget('mm.b5cb2b.listings_mismatch_skus.v1');
             Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'b5cb2b');
-            MappingChannelCounts::forgetMasterCaches();
+            MappingChannelCounts::markChannelStale('b5cb2b');
         } catch (\Throwable $e) {
             // non-fatal
         }

@@ -506,20 +506,21 @@ class AliexpressInventorySyncService
      */
     protected function updateLocalStock(array $rows): void
     {
-        if (! Schema::hasTable('aliexpress_pricing_prices')) {
-            return;
-        }
-
+        $pushed = [];
         foreach ($rows as $row) {
             $sku = strtoupper(trim((string) $row['sku_code']));
             if ($sku === '') {
                 continue;
             }
-            AliexpressPricingPrice::updateOrCreate(
-                ['sku' => $sku],
-                ['ae_stock' => (int) $row['inventory']]
-            );
+            $pushed[$sku] = (int) $row['inventory'];
+            if (Schema::hasTable('aliexpress_pricing_prices')) {
+                AliexpressPricingPrice::updateOrCreate(
+                    ['sku' => $sku],
+                    ['ae_stock' => (int) $row['inventory']]
+                );
+            }
         }
+        MarketplaceListingsAfterPush::refresh('aliexpress', $pushed);
     }
 
     /**

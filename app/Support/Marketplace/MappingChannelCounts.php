@@ -189,6 +189,63 @@ class MappingChannelCounts
         }
     }
 
+    public const STALE_CHANNELS_CACHE_KEY = 'mapping_pages_stale_channels_v1';
+
+    /**
+     * A push changed this channel's marketplace qty; recount it on the next
+     * mm:refresh-stale-mapping-counts run instead of waiting for the 30-minute cache.
+     */
+    public static function markChannelStale(string $mmChannel): void
+    {
+        $mm = strtolower(trim($mmChannel));
+        if ($mm === '') {
+            return;
+        }
+        try {
+            $stale = Cache::get(self::STALE_CHANNELS_CACHE_KEY, []);
+            $stale = is_array($stale) ? $stale : [];
+            if (isset($stale[$mm])) {
+                return;
+            }
+            $stale[$mm] = now()->toIso8601String();
+            Cache::put(self::STALE_CHANNELS_CACHE_KEY, $stale, now()->addDay());
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
+     * Recount every channel marked stale and write it into the /map-issues cache.
+     *
+     * @return array<string, int> mm channel => new count
+     */
+    public static function refreshStaleChannels(): array
+    {
+        try {
+            $stale = Cache::pull(self::STALE_CHANNELS_CACHE_KEY, []);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (! is_array($stale) || $stale === []) {
+            return [];
+        }
+
+        $match = app(MarketplaceListingQtyMatchService::class);
+        $out = [];
+        foreach (array_keys($stale) as $mm) {
+            try {
+                Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.$mm);
+                $count = (int) $match->activeMismatchCount((string) $mm, false);
+                self::rememberMmChannelCount((string) $mm, $count);
+                $out[(string) $mm] = $count;
+            } catch (\Throwable $e) {
+                Log::warning('MappingChannelCounts: stale recount failed', ['channel' => $mm, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $out;
+    }
+
     /**
      * Cached total only — never scans marketplaces during HTML render.
      */

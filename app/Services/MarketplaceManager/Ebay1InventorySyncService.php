@@ -859,7 +859,7 @@ class Ebay1InventorySyncService
         }
         try {
             Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'ebay1');
-            MappingChannelCounts::forgetMasterCaches();
+            MappingChannelCounts::markChannelStale('ebay1');
         } catch (\Throwable $e) {
             // ignore
         }

@@ -255,5 +255,6 @@ class PurchasingPowerInventorySyncService
                     ->update(['inventory_purchasing_power' => (string) $qty]);
             }
         }
+        MarketplaceListingsAfterPush::refresh('purchasingpower');
     }
 }

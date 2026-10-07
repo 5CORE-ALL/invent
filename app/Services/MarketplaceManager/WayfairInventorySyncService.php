@@ -153,7 +153,7 @@ class WayfairInventorySyncService
             : array_values(array_filter($apiItems, static fn (array $row) => isset($accepted[strtoupper((string) $row['sku'])])));
         if ($persistRows !== []) {
             $this->persistLocalStock($persistRows);
-            app(WayfairLiveListingsService::class)->clearCache();
+            MarketplaceListingsAfterPush::refresh('wayfair');
         }
 
         return [

@@ -487,7 +487,7 @@ class Ebay2InventorySyncService
                 $this->updateLocalStock($pushedRows);
                 $this->updateLocalPlatformQuantities($pushedRows);
                 $this->updateLocalPrices($this->rowsWithPositivePrice($pushedRows));
-                app(Ebay2LiveListingsService::class)->clearCache();
+                MarketplaceListingsAfterPush::refresh('ebay2');
             } elseif ($failed > 0 || $rateLimited) {
                 Log::warning('Ebay2InventorySyncService: inventory push failed', $invResult);
             }

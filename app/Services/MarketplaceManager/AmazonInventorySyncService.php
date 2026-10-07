@@ -478,7 +478,7 @@ class AmazonInventorySyncService
         }
         try {
             Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'amazon');
-            MappingChannelCounts::forgetMasterCaches();
+            MappingChannelCounts::markChannelStale('amazon');
         } catch (\Throwable $e) {
             // ignore
         }
