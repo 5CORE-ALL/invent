@@ -5129,10 +5129,20 @@
             return chPromoTakehomeMargin(d);
         }
         function chPromoAdsFrac() {
-            if (typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined') {
-                return (parseFloat(EBAY2_CHANNEL_ADS_PCT) || 0) / 100;
-            }
-            return 0;
+            const ch = (typeof CHANNEL_PROMO_CHANNEL !== 'undefined') ? CHANNEL_PROMO_CHANNEL : '';
+            let raw = 0;
+            try {
+                if (ch === 'ebay1' && typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') raw = EBAY_CHANNEL_ADS_PCT;
+                else if (ch === 'ebay2' && typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined') raw = EBAY2_CHANNEL_ADS_PCT;
+                else if (ch === 'ebay3' && typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') raw = EBAY3_CHANNEL_ADS_PCT;
+                else if (ch === 'amazon' && typeof AMAZON_CHANNEL_ADS_PCT !== 'undefined') raw = AMAZON_CHANNEL_ADS_PCT;
+                else if (ch === 'reverb' && typeof REVERB_CHANNEL_ADS_PCT !== 'undefined') raw = REVERB_CHANNEL_ADS_PCT;
+                else if (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') raw = EBAY_CHANNEL_ADS_PCT;
+                else if (typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined') raw = EBAY2_CHANNEL_ADS_PCT;
+                else if (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') raw = EBAY3_CHANNEL_ADS_PCT;
+            } catch (e) { raw = 0; }
+            const n = parseFloat(raw);
+            return (isFinite(n) && n > 0) ? n / 100 : 0;
         }
         function chPromoRoiForZeroSoldDil(dil) {
             const key = chPromoDilColorBand(dil);

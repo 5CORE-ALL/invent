@@ -834,6 +834,7 @@
                     if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') {
                         try { table.redraw(true); } catch (e) { /* ignore */ }
                     }
+                    if (typeof updateSummary === 'function') updateSummary();
                 };
                 chStdSavePrices(updates).always(function() {
                     redraw();

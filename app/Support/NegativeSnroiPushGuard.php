@@ -148,6 +148,11 @@ class NegativeSnroiPushGuard
         if (isset(self::$ads[$channel])) {
             return self::$ads[$channel];
         }
+        $live = self::pageAdsPercent($channel);
+        if ($live > 0) {
+            return self::$ads[$channel] = $live;
+        }
+
         $needles = match ($channel) {
             'amazon' => ['Amazon'],
             'ebay1' => ['Ebay', 'eBay'],
@@ -170,5 +175,22 @@ class NegativeSnroiPushGuard
         }
 
         return self::$ads[$channel] = max(0, $ads);
+    }
+
+    /**
+     * Ads% the SNROI column uses (live spend ÷ L30 sales), not the stored channel-master snapshot.
+     */
+    private static function pageAdsPercent(string $channel): float
+    {
+        try {
+            return match ($channel) {
+                'ebay1' => (float) app(\App\Http\Controllers\MarketPlace\EbayController::class)->tabulatorChannelAdsPercent(),
+                'ebay2' => (float) app(\App\Http\Controllers\MarketPlace\EbayTwoController::class)->tabulatorChannelAdsPercent(),
+                'ebay3' => (float) app(\App\Http\Controllers\MarketPlace\EbayThreeController::class)->tabulatorChannelAdsPercent(),
+                default => 0.0,
+            };
+        } catch (\Throwable) {
+            return 0.0;
+        }
     }
 }
