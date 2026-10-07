@@ -248,6 +248,11 @@
             return 0;
         }
         function chStdCvrLive(d) {
+            if (typeof chPromoIsEbayChannel === 'function' && chPromoIsEbayChannel()) {
+                const sold = chStdNum(d, ['eBay L30', 'ebay_l30']);
+                const views = chStdNum(d, ['views', 'Views', 't_views']);
+                return views > 0 ? (sold / views) * 100 : 0;
+            }
             let a = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30']);
             if (!(a > 0)) a = chStdNum(d, ['temu_l30']);
             const sess = chStdNum(d, ['Sess30', 'sess30', 'sessions_l30', 'views']);
@@ -255,6 +260,18 @@
             return (typeof chPromoCvr === 'function') ? (Number(chPromoCvr(d)) || 0) : 0;
         }
         function chStdCvrTrend(d) {
+            if (typeof chPromoIsEbayChannel === 'function' && chPromoIsEbayChannel()) {
+                const views = chStdNum(d, ['views', 'Views', 't_views']);
+                const l30 = chStdNum(d, ['eBay L30', 'ebay_l30']);
+                const l60 = chStdNum(d, ['eBay L60', 'ebay_l60']);
+                const cvr = views > 0 ? (l30 / views) * 100 : 0;
+                const cvr60 = views > 0 ? (l60 / views) * 100 : 0;
+                if (cvr60 > 0) {
+                    if (cvr === 0 || cvr + 0.1 < cvr60) return 'down';
+                    if (cvr > cvr60 + 0.1) return 'up';
+                }
+                return 'flat';
+            }
             const amzUnits = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30', 'Sess30', 'sess30', 'sessions_l30']);
             if (!(amzUnits > 0) && d && (d.cvr_30 != null || d.cvr_60 != null)) {
                 const c30 = chStdNum(d, ['cvr_30', 'cvr_percent']);
@@ -271,7 +288,7 @@
             const sess45 = (s30 + s60) / 2;
             if (!(sess45 > 0)) return 'flat';
             const cvr45 = (((a30 + a60) / 2) / sess45) * 100;
-            if (cvr === 0 || cvr < cvr45 - 0.1) return 'down';
+            if (cvr45 > 0 && (cvr === 0 || cvr < cvr45 - 0.1)) return 'down';
             if (cvr > cvr45 + 0.1) return 'up';
             return 'flat';
         }
