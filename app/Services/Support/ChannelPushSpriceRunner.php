@@ -99,6 +99,54 @@ class ChannelPushSpriceRunner
         }
     }
 
+    /**
+     * Scan blue SKUs (S PRC ≠ live Price) off the web request so the page
+     * can show progress while the catalog is still being collected.
+     */
+    public static function spawnBlueEnqueue(string $channel): bool
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true)) {
+            return false;
+        }
+        if (! self::livePushAllowed()) {
+            Log::warning('Channel blue enqueue skipped — live push disabled in local', [
+                'channel' => $channel,
+            ]);
+
+            return false;
+        }
+        try {
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/'.$channel.'-push-blue.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' channel:push-blue '.escapeshellarg($channel), 'r'));
+
+                return true;
+            }
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' channel:push-blue '.escapeshellarg($channel)
+                .' >> '.escapeshellarg($log).' 2>&1 &';
+            pclose(popen($cmd, 'r'));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Channel blue enqueue spawn failed', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     public static function lockHeld(string $channel): bool
     {
         $lockPath = storage_path('app/'.$channel.'-push-sprice/runner.lock');

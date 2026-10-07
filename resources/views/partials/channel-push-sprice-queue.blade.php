@@ -107,6 +107,7 @@
             let chPushSpriceExclusive = false;
             let chPushSpriceReplacePending = false;
             let chPushSpriceExpecting = false;
+            let chPushSpriceExpectMisses = 0;
             let chPushClientQ = [];
             let chPushClientInflight = 0;
             let chPushClientDone = 0;
@@ -667,9 +668,34 @@
                     timeout: 20000,
                 }).done(function(resp) {
                     if (!resp) return;
-                    if (chPushSpriceExpecting && !resp.active && !(Number(resp.total) > 0)) {
+                    if (resp.scanning && !resp.active) {
+                        chPushSpriceExpectMisses = 0;
+                        setChannelPushSpriceProgress({
+                            active: true,
+                            done: 0,
+                            total: Number(resp.total) || 0,
+                            pct: 0,
+                            msg: resp.message || 'Scanning blue SKUs…',
+                        });
                         return;
                     }
+                    if (chPushSpriceExpecting && !resp.active && !(Number(resp.total) > 0)) {
+                        if (resp.scan_message) {
+                            chPushSpriceExpecting = false;
+                            chPushSpriceExpectMisses = 0;
+                            setChannelPushSpriceProgress({ active: false, msg: resp.scan_message });
+                            stopChannelPushSpricePoll();
+                            return;
+                        }
+                        chPushSpriceExpectMisses = (chPushSpriceExpectMisses || 0) + 1;
+                        if (chPushSpriceExpectMisses < 120) return;
+                        chPushSpriceExpecting = false;
+                        chPushSpriceExpectMisses = 0;
+                        setChannelPushSpriceProgress({ active: false, msg: 'Push did not start' });
+                        stopChannelPushSpricePoll();
+                        return;
+                    }
+                    chPushSpriceExpectMisses = 0;
                     const active = !!resp.active;
                     applyChannelPushSpriceTasks(resp.tasks || []);
                     setChannelPushSpriceProgress({
@@ -705,6 +731,14 @@
                 chPushSpricePollTimer = setInterval(pollChannelPushSpriceStatus, 1500);
                 pollChannelPushSpriceStatus();
             }
+            global.chPushSpriceMarkExpecting = function() {
+                chPushSpriceExpecting = true;
+                chPushSpriceExpectMisses = 0;
+            };
+            global.chPushSpriceClearExpecting = function() {
+                chPushSpriceExpecting = false;
+                chPushSpriceExpectMisses = 0;
+            };
             function postChannelPushSpriceItems(items, opts) {
                 opts = opts || {};
                 if (!items || !items.length) return $.Deferred().resolve(null).promise();
@@ -835,11 +869,36 @@
                 clearTimeout(chPushSpriceTimer);
                 chPushSpriceTimer = setTimeout(flushChannelPushSprice, opts.immediate ? 0 : 180);
             }
+            function chPushSpriceDataForSku(sku, row) {
+                if (row && typeof row.getData === 'function') {
+                    const fromRow = row.getData() || {};
+                    if (fromRow['(Child) sku'] || fromRow.SKU || fromRow.sku) return fromRow;
+                }
+                if (row && (row['(Child) sku'] || row.SKU || row.sku)) return row;
+                const want = String(sku || '').trim().toUpperCase();
+                if (!want) return {};
+                const foundRow = chPushSpriceFindRowBySku(want);
+                if (foundRow && typeof foundRow.getData === 'function') return foundRow.getData() || {};
+                let found = null;
+                const walk = function(arr) {
+                    if (found || !Array.isArray(arr)) return;
+                    for (let i = 0; i < arr.length; i++) {
+                        const item = arr[i];
+                        if (!item) continue;
+                        const s = String(item['(Child) sku'] || item.SKU || item.sku || '').trim().toUpperCase();
+                        if (s === want) { found = item; return; }
+                        if (Array.isArray(item._children)) walk(item._children);
+                    }
+                };
+                try { if (typeof allTableData !== 'undefined') walk(allTableData); } catch (e) { /* TDZ */ }
+                if (!found && global.allTableData) walk(global.allTableData);
+                return found || {};
+            }
             function enqueueChannelPushSpriceAfterSave(sku, price, row, opts) {
                 opts = opts || {};
                 const isTemu = CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2' || CH_PUSH_SPRICE_CHANNEL === 'temu3';
                 const force = opts.force === true || (isTemu && opts.force !== false);
-                const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
+                const d = chPushSpriceDataForSku(sku, row);
                 let p = chPushSpriceRound2(price);
                 if (!force) {
                     if (typeof chPromoCapSpriceToLmp === 'function') p = chPromoCapSpriceToLmp(d, p);

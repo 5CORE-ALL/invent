@@ -272,6 +272,7 @@ class DilRuleSpriceApplyService
      */
     public function collectPushTasks(?array $onlySkus = null): array
     {
+        $this->applyStdPrcVsDil = true;
         if (! in_array($this->channel, self::PUSH_CHANNELS, true)) {
             return [];
         }

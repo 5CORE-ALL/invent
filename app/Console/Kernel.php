@@ -1066,6 +1066,18 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // Std prc vs dil on every pushable page, 3 times a day. Page does not need to be open.
+        // Lock + withoutOverlapping stop a second run. Unchanged live prices are not pushed again.
+        foreach (['03:15', '11:15', '19:15'] as $at) {
+            $schedule->command('std-prc-vs-dil:apply')
+                ->dailyAt($at)
+                ->timezone('Asia/Kolkata')
+                ->name('std-prc-vs-dil-apply-'.$at)
+                ->withoutOverlapping(360)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
         $schedule->command('wayfair:daily-price-upload')
             ->dailyAt((string) config('wayfair_upload.schedule_time', '05:00'))
             ->timezone(config('app.timezone'))

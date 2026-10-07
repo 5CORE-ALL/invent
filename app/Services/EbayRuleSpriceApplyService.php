@@ -184,6 +184,7 @@ class EbayRuleSpriceApplyService
      */
     public function collectPushTasks(?array $onlySkus = null): array
     {
+        $this->applyStdPrcVsDil = true;
         $store = $this->loadDilGroiStore();
         $margin = $this->takeHome();
         $adsPct = $this->channelAdsPercent();

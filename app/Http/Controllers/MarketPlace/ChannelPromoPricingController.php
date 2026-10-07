@@ -37,6 +37,7 @@ use App\Services\Support\ChannelPushPrcJobStore;
 use App\Services\Support\ChannelPushPrmtJobStore;
 use App\Services\Support\ChannelPushSpriceDailyEnqueue;
 use App\Services\Support\ChannelPushSpriceJobStore;
+use App\Console\Commands\PushChannelBlueSpriceCommand;
 use App\Services\Support\ChannelPushSpriceRunner;
 use App\Support\AmazonDilGroiRule;
 use Carbon\Carbon;
@@ -422,15 +423,36 @@ class ChannelPromoPricingController extends Controller
             ]);
         }
 
-        $res = app(ChannelPushSpriceDailyEnqueue::class)->enqueueChannel($channel);
+        if (! ChannelPushSpriceRunner::livePushAllowed()) {
+            return response()->json([
+                'success' => true,
+                'enabled' => true,
+                'started' => false,
+                'queued' => 0,
+                'message' => 'Skipped — live S PRC push is disabled on local',
+            ]);
+        }
+
+        Cache::put(PushChannelBlueSpriceCommand::SCANNING_PREFIX.$channel, true, now()->addMinutes(30));
+        $spawned = ChannelPushSpriceRunner::spawnBlueEnqueue($channel);
+        if (! $spawned) {
+            Cache::forget(PushChannelBlueSpriceCommand::SCANNING_PREFIX.$channel);
+
+            return response()->json([
+                'success' => false,
+                'started' => false,
+                'queued' => 0,
+                'message' => 'Could not start the background push. Try again.',
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,
             'enabled' => true,
-            'queued' => (int) ($res['queued'] ?? 0),
-            'message' => (int) ($res['queued'] ?? 0) > 0
-                ? ('Background push started for '.$res['queued'].' blue SKU(s). Page can close.')
-                : 'No S PRC to push',
+            'started' => true,
+            'scanning' => true,
+            'queued' => 0,
+            'message' => 'Scanning blue SKUs…',
         ]);
     }
 
@@ -464,7 +486,19 @@ class ChannelPromoPricingController extends Controller
             $state = $store->load();
         }
 
-        return response()->json($store->toApiResponse($state));
+        $payload = $store->toApiResponse($state);
+        $scanning = Cache::get(PushChannelBlueSpriceCommand::SCANNING_PREFIX.$channel) === true;
+        $payload['scanning'] = $scanning;
+        if ($scanning && empty($payload['active'])) {
+            $payload['message'] = 'Scanning blue SKUs…';
+        } elseif (empty($payload['active'])) {
+            $scanMessage = Cache::get(PushChannelBlueSpriceCommand::RESULT_PREFIX.$channel);
+            if (is_string($scanMessage) && $scanMessage !== '') {
+                $payload['scan_message'] = $scanMessage;
+            }
+        }
+
+        return response()->json($payload);
     }
 
     public function cancelPushSprice(string $channel): JsonResponse

@@ -9938,37 +9938,58 @@
             if (!chPromoPageReloadPushAllowed()) return false;
             if (window._chPromoServerBluePushStarted) return true;
             window._chPromoServerBluePushStarted = true;
+            if (typeof setChannelPushSpriceProgress === 'function') {
+                setChannelPushSpriceProgress({
+                    active: true,
+                    done: 0,
+                    total: 0,
+                    pct: 0,
+                    msg: 'Starting…',
+                });
+            }
+            if (typeof window.chPushSpriceMarkExpecting === 'function') window.chPushSpriceMarkExpecting();
+            if (typeof startChannelPushSpricePoll === 'function') startChannelPushSpricePoll();
             $.ajax({
                 url: CH_PROMO_RULES_BASE + '/push-blue',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
                 data: { _token: chPromoCsrf() },
             }).done(function(res) {
+                const started = !!(res && (res.started || res.scanning));
                 const n = Number(res && res.queued) || 0;
-                const msg = (res && res.message) || (n > 0 ? ('Background push ' + n) : 'No S PRC to push');
+                const msg = (res && res.message) || (started ? 'Scanning blue SKUs…' : (n > 0 ? ('Background push ' + n) : 'No S PRC to push'));
                 if (typeof setChannelPushSpriceProgress === 'function') {
                     setChannelPushSpriceProgress({
-                        active: n > 0,
+                        active: started || n > 0,
                         done: 0,
                         total: n,
-                        pct: n > 0 ? 0 : 0,
+                        pct: 0,
                         msg: msg,
                     });
                 }
-                if (n > 0 && typeof startChannelPushSpricePoll === 'function') {
+                if ((started || n > 0) && typeof startChannelPushSpricePoll === 'function') {
                     startChannelPushSpricePoll();
+                }
+                if (!started && n <= 0 && typeof window.chPushSpriceClearExpecting === 'function') {
+                    window.chPushSpriceClearExpecting();
                 }
             }).fail(function() {
                 window._chPromoServerBluePushStarted = false;
+                if (typeof window.chPushSpriceClearExpecting === 'function') window.chPushSpriceClearExpecting();
+                if (typeof setChannelPushSpriceProgress === 'function') {
+                    setChannelPushSpriceProgress({ active: false, msg: 'Push did not start' });
+                }
             });
             return true;
         }
-        /** Same as Amazon: wait for Dil slabs, wait while S PRC is still saving, then send once. */
+        /** Start the server blue push once slabs are ready. A hung Dil-rules request must not block it. */
         function chPromoTryEbayBluePush() {
             if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return;
             if (!chPromoPageReloadPushAllowed()) return;
             if (window._chPromoServerBluePushStarted) return;
-            if (!chPromoEbaySpriceSlabsReady() || !window._ebayDilRulesLoaded) {
+            window._chPromoEbayBluePushWaits = (window._chPromoEbayBluePushWaits || 0) + 1;
+            const waitedLongEnough = window._chPromoEbayBluePushWaits > 20;
+            if (!chPromoEbaySpriceSlabsReady() && !waitedLongEnough) {
                 clearTimeout(window._chPromoEbayBluePushTimer);
                 window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
                 return;
@@ -9977,7 +9998,7 @@
             try {
                 saveBusy = typeof window.ebayDgSpriceSaveBusy === 'function' && window.ebayDgSpriceSaveBusy();
             } catch (e) { saveBusy = false; }
-            if (saveBusy) {
+            if (saveBusy && window._chPromoEbayBluePushWaits < 40) {
                 clearTimeout(window._chPromoEbayBluePushTimer);
                 window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 600);
                 return;
@@ -10241,6 +10262,9 @@
             }
             if (chPromoUsesAmazonStyleRuleApply()) {
                 chPromoRunAllEbayRulesOnLoad();
+                if (/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) {
+                    chPromoTryEbayBluePush();
+                }
                 return;
             }
             if (chPromoIsTiktokPromoChannel() || CHANNEL_PROMO_CHANNEL === 'fb_marketplace') {
